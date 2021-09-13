@@ -19,9 +19,11 @@ import flask
 from flask import Flask, send_file, Response, request, jsonify
 import os, json, zipfile, sys, requests, base64, pickle, traceback
 import numpy as np
-from os.path import exists
-from time import time
+import time
 from subprocess import Popen
+import shutil
+
+from dotbot.orchestrator.gateway import Gateway
 
 app = Flask(__name__)
 
@@ -52,7 +54,12 @@ def dotbot_move(id):
     lin_vel = request_dict.get('linear_vel', "")
     ang_vel = request_dict.get('angular_vel', "")
 
-    return "Not yet implemented", 501 # TODO: implement
+    gateway = Gateway(port="/dev/cu.usbmodem0006839818491")
+
+    success = gateway.command_move(float(lin_vel), float(ang_vel)) # TODO: should handle dotbot id
+    gateway.close()
+
+    return ("Success!", 200) if success else ("Failed", 500)
 
 @app.route("/api/v1/dotbot/<ID>/command/led", methods=["POST"])
 def dotbot_led(id):
@@ -60,5 +67,16 @@ def dotbot_led(id):
     print("LED request received -- Args: {}, JSON: {}".format(request.args, request_dict))
 
     return "Not yet implemented", 501 # TODO: implement - led firmware
+
+@app.route("/api/v1/gateway/<id>/reload", methods=["GET"])
+def gateway_reload(id):
+    gateway_bin_path = "/Users/felipecampos/Vida/inria/resources/Gateway-firmware_REL-0.1.hex"
+    gateway_path = "/Volumes/JLINK"
+
+    print("Copying...")
+
+    Gateway.load_binary(gateway_bin_path, gateway_path)
+
+    return f"Copied from {gateway_bin_path} to {gateway_path}", 200
 
 # TODO: notification routes
