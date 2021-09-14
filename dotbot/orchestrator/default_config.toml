@@ -1,0 +1,7 @@
+[orch]
+    version = "v1"
+    [orch.client]
+        client_id = "0"
+        [orch.client.gateway]
+            port = "SERIAL_PORT"
+            baud = 115200
