@@ -15,11 +15,13 @@ COMMON HTTP STATUS CODES:
 503 - Service Unavailable
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_classful import FlaskView, route
 
 from dotbot.orchestrator.gateway import Gateway
 from dotbot.orchestrator import OrchestratorConfig, DefaultConfig
+
+import time
 
 app = Flask(__name__)
 
@@ -47,46 +49,48 @@ parent = None # NOTE: There should only ever be one server running on a device y
 class OrchestratorFlask(FlaskView):
     orch_config = DefaultConfig()
     debug_type = DebugType.Dry
+    last_sent = 0
 
     def __init__(self):
         super().__init__()
+
+        assert parent is not None, "This should not be called from outside OrchestratorHTTP"
+
         self.orch_config = parent.config
         self.debug_type = parent.debug
 
     def index(self):
         """landing page"""
-        return "Welcome to the DotBot HTTP Orchestrator Landing Page!" # render_template('index.html')
+        return render_template('index.html')
 
     @route("/api/v1/orch/<id>/status", methods=["GET"])
     def orch_status(self, id):
-        print(self)
         response = {"gateway_id": id, "firmware_version": "v1", "number_dotbots": 1}
         return jsonify(response), 200
 
     @route("/api/v1/dotbot/list", methods=["GET"])
     def dotbot_list(self):
-        print(self)
         response = {"number_dotbots": 1, "dotbots": [{"dotbot_id": 0, "gateway_id": 0, "timestamp": 0}]}
         return jsonify(response), 200
 
     @app.route("/api/v1/dotbot/<id>/status", methods=["GET"])
     def dotbot_status(self, id):
-        print(self)
         return 501  # TODO: implement
 
     @route("/api/v1/dotbot/<id>/command/move", methods=["POST"])
     def dotbot_move(self, id):
-        print(self)
-        request_dict = request.get_json()
-        print("Move request received -- Args: {}, JSON: {}".format(request.args, request_dict))
+        request_dict = request.get_json() or request.form
+        print("Move request received -- Args: {}, JSON: {}, Body {}".format(request.args, request.get_json(), request.form))
 
-        serial_conf = self.orch_config.orch.client.gateway.serial
+        serial_conf = self.orch_config.orch.client.gateway
 
-        lin_vel = request_dict.get('linear_vel', "")
-        ang_vel = request_dict.get('angular_vel', "")
+        lin_vel = request_dict.get('lin_vel', "")
+        ang_vel = request_dict.get('ang_vel', "")
 
-        if self.debug_type in [DebugType.Dry]:
+        if self.debug_type in [DebugType.Dry] or time.time() - self.last_sent < 0.5:
             return "Dry run", 201
+
+        self.last_sent = time.time()
 
         gateway = Gateway(port=serial_conf.port, baud=serial_conf.baud)
 
@@ -97,24 +101,12 @@ class OrchestratorFlask(FlaskView):
 
     @route("/api/v1/dotbot/<id>/command/led", methods=["POST"])
     def dotbot_led(self, id):
-        print(self)
         request_dict = request.get_json()
         print("LED request received -- Args: {}, JSON: {}".format(request.args, request_dict))
 
         return "Not yet implemented", 501  # TODO: implement - led firmware
 
-    @route("/api/v1/gateway/<id>/reload", methods=["GET"])
-    def gateway_reload(self, id):
-        print(self)
-        gateway_conf = self.orch_config.orch.client.gateway
-
-        print(f"Copying from {gateway_conf.bin} to {gateway_conf.mount}...")
-
-        if self.debug_type in [DebugType.Dry]:
-            return "Dry run", 201
-
-        Gateway.load_binary(gateway_conf.bin, gateway_conf.mount)
-
-        return f"Copied from {gateway_conf.bin} to {gateway_conf.mount}", 200
-
     # TODO: notification routes
+
+if __name__ == "__main__":
+    OrchestratorHTTP().run()

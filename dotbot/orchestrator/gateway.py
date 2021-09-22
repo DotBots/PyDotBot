@@ -1,12 +1,13 @@
 import serial
 import shutil
+import struct
 import os
 import time
+import numpy as np
 
 # TODO: use logger instead of print statements
 
 class Gateway:
-    # TODO: load hex file from resources
 
     def __init__(self, port="COM4", baud=115200, open=True):
         self.ser = serial.Serial(port, baudrate=baud)
@@ -27,42 +28,48 @@ class Gateway:
 
     def dotbot_serial(self, command):
         if not self.ser.isOpen():
-            print("Port already open, quitting.") # TODO: logger warning
+            print("Port closed, quitting.") # TODO: logger warning
             return False
         self.ser.write(command) # TODO: check if write is successful (also ack from dotbot)
 
         return True
 
     @staticmethod
-    def translate_cmd_vel(linear, angular):
+    def translate_cmd_vel(linear, angular, version="v2", max_pwm=100):
         """
-        Note: This is for use prior to v2 of firmware where movement is continuous.
         :param linear:
         :param angular:
         :return:
         """
-        if linear == 0:
-            if angular == 0:
-                return b'0' # stop
-            elif angular > 0:
-                return b'4' # west
-            else:
-                return b'3' # east
+        if version == "v1": # Discrete control
+            conversion_map = [
+                # W, 0, E
+                [7, 2, 6], # S
+                [3, 0, 4], # 0
+                [8, 1, 5], # N
+            ]
 
-        elif linear > 0:
-            if angular == 0:
-                return b'1' # north
-            elif angular > 0:
-                return b'5' # northeast
-            else:
-                return b'8' # northwest
-        else:
-            if angular == 0:
-                return b'2' # south
-            elif angular > 0:
-                return b'6' # southeast
-            else:
-                return b'7' # southwest
+            lin_idx, ang_idx = np.sign(linear) + 1, np.sign(angular) + 1
+
+            return conversion_map[lin_idx][ang_idx]
+        elif version == "v2": # Continuous PWM control (range 0 to 100) or 127?
+            # Compute PWM inputs
+            mag_vec = np.array([linear - angular, linear + angular])
+            mag_max = max(abs(mag_vec.min()), abs(mag_vec.max()))
+            mag_vec /= max(1, mag_max)
+
+            L, R = max_pwm * mag_vec
+
+            pwmL, pwmR = [0, 0], [0, 0] # 2 channel PWM (https://www.ti.com/lit/ds/symlink/drv8833.pdf)
+            pwmL[int(L < 0)] = int(abs(L))
+            pwmR[int(-R < 0)] = int(abs(R))
+
+            print(pwmL, pwmR)
+
+            # Pack into struct
+            pwm_struct = b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
+
+            return pwm_struct
 
     def command_move(self, linear, angular):
         serial_cmd = Gateway.translate_cmd_vel(linear, angular)
@@ -71,15 +78,4 @@ class Gateway:
 
     def command_led(self, switch, color):
         pass
-
-    @staticmethod
-    def load_binary(bin_path, gateway_path):
-        bin_size = os.path.getsize(bin_path)
-        shutil.copy(bin_path, gateway_path)
-        while True:
-            time.sleep(2)
-            sz = os.path.getsize(os.path.join(gateway_path, "Gateway-firmware_REL-0.1.hex"))
-            print(sz)
-            if bin_size >= sz: # TODO: verify acknowledgement from Gateway before returning from load_binary
-                break
 

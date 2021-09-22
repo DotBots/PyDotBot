@@ -3,11 +3,8 @@
     [orch.client]
         client_id = "0"
         [orch.client.gateway]
-            bin = "/Users/felipecampos/Vida/inria/resources/Gateway-firmware_REL-0.1.hex"
-            mount = "/Volumes/JLINK"
-            [orch.client.gateway.serial]
-                port = "SERIAL_PORT"
-                baud = 115200
+            port = "/dev/tty.usbmodem0006831373221"
+            baud = 115200
 
      [orch.http]
         host = "localhost"
