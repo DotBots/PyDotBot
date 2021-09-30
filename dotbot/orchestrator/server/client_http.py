@@ -19,45 +19,34 @@ from flask import Flask, request, jsonify, render_template
 from flask_classful import FlaskView, route
 
 from dotbot.orchestrator.gateway import Gateway
-from dotbot.orchestrator import OrchestratorConfig, DefaultConfig
+from dotbot.orchestrator import OrchestratorConfig
+
+from threading import Thread
 
 import time
 
 app = Flask(__name__)
 
-class DebugType:
-    No = 0
-    Dry = 1
-    Verbose = 2
-
 class OrchestratorHTTP:
-    def __init__(self, config: OrchestratorConfig = DefaultConfig(), debug: DebugType = DebugType.No):
-        self.config = config
-        self.debug = debug
-
-        global parent
-        parent = self
-
-        OrchestratorFlask.register(app, route_base="/")
+    def __init__(self):
+        _OrchestratorFlask.register(app, route_base="/")
+        # Initialize Gateway serial process(es)
+        self.config = OrchestratorConfig().orch
+        self.gateway = Gateway(**self.config.client.gateway)
+        self.status_thread = Thread(target=self.gateway.continuous_status_read, args=(0,))
 
     def run(self):
-        http_conf = self.config.orch.http
-        app.run(http_conf.host, http_conf.port, debug=False)
+        self.status_thread.start()
 
-parent = None # NOTE: There should only ever be one server running on a device yes? Or might there be multiple gateways connected
+        http_conf = self.config.http
+        app.run(http_conf.host, http_conf.port, debug=False, threaded=True) # NOTE: make sure only 1 process
 
-class OrchestratorFlask(FlaskView):
-    orch_config = DefaultConfig()
-    debug_type = DebugType.Dry
+class _OrchestratorFlask(FlaskView):
+    config = OrchestratorConfig().orch
     last_sent = 0
 
     def __init__(self):
         super().__init__()
-
-        assert parent is not None, "This should not be called from outside OrchestratorHTTP"
-
-        self.orch_config = parent.config
-        self.debug_type = parent.debug
 
     def index(self):
         """landing page"""
@@ -82,20 +71,18 @@ class OrchestratorFlask(FlaskView):
         request_dict = request.get_json() or request.form
         print("Move request received -- Args: {}, JSON: {}, Body {}".format(request.args, request.get_json(), request.form))
 
-        serial_conf = self.orch_config.orch.client.gateway
+        control_rate = float(self.config.control.rate_hz)
 
         lin_vel = request_dict.get('lin_vel', "")
         ang_vel = request_dict.get('ang_vel', "")
+        # TODO: also get desired dotbot ID
 
-        if self.debug_type in [DebugType.Dry] or time.time() - self.last_sent < 0.5:
+        if self.config.debug or time.time() - self.last_sent < 1.0 / control_rate:
             return "Dry run", 201
 
         self.last_sent = time.time()
 
-        gateway = Gateway(port=serial_conf.port, baud=serial_conf.baud)
-
-        success = gateway.command_move(float(lin_vel), float(ang_vel))  # TODO: should handle dotbot id
-        gateway.close()
+        success = Gateway().command_move(float(lin_vel), float(ang_vel))  # TODO: should handle dotbot id
 
         return ("Success!", 200) if success else ("Failed", 500)
 

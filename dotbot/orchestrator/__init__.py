@@ -1,9 +1,8 @@
+import threading
 import pkg_resources
+from dotbot.datastructures import Singleton
 from dotbot.datastructures.config import BaseConfig
 
-class OrchestratorConfig(BaseConfig):
-    pass
-
-class DefaultConfig(OrchestratorConfig):
+class OrchestratorConfig(BaseConfig, metaclass=Singleton):
     def __init__(self):
-       super().__init__(pkg_resources.resource_filename(__name__, "default_config.toml"))
+        super().__init__(pkg_resources.resource_filename(__name__, "default_config.toml"))

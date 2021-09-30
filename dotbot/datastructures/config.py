@@ -1,7 +1,10 @@
 import toml
+import threading
 
 class BaseConfig(dict):
     """BaseConfig access to dictionary attributes"""
+    lock = threading.Lock()
+
     def __init__(self, data):
         if isinstance(data, str):
             _dict = toml.load(data)
@@ -12,8 +15,14 @@ class BaseConfig(dict):
         super().__init__(_dict)
 
     def __getattr__(self, *args):
-        val = dict.get(self, *args)
-        return BaseConfig(val) if type(val) is dict else val
+        with self.lock:
+            val = dict.get(self, *args)
+            return BaseConfig(val) if type(val) is dict else val
 
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
+    def __setattr__(self, *args, **kwargs):
+        with self.lock:
+            dict.__setitem__(*args, **kwargs)
+
+    def __delattr__(self, *args, **kwargs):
+        with self.lock:
+            dict.__delitem__(*args, **kwargs)

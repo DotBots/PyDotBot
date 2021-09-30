@@ -1,11 +1,15 @@
 [orch]
     version = "v1"
+    debug = false
     [orch.client]
         client_id = "0"
         [orch.client.gateway]
-            port = "/dev/tty.usbmodem0006831373221"
+            port = "/dev/tty.usbmodem0006837529651"
             baud = 115200
 
      [orch.http]
         host = "localhost"
         port = "5000"
+
+     [orch.control]
+        rate_hz = 2
