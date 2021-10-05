@@ -1,3 +1,4 @@
+import logging
 import serial
 import shutil
 import struct
@@ -8,62 +9,70 @@ import threading
 import multiprocessing as mp
 
 from dotbot.datastructures import Singleton
+from dotbot.orchestrator.openhdlc.openserial import SerialportHandler
 
 # TODO: use logger instead of print statements
+logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d %(threadName)s %(message)s')
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
 
 class Gateway(metaclass=Singleton):
-    ACK = 'ack\n'
+    ACK = '\x31'
 
-    def __init__(self, port=None, baud=115200, ack=False):
+    def __init__(self, port=None, baud=115200, ack=True):
         self.port = port
         self.baud = baud
 
         self.ack = ack
 
         self.command_lock = threading.Lock()
-        self.ser = serial.Serial(port, baudrate=baud)
+        self.ser = SerialportHandler(port, baudrate=baud)
         self.open()
 
     def open(self):
-        if self.ser.isOpen():
+        if self.ser.is_open():
             print("Port already open, quitting.") # TODO: logger warning
             return
         self.ser.open()
 
     def close(self):
-        if not self.ser.isOpen():
+        if not self.ser.is_open():
             print("Port already closed, quitting.") # TODO: logger warning
             return
         self.ser.close()
 
     def _write(self, command):
-        if not self.ser.isOpen():
+        if not self.ser.is_open():
             print("Port closed, quitting.") # TODO: logger warning
             return False
-        self.ser.write(command)
 
+        self.ser.write(command)
+        log.info(f"write command: {command}")
+        
         return True
 
     def _read(self, timeout=0):
-        if not self.ser.isOpen():
+        if not self.ser.is_open():
             print("Port closed, quitting.") # TODO: logger warning
             return None
-        original_timeout = self.ser.timeout
-        self.ser.timeout = timeout
-        msg = self.ser.readline()
-        self.ser.timeout = original_timeout
-
+        
+        original_timeout = self.ser.ser.timeout
+        self.ser.ser.timeout = timeout
+        
+        msg = self.ser.read_frame()
+        
+        self.ser.ser.timeout = original_timeout
         return msg
 
     def _wait_ack(self, timeout=0):
-        return self._read(timeout=timeout) == self.ACK
+        return self._read(timeout=timeout)  == self.ACK
 
     def command_move(self, linear, angular, id="0"): # TODO: incorporate ID and also fixed size header
         with self.command_lock:
             serial_cmd = Gateway.compute_pwm(linear, angular, id=id)
             wrote = self._write(serial_cmd)
-            ack = self._wait_ack() if (wrote and self.ack) else (not self.ack)
-
+            ack = self._wait_ack(1) if (wrote and self.ack) else (not self.ack)
             return ack
 
     def command_led(self, switch, color, id="0"): # TODO: blink option for specific id
@@ -107,18 +116,19 @@ class Gateway(metaclass=Singleton):
             print(pwmL, pwmR)
 
             # Pack into struct
-            pwm_struct = b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
+            pwm_struct = b'\x01' + b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
 
             return pwm_struct # TODO: add header with ID
 
     def continuous_status_read(self, id="0"):
         while True:
+            
             with self.command_lock:
                 result = self._read()
                 if result:
-                    print(result)
-                    rst = result.replace(b'[START][LH]', b'').replace(b'[END][LH]', b'')
-                    print([hex(rst[i+1])[2:] + hex(rst[i])[2:] for i in range(0, len(rst) - 2, 2)])
-                    print([int(hex(rst[i+1])[2:] + hex(rst[i])[2:], 16) for i in range(0, len(rst) - 2, 2)])
+                    log.info(f"Continous read: {result} - {type(result)}")
+                    # rst = result.replace(b'[START][LH]', b'').replace(b'[END][LH]', b'')
+                    # print([hex(rst[i+1])[2:] + hex(rst[i])[2:] for i in range(0, len(rst) - 2, 2)])
+                    # print([int(hex(rst[i+1])[2:] + hex(rst[i])[2:], 16) for i in range(0, len(rst) - 2, 2)])
+            
             time.sleep(0.5)
-
