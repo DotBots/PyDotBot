@@ -17,7 +17,7 @@ LOGFILE_NAME = 'test_hdlc.log'
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 
 class NoData(Exception):
@@ -104,7 +104,7 @@ class SerialportHandler:
     def read_frame(self):
 
         self.read = True
-        self.rx_buf = b""
+        self.rx_buf = ""
         
         while self.read:
             try:

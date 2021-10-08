@@ -17,18 +17,35 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 
+class DotBot:
+    def __init__(self, mac, id):
+        self.mac = mac
+        self.internal_id = id   
+        self.last_update = None
+        self.location = None
+
 class Gateway(metaclass=Singleton):
+    # Response types
     ACK = '\x31'
+    NDB = '\x32'
+    RDB = '\x33'
+    NOT = '\x34'
+
+    # Request types
+    START = '\x00\x00\x00'
+    TWIST = '\x30'
 
     def __init__(self, port=None, baud=115200, ack=True):
         self.port = port
         self.baud = baud
 
         self.ack = ack
+        self.dotbots = {}
 
         self.command_lock = threading.Lock()
         self.ser = SerialportHandler(port, baudrate=baud)
         self.open()
+        self._write(self.START.encode("utf-8", "little"))
 
     def open(self):
         if self.ser.is_open():
@@ -66,14 +83,22 @@ class Gateway(metaclass=Singleton):
         return msg
 
     def _wait_ack(self, timeout=0):
-        return self._read(timeout=timeout)  == self.ACK
+        return self._read(timeout=timeout) == self.ACK
 
     def command_move(self, linear, angular, id="0"): # TODO: incorporate ID and also fixed size header
         with self.command_lock:
-            serial_cmd = Gateway.compute_pwm(linear, angular, id=id)
-            wrote = self._write(serial_cmd)
-            ack = self._wait_ack(1) if (wrote and self.ack) else (not self.ack)
-            return ack
+
+            if not id in self.dotbots:
+                log.info(f"Can't move Dotbot {id}: not connected")
+                return False
+                
+            serial_cmd = Gateway.compute_pwm(linear, angular)
+
+            id = self.get_dotbot_id(id)
+            wrote = self._write( b'\x01' + id.to_bytes(1, "little") + serial_cmd)
+
+            log.info(f"Twist request to dotbot {id}")
+            return self._wait_ack(1) if (wrote and self.ack) else (not self.ack)
 
     def command_led(self, switch, color, id="0"): # TODO: blink option for specific id
         with self.command_lock:
@@ -83,13 +108,55 @@ class Gateway(metaclass=Singleton):
         with self.command_lock:
             return self._read() # TODO: implement - send command to gateway with fix size header
 
+    def continuous_status_read(self, id="0"):
+        while True:
+            with self.command_lock:
+                result = self._read()
+
+                if result:
+                    self.parse_message(result)
+            
+            time.sleep(0.5)
+
+
+    def parse_message(self, msg):
+    
+        if not len(msg) > 0: return
+
+        msg_type = msg[0]
+        
+        if msg_type == self.ACK:
+            log.info("ACK received")
+
+        if msg_type == self.NOT and msg[1] == '\x00':
+            for i in range(2, len(msg), 7):
+                dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[(i+6):i:-1]])
+                dotbot_dk_id = ord(msg[i])
+                self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
+                log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
+        
+        elif msg_type == self.NDB or msg_type == self.RDB:
+            dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[:2:-1]])
+            dotbot_dk_id = ord(msg[1])
+        
+            if msg_type == self.NDB:
+                self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
+                log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
+            
+            else:
+                if dotbot_mac in self.dotbots:
+                    del self.dotbots[dotbot_mac]
+                log.info(f"DotBot Disconnected - mac: {dotbot_mac} id: {dotbot_dk_id}")
+
+    def get_dotbots(self):
+        return list(self.dotbots.keys())
+
+    def get_dotbot_id(self, mac):
+        return self.dotbots[mac].internal_id
+
     @staticmethod
-    def compute_pwm(linear, angular, id="0", version="v2", max_pwm=100):
-        """
-        :param linear:
-        :param angular:
-        :return:
-        """
+    def compute_pwm(linear, angular, version="v2", max_pwm=100):
+
         if version == "v1":  # Discrete control
             conversion_map = [
                 # W, 0, E
@@ -116,19 +183,6 @@ class Gateway(metaclass=Singleton):
             print(pwmL, pwmR)
 
             # Pack into struct
-            pwm_struct = b'\x01' + b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
+            pwm_struct = b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
 
             return pwm_struct # TODO: add header with ID
-
-    def continuous_status_read(self, id="0"):
-        while True:
-            
-            with self.command_lock:
-                result = self._read()
-                if result:
-                    log.info(f"Continous read: {result} - {type(result)}")
-                    # rst = result.replace(b'[START][LH]', b'').replace(b'[END][LH]', b'')
-                    # print([hex(rst[i+1])[2:] + hex(rst[i])[2:] for i in range(0, len(rst) - 2, 2)])
-                    # print([int(hex(rst[i+1])[2:] + hex(rst[i])[2:], 16) for i in range(0, len(rst) - 2, 2)])
-            
-            time.sleep(0.5)

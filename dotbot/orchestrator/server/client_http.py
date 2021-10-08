@@ -59,7 +59,9 @@ class _OrchestratorFlask(FlaskView):
 
     @route("/api/v1/dotbot/list", methods=["GET"])
     def dotbot_list(self):
-        response = {"number_dotbots": 1, "dotbots": [{"dotbot_id": 0, "gateway_id": 0, "timestamp": 0}]}
+        # response = {"number_dotbots": 1, "dotbots": [{"dotbot_id": 0, "gateway_id": 0, "timestamp": 0}]}
+        dotbots = Gateway().get_dotbots()
+        response = {"number_dotbots": len(dotbots), "dotbots": dotbots}
         return jsonify(response), 200
 
     @app.route("/api/v1/dotbot/<id>/status", methods=["GET"])
@@ -82,7 +84,7 @@ class _OrchestratorFlask(FlaskView):
 
         self.last_sent = time.time()
 
-        success = Gateway().command_move(float(lin_vel), float(ang_vel))  # TODO: should handle dotbot id
+        success = Gateway().command_move(float(lin_vel), float(ang_vel), id)  # TODO: should handle dotbot id
 
         return ("Success!", 200) if success else ("Failed", 500)
 
