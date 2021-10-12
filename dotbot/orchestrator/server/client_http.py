@@ -17,15 +17,16 @@ COMMON HTTP STATUS CODES:
 
 from flask import Flask, request, jsonify, render_template
 from flask_classful import FlaskView, route
+from flask_cors import CORS
 
 from dotbot.orchestrator.gateway import Gateway
 from dotbot.orchestrator import OrchestratorConfig
 
 from threading import Thread
-
 import time
 
 app = Flask(__name__)
+cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 class OrchestratorHTTP:
     def __init__(self):
