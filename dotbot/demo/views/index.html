@@ -1,115 +1,145 @@
 <!DOCTYPE html>
 <html>
 
-    <!-- <script src="http://threejs.org/build/three.min.js"></script> -->
-    <script src="../static/virtualjoystick.js"></script>
-    <script src="../static/jquery-3.6.0.min.js"></script>
-   
-    <head>
-      <title> Multiple DotBot Demo! </title>
-   </head>
-   <body>
-      <div id="debug1" style="position:fixed; left:5%; top:4%; color:grey;">
-         Debug Info: 
-      </div>
+<!-- <script src="http://threejs.org/build/three.min.js"></script> -->
+<script src="../static/virtualjoystick.js"></script>
+<script src="../static/jquery-3.6.0.min.js"></script>
 
-      <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()">
-         <option value=""> No DotBots connected</option>
-      </select>
-   
-      <div id="joystick"></div>
-   </body>
+<head>
+   <title> Multiple DotBot Demo! </title>
+</head>
 
-   <script>
+<body>
+   <div id="debug1" style="position:fixed; left:5%; top:4%; color:grey;">
+      Debug Info:
+   </div>
 
-      let joystick = new VirtualJoystick({
-                        container: document.getElementById("joystick"),
-                        mouseSupport: true,
-                        stationaryBase: true,
-                        baseX: 200,
-                        baseY: 200,
-                        limitStickTravel: true,
-                        stickRadius: 50
-                     });
+   <div id="debug2" style="position:fixed; left:5%; top:6%; color:grey;">
+   </div>
+   <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()">
+      <option value=""> No DotBots connected</option>
+   </select>
 
-      let debugText1 = document.getElementById("debug1");
-      let debugText2 = document.getElementById("debug2");
-      let dotbots;
-      let dot;
-      let dotbotConnected = false;
-      
-      setInterval(function(){
-         fetch(`{{ORCH_URL}}/dotbot/list`, {
-               headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json'
-               },
-               method: "GET"
-            })
-            .then(res => res.json())
-            .then( data => {
+   <div id="joystick"></div>
+</body>
 
-               $('#dotbots-sel option').remove();
-                  
+<script>
+
+   let joystick = new VirtualJoystick({
+      container: document.getElementById("joystick"),
+      mouseSupport: true,
+      stationaryBase: true,
+      baseX: 200,
+      baseY: 200,
+      limitStickTravel: true,
+      stickRadius: 50
+   });
+
+   let debugText1 = document.getElementById("debug1");
+   let debugText2 = document.getElementById("debug2");
+   let dotbots;
+   let dot;
+   let dotbotConnected = false;
+
+   function stop() {
+      return fetch(`{{ORCH_URL}}/dotbot/${dot}/command/move`, {
+         headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+         },
+         method: "POST",
+         body: JSON.stringify({ lin_vel: 0, ang_vel: 0 })
+      }).then(response => response.status == 200)
+   }
+
+   joystick.addEventListener('touchEnd', function () {
+      let stopped = false;
+      while (!stopped) {
+         stopped = stop()
+      }
+      debugText2.innerHTML = '<b>Stop!</b>'
+
+   });
+
+   function getList() {
+      fetch(`{{ORCH_URL}}/dotbot/list`, {
+         headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+         },
+         method: "GET"
+      })
+         .then(res => res.json())
+         .then(data => {
+
+            $('#dotbots-sel option').remove();
+
+            $("#dotbots-sel").append($('<option>', {
+               value: -1,
+               text: data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected",
+            }));
+
+
+            for (let i = 0; i < data.number_dotbots; i++) {
                $("#dotbots-sel").append($('<option>', {
-                     value: -1,
-                     text: data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected",
-                  }));
-               
+                  value: i,
+                  text: data.dotbots[i],
+               }));
 
-               for(let i = 0; i < data.number_dotbots; i++){
-                  $("#dotbots-sel").append($('<option>', {
-                     value: i,
-                     text: data.dotbots[i],
-                  }));
-
-                  if(data.dotbots[i] == dot){
-                     $("#dotbots-sel").val(i);
-                  }
+               if (data.dotbots[i] == dot) {
+                  $("#dotbots-sel").val(i);
                }
+            }
 
-               dotbots = data.dotbots;
-            })
-            .catch(function(res){ console.log(res) })
-      }, 5000)
+            dotbots = data.dotbots;
+         })
+         .catch(function (res) { console.log(res) });
+   };
 
+   getList();
+   setInterval(getList, 5000)
 
-      setInterval(function(){
+   setInterval(function () {
 
-         debugText1.innerHTML	= '<b>Result:</b> '
-            + ' dx:' + joystick.deltaX()
-            + ' dy:' + joystick.deltaY() 
-            + '</br>'
-            + (joystick.right() ? ' right'	: '')
-            + (joystick.up() ? ' up'		: '')
-            + (joystick.left() ? ' left'	: '')
-            + (joystick.down() ? ' down' 	: '');
-      
-         let lin_vel = (joystick.deltaY() / 50) * 100;
-         let ang_vel = -(joystick.deltaX() / 50) * 100;
+      debugText1.innerHTML = '<b>Joystick:</b> '
+         + ' dx:' + joystick.deltaX()
+         + ' dy:' + joystick.deltaY()
+         + '</br>'
+         + (joystick.right() ? ' right' : '')
+         + (joystick.up() ? ' up' : '')
+         + (joystick.left() ? ' left' : '')
+         + (joystick.down() ? ' down' : '');
 
-         if(dotbotConnected && Math.abs(lin_vel) > 10 && Math.abs(ang_vel) > 10){
+      let lin_vel = (joystick.deltaY() / 50) * 100;
+      let ang_vel = -(joystick.deltaX() / 50) * 100;
 
+      if (dotbotConnected) {
+         if (Math.abs(lin_vel) > 5 && Math.abs(ang_vel) > 5) {
             fetch(`{{ORCH_URL}}/dotbot/${dot}/command/move`, {
                headers: {
                   'Accept': 'application/json',
                   'Content-Type': 'application/json'
                },
                method: "POST",
-               body: JSON.stringify({lin_vel: lin_vel, ang_vel: ang_vel})
+               body: JSON.stringify({ lin_vel: lin_vel, ang_vel: ang_vel })
             })
-            .then(function(res){ console.log(res) })
-            .catch(function(res){ console.log(res) })         
+               .then(function (res) {
+                  debugText2.innerHTML = "";
+                  console.log(res)
+               })
+               .catch(function (res) { console.log(res) })
          }
-      }, 1/2 * 1000);
-
-      function selectDotbot(){
-
-         var dotsel = $("#dotbots-sel").val();
-         console.log(`Dotbot selected ${dotsel}`)
-         dotbotConnected = true;
-         dot = dotbots[dotsel];
       }
+   }, (1 / 2) * 1000);
 
-   </script>
+   function selectDotbot() {
+
+      var dotsel = $("#dotbots-sel").val();
+      console.log(`Dotbot selected ${dotsel}`)
+      dotbotConnected = true;
+      dot = dotbots[dotsel];
+   }
+
+</script>
+
 </html>
