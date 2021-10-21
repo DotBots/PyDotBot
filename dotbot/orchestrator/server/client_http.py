@@ -34,7 +34,7 @@ class OrchestratorHTTP:
         # Initialize Gateway serial process(es)
         self.config = OrchestratorConfig().orch
         self.gateway = Gateway(**self.config.client.gateway)
-        self.status_thread = Thread(target=self.gateway.continuous_status_read, args=(0,))
+        self.status_thread = Thread(target=self.gateway.continuous_status_read, daemon=True, args=(0,))
 
     def run(self):
         self.status_thread.start()

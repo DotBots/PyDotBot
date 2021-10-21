@@ -136,7 +136,7 @@ class Gateway(metaclass=Singleton):
                 log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
         
         elif msg_type == self.NDB or msg_type == self.RDB:
-            dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[:2:-1]])
+            dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[2:]])
             dotbot_dk_id = ord(msg[1])
         
             if msg_type == self.NDB:
