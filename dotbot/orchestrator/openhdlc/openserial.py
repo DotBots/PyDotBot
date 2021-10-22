@@ -14,8 +14,7 @@ import dotbot.orchestrator.openhdlc.openhdlc as openhdlc
 from  dotbot.orchestrator.openhdlc.utils import format_buf, format_string_buf, format_critical_message, format_crash_message
 
 LOGFILE_NAME = 'test_hdlc.log'
-
-logging.basicConfig()
+logging.basicConfig(level=logging.INFO, format='%(relativeCreated)6d %(threadName)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
