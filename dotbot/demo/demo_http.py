@@ -1,9 +1,8 @@
 from flask import Flask, render_template, redirect, url_for
-import toml
+from dotbot.demo import DemoConfig
 
 app = Flask(__name__, template_folder="views")
-
-config = toml.load("default_config.toml")
+config = DemoConfig().demo
 
 @app.route("/", methods=["GET"])
 def index():
@@ -11,6 +10,6 @@ def index():
 
 @app.route("/joy", methods=["GET"])
 def joy_demo():
-    return render_template("index.html", ORCH_URL=config["demo"]["orch_url"])
+    return render_template("index.html", ORCH_URL=config.orch_url)
 
-app.run("localhost", 5001, debug=False, threaded=True)
+app.run(config.host, config.port, debug=False, threaded=True)
