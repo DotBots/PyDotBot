@@ -9,7 +9,7 @@ TODO: Also show a user interface example of doing the same thing.
 
 ## Installing PyDotBot and Supported Versions
 
-PyDotBot will soon be available on PyPI (officially supporting Python 3.6+):
+PyDotBot is available on PyPI (officially supporting Python 3.8+):
 ```bash
-python -m pip install dotbot
+python -m pip install pydotbot
 ```
