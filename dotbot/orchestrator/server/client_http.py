@@ -96,6 +96,13 @@ class _OrchestratorFlask(FlaskView):
 
         return "Not yet implemented", 501  # TODO: implement - led firmware
 
+
+    @route("/demo/joy", methods=["GET"])
+    def joy_demo(self):
+        default_dotbot = request.args.get('dotbot', default=None, type=str)
+        print(self.config.http.url)
+        return render_template("joy.html", DEFAULT_DOTBOT=default_dotbot)
+
     # TODO: notification routes
 
 if __name__ == "__main__":

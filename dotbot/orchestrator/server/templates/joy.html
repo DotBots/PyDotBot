@@ -1,0 +1,258 @@
+<html>
+
+<head>
+  <title>Joy</title>
+  <meta charset="utf-8">
+  <meta name="description" content="">
+  <link rel="stylesheet" href="/static/css/circular-menu.css">
+  <script src="/static/js/joy.min.js"></script>
+  <!-- <script src="/static/js/jquery-3.6.0.min.js"></script> -->
+  <style>
+
+body {
+
+  background: whitesmoke;
+}
+
+.joyContainer
+{
+  display: flex;
+  flex-flow: column nowrap;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+}
+
+.row
+{
+  /* position: absolute; */
+  width: 100%;
+  display: inline-flex;
+  flex-flow: row wrap;
+  justify-content: space-around;
+	clear: both;
+  align-items: center;
+  align-content: center;
+}
+  </style>
+</head>
+
+<body>
+  <div class="joyContainer">
+    <div class="row" style="padding: 10px; margin: 0px; z-index: 1;">
+      <div class="item">
+        <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()" onclick="()=>{console.log('que chucha')}">
+          <option value=""> No DotBots connected</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row" style="min-height: 300px; max-height: 600px; margin-top: -15px;">
+      <div class="item" style="height: 100%; display: flex; flex-flow: column nowrap; justify-content: space-around;" >
+        <div id="joy" style="max-width:400px; max-height:400px; min-height: 250px; min-width: 250px; margin:50px; width: 100%; height: 100%"></div>
+      </div>
+      <div class="item">
+        <nav class="circular-menu">
+          <div class="circle">
+            <a href="" id="off" style="background: gray; color:white"> Off </a>
+            <a href="" id="red" style="background: lightcoral"></a>
+            <a href="" id="orange" style="background: lightsalmon"></a>
+            <a href="" id="yellow" style="background: yellow"></a>
+            <a href="" id="white" style="background: white; border: 1px solid grey; color:black"></a>
+            <a href="" id="green" style="background: lightgreen"></a>
+            <a href="" id="blue" style="background: lightskyblue"></a>
+            <a href="" id="purple" style="background: plum"></a>
+          </div>
+          <div href="" id="menu-button" class="menu-button"> 
+            <div style="top: 50%; -ms-transform: translateY(50%); transform: translateY(50%);">
+              LED
+            </div>
+          </div>
+        </nav>    
+      </div>
+    </div>
+
+  <script type="text/javascript">
+    // Create JoyStick object into the DIV 'joy1Div'
+    var Joy = new JoyStick('joy');    
+
+    var stopped = true;
+    var dotbotConnected = false;
+    var dotbots;
+    var dot;
+
+    function stop() {
+      stopped = true;
+      return fetch(`/api/v1/dotbot/${dot}/command/move`, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        method: "POST",
+        body: JSON.stringify({ lin_vel: 0, ang_vel: 0 })
+      }).then(response => response.status == 200)
+    }
+
+    function getList() {
+      fetch(`/api/v1/dotbot/list`, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        method: "GET"
+      })
+        .then(res => res.json())
+        .then(data => {
+          console.log(data);
+          var dotbotSel = document.getElementById("dotbots-sel");
+
+          // $('#dotbots-sel option').remove();
+          while (dotbotSel.options.length > 0){
+            dotbotSel.remove(0);
+          }
+
+          // $("#dotbots-sel").append($('<option>', {
+          //   value: -1,
+          //   text: data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected",
+          // }));
+
+          var emptyopt = document.createElement('option');
+          emptyopt.value = -1;
+          emptyopt.text = data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected";
+          dotbotSel.appendChild(emptyopt);
+
+          // 
+          for (let i = 0; i < data.number_dotbots; i++) {
+            
+            // $("#dotbots-sel").append($('<option>', {
+            //   value: i,
+            //   text: data.dotbots[i],
+            // }));
+
+            var newopt = document.createElement('option');
+            newopt.value = i;
+            newopt.text = data.dotbots[i];
+            
+            dotbotSel.appendChild(newopt);
+
+            if (data.dotbots[i] == dot) {
+              console.log(dot);
+              // $("#dotbots-sel").val(i);
+              dotbotSel.value = i;
+            }
+          }
+
+          dotbots = data.dotbots;
+        })
+        .catch(function (res) { console.log(res) });
+    };
+
+    getList();
+    setInterval(getList, 5000)
+    setInterval(function () {
+      let lin_vel = Joy.GetY() / 100;
+      let ang_vel = -Joy.GetX() / 100;
+
+      if (dotbotConnected) {
+        if (Math.abs(lin_vel) > 0.05 || Math.abs(ang_vel) > 0.05) {
+          console.log(lin_vel);
+          console.log(ang_vel);
+          stopped = false;
+          fetch(`/api/v1/dotbot/${dot}/command/move`, {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({ lin_vel: lin_vel, ang_vel: ang_vel })
+          })
+            .then(function (res) {
+              console.log(res)
+            })
+            .catch(function (res) { console.log(res) })
+        } else if (!stopped) {
+          stop();
+        }
+      }
+    }, (1 / 2) * 1000);
+
+    function selectDotbot() {
+
+      // var dotsel = $("#dotbots-sel").val();
+      var dotsel = document.getElementById("dotbots-sel").value;
+      console.log(`Dotbot selected ${dotsel}`)
+      dotbotConnected = true;
+      dot = dotbots[dotsel];
+    }
+
+    function setLEDColor(color) {
+      console.log(color);
+
+      var colorMsg;
+      switch (color) {
+        case "red":
+          colorMsg = { r: 255, g: 0, b: 0 };
+          break;
+        case "blue":
+          colorMsg = { r: 0, g: 0, b: 255 };
+          break;
+        case "green":
+          colorMsg = { r: 0, g: 255, b: 0 };
+          break;
+        case "green":
+          colorMsg = { r: 0, g: 255, b: 0 };
+          break;
+        case "orange":
+          colorMsg = { r: 255, g: 127, b: 0 }
+          break;
+        case "yellow":
+          colorMsg = { r: 255, g: 255, b: 0 }
+          break;
+        case "white":
+          colorMsg = { r: 255, g: 255, b: 255 }
+          break;
+        case "purple":
+          colorMsg = { r: 255, g: 0, b: 255 }
+          break;
+      }
+
+      if (dotbotConnected) {
+        fetch(`/api/v1/dotbot/${dot}/command/led`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          method: "POST",
+          body: JSON.stringify(colorMsg)
+        })
+          .then(function (res) {
+            console.log(res)
+          })
+          .catch(function (res) { console.log(res) })
+      }
+    }
+
+    var items = document.querySelectorAll('.circle a');
+
+    for (var i = 0, l = items.length; i < l; i++) {
+      items[i].style.left = (50 - 35 * Math.cos(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
+      items[i].style.top = (50 + 35 * Math.sin(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
+      items[i].onclick = (e) => {
+        e.preventDefault();
+        id = event.target.id;
+        document.getElementById("menu-button").style.background = event.target.style.background;
+        document.getElementById("menu-button").style.color = event.target.style.color;
+        document.querySelector('.circle').classList.toggle('open');
+        setLEDColor(id);
+      }
+    }
+
+    document.querySelector('.menu-button').onclick = function (e) {
+      e.preventDefault(); document.querySelector('.circle').classList.toggle('open');
+    }
+
+  </script>
+</body>
+
+</html>
