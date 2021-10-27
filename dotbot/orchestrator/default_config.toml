@@ -4,7 +4,7 @@
     [orch.client]
         client_id = "0"
         [orch.client.gateway]
-            port = "COM8"
+            port = "None"
             baud = 115200
 
      [orch.http]

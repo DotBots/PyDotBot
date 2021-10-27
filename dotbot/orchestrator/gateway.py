@@ -9,6 +9,7 @@ import time
 import numpy as np
 import threading
 import multiprocessing as mp
+import sys 
 
 from dotbot.datastructures import Singleton
 from dotbot.orchestrator.openhdlc.openserial import SerialportHandler
@@ -63,32 +64,49 @@ class Gateway(metaclass=Singleton):
         
         self.command_lock = threading.RLock()
         self.connection_check_daemon = threading.Thread(target=self._check_connection, daemon=True)
-        self.ser = SerialportHandler(port, baudrate=baud) # this may failed if USB not connected, is a problem?
+
+        ports = self._get_ports()
+        if not self.port in ports:
+            if len(ports) > 0:
+                log.warning(f"Default Port {self.port} is not available but we will try using {ports[0]} ... ")
+                self.port = ports[0]
+            else:
+                log.error(f"Default Port {self.port} is not available and there isn't another candidate. Check if DK is connected and relaunch.  Quitting...")
+                sys.exit(-1)
+        
+        self.ser = SerialportHandler(self.port, baudrate=self.baud) # this may failed if USB not connected, is a problem?
         
         self.connect()
         self.connection_check_daemon.start()
 
     def connect(self):
         with self.command_lock:
-            # wait for the port to appears in the available ports list
-            i = 0
-            while not self.port in self._get_ports():
-                if i % 10 == 0: # every 5 seconds print a warning
-                    log.warning(f"Connecting DK port, waiting for port '{self.port}'... ")
-                    i = 0
-                i = i + 1
-                time.sleep(0.5)
-
             while not self.dk_connected:
+                i = 0
+                # wait for the port to appears in the available ports list
+                while not self.port in self._get_ports():
+                    if i % 10 == 0: # every 5 seconds print a warning
+                        log.warning(f"Connecting DK, waiting for port '{self.port}'... \n")
+                        i = 0
+                    i = i + 1
+                    time.sleep(0.5)
+
+                # when the port is available try to connect, sending a START msg
                 try:
+                    if self.ser.is_open():
+                        self.close()
+
                     self.open() # open the port
                     log.info(f"Sending START message to DK at port {self.port} ... ")
                     self._write(self.START.encode("utf-8", "little")) # write and START message
                     self.dk_connected = self._wait_conn_msg() # wait for the response of DK
-                    time.sleep(0.5)
 
-                except SerialException:
-                    log.warning(f"Couldn't connect to DK at port {self.port}. Retrying ... ")
+                except (SerialException, serial.SerialTimeoutException):
+                    pass
+
+                finally:
+                    time.sleep(0.5)
+                    log.warning(f"Couldn't connect to DK at port {self.port}. Retrying ... \n")
 
     def open(self):
         if self.ser.is_open():
@@ -121,7 +139,7 @@ class Gateway(metaclass=Singleton):
             return True
 
         else:
-            log.error(f"DK at port {self.port} didn't respond to START message")
+            log.warning(f"DK at port {self.port} didn't respond to START message")
             return False
 
     def _check_connection(self):
@@ -138,6 +156,8 @@ class Gateway(metaclass=Singleton):
         self.ser.ser.reset_input_buffer()
         self.ser.ser.reset_output_buffer()
         self.close()
+        # should destroy and recreate the SerialPortHandler (?)
+
         self.dotbots = {}
         self.connect()
         return True 
@@ -152,7 +172,7 @@ class Gateway(metaclass=Singleton):
         
         except serial.SerialTimeoutException:
             log.warning(f"SerialTimeout! Couldn't write command {command}")
-            return False
+            raise
 
         log.info(f"Write command: {command}")
         
@@ -217,14 +237,14 @@ class Gateway(metaclass=Singleton):
         if msg_type == self.ACK:
             log.info("ACK received")
 
-        if msg_type == self.NOT and msg[1] == '\x00':
-            for i in range(2, len(msg), 7):
-                dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[(i+6):i:-1]])
-                dotbot_dk_id = ord(msg[i])
-                self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
-                log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
+        # if msg_type == self.NOT and msg[1] == '\x00':
+        #     for i in range(2, len(msg), 7):
+        #         dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[(i+6):i:-1]])
+        #         dotbot_dk_id = ord(msg[i])
+        #         self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
+        #         log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
         
-        elif msg_type == self.NDB or msg_type == self.RDB:
+        if msg_type == self.NDB or msg_type == self.RDB:
             dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[2:]])
             dotbot_dk_id = ord(msg[1])
         
