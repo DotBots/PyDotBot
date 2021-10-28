@@ -142,7 +142,7 @@ class Gateway(metaclass=Singleton):
                 dotbot_mac = ':'.join([f'{ord(i):02X}' for i in conn_msg[dot_index+1: dot_index + 7]]) # this may should be replaced by struct.unpacked
                 
                 self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
-                log.info(f"DotBot Connected - id: {dotbot_dk_id} - mac: {dotbot_mac} ")
+                log.info(f"DotBot Connected - mac: {dotbot_mac} - id: {dotbot_dk_id}")
             return True
 
         else:
@@ -247,11 +247,19 @@ class Gateway(metaclass=Singleton):
         if msg_type == self.NDB or msg_type == self.RDB:
             dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[2:]])
             dotbot_dk_id = ord(msg[1])
-        
+
             if msg_type == self.NDB:
-                self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
+                for (mac, dot) in list(self.dotbots.items()):
+                    if mac == dotbot_mac:
+                        del self.dotbots[dotbot_mac] # delete the last instance of this dotbot
+                    
+                    elif dot.internal_id == dotbot_dk_id: # there is another dotbot using the internal id
+                        log.warning("DotBot {mac} has the same internal id, removing it from DotBot list")
+                        del self.dotbots[mac]
+                
+                self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id) # add new dot
                 log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
-            
+
             else:
                 if dotbot_mac in self.dotbots:
                     del self.dotbots[dotbot_mac]
