@@ -104,11 +104,16 @@ class _OrchestratorFlask(FlaskView):
         success = Gateway().command_led((r, g, b), id)  # TODO: should handle dotbot id
         return ("Success!", 200) if success else ("Failed", 500)
 
-    @route("/demo/joy", methods=["GET"])
+    @route("/demo", methods=["GET"])
     def joy_demo(self):
         default_dotbot = request.args.get('dotbot', default=None, type=str)
-        print(self.config.http.url)
-        return render_template("joy.html", DEFAULT_DOTBOT=default_dotbot)
+        if default_dotbot is None or default_dotbot not in self.config.demo.dotbots:
+            return render_template("joy.html", DEFAULT_DOTBOT=None)
+        
+        else:
+            idx = self.config.demo.dotbots.index(default_dotbot)
+            color = "blue" if idx % 2 == 0 else "red"
+            return render_template("joy.html", DEFAULT_DOTBOT=default_dotbot, DOTBOT_COLOR=color)
 
     # TODO: notification routes
 

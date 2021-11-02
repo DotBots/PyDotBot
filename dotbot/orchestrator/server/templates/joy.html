@@ -6,6 +6,10 @@
   <meta name="description" content="">
   <link rel="stylesheet" href="/static/css/circular-menu.css">
   <script src="/static/js/joy.min.js"></script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap" rel="stylesheet">
   <style>
     body {
       background: whitesmoke;
@@ -37,9 +41,17 @@
   <div class="joyContainer">
     <div class="row" style="padding: 10px; margin: 0px; z-index: 1;">
       <div class="item">
-        <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()" onclick="()=>{console.log('que chucha')}">
+
+        {% if DEFAULT_DOTBOT!=None %}
+          <div id="dotbotDiv" style="margin-bottom: -2em; color: {{DOTBOT_COLOR}}; font-family: 'Roboto Mono', monospace;">
+            <h3 id="dotbot">{{DEFAULT_DOTBOT}}</h3> <span id="status" style="margin-top: -2em;"></span>
+          </div>  
+        {% else %}
+          <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()">
           <option value=""> No DotBots connected</option>
-        </select>
+          </select>
+        {% endif %}
+
       </div>
     </div>
 
@@ -81,6 +93,10 @@
       var dotbots;
       var dot;
 
+      {% if DEFAULT_DOTBOT != None %}
+      dot = "{{DEFAULT_DOTBOT}}";
+      {% endif %}
+
       function stop() {
         stopped = true;
         return fetch(`/api/v1/dotbot/${dot}/command/move`, {
@@ -108,37 +124,59 @@
           .then(res => res.json())
           .then(data => {
             console.log(data);
-            var dotbotSel = document.getElementById("dotbots-sel");
-
-            while (dotbotSel.options.length > 0) {
-              dotbotSel.remove(0);
-            }
-
-            var emptyopt = document.createElement('option');
-            emptyopt.value = -1;
-            emptyopt.text = data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected";
-            dotbotSel.appendChild(emptyopt);
-
-            // List of dotbots
-            for (let i = 0; i < data.number_dotbots; i++) {
-              var newopt = document.createElement('option');
-              newopt.value = i;
-              newopt.text = data.dotbots[i];
-
-              dotbotSel.appendChild(newopt);
-
-              if (data.dotbots[i] == dot) {
-                console.log(dot);
-                dotbotSel.value = i;
-              }
-            }
             dotbots = data.dotbots;
+
+
+            {% if DEFAULT_DOTBOT == None %}
+              var dotbotSel = document.getElementById("dotbots-sel");
+              
+              while (dotbotSel.options.length > 0) {
+                dotbotSel.remove(0);
+              }
+
+              var emptyopt = document.createElement('option');
+              emptyopt.value = -1;
+              emptyopt.text = data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected";
+              dotbotSel.appendChild(emptyopt);
+
+              // List of dotbots
+              for (let i = 0; i < data.number_dotbots; i++) {
+                var newopt = document.createElement('option');
+                newopt.value = i;
+                newopt.text = data.dotbots[i];
+
+                dotbotSel.appendChild(newopt);
+
+                if (data.dotbots[i] == dot) {
+                  console.log(dot);
+                  dotbotSel.value = i;
+                }
+              }
+            
+            {% else %}
+
+              var dotbotstatus = document.getElementById("status")        
+              
+              // List of dotbots
+              for (let i = 0; i < data.number_dotbots; i++) {                
+                if(dot === dotbots[i]){
+                  dotbotConnected = true;
+                  dotbotstatus.innerHTML = "";
+                  return;
+                } 
+              }
+
+              dotbotConnected = false;
+              dotbotstatus.innerHTML = "not connected..."
+
+            {% endif %}
+            
           })
           .catch(function (res) { console.log(res) });
       };
 
       getList();
-      setInterval(getList, 5000)
+      setInterval(getList, 3000)
       setInterval(function () {
         let lin_vel = Joy.GetY() / 100;
         let ang_vel = Math.sign(Joy.GetX()) * Math.pow((Joy.GetX() / 100), 2) * 0.5;
@@ -171,6 +209,8 @@
         dotbotConnected = true;
         dot = dotbots[dotsel];
       }
+
+
 
       function setLEDColor(color) {
         console.log(color);
@@ -219,17 +259,31 @@
         }
       }
 
+
+
+
       var items = document.querySelectorAll('.circle a');
+      var menuButton  = document.getElementById("menu-button");
+
+      {% if DOTBOT_COLOR != None %}
+      
+        var id = "{{DOTBOT_COLOR}}";
+        var currColor = document.getElementById(id); 
+        menuButton.style.background = currColor.style.background;
+        menuButton.style.color = currColor.style.color;
+      
+      {% endif %}    
 
       // Each led color circle position
       for (var i = 0, l = items.length; i < l; i++) {
         items[i].style.left = (50 - 35 * Math.cos(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
         items[i].style.top = (50 + 35 * Math.sin(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
+        
         items[i].onclick = (e) => {
           e.preventDefault();
           id = event.target.id;
-          document.getElementById("menu-button").style.background = event.target.style.background;
-          document.getElementById("menu-button").style.color = event.target.style.color;
+          menuButton.style.background = event.target.style.background;
+          menuButton.style.color = event.target.style.color;
           document.querySelector('.circle').classList.toggle('open');
           console.log("setting Color");
           setLEDColor(id);
