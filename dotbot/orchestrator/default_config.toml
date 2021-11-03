@@ -4,7 +4,7 @@
     [orch.client]
         client_id = "0"
         [orch.client.gateway]
-            port = "COM8"
+            port = "None"
             baud = 115200
 
      [orch.http]
@@ -13,3 +13,7 @@
 
      [orch.control]
         rate_hz = 3
+
+
+    [orch.demo]
+        dotbots = ["C5:30:36:02:AA:B9", "ED:B7:50:B8:30:91"]

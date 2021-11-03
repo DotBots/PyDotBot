@@ -1,0 +1,299 @@
+<html>
+
+<head>
+  <title>Joy</title>
+  <meta charset="utf-8">
+  <meta name="description" content="">
+  <link rel="stylesheet" href="/static/css/circular-menu.css">
+  <script src="/static/js/joy.min.js"></script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: whitesmoke;
+    }
+
+    .joyContainer {
+      display: flex;
+      flex-flow: column nowrap;
+      width: 100%;
+      max-width: 100%;
+      height: 100%;
+      max-height: 100%;
+    }
+
+    .row {
+      /* position: absolute; */
+      width: 100%;
+      display: inline-flex;
+      flex-flow: row wrap;
+      justify-content: space-around;
+      clear: both;
+      align-items: center;
+      align-content: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="joyContainer">
+    <div class="row" style="padding: 10px; margin: 0px; z-index: 1;">
+      <div class="item">
+
+        {% if DEFAULT_DOTBOT!=None %}
+          <div id="dotbotDiv" style="margin-bottom: -2em; color: {{DOTBOT_COLOR}}; font-family: 'Roboto Mono', monospace;">
+            <h3 id="dotbot">{{DEFAULT_DOTBOT}}</h3> <span id="status" style="margin-top: -2em;"></span>
+          </div>  
+        {% else %}
+          <select name="dotbots-sel" id="dotbots-sel" onchange="selectDotbot()">
+          <option value=""> No DotBots connected</option>
+          </select>
+        {% endif %}
+
+      </div>
+    </div>
+
+    <div class="row" style="min-height: 300px; max-height: 600px; margin-top: -15px;">
+      <div class="item" style="height: 100%; display: flex; flex-flow: column nowrap; justify-content: space-around;">
+        <div id="joy"
+          style="max-width:400px; max-height:400px; min-height: 250px; min-width: 250px; margin:50px; width: 100%; height: 100%">
+        </div>
+      </div>
+      
+      <div class="item">
+        <nav class="circular-menu">
+          <div class="circle">
+            <a href="" id="off" style="background: gray; color:white"> Off </a>
+            <a href="" id="red" style="background: lightcoral; border: 1px solid red;"></a>
+            <a href="" id="yellow" style="background: yellow; border: 1px solid orange; "></a>
+            <a href="" id="green" style="background: lightgreen; border: 1px solid green;"></a>
+            <a href="" id="white" style="background: white; border: 1px solid grey; color:black"></a>
+            <a href="" id="cyan" style="background: lightcyan; border: 1px solid cyan"></a>
+            <a href="" id="blue" style="background: lightskyblue; border: 1px solid blue;"></a>
+            <a href="" id="magent" style="background: #ff80ff; border: 1px solid magenta;"></a>
+          </div>
+          <div href="" id="menu-button" class="menu-button">
+            <div style="top: 50%; -ms-transform: translateY(50%); transform: translateY(50%);">
+              LED
+            </div>
+          </div>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+      
+      var Joy = new JoyStick('joy');
+
+      var stopped = true;
+      var dotbotConnected = false;
+      var dotbots;
+      var dot;
+
+      {% if DEFAULT_DOTBOT != None %}
+      dot = "{{DEFAULT_DOTBOT}}";
+      {% endif %}
+
+      function stop() {
+        stopped = true;
+        return fetch(`/api/v1/dotbot/${dot}/command/move`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          method: "POST",
+          body: JSON.stringify({ lin_vel: 0, ang_vel: 0 })
+        }).then(response => {
+          if (response.status === 200) {
+            console.log("Dotbot Stopped")
+          }
+        })
+      }
+
+      function getList() {
+        fetch(`/api/v1/dotbot/list`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          method: "GET"
+        })
+          .then(res => res.json())
+          .then(data => {
+            console.log(data);
+            dotbots = data.dotbots;
+
+
+            {% if DEFAULT_DOTBOT == None %}
+              var dotbotSel = document.getElementById("dotbots-sel");
+              
+              while (dotbotSel.options.length > 0) {
+                dotbotSel.remove(0);
+              }
+
+              var emptyopt = document.createElement('option');
+              emptyopt.value = -1;
+              emptyopt.text = data.number_dotbots > 0 ? "Select DotBots" : "No DotBots connected";
+              dotbotSel.appendChild(emptyopt);
+
+              // List of dotbots
+              for (let i = 0; i < data.number_dotbots; i++) {
+                var newopt = document.createElement('option');
+                newopt.value = i;
+                newopt.text = data.dotbots[i];
+
+                dotbotSel.appendChild(newopt);
+
+                if (data.dotbots[i] == dot) {
+                  console.log(dot);
+                  dotbotSel.value = i;
+                }
+              }
+            
+            {% else %}
+
+              var dotbotstatus = document.getElementById("status")        
+              
+              // List of dotbots
+              for (let i = 0; i < data.number_dotbots; i++) {                
+                if(dot === dotbots[i]){
+                  dotbotConnected = true;
+                  dotbotstatus.innerHTML = "";
+                  return;
+                } 
+              }
+
+              dotbotConnected = false;
+              dotbotstatus.innerHTML = "not connected..."
+
+            {% endif %}
+            
+          })
+          .catch(function (res) { console.log(res) });
+      };
+
+      getList();
+      setInterval(getList, 3000)
+      setInterval(function () {
+        let lin_vel = Joy.GetY() / 100;
+        let ang_vel = Math.sign(Joy.GetX()) * Math.pow((Joy.GetX() / 100), 2) * 0.5;
+        console.log(`${lin_vel} - ${ang_vel}`);
+
+        if (dotbotConnected) {
+          if (Math.abs(lin_vel) > 0.05 || Math.abs(ang_vel) > 0.05) {
+            stopped = false;
+            fetch(`/api/v1/dotbot/${dot}/command/move`, {
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              },
+              method: "POST",
+              body: JSON.stringify({ lin_vel: lin_vel, ang_vel: ang_vel })
+            })
+              .then(function (res) {
+                console.log(res)
+              })
+              .catch(function (res) { console.log(res) })
+          } else if (!stopped) {
+            stop();
+          }
+        }
+      }, (1 / 2) * 1000);
+
+      function selectDotbot() {
+        var dotsel = document.getElementById("dotbots-sel").value;
+        console.log(`Dotbot selected ${dotsel}`)
+        dotbotConnected = true;
+        dot = dotbots[dotsel];
+      }
+
+
+
+      function setLEDColor(color) {
+        console.log(color);
+
+        var colorMsg;
+        switch (color) {
+          case "red":
+            colorMsg = { r: 255, g: 0, b: 0 };
+            break;
+          case "blue":
+            colorMsg = { r: 0, g: 0, b: 255 };
+            break;
+          case "green":
+            colorMsg = { r: 0, g: 255, b: 0 };
+            break;
+          case "cyan":
+            colorMsg = { r: 255, g: 128, b: 0 }
+            break;
+          case "yellow":
+            colorMsg = { r: 255, g: 255, b: 0 }
+            break;
+          case "magent":
+            colorMsg = { r: 255, g: 0, b: 255 }
+            break;
+          case "white":
+            colorMsg = { r: 255, g: 255, b: 255 }
+            break;
+          case "off":
+            colorMsg = { r: 0, g: 0, b: 0 }
+            break;
+        }
+
+        if (dotbotConnected) {
+          fetch(`/api/v1/dotbot/${dot}/command/led`, {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({ "color": colorMsg })
+          })
+            .then(function (res) {
+              console.log(res)
+            })
+            .catch(function (res) { console.log(res) })
+        }
+      }
+
+
+
+
+      var items = document.querySelectorAll('.circle a');
+      var menuButton  = document.getElementById("menu-button");
+
+      {% if DOTBOT_COLOR != None %}
+      
+        var id = "{{DOTBOT_COLOR}}";
+        var currColor = document.getElementById(id); 
+        menuButton.style.background = currColor.style.background;
+        menuButton.style.color = currColor.style.color;
+      
+      {% endif %}    
+
+      // Each led color circle position
+      for (var i = 0, l = items.length; i < l; i++) {
+        items[i].style.left = (50 - 35 * Math.cos(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
+        items[i].style.top = (50 + 35 * Math.sin(-0.5 * Math.PI - 2 * (1 / l) * i * Math.PI)).toFixed(4) + "%";
+        
+        items[i].onclick = (e) => {
+          e.preventDefault();
+          id = event.target.id;
+          menuButton.style.background = event.target.style.background;
+          menuButton.style.color = event.target.style.color;
+          document.querySelector('.circle').classList.toggle('open');
+          console.log("setting Color");
+          setLEDColor(id);
+        }
+      }
+
+      document.querySelector('.menu-button').onclick = function (e) {
+        e.preventDefault(); document.querySelector('.circle').classList.toggle('open');
+      }
+
+  </script>
+</body>
+</html>
