@@ -4,7 +4,7 @@
     [orch.client]
         client_id = "0"
         [orch.client.gateway]
-            port = "/dev/tty.usbmodem0006837529651"
+            port = "COM8"
             baud = 115200
 
      [orch.http]
@@ -12,4 +12,4 @@
         port = "5000"
 
      [orch.control]
-        rate_hz = 2
+        rate_hz = 3

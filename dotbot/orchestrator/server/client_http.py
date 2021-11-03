@@ -17,15 +17,16 @@ COMMON HTTP STATUS CODES:
 
 from flask import Flask, request, jsonify, render_template
 from flask_classful import FlaskView, route
+from flask_cors import CORS
 
 from dotbot.orchestrator.gateway import Gateway
 from dotbot.orchestrator import OrchestratorConfig
 
 from threading import Thread
-
 import time
 
 app = Flask(__name__)
+cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 class OrchestratorHTTP:
     def __init__(self):
@@ -33,7 +34,7 @@ class OrchestratorHTTP:
         # Initialize Gateway serial process(es)
         self.config = OrchestratorConfig().orch
         self.gateway = Gateway(**self.config.client.gateway)
-        self.status_thread = Thread(target=self.gateway.continuous_status_read, args=(0,))
+        self.status_thread = Thread(target=self.gateway.continuous_status_read, daemon=True, args=(0,))
 
     def run(self):
         self.status_thread.start()
@@ -59,7 +60,9 @@ class _OrchestratorFlask(FlaskView):
 
     @route("/api/v1/dotbot/list", methods=["GET"])
     def dotbot_list(self):
-        response = {"number_dotbots": 1, "dotbots": [{"dotbot_id": 0, "gateway_id": 0, "timestamp": 0}]}
+        # response = {"number_dotbots": 1, "dotbots": [{"dotbot_id": 0, "gateway_id": 0, "timestamp": 0}]}
+        dotbots = Gateway().get_dotbots()
+        response = {"number_dotbots": len(dotbots), "dotbots": dotbots}
         return jsonify(response), 200
 
     @app.route("/api/v1/dotbot/<id>/status", methods=["GET"])
@@ -82,7 +85,7 @@ class _OrchestratorFlask(FlaskView):
 
         self.last_sent = time.time()
 
-        success = Gateway().command_move(float(lin_vel), float(ang_vel))  # TODO: should handle dotbot id
+        success = Gateway().command_move(float(lin_vel), float(ang_vel), id)  # TODO: should handle dotbot id
 
         return ("Success!", 200) if success else ("Failed", 500)
 
