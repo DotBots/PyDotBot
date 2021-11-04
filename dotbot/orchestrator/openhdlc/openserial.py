@@ -63,7 +63,9 @@ class SerialportHandler:
         self.send_to_parser = None
 
         # frame parsing variables
-        self.rx_buf = ''
+        self.rx_buf = []
+        self.rx_unframed_buf = []
+
         self.hdlc_flag = False
         self.receiving = False
         self.xonxoff_escaping = False
@@ -95,32 +97,42 @@ class SerialportHandler:
         if not self.connected:
             self.open()
 
-        hdlc_data = self.hdlc.hdlcify(data)
+        data = list(data) # convert bytes to list of int
+        hdlc_data = self.hdlc.hdlcify(data) 
         self.ser.flush()
         self.ser.write(hdlc_data)
 
 
-    def read_frame(self):
+    def read_frame(self, timeout = None):
+
+        if timeout is not None:
+            original_timeout = self.ser.timeout
+            self.ser.timeout = timeout
 
         self.read = True
-        self.rx_buf = ""
+        self.rx_buf = []
+        self.rx_unframed_buf = []
         
         while self.read:
             try:
-                byterx = self._rcv_data(1)
-                self._parse_bytes(byterx)    
+                byterx = self._rcv_data(1) # TODO: check if we can read more than 1 byte at a time
+                self._parse_bytes(byterx)
+
             except openhdlc.HdlcException as err:
-                log.warning('{}: invalid serial frame: {} {}'.format(self.name, format_string_buf(self.rx_buf), err))
+                log.warning('{}: invalid serial frame: {} {}'.format(self.name, self.rx_buf, err))
                 return None
 
             except NoData:
                 self.read = False
-            
-        return self.rx_buf
+        
+        if timeout is not None:
+            self.ser.timeout = original_timeout
+        
+        return self.rx_unframed_buf
 
 
-    def _rcv_data(self, rx_bytes=1):
-        data = self.ser.read(rx_bytes)
+    def _rcv_data(self, rx_bytes=None):
+        data = self.ser.read(rx_bytes) if rx_bytes is not None else self.ser.read()
         if data == b"":
             raise NoData
         else:
@@ -131,23 +143,14 @@ class SerialportHandler:
         for byte in octets:
             if not self.receiving:
                 if self.hdlc_flag and byte != self.hdlc.HDLC_FLAG:
-                    # start of frame
-                    if log.isEnabledFor(logging.DEBUG):
-                        log.debug("%s: start of HDLC frame %s %s",
-                                  self.name,
-                                  format_string_buf(self.hdlc.HDLC_FLAG),
-                                  format_string_buf(chr(byte)),
-                                  )
-
-                    self.receiving = True
-                    
+                    self.receiving = True                    
                     # discard received self.hdlc_flag
                     self.hdlc_flag = False
                     self.xonxoff_escaping = False
-                    self.rx_buf = self.hdlc.HDLC_FLAG
+                    self.rx_buf = [self.hdlc.HDLC_FLAG]
                     self._rx_buf_add(byte)
                 
-                elif byte == ord(self.hdlc.HDLC_FLAG):
+                elif byte == self.hdlc.HDLC_FLAG:
                     # received hdlc flag
                     log.debug("Input - start of hdlc frame")
                     self.hdlc_flag = True
@@ -156,15 +159,12 @@ class SerialportHandler:
                     # drop garbage
                     pass
             else:
-                if byte != ord(self.hdlc.HDLC_FLAG):
+                if byte != self.hdlc.HDLC_FLAG:
                     # middle of frame
                     self._rx_buf_add(byte)
                 
                 else:
                     # end of frame, received self.hdlc_flag
-                    if log.isEnabledFor(logging.DEBUG):
-                        log.debug("{}: end of hdlc frame {}".format(self.name, format_string_buf(chr(byte))))
-
                     self.hdlc_flag = True
                     self.receiving = False
                     self.read = False
@@ -179,19 +179,15 @@ class SerialportHandler:
         """ Handles a HDLC frame """
         valid_frame = False
         temp_buf = self.rx_buf
-        frame = ""
 
         try:
-            self.rx_buf = self.hdlc.dehdlcify(self.rx_buf)
+            self.rx_unframed_buf = self.hdlc.dehdlcify(self.rx_buf)
 
             if log.isEnabledFor(logging.DEBUG):
                 log.debug("{}: {} dehdlcized input: {}".format(
                     self.name,
                     format_string_buf(temp_buf),
                     format_string_buf(self.rx_buf)))
-
-            if self.send_to_parser:
-                self.send_to_parser([ord(c) for c in self.rx_buf])
 
             valid_frame = True
 
@@ -202,11 +198,11 @@ class SerialportHandler:
 
     def _rx_buf_add(self, byte):
         """ Adds byte to buffer and escapes the XONXOFF bytes """
-        if byte == chr(self.XONXOFF_ESCAPE):
+        if byte == self.XONXOFF_ESCAPE:
             self.xonxoff_escaping = True
         else:
             if self.xonxoff_escaping is True:
-                self.rx_buf += chr(ord(byte) ^ self.XONXOFF_MASK)
+                self.rx_buf += [byte ^ self.XONXOFF_MASK]
                 self.xonxoff_escaping = False
-            elif byte != chr(self.XON) and byte != chr(self.XOFF):
-                self.rx_buf += chr(byte)
+            elif byte != self.XON and byte != self.XOFF:
+                self.rx_buf += [byte]
