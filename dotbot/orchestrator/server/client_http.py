@@ -85,7 +85,7 @@ class _OrchestratorFlask(FlaskView):
 
         self.last_sent = time.time()
 
-        success = Gateway().command_move(float(lin_vel), float(ang_vel), id)  # TODO: should handle dotbot id
+        success = Gateway().command_move(linear=float(lin_vel), angular=float(ang_vel), id=id)  # TODO: should handle dotbot id
 
         return ("Success!", 200) if success else ("Failed", 500)
 
@@ -101,7 +101,7 @@ class _OrchestratorFlask(FlaskView):
         g = min(100, int(100 * (color["g"] / 255)))
         b = min(100, int(100 * (color["b"] / 255)))
 
-        success = Gateway().command_led((r, g, b), id)  # TODO: should handle dotbot id
+        success = Gateway().command_led(color=(r, g, b), id=id)  # TODO: should handle dotbot id
         return ("Success!", 200) if success else ("Failed", 500)
 
     @route("/demo", methods=["GET"])

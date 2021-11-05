@@ -19,16 +19,9 @@ logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d %(threadNa
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-
-class DotBot:
-    def __init__(self, mac, id):
-        self.mac = mac
-        self.internal_id = id   
-        self.last_update = None
-        self.location = None
-
 class Gateway(metaclass=Singleton):
     # Response types
+    ACK_0 = 0x30
     ACK = 0x31
     NDB = 0x32
     RDB = 0x33
@@ -42,16 +35,24 @@ class Gateway(metaclass=Singleton):
     class _Decorators:
         @classmethod
         def _command_decorator(cls, command):
-            def command_wrapper(self, *args):
+            def command_wrapper(self, *args, **kwargs):
+                
                 try:
-
-                    if not args[-1] in self.dotbots:
-                        log.warning(f"Can't command Dotbot [{args[-1]}] not connected")
-                        return False
-
                     if self.dk_connected:
-                        with self.command_lock:
-                            return command(self, *args)
+                        dot_id = kwargs.pop("id")
+
+                        if not dot_id in self.dotbots:
+                            log.warning(f"Can't command Dotbot [{dot_id}] not connected")
+                            return False
+                        dot = self.dotbots[dot_id]
+                        if dot.is_ready():
+                            with self.command_lock:
+                                ack_code = self._get_ack_code()
+                                cmd = command(self, **kwargs, dotbot=dot, ack_code=ack_code)
+                                self._write(cmd)
+                            return dot.wait_ack(ack_code)
+                        else:
+                            return False
                     else:
                         return False
                 
@@ -65,6 +66,8 @@ class Gateway(metaclass=Singleton):
         
         self.dk_connected = False
         self.dotbots = {}
+        self.dotbots_mac = {}
+
         self.conn_timeout = 5
         
         self.command_lock = threading.RLock()
@@ -83,6 +86,7 @@ class Gateway(metaclass=Singleton):
         
         self.connect()
         self.connection_check_daemon.start()
+        self._ack_code = 300
 
     def connect(self):
         with self.command_lock:
@@ -142,6 +146,8 @@ class Gateway(metaclass=Singleton):
                 dotbot_mac = ':'.join([f'{i:02X}' for i in conn_msg[dot_index+1: dot_index + 7]]) # this may should be replaced by struct.unpacked
                 
                 self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
+                self.dotbots_mac[dotbot_dk_id] = dotbot_mac
+                
                 log.info(f"DotBot Connected - mac: {dotbot_mac} - id: {dotbot_dk_id}")
             return True
 
@@ -166,6 +172,7 @@ class Gateway(metaclass=Singleton):
         # should destroy and recreate the SerialPortHandler (?)
 
         self.dotbots = {}
+        self.dotbots_mac = {}
         self.connect()
         return True 
 
@@ -197,24 +204,17 @@ class Gateway(metaclass=Singleton):
         return len(ack) == 1 and ack[0] == self.ACK
 
     @_Decorators._command_decorator
-    def command_move(self, linear, angular, id="0"):    
+    def command_move(self, linear, angular, dotbot, ack_code):    
         serial_cmd = Gateway.compute_pwm(linear, angular)
-
-        id = self.get_dotbot_id(id)
-        wrote = self._write( b'\x01' + id.to_bytes(1, "little") + serial_cmd)
-
-        log.info(f"Twist request to dotbot {id}")
-        return self._wait_ack(1) if wrote else False
+        log.info(f"Twist request to dotbot ({dotbot.internal_id}) {dotbot.mac}")
+        return b'\x01' + struct.pack(">BH", dotbot.internal_id, ack_code) + serial_cmd
 
     @_Decorators._command_decorator
-    def command_led(self, color, id="0"):
-        
-        id = self.get_dotbot_id(id)
-        serial_cmd = b''.join([struct.pack("<B", x) for x in [color[0], color[1], color[2]]])
-        wrote = self._write( b'\x02' + id.to_bytes(1, "little") + serial_cmd)
-        
-        log.info(f"LED request to dotbot {id} - color: {[color[0], color[1], color[2]]}")
-        return self._wait_ack(1) if wrote else False
+    def command_led(self, color, dotbot, ack_code):
+        serial_cmd = b''.join([struct.pack(">B", x) for x in [color[0], color[1], color[2]]])
+        log.info(f"LED request to dotbot ({dotbot.internal_id}) {dotbot.mac}  - color: {[color[0], color[1], color[2]]}")
+        return b'\x02' + struct.pack(">BH", dotbot.internal_id, ack_code) + serial_cmd
+    
 
     def get_status(self, id="0"):
         with self.command_lock:
@@ -236,8 +236,13 @@ class Gateway(metaclass=Singleton):
 
         msg_type = msg[0]
         
-        if msg_type == self.ACK:
-            log.info("ACK received")
+        if msg_type == self.ACK or msg_type == self.ACK_0:
+            dotbot_dk_id = msg[1]
+            ack_code = struct.unpack(">H", bytes(msg[2:]))[0]
+            
+            dot = self.dotbots[self.dotbots_mac[dotbot_dk_id]]
+            log.info(f"[{'FAIL' if self.ACK_0 else 'OK'}] ACK received id:{dotbot_dk_id} code: {ack_code}")
+            dot.receive_ack(ack_code)
 
         if msg_type == self.NDB or msg_type == self.RDB:
             dotbot_mac = ':'.join([f'{i:02X}' for i in msg[2:]])
@@ -246,25 +251,25 @@ class Gateway(metaclass=Singleton):
             if msg_type == self.NDB:
                 for (mac, dot) in list(self.dotbots.items()):
                     if mac == dotbot_mac:
+                        del self.dotbots_mac[dot.internal_id]
                         del self.dotbots[dotbot_mac] # delete the last instance of this dotbot
+
                     
                     elif dot.internal_id == dotbot_dk_id: # there is another dotbot using the internal id
                         log.warning("DotBot {mac} has the same internal id, removing it from DotBot list")
+                        del self.dotbots_mac[dot.internal_id]
                         del self.dotbots[mac]
                 
                 self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id) # add new dot
+                self.dotbots_mac[dotbot_dk_id] = dotbot_mac
                 log.info(f"DotBot Connected - mac: {dotbot_mac} id: {dotbot_dk_id}")
 
             else:
                 if dotbot_mac in self.dotbots:
+                    del self.dotbots_mac[self.dotbots[dotbot_mac].internal_id]
                     del self.dotbots[dotbot_mac]
+
                 log.info(f"DotBot Disconnected - mac: {dotbot_mac} id: {dotbot_dk_id}")
-
-    def get_dotbots(self):
-        return list(self.dotbots.keys())
-
-    def get_dotbot_id(self, mac):
-        return self.dotbots[mac].internal_id
 
     @staticmethod
     def compute_pwm(linear, angular, version="v2", max_pwm=100):
@@ -298,3 +303,13 @@ class Gateway(metaclass=Singleton):
             pwm_struct = b''.join([struct.pack("<H", pwm16) for pwm16 in pwmL + pwmR])
 
             return pwm_struct # TODO: add header with ID
+
+    def _get_ack_code(self):
+        self._ack_code +=1
+        return self._ack_code
+
+    def get_dotbots(self):
+        return list(self.dotbots.keys())
+
+    def get_dotbot_id(self, mac):
+        return self.dotbots[mac].internal_id
