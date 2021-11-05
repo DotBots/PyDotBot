@@ -11,7 +11,7 @@ import traceback
 import struct
 
 import dotbot.orchestrator.openhdlc.openhdlc as openhdlc
-from  dotbot.orchestrator.openhdlc.utils import format_buf, format_string_buf, format_critical_message, format_crash_message
+from  dotbot.orchestrator.openhdlc.utils import format_buf, format_buf, format_critical_message, format_crash_message
 
 LOGFILE_NAME = 'test_hdlc.log'
 logging.basicConfig(level=logging.INFO, format='%(relativeCreated)6d %(threadName)s %(message)s')
@@ -186,13 +186,13 @@ class SerialportHandler:
             if log.isEnabledFor(logging.DEBUG):
                 log.debug("{}: {} dehdlcized input: {}".format(
                     self.name,
-                    format_string_buf(temp_buf),
-                    format_string_buf(self.rx_buf)))
+                    format_buf(temp_buf),
+                    format_buf(self.rx_buf)))
 
             valid_frame = True
 
         except openhdlc.HdlcException as err:
-            log.warning('{}: invalid serial frame: {} {}'.format(self.name, format_string_buf(temp_buf), err))
+            log.warning('\n{}: invalid serial frame: {}\n{}\n'.format(self.name, format_buf(temp_buf), err))
 
         return valid_frame
 

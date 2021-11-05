@@ -101,8 +101,10 @@ class OpenHdlc(object):
         :returns: the extracted frame, or -1 if wrong checksum
         """ 
 
-        assert in_buf[0] == self.HDLC_FLAG
-        assert in_buf[-1] == self.HDLC_FLAG
+        if in_buf[0] != self.HDLC_FLAG:
+            raise HdlcException(f'Error in dehdlcify... missing initial flag in msg: {in_buf}')
+        if in_buf[-1] != self.HDLC_FLAG:
+            raise HdlcException(f'Error in dehdlcify... missing closing flag in msg: {in_buf}')
 
         # make copy of input
         out_buf = in_buf[:]
