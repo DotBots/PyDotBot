@@ -6,35 +6,20 @@ HDLC framing module.
 """
 
 import logging
-from .utils import format_string_buf
-
-# from openvisualizer.utils import format_string_buf
+from itertools import chain
 
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-
-def format_buf(buf):
-    """
-    Format a bytelist into an easy-to-read string. For example:
-
-    ``[0xab,0xcd,0xef,0x00] -> '(4B) ab-cd-ef-00'``
-    """
-
-    return '({0:>2}B) {1}'.format(len(buf), '-'.join(["%02x" % b for b in buf]))
-
-
 class HdlcException(Exception):
     pass
-
-
 class OpenHdlc(object):
-    HDLC_FLAG = '\x7e'
-    HDLC_FLAG_ESCAPED = '\x5e'
-    HDLC_ESCAPE = '\x7d'
-    HDLC_ESCAPE_ESCAPED = '\x5d'
+    HDLC_FLAG = 0x7e
+    HDLC_FLAG_ESCAPED = 0x5e
+    HDLC_ESCAPE = 0x7d
+    HDLC_ESCAPE_ESCAPED = 0x5d
     HDLC_CRCINIT = 0xffff
     HDLC_CRCGOOD = 0xf0b8
 
@@ -79,9 +64,7 @@ class OpenHdlc(object):
         """
         Build an hdlc frame.
 
-        Use 0x00 for both addr byte, and control byte.
-        """
-
+        """    
         # make copy of input
         out_buf = in_buf[:]
 
@@ -89,67 +72,72 @@ class OpenHdlc(object):
         crc = self.HDLC_CRCINIT
         for b in out_buf:
             crc = self._crc_iteration(crc, b)
-
+        
         crc = 0xffff - crc
-
-        # append CRC
-        out_buf = out_buf.decode("utf-8") + chr(crc & 0xff) + chr((crc & 0xff00) >> 8)
-
-        # stuff bytes
-        out_buf = out_buf.replace(self.HDLC_ESCAPE, self.HDLC_ESCAPE + self.HDLC_ESCAPE_ESCAPED)
-        out_buf = out_buf.replace(self.HDLC_FLAG, self.HDLC_ESCAPE + self.HDLC_FLAG_ESCAPED)
-
+        out_buf = out_buf + [ crc & 0xff, (crc & 0xff00) >> 8 ]
+        
+        # get index of flags to be escaped
+        escape_idx = []
+        for idx, b in enumerate(out_buf):
+            if b == self.HDLC_ESCAPE or b == self.HDLC_FLAG:
+                escape_idx.append(idx)
+        
+        # escape flags
+        for i, idx in enumerate(escape_idx):
+            j = idx + i
+            if out_buf[j] == self.HDLC_FLAG:
+                out_buf = out_buf[:j] + [self.HDLC_ESCAPE, self.HDLC_FLAG_ESCAPED] + out_buf[j+1:]
+            else:
+                out_buf = out_buf[:j] + [self.HDLC_ESCAPE, self.HDLC_ESCAPE_ESCAPED] + out_buf[j+1:]
         # add flags
-        out_buf = self.HDLC_FLAG + out_buf + self.HDLC_FLAG
+        out_buf = [self.HDLC_FLAG] + out_buf + [self.HDLC_FLAG]
+        return out_buf
 
-        bif = bytearray()
-        for b in out_buf:
-            bif += ord(b).to_bytes(1, "little")
-
-        return bif
 
     def dehdlcify(self, in_buf):
         """
         Parse an hdlc frame.
 
         :returns: the extracted frame, or -1 if wrong checksum
-        """
+        """ 
 
-        assert in_buf[0] == self.HDLC_FLAG
-        assert in_buf[-1] == self.HDLC_FLAG
+        if in_buf[0] != self.HDLC_FLAG:
+            raise HdlcException(f'Error in dehdlcify... missing initial flag in msg: {in_buf}')
+        if in_buf[-1] != self.HDLC_FLAG:
+            raise HdlcException(f'Error in dehdlcify... missing closing flag in msg: {in_buf}')
 
         # make copy of input
         out_buf = in_buf[:]
-        if log.isEnabledFor(logging.DEBUG):
-            log.debug("got              {0}".format(format_string_buf(out_buf)))
 
         # remove flags
         out_buf = out_buf[1:-1]
-        if log.isEnabledFor(logging.DEBUG):
-            log.debug("after flags:     {0}".format(format_string_buf(out_buf)))
 
-        # unstuff
-        out_buf = out_buf.replace(self.HDLC_ESCAPE + self.HDLC_FLAG_ESCAPED, self.HDLC_FLAG)
-        out_buf = out_buf.replace(self.HDLC_ESCAPE + self.HDLC_ESCAPE_ESCAPED, self.HDLC_ESCAPE)
-        if log.isEnabledFor(logging.DEBUG):
-            log.debug("after unstuff:   {0}".format(format_string_buf(out_buf)))
+        # get index of escaped flags
+        rm_idx = []
+        for i in range(len(out_buf) - 1):
+            if out_buf[i] == self.HDLC_ESCAPE:
+                rm_idx.append(i)
 
+        # restore escaped flags
+        for i, idx in enumerate(rm_idx):
+            j = idx - i
+            out_buf[j] = self.HDLC_FLAG if out_buf[j+1] == self.HDLC_FLAG_ESCAPED else self.HDLC_ESCAPE
+            del out_buf[j + 1]
+        
         if len(out_buf) < 2:
             raise HdlcException('packet too short')
 
         # check CRC
         crc = self.HDLC_CRCINIT
-
+        
         for b in out_buf:
-            crc = self._crc_iteration(crc, ord(b))
+            crc = self._crc_iteration(crc, b)
 
         if crc != self.HDLC_CRCGOOD:
             raise HdlcException('wrong CRC')
 
         # remove CRC
         out_buf = out_buf[:-2]  # remove CRC
-        if log.isEnabledFor(logging.DEBUG):
-            log.debug("after CRC:       {0}".format(format_string_buf(out_buf)))
 
         return out_buf
 

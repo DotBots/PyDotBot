@@ -13,7 +13,7 @@ import sys
 
 from dotbot.datastructures import Singleton
 from dotbot.orchestrator.openhdlc.openserial import SerialportHandler
-
+from dotbot.orchestrator.dotbot import DotBot
 # TODO: use logger instead of print statements
 logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d %(threadName)s %(message)s')
 log = logging.getLogger(__name__)
@@ -29,15 +29,15 @@ class DotBot:
 
 class Gateway(metaclass=Singleton):
     # Response types
-    ACK = '\x31'
-    NDB = '\x32'
-    RDB = '\x33'
-    NOT = '\x34'
-    CON = '\x01'
+    ACK = 0x31
+    NDB = 0x32
+    RDB = 0x33
+    NOT = 0x34
+    CON = 0x01
 
     # Request types
-    START = '\x00\x00\x00'
-    TWIST = '\x30'
+    START = (0x00, 0x00, 0x00)
+    TWIST = 0x30
 
     class _Decorators:
         @classmethod
@@ -103,7 +103,7 @@ class Gateway(metaclass=Singleton):
 
                     self.open() # open the port
                     log.info(f"Sending START message to DK at port {self.port} ... ")
-                    self._write(self.START.encode("utf-8", "little")) # write and START message
+                    self._write(self.START) # write and START message
                     self.dk_connected = self._wait_conn_msg() # wait for the response of DK
 
                 except (SerialException, serial.SerialTimeoutException):
@@ -138,8 +138,8 @@ class Gateway(metaclass=Singleton):
             
             for i in range(dotbots_len):
                 dot_index = 1 + i * 7
-                dotbot_dk_id = ord(conn_msg[dot_index])
-                dotbot_mac = ':'.join([f'{ord(i):02X}' for i in conn_msg[dot_index+1: dot_index + 7]]) # this may should be replaced by struct.unpacked
+                dotbot_dk_id = conn_msg[dot_index]
+                dotbot_mac = ':'.join([f'{i:02X}' for i in conn_msg[dot_index+1: dot_index + 7]]) # this may should be replaced by struct.unpacked
                 
                 self.dotbots[dotbot_mac] = DotBot(dotbot_mac, dotbot_dk_id)
                 log.info(f"DotBot Connected - mac: {dotbot_mac} - id: {dotbot_dk_id}")
@@ -189,17 +189,12 @@ class Gateway(metaclass=Singleton):
         if not self.ser.is_open():
             log.warning("Port closed, quitting.")
             return None
-        
-        original_timeout = self.ser.ser.timeout
-        self.ser.ser.timeout = timeout
-        
-        msg = self.ser.read_frame()
-        
-        self.ser.ser.timeout = original_timeout
+        msg = self.ser.read_frame(timeout=timeout)
         return msg
 
     def _wait_ack(self, timeout=0):
-        return self._read(timeout=timeout) == self.ACK
+        ack =  self._read(timeout=timeout)
+        return len(ack) == 1 and ack[0] == self.ACK
 
     @_Decorators._command_decorator
     def command_move(self, linear, angular, id="0"):    
@@ -245,8 +240,8 @@ class Gateway(metaclass=Singleton):
             log.info("ACK received")
 
         if msg_type == self.NDB or msg_type == self.RDB:
-            dotbot_mac = ':'.join([f'{ord(i):02X}' for i in msg[2:]])
-            dotbot_dk_id = ord(msg[1])
+            dotbot_mac = ':'.join([f'{i:02X}' for i in msg[2:]])
+            dotbot_dk_id = msg[1]
 
             if msg_type == self.NDB:
                 for (mac, dot) in list(self.dotbots.items()):
