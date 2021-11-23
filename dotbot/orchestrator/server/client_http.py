@@ -97,12 +97,27 @@ class _OrchestratorFlask(FlaskView):
         request_dict = request.get_json() or request.form
         color = request_dict.get("color", "")
 
-        r = min(100, int(100 * (color["r"] / 255))) # normalize [0, 100] ... this is temporal ...
-        g = min(100, int(100 * (color["g"] / 255)))
-        b = min(100, int(100 * (color["b"] / 255)))
+        r = min(255, color["r"])
+        g = min(255, color["g"])
+        b = min(255, color["b"])
 
         success = Gateway().command_led(color=(r, g, b), id=id)  # TODO: should handle dotbot id
         return ("Success!", 200) if success else ("Failed", 500)
+
+    @route("/api/v1/dotbot/<id>/command/test1", methods=["POST"])
+    def dotbot_test1(self, id):
+        request_dict = request.get_json()
+        # print("Test1 request received -- Args: {}, JSON: {}".format(request.args, request_dict))
+        success = Gateway().command_test1(id=id)  # TODO: should handle dotbot id
+        return ("Success!", 200) if success else ("Failed", 500)
+
+    @route("/api/v1/dotbot/<id>/command/test2", methods=["POST"])
+    def dotbot_test2(self, id):
+        request_dict = request.get_json()
+        # print("Test2 request received -- Args: {}, JSON: {}".format(request.args, request_dict))
+        success = Gateway().command_test2(id=id)  # TODO: should handle dotbot id
+        return ("Success!", 200) if success else ("Failed", 500)
+
 
     @route("/demo", methods=["GET"])
     def joy_demo(self):
