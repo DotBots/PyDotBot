@@ -29,21 +29,27 @@ app = Flask(__name__)
 cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 class OrchestratorHTTP:
+    '''
+    Orchestrator http server
+    '''
     def __init__(self):
         _OrchestratorFlask.register(app, route_base="/")
+        
         # Initialize Gateway serial process(es)
         self.config = OrchestratorConfig().orch
-        self.gateway = Gateway(**self.config.client.gateway)
-        self.status_thread = Thread(target=self.gateway.continuous_status_read, daemon=True, args=(0,))
+        self.gateway = Gateway(**self.config.client.gateway) 
+        self.status_thread = Thread(target=self.gateway.continuous_status_read, daemon=True) # this thread keeps reading the serial port continuously
 
     def run(self):
+        '''
+        Start the http server
+        '''
         self.status_thread.start()
-
         http_conf = self.config.http
         app.run(http_conf.host, http_conf.port, debug=False, threaded=True) # NOTE: make sure only 1 process
 
 class _OrchestratorFlask(FlaskView):
-    config = OrchestratorConfig().orch
+    config = OrchestratorConfig().orch # load configuration from file
     last_sent = 0
 
     def __init__(self):
@@ -104,26 +110,11 @@ class _OrchestratorFlask(FlaskView):
         success = Gateway().command_led(color=(r, g, b), id=id)  # TODO: should handle dotbot id
         return ("Success!", 200) if success else ("Failed", 500)
 
-    @route("/api/v1/dotbot/<id>/command/test1", methods=["POST"])
-    def dotbot_test1(self, id):
-        request_dict = request.get_json()
-        # print("Test1 request received -- Args: {}, JSON: {}".format(request.args, request_dict))
-        success = Gateway().command_test1(id=id)  # TODO: should handle dotbot id
-        return ("Success!", 200) if success else ("Failed", 500)
-
-    @route("/api/v1/dotbot/<id>/command/test2", methods=["POST"])
-    def dotbot_test2(self, id):
-        request_dict = request.get_json()
-        # print("Test2 request received -- Args: {}, JSON: {}".format(request.args, request_dict))
-        success = Gateway().command_test2(id=id)  # TODO: should handle dotbot id
-        return ("Success!", 200) if success else ("Failed", 500)
-
-
     @route("/demo", methods=["GET"])
     def joy_demo(self):
         default_dotbot = request.args.get('dotbot', default=None, type=str)
         if default_dotbot is None or default_dotbot not in self.config.demo.dotbots:
-            return render_template("joy.html", DEFAULT_DOTBOT=None)
+            return render_template("joy.html", DEFAULT_DOTBOT=None, DOTBOT_COLOR=None)
         
         else:
             idx = self.config.demo.dotbots.index(default_dotbot)
