@@ -13,3 +13,5 @@ PyDotBot is available on PyPI (officially supporting Python 3.8+):
 ```bash
 python -m pip install pydotbot
 ```
+
+For further information: http://www.dotbots.org/
