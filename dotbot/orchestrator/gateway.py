@@ -9,7 +9,8 @@ import time
 import numpy as np
 import threading
 import multiprocessing as mp
-import sys 
+import sys
+import platform
 
 from dotbot.datastructures import Singleton
 from dotbot.orchestrator.openhdlc.openserial import SerialportHandler
@@ -185,7 +186,8 @@ class Gateway(metaclass=Singleton):
         Get the ports where an DK is connected.
         Note: This is specific to JLink DK.
         '''
-        return [tuple(p)[0] for p in list(serial.tools.list_ports.grep("JLink"))]
+        dk_port_name = "JLINK" if platform.system() == "Windows" else "ACM"
+        return [tuple(p)[0] for p in list(serial.tools.list_ports.grep(dk_port_name))]
 
     def _wait_conn_msg(self):
         '''
