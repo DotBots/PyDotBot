@@ -210,8 +210,6 @@
         dot = dotbots[dotsel];
       }
 
-
-
       function setLEDColor(color) {
         console.log(color);
 
@@ -266,12 +264,10 @@
       var menuButton  = document.getElementById("menu-button");
 
       {% if DOTBOT_COLOR != None %}
-      
-        var id = "{{DOTBOT_COLOR}}";
-        var currColor = document.getElementById(id); 
-        menuButton.style.background = currColor.style.background;
-        menuButton.style.color = currColor.style.color;
-      
+      var id = "{{DOTBOT_COLOR}}";
+      var currColor = document.getElementById(id); 
+      menuButton.style.background = currColor.style.background;
+      menuButton.style.color = currColor.style.color;
       {% endif %}    
 
       // Each led color circle position
