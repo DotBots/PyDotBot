@@ -261,9 +261,9 @@ class Gateway(metaclass=Singleton):
         Returns
         -------
         bool
+
             True if the command was written, False otherwise.
         '''
-
         if not self.ser.is_open():
             log.warning("Port closed, quitting.")
             return False
@@ -407,7 +407,9 @@ class Gateway(metaclass=Singleton):
 
             else:
                 if dotbot_mac in self.dotbots:
-                    del self.dotbots_mac[self.dotbots[dotbot_mac].internal_id]
+
+                    if self.dotbots[dotbot_mac].internal_id in self.dotbots_mac:
+                        del self.dotbots_mac[self.dotbots[dotbot_mac].internal_id]
                     del self.dotbots[dotbot_mac]
 
                 log.info(f"DotBot Disconnected - mac: {dotbot_mac} id: {dotbot_dk_id}")
