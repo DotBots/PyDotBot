@@ -68,6 +68,3 @@ if __name__ == "__main__":
         (a, b) = speeds_from_keys()
         payload = parse_speeds(a, b)
         send_payload(payload)
-
-
-

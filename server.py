@@ -20,7 +20,3 @@ def dotbot():
     with serial.Serial(GW_TTY_PORT, GW_TTY_BAUDRATE, timeout=1) as ser:
         ser.write(len(message).to_bytes(1, 'little'))
         ser.write(message)
-
-
-if __name__ == "__main__":
-    run(host='0.0.0.0', port=8080)
