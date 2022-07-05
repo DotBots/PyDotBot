@@ -10,7 +10,7 @@ from bottle import post, request, run
 # http://localhost:8080/dotbot
 
 
-GW_TTY_PORT = os.getenv("GW_TTY_PORT", "/dev/ttyACM0")
+GW_TTY_PORT = os.getenv("GW_TTY_PORT", "COM7")
 GW_TTY_BAUDRATE = int(os.getenv("GW_TTY_BAUDRATE", 115200))
 
 
