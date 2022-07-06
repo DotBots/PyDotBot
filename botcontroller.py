@@ -48,7 +48,7 @@ def speeds_from_joysticks():
     if -0.09 < rj_y <= 0.09:
         rj_y = 0.0
 
-    lj_x = lj_x * 127
+    lj_x = lj_x * 127                   # from [-1;1] to [-127;127]
     lj_y = lj_y * 127
     rj_x = rj_x * 127
     rj_y = rj_y * 127
