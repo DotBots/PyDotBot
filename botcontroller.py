@@ -31,7 +31,7 @@ def send_payload(payload):
     requests.post(DOTBOT_GATEWAY_URL, json=command)                             # send the request over HTTP
 
 
-def speeds_from_joysticks():
+def pos_from_joysticks():
     pygame.event.pump()             # queue needs to be pumped
     lj_x = ps4.get_axis(0)
     lj_y = - ps4.get_axis(1)
@@ -56,12 +56,18 @@ def speeds_from_joysticks():
 
 
 if __name__ == "__main__":
+    rj_y_speed = 0
     pygame.init()
     pygame.joystick.init()
     ps4 = pygame.joystick.Joystick(0)
     ps4.init()
     while True:
-        (speed_lj_x, speed_lj_y, speed_rj_x, speed_rj_y) = speeds_from_joysticks()  # fetch positions from joysticks
-        payload = parse_speeds(speed_lj_x, speed_lj_y, speed_rj_x, speed_rj_y)      # configure the payload
+        (pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y) = pos_from_joysticks()             # fetch positions from joysticks
+        rj_y_speed += pos_rj_y
+        if rj_y_speed <= -127:
+            rj_y_speed = -127
+        elif 127 <= rj_y_speed:
+            rj_y_speed = 127
+        payload = parse_speeds(pos_lj_x, pos_lj_y, pos_rj_x, rj_y_speed)            # configure the payload
         send_payload(payload)                                                       # send the payload
         time.sleep(0.05)                                                            # 50ms delay between each update
