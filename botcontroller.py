@@ -63,11 +63,6 @@ if __name__ == "__main__":
     ps4.init()
     while True:
         (pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y) = pos_from_joysticks()             # fetch positions from joysticks
-        rj_y_speed += pos_rj_y
-        if rj_y_speed <= -127:
-            rj_y_speed = -127
-        elif 127 <= rj_y_speed:
-            rj_y_speed = 127
-        payload = parse_speeds(pos_lj_x, pos_lj_y, pos_rj_x, rj_y_speed)            # configure the payload
+        payload = parse_speeds(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)            # configure the payload
         send_payload(payload)                                                       # send the payload
         time.sleep(0.05)                                                            # 50ms delay between each update

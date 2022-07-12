@@ -3,6 +3,7 @@
 import base64
 import os
 import serial
+import bottle
 from bottle import post, request, run
 
 # Examples curl -X POST -s -d '{"cmd": "aGVsbG8K"}' -H "Content-Type: application/json" http://localhost:8080/dotbot
