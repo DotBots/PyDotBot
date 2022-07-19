@@ -1,12 +1,15 @@
 import base64
-from enum import Enum
 import os
+import time
+from enum import Enum
 import pygame
 import requests
-import time
 
 
 DOTBOT_GATEWAY_URL = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
+
+
+JOYSTICK_HYSTERERIS_THRES = 0.09
 
 
 class Command(Enum):
@@ -40,13 +43,13 @@ def pos_from_joystick(joystick):
     rj_y = - joystick.get_axis(3)        # right joystick y-axis
 
     # dead zones
-    if -0.09 < lj_x <= 0.09:
+    if -JOYSTICK_HYSTERERIS_THRES < lj_x <= JOYSTICK_HYSTERERIS_THRES :
         lj_x = 0.0
-    if -0.09 < lj_y <= 0.09:
+    if -JOYSTICK_HYSTERERIS_THRES < lj_y <= JOYSTICK_HYSTERERIS_THRES :
         lj_y = 0.0
-    if -0.09 < rj_x <= 0.09:
+    if -JOYSTICK_HYSTERERIS_THRES < rj_x <= JOYSTICK_HYSTERERIS_THRES :
         rj_x = 0.0
-    if -0.09 < rj_y <= 0.09:
+    if -JOYSTICK_HYSTERERIS_THRES < rj_y <= JOYSTICK_HYSTERERIS_THRES :
         rj_y = 0.0
 
     # from [-1;1] to [-127;127]
@@ -56,15 +59,19 @@ def pos_from_joystick(joystick):
     rj_y = rj_y * 127
     return lj_x, lj_y, rj_x, rj_y
 
-
-if __name__ == "__main__":
-    rj_y_speed = 0                      # right joystick y-axis to be sent in payload
+def main():
     pygame.init()                       # pygame initialization
     pygame.joystick.init()              # joysticks initialization
     ps4 = pygame.joystick.Joystick(0)   # instantiation of a joystick
+    if pygame.joystick.get_count() == 0:
+        exit()
     ps4.init()                          # initialization of the joystick
     while True:
         pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)                 # fetch positions from joysticks
-        payload = payload_from_positions (pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)       # configure the payload
+        payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
         time.sleep(0.05)                                                                # 50ms delay between each update
+
+
+if __name__ == "__main__":
+    main()
