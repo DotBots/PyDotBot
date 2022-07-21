@@ -9,6 +9,7 @@ import requests
 
 DOTBOT_GATEWAY_URL = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
 JOYSTICK_HYSTERERIS_THRES = 0.09
+REFRESH_PERIOD = 0.05
 
 
 class Command(Enum):
@@ -69,10 +70,10 @@ def main():
     if num_axes < 4:
         sys.exit("Not enough axes on your joystick. {} found, expected at least 4.".format(num_axes))
     while True:
-        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)       # fetch positions from joysticks
+        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)                 # fetch positions from joysticks
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
-        time.sleep(0.05)                                                                # 50ms delay between each update
+        time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
 
 
 if __name__ == "__main__":
