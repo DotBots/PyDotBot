@@ -67,7 +67,6 @@ def main():
     while True:
         # fetch positions from joystick
         pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4, JOYSTICK_AXIS_COUNT)
-
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
         time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
