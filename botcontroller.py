@@ -67,7 +67,7 @@ def main():
     ps4.init()                          # initialization of the joystick
     num_axes = ps4.get_numaxes()
     if num_axes < 4:
-        sys.exit("Not enough axes on your joystick. {} found".format(num_axes))
+        sys.exit("Not enough axes on your joystick. {} found, expected at least 4.".format(num_axes))
     while True:
         pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)       # fetch positions from joysticks
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
