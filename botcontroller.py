@@ -1,14 +1,13 @@
 import base64
 import os
+import sys
 import time
 from enum import Enum
 import pygame
 import requests
-import sys
 
 
 DOTBOT_GATEWAY_URL = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
-
 JOYSTICK_HYSTERERIS_THRES = 0.09
 
 
@@ -34,10 +33,10 @@ def send_payload(payload):
     requests.post(DOTBOT_GATEWAY_URL, json=command)                             # send the request over HTTP
 
 
-def pos_from_joystick(joystick):
+def pos_from_joystick(joystick, number_axes):
     pygame.event.pump()                     # queue needs to be pumped
-    if joystick.get_numaxes() < 4:
-        sys.exit("Not enough axes on your joystick. {} found".format(joystick.get_numaxes()))
+    if number_axes < 4:
+        sys.exit("Not enough axes on your joystick. {} found".format(number_axes))
     lj_x = joystick.get_axis(0)             # left joystick x-axis
     lj_y = - joystick.get_axis(1)           # left joystick y-axis
     rj_x = joystick.get_axis(2)             # right joystick x-axis
@@ -68,8 +67,9 @@ def main():
         sys.exit("Error: No joystick connected.\nExiting program...")
     ps4 = pygame.joystick.Joystick(0)   # instantiation of a joystick
     ps4.init()                          # initialization of the joystick
+    num_axes = ps4.get_numaxes()
     while True:
-        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)                 # fetch positions from joysticks
+        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4, num_axes)       # fetch positions from joysticks
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
         time.sleep(0.05)                                                                # 50ms delay between each update
