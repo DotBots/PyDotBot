@@ -37,10 +37,6 @@ def send_payload(payload):
 
 def pos_from_joystick(joystick):
     pygame.event.pump()                     # queue needs to be pumped
-    lj_x = joystick.get_axis(0)             # left joystick x-axis
-    lj_y = - joystick.get_axis(1)           # left joystick y-axis
-    rj_x = joystick.get_axis(2)             # right joystick x-axis
-    rj_y = - joystick.get_axis(3)           # right joystick y-axis
     positions = []
     for axis_idx in range(JOYSTICK_AXIS_COUNT):
         axis = joystick.get_axis(axis_idx)
