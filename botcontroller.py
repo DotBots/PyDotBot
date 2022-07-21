@@ -9,6 +9,7 @@ import requests
 
 DOTBOT_GATEWAY_URL = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
 JOYSTICK_HYSTERERIS_THRES = 0.09
+JOYSTICK_AXIS_COUNT = 4
 REFRESH_PERIOD = 0.05
 
 
@@ -34,29 +35,23 @@ def send_payload(payload):
     requests.post(DOTBOT_GATEWAY_URL, json=command)                             # send the request over HTTP
 
 
-def pos_from_joystick(joystick):
+def pos_from_joystick(joystick, numaxes):
     pygame.event.pump()                     # queue needs to be pumped
     lj_x = joystick.get_axis(0)             # left joystick x-axis
     lj_y = - joystick.get_axis(1)           # left joystick y-axis
     rj_x = joystick.get_axis(2)             # right joystick x-axis
     rj_y = - joystick.get_axis(3)           # right joystick y-axis
-
-    # dead zones
-    if -JOYSTICK_HYSTERERIS_THRES < lj_x <= JOYSTICK_HYSTERERIS_THRES:
-        lj_x = 0.0
-    if -JOYSTICK_HYSTERERIS_THRES < lj_y <= JOYSTICK_HYSTERERIS_THRES:
-        lj_y = 0.0
-    if -JOYSTICK_HYSTERERIS_THRES < rj_x <= JOYSTICK_HYSTERERIS_THRES:
-        rj_x = 0.0
-    if -JOYSTICK_HYSTERERIS_THRES < rj_y <= JOYSTICK_HYSTERERIS_THRES:
-        rj_y = 0.0
-
-    # from [-1;1] to [-127;127]
-    lj_x = lj_x * 127
-    lj_y = lj_y * 127
-    rj_x = rj_x * 127
-    rj_y = rj_y * 127
-    return lj_x, lj_y, rj_x, rj_y
+    positions = []
+    for axis_idx in range(numaxes):
+        axis = joystick.get_axis(axis_idx)
+        # dead zones
+        if axis_idx % 2:
+            axis = -axis
+        if -JOYSTICK_HYSTERERIS_THRES < axis <= JOYSTICK_HYSTERERIS_THRES:
+            axis = 0.0
+        # from [-1;1] to [-127;127]
+        positions.append(axis * 127)
+    return positions
 
 
 def main():
@@ -70,7 +65,9 @@ def main():
     if num_axes < 4:
         sys.exit("Not enough axes on your joystick. {} found, expected at least 4.".format(num_axes))
     while True:
-        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)                 # fetch positions from joysticks
+        # fetch positions from joystick
+        pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4, JOYSTICK_AXIS_COUNT)
+
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
         time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
