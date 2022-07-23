@@ -1,12 +1,18 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.4.1"]
 build-backend = "hatchling.build"
 
 [project]
 name = "bot-controller"
 version = "0.1"
 authors = [
-  { name="Theo Akbas", email="theo.akbas@inria.fr" },
+    { name="Theo Akbas", email="theo.akbas@inria.fr" },
+]
+dependencies = [
+    "pyserial   == 3.5",
+    "bottle     == 0.12.21",
+    "pygame     == 2.1.2",
+    "requests   == 2.28.1",
 ]
 description = "Package to easily control your DotBot and Sail Boat with different controllers."
 readme = "README.md"
@@ -21,3 +27,6 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/pypa/sampleproject"
 "Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+
+[project.scripts]
+bot-cli = "bot_controller.main:main"
