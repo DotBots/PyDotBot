@@ -29,4 +29,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
 
 [project.scripts]
-bot-cli = "bot_controller.main:main"
+bot-controller = "bot_controller.main:main"

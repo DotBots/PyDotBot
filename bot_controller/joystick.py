@@ -7,10 +7,10 @@ import pygame
 import requests
 
 
-DOTBOT_GATEWAY_URL = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
-JOYSTICK_HYSTERERIS_THRES = 0.09
-JOYSTICK_AXIS_COUNT = 4
-REFRESH_PERIOD = 0.05
+DOTBOT_GATEWAY_URL          = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
+JOYSTICK_HYSTERERIS_THRES   = 0.09
+JOYSTICK_AXIS_COUNT         = 4
+REFRESH_PERIOD              = 0.05
 
 
 class Command(Enum):
@@ -50,7 +50,8 @@ def pos_from_joystick(joystick):
     return positions
 
 
-def main():
+def start_joystick():
+    print("Joystick here")
     pygame.init()                       # pygame initialization
     pygame.joystick.init()              # joysticks initialization
     if pygame.joystick.get_count() == 0:
@@ -66,7 +67,3 @@ def main():
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
         send_payload(payload)                                                           # send the payload
         time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
-
-
-if __name__ == "__main__":
-    main()
