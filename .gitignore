@@ -2,8 +2,6 @@
 *.iml
 *.json
 .idea/
-tests/
-test/
 *.pyc
 *.gz
 *.whl
