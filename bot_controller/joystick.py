@@ -1,8 +1,5 @@
-import base64
-import os
 import sys
 import time
-from enum import Enum
 import pygame
 
 from bot_controller.protocol import Command, PROTOCOL_VERSION
