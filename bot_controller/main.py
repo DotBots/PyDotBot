@@ -6,8 +6,6 @@ from bot_controller import joystick
 from bot_controller import server
 
 
-JOYSTICK_AXIS_COUNT     = 4
-REFRESH_PERIOD          = 0.05
 SERIAL_PORT_DEFAULT     = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 115200
 CONTROLLER_TYPE_DEFAULT = "keyboard"
