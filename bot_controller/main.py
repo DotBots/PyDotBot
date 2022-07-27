@@ -30,7 +30,6 @@ def main():
     except PackageNotFoundError:
         package_version = "unknown"
     print(f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller.")
-    sys.stdout.flush()
 
     try:
         if args.type == "keyboard":

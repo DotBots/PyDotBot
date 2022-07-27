@@ -1,5 +1,9 @@
+import os
 import sys
 import time
+
+# Pygame support prompt is annoying, it can be hidden using an environment variable
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
 import pygame
 
 from bot_controller.protocol import Command, PROTOCOL_VERSION
