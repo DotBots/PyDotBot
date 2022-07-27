@@ -2,8 +2,7 @@
 
 import argparse
 import sys
-from bot_controller import joystick
-from bot_controller import server
+from bot_controller import joystick, server
 
 
 SERIAL_PORT_DEFAULT     = "/dev/ttyACM0"
