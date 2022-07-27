@@ -4,7 +4,7 @@ import sys
 import time
 from enum import Enum
 import pygame
-import requests
+import bc_serial
 
 
 DOTBOT_GATEWAY_URL          = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
@@ -29,12 +29,6 @@ def payload_from_positions(left_joystick_x, left_joystick_y, right_joystick_x, r
     return payload
 
 
-def send_payload(payload):
-    payload_encoded = base64.b64encode(payload).decode()                        # configure the payload
-    command = {"cmd": payload_encoded}                                          # configure the command for the payload
-    requests.post(DOTBOT_GATEWAY_URL, json=command)                             # send the request over HTTP
-
-
 def pos_from_joystick(joystick):
     pygame.event.pump()                     # queue needs to be pumped
     positions = []
@@ -50,7 +44,7 @@ def pos_from_joystick(joystick):
     return positions
 
 
-def start_joystick():
+def start(serial_port: str, serial_baudrate: int):
     print("Joystick here")
     pygame.init()                       # pygame initialization
     pygame.joystick.init()              # joysticks initialization
@@ -65,5 +59,5 @@ def start_joystick():
         # fetch positions from joystick
         pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
-        send_payload(payload)                                                           # send the payload
+        bc_serial.write(serial_port, serial_baudrate, payload)
         time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
