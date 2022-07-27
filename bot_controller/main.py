@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from bot_controller import joystick, server
+from bot_controller import joystick, keyboard, server
 
 
 SERIAL_PORT_DEFAULT     = "/dev/ttyACM0"
@@ -27,8 +27,7 @@ def main():
 
     try:
         if args.type == "keyboard":
-            sys.exit("KEYBOARD NOT YET IMPLEMENTED.\nExiting...")
-            #   TODO
+            keyboard.start(args.port, args.baudrate)
         elif args.type == "joystick":
             joystick.start(args.port, args.baudrate)
         elif args.type == 'server':

@@ -12,6 +12,7 @@ dependencies = [
     "pyserial   == 3.5",
     "bottle     == 0.12.21",
     "pygame     == 2.1.2",
+    "pynput     == 1.7.6",
     "requests   == 2.28.1",
 ]
 description = "Package to easily control your DotBot and Sail Boat with different controllers."
