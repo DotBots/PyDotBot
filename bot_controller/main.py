@@ -2,6 +2,9 @@
 
 import argparse
 import sys
+
+from importlib.metadata import version, PackageNotFoundError
+
 from bot_controller import joystick, keyboard, server
 
 
@@ -22,7 +25,11 @@ def main():
     args = parser.parse_args()
 
     # welcome sentence
-    print("Welcome to BotController, the universal SailBot and DotBot controller.")
+    try:
+        package_version = version("bot_controller")
+    except PackageNotFoundError:
+        package_version = "unknown"
+    print(f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller.")
     sys.stdout.flush()
 
     try:
