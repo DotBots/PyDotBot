@@ -27,7 +27,8 @@ def main():
 
     try:
         if args.type == "keyboard":
-            keyboard.start(args.port, args.baudrate)
+            controller = keyboard.KeyboardController(args.port, args.baudrate)
+            controller.start()
         elif args.type == "joystick":
             joystick.start(args.port, args.baudrate)
         elif args.type == 'server':
