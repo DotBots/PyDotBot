@@ -44,7 +44,6 @@ def pos_from_joystick(joystick):
 
 
 def start(serial_port: str, serial_baudrate: int):
-    print("Joystick here")
     pygame.init()                       # pygame initialization
     pygame.joystick.init()              # joysticks initialization
     if pygame.joystick.get_count() == 0:
