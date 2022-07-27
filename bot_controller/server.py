@@ -1,7 +1,7 @@
 import base64
 import os
 from bottle import run, post, request
-import bc_serial
+from bot_controller import bc_serial
 
 
 # Examples curl -X POST -s -d '{"cmd": "aGVsbG8K"}' -H "Content-Type: application/json" http://localhost:8080/dotbot

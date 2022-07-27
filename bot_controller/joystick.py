@@ -4,7 +4,7 @@ import sys
 import time
 from enum import Enum
 import pygame
-import bc_serial
+from bot_controller import bc_serial
 
 
 DOTBOT_GATEWAY_URL          = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")

@@ -2,8 +2,8 @@
 
 import argparse
 import sys
-import joystick
-import server
+from bot_controller import joystick
+from bot_controller import server
 
 
 JOYSTICK_AXIS_COUNT     = 4
@@ -30,7 +30,7 @@ def main():
 
     try:
         if args.type == "keyboard":
-            sys.exit("KEYBOARD NOT YET IMPLEMENTED.\nExisting...")
+            sys.exit("KEYBOARD NOT YET IMPLEMENTED.\nExiting...")
             #   TODO
         elif args.type == "joystick":
             joystick.start(args.port, args.baudrate)
