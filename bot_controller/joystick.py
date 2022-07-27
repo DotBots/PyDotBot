@@ -4,6 +4,8 @@ import sys
 import time
 from enum import Enum
 import pygame
+
+from bot_controller.protocol import Command, PROTOCOL_VERSION
 from bot_controller import bc_serial
 
 
@@ -12,14 +14,9 @@ JOYSTICK_AXIS_COUNT         = 4
 REFRESH_PERIOD              = 0.05
 
 
-class Command(Enum):
-    MOVE_RAW    = 0
-    RGB_LED     = 1
-
-
 def payload_from_positions(left_joystick_x, left_joystick_y, right_joystick_x, right_joystick_y):
     payload  = bytearray()                                                      # init payload
-    payload += (0).to_bytes(1, 'little')                                        # version 0
+    payload += (PROTOCOL_VERSION).to_bytes(1, 'little')                         # protocol version
     payload += int(Command.MOVE_RAW.value).to_bytes(1, 'little')                # command type (move)
     payload += int(left_joystick_x).to_bytes(1, 'little', signed=True)          # left_x
     payload += int(left_joystick_y).to_bytes(1, 'little', signed=True)          # left_y
