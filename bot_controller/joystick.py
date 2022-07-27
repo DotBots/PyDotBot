@@ -59,5 +59,5 @@ def start(serial_port: str, serial_baudrate: int):
         # fetch positions from joystick
         pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = pos_from_joystick(ps4)
         payload = payload_from_positions(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)        # configure the payload
-        bc_serial.write(serial_port, serial_baudrate, payload)
+        bc_serial.write(serial_port, serial_baudrate, payload)                          # write via serial
         time.sleep(REFRESH_PERIOD)                                                      # 50ms delay between each update
