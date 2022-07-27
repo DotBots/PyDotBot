@@ -7,7 +7,6 @@ import pygame
 from bot_controller import bc_serial
 
 
-DOTBOT_GATEWAY_URL          = os.getenv("DOTBOT_GATEWAY_URL", "http://127.0.0.1:8080/dotbot")
 JOYSTICK_HYSTERERIS_THRES   = 0.09
 JOYSTICK_AXIS_COUNT         = 4
 REFRESH_PERIOD              = 0.05
