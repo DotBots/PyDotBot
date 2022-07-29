@@ -31,9 +31,9 @@ class JoystickController(ControllerBase):
         if num_axes < JOYSTICK_AXIS_COUNT:
             sys.exit(f"Not enough axes on your joystick. {num_axes} found, expected at least {JOYSTICK_AXIS_COUNT}.")
 
-    def payload_from_positions(left_joystick_x, left_joystick_y, right_joystick_x, right_joystick_y):
+    def payload_from_positions(self, left_joystick_x, left_joystick_y, right_joystick_x, right_joystick_y):
         payload  = bytearray()                                                      # init payload
-        payload += (PROTOCOL_VERSION).to_bytes(1, 'little')                         # protocol version
+        payload += PROTOCOL_VERSION.to_bytes(1, 'little')                           # protocol version
         payload += int(Command.MOVE_RAW.value).to_bytes(1, 'little')                # command type (move)
         payload += int(left_joystick_x).to_bytes(1, 'little', signed=True)          # left_x
         payload += int(left_joystick_y).to_bytes(1, 'little', signed=True)          # left_y

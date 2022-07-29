@@ -1,6 +1,5 @@
 import base64
 from bottle import Bottle, Route, run, request
-from bot_controller import bc_serial
 from bot_controller.controller import ControllerBase
 
 

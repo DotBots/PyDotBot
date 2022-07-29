@@ -5,7 +5,6 @@ from enum import Enum
 from pynput import keyboard
 
 from bot_controller.protocol import Command, PROTOCOL_VERSION
-from bot_controller import bc_serial
 from bot_controller.controller import ControllerBase
 
 
@@ -54,7 +53,7 @@ class KeyboardController(ControllerBase):
         if hasattr(key, "char") and key.char in COLOR_KEYS:
             r, g, b = rgb_from_key(key.char)
             payload = bytearray()
-            payload += (PROTOCOL_VERSION).to_bytes(1, 'little')
+            payload += PROTOCOL_VERSION.to_bytes(1, 'little')
             payload += int(Command.RGB_LED.value).to_bytes(1, 'little')
             payload += int(r).to_bytes(1, 'little')
             payload += int(g).to_bytes(1, 'little')
@@ -99,7 +98,7 @@ class KeyboardController(ControllerBase):
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
             payload = bytearray()
-            payload += (PROTOCOL_VERSION).to_bytes(1, 'little')
+            payload += PROTOCOL_VERSION.to_bytes(1, 'little')
             payload += int(Command.MOVE_RAW.value).to_bytes(1, 'little')
             payload += (0).to_bytes(1, 'little', signed=True)
             payload += int(left_speed).to_bytes(1, 'little', signed=True)
