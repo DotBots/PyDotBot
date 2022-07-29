@@ -4,6 +4,9 @@ import argparse
 import sys
 
 from importlib.metadata import version, PackageNotFoundError
+
+import serial
+
 from bot_controller.factory import controller_factory, ControllerException
 
 
@@ -35,6 +38,8 @@ def main():
         controller.start()
     except ControllerException:
         sys.exit("Invalid controller type.")
+    except serial.serialutil.SerialException as exc:
+        sys.exit(f"Serial error: {exc}")
     except KeyboardInterrupt:
         sys.exit("Exiting")
 
