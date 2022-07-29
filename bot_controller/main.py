@@ -38,7 +38,8 @@ def main():
         elif args.type == "joystick":
             joystick.start(args.port, args.baudrate)
         elif args.type == 'server':
-            server.start()
+            controller = server.ServerController(args.port, args.baudrate)
+            controller.start()
         else:
             sys.exit("Invalid controller type.")
     except KeyboardInterrupt:

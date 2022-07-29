@@ -1,6 +1,5 @@
 import base64
-import os
-from bottle import run, post, request
+from bottle import Bottle, Route, run, request
 from bot_controller import bc_serial
 
 
@@ -9,19 +8,20 @@ from bot_controller import bc_serial
 # http://localhost:8080/dotbot
 
 
-GW_TTY_PORT = os.getenv("GW_TTY_PORT", "/dev/ttyACM0")
-GW_TTY_BAUDRATE = int(os.getenv("GW_TTY_BAUDRATE", 1000000))
+class ServerController:
 
+    def __init__(self, port: str, baudrate: int):
+        self.port = port
+        self.baudrate = baudrate
+        self.active_keys = []
+        self.app = Bottle()
+        self.app.add_route(
+            Route(self.app, "/dotbot", "POST", self.dotbot)
+        )
 
-@post('/dotbot')
-def dotbot():
-    message = base64.b64decode(request.json["cmd"])
-    bc_serial.write(GW_TTY_PORT, GW_TTY_BAUDRATE, message)
+    def dotbot(self):
+        message = base64.b64decode(request.json["cmd"])
+        bc_serial.write(self.port, self.baudrate, message)
 
-
-def start():
-    run(host='0.0.0.0', port=8080)
-
-
-if __name__ == "__main__":
-    start()
+    def start(self):
+        run(self.app, host='0.0.0.0', port=8080)
