@@ -6,6 +6,7 @@ from pynput import keyboard
 
 from bot_controller.protocol import Command, PROTOCOL_VERSION
 from bot_controller import bc_serial
+from bot_controller.controller import ControllerBase
 
 
 DIR_KEYS = [
@@ -40,7 +41,7 @@ def rgb_from_key(key):
         return 0, 0, 0
 
 
-class KeyboardController:
+class KeyboardController(ControllerBase):
 
     def __init__(self, port: str, baudrate: int):
         self.port = port
@@ -58,7 +59,7 @@ class KeyboardController:
             payload += int(r).to_bytes(1, 'little')
             payload += int(g).to_bytes(1, 'little')
             payload += int(b).to_bytes(1, 'little')
-            bc_serial.write(self.port, self.baudrate, payload)
+            self.write(payload)
             return
         self.active_keys.append(key)
 
@@ -104,5 +105,5 @@ class KeyboardController:
             payload += int(left_speed).to_bytes(1, 'little', signed=True)
             payload += (0).to_bytes(1, 'little', signed=True)
             payload += int(right_speed).to_bytes(1, 'little', signed=True)
-            bc_serial.write(self.port, self.baudrate, payload)
+            self.write(payload)
             time.sleep(0.05)

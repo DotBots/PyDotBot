@@ -4,8 +4,7 @@ import argparse
 import sys
 
 from importlib.metadata import version, PackageNotFoundError
-
-from bot_controller import joystick, keyboard, server
+from bot_controller.factory import controller_factory, ControllerException
 
 
 SERIAL_PORT_DEFAULT     = "/dev/ttyACM0"
@@ -32,16 +31,10 @@ def main():
     print(f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller.")
 
     try:
-        if args.type == "keyboard":
-            controller = keyboard.KeyboardController(args.port, args.baudrate)
-            controller.start()
-        elif args.type == "joystick":
-            joystick.start(args.port, args.baudrate)
-        elif args.type == 'server':
-            controller = server.ServerController(args.port, args.baudrate)
-            controller.start()
-        else:
-            sys.exit("Invalid controller type.")
+        controller = controller_factory(args.type)(args.port, args.baudrate)
+        controller.start()
+    except ControllerException:
+        sys.exit("Invalid controller type.")
     except KeyboardInterrupt:
         sys.exit("Exiting")
 
