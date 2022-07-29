@@ -9,7 +9,7 @@ from bot_controller import joystick, keyboard, server
 
 
 SERIAL_PORT_DEFAULT     = "/dev/ttyACM0"
-SERIAL_BAUDRATE_DEFAULT = 115200
+SERIAL_BAUDRATE_DEFAULT = 1000000
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 
 
@@ -20,7 +20,7 @@ def main():
     parser.add_argument('-p', '--port',
                         help='Linux users: path to port in "/dev" folder ; Windows users: COM port. Defaults to "/dev/ttyACM0"',
                         type=str, default=SERIAL_PORT_DEFAULT)
-    parser.add_argument('-b', '--baudrate', help='Serial baudrate. Defaults to 115200',
+    parser.add_argument('-b', '--baudrate', help='Serial baudrate. Defaults to 1000000',
                         type=int, default=SERIAL_BAUDRATE_DEFAULT)
     args = parser.parse_args()
 

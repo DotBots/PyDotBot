@@ -10,7 +10,7 @@ from bot_controller import bc_serial
 
 
 GW_TTY_PORT = os.getenv("GW_TTY_PORT", "/dev/ttyACM0")
-GW_TTY_BAUDRATE = int(os.getenv("GW_TTY_BAUDRATE", 115200))
+GW_TTY_BAUDRATE = int(os.getenv("GW_TTY_BAUDRATE", 1000000))
 
 
 @post('/dotbot')
