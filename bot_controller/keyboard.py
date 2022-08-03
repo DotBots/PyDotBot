@@ -46,6 +46,7 @@ class KeyboardController(ControllerBase):
         self.port = port
         self.baudrate = baudrate
         self.active_keys = []
+        self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
 
     def on_press(self, key):
         if key in self.active_keys:
@@ -93,8 +94,7 @@ class KeyboardController(ControllerBase):
         return 0, 0
 
     def start(self):
-        listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
-        listener.start()
+        self.listener.start()
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
             payload = bytearray()
