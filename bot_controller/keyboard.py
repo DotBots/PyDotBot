@@ -42,9 +42,7 @@ def rgb_from_key(key):
 
 class KeyboardController(ControllerBase):
 
-    def __init__(self, port: str, baudrate: int):
-        self.port = port
-        self.baudrate = baudrate
+    def init(self):
         self.active_keys = []
         self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
 

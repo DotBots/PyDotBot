@@ -18,9 +18,7 @@ REFRESH_PERIOD              = 0.05
 
 class JoystickController(ControllerBase):
 
-    def __init__(self, port: str, baudrate: int):
-        self.port = port
-        self.baudrate = baudrate
+    def init(self):
         pygame.init()                       # pygame initialization
         pygame.joystick.init()              # joysticks initialization
         if pygame.joystick.get_count() == 0:

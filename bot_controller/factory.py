@@ -7,12 +7,12 @@ class ControllerException(Exception):
     ...
 
 
-def controller_factory(type_):
+def controller_factory(type_, port, baudrate):
     if type_ == "keyboard":
-        return KeyboardController
+        return KeyboardController(port, baudrate)
     elif type_ == "joystick":
-        return JoystickController
+        return JoystickController(port, baudrate)
     elif type_ == "server":
-        return ServerController
+        return ServerController(port, baudrate)
     else:
         raise ControllerException("Invalid controller")

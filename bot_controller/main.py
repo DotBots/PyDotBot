@@ -34,7 +34,7 @@ def main():
     print(f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller.")
 
     try:
-        controller = controller_factory(args.type)(args.port, args.baudrate)
+        controller = controller_factory(args.type, args.port, args.baudrate)
         controller.start()
     except ControllerException:
         sys.exit("Invalid controller type.")

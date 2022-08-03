@@ -10,9 +10,7 @@ from bot_controller.controller import ControllerBase
 
 class ServerController(ControllerBase):
 
-    def __init__(self, port: str, baudrate: int):
-        self.port = port
-        self.baudrate = baudrate
+    def init(self):
         self.active_keys = []
         self.app = Bottle()
         self.app.add_route(
