@@ -3,7 +3,7 @@ requires = ["hatchling>=1.4.1"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bot-controller 0.2"
+name = "dotbot-controller"
 version = "0.2"
 authors = [
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
