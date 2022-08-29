@@ -30,4 +30,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/BotController-python/issues"
 
 [project.scripts]
-bot-controller = "bot_controller.main:main"
+dotbot-controller = "bot_controller.main:main"
