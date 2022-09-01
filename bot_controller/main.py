@@ -28,7 +28,7 @@ def main():
 
     # welcome sentence
     try:
-        package_version = version("bot_controller")
+        package_version = version("dotbot_controller")
     except PackageNotFoundError:
         package_version = "unknown"
     print(f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller.")
