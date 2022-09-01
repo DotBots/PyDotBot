@@ -20,7 +20,7 @@ dependencies = [
 ]
 description = "Package to easily control your DotBot and Sail Boat with different controllers."
 readme = "README.md"
-license = "MIT"
+license = { text="MIT" }
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
