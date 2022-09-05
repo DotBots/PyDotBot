@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+    pull_request:
+      branches:
+      - develop
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.8', '3.9', '3.10']
+
+    steps:
+    - uses: actions/checkout@master
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade black build flake8 pip setuptools twine wheel
+    - name: Check style
+      run: |
+        flake8
+        black --check --diff .
+    - name: Build a package tarball
+      if: matrix.python-version == '3.10'
+      run: python -m build -n
+    - name: Check package
+      if: matrix.python-version == '3.10'
+      run: twine check dist/*
+    - name: Publish package to TestPyPI
+      uses: pypa/gh-action-pypi-publish@master
+      if: >-
+        matrix.python-version == '3.10' &&
+        github.event_name == 'push' &&
+        startsWith(github.event.ref, 'refs/tags')
+      with:
+        user: __token__
+        password: ${{ secrets.test_pypi_password }}
+        repository_url: https://test.pypi.org/legacy/
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@master
+      if: >-
+        matrix.python-version == '3.10' &&
+        github.event_name == 'push' &&
+        startsWith(github.event.ref, 'refs/tags')
+      with:
+        user: __token__
+        password: ${{ secrets.pypi_password }}
