@@ -41,10 +41,11 @@ def rgb_from_key(key):
 
 
 class KeyboardController(ControllerBase):
-
     def init(self):
         self.active_keys = []
-        self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
+        self.listener = keyboard.Listener(
+            on_press=self.on_press, on_release=self.on_release
+        )
 
     def on_press(self, key):
         if key in self.active_keys:
@@ -52,11 +53,11 @@ class KeyboardController(ControllerBase):
         if hasattr(key, "char") and key.char in COLOR_KEYS:
             r, g, b = rgb_from_key(key.char)
             payload = bytearray()
-            payload += PROTOCOL_VERSION.to_bytes(1, 'little')
-            payload += int(Command.RGB_LED.value).to_bytes(1, 'little')
-            payload += int(r).to_bytes(1, 'little')
-            payload += int(g).to_bytes(1, 'little')
-            payload += int(b).to_bytes(1, 'little')
+            payload += PROTOCOL_VERSION.to_bytes(1, "little")
+            payload += int(Command.RGB_LED.value).to_bytes(1, "little")
+            payload += int(r).to_bytes(1, "little")
+            payload += int(g).to_bytes(1, "little")
+            payload += int(b).to_bytes(1, "little")
             self.write(payload)
             return
         self.active_keys.append(key)
@@ -73,13 +74,25 @@ class KeyboardController(ControllerBase):
                 speed = MotorSpeeds.BOOST
                 if keyboard.Key.alt in self.active_keys:
                     speed = MotorSpeeds.SUPERBOOST
-            if keyboard.Key.up in self.active_keys and keyboard.Key.left in self.active_keys:
+            if (
+                keyboard.Key.up in self.active_keys
+                and keyboard.Key.left in self.active_keys
+            ):
                 return speed.value * 0.75, speed.value
-            elif keyboard.Key.up in self.active_keys and keyboard.Key.right in self.active_keys:
+            elif (
+                keyboard.Key.up in self.active_keys
+                and keyboard.Key.right in self.active_keys
+            ):
                 return speed.value, speed.value * 0.75
-            elif keyboard.Key.down in self.active_keys and keyboard.Key.left in self.active_keys:
+            elif (
+                keyboard.Key.down in self.active_keys
+                and keyboard.Key.left in self.active_keys
+            ):
                 return -speed.value * 0.75, -speed.value
-            elif keyboard.Key.down in self.active_keys and keyboard.Key.right in self.active_keys:
+            elif (
+                keyboard.Key.down in self.active_keys
+                and keyboard.Key.right in self.active_keys
+            ):
                 return -speed.value, -speed.value * 0.75
             elif keyboard.Key.up in self.active_keys:
                 return speed.value, speed.value
@@ -96,11 +109,11 @@ class KeyboardController(ControllerBase):
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
             payload = bytearray()
-            payload += PROTOCOL_VERSION.to_bytes(1, 'little')
-            payload += int(Command.MOVE_RAW.value).to_bytes(1, 'little')
-            payload += (0).to_bytes(1, 'little', signed=True)
-            payload += int(left_speed).to_bytes(1, 'little', signed=True)
-            payload += (0).to_bytes(1, 'little', signed=True)
-            payload += int(right_speed).to_bytes(1, 'little', signed=True)
+            payload += PROTOCOL_VERSION.to_bytes(1, "little")
+            payload += int(Command.MOVE_RAW.value).to_bytes(1, "little")
+            payload += (0).to_bytes(1, "little", signed=True)
+            payload += int(left_speed).to_bytes(1, "little", signed=True)
+            payload += (0).to_bytes(1, "little", signed=True)
+            payload += int(right_speed).to_bytes(1, "little", signed=True)
             self.write(payload)
             time.sleep(0.05)

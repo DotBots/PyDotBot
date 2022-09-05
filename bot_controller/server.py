@@ -9,16 +9,13 @@ from bot_controller.controller import ControllerBase
 
 
 class ServerController(ControllerBase):
-
     def init(self):
         self.active_keys = []
         self.app = Bottle()
-        self.app.add_route(
-            Route(self.app, "/dotbot", "POST", self.dotbot)
-        )
+        self.app.add_route(Route(self.app, "/dotbot", "POST", self.dotbot))
 
     def dotbot(self):
         self.write(base64.b64decode(request.json["cmd"]))
 
     def start(self):
-        run(self.app, host='0.0.0.0', port=8080)
+        run(self.app, host="0.0.0.0", port=8080)
