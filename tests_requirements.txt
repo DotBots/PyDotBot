@@ -3,6 +3,7 @@ build
 flake8
 pip
 pylint
+pytest
 setuptools
 twine
 wheel

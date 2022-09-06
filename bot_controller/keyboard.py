@@ -28,7 +28,27 @@ class MotorSpeeds(Enum):
 
 
 def rgb_from_key(key):
-    """Compute the RGB values from a key."""
+    """Compute the RGB values from a key.
+
+    >>> rgb_from_key("r")
+    [255, 0, 0]
+    >>> rgb_from_key("g")
+    [0, 255, 0]
+    >>> rgb_from_key("b")
+    [0, 0, 255]
+    >>> rgb_from_key("y")
+    [255, 255, 0]
+    >>> rgb_from_key("p")
+    [255, 0, 255]
+    >>> rgb_from_key("w")
+    [255, 255, 255]
+    >>> rgb_from_key("n")
+    [0, 0, 0]
+    >>> rgb_from_key("a")
+    [0, 0, 0]
+    >>> rgb_from_key("-")
+    [0, 0, 0]
+    """
     if key == "r":
         result = [255, 0, 0]
     elif key == "g":
