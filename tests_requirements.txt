@@ -1,9 +1,9 @@
 black
 build
 flake8
+hatchling
 pip
 pylint
 pytest
-setuptools
 twine
 wheel
