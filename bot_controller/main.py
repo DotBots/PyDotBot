@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Main module of the Dotbot controller command line tool."""
+
 import argparse
 import sys
 
@@ -16,6 +18,8 @@ CONTROLLER_TYPE_DEFAULT = "keyboard"
 
 
 def main():
+    """Main function."""
+
     parser = argparse.ArgumentParser(
         description="BotController, universal SailBot and DotBot controller"
     )

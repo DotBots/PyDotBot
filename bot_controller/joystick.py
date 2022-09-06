@@ -1,13 +1,15 @@
+"""Module implementing a joystick Dotbot controller."""
+
 import os
 import sys
 import time
+
 from bot_controller.controller import ControllerBase
+from bot_controller.protocol import Command, PROTOCOL_VERSION
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
-import pygame  # noqa: E402
-
-from bot_controller.protocol import Command, PROTOCOL_VERSION  # noqa: E402
+import pygame  # noqa: E402, pylint: disable=wrong-import-order, wrong-import-position
 
 
 JOYSTICK_HYSTERERIS_THRES = 0.09
@@ -16,7 +18,11 @@ REFRESH_PERIOD = 0.05
 
 
 class JoystickController(ControllerBase):
+    """A Dotbot controller for a joystick interface."""
+
     def init(self):
+        """Initialize the joystick controller."""
+        # pylint: disable=no-member
         pygame.init()  # pygame initialization
         pygame.joystick.init()  # joysticks initialization
         if pygame.joystick.get_count() == 0:
@@ -32,6 +38,7 @@ class JoystickController(ControllerBase):
     def payload_from_positions(
         self, left_joystick_x, left_joystick_y, right_joystick_x, right_joystick_y
     ):
+        """Computes and returns a payload in bytes from the joystick positions."""
         payload = bytearray()  # init payload
         payload += PROTOCOL_VERSION.to_bytes(1, "little")  # protocol version
         payload += int(Command.MOVE_RAW.value).to_bytes(
@@ -44,6 +51,7 @@ class JoystickController(ControllerBase):
         return payload
 
     def pos_from_joystick(self):
+        """Fetch positions of the joystick."""
         pygame.event.pump()  # queue needs to be pumped
         positions = []
         for axis_idx in range(JOYSTICK_AXIS_COUNT):
@@ -58,6 +66,7 @@ class JoystickController(ControllerBase):
         return positions
 
     def start(self):
+        """Starts to read continuously joystick positions."""
         while True:
             # fetch positions from joystick
             pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = self.pos_from_joystick()

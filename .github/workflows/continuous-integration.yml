@@ -26,10 +26,11 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade black build flake8 pip setuptools twine wheel
+        python -m pip install --upgrade black build flake8 pip pylint setuptools twine wheel
     - name: Check style
       run: |
         flake8
+        pylint bot_controller --rcfile=setup.cfg
         black --check --diff .
     - name: Build a package tarball
       if: matrix.python-version == '3.10'
