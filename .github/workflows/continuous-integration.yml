@@ -26,7 +26,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade black build flake8 pip pylint setuptools twine wheel
+        python -m pip install --upgrade --requirement tests_requirements.txt
     - name: Check style
       run: |
         flake8

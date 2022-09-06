@@ -1,0 +1,8 @@
+black
+build
+flake8
+pip
+pylint
+setuptools
+twine
+wheel
