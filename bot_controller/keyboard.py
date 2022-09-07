@@ -6,7 +6,7 @@ from enum import Enum
 
 from pynput import keyboard
 
-from bot_controller.protocol import Command, PROTOCOL_VERSION
+from bot_controller.protocol import move_raw_command, rgb_led_command
 from bot_controller.controller import ControllerBase
 
 
@@ -82,13 +82,7 @@ class KeyboardController(ControllerBase):
             return
         if hasattr(key, "char") and key.char in COLOR_KEYS:
             red, green, blue = rgb_from_key(key.char)
-            payload = bytearray()
-            payload += PROTOCOL_VERSION.to_bytes(1, "little")
-            payload += int(Command.RGB_LED.value).to_bytes(1, "little")
-            payload += int(red).to_bytes(1, "little")
-            payload += int(green).to_bytes(1, "little")
-            payload += int(blue).to_bytes(1, "little")
-            self.write(payload)
+            self.write(rgb_led_command(red, green, blue))
             return
         self.active_keys.append(key)
 
@@ -141,12 +135,5 @@ class KeyboardController(ControllerBase):
         self.listener.start()
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
-            payload = bytearray()
-            payload += PROTOCOL_VERSION.to_bytes(1, "little")
-            payload += int(Command.MOVE_RAW.value).to_bytes(1, "little")
-            payload += (0).to_bytes(1, "little", signed=True)
-            payload += int(left_speed).to_bytes(1, "little", signed=True)
-            payload += (0).to_bytes(1, "little", signed=True)
-            payload += int(right_speed).to_bytes(1, "little", signed=True)
-            self.write(payload)
+            self.write(move_raw_command(0, left_speed, 0, right_speed))
             time.sleep(0.05)

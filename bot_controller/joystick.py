@@ -5,7 +5,7 @@ import sys
 import time
 
 from bot_controller.controller import ControllerBase
-from bot_controller.protocol import Command, PROTOCOL_VERSION
+from bot_controller.protocol import move_raw_command
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -35,21 +35,6 @@ class JoystickController(ControllerBase):
                 f"Not enough axes on your joystick. {num_axes} found, expected at least {JOYSTICK_AXIS_COUNT}."
             )
 
-    def payload_from_positions(
-        self, left_joystick_x, left_joystick_y, right_joystick_x, right_joystick_y
-    ):
-        """Computes and returns a payload in bytes from the joystick positions."""
-        payload = bytearray()  # init payload
-        payload += PROTOCOL_VERSION.to_bytes(1, "little")  # protocol version
-        payload += int(Command.MOVE_RAW.value).to_bytes(
-            1, "little"
-        )  # command type (move)
-        payload += int(left_joystick_x).to_bytes(1, "little", signed=True)  # left_x
-        payload += int(left_joystick_y).to_bytes(1, "little", signed=True)  # left_y
-        payload += int(right_joystick_x).to_bytes(1, "little", signed=True)  # right_x
-        payload += int(right_joystick_y).to_bytes(1, "little", signed=True)  # right_y
-        return payload
-
     def pos_from_joystick(self):
         """Fetch positions of the joystick."""
         pygame.event.pump()  # queue needs to be pumped
@@ -70,8 +55,6 @@ class JoystickController(ControllerBase):
         while True:
             # fetch positions from joystick
             pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = self.pos_from_joystick()
-            payload = self.payload_from_positions(
-                pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y
-            )  # configure the payload
-            self.write(payload)  # write via serial
+            command = move_raw_command(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)
+            self.write(command)  # write via serial
             time.sleep(REFRESH_PERIOD)  # 50ms delay between each update
