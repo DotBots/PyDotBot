@@ -5,5 +5,6 @@ hatchling
 pip
 pylint
 pytest
+pytest-cov
 twine
 wheel

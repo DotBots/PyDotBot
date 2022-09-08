@@ -6,3 +6,4 @@
 *.gz
 *.whl
 *.egg-info/
+.coverage
