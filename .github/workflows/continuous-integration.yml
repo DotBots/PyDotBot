@@ -10,10 +10,6 @@ on:
     tags:
       - '*'
 
-# pynput doesn't if DISPLAY is not set
-env:
-  DISPLAY: ":0"
-
 jobs:
   build:
     runs-on: self-hosted
@@ -33,12 +29,16 @@ jobs:
         python -m pip install --upgrade --requirement tests_requirements.txt
         python -m pip install --upgrade .
     - name: Run tests
-      run: pytest
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: pytest
     - name: Check style
-      run: |
-        flake8
-        pylint bot_controller --rcfile=setup.cfg
-        black --check --diff .
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: |
+          flake8
+          pylint bot_controller --rcfile=setup.cfg
+          black --check --diff .
     - name: Build a package tarball
       if: matrix.python-version == '3.10'
       run: python -m build -n
