@@ -6,5 +6,6 @@ pip
 pylint
 pytest
 pytest-cov
+setuptools
 twine
 wheel
