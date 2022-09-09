@@ -4,7 +4,14 @@ import time
 
 from enum import Enum
 
-from pynput import keyboard
+try:
+    from pynput import keyboard
+except ImportError:
+    # On the CI, pynput cannot be imported because of missing X server. Mock
+    # the pynput keyboard instead
+    from unittest import mock
+
+    keyboard = mock.MagicMock()
 
 from bot_controller.protocol import move_raw_command, rgb_led_command
 from bot_controller.controller import ControllerBase
