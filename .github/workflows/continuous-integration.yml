@@ -10,6 +10,10 @@ on:
     tags:
       - '*'
 
+# pynput doesn't if DISPLAY is not set
+env:
+  DISPLAY: ":0"
+
 jobs:
   build:
     runs-on: self-hosted
