@@ -1,5 +1,8 @@
 """Module implementing HDLC protocol primitives."""
 
+from enum import Enum
+
+
 HDLC_FLAG = 0x7E
 HDLC_FLAG_ESCAPED = 0x5E
 HDLC_ESCAPE = 0x7D
@@ -54,6 +57,10 @@ def _fcs_update(fcs, byte):
     return (fcs >> 8) ^ FCS16TAB[((fcs ^ byte) & 0xFF)]
 
 
+def _to_byte(value):
+    return int(value).to_bytes(1, "little")
+
+
 def hdlc_encode(payload: bytes) -> bytes:
     """Encodes a payload in an HDLC frame.
 
@@ -77,24 +84,24 @@ def hdlc_encode(payload: bytes) -> bytes:
     fcs = HDLC_FCS_INIT
 
     # add start flag
-    hdlc_frame += HDLC_FLAG.to_bytes(1, "little")
+    hdlc_frame += _to_byte(HDLC_FLAG)
 
     # write payload in frame
     for byte in payload:
         fcs = _fcs_update(fcs, byte)
         if byte == HDLC_ESCAPE:
-            hdlc_frame += int(HDLC_ESCAPE).to_bytes(1, "little")
-            hdlc_frame += int(HDLC_ESCAPE_ESCAPED).to_bytes(1, "little")
+            hdlc_frame += _to_byte(HDLC_ESCAPE)
+            hdlc_frame += _to_byte(HDLC_ESCAPE_ESCAPED)
         elif byte == HDLC_FLAG:
-            hdlc_frame += int(HDLC_ESCAPE).to_bytes(1, "little")
-            hdlc_frame += int(HDLC_FLAG_ESCAPED).to_bytes(1, "little")
+            hdlc_frame += _to_byte(HDLC_ESCAPE)
+            hdlc_frame += _to_byte(HDLC_FLAG_ESCAPED)
         else:
-            hdlc_frame += int(byte).to_bytes(1, "little")
+            hdlc_frame += _to_byte(byte)
     fcs = 0xFFFF - fcs
 
     # add FCS
-    hdlc_frame += int(fcs & 0xFF).to_bytes(1, "little")
-    hdlc_frame += int((fcs & 0xFF00) >> 8).to_bytes(1, "little")
+    hdlc_frame += _to_byte(fcs & 0xFF)
+    hdlc_frame += _to_byte((fcs & 0xFF00) >> 8)
 
     # add end flag
     hdlc_frame += HDLC_FLAG.to_bytes(1, "little")
@@ -132,17 +139,57 @@ def hdlc_decode(frame: bytes) -> bytes:
             escape_byte = True
         elif escape_byte is True:
             if byte == HDLC_ESCAPE_ESCAPED:
-                output += int(HDLC_ESCAPE).to_bytes(1, "little")
+                output += _to_byte(HDLC_ESCAPE)
                 fcs = _fcs_update(fcs, HDLC_ESCAPE)
             elif byte == HDLC_FLAG_ESCAPED:
-                output += int(HDLC_FLAG).to_bytes(1, "little")
+                output += _to_byte(HDLC_FLAG)
                 fcs = _fcs_update(fcs, HDLC_FLAG)
             escape_byte = False
         else:
-            output += int(byte).to_bytes(1, "little")
+            output += _to_byte(byte)
             fcs = _fcs_update(fcs, byte)
     if len(output) < 2:
         raise HDLCDecodeException("Payload too short")
     if fcs != HDLC_FCS_OK:
         raise HDLCDecodeException("Invalid FCS")
     return output[:-2]
+
+
+class HDLCState(Enum):
+    """State of the HDLC handler."""
+
+    IDLE = 0
+    RECEIVING = 1
+    READY = 2
+
+
+class HDLCHandler:
+    """Handles the reception of an HDLC frame byte by byte."""
+
+    def __init__(self):
+        self.state = HDLCState.IDLE
+        self.frame = bytearray()
+
+    def handle_byte(self, byte):
+        """Handle new byte received."""
+        if self.state == HDLCState.READY:
+            return
+        if self.state == HDLCState.IDLE and byte == HDLC_FLAG:
+            # New frame coming
+            self.frame = _to_byte(HDLC_FLAG)
+            self.state = HDLCState.RECEIVING
+        elif self.state == HDLCState.RECEIVING and byte == HDLC_FLAG:
+            # End of frame
+            self.frame += _to_byte(HDLC_FLAG)
+            self.state = HDLCState.READY
+        else:
+            # Middle of the frame
+            self.frame += _to_byte(byte)
+
+    def decode(self):
+        """Decode the received frame."""
+        if self.state != HDLCState.READY:
+            raise HDLCDecodeException("Incomplete HDLC frame")
+        payload = hdlc_decode(self.frame)
+        self.state = HDLCState.IDLE
+        return payload
