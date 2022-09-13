@@ -4,8 +4,9 @@ HDLC_FLAG = 0x7E
 HDLC_FLAG_ESCAPED = 0x5E
 HDLC_ESCAPE = 0x7D
 HDLC_ESCAPE_ESCAPED = 0x5D
-HDLC_CRCINIT = 0xFFFF
-HDLC_CRCGOOD = 0xF0B8
+HDLC_ESCAPE_MASK = 0x20
+HDLC_FCS_INIT = 0xFFFF
+HDLC_FCS_OK = 0xF0B8
 
 # fmt: off
 FCS16TAB = (
@@ -45,6 +46,10 @@ FCS16TAB = (
 # fmt: on
 
 
+class HDLCDecodeException(Exception):
+    """Exception raised when decoding wrong HDLC frames."""
+
+
 def _fcs_update(fcs, byte):
     return (fcs >> 8) ^ FCS16TAB[((fcs ^ byte) & 0xFF)]
 
@@ -69,7 +74,7 @@ def hdlc_encode(payload: bytes) -> bytes:
     hdlc_frame = bytearray()
 
     # initialize frame check sequence
-    fcs = HDLC_CRCINIT
+    fcs = HDLC_FCS_INIT
 
     # add start flag
     hdlc_frame += HDLC_FLAG.to_bytes(1, "little")
@@ -95,3 +100,49 @@ def hdlc_encode(payload: bytes) -> bytes:
     hdlc_frame += HDLC_FLAG.to_bytes(1, "little")
 
     return hdlc_frame
+
+
+def hdlc_decode(frame: bytes) -> bytes:
+    """Decodes an HDLC frame and return the payload it contains.
+
+    >>> hdlc_decode(b"~test\\x88\\x07~")
+    bytearray(b'test')
+    >>> hdlc_decode(b"~\\x00\\x00\\xf6\\xf6\\xf6\\xf6\\xb2+~")
+    bytearray(b'\\x00\\x00\\xf6\\xf6\\xf6\\xf6')
+    >>> hdlc_decode(b"~\\x00\\x01\\n\\n\\n\\x9c\\xf2~")
+    bytearray(b'\\x00\\x01\\n\\n\\n')
+    >>> hdlc_decode(b"~}^test}^\\x9d\\xa6~")
+    bytearray(b'~test~')
+    >>> hdlc_decode(b"~}^test}]\\x06\\x94~")
+    bytearray(b'~test}')
+    >>> hdlc_decode(b"~\\x00\\x00~")
+    bytearray(b'')
+    >>> hdlc_decode(b"~test\\x42\\x42~")
+    Traceback (most recent call last):
+    bot_controller.hdlc.HDLCDecodeException: Invalid FCS
+    >>> hdlc_decode(b"~\\x00~")
+    Traceback (most recent call last):
+    bot_controller.hdlc.HDLCDecodeException: Payload too short
+    """
+    output = bytearray()
+    fcs = HDLC_FCS_INIT
+    escape_byte = False
+    for byte in frame[1:-1]:
+        if byte == HDLC_ESCAPE:
+            escape_byte = True
+        elif escape_byte is True:
+            if byte == HDLC_ESCAPE_ESCAPED:
+                output += int(HDLC_ESCAPE).to_bytes(1, "little")
+                fcs = _fcs_update(fcs, HDLC_ESCAPE)
+            elif byte == HDLC_FLAG_ESCAPED:
+                output += int(HDLC_FLAG).to_bytes(1, "little")
+                fcs = _fcs_update(fcs, HDLC_FLAG)
+            escape_byte = False
+        else:
+            output += int(byte).to_bytes(1, "little")
+            fcs = _fcs_update(fcs, byte)
+    if len(output) < 2:
+        raise HDLCDecodeException("Payload too short")
+    if fcs != HDLC_FCS_OK:
+        raise HDLCDecodeException("Invalid FCS")
+    return output[:-2]
