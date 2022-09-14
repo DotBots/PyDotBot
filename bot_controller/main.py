@@ -9,7 +9,14 @@ from importlib.metadata import version, PackageNotFoundError
 
 import serial
 
-from bot_controller.factory import controller_factory, ControllerException
+from bot_controller.controller import (
+    controller_factory,
+    register_controller,
+    ControllerException,
+)
+from bot_controller.keyboard import KeyboardController
+from bot_controller.joystick import JoystickController
+from bot_controller.server import ServerController
 
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
@@ -55,6 +62,10 @@ def main():
     print(
         f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller."
     )
+
+    register_controller("keyboard", KeyboardController)
+    register_controller("joystick", JoystickController)
+    register_controller("server", ServerController)
 
     try:
         controller = controller_factory(args.type, args.port, args.baudrate)

@@ -2,7 +2,14 @@
 
 from unittest.mock import patch
 
-from bot_controller.controller import ControllerBase
+import pytest
+
+from bot_controller.controller import (
+    ControllerBase,
+    ControllerException,
+    controller_factory,
+    register_controller,
+)
 
 
 class ControllerTest(ControllerBase):
@@ -33,3 +40,15 @@ def test_controller(_, serial_write, capsys):
     assert serial_write.call_count == 2
     assert serial_write.call_args_list[0].args[0] == b"\x04"
     assert serial_write.call_args_list[1].args[0] == b"test"
+
+
+def test_controller_factory():
+    with pytest.raises(ControllerException) as exc:
+        controller_factory("test", "/dev/null", 115200)
+    assert str(exc.value) == "Invalid controller"
+
+    register_controller("test", ControllerTest)
+    controller = controller_factory("test", "/dev/null", 115200)
+    assert controller.__class__.__name__ == "ControllerTest"
+    assert controller.port == "/dev/null"
+    assert controller.baudrate == 115200
