@@ -10,6 +10,7 @@ from bot_controller.controller import (
     controller_factory,
     register_controller,
 )
+from bot_controller.hdlc import hdlc_encode
 
 
 class ControllerTest(ControllerBase):
@@ -37,9 +38,8 @@ def test_controller(_, serial_write, capsys):
     controller.start()
     assert "initialize controller" in capture.out
     controller.write(b"test")
-    assert serial_write.call_count == 2
-    assert serial_write.call_args_list[0].args[0] == b"\x04"
-    assert serial_write.call_args_list[1].args[0] == b"test"
+    assert serial_write.call_count == 1
+    assert serial_write.call_args_list[0].args[0] == hdlc_encode(b"test")
 
 
 def test_controller_factory():
