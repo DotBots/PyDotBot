@@ -12,7 +12,6 @@ import serial
 from bot_controller.controller import (
     controller_factory,
     register_controller,
-    ControllerException,
 )
 from bot_controller.keyboard import KeyboardController
 from bot_controller.joystick import JoystickController
@@ -22,6 +21,11 @@ from bot_controller.server import ServerController
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
 CONTROLLER_TYPE_DEFAULT = "keyboard"
+DEFAULT_CONTROLLERS = {
+    "keyboard": KeyboardController,
+    "joystick": JoystickController,
+    "server": ServerController,
+}
 
 
 @click.command()
@@ -46,7 +50,7 @@ CONTROLLER_TYPE_DEFAULT = "keyboard"
     default=SERIAL_BAUDRATE_DEFAULT,
     help=f"Serial baudrate. Defaults to {SERIAL_BAUDRATE_DEFAULT}",
 )
-def main(type, port, baudrate):
+def main(type, port, baudrate):  # pylint: disable=redefined-builtin
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
     try:
@@ -57,15 +61,11 @@ def main(type, port, baudrate):
         f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller."
     )
 
-    register_controller("keyboard", KeyboardController)
-    register_controller("joystick", JoystickController)
-    register_controller("server", ServerController)
-
+    for controller, controller_cls in DEFAULT_CONTROLLERS.items():
+        register_controller(controller, controller_cls)
     try:
         controller = controller_factory(type, port, baudrate)
         controller.start()
-    except ControllerException:
-        sys.exit("Invalid controller type.")
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except KeyboardInterrupt:
@@ -73,4 +73,4 @@ def main(type, port, baudrate):
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pragma: nocover, pylint: disable=no-value-for-parameter
