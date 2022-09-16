@@ -56,5 +56,5 @@ class JoystickController(ControllerBase):
             # fetch positions from joystick
             pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = self.pos_from_joystick()
             command = move_raw_command(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y)
-            self.write(command)  # write via serial
+            self.send_command(command)  # write via serial
             time.sleep(REFRESH_PERIOD)  # 50ms delay between each update
