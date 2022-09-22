@@ -173,17 +173,17 @@ class HDLCHandler:
         """Handle new byte received."""
         if self.state == HDLCState.READY:
             return
-        if self.state == HDLCState.IDLE and byte == HDLC_FLAG:
+        if self.state == HDLCState.IDLE and byte == _to_byte(HDLC_FLAG):
             # New frame coming
             self.frame = _to_byte(HDLC_FLAG)
             self.state = HDLCState.RECEIVING
-        elif self.state == HDLCState.RECEIVING and byte == HDLC_FLAG:
+        elif self.state == HDLCState.RECEIVING and byte == _to_byte(HDLC_FLAG):
             # End of frame
             self.frame += _to_byte(HDLC_FLAG)
             self.state = HDLCState.READY
         else:
             # Middle of the frame
-            self.frame += _to_byte(byte)
+            self.frame += byte
 
     def decode(self):
         """Decode the received frame."""
