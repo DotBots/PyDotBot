@@ -128,7 +128,7 @@ def hdlc_decode(frame: bytes) -> bytes:
     bot_controller.hdlc.HDLCDecodeException: Invalid FCS
     >>> hdlc_decode(b"~\\x00~")
     Traceback (most recent call last):
-    bot_controller.hdlc.HDLCDecodeException: Payload too short
+    bot_controller.hdlc.HDLCDecodeException: Invalid payload
     """
     output = bytearray()
     fcs = HDLC_FCS_INIT
@@ -148,7 +148,7 @@ def hdlc_decode(frame: bytes) -> bytes:
             output += _to_byte(byte)
             fcs = _fcs_update(fcs, byte)
     if len(output) < 2:
-        raise HDLCDecodeException("Payload too short")
+        raise HDLCDecodeException("Invalid payload")
     if fcs != HDLC_FCS_OK:
         raise HDLCDecodeException("Invalid FCS")
     return output[:-2]
@@ -189,6 +189,10 @@ class HDLCHandler:
         """Decode the received frame."""
         if self.state != HDLCState.READY:
             raise HDLCDecodeException("Incomplete HDLC frame")
-        payload = hdlc_decode(self.frame)
+        try:
+            payload = hdlc_decode(self.frame)
+        except HDLCDecodeException as exc:
+            print(exc)
+            payload = bytearray()
         self.state = HDLCState.IDLE
         return payload

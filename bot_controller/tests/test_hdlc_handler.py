@@ -38,21 +38,20 @@ def test_hdlc_handler_invalid_state():
     assert str(exc.value) == "Incomplete HDLC frame"
 
 
-def test_hdlc_handler_invalid_fcs():
+def test_hdlc_handler_invalid_fcs(capsys):
     handler = HDLCHandler()
     for byte in b"~test\x42\x42~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
+    handler.decode()
+    capture = capsys.readouterr()
+    assert capture.out.strip() == "Invalid FCS"
 
-    with pytest.raises(HDLCDecodeException) as exc:
-        handler.decode()
-    assert str(exc.value) == "Invalid FCS"
 
-
-def test_hdlc_handler_payload_too_short():
+def test_hdlc_handler_payload_too_short(capsys):
     handler = HDLCHandler()
     for byte in b"~~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
 
-    with pytest.raises(HDLCDecodeException) as exc:
-        handler.decode()
-    assert str(exc.value) == "Payload too short"
+    handler.decode()
+    capture = capsys.readouterr()
+    assert capture.out.strip() == "Invalid payload"
