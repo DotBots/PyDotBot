@@ -16,16 +16,30 @@ def test_hdlc_handler_states():
     assert handler.state == HDLCState.RECEIVING
     handler.handle_byte(b"~")
     assert handler.state == HDLCState.READY
-    # Can't handle byte when in ready state and the received frame has not been decoded
+    handler.handle_byte(b"~")
+    assert handler.state == HDLCState.RECEIVING
     handler.handle_byte(b"A")
-    assert handler.frame[-1].to_bytes(1, "little") == b"~"
+    handler.handle_byte(b"\xf5")
+    handler.handle_byte(b"\xa3")
+    assert handler.state == HDLCState.RECEIVING
+    handler.handle_byte(b"~")
+    assert handler.state == HDLCState.READY
 
 
 def test_hdlc_handler_decode():
     handler = HDLCHandler()
     for byte in b"~test\x88\x07~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
-    assert handler.decode() == b"test"
+    assert handler.payload == b"test"
+    assert handler.state == HDLCState.IDLE
+
+
+def test_hdlc_handler_decode_with_flags():
+    handler = HDLCHandler()
+    for byte in b"~}^test}]\x06\x94~":
+        handler.handle_byte(int(byte).to_bytes(1, "little"))
+    assert handler.state == HDLCState.READY
+    assert handler.payload == bytearray(b"~test}")
     assert handler.state == HDLCState.IDLE
 
 
@@ -34,7 +48,7 @@ def test_hdlc_handler_invalid_state():
     for byte in b"~test\x42\x42":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
     with pytest.raises(HDLCDecodeException) as exc:
-        handler.decode()
+        _ = handler.payload
     assert str(exc.value) == "Incomplete HDLC frame"
 
 
@@ -42,16 +56,17 @@ def test_hdlc_handler_invalid_fcs(capsys):
     handler = HDLCHandler()
     for byte in b"~test\x42\x42~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
-    handler.decode()
+    payload = handler.payload
     capture = capsys.readouterr()
+    assert payload == bytearray()
     assert capture.out.strip() == "Invalid FCS"
 
 
 def test_hdlc_handler_payload_too_short(capsys):
     handler = HDLCHandler()
-    for byte in b"~~":
+    for byte in b"~a~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
-
-    handler.decode()
+    payload = handler.payload
     capture = capsys.readouterr()
+    assert payload == bytearray()
     assert capture.out.strip() == "Invalid payload"
