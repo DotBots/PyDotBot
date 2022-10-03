@@ -167,7 +167,6 @@ class HDLCHandler:
 
     def __init__(self):
         self.state = HDLCState.IDLE
-        self.frame = bytearray()
         self.fcs = HDLC_FCS_INIT
         self.output = bytearray()
         self.escape_byte = False
@@ -197,7 +196,7 @@ class HDLCHandler:
         elif self.output and self.state == HDLCState.RECEIVING and byte == HDLC_FLAG:
             # End of frame
             self.state = HDLCState.READY
-        elif self.state == HDLCState.RECEIVING:
+        elif self.state == HDLCState.RECEIVING and byte != HDLC_FLAG:
             # Middle of the frame
             if byte == HDLC_ESCAPE:
                 self.escape_byte = True
@@ -212,5 +211,3 @@ class HDLCHandler:
             else:
                 self.output += byte
                 self.fcs = _fcs_update(self.fcs, byte)
-        else:
-            self.state = HDLCState.IDLE

@@ -24,6 +24,14 @@ def test_hdlc_handler_states():
     assert handler.state == HDLCState.RECEIVING
     handler.handle_byte(b"~")
     assert handler.state == HDLCState.READY
+    handler.handle_byte(b"~")
+    assert handler.state == HDLCState.RECEIVING
+    handler.handle_byte(b"~")
+    assert handler.output == bytearray()
+    assert handler.state == HDLCState.RECEIVING
+    handler.handle_byte(b"~")
+    assert handler.output == bytearray()
+    assert handler.state == HDLCState.RECEIVING
 
 
 def test_hdlc_handler_decode():
