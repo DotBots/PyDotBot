@@ -7,3 +7,4 @@
 *.whl
 *.egg-info/
 .coverage
+.tox/
