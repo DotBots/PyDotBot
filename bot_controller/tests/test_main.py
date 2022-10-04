@@ -21,6 +21,10 @@ Options:
                                   Windows users: COM port. Defaults to
                                   '/dev/ttyACM0'
   -b, --baudrate INTEGER          Serial baudrate. Defaults to 1000000
+  -d, --dotbot-address INTEGER    Address of the DotBot to control. Defaults to
+                                  0XFFFFFFFFFFFFFFFF
+  -g, --gw-address INTEGER        Gateway address. Defaults to
+                                  0X0000000000000000
   --help                          Show this message and exit.
 """
 

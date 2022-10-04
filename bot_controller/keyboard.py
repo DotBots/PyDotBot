@@ -89,7 +89,7 @@ class KeyboardController(ControllerBase):
             return
         if hasattr(key, "char") and key.char in COLOR_KEYS:
             red, green, blue = rgb_from_key(key.char)
-            self.write(rgb_led_command(red, green, blue))
+            self.send_command(rgb_led_command(red, green, blue))
             return
         self.active_keys.append(key)
 
@@ -142,5 +142,5 @@ class KeyboardController(ControllerBase):
         self.listener.start()
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
-            self.write(move_raw_command(0, left_speed, 0, right_speed))
+            self.send_command(move_raw_command(0, left_speed, 0, right_speed))
             time.sleep(0.05)

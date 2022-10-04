@@ -20,6 +20,8 @@ from bot_controller.server import ServerController
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
+DOTBOT_ADDRESS_DEFAULT = 0xFFFFFFFFFFFFFFFF  # Broadcast by default
+GATEWAY_ADDRESS_DEFAULT = 0x0000000000000000
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
@@ -50,7 +52,23 @@ DEFAULT_CONTROLLERS = {
     default=SERIAL_BAUDRATE_DEFAULT,
     help=f"Serial baudrate. Defaults to {SERIAL_BAUDRATE_DEFAULT}",
 )
-def main(type, port, baudrate):  # pylint: disable=redefined-builtin
+@click.option(
+    "-d",
+    "--dotbot-address",
+    type=int,
+    default=DOTBOT_ADDRESS_DEFAULT,
+    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:#0{18}X}",
+)
+@click.option(
+    "-g",
+    "--gw-address",
+    type=int,
+    default=GATEWAY_ADDRESS_DEFAULT,
+    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:#0{18}X}",
+)
+def main(
+    type, port, baudrate, dotbot_address, gw_address
+):  # pylint: disable=redefined-builtin
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
     try:
@@ -64,7 +82,9 @@ def main(type, port, baudrate):  # pylint: disable=redefined-builtin
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
     try:
-        controller = controller_factory(type, port, baudrate)
+        controller = controller_factory(
+            type, port, baudrate, dotbot_address, gw_address
+        )
         controller.start()
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")

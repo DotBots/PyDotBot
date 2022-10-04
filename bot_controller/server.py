@@ -21,7 +21,7 @@ class ServerController(ControllerBase):
 
     def dotbot(self):
         """Callback called for each HTTP POST event received on /dotbot."""
-        self.write(base64.b64decode(request.json["cmd"]))
+        self.send_command(base64.b64decode(request.json["cmd"]))
 
     def start(self):
         """Start the HTTP server."""
