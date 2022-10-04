@@ -20,8 +20,8 @@ from bot_controller.server import ServerController
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
-DOTBOT_ADDRESS_DEFAULT = 0xFFFFFFFF  # Broadcast by default
-GATEWAY_ADDRESS_DEFAULT = 0x00000000
+DOTBOT_ADDRESS_DEFAULT = 0xFFFFFFFFFFFFFFFF  # Broadcast by default
+GATEWAY_ADDRESS_DEFAULT = 0x0000000000000000
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
@@ -57,14 +57,14 @@ DEFAULT_CONTROLLERS = {
     "--dotbot-address",
     type=int,
     default=DOTBOT_ADDRESS_DEFAULT,
-    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:#0{10}X}",
+    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:#0{18}X}",
 )
 @click.option(
     "-g",
     "--gw-address",
     type=int,
     default=GATEWAY_ADDRESS_DEFAULT,
-    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:#0{10}X}",
+    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:#0{18}X}",
 )
 def main(
     type, port, baudrate, dotbot_address, gw_address

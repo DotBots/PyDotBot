@@ -15,13 +15,13 @@ class Command(Enum):
 def command_header(dst, src):
     """Returns the command header.
 
-    >>> command_header(0x11111111, 0x12121212)
-    bytearray(b'\\x01\\x11\\x11\\x11\\x11\\x12\\x12\\x12\\x12')
+    >>> command_header(0x1111111111111111, 0x1212121212121212)
+    bytearray(b'\\x11\\x11\\x11\\x11\\x11\\x11\\x11\\x11\\x12\\x12\\x12\\x12\\x12\\x12\\x12\\x12\\x01')
     """
     header = bytearray()
-    header += PROTOCOL_VERSION.to_bytes(1, "little")  # protocol version
-    header += int(dst).to_bytes(4, "little")
-    header += int(src).to_bytes(4, "little")
+    header += int(dst).to_bytes(8, "little")  # destination address
+    header += int(src).to_bytes(8, "little")  # source address
+    header += PROTOCOL_VERSION.to_bytes(1, "little")  # firmware version
     return header
 
 
