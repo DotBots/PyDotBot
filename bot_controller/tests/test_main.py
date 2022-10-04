@@ -42,9 +42,10 @@ def test_main_invalid_controller_type():
     assert result.exit_code != 0
 
 
+@patch("bot_controller.serial_interface.serial.Serial.open")
 @patch("bot_controller.main.version")
 @patch("bot_controller.keyboard.KeyboardController.start")
-def test_main(start, version):
+def test_main(start, version, _):
     version.return_value = "test"
     runner = CliRunner()
     result = runner.invoke(main)
@@ -64,8 +65,9 @@ def test_main(start, version):
     )
 
 
+@patch("bot_controller.serial_interface.serial.Serial.open")
 @patch("bot_controller.keyboard.KeyboardController.start")
-def test_main_interrupts(start):
+def test_main_interrupts(start, _):
     runner = CliRunner()
     start.side_effect = KeyboardInterrupt
     result = runner.invoke(main)
