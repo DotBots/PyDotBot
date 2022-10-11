@@ -11,7 +11,16 @@ from bot_controller.controller import (
     register_controller,
 )
 from bot_controller.hdlc import hdlc_encode
-from bot_controller.protocol import command_header
+from bot_controller.protocol import (
+    ProtocolPayload,
+    ProtocolPayloadHeader,
+    PROTOCOL_VERSION,
+)
+
+
+class ProtocolPayloadTest(ProtocolPayload):
+    def to_bytearray(self):
+        return b"test"
 
 
 class ControllerTest(ControllerBase):
@@ -32,29 +41,26 @@ class ControllerTest(ControllerBase):
 def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
 
-    controller = ControllerTest("/dev/null", "115200", 123, 456)
+    controller = ControllerTest("/dev/null", "115200", 123, 456, 78)
     capture = capsys.readouterr()
     controller.init()
     assert "initialize controller" in capture.out
     capture = capsys.readouterr()
     controller.start()
     assert "initialize controller" in capture.out
-    controller.send_command(b"test")
+    controller.send_payload(ProtocolPayloadTest())
     assert serial_write.call_count == 1
-    payload_expected = hdlc_encode(
-        command_header(controller.dotbot_address, controller.gw_address) + b"test"
-    )
+    payload_expected = hdlc_encode(b"test")
     assert serial_write.call_args_list[0].args[0] == payload_expected
 
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
 def test_controller_factory(_):
     with pytest.raises(ControllerException) as exc:
-        controller_factory("test", "/dev/null", 115200, 124, 456)
+        controller_factory("test", "/dev/null", 115200, 124, 456, 78)
     assert str(exc.value) == "Invalid controller"
 
     register_controller("test", ControllerTest)
-    controller = controller_factory("test", "/dev/null", 115200, 123, 456)
+    controller = controller_factory("test", "/dev/null", 115200, 123, 456, 78)
     assert controller.__class__.__name__ == "ControllerTest"
-    assert controller.dotbot_address == 123
-    assert controller.gw_address == 456
+    assert controller.header == ProtocolPayloadHeader(123, 456, 78, PROTOCOL_VERSION)

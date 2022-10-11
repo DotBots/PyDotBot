@@ -4,7 +4,11 @@ from abc import ABC, abstractmethod
 from binascii import hexlify
 
 from bot_controller.hdlc import HDLCHandler, HDLCState, hdlc_encode
-from bot_controller.protocol import command_header
+from bot_controller.protocol import (
+    ProtocolPayload,
+    ProtocolPayloadHeader,
+    PROTOCOL_VERSION,
+)
 from bot_controller.serial_interface import SerialInterface
 
 CONTROLLERS = {}
@@ -17,9 +21,14 @@ class ControllerException(Exception):
 class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
-    def __init__(self, port, baudrate, dotbot_address, gw_address):
-        self.dotbot_address = dotbot_address
-        self.gw_address = gw_address
+    def __init__(self, port, baudrate, dotbot_address, gw_address, swarm_id):
+        # pylint: disable=too-many-arguments
+        self.header = ProtocolPayloadHeader(
+            dotbot_address,
+            gw_address,
+            swarm_id,
+            PROTOCOL_VERSION,
+        )
         self.init()
         self.hdlc_handler = HDLCHandler()
         self.serial = SerialInterface(port, baudrate, self.on_byte_received)
@@ -40,11 +49,9 @@ class ControllerBase(ABC):
             if payload:
                 print(f"0x{hexlify(payload).upper().decode()}")
 
-    def send_command(self, command):
+    def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
-        payload = command_header(self.dotbot_address, self.gw_address)
-        payload += command
-        self.serial.write(hdlc_encode(payload))
+        self.serial.write(hdlc_encode(payload.to_bytearray()))
 
 
 def register_controller(type_, cls):
@@ -52,8 +59,9 @@ def register_controller(type_, cls):
     CONTROLLERS.update({type_: cls})
 
 
-def controller_factory(type_, port, baudrate, dotbot_address, gw_address):
+def controller_factory(type_, port, baudrate, dotbot_address, gw_address, swarm_id):
+    # pylint: disable=too-many-arguments
     """Returns an instance of a concrete Dotbot controller."""
     if type_ not in CONTROLLERS:
         raise ControllerException("Invalid controller")
-    return CONTROLLERS[type_](port, baudrate, dotbot_address, gw_address)
+    return CONTROLLERS[type_](port, baudrate, dotbot_address, gw_address, swarm_id)

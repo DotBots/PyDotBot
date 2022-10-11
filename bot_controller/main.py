@@ -22,6 +22,7 @@ SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
 DOTBOT_ADDRESS_DEFAULT = 0xFFFFFFFFFFFFFFFF  # Broadcast by default
 GATEWAY_ADDRESS_DEFAULT = 0x0000000000000000
+SWARM_ID_DEFAULT = 0x0000
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
@@ -66,9 +67,16 @@ DEFAULT_CONTROLLERS = {
     default=GATEWAY_ADDRESS_DEFAULT,
     help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:#0{18}X}",
 )
+@click.option(
+    "-s",
+    "--swarm-id",
+    type=int,
+    default=SWARM_ID_DEFAULT,
+    help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:#0{6}X}",
+)
 def main(
-    type, port, baudrate, dotbot_address, gw_address
-):  # pylint: disable=redefined-builtin
+    type, port, baudrate, dotbot_address, gw_address, swarm_id
+):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
     try:
@@ -83,7 +91,7 @@ def main(
         register_controller(controller, controller_cls)
     try:
         controller = controller_factory(
-            type, port, baudrate, dotbot_address, gw_address
+            type, port, baudrate, dotbot_address, gw_address, swarm_id
         )
         controller.start()
     except serial.serialutil.SerialException as exc:

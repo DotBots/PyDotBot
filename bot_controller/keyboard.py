@@ -13,7 +13,7 @@ except ImportError:
 
     keyboard = mock.MagicMock()
 
-from bot_controller.protocol import move_raw_command, rgb_led_command
+from bot_controller.protocol import ProtocolCommandMoveRaw, ProtocolCommandRgbLed
 from bot_controller.controller import ControllerBase
 
 
@@ -89,7 +89,7 @@ class KeyboardController(ControllerBase):
             return
         if hasattr(key, "char") and key.char in COLOR_KEYS:
             red, green, blue = rgb_from_key(key.char)
-            self.send_command(rgb_led_command(red, green, blue))
+            self.send_payload(ProtocolCommandRgbLed(self.header, red, green, blue))
             return
         self.active_keys.append(key)
 
@@ -142,5 +142,7 @@ class KeyboardController(ControllerBase):
         self.listener.start()
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
-            self.send_command(move_raw_command(0, left_speed, 0, right_speed))
+            self.send_payload(
+                ProtocolCommandMoveRaw(self.header, 0, left_speed, 0, right_speed)
+            )
             time.sleep(0.05)

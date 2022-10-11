@@ -25,6 +25,7 @@ Options:
                                   0XFFFFFFFFFFFFFFFF
   -g, --gw-address INTEGER        Gateway address. Defaults to
                                   0X0000000000000000
+  -s, --swarm-id INTEGER          Swarm ID. Defaults to 0X0000
   --help                          Show this message and exit.
 """
 
