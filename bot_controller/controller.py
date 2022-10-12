@@ -1,13 +1,14 @@
 """Interface of the Dotbot controller."""
 
 from abc import ABC, abstractmethod
-from binascii import hexlify
 
 from bot_controller.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from bot_controller.protocol import (
     ProtocolPayload,
     ProtocolPayloadHeader,
     PROTOCOL_VERSION,
+    ProtocolPayloadParserException,
+    ProtocolParser,
 )
 from bot_controller.serial_interface import SerialInterface
 
@@ -47,7 +48,10 @@ class ControllerBase(ABC):
         if self.hdlc_handler.state == HDLCState.READY:
             payload = self.hdlc_handler.payload
             if payload:
-                print(f"0x{hexlify(payload).upper().decode()}")
+                try:
+                    print(ProtocolParser(payload))
+                except ProtocolPayloadParserException:
+                    pass
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""

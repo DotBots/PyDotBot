@@ -6,7 +6,9 @@ from bot_controller.protocol import (
     ProtocolPayloadHeader,
     ProtocolCommandMoveRaw,
     ProtocolCommandRgbLed,
-    parse_payload,
+    ProtocolLh2RawLocation,
+    ProtocolLh2RawData,
+    ProtocolParser,
 )
 
 
@@ -39,6 +41,25 @@ from bot_controller.protocol import (
             id="RGBLed",
         ),
         pytest.param(
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
+            ProtocolLh2RawData(
+                ProtocolPayloadHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 1
+                ),
+                [
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                ],
+            ),
+            id="LH2RawData",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x01\x04",
             ValueError(),
             id="invalid payload",
@@ -50,13 +71,13 @@ from bot_controller.protocol import (
         ),
     ],
 )
-def test_parse_payload(payload, expected):
+def test_protocol_parser(payload, expected):
+    parser = ProtocolParser(payload)
     if isinstance(expected, Exception):
         with pytest.raises(expected.__class__):
-            _ = parse_payload(payload)
+            _ = parser.protocol
     else:
-        result = parse_payload(payload)
-        assert result == expected
+        assert parser.protocol == expected
 
 
 @pytest.mark.parametrize(
@@ -141,16 +162,19 @@ def test_parse_payload(payload, expected):
             id="rgb led 2",
         ),
         pytest.param(
-            ProtocolCommandRgbLed(
+            ProtocolLh2RawData(
                 ProtocolPayloadHeader(
                     0x1122334455667788, 0x1222122212221221, 0x2442, 1
                 ),
-                10,
-                10,
-                10,
+                [
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                ],
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x01\x01\n\n\n",
-            id="rgb led 3",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
+            id="lh2 raw data",
         ),
     ],
 )
@@ -191,11 +215,11 @@ def test_payload(payload, expected):
                 "| 0x1122334455667788 | 0x1222122212221221 |   0x2442 |    0x01 |\n"
                 "+--------------------+--------------------+----------+---------+\n"
                 "\n"
-                "Move Raw command:\n"
-                "+---------+---------+---------+---------+---------+\n"
-                "|    type |  left x |  left y | right x | right y |\n"
-                "|       0 |       0 |      66 |       0 |      66 |\n"
-                "+---------+---------+---------+---------+---------+\n"
+                "Command.MOVE_RAW (0):\n"
+                "+---------+---------+---------+---------+\n"
+                "|  left x |  left y | right x | right y |\n"
+                "|       0 |      66 |       0 |      66 |\n"
+                "+---------+---------+---------+---------+\n"
                 "\n"
             ),
             id="move raw",
@@ -216,14 +240,43 @@ def test_payload(payload, expected):
                 "| 0x1122334455667788 | 0x1222122212221221 |   0x2442 |    0x01 |\n"
                 "+--------------------+--------------------+----------+---------+\n"
                 "\n"
-                "RGB LED command:\n"
-                "+-------+-------+-------+-------+\n"
-                "|  type |   red | green |  blue |\n"
-                "|     1 |     0 |     0 |     0 |\n"
-                "+-------+-------+-------+-------+\n"
+                "Command.RGB_LED (1):\n"
+                "+-------+-------+-------+\n"
+                "|   red | green |  blue |\n"
+                "|     0 |     0 |     0 |\n"
+                "+-------+-------+-------+\n"
                 "\n"
             ),
             id="rgb led",
+        ),
+        pytest.param(
+            ProtocolLh2RawData(
+                ProtocolPayloadHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 1
+                ),
+                [
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ProtocolLh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                ],
+            ),
+            (
+                "Header: (19 bytes)\n"
+                "+--------------------+--------------------+----------+---------+\n"
+                "|        destination |             source | swarm id | version |\n"
+                "| 0x1122334455667788 | 0x1222122212221221 |   0x2442 |    0x01 |\n"
+                "+--------------------+--------------------+----------+---------+\n"
+                "\n"
+                "Command.LH2_RAW_DATA (2):\n"
+                "+--------------------+--------+--------+\n"
+                "|        bits        |   poly | offset |\n"
+                "| 0x123456789abcdef1 |   0x01 |   0x02 |\n"
+                "+--------------------+--------+--------+\n"
+                "|        bits        |   poly | offset |\n"
+                "| 0x123456789abcdef1 |   0x01 |   0x02 |\n"
+                "+--------------------+--------+--------+\n"
+                "\n"
+            ),
+            id="lh2 raw data",
         ),
     ],
 )
