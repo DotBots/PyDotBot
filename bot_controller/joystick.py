@@ -5,7 +5,7 @@ import sys
 import time
 
 from bot_controller.controller import ControllerBase
-from bot_controller.protocol import ProtocolCommandMoveRaw
+from bot_controller.protocol import PayloadType, ProtocolPayload, CommandMoveRaw
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -56,8 +56,10 @@ class JoystickController(ControllerBase):
             # fetch positions from joystick
             pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = self.pos_from_joystick()
             self.send_payload(
-                ProtocolCommandMoveRaw(
-                    self.header, pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y
+                ProtocolPayload(
+                    self.header,
+                    PayloadType.CMD_MOVE_RAW,
+                    CommandMoveRaw(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y),
                 )
             )
             time.sleep(REFRESH_PERIOD)  # 50ms delay between each update

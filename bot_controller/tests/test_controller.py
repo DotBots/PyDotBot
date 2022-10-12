@@ -1,5 +1,7 @@
 """Test module for controller base class."""
 
+from dataclasses import dataclass
+from typing import List
 from unittest.mock import patch
 
 import pytest
@@ -12,15 +14,30 @@ from bot_controller.controller import (
 )
 from bot_controller.hdlc import hdlc_encode
 from bot_controller.protocol import (
+    ProtocolField,
     ProtocolPayload,
-    ProtocolPayloadHeader,
+    ProtocolData,
+    ProtocolHeader,
     PROTOCOL_VERSION,
+    PayloadType,
 )
 
 
-class ProtocolPayloadTest(ProtocolPayload):
-    def to_bytearray(self):
-        return b"test"
+@dataclass
+class ProtocolDataTest(ProtocolData):
+    test: int = 0x1234
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        """Returns the list of fields in this data."""
+        return [
+            ProtocolField(self.test, "test", 2),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_: bytes) -> ProtocolData:
+        """Returns a ProtocolData instance from a bytearray."""
+        return ProtocolDataTest(bytes_[0:2])
 
 
 class ControllerTest(ControllerBase):
@@ -48,9 +65,16 @@ def test_controller(_, __, serial_write, capsys):
     capture = capsys.readouterr()
     controller.start()
     assert "initialize controller" in capture.out
-    controller.send_payload(ProtocolPayloadTest())
+    payload = ProtocolPayload(
+        ProtocolHeader.from_bytes(bytearray()),
+        PayloadType.CMD_MOVE_RAW,
+        ProtocolDataTest(),
+    )
+    # smoke test for the from_bytes static method of ProtocolDataTest
+    assert len(ProtocolDataTest.from_bytes(bytearray([1, 2])).fields) == 1
+    controller.send_payload(payload)
     assert serial_write.call_count == 1
-    payload_expected = hdlc_encode(b"test")
+    payload_expected = hdlc_encode(payload.to_bytes())
     assert serial_write.call_args_list[0].args[0] == payload_expected
 
 
@@ -63,4 +87,4 @@ def test_controller_factory(_):
     register_controller("test", ControllerTest)
     controller = controller_factory("test", "/dev/null", 115200, 123, 456, 78)
     assert controller.__class__.__name__ == "ControllerTest"
-    assert controller.header == ProtocolPayloadHeader(123, 456, 78, PROTOCOL_VERSION)
+    assert controller.header == ProtocolHeader(123, 456, 78, PROTOCOL_VERSION)

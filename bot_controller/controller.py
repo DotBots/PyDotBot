@@ -5,10 +5,9 @@ from abc import ABC, abstractmethod
 from bot_controller.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from bot_controller.protocol import (
     ProtocolPayload,
-    ProtocolPayloadHeader,
+    ProtocolHeader,
     PROTOCOL_VERSION,
     ProtocolPayloadParserException,
-    ProtocolParser,
 )
 from bot_controller.serial_interface import SerialInterface
 
@@ -24,7 +23,7 @@ class ControllerBase(ABC):
 
     def __init__(self, port, baudrate, dotbot_address, gw_address, swarm_id):
         # pylint: disable=too-many-arguments
-        self.header = ProtocolPayloadHeader(
+        self.header = ProtocolHeader(
             dotbot_address,
             gw_address,
             swarm_id,
@@ -49,13 +48,13 @@ class ControllerBase(ABC):
             payload = self.hdlc_handler.payload
             if payload:
                 try:
-                    print(ProtocolParser(payload))
+                    print(ProtocolPayload.from_bytes(payload))
                 except ProtocolPayloadParserException:
                     pass
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
-        self.serial.write(hdlc_encode(payload.to_bytearray()))
+        self.serial.write(hdlc_encode(payload.to_bytes()))
 
 
 def register_controller(type_, cls):
