@@ -5,6 +5,9 @@ import time
 from abc import ABC, abstractmethod
 from binascii import hexlify
 
+from rich.live import Live
+from rich.table import Table
+
 from bot_controller.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from bot_controller.protocol import (
     ProtocolPayload,
@@ -77,6 +80,24 @@ class ControllerBase(ABC):
         if destination not in self.known_dotbots:
             return
         self.serial.write(hdlc_encode(payload.to_bytes()))
+
+    def scan(self):
+        """Maintain a table of known dotbots."""
+
+        def table():
+            table = Table()
+            if self.known_dotbots:
+                table.add_column("id", justify="right", style="cyan", no_wrap=True)
+                table.add_column("address", style="magenta")
+                table.add_column("last seen", justify="right", style="green")
+                for idx, values in enumerate(self.known_dotbots.items()):
+                    table.add_row(f"{idx:>5}", f"0x{values[0]}", f"{values[1]:.3f}")
+            return table
+
+        with Live(table(), refresh_per_second=10) as live:
+            while 1:
+                live.update(table())
+                time.sleep(1)
 
 
 def register_controller(type_, cls):

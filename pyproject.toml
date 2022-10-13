@@ -15,6 +15,7 @@ dependencies = [
     "pygame         == 2.1.2",
     "pyserial       == 3.5",
     "pynput         == 1.7.6",
+    "rich           == 12.6.0",
 ]
 description = "Package to easily control your DotBot and Sail Boat with different controllers."
 readme = "README.md"

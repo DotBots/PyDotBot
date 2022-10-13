@@ -26,6 +26,7 @@ Options:
   -g, --gw-address TEXT           Gateway address. Defaults to
                                   0x0000000000000000
   -s, --swarm-id TEXT             Swarm ID. Defaults to 0x0000
+  -S, --scan                      Run the dotbot-controller in scan mode
   --help                          Show this message and exit.
 """
 

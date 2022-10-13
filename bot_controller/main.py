@@ -74,8 +74,15 @@ DEFAULT_CONTROLLERS = {
     default=SWARM_ID_DEFAULT,
     help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
 )
+@click.option(
+    "-S",
+    "--scan",
+    is_flag=True,
+    default=False,
+    help="Run the dotbot-controller in scan mode",
+)
 def main(
-    type, port, baudrate, dotbot_address, gw_address, swarm_id
+    type, port, baudrate, dotbot_address, gw_address, swarm_id, scan
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -98,7 +105,10 @@ def main(
             int(gw_address, 16),
             int(swarm_id, 16),
         )
-        controller.start()
+        if scan is True:
+            controller.scan()
+        else:
+            controller.start()
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except KeyboardInterrupt:
