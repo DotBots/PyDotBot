@@ -194,7 +194,7 @@ class CommandMoveRaw(ProtocolData):
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
-        return CommandMoveRaw(*bytes_)
+        return CommandMoveRaw(*bytes_[0:4])
 
 
 @dataclass
@@ -215,7 +215,7 @@ class CommandRgbLed(ProtocolData):
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
-        return CommandRgbLed(*bytes_)
+        return CommandRgbLed(*bytes_[0:3])
 
 
 @dataclass
