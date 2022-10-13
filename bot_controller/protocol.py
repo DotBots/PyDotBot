@@ -1,8 +1,9 @@
 """Module for the Dotbot protocol API."""
 
+import dataclasses
+
 from abc import ABC, abstractmethod
 from binascii import hexlify
-import dataclasses
 from enum import Enum
 from itertools import chain
 from typing import List
@@ -263,14 +264,14 @@ class ProtocolPayload:
             names = header_names + type_name
             values = header_values + type_value
             return (
-                f"{' ' * 17}+{'+'.join(separators)}+\n"
+                f" {' ' * 16}+{'+'.join(separators)}+\n"
                 f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
                 f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
-                f"{' ' * 17}+{'+'.join(separators)}+\n"
-                f"{' ' * 17}+{'+'.join(values_separators)}+\n"
-                f"{' ' * 17}|{'|'.join(values_names)}|\n"
-                f"{' ' * 17}|{'|'.join(values_values)}|\n"
-                f"{' ' * 17}+{'+'.join(values_separators)}+\n"
+                f" {' ' * 16}+{'+'.join(separators)}+\n"
+                f" {' ' * 16}+{'+'.join(values_separators)}+\n"
+                f" {' ' * 16}|{'|'.join(values_names)}|\n"
+                f" {' ' * 16}|{'|'.join(values_values)}|\n"
+                f" {' ' * 16}+{'+'.join(values_separators)}+\n"
             )
 
         # all in a row by default
@@ -278,8 +279,8 @@ class ProtocolPayload:
         names = header_names + type_name + values_names
         values = header_values + type_value + values_values
         return (
-            f"{' ' * 17}+{'+'.join(separators)}+\n"
+            f" {' ' * 16}+{'+'.join(separators)}+\n"
             f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
             f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
-            f"{' ' * 17}+{'+'.join(separators)}+\n"
+            f" {' ' * 16}+{'+'.join(separators)}+\n"
         )

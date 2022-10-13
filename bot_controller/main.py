@@ -20,9 +20,9 @@ from bot_controller.server import ServerController
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
-DOTBOT_ADDRESS_DEFAULT = 0xFFFFFFFFFFFFFFFF  # Broadcast by default
-GATEWAY_ADDRESS_DEFAULT = 0x0000000000000000
-SWARM_ID_DEFAULT = 0x0000
+DOTBOT_ADDRESS_DEFAULT = "0xFFFFFFFFFFFFFFFF"  # Broadcast by default
+GATEWAY_ADDRESS_DEFAULT = "0x0000000000000000"
+SWARM_ID_DEFAULT = "0x0000"
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
@@ -56,23 +56,23 @@ DEFAULT_CONTROLLERS = {
 @click.option(
     "-d",
     "--dotbot-address",
-    type=int,
+    type=str,
     default=DOTBOT_ADDRESS_DEFAULT,
-    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:#0{18}X}",
+    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:>0{18}}",
 )
 @click.option(
     "-g",
     "--gw-address",
-    type=int,
+    type=str,
     default=GATEWAY_ADDRESS_DEFAULT,
-    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:#0{18}X}",
+    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{18}}",
 )
 @click.option(
     "-s",
     "--swarm-id",
-    type=int,
+    type=str,
     default=SWARM_ID_DEFAULT,
-    help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:#0{6}X}",
+    help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
 )
 def main(
     type, port, baudrate, dotbot_address, gw_address, swarm_id
@@ -91,7 +91,12 @@ def main(
         register_controller(controller, controller_cls)
     try:
         controller = controller_factory(
-            type, port, baudrate, dotbot_address, gw_address, swarm_id
+            type,
+            port,
+            baudrate,
+            int(dotbot_address, 16),
+            int(gw_address, 16),
+            int(swarm_id, 16),
         )
         controller.start()
     except serial.serialutil.SerialException as exc:
