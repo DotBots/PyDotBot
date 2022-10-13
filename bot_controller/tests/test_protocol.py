@@ -73,7 +73,7 @@ def test_protocol_parser(payload, expected):
     else:
         protocol = ProtocolPayload.from_bytes(payload)
         assert protocol.header == expected.header
-        assert protocol.type == expected.type
+        assert protocol.payload_type == expected.payload_type
         assert protocol.values == expected.values
 
 

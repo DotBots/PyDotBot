@@ -31,7 +31,7 @@ class ProtocolDataTest(ProtocolData):
     def fields(self) -> List[ProtocolField]:
         """Returns the list of fields in this data."""
         return [
-            ProtocolField(self.test, "test", 2),
+            ProtocolField(ProtocolDataTest.test, "test", 2),
         ]
 
     @staticmethod
