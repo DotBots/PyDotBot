@@ -153,7 +153,7 @@ class Lh2RawLocation(ProtocolData):
 class Lh2RawData(ProtocolData):
     """Dataclass that holds LH2 raw data."""
 
-    locations: List[Lh2RawLocation] = dataclasses.field(default_factory=lambda: [0])
+    locations: List[Lh2RawLocation] = dataclasses.field(default_factory=lambda: [])
 
     @property
     def fields(self) -> List[ProtocolField]:
