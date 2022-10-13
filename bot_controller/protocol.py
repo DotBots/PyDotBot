@@ -20,6 +20,7 @@ class PayloadType(Enum):
     CMD_RGB_LED = 1
     LH2_RAW_DATA = 2
     LH2_LOCATION = 3
+    ADVERTISEMENT = 4
 
 
 class ProtocolPayloadParserException(Exception):
@@ -172,6 +173,19 @@ class Lh2RawData(ProtocolData):
 
 
 @dataclass
+class Advertisement(ProtocolData):
+    """Dataclass that holds an advertisement (emtpy)."""
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return []
+
+    @staticmethod
+    def from_bytes(_: bytes) -> ProtocolData:
+        return Advertisement()
+
+
+@dataclass
 class ProtocolPayload:
     """Manage a protocol complete payload (header + type + values)."""
 
@@ -204,6 +218,8 @@ class ProtocolPayload:
             values = CommandRgbLed.from_bytes(bytes_[20:24])
         elif payload_type == PayloadType.LH2_RAW_DATA:
             values = Lh2RawData.from_bytes(bytes_[20:60])
+        elif payload_type == PayloadType.ADVERTISEMENT:
+            values = Advertisement.from_bytes(None)
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"

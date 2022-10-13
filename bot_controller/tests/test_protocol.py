@@ -8,6 +8,7 @@ from bot_controller.protocol import (
     ProtocolHeader,
     CommandMoveRaw,
     CommandRgbLed,
+    Advertisement,
     Lh2RawLocation,
     Lh2RawData,
 )
@@ -55,7 +56,16 @@ from bot_controller.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x01\x04",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x01\x04",
+            ProtocolPayload(
+                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 1),
+                PayloadType.ADVERTISEMENT,
+                Advertisement(),
+            ),
+            id="Advertisement",
+        ),
+        pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x01\xff",
             ValueError(),
             id="invalid payload",
         ),
@@ -141,6 +151,15 @@ def test_protocol_parser(payload, expected):
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             id="LH2RawData",
         ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 1),
+                PayloadType.ADVERTISEMENT,
+                Advertisement(),
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x01\x04",
+            id="Advertisement",
+        ),
     ],
 )
 def test_payload(payload, expected):
@@ -204,6 +223,21 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="LH2RawData",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 1),
+                PayloadType.ADVERTISEMENT,
+                Advertisement(),
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+\n"
+                " ADVERTISEMENT   | dst                              | src                              | swarm id | ver. | type |\n"
+                " (20 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x01 | 0x04 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+\n"
+                "\n"
+            ),
+            id="Advertisement",
         ),
     ],
 )
