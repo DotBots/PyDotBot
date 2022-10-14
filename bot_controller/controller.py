@@ -56,6 +56,7 @@ class ControllerSettings:
     dotbot_address: int
     gw_address: int
     swarm_id: int
+    verbose: bool = False
 
 
 class ControllerBase(ABC):
@@ -69,6 +70,7 @@ class ControllerBase(ABC):
             settings.swarm_id,
             PROTOCOL_VERSION,
         )
+        self.verbose = settings.verbose
         self.init()
         self.hdlc_handler = HDLCHandler()
         self.serial = SerialInterface(
@@ -102,7 +104,8 @@ class ControllerBase(ABC):
                     PayloadType.CMD_RGB_LED,
                 ]:
                     return
-                print(protocol)
+                if self.verbose:
+                    print(protocol)
                 source = hexlify(
                     int(protocol.header.source).to_bytes(8, "big")
                 ).decode()

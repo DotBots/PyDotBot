@@ -82,8 +82,15 @@ DEFAULT_CONTROLLERS = {
     default=False,
     help="Run the dotbot-controller in scan mode",
 )
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Run in verbose mode (all payloads received are printed in terminal)",
+)
 def main(
-    type, port, baudrate, dotbot_address, gw_address, swarm_id, scan
+    type, port, baudrate, dotbot_address, gw_address, swarm_id, scan, verbose
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -106,6 +113,7 @@ def main(
                 int(dotbot_address, 16),
                 int(gw_address, 16),
                 int(swarm_id, 16),
+                verbose,
             ),
         )
         if scan is True:
