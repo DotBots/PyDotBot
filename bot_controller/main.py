@@ -16,7 +16,6 @@ from bot_controller.controller import (
 )
 from bot_controller.keyboard import KeyboardController
 from bot_controller.joystick import JoystickController
-from bot_controller.server import ServerController
 
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
@@ -28,7 +27,6 @@ CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
     "joystick": JoystickController,
-    "server": ServerController,
 }
 
 
@@ -36,7 +34,7 @@ DEFAULT_CONTROLLERS = {
 @click.option(
     "-t",
     "--type",
-    type=click.Choice(["joystick", "keyboard", "server"]),
+    type=click.Choice(["joystick", "keyboard"]),
     default=CONTROLLER_TYPE_DEFAULT,
     help="Type of your controller. Defaults to 'keyboard'",
 )
