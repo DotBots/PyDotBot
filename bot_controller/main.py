@@ -10,6 +10,7 @@ import click
 import serial
 
 from bot_controller.controller import (
+    ControllerSettings,
     controller_factory,
     register_controller,
 )
@@ -99,11 +100,13 @@ def main(
     try:
         controller = controller_factory(
             type,
-            port,
-            baudrate,
-            int(dotbot_address, 16),
-            int(gw_address, 16),
-            int(swarm_id, 16),
+            ControllerSettings(
+                port,
+                baudrate,
+                int(dotbot_address, 16),
+                int(gw_address, 16),
+                int(swarm_id, 16),
+            ),
         )
         if scan is True:
             controller.scan()

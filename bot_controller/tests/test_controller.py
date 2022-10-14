@@ -9,6 +9,7 @@ import pytest
 from bot_controller.controller import (
     ControllerBase,
     ControllerException,
+    ControllerSettings,
     controller_factory,
     register_controller,
 )
@@ -57,8 +58,8 @@ class ControllerTest(ControllerBase):
 @patch("bot_controller.serial_interface.serial.Serial.flush")
 def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
-
-    controller = ControllerTest("/dev/null", "115200", 0, 456, 78)
+    settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
+    controller = ControllerTest(settings)
     controller.known_dotbots.update({"0000000000000000": 123})
     capture = capsys.readouterr()
     controller.init()
@@ -84,8 +85,8 @@ def test_controller(_, __, serial_write, capsys):
 @patch("bot_controller.serial_interface.serial.Serial.flush")
 def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
-
-    controller = ControllerTest("/dev/null", "115200", 0, 456, 78)
+    settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
+    controller = ControllerTest(settings)
     controller.known_dotbots.update({"0000000000000000": 123})
     controller.init()
     controller.start()
@@ -101,11 +102,17 @@ def test_controller_dont_send(_, __, serial_write):
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
 def test_controller_factory(_):
+    settings = ControllerSettings("/dev/null", "115200", 123, 456, 78)
     with pytest.raises(ControllerException) as exc:
-        controller_factory("test", "/dev/null", 115200, 124, 456, 78)
+        controller_factory("test", settings)
     assert str(exc.value) == "Invalid controller"
 
     register_controller("test", ControllerTest)
-    controller = controller_factory("test", "/dev/null", 115200, 123, 456, 78)
+    controller = controller_factory("test", settings)
     assert controller.__class__.__name__ == "ControllerTest"
-    assert controller.header == ProtocolHeader(123, 456, 78, PROTOCOL_VERSION)
+    assert controller.header == ProtocolHeader(
+        settings.dotbot_address,
+        settings.gw_address,
+        settings.swarm_id,
+        PROTOCOL_VERSION,
+    )

@@ -4,6 +4,7 @@ import time
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
+from dataclasses import dataclass
 from threading import Thread
 
 from rich.live import Live
@@ -46,21 +47,33 @@ class ControllerDeadDotBotCleaner(Thread):
             time.sleep(1)
 
 
+@dataclass
+class ControllerSettings:
+    """Data class that holds controller settings."""
+
+    port: str
+    baudrate: int
+    dotbot_address: int
+    gw_address: int
+    swarm_id: int
+
+
 class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
-    def __init__(self, port, baudrate, dotbot_address, gw_address, swarm_id):
-        # pylint: disable=too-many-arguments
+    def __init__(self, settings: ControllerSettings):
         self.known_dotbots = {}
         self.header = ProtocolHeader(
-            dotbot_address,
-            gw_address,
-            swarm_id,
+            settings.dotbot_address,
+            settings.gw_address,
+            settings.swarm_id,
             PROTOCOL_VERSION,
         )
         self.init()
         self.hdlc_handler = HDLCHandler()
-        self.serial = SerialInterface(port, baudrate, self.on_byte_received)
+        self.serial = SerialInterface(
+            settings.port, settings.baudrate, self.on_byte_received
+        )
         self.cleaner = ControllerDeadDotBotCleaner(self)
         self.cleaner.start()
 
@@ -128,9 +141,8 @@ def register_controller(type_, cls):
     CONTROLLERS.update({type_: cls})
 
 
-def controller_factory(type_, port, baudrate, dotbot_address, gw_address, swarm_id):
-    # pylint: disable=too-many-arguments
+def controller_factory(type_, settings: ControllerSettings):
     """Returns an instance of a concrete Dotbot controller."""
     if type_ not in CONTROLLERS:
         raise ControllerException("Invalid controller")
-    return CONTROLLERS[type_](port, baudrate, dotbot_address, gw_address, swarm_id)
+    return CONTROLLERS[type_](settings)
