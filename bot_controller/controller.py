@@ -1,11 +1,14 @@
 """Interface of the Dotbot controller."""
 
+import asyncio
+import sys
 import time
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
-from threading import Thread
+
+import serial
 
 from rich.live import Live
 from rich.table import Table
@@ -25,26 +28,6 @@ CONTROLLERS = {}
 
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
-
-
-class ControllerDeadDotBotCleaner(Thread):
-    """Threads that cleans DotBot from known ones if inactive."""
-
-    def __init__(self, controller):
-        self.controller: ControllerBase = controller
-        super().__init__()
-        self.daemon = True
-
-    def run(self):
-        """Periodically looks for dead DotBot."""
-        while 1:
-            to_remove = []
-            for dotbot, last_seen in self.controller.known_dotbots.items():
-                if last_seen + 2 < time.time():
-                    to_remove.append(dotbot)
-            for dotbot in to_remove:
-                self.controller.known_dotbots.pop(dotbot)
-            time.sleep(1)
 
 
 @dataclass
@@ -70,24 +53,46 @@ class ControllerBase(ABC):
             settings.swarm_id,
             PROTOCOL_VERSION,
         )
-        self.verbose = settings.verbose
-        self.init()
+        self.settings = settings
         self.hdlc_handler = HDLCHandler()
-        self.serial = SerialInterface(
-            settings.port, settings.baudrate, self.on_byte_received
-        )
-        self.cleaner = ControllerDeadDotBotCleaner(self)
-        self.cleaner.start()
+        self.serial = None
 
     @abstractmethod
     def init(self):
         """Abstract method to initialize a controller."""
 
     @abstractmethod
-    def start(self):
+    async def start(self):
         """Abstract method to start a controller."""
 
-    def on_byte_received(self, byte):
+    def _setup(self):
+        """Setup the controller."""
+        self.init()
+        asyncio.create_task(self._start_serial())
+        asyncio.create_task(self.update_known_dotbots())
+        asyncio.create_task(self.known_dotbots_table())
+
+    async def _start_serial(self):
+        """Starts the serial listener thread in a coroutine."""
+        queue = asyncio.Queue()
+        event_loop = asyncio.get_event_loop()
+
+        def on_byte_received(byte):
+            """Callback called on byte received."""
+            event_loop.call_soon_threadsafe(queue.put_nowait, byte)
+
+        try:
+            self.serial = SerialInterface(
+                self.settings.port, self.settings.baudrate, on_byte_received
+            )
+        except serial.serialutil.SerialException as exc:
+            sys.exit(f"{exc}")
+
+        while 1:
+            byte = await queue.get()
+            self.handle_byte(byte)
+
+    def handle_byte(self, byte):
         """Called on each byte received over UART."""
         self.hdlc_handler.handle_byte(byte)
         if self.hdlc_handler.state == HDLCState.READY:
@@ -104,7 +109,7 @@ class ControllerBase(ABC):
                     PayloadType.CMD_RGB_LED,
                 ]:
                     return
-                if self.verbose:
+                if self.settings.verbose:
                     print(protocol)
                 source = hexlify(
                     int(protocol.header.source).to_bytes(8, "big")
@@ -118,10 +123,27 @@ class ControllerBase(ABC):
         ).decode()
         if destination not in self.known_dotbots:
             return
-        self.serial.write(hdlc_encode(payload.to_bytes()))
+        if self.serial is not None:
+            self.serial.write(hdlc_encode(payload.to_bytes()))
 
-    def scan(self):
-        """Maintain a table of known dotbots."""
+    async def update_known_dotbots(self):
+        """Coroutine that periodically updates the list of known dotbots."""
+        while 1:
+            to_remove = []
+            for dotbot, last_seen in self.known_dotbots.items():
+                if last_seen + 3 < time.time():
+                    to_remove.append(dotbot)
+            for dotbot in to_remove:
+                self.known_dotbots.pop(dotbot)
+            await asyncio.sleep(1)
+
+    async def run(self):
+        """Launch the controller."""
+        self._setup()  # Must be called from a coroutine because if needs a loop
+        await self.start()
+
+    async def known_dotbots_table(self):
+        """Display and refresh a table of known dotbots."""
 
         def table():
             table = Table()
@@ -136,7 +158,7 @@ class ControllerBase(ABC):
         with Live(table(), refresh_per_second=10) as live:
             while 1:
                 live.update(table())
-                time.sleep(1)
+                await asyncio.sleep(1)
 
 
 def register_controller(type_, cls):

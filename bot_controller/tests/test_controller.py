@@ -1,10 +1,13 @@
 """Test module for controller base class."""
 
+import time
+
 from dataclasses import dataclass
 from typing import List
 from unittest.mock import patch
 
 import pytest
+import serial
 
 from bot_controller.controller import (
     ControllerBase,
@@ -48,25 +51,27 @@ class ControllerTest(ControllerBase):
         """Initialize the test controller."""
         print("initialize controller")
 
-    def start(self):
+    async def start(self):
         """Starts the test controller."""
         print("start controller")
 
 
+@pytest.mark.asyncio
 @patch("bot_controller.serial_interface.serial.Serial.write")
 @patch("bot_controller.serial_interface.serial.Serial.open")
 @patch("bot_controller.serial_interface.serial.Serial.flush")
-def test_controller(_, __, serial_write, capsys):
+async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
     controller = ControllerTest(settings)
-    controller.known_dotbots.update({"0000000000000000": 123})
-    capture = capsys.readouterr()
+    controller.known_dotbots.update({"0000000000000000": time.time})
+    controller.serial = serial.Serial(settings.port, settings.baudrate)
     controller.init()
-    assert "initialize controller" in capture.out
     capture = capsys.readouterr()
-    controller.start()
     assert "initialize controller" in capture.out
+    await controller.start()
+    capture = capsys.readouterr()
+    assert "start controller" in capture.out
     payload = ProtocolPayload(
         ProtocolHeader(0, 0, 0, 0),
         PayloadType.CMD_MOVE_RAW,
@@ -80,16 +85,18 @@ def test_controller(_, __, serial_write, capsys):
     assert serial_write.call_args_list[0].args[0] == payload_expected
 
 
+@pytest.mark.asyncio
 @patch("bot_controller.serial_interface.serial.Serial.write")
 @patch("bot_controller.serial_interface.serial.Serial.open")
 @patch("bot_controller.serial_interface.serial.Serial.flush")
-def test_controller_dont_send(_, __, serial_write):
+async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
     controller = ControllerTest(settings)
     controller.known_dotbots.update({"0000000000000000": 123})
+    controller.serial = serial.Serial(settings.port, settings.baudrate)
     controller.init()
-    controller.start()
+    await controller.start()
     payload = ProtocolPayload(
         ProtocolHeader(123, 0, 0, 0),
         PayloadType.CMD_MOVE_RAW,

@@ -3,6 +3,7 @@
 """Main module of the Dotbot controller command line tool."""
 
 import sys
+import asyncio
 
 from importlib.metadata import version, PackageNotFoundError
 
@@ -74,13 +75,6 @@ DEFAULT_CONTROLLERS = {
     help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
 )
 @click.option(
-    "-S",
-    "--scan",
-    is_flag=True,
-    default=False,
-    help="Run the dotbot-controller in scan mode",
-)
-@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -88,7 +82,7 @@ DEFAULT_CONTROLLERS = {
     help="Run in verbose mode (all payloads received are printed in terminal)",
 )
 def main(
-    type, port, baudrate, dotbot_address, gw_address, swarm_id, scan, verbose
+    type, port, baudrate, dotbot_address, gw_address, swarm_id, verbose
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -114,10 +108,7 @@ def main(
                 verbose,
             ),
         )
-        if scan is True:
-            controller.scan()
-        else:
-            controller.start()
+        asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except KeyboardInterrupt:

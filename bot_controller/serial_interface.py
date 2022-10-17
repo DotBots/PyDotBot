@@ -17,25 +17,23 @@ class SerialInterface(threading.Thread):
     def __init__(self, port: str, baudrate: int, callback: Callable):
         self.callback = callback
         self.serial = serial.Serial(port, baudrate)
-        self.connected = True
-        super().__init__()
-        self.daemon = True
+        super().__init__(daemon=True)
         self.start()
 
     def run(self):
         """Listen continuously at each byte received on serial."""
         try:
-            while self.connected:
+            while 1:
                 byte = self.serial.read(1)
                 if byte is None:
                     raise SerialInterfaceException("Serial port disconnected")
                 self.callback(byte)
-        except SerialInterfaceException as exc:
-            self.connected = False
-            print(f"{exc}")
         except serial.serialutil.PortNotOpenError as exc:
-            self.connected = False
             print(f"{exc}")
+            raise SerialInterfaceException(f"{exc}") from exc
+        except serial.serialutil.SerialException as exc:
+            print(f"{exc}")
+            raise SerialInterfaceException(f"{exc}") from exc
 
     def write(self, bytes_):
         """Write bytes on serial."""
