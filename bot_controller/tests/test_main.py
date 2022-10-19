@@ -20,11 +20,11 @@ Options:
                                   Windows users: COM port. Defaults to
                                   '/dev/ttyACM0'
   -b, --baudrate INTEGER          Serial baudrate. Defaults to 1000000
-  -d, --dotbot-address TEXT       Address of the DotBot to control. Defaults to
-                                  0xFFFFFFFFFFFFFFFF
-  -g, --gw-address TEXT           Gateway address. Defaults to
-                                  0x0000000000000000
-  -s, --swarm-id TEXT             Swarm ID. Defaults to 0x0000
+  -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
+                                  Defaults to FFFFFFFFFFFFFFFF
+  -g, --gw-address TEXT           Gateway address in hex. Defaults to
+                                  0000000000000000
+  -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
   -w, --webbrowser                Open a web browser automatically
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)

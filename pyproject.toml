@@ -2,6 +2,13 @@
 requires = ["hatchling>=1.4.1"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+include = [
+  "bot_controller/html/index.html",
+  "bot_controller/html/js/*.js",
+  "*.py"
+]
+
 [project]
 name = "dotbot-controller"
 version = "0.4.2"

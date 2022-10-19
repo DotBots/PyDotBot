@@ -50,7 +50,12 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
-        self.dotbots: Dict[str, DotBotModel] = {}
+        self.dotbots: Dict[str, DotBotModel] = {
+            "0000": DotBotModel(
+                address="0000",
+                last_seen=time.time(),
+            )
+        }
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
             int(settings.gw_address, 16),
@@ -103,11 +108,11 @@ class ControllerBase(ABC):
         """Coroutine that periodically updates the list of known dotbots."""
         while 1:
             to_remove = []
-            for dotbot, last_seen in self.dotbots.items():
-                if last_seen + 3 < time.time():
+            for dotbot in self.dotbots.values():
+                if dotbot.last_seen + 3 < time.time():
                     to_remove.append(dotbot)
             for dotbot in to_remove:
-                self.dotbots.pop(dotbot)
+                self.dotbots.pop(dotbot.address)
             await asyncio.sleep(1)
 
     async def _dotbots_table_refresh(self):
@@ -119,8 +124,14 @@ class ControllerBase(ABC):
                 table.add_column("id", justify="right", style="cyan", no_wrap=True)
                 table.add_column("address", style="magenta")
                 table.add_column("last seen", justify="right", style="green")
-                for idx, values in enumerate(self.dotbots.items()):
-                    table.add_row(f"{idx:>5}", f"0x{values[0]}", f"{values[1]:.3f}")
+                table.add_column("active", justify="right", style="green")
+                for idx, dotbot in enumerate(self.dotbots.values()):
+                    table.add_row(
+                        f"{idx:>5}",
+                        f"0x{dotbot.address}",
+                        f"{dotbot.last_seen:.3f}",
+                        f"{dotbot.active}",
+                    )
             return table
 
         with Live(table(), refresh_per_second=10) as live:

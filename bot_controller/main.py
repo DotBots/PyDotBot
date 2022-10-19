@@ -21,9 +21,9 @@ from bot_controller.joystick import JoystickController
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000
-DOTBOT_ADDRESS_DEFAULT = "0xFFFFFFFFFFFFFFFF"  # Broadcast by default
-GATEWAY_ADDRESS_DEFAULT = "0x0000000000000000"
-SWARM_ID_DEFAULT = "0x0000"
+DOTBOT_ADDRESS_DEFAULT = "FFFFFFFFFFFFFFFF"  # Broadcast by default
+GATEWAY_ADDRESS_DEFAULT = "0000000000000000"
+SWARM_ID_DEFAULT = "0000"
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
@@ -58,21 +58,21 @@ DEFAULT_CONTROLLERS = {
     "--dotbot-address",
     type=str,
     default=DOTBOT_ADDRESS_DEFAULT,
-    help=f"Address of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:>0{18}}",
+    help=f"Address in hex of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
     "-g",
     "--gw-address",
     type=str,
     default=GATEWAY_ADDRESS_DEFAULT,
-    help=f"Gateway address. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{18}}",
+    help=f"Gateway address in hex. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
     "-s",
     "--swarm-id",
     type=str,
     default=SWARM_ID_DEFAULT,
-    help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
+    help=f"Swarm ID in hex. Defaults to {SWARM_ID_DEFAULT:>0{4}}",
 )
 @click.option(
     "-w",
