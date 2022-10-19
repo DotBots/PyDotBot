@@ -75,6 +75,13 @@ DEFAULT_CONTROLLERS = {
     help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
 )
 @click.option(
+    "-w",
+    "--webbrowser",
+    is_flag=True,
+    default=False,
+    help="Open a web browser automatically",
+)
+@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -82,7 +89,7 @@ DEFAULT_CONTROLLERS = {
     help="Run in verbose mode (all payloads received are printed in terminal)",
 )
 def main(
-    type, port, baudrate, dotbot_address, gw_address, swarm_id, verbose
+    type, port, baudrate, dotbot_address, gw_address, swarm_id, webbrowser, verbose
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -102,17 +109,18 @@ def main(
             ControllerSettings(
                 port,
                 baudrate,
-                int(dotbot_address, 16),
-                int(gw_address, 16),
-                int(swarm_id, 16),
+                dotbot_address,
+                gw_address,
+                swarm_id,
+                webbrowser,
                 verbose,
             ),
         )
         asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
-    except KeyboardInterrupt:
-        sys.exit("Exiting")
+    except (SystemExit, KeyboardInterrupt):
+        sys.exit(0)
 
 
 if __name__ == "__main__":

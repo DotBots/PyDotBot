@@ -8,7 +8,7 @@ from enum import Enum
 from itertools import chain
 from typing import List
 
-from pydantic.dataclasses import dataclass
+from dataclasses import dataclass
 
 
 PROTOCOL_VERSION = 1

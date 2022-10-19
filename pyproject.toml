@@ -10,11 +10,12 @@ authors = [
 ]
 dependencies = [
     "click          == 8.1.3",
-    "pydantic       == 1.10.2",
+    "fastapi        == 0.85.1",
     "pygame         == 2.1.2",
     "pyserial       == 3.5",
     "pynput         == 1.7.6",
     "rich           == 12.6.0",
+    "uvicorn        == 0.18.3",
 ]
 description = "Package to easily control your DotBot and Sail Boat with different controllers."
 readme = "README.md"

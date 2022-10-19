@@ -25,6 +25,7 @@ Options:
   -g, --gw-address TEXT           Gateway address. Defaults to
                                   0x0000000000000000
   -s, --swarm-id TEXT             Swarm ID. Defaults to 0x0000
+  -w, --webbrowser                Open a web browser automatically
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)
   --help                          Show this message and exit.
@@ -46,8 +47,8 @@ def test_main_invalid_controller_type():
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
 @patch("bot_controller.main.version")
-@patch("bot_controller.keyboard.KeyboardController.start")
-def test_main(start, version, _):
+@patch("bot_controller.controller.ControllerBase.run")
+def test_main(run, version, _):
     version.return_value = "test"
     runner = CliRunner()
     result = runner.invoke(main)
@@ -56,7 +57,7 @@ def test_main(start, version, _):
         "Welcome to BotController (version: test), the universal SailBot and DotBot controller."
         in result.output
     )
-    start.assert_called_once()
+    run.assert_called_once()
 
     version.side_effect = PackageNotFoundError
     result = runner.invoke(main)
@@ -68,15 +69,19 @@ def test_main(start, version, _):
 
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
-@patch("bot_controller.keyboard.KeyboardController.start")
-def test_main_interrupts(start, _):
+@patch("bot_controller.controller.ControllerBase.run")
+def test_main_interrupts(run, _):
     runner = CliRunner()
-    start.side_effect = KeyboardInterrupt
+    run.side_effect = KeyboardInterrupt
     result = runner.invoke(main)
-    assert result.exit_code != 0
-    assert "Exiting" in result.output
+    assert result.exit_code == 0
 
-    start.side_effect = serial.serialutil.SerialException("serial test error")
+    runner = CliRunner()
+    run.side_effect = SystemExit
+    result = runner.invoke(main)
+    assert result.exit_code == 0
+
+    run.side_effect = serial.serialutil.SerialException("serial test error")
     result = runner.invoke(main)
     assert result.exit_code != 0
     assert "Serial error: serial test error" in result.output
