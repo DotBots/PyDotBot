@@ -40,8 +40,12 @@ const populate_table = (dotbots) => {
         let row = tbody.insertRow(index)
         row.innerHTML = `
             <td>0x${dotbot.address}</td>
-            <td>${dotbot.last_seen.toFixed(3)}</td>
-            <td><button class="btn btn-outline-light" onclick="make_active('${dotbot.address}');">${dotbot.active}</button></td>`
+            <td>${dotbot.last_seen.toFixed(3)}</td>`
+        if (dotbot.active) {
+            row.innerHTML += `<td><span class="badge text-bg-success">active</span></td>`
+        } else {
+            row.innerHTML += `<td><button class="badge text-bg-primary text-light border-0" onclick="make_active('${dotbot.address}');">activate</button></td>`
+        }
         index++;
     });
 };
