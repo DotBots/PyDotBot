@@ -58,7 +58,8 @@ class ControllerTest(ControllerBase):
 def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
 
-    controller = ControllerTest("/dev/null", "115200", 123, 456, 78)
+    controller = ControllerTest("/dev/null", "115200", 0, 456, 78)
+    controller.known_dotbots.update({"0000000000000000": 123})
     capture = capsys.readouterr()
     controller.init()
     assert "initialize controller" in capture.out
@@ -66,7 +67,7 @@ def test_controller(_, __, serial_write, capsys):
     controller.start()
     assert "initialize controller" in capture.out
     payload = ProtocolPayload(
-        ProtocolHeader.from_bytes(bytearray()),
+        ProtocolHeader(0, 0, 0, 0),
         PayloadType.CMD_MOVE_RAW,
         ProtocolDataTest(),
     )
@@ -76,6 +77,26 @@ def test_controller(_, __, serial_write, capsys):
     assert serial_write.call_count == 1
     payload_expected = hdlc_encode(payload.to_bytes())
     assert serial_write.call_args_list[0].args[0] == payload_expected
+
+
+@patch("bot_controller.serial_interface.serial.Serial.write")
+@patch("bot_controller.serial_interface.serial.Serial.open")
+@patch("bot_controller.serial_interface.serial.Serial.flush")
+def test_controller_dont_send(_, __, serial_write):
+    """Check controller subclass instanciation and write to serial."""
+
+    controller = ControllerTest("/dev/null", "115200", 0, 456, 78)
+    controller.known_dotbots.update({"0000000000000000": 123})
+    controller.init()
+    controller.start()
+    payload = ProtocolPayload(
+        ProtocolHeader(123, 0, 0, 0),
+        PayloadType.CMD_MOVE_RAW,
+        ProtocolDataTest(),
+    )
+    # DotBot is not in the controller known dotbot, so the payload won't be sent
+    controller.send_payload(payload)
+    assert serial_write.call_count == 0
 
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
