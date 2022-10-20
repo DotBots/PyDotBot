@@ -45,7 +45,9 @@ app.mount(
 )
 async def dotbots():
     """Dotbots HTTP GET handler."""
-    return list(app.controller.dotbots.values())
+    return sorted(
+        list(app.controller.dotbots.values()), key=lambda dotbot: dotbot.address
+    )
 
 
 @app.put(
