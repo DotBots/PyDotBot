@@ -18,7 +18,7 @@ print(STATIC_FILES_DIR)
 
 
 app = FastAPI(
-    debug=1,
+    debug=0,
     title="DotBot controller API",
     description="This is the DotBot controller API",
     version="1.0.0",
@@ -55,9 +55,9 @@ async def dotbots():
 )
 async def dotbots_current(address):
     """Set the current active DotBot."""
-    app.controller.header.dotbot_address = int(address, 16)
     for dotbot in app.controller.dotbots.values():
         dotbot.active = False
+    app.controller.header.destination = int(address, 16)
     if address in app.controller.dotbots:
         app.controller.dotbots[address].active = True
 
@@ -65,7 +65,7 @@ async def dotbots_current(address):
 async def web(controller):
     """Starts the web server application."""
     app.controller = controller
-    config = uvicorn.Config(app, port=8000, log_level="debug")
+    config = uvicorn.Config(app, port=8000, log_level="warning")
     server = uvicorn.Server(config)
     try:
         await server.serve()

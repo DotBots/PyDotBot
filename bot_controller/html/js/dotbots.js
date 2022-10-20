@@ -1,6 +1,4 @@
-function fetch_dotbots() {
-    console.log("fetching dotbots")
-
+const fetch_dotbots = () => {
     fetch("http://localhost:8000/controller/dotbots")
     .then(function(response) {
         if (response.ok) {
@@ -15,22 +13,37 @@ function fetch_dotbots() {
     .catch(function(error) {
         console.log(`Failed to fetch dotbots: ${error.message}`);
     });
-}
+};
 
-function populate_table(dotbots) {
-    let index = 1;
+const make_active = (address) => {
+    fetch(`http://localhost:8000/controller/dotbots/${address}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then((response) => {
+        response.json()
+    })
+    .catch((error) => {
+        console.error("Error:", error);
+    });
+};
+
+const populate_table = (dotbots) => {
+    let index = 0;
     let table = document. getElementById("table");
 
-    for (let row_idx = 1; row_idx < table.rows.length; row_idx++) {
-        table.deleteRow(row_idx);
-    }
+    let tbody = table.getElementsByTagName('tbody')[0];
+    tbody.innerHTML = "";
     dotbots.forEach(dotbot => {
-        console.log(dotbot.address);
-        let row = table.insertRow(index)
+        let row = tbody.insertRow(index)
         row.innerHTML = `
             <td>0x${dotbot.address}</td>
-            <td>${dotbot.last_seen}</td>
-            <td>${dotbot.active}</td>`
+            <td>${dotbot.last_seen.toFixed(3)}</td>
+            <td><button class="btn btn-outline-light" onclick="make_active('${dotbot.address}');">${dotbot.active}</button></td>`
         index++;
     });
-}
+};
+
+window.addEventListener("load", fetch_dotbots);

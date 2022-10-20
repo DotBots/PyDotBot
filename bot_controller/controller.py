@@ -50,12 +50,13 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
-        self.dotbots: Dict[str, DotBotModel] = {
-            "0000": DotBotModel(
-                address="0000",
-                last_seen=time.time(),
-            )
-        }
+        # self.dotbots: Dict[str, DotBotModel] = {
+        #     "0000": DotBotModel(
+        #         address="0000",
+        #         last_seen=time.time(),
+        #     )
+        # }
+        self.dotbots: Dict[str, DotBotModel] = {}
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
             int(settings.gw_address, 16),
@@ -121,13 +122,13 @@ class ControllerBase(ABC):
         def table():
             table = Table()
             if self.dotbots:
-                table.add_column("id", justify="right", style="cyan", no_wrap=True)
+                table.add_column("#", style="cyan")
                 table.add_column("address", style="magenta")
-                table.add_column("last seen", justify="right", style="green")
-                table.add_column("active", justify="right", style="green")
+                table.add_column("last seen", style="green")
+                table.add_column("active", style="green")
                 for idx, dotbot in enumerate(self.dotbots.values()):
                     table.add_row(
-                        f"{idx:>5}",
+                        f"{idx:<4}",
                         f"0x{dotbot.address}",
                         f"{dotbot.last_seen:.3f}",
                         f"{dotbot.active}",

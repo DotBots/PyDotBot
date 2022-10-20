@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
 <head>
     <title>DotBots</title>
@@ -7,7 +8,7 @@
 
     <script src="js/dotbots.js"></script>
 </head>
-<body onload="fetch_dotbots()">
+<body>
     <nav class="navbar navbar-expand-lg bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand text-light" href="#">DotBots</a>
@@ -28,14 +29,6 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- {"".join(
-                            "<tr>"
-                            f"    <td>0x{dotbot.address}</td>"
-                            f"    <td>{dotbot.last_seen}</td>"
-                            f"    <td>{dotbot.active}</td>"
-                            f"</tr>"
-                            for dotbot in app.controller.dotbots.values()
-                        )} -->
                     </tbody>
                 </table>
             </div>
