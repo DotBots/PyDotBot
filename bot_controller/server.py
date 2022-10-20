@@ -12,9 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from bot_controller.models import DotBotModel
 
 
-STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "html")
-
-print(STATIC_FILES_DIR)
+STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 
 
 app = FastAPI(

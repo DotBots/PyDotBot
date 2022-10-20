@@ -4,10 +4,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "bot_controller/html/index.html",
-  "bot_controller/html/js/*.js",
+  "bot_controller/frontend/*",
+  "bot_controller/html/*",
   "*.py"
 ]
+
+[tool.hatch.build.targets.sdist.hooks.custom]
+path = "utils/hooks/webapp.py"
 
 [project]
 name = "dotbot-controller"
