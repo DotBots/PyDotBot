@@ -4,6 +4,7 @@ import time
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
+from threading import Thread
 
 from rich.live import Live
 from rich.table import Table
@@ -25,6 +26,26 @@ class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
 
 
+class ControllerDeadDotBotCleaner(Thread):
+    """Threads that cleans DotBot from known ones if inactive."""
+
+    def __init__(self, controller):
+        self.controller: ControllerBase = controller
+        super().__init__()
+        self.daemon = True
+
+    def run(self):
+        """Periodically looks for dead DotBot."""
+        while 1:
+            to_remove = []
+            for dotbot, last_seen in self.controller.known_dotbots.items():
+                if last_seen + 2 < time.time():
+                    to_remove.append(dotbot)
+            for dotbot in to_remove:
+                self.controller.known_dotbots.pop(dotbot)
+            time.sleep(1)
+
+
 class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
@@ -40,6 +61,8 @@ class ControllerBase(ABC):
         self.init()
         self.hdlc_handler = HDLCHandler()
         self.serial = SerialInterface(port, baudrate, self.on_byte_received)
+        self.cleaner = ControllerDeadDotBotCleaner(self)
+        self.cleaner.start()
 
     @abstractmethod
     def init(self):
