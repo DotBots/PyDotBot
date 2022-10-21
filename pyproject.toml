@@ -13,7 +13,7 @@ path = "utils/hooks/webapp.py"
 
 [project]
 name = "dotbot-controller"
-version = "0.4.3"
+version = "0.5.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
