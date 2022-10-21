@@ -1,6 +1,5 @@
 *.xml
 *.iml
-*.json
 .idea/
 *.pyc
 *.gz
@@ -8,3 +7,6 @@
 *.egg-info/
 .coverage
 .tox/
+dist/
+bot_controller/html/
+node_modules/

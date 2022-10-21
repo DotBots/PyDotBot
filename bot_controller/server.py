@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from binascii import hexlify
 from typing import List
 
 import uvicorn
@@ -9,12 +10,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from bot_controller.models import DotBotModel
+from bot_controller.models import (
+    DotBotModel,
+    DotBotAddressModel,
+    DotBotMoveRawCommandModel,
+    DotBotRgbLedCommandModel,
+)
+from bot_controller.protocol import (
+    PROTOCOL_VERSION,
+    ProtocolHeader,
+    ProtocolPayload,
+    PayloadType,
+    CommandMoveRaw,
+    CommandRgbLed,
+)
 
 
-STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "html")
-
-print(STATIC_FILES_DIR)
+STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 
 
 app = FastAPI(
@@ -38,6 +50,77 @@ app.mount(
 
 
 @app.get(
+    path="/controller/dotbot_address",
+    response_model=DotBotAddressModel,
+    summary="Return the controller active dotbot address",
+    tags=["controller"],
+)
+async def controller_dotbot_address():
+    """Returns the active dotbot address."""
+    return DotBotAddressModel(
+        address=hexlify(
+            int(app.controller.header.destination).to_bytes(8, "big")
+        ).decode()
+    )
+
+
+@app.put(
+    path="/controller/dotbot_address",
+    summary="Sets the controller active dotbot address",
+    tags=["controller"],
+)
+async def controller_dotbot_address_update(data: DotBotAddressModel):
+    """Updates the active dotbot address."""
+    app.controller.header.destination = int(data.address, 16)
+
+
+@app.put(
+    path="/controller/dotbots/{address}/move_raw",
+    summary="Move the dotbot",
+    tags=["dotbots"],
+)
+async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
+    """Set the current active DotBot."""
+    header = ProtocolHeader(
+        int(address, 16),
+        int(app.controller.settings.gw_address, 16),
+        int(app.controller.settings.swarm_id, 16),
+        PROTOCOL_VERSION,
+    )
+    app.controller.send_payload(
+        ProtocolPayload(
+            header,
+            PayloadType.CMD_MOVE_RAW,
+            CommandMoveRaw(
+                command.left_x, command.left_y, command.right_x, command.right_y
+            ),
+        )
+    )
+
+
+@app.put(
+    path="/controller/dotbots/{address}/rgb_led",
+    summary="Set the dotbot RGB LED color",
+    tags=["dotbots"],
+)
+async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
+    """Set the current active DotBot."""
+    header = ProtocolHeader(
+        int(address, 16),
+        int(app.controller.settings.gw_address, 16),
+        int(app.controller.settings.swarm_id, 16),
+        PROTOCOL_VERSION,
+    )
+    app.controller.send_payload(
+        ProtocolPayload(
+            header,
+            PayloadType.CMD_RGB_LED,
+            CommandRgbLed(command.red, command.green, command.blue),
+        )
+    )
+
+
+@app.get(
     path="/controller/dotbots",
     response_model=List[DotBotModel],
     summary="Return the list of available dotbots",
@@ -48,20 +131,6 @@ async def dotbots():
     return sorted(
         list(app.controller.dotbots.values()), key=lambda dotbot: dotbot.address
     )
-
-
-@app.put(
-    path="/controller/dotbots/{address}",
-    summary="Return the list of available dotbots",
-    tags=["dotbots"],
-)
-async def dotbots_current(address):
-    """Set the current active DotBot."""
-    for dotbot in app.controller.dotbots.values():
-        dotbot.active = False
-    app.controller.header.destination = int(address, 16)
-    if address in app.controller.dotbots:
-        app.controller.dotbots[address].active = True
 
 
 async def web(controller):
