@@ -3,6 +3,7 @@
 """Main module of the Dotbot controller command line tool."""
 
 import sys
+import asyncio
 
 from importlib.metadata import version, PackageNotFoundError
 
@@ -10,12 +11,12 @@ import click
 import serial
 
 from bot_controller.controller import (
+    ControllerSettings,
     controller_factory,
     register_controller,
 )
 from bot_controller.keyboard import KeyboardController
 from bot_controller.joystick import JoystickController
-from bot_controller.server import ServerController
 
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
@@ -27,7 +28,6 @@ CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
     "joystick": JoystickController,
-    "server": ServerController,
 }
 
 
@@ -35,7 +35,7 @@ DEFAULT_CONTROLLERS = {
 @click.option(
     "-t",
     "--type",
-    type=click.Choice(["joystick", "keyboard", "server"]),
+    type=click.Choice(["joystick", "keyboard"]),
     default=CONTROLLER_TYPE_DEFAULT,
     help="Type of your controller. Defaults to 'keyboard'",
 )
@@ -75,14 +75,14 @@ DEFAULT_CONTROLLERS = {
     help=f"Swarm ID. Defaults to {SWARM_ID_DEFAULT:>0{6}}",
 )
 @click.option(
-    "-S",
-    "--scan",
+    "-v",
+    "--verbose",
     is_flag=True,
     default=False,
-    help="Run the dotbot-controller in scan mode",
+    help="Run in verbose mode (all payloads received are printed in terminal)",
 )
 def main(
-    type, port, baudrate, dotbot_address, gw_address, swarm_id, scan
+    type, port, baudrate, dotbot_address, gw_address, swarm_id, verbose
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -99,16 +99,16 @@ def main(
     try:
         controller = controller_factory(
             type,
-            port,
-            baudrate,
-            int(dotbot_address, 16),
-            int(gw_address, 16),
-            int(swarm_id, 16),
+            ControllerSettings(
+                port,
+                baudrate,
+                int(dotbot_address, 16),
+                int(gw_address, 16),
+                int(swarm_id, 16),
+                verbose,
+            ),
         )
-        if scan is True:
-            controller.scan()
-        else:
-            controller.start()
+        asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except KeyboardInterrupt:

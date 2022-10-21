@@ -14,8 +14,7 @@ MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
   BotController, universal SailBot and DotBot controller.
 
 Options:
-  -t, --type [joystick|keyboard|server]
-                                  Type of your controller. Defaults to
+  -t, --type [joystick|keyboard]  Type of your controller. Defaults to
                                   'keyboard'
   -p, --port TEXT                 Linux users: path to port in '/dev' folder ;
                                   Windows users: COM port. Defaults to
@@ -26,7 +25,8 @@ Options:
   -g, --gw-address TEXT           Gateway address. Defaults to
                                   0x0000000000000000
   -s, --swarm-id TEXT             Swarm ID. Defaults to 0x0000
-  -S, --scan                      Run the dotbot-controller in scan mode
+  -v, --verbose                   Run in verbose mode (all payloads received are
+                                  printed in terminal)
   --help                          Show this message and exit.
 """
 

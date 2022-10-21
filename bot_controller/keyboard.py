@@ -1,7 +1,8 @@
 """Module implementing a keyboard Dotbot controller."""
 
-import time
+import asyncio
 
+from dataclasses import dataclass
 from enum import Enum
 
 try:
@@ -78,37 +79,71 @@ def rgb_from_key(key):
     return result
 
 
+class KeyboardEventType(Enum):
+    """Supported types of keyboard events."""
+
+    PRESSED = 0
+    RELEASED = 1
+
+
+@dataclass
+class KeyboardEvent:
+    """Data class that handles data of a keyboard event."""
+
+    type_: KeyboardEventType
+    key: keyboard.Key
+
+
 class KeyboardController(ControllerBase):
     """Dotbot controller for a keyboard interface."""
 
     def init(self):
+        # pylint: disable=attribute-defined-outside-init
         """Initializes the keyboard controller."""
         self.active_keys = []
-        self.listener = keyboard.Listener(
-            on_press=self.on_press, on_release=self.on_release
-        )
+        self.event_queue = asyncio.Queue()
 
-    def on_press(self, key):
-        """Callback called on each keyboard key press event."""
-        if key in self.active_keys:
-            return
-        if hasattr(key, "char") and key.char in COLOR_KEYS:
-            red, green, blue = rgb_from_key(key.char)
-            self.send_payload(
-                ProtocolPayload(
-                    self.header,
-                    PayloadType.CMD_RGB_LED,
-                    CommandRgbLed(red, green, blue),
-                )
+    async def update_active_keys(self):
+        """Coroutine used to handle keyboard events asynchronously."""
+        event_loop = asyncio.get_event_loop()
+
+        def on_press(key):
+            """Callback called on each keyboard key press event."""
+            if key in self.active_keys:
+                return
+            event_loop.call_soon_threadsafe(
+                self.event_queue.put_nowait,
+                KeyboardEvent(KeyboardEventType.PRESSED, key),
             )
-            return
-        self.active_keys.append(key)
 
-    def on_release(self, key):
-        """Callback called on each keyboard key release event."""
-        if key not in self.active_keys:
-            return
-        self.active_keys.remove(key)
+        def on_release(key):
+            """Callback called on each keyboard key release event."""
+            if key not in self.active_keys:
+                return
+            event_loop.call_soon_threadsafe(
+                self.event_queue.put_nowait,
+                KeyboardEvent(KeyboardEventType.RELEASED, key),
+            )
+
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        listener.start()
+
+        while 1:
+            event = await self.event_queue.get()
+            if event.type_ == KeyboardEventType.RELEASED:
+                self.active_keys.remove(event.key)
+            if event.type_ == KeyboardEventType.PRESSED:
+                if hasattr(event.key, "char") and event.key.char in COLOR_KEYS:
+                    red, green, blue = rgb_from_key(event.key.char)
+                    self.send_payload(
+                        ProtocolPayload(
+                            self.header,
+                            PayloadType.CMD_RGB_LED,
+                            CommandRgbLed(red, green, blue),
+                        )
+                    )
+                    continue
+                self.active_keys.append(event.key)
 
     def speeds_from_keys(self):  # pylint: disable=too-many-return-statements
         """Computes the left/right wheels speeds from current key pressed."""
@@ -148,9 +183,9 @@ class KeyboardController(ControllerBase):
                 return speed.value, 0
         return 0, 0
 
-    def start(self):
+    async def start(self):
         """Starts to continuously listen on keyboard key press/release events."""
-        self.listener.start()
+        asyncio.create_task(self.update_active_keys())
         while 1:
             left_speed, right_speed = self.speeds_from_keys()
             self.send_payload(
@@ -160,4 +195,4 @@ class KeyboardController(ControllerBase):
                     CommandMoveRaw(0, left_speed, 0, right_speed),
                 )
             )
-            time.sleep(0.05)
+            await asyncio.sleep(0.05)

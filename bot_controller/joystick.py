@@ -1,8 +1,8 @@
 """Module implementing a joystick Dotbot controller."""
 
+import asyncio
 import os
 import sys
-import time
 
 from bot_controller.controller import ControllerBase
 from bot_controller.protocol import PayloadType, ProtocolPayload, CommandMoveRaw
@@ -21,9 +21,9 @@ class JoystickController(ControllerBase):
     """A Dotbot controller for a joystick interface."""
 
     def init(self):
+        # pylint: disable=attribute-defined-outside-init
         """Initialize the joystick controller."""
-        # pylint: disable=no-member
-        pygame.init()  # pygame initialization
+        pygame.init()  # pylint: disable=no-member
         pygame.joystick.init()  # joysticks initialization
         if pygame.joystick.get_count() == 0:
             sys.exit("Error: No joystick connected.\nExiting program...")
@@ -50,7 +50,7 @@ class JoystickController(ControllerBase):
             positions.append(axis * 127)
         return positions
 
-    def start(self):
+    async def start(self):
         """Starts to read continuously joystick positions."""
         while True:
             # fetch positions from joystick
@@ -62,4 +62,4 @@ class JoystickController(ControllerBase):
                     CommandMoveRaw(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y),
                 )
             )
-            time.sleep(REFRESH_PERIOD)  # 50ms delay between each update
+            await asyncio.sleep(REFRESH_PERIOD)  # 50ms delay between each update
