@@ -27,14 +27,14 @@ jobs:
       run: tox
     - name: Build a package tarball
       run: python -m build -n
-    - name: Publish package to TestPyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      if: >-
-        github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
-      with:
-        user: __token__
-        password: ${{ secrets.test_pypi_password }}
-        repository_url: https://test.pypi.org/legacy/
+    # - name: Publish package to TestPyPI
+    #   uses: pypa/gh-action-pypi-publish@release/v1
+    #   if: >-
+    #     github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+    #   with:
+    #     user: __token__
+    #     password: ${{ secrets.test_pypi_password }}
+    #     repository_url: https://test.pypi.org/legacy/
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       if: >-
