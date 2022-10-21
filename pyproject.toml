@@ -5,7 +5,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 include = [
   "bot_controller/frontend/*",
-  "bot_controller/html/*",
   "*.py"
 ]
 
