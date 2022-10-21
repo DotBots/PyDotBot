@@ -17,6 +17,7 @@ from bot_controller.controller import (
     register_controller,
 )
 from bot_controller.hdlc import hdlc_encode
+from bot_controller.models import DotBotModel
 from bot_controller.protocol import (
     ProtocolField,
     ProtocolPayload,
@@ -62,9 +63,9 @@ class ControllerTest(ControllerBase):
 @patch("bot_controller.serial_interface.serial.Serial.flush")
 async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
+    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
     controller = ControllerTest(settings)
-    controller.known_dotbots.update({"0000000000000000": time.time})
+    controller.dotbots.update({"0000000000000000": time.time})
     controller.serial = serial.Serial(settings.port, settings.baudrate)
     controller.init()
     capture = capsys.readouterr()
@@ -91,9 +92,10 @@ async def test_controller(_, __, serial_write, capsys):
 @patch("bot_controller.serial_interface.serial.Serial.flush")
 async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", 0, 456, 78)
+    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
     controller = ControllerTest(settings)
-    controller.known_dotbots.update({"0000000000000000": 123})
+    dotbot = DotBotModel(address="0000000000000000", last_seen=time.time())
+    controller.dotbots.update({dotbot.address: dotbot})
     controller.serial = serial.Serial(settings.port, settings.baudrate)
     controller.init()
     await controller.start()
@@ -109,7 +111,7 @@ async def test_controller_dont_send(_, __, serial_write):
 
 @patch("bot_controller.serial_interface.serial.Serial.open")
 def test_controller_factory(_):
-    settings = ControllerSettings("/dev/null", "115200", 123, 456, 78)
+    settings = ControllerSettings("/dev/null", "115200", "123", "456", "78")
     with pytest.raises(ControllerException) as exc:
         controller_factory("test", settings)
     assert str(exc.value) == "Invalid controller"
@@ -118,8 +120,8 @@ def test_controller_factory(_):
     controller = controller_factory("test", settings)
     assert controller.__class__.__name__ == "ControllerTest"
     assert controller.header == ProtocolHeader(
-        settings.dotbot_address,
-        settings.gw_address,
-        settings.swarm_id,
+        int(settings.dotbot_address, 16),
+        int(settings.gw_address, 16),
+        int(settings.swarm_id, 16),
         PROTOCOL_VERSION,
     )
