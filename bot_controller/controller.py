@@ -131,7 +131,7 @@ class ControllerBase(ABC):
                         f"{idx:<4}",
                         f"0x{dotbot.address}",
                         f"{dotbot.last_seen:.3f}",
-                        f"{dotbot.active}",
+                        f"{int(dotbot.address, 16) == self.header.destination}",
                     )
             return table
 
