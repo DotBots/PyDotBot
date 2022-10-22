@@ -87,15 +87,14 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         int(app.controller.settings.swarm_id, 16),
         PROTOCOL_VERSION,
     )
-    app.controller.send_payload(
-        ProtocolPayload(
-            header,
-            PayloadType.CMD_MOVE_RAW,
-            CommandMoveRaw(
-                command.left_x, command.left_y, command.right_x, command.right_y
-            ),
-        )
+    payload = ProtocolPayload(
+        header,
+        PayloadType.CMD_MOVE_RAW,
+        CommandMoveRaw(
+            command.left_x, command.left_y, command.right_x, command.right_y
+        ),
     )
+    app.controller.send_payload(payload)
 
 
 @app.put(
@@ -111,13 +110,12 @@ async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         int(app.controller.settings.swarm_id, 16),
         PROTOCOL_VERSION,
     )
-    app.controller.send_payload(
-        ProtocolPayload(
-            header,
-            PayloadType.CMD_RGB_LED,
-            CommandRgbLed(command.red, command.green, command.blue),
-        )
+    payload = ProtocolPayload(
+        header,
+        PayloadType.CMD_RGB_LED,
+        CommandRgbLed(command.red, command.green, command.blue),
     )
+    app.controller.send_payload(payload)
 
 
 @app.get(
