@@ -8,7 +8,7 @@ const DotBotRow = (props) => {
     if (props.dotbot.address === props.activeDotbot) {
       newAddress = "0000000000000000"
     }
-    axios.put(`http://localhost:8000/controller/dotbot_address`,
+    axios.put(`${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
       {
         address: newAddress,
       },
@@ -48,7 +48,7 @@ const DotBots = () => {
 
   const fetchDotBots = useCallback(() => {
     axios.get(
-      `http://localhost:8000/controller/dotbots`,
+      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots`,
     )
     .then(res => {
       setDotbots(res.data);
@@ -57,7 +57,7 @@ const DotBots = () => {
       console.log(error);
     });
     axios.get(
-      `http://localhost:8000/controller/dotbot_address`,
+      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
     )
     .then(res => {
       setActiveDotbot(res.data.address);
