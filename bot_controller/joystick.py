@@ -1,4 +1,5 @@
 """Module implementing a joystick Dotbot controller."""
+# pylint: disable=attribute-defined-outside-init
 
 import asyncio
 import os
@@ -15,13 +16,13 @@ import pygame  # noqa: E402, pylint: disable=wrong-import-order, wrong-import-po
 JOYSTICK_HYSTERERIS_THRES = 0.09
 JOYSTICK_AXIS_COUNT = 4
 REFRESH_PERIOD = 0.05
+NULL_POSITION = [0.0, 0.0, 0.0, 0.0]
 
 
 class JoystickController(ControllerBase):
     """A Dotbot controller for a joystick interface."""
 
     def init(self):
-        # pylint: disable=attribute-defined-outside-init
         """Initialize the joystick controller."""
         pygame.init()  # pylint: disable=no-member
         pygame.joystick.init()  # joysticks initialization
@@ -34,6 +35,7 @@ class JoystickController(ControllerBase):
             sys.exit(
                 f"Not enough axes on your joystick. {num_axes} found, expected at least {JOYSTICK_AXIS_COUNT}."
             )
+        self.previous_positions = NULL_POSITION
 
     def pos_from_joystick(self):
         """Fetch positions of the joystick."""
@@ -54,12 +56,14 @@ class JoystickController(ControllerBase):
         """Starts to read continuously joystick positions."""
         while True:
             # fetch positions from joystick
-            pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y = self.pos_from_joystick()
-            self.send_payload(
-                ProtocolPayload(
-                    self.header,
-                    PayloadType.CMD_MOVE_RAW,
-                    CommandMoveRaw(pos_lj_x, pos_lj_y, pos_rj_x, pos_rj_y),
+            positions = self.pos_from_joystick()
+            if positions != NULL_POSITION or self.previous_positions != NULL_POSITION:
+                self.send_payload(
+                    ProtocolPayload(
+                        self.header,
+                        PayloadType.CMD_MOVE_RAW,
+                        CommandMoveRaw(*positions),
+                    )
                 )
-            )
+            self.previous_positions = positions
             await asyncio.sleep(REFRESH_PERIOD)  # 50ms delay between each update
