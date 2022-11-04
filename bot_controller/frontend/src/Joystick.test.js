@@ -79,10 +79,8 @@ const dragJoystick = async (elemDrag) => {
 };
 
 test('Joystick test', async () => {
-  await act(async () => {
-    render(<Joystick />);
-  });
-  await waitFor(() => expect(screen.getByRole("joystick-background")).toBeVisible());
-  await waitFor(() => expect(screen.getByRole("joystick-handle")).toBeVisible());
-  await dragJoystick(screen.getByRole("joystick-handle"));
+  render(<Joystick />);
+  await waitFor(() => expect(screen.getByRole("region")).toBeVisible());
+  await waitFor(() => expect(screen.getByRole("button")).toBeVisible());
+  await dragJoystick(screen.getByRole("button"));
 });

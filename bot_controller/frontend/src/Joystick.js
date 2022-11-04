@@ -57,13 +57,13 @@ export const Joystick = (props) => {
 
   return (
     <div style={{ height: '200px', width: '200px' }}>
-      <div style={{ height: '200px', width: '200px', position: "absolute" }} role="joystick-background">
+      <div style={{ height: '200px', width: '200px', position: "absolute" }} role="region">
         <svg style={{ height: '199px', width: '199px'}}>
             <circle cx={99} cy={99} r={98} fill="Lavender" opacity="80%" stroke="black" strokeWidth="1" />
         </svg>
       </div>
       <div style={{ position: "relative", top: "50px", left: "50px" }}>
-        <animated.div {...bind()} style={{ x, y, touchAction: 'none' }} role="joystick-handle">
+        <animated.div {...bind()} style={{ x, y, touchAction: 'none' }} role="button">
           <svg style={{ height: '100px', width: '100px' }}>
             <defs>
               <radialGradient id="joystickHandleGradient">

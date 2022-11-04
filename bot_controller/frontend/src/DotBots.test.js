@@ -1,7 +1,6 @@
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { act } from 'react-dom/test-utils';
 import '@testing-library/jest-dom';
 
 import React from 'react';
@@ -45,9 +44,7 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 test('DotBots main page', async () => {
-    await act(async () => {
-        render(<DotBots />);
-    });
+    render(<DotBots />);
     await waitFor(() => expect(screen.getByText("Available DotBots")).toBeVisible());
     await waitFor(() => expect(screen.getByText("Address")).toBeVisible());
     await waitFor(() => expect(screen.getByText("Application")).toBeVisible());
@@ -55,8 +52,5 @@ test('DotBots main page', async () => {
     await waitFor(() => expect(screen.getByText("Controls")).toBeVisible());
     await waitFor(() => expect(screen.getAllByText('activate')[0]).toBeVisible());
     await waitFor(() => expect(screen.getByText('active')).toBeVisible());
-
-    await act(async () => {
-        fireEvent.click((screen.getAllByText('activate')[0]));
-    });
+    fireEvent.click((screen.getAllByText('activate')[0]));
 });
