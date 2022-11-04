@@ -2,7 +2,7 @@ import React from "react";
 import { useState } from "react";
 
 import useInterval from "use-interval";
-import { useSpring, animated } from "react-spring";
+import { useSpring, animated } from "@react-spring/web";
 import { useDrag } from "react-use-gesture";
 
 import { apiUpdateMoveRaw } from "./rest";
