@@ -100,6 +100,7 @@ class KeyboardController(ControllerBase):
     def init(self):
         # pylint: disable=attribute-defined-outside-init
         """Initializes the keyboard controller."""
+        self.previous_speeds = (0, 0)
         self.active_keys = []
         self.event_queue = asyncio.Queue()
 
@@ -144,6 +145,7 @@ class KeyboardController(ControllerBase):
                     )
                     continue
                 self.active_keys.append(event.key)
+            self.refresh_speeds()
 
     def speeds_from_keys(self):  # pylint: disable=too-many-return-statements
         """Computes the left/right wheels speeds from current key pressed."""
@@ -183,11 +185,10 @@ class KeyboardController(ControllerBase):
                 return speed.value, 0
         return 0, 0
 
-    async def start(self):
-        """Starts to continuously listen on keyboard key press/release events."""
-        asyncio.create_task(self.update_active_keys())
-        while 1:
-            left_speed, right_speed = self.speeds_from_keys()
+    def refresh_speeds(self):
+        """Refresh the motor speeds and send an update if needed."""
+        left_speed, right_speed = self.speeds_from_keys()
+        if (left_speed, right_speed) != (0, 0) or self.previous_speeds != (0, 0):
             self.send_payload(
                 ProtocolPayload(
                     self.header,
@@ -195,4 +196,12 @@ class KeyboardController(ControllerBase):
                     CommandMoveRaw(0, left_speed, 0, right_speed),
                 )
             )
+        # pylint: disable=attribute-defined-outside-init
+        self.previous_speeds = (left_speed, right_speed)
+
+    async def start(self):
+        """Starts to continuously listen on keyboard key press/release events."""
+        asyncio.create_task(self.update_active_keys())
+        while 1:
+            self.refresh_speeds()
             await asyncio.sleep(0.05)
