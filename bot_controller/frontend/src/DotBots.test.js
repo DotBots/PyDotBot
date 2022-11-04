@@ -52,8 +52,7 @@ test('DotBots main page', async () => {
     await waitFor(() => expect(screen.getByText("Address")).toBeVisible());
     await waitFor(() => expect(screen.getByText("Application")).toBeVisible());
     await waitFor(() => expect(screen.getByText("Swarm ID")).toBeVisible());
-    await waitFor(() => expect(screen.getByText("Last seen")).toBeVisible());
-    await waitFor(() => expect(screen.getByText("State")).toBeVisible());
+    await waitFor(() => expect(screen.getByText("Controls")).toBeVisible());
     await waitFor(() => expect(screen.getAllByText('activate')[0]).toBeVisible());
     await waitFor(() => expect(screen.getByText('active')).toBeVisible());
 

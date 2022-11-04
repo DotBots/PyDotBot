@@ -1,34 +1,30 @@
-import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import React from "react";
+import { useCallback, useEffect, useState } from "react";
+import { RgbColorPicker } from "react-colorful";
+import useInterval from "use-interval";
+
+import { Joystick } from "./Joystick";
+import {
+  apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
+  apiFetchDotbots, apiUpdateRgbLed
+} from "./rest";
+
 
 const DotBotRow = (props) => {
 
-  const updateActive = () => {
+  const updateActive = async () => {
     let newAddress = props.dotbot.address;
     if (props.dotbot.address === props.activeDotbot) {
       newAddress = "0000000000000000"
     }
-    axios.put(`${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
-      {
-        address: newAddress,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-    .catch((error) => {
-      console.error("Error:", error);
-    });
+    await apiUpdateActiveDotbotAddress(newAddress).catch((error) => console.error(error));
   }
 
   return (
     <tr>
-      <td>0x{`${props.dotbot.address}`}</td>
+      <td>{`${props.dotbot.address}`}</td>
       <td>{`${props.dotbot.application}`}</td>
-      <td>0x{`${props.dotbot.swarm}`}</td>
-      <td>{`${props.dotbot.last_seen.toFixed(3)}`}</td>
+      <td>{`${props.dotbot.swarm}`}</td>
       <td>
       {
         props.dotbot.address === props.activeDotbot ? (
@@ -45,38 +41,31 @@ const DotBotRow = (props) => {
 const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState("0000000000000000");
+  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
-  const fetchDotBots = useCallback(() => {
-    axios.get(
-      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots`,
-    )
-    .then(res => {
-      setDotbots(res.data);
-    })
-    .catch(error => {
-      console.log(error);
-    });
-    axios.get(
-      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
-    )
-    .then(res => {
-      setActiveDotbot(res.data.address);
-    })
-    .catch(error => {
-      console.log(error);
-    });
-
-    setTimeout(() => {
-      fetchDotBots();
-    }, 1000);
-  }, [setDotbots]
+  const fetchDotBots = useCallback(async () => {
+    const data = await apiFetchDotbots().catch(error => console.log(error));
+    setDotbots(data);
+    const active = await apiFetchActiveDotbotAddress().catch(error => console.log(error));
+    setActiveDotbot(active);
+  }, [setDotbots, setActiveDotbot]
   );
+
+  useInterval(() => {
+    fetchDotBots();
+  }, 1000);
+
+  const applyColor = async () => {
+    await apiUpdateRgbLed(activeDotbot, color.r, color.g, color.b);
+  }
 
   useEffect(() => {
     if (!dotbots) {
       fetchDotBots();
     }
   }, [dotbots, fetchDotBots]);
+
+  const controlsVisible = activeDotbot !== "0000000000000000" && dotbots && dotbots.filter(dotbot => dotbot.address === activeDotbot).length > 0;
 
   return (
     <>
@@ -89,20 +78,26 @@ const DotBots = () => {
       <div className="card m-1">
         <div className="card-header">Available DotBots</div>
         <div className="card-body p-0">
-            <table id="table" className="table table-striped align-middle">
-              <thead>
-                  <tr>
-                    <th>Address</th>
-                    <th>Application</th>
-                    <th>Swarm ID</th>
-                    <th>Last seen</th>
-                    <th>State</th>
-                  </tr>
-              </thead>
-              <tbody>
-              {dotbots && dotbots.map(dotbot => <DotBotRow key={dotbot.address} dotbot={dotbot} activeDotbot={activeDotbot}/>)}
-              </tbody>
-            </table>
+          <table id="table" className="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Application</th>
+                <th>Swarm ID</th>
+                <th>Controls</th>
+              </tr>
+            </thead>
+            <tbody>
+            {dotbots && dotbots.map(dotbot => <DotBotRow key={dotbot.address} dotbot={dotbot} activeDotbot={activeDotbot}/>)}
+            </tbody>
+          </table>
+          <div className={`d-flex justify-content-center ${controlsVisible ? "visible" : "invisible"}`}>
+            <div className="me-2">
+            <RgbColorPicker color={color} onChange={setColor} />
+            <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
+            </div>
+            <Joystick address={activeDotbot} />
+          </div>
         </div>
       </div>
     </div>

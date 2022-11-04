@@ -1,0 +1,80 @@
+import React from "react";
+import { useState } from "react";
+
+import useInterval from "use-interval";
+import { useSpring, animated } from "react-spring";
+import { useDrag } from "react-use-gesture";
+
+import { apiUpdateMoveRaw } from "./rest";
+
+
+export const Joystick = (props) => {
+  const [state, setState] = useState({active: false, position: {x: 0, y: 0}});
+
+  const [{ x, y }, set] = useSpring(() => ({ x: 0, y: 0 }));
+
+  const bind = useDrag(async ({ active, movement: [mx, my] }) => {
+    let distance = Math.sqrt(Math.pow(mx, 2) + Math.pow(my, 2));
+    if (active && distance > 100) {
+      return;
+    }
+    let newPos = { x: mx, y: my };
+    setState({active: active, position: newPos});
+    set({ x: active ? mx : 0, y: active ? my : 0, immediate: active });
+
+    if (!active) {
+      await apiUpdateMoveRaw(props.address, 0, 0).catch(error => console.log(error));
+    }
+  })
+
+  const moveToSpeeds = () => {
+    const dir = (128 * state.position.y / 200) * -1;
+    const angle = (128 * state.position.x / 200) * -1;
+
+    let leftSpeed = 2 * (dir + angle);
+    let rightSpeed = 2 * (dir - angle)
+
+    if (leftSpeed > 127) {
+      leftSpeed = 127;
+    }
+    if (rightSpeed > 127) {
+      rightSpeed = 127;
+    }
+    if (leftSpeed < -128) {
+      leftSpeed = -128;
+    }
+    if (rightSpeed < -128) {
+      rightSpeed = -128;
+    }
+
+    return { left: leftSpeed, right: rightSpeed };
+  };
+
+  useInterval(async () => {
+    const speeds = moveToSpeeds();
+    await apiUpdateMoveRaw(props.address, speeds.left, speeds.right).catch(error => console.log(error));
+  }, state.active ? 100 : null);
+
+  return (
+    <div style={{ height: '200px', width: '200px' }}>
+      <div style={{ height: '200px', width: '200px', position: "absolute" }} role="joystick-background">
+        <svg style={{ height: '199px', width: '199px'}}>
+            <circle cx={99} cy={99} r={98} fill="Lavender" opacity="80%" stroke="black" strokeWidth="1" />
+        </svg>
+      </div>
+      <div style={{ position: "relative", top: "50px", left: "50px" }}>
+        <animated.div {...bind()} style={{ x, y, touchAction: 'none' }} role="joystick-handle">
+          <svg style={{ height: '100px', width: '100px' }}>
+            <defs>
+              <radialGradient id="joystickHandleGradient">
+                <stop offset="5%" stopColor="MediumSlateBlue" />
+                <stop offset="95%" stopColor="DarkSlateBlue" />
+              </radialGradient>
+            </defs>
+            <circle cx={50} cy={50} r={50} opacity="80%" fill="url('#joystickHandleGradient')" />
+          </svg>
+        </animated.div>
+      </div>
+    </div>
+  )
+}
