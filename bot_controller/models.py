@@ -1,16 +1,8 @@
 """Pydantic models used by the controller and server application."""
 # pylint: disable=too-few-public-methods,no-name-in-module
 
+from typing import Optional
 from pydantic import BaseModel
-
-
-class DotBotModel(BaseModel):
-    """Model class that defines a DotBot."""
-
-    address: str
-    application: str = "DotBot"
-    swarm: str = "0000"
-    last_seen: float
 
 
 class DotBotAddressModel(BaseModel):
@@ -34,3 +26,23 @@ class DotBotRgbLedCommandModel(BaseModel):
     red: int
     green: int
     blue: int
+
+
+class DotBotLH2Position(BaseModel):
+    """Position of a DotBot."""
+
+    x: int
+    y: int
+    z: int
+
+
+class DotBotModel(BaseModel):
+    """Model class that defines a DotBot."""
+
+    address: str
+    application: str = "DotBot"
+    swarm: str = "0000"
+    last_seen: float
+    move_raw: Optional[DotBotMoveRawCommandModel]
+    rgb_led: Optional[DotBotRgbLedCommandModel]
+    lh2_position: Optional[DotBotLH2Position]

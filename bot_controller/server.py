@@ -6,7 +6,7 @@ from binascii import hexlify
 from typing import List
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -81,6 +81,9 @@ async def controller_dotbot_address_update(data: DotBotAddressModel):
 )
 async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
     """Set the current active DotBot."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+
     header = ProtocolHeader(
         int(address, 16),
         int(app.controller.settings.gw_address, 16),
@@ -95,6 +98,7 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         ),
     )
     app.controller.send_payload(payload)
+    app.controller.dotbots[address].move_raw = command
 
 
 @app.put(
@@ -104,6 +108,9 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
 )
 async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
     """Set the current active DotBot."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+
     header = ProtocolHeader(
         int(address, 16),
         int(app.controller.settings.gw_address, 16),
@@ -116,11 +123,27 @@ async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         CommandRgbLed(command.red, command.green, command.blue),
     )
     app.controller.send_payload(payload)
+    app.controller.dotbots[address].rgb_led = command
+
+
+@app.get(
+    path="/controller/dotbots/{address}",
+    response_model=DotBotModel,
+    response_model_exclude_none=True,
+    summary="Return information about a dotbot given its address",
+    tags=["dotbots"],
+)
+async def dotbot(address: str):
+    """Dotbot HTTP GET handler."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+    return app.controller.dotbots[address]
 
 
 @app.get(
     path="/controller/dotbots",
     response_model=List[DotBotModel],
+    response_model_exclude_none=True,
     summary="Return the list of available dotbots",
     tags=["dotbots"],
 )
@@ -129,6 +152,19 @@ async def dotbots():
     return sorted(
         list(app.controller.dotbots.values()), key=lambda dotbot: dotbot.address
     )
+
+
+@app.websocket("/controller/ws/status")
+async def websocket_endpoint(websocket: WebSocket):
+    """Websocket server endpoint."""
+    await websocket.accept()
+    app.controller.websockets.append(websocket)
+    try:
+        while True:
+            _ = await websocket.receive_text()
+    except WebSocketDisconnect:
+        if websocket in app.controller.websockets:
+            app.controller.websockets.remove(websocket)
 
 
 async def web(controller):

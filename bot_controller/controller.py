@@ -1,6 +1,7 @@
 """Interface of the Dotbot controller."""
 
 import asyncio
+import json
 import time
 import webbrowser
 
@@ -10,6 +11,9 @@ from dataclasses import dataclass
 from typing import Dict
 
 import serial
+
+import websockets
+from fastapi import WebSocket
 
 from rich.live import Live
 from rich.table import Table
@@ -50,12 +54,20 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
-        # self.dotbots: Dict[str, DotBotModel] = {
-        #     "0000": DotBotModel(
-        #         address="0000",
-        #         last_seen=time.time(),
-        #     )
-        # }
+        self.dotbots: Dict[str, DotBotModel] = {
+            "0000000000000001": DotBotModel(
+                address="0000000000000001",
+                last_seen=time.time(),
+            ),
+            "0000000000000002": DotBotModel(
+                address="0000000000000002",
+                last_seen=time.time(),
+            ),
+            "0000000000000003": DotBotModel(
+                address="0000000000000003",
+                last_seen=time.time(),
+            ),
+        }
         self.dotbots: Dict[str, DotBotModel] = {}
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
@@ -66,6 +78,7 @@ class ControllerBase(ABC):
         self.settings = settings
         self.hdlc_handler = HDLCHandler()
         self.serial = None
+        self.websockets = []
 
     @abstractmethod
     def init(self):
@@ -114,6 +127,8 @@ class ControllerBase(ABC):
                     to_remove.append(dotbot)
             for dotbot in to_remove:
                 self.dotbots.pop(dotbot.address)
+            if to_remove:
+                await self.notify_clients(json.dumps({"cmd": "reload"}))
             await asyncio.sleep(1)
 
     async def _dotbots_table_refresh(self):
@@ -147,27 +162,44 @@ class ControllerBase(ABC):
             payload = self.hdlc_handler.payload
             if payload:
                 try:
-                    protocol = ProtocolPayload.from_bytes(payload)
+                    payload = ProtocolPayload.from_bytes(payload)
                 except ProtocolPayloadParserException:
                     print(f"Cannot parse payload '{payload}'")
                     return
-                # Controller is not interested by command messages received
-                if protocol.payload_type in [
-                    PayloadType.CMD_MOVE_RAW,
-                    PayloadType.CMD_RGB_LED,
-                ]:
-                    return
-                if self.settings.verbose:
-                    print(protocol)
-                source = hexlify(
-                    int(protocol.header.source).to_bytes(8, "big")
-                ).decode()
-                dotbot = DotBotModel(
-                    address=source,
-                    last_seen=time.time(),
-                    active=(int(source, 16) == self.header.destination),
-                )
-                self.dotbots.update({dotbot.address: dotbot})
+                self.handle_received_payload(payload)
+
+    def handle_received_payload(self, payload: ProtocolPayload):
+        """Handle a received payload."""
+        # Controller is not interested by command messages received
+        if payload.payload_type in [
+            PayloadType.CMD_MOVE_RAW,
+            PayloadType.CMD_RGB_LED,
+        ]:
+            return
+        if self.settings.verbose:
+            print(payload)
+        source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
+        dotbot = DotBotModel(
+            address=source,
+            last_seen=time.time(),
+            active=(int(source, 16) == self.header.destination),
+        )
+        if source not in self.dotbots:
+            asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
+        self.dotbots.update({dotbot.address: dotbot})
+
+    async def _ws_send_safe(self, websocket: WebSocket, msg: str):
+        """Safely send a message to a websocket client."""
+        try:
+            await websocket.send_text(msg)
+        except websockets.exceptions.ConnectionClosedError:
+            await asyncio.sleep(0.1)
+
+    async def notify_clients(self, message):
+        """Send a message to all clients connected."""
+        await asyncio.gather(
+            *[self._ws_send_safe(websocket, message) for websocket in self.websockets]
+        )
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
