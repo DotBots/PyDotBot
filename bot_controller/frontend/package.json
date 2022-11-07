@@ -4,14 +4,18 @@
   "private": true,
   "dependencies": {
     "@popperjs/core": "^2.11.6",
+    "@react-spring/web": "^9.5.5",
+    "@use-gesture/react": "^10.2.22",
     "axios": "^0.27.2",
     "bootstrap": "^5.2.0",
     "bootstrap-icons": "^1.9.1",
     "moment": "^2.29.4",
     "react": "^18.2.0",
+    "react-colorful": "^5.6.1",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
-    "sass": "^1.54.5"
+    "sass": "^1.54.5",
+    "use-interval": "^1.4.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",
@@ -21,10 +25,10 @@
     "msw": "^0.45.0"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "react-scripts --openssl-legacy-provider start",
     "build": "react-scripts build",
     "lint": "eslint src/.",
-    "test": "react-scripts test --watchAll=false --collect-coverage --colors",
+    "test": "react-scripts test --watchAll=false --collectCoverage --colors",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
