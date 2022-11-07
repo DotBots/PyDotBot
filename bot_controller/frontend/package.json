@@ -14,13 +14,15 @@
     "react-colorful": "^5.6.1",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
+    "react-use-websocket": "^4.2.0",
     "sass": "^1.54.5",
     "use-interval": "^1.4.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
-    "@testing-library/user-event": "^13.5.0",
+    "@testing-library/user-event": "^14.4.3",
+    "jest-websocket-mock": "^2.4.0",
     "mock-socket": "^9.1.5",
     "msw": "^0.45.0"
   },

@@ -31,9 +31,24 @@ export const Joystick = (props) => {
     const dir = (128 * state.position.y / 200) * -1;
     const angle = (128 * state.position.x / 200) * -1;
 
-    let leftSpeed = 2 * (dir + angle);
-    let rightSpeed = 2 * (dir - angle)
+    let leftSpeed = 1.5 * (dir - angle);
+    let rightSpeed = 1.5 * (dir + angle);
 
+    // Use speed offset
+    if (leftSpeed > 0) {
+      leftSpeed += 50;
+    }
+    if (rightSpeed > 0) {
+      rightSpeed += 50;
+    }
+    if (leftSpeed < 0) {
+      leftSpeed -= 50;
+    }
+    if (rightSpeed < 0) {
+      rightSpeed -= 50;
+    }
+
+    // Clamp speeds to int8 bounds
     if (leftSpeed > 127) {
       leftSpeed = 127;
     }
