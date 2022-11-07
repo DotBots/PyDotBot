@@ -14,6 +14,12 @@ export const apiFetchDotbots = async () => {
   ).then(res => res.data);
 }
 
+export const apiFetchDotbot = async (address) => {
+    return await axios.get(
+      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}`,
+    ).then(res => res.data);
+  }
+
 export const apiFetchActiveDotbotAddress = async () => {
   return await axios.get(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
