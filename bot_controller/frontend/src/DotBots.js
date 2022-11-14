@@ -32,6 +32,57 @@ const DotBotRow = (props) => {
   )
 }
 
+const DotBotsMapPoint = (props) => {
+  let rgbColor = "rgb(0, 0, 0)"
+  if (props.dotbot.rgb_led) {
+    rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
+  }
+
+  return (
+    <>
+    { (props.dotbot.address === props.active) &&
+      <circle cx={parseFloat(props.dotbot.lh2_position.x) * -400} cy={parseFloat(props.dotbot.lh2_position.y) * -400} r="8" stroke="black" strokeWidth="2" fill="none" />
+    }
+    <circle cx={parseFloat(props.dotbot.lh2_position.x) * -400} cy={parseFloat(props.dotbot.lh2_position.y) * -400} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor} />
+    </>
+  )
+}
+
+const DotBotsMap = (props) => {
+
+  return (
+    <div className={`card m-1 ${props.dotbots && props.dotbots.length > 0 ? "visible" : "invisible"}`}>
+      <div className="card-body justify-content-center">
+        <div className="row">
+          <div className="col d-flex justify-content-center">
+            <div style={{ height: '401px', width: '401px' }}>
+              <svg style={{ height: '401px', width: '401px'}}>
+                <defs>
+                  <pattern id="smallGrid" width="8" height="8" patternUnits="userSpaceOnUse">
+                    <path d="M 8 0 L 0 0 0 8" fill="none" stroke="gray" strokeWidth="0.5"/>
+                  </pattern>
+                  <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+                    <rect width="80" height="80" fill="url(#smallGrid)"/>
+                    <path d="M 80 0 L 0 0 0 80" fill="none" stroke="gray" strokeWidth="1"/>
+                  </pattern>
+                </defs>
+                {/* Map grid */}
+                <rect width="100%" height="100%" fill="url(#grid)" />
+                {/* DotBots points */}
+                {
+                  props.dotbots && props.dotbots
+                    .filter(dotbot => dotbot.lh2_position)
+                    .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active}/>)
+                }
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
@@ -85,6 +136,15 @@ const DotBots = () => {
 
     if (message.cmd === "reload") {
       fetchDotBots();
+    }
+    if (message.cmd === "lh2_position" && dotbots && dotbots.length > 0) {
+      let dotbotsTmp = dotbots.slice();
+      for (let idx = 0; idx < dotbots.length; idx++) {
+        if (dotbots[idx].address === message.address) {
+          dotbotsTmp[idx].lh2_position = {x: message.x, y: message.y};
+          setDotbots(dotbotsTmp);
+        }
+      }
     }
   };
 
@@ -155,6 +215,7 @@ const DotBots = () => {
           </div>
         </div>
       </div>
+      <DotBotsMap dotbots={dotbots} active={activeDotbot} />
     </div>
     </>
   );
