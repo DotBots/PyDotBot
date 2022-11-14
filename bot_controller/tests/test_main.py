@@ -26,6 +26,9 @@ Options:
                                   0000000000000000
   -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
   -w, --webbrowser                Open a web browser automatically
+  -c, --calibrate                 Run controller in calibration mode (lighthouse
+                                  mode)
+  -D, --calibration-dir PATH      Directory containing calibration files
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)
   --help                          Show this message and exit.

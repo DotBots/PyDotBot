@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import pickle
 import time
 import webbrowser
 
@@ -27,10 +29,14 @@ from bot_controller.protocol import (
     PayloadType,
 )
 from bot_controller.serial_interface import SerialInterface, SerialInterfaceException
+
+# from bot_controller.models import DotBotModel, DotBotLH2Position, DotBotRgbLedCommandModel
 from bot_controller.models import DotBotModel
 from bot_controller.server import web
+from bot_controller.lighthouse2 import save_camera_points, compute_coordinates
 
 CONTROLLERS = {}
+DEFAULT_CALIBRATION_DIR = "/tmp"
 
 
 class ControllerException(Exception):
@@ -38,7 +44,7 @@ class ControllerException(Exception):
 
 
 @dataclass
-class ControllerSettings:
+class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     """Data class that holds controller settings."""
 
     port: str
@@ -46,6 +52,8 @@ class ControllerSettings:
     dotbot_address: str
     gw_address: str
     swarm_id: str
+    calibration_dir: str = DEFAULT_CALIBRATION_DIR
+    calibrate: bool = False
     webbrowser: bool = False
     verbose: bool = False
 
@@ -54,20 +62,24 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
-        self.dotbots: Dict[str, DotBotModel] = {
-            "0000000000000001": DotBotModel(
-                address="0000000000000001",
-                last_seen=time.time(),
-            ),
-            "0000000000000002": DotBotModel(
-                address="0000000000000002",
-                last_seen=time.time(),
-            ),
-            "0000000000000003": DotBotModel(
-                address="0000000000000003",
-                last_seen=time.time(),
-            ),
-        }
+        # self.dotbots: Dict[str, DotBotModel] = {
+        #     "0000000000000001": DotBotModel(
+        #         address="0000000000000001",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=50, y=25, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+        #     ),
+        #     "0000000000000002": DotBotModel(
+        #         address="0000000000000002",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=25, y=50, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
+        #     ),
+        #     "0000000000000003": DotBotModel(
+        #         address="0000000000000003",
+        #         last_seen=time.time(),
+        #     ),
+        # }
         self.dotbots: Dict[str, DotBotModel] = {}
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
@@ -79,6 +91,14 @@ class ControllerBase(ABC):
         self.hdlc_handler = HDLCHandler()
         self.serial = None
         self.websockets = []
+        calibration_path = os.path.join(
+            self.settings.calibration_dir, "/tmp/calibration.out"
+        )
+        if os.path.exists(calibration_path):
+            with open(calibration_path, "rb") as calibration_file:
+                self.calibration = pickle.load(calibration_file)
+        else:
+            self.calibration = None
 
     @abstractmethod
     def init(self):
@@ -184,6 +204,28 @@ class ControllerBase(ABC):
             last_seen=time.time(),
             active=(int(source, 16) == self.header.destination),
         )
+        if payload.payload_type == PayloadType.LH2_RAW_DATA:
+            if self.settings.calibrate:
+                calibration_csv = os.path.join(
+                    self.settings.calibration_dir, "calibration.csv"
+                )
+                save_camera_points(payload.values, calibration_csv)
+            if self.calibration is not None:
+                coordinates = compute_coordinates(payload.values, self.calibration)
+                if coordinates is not None:
+                    # print("coordinates", coordinates)
+                    asyncio.create_task(
+                        self.notify_clients(
+                            json.dumps(
+                                {
+                                    "cmd": "lh2_position",
+                                    "address": dotbot.address,
+                                    "x": coordinates[0],
+                                    "y": coordinates[1],
+                                }
+                            )
+                        )
+                    )
         if source not in self.dotbots:
             asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
         self.dotbots.update({dotbot.address: dotbot})
