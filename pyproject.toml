@@ -12,8 +12,8 @@ include = [
 path = "utils/hooks/webapp.py"
 
 [project]
-name = "dotbot-controller"
-version = "0.5.1"
+name = "dotbots"
+version = "0.6.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
@@ -28,7 +28,7 @@ dependencies = [
     "uvicorn        == 0.18.3",
     "websockets     == 10.4",
 ]
-description = "Package to easily control your DotBot and Sail Boat with different controllers."
+description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
 license = { text="MIT" }
 requires-python = ">=3.7"
@@ -43,4 +43,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/BotController-python/issues"
 
 [project.scripts]
-dotbot-controller = "bot_controller.main:main"
+dotbots-controller = "bot_controller.main:main"
