@@ -24,7 +24,9 @@ jobs:
         python -m pip install --upgrade --requirement tests_requirements.txt
         python -m pip install --upgrade .
     - name: Run tox
-      run: tox
+      run: |
+        export CFLAGS=`python -c 'import sysconfig;print("-I"+sysconfig.get_paths()["include"])'`
+        tox
     - name: Build a package tarball
       run: python -m build -n
     # - name: Publish package to TestPyPI
