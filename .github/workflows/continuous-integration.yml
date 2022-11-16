@@ -26,6 +26,8 @@ jobs:
     - name: Run tox
       run: |
         export CFLAGS=`python -c 'import sysconfig;print("-I"+sysconfig.get_paths()["include"])'`
+        export PY38_PATH=`python -c 'import sysconfig;print(sysconfig.get_paths()["include"])'`
+        mkdir -p $PY38_PATH/../../lib/python3.8/site-packages/bot_controller/frontend/build
         tox
     - name: Build a package tarball
       run: python -m build -n
