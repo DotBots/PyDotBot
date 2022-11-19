@@ -11,6 +11,12 @@ class DotBotAddressModel(BaseModel):
     address: str
 
 
+class DotBotCalibrationStateModel(BaseModel):
+    """Model that holds the controller LH2 calibration state."""
+
+    state: str
+
+
 class DotBotMoveRawCommandModel(BaseModel):
     """Model class that defines a move raw command."""
 

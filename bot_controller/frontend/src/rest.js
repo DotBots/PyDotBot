@@ -36,10 +36,28 @@ export const apiUpdateMoveRaw = async (address, left, right) => {
 }
 
 export const apiUpdateRgbLed = async (address, red, green, blue) => {
-    const command = { red: red, green: green, blue: blue };
-    return await axios.put(
-      `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/rgb_led`,
-      command,
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+  const command = { red: red, green: green, blue: blue };
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/rgb_led`,
+    command,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+export const apiFetchLH2CalibrationState = async () => {
+  return await axios.get(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration`,
+  ).then(res => res.data);
+}
+
+export const apiApplyLH2Calibration = async () => {
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration`,
+  );
+}
+
+export const apiAddLH2CalibrationPoint = async (index) => {
+  return await axios.post(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration/${index}`,
+  );
+}

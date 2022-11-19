@@ -2,18 +2,19 @@
 
 # pylint: disable=invalid-name,unspecified-encoding,no-member
 
-import csv
 import math
 import os
 import pickle
 
 from ctypes import CDLL
 from dataclasses import dataclass
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
 import cv2
 import numpy as np
 
+from bot_controller.models import DotBotLH2Position, DotBotCalibrationStateModel
 from bot_controller.protocol import Lh2RawData
 
 
@@ -198,114 +199,212 @@ class CalibrationData:
     zeta: float
     random_rodriguez: np.array
     normal: np.array
+    m: np.array
 
 
-def compute_coordinates(
-    raw_data: Lh2RawData, calibration: CalibrationData
-) -> List[float]:
-    """Compute the relative coordinates using raw and calibration data."""
-    if any(raw_data.locations[index].bits == 0 for index in range(4)):
-        return [0.0, 0.0]
-    counts = lh2_raw_data_to_counts(raw_data)
-    camera_points = np.asarray(
-        [
+class LighthouseManagerState(Enum):
+    """Enum for lighthouse manager internal state."""
+
+    NotCalibrated = 0
+    CalibrationInProgress = 1
+    Ready = 2
+    Calibrated = 3
+
+
+class LighthouseManager:
+    """Class to manage the LightHouse positionning state and workflow."""
+
+    def __init__(self, calibration_dir):
+        self.state = LighthouseManagerState.NotCalibrated
+        self.calibration_dir = calibration_dir
+        self.calibration_output_path = os.path.join(
+            self.calibration_dir, "calibration.out"
+        )
+        self.calibration_data = self._load_calibration()
+        self.calibration_points = np.zeros((2, 9, 2), dtype="float64")
+        self.calibration_points_available = [False] * 9
+        self.last_raw_data = None
+
+    @property
+    def state_model(self) -> DotBotCalibrationStateModel:
+        """Return the state as pydantic model."""
+        if self.state == LighthouseManagerState.CalibrationInProgress:
+            return DotBotCalibrationStateModel(state="running")
+        if self.state == LighthouseManagerState.Ready:
+            return DotBotCalibrationStateModel(state="ready")
+        if self.state == LighthouseManagerState.Calibrated:
+            return DotBotCalibrationStateModel(state="done")
+        return DotBotCalibrationStateModel(state="unknown")
+
+    def _load_calibration(self) -> Optional[CalibrationData]:
+        if not os.path.exists(self.calibration_output_path):
+            return None
+        with open(self.calibration_output_path, "rb") as calibration_file:
+            calibration = pickle.load(calibration_file)
+        self.state = LighthouseManagerState.Calibrated
+        return calibration
+
+    def add_calibration_point(self, index):
+        """Register a new camera points for calibration."""
+        if self.last_raw_data is None:
+            return
+
+        self.calibration_points_available[index] = True
+
+        counts = lh2_raw_data_to_counts(self.last_raw_data)
+        self.calibration_points[0][index] = np.asarray(
             calculate_camera_point(
-                counts[0], counts[1], raw_data.locations[0].polynomial_index
+                counts[0],
+                counts[1],
+                self.last_raw_data.locations[0].polynomial_index,
             ),
+            dtype="float64",
+        )
+        self.calibration_points[1][index] = np.asarray(
             calculate_camera_point(
-                counts[2], counts[3], raw_data.locations[2].polynomial_index
+                counts[2],
+                counts[3],
+                self.last_raw_data.locations[2].polynomial_index,
             ),
-        ],
-        dtype="float64",
-    )
-    print(camera_points, np.ones((len(camera_points), 1)))
-    pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
-    scales = (1 / calibration.zeta) / np.matmul(calibration.normal, pts_cam_new.T)
-    scales_matrix = np.vstack((scales, scales, scales))
-    final_points = scales_matrix * pts_cam_new.T
-    final_points = final_points.T
+            dtype="float64",
+        )
 
-    return final_points.dot(calibration.random_rodriguez.T)[0]
+        if all(self.calibration_points_available) is False:
+            self.state = LighthouseManagerState.CalibrationInProgress
+        if all(self.calibration_points_available):
+            self.state = LighthouseManagerState.Ready
 
+    def compute_calibration(self):  # pylint: disable=too-many-locals
+        """Compute the calibration values and matrices."""
+        if self.state != LighthouseManagerState.Ready:
+            print("Calibration points are not ready, cannot compute calibration")
+            return
 
-def save_camera_points(raw_data: Lh2RawData, filename: str):
-    """Store camera points computed from lh2 raw data to a csv file."""
-    counts = lh2_raw_data_to_counts(raw_data)
-    camera_points = calculate_camera_point(
-        counts[0], counts[1], raw_data.locations[0].polynomial_index
-    )
-    camera_points += calculate_camera_point(
-        counts[2], counts[3], raw_data.locations[2].polynomial_index
-    )
-    with open(filename, "a") as camera_points_file:
-        writer = csv.writer(camera_points_file)
-        writer.writerow(camera_points)
+        print("Calibration points:", self.calibration_points)
 
+        camera_points = [[], []]
+        for data in self.calibration_points[0]:
+            camera_points[0].append(data)
+        for data in self.calibration_points[1]:
+            camera_points[1].append(data)
+        camera_points_arr = np.asarray(camera_points, dtype="float64")
+        homography_mat = cv2.findHomography(
+            camera_points_arr[0][0 : len(camera_points[0])][:],
+            camera_points_arr[1][0 : len(camera_points[1])][:],
+            method=cv2.RANSAC,
+            ransacReprojThreshold=0.001,
+        )[0]
 
-def compute_calibration_data(calibration_dir: str):  # pylint: disable=too-many-locals
-    """Compute n_star and random_rodriguez matrices from a calibration data file."""
+        _, S, V = np.linalg.svd(homography_mat)
+        V = V.T
 
-    csv_file = os.path.join(calibration_dir, "calibration.csv")
-    output = os.path.join(calibration_dir, "calibration.out")
-    if not os.path.exists(csv_file):
-        raise SystemExit("Cannot find calibration data")
+        s1 = S[0] / S[1]
+        s3 = S[2] / S[1]
+        zeta = s1 - s3
+        a1 = np.sqrt(1 - s3**2)
+        b1 = np.sqrt(s1**2 - 1)
+        a, b = _unitize(a1, b1)
+        v1 = np.array(V[:, 0])
+        v3 = np.array(V[:, 2])
+        n = b * v1 + a * v3
 
-    calibration_data = []
-    with open(csv_file) as calibration_file:
-        reader = csv.reader(calibration_file)
-        for row in reader:
-            calibration_data.append(row)
+        if n[2] < 0:
+            n = -n
 
-    print(f"found {len(calibration_data)} samples")
-    camera_points = [[], []]
-    for data in calibration_data:
-        camera_points[0].append([data[0], data[1]])
-        camera_points[1].append([data[2], data[3]])
-
-    camera_points_arr = np.asarray(camera_points, dtype="float64")
-
-    homography_mat = cv2.findHomography(
-        camera_points_arr[0][0 : len(camera_points[0])][:],
-        camera_points_arr[1][0 : len(camera_points[1])][:],
-        method=cv2.RANSAC,
-        ransacReprojThreshold=0.001,
-    )[0]
-
-    _, S, V = np.linalg.svd(homography_mat)
-    V = V.T
-
-    s1 = S[0] / S[1]
-    s3 = S[2] / S[1]
-    zeta = s1 - s3
-    a1 = np.sqrt(1 - s3**2)
-    b1 = np.sqrt(s1**2 - 1)
-    a, b = _unitize(a1, b1)
-    v1 = np.array(V[:, 0])
-    v3 = np.array(V[:, 2])
-    n = b * v1 + a * v3
-
-    if n[2] < 0:
-        n = -n
-
-    random_rodriguez = np.array(
-        [
+        random_rodriguez = np.array(
             [
-                -n[1] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
-                n[0] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
-                0,
-            ],
+                [
+                    -n[1] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                    n[0] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                    0,
+                ],
+                [
+                    n[0] * n[2] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                    n[1] * n[2] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                    -np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                ],
+                [-n[0], -n[1], -n[2]],
+            ]
+        )
+
+        corners_irl = (
+            np.array(
+                [
+                    [
+                        [-35, 35],
+                        [0, 35],
+                        [35, 35],
+                        [-35, 0],
+                        [0, 0],
+                        [0, 35],
+                        [-35, -35],
+                        [0, -35],
+                        [35, -35],
+                    ]
+                ],
+                dtype=np.float64,
+            )
+            + 200
+        )
+
+        pts_cam_new = np.hstack(
+            (camera_points_arr[1], np.ones((len(camera_points_arr[1]), 1)))
+        )
+        scales = (1 / zeta) / np.matmul(n, pts_cam_new.T)
+        scales_matrix = np.vstack((scales, scales, scales))
+        final_points = scales_matrix * pts_cam_new.T
+        final_points = final_points.T
+
+        M, _ = cv2.findHomography(
+            final_points.dot(random_rodriguez.T)[:, 0:2],
+            corners_irl,
+            cv2.RANSAC,
+            5.0,
+        )
+
+        self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
+
+        print("Calibration data:", self.calibration_data)
+
+        with open(self.calibration_output_path, "wb") as output_file:
+            pickle.dump(self.calibration_data, output_file)
+
+        self.state = LighthouseManagerState.Calibrated
+
+    def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
+        """Compute the position coordinates from LH2 raw data and available calibration."""
+        if self.state != LighthouseManagerState.Calibrated:
+            return None
+
+        if any(raw_data.locations[index].bits == 0 for index in range(4)):
+            return None
+
+        counts = lh2_raw_data_to_counts(raw_data)
+        camera_points = np.asarray(
             [
-                n[0] * n[2] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
-                n[1] * n[2] / np.sqrt(n[0] * n[0] + n[1] * n[1]),
-                -np.sqrt(n[0] * n[0] + n[1] * n[1]),
+                calculate_camera_point(
+                    counts[0], counts[1], raw_data.locations[0].polynomial_index
+                ),
+                calculate_camera_point(
+                    counts[2], counts[3], raw_data.locations[2].polynomial_index
+                ),
             ],
-            [-n[0], -n[1], -n[2]],
-        ]
-    )
+            dtype="float64",
+        )
 
-    calibration_data = CalibrationData(zeta, random_rodriguez, n)
-    print(f"calibration data:\n\t{calibration_data}")
-
-    with open(output, "wb") as output_file:
-        pickle.dump(CalibrationData(zeta, random_rodriguez, n), output_file)
-    print(f"calibration data stored in '{output}'")
+        pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
+        scales = (1 / self.calibration_data.zeta) / np.matmul(
+            self.calibration_data.normal, pts_cam_new.T
+        )
+        scales_matrix = np.vstack((scales, scales, scales))
+        final_points = scales_matrix * pts_cam_new.T
+        final_points = final_points.T
+        corners_planar = final_points.dot(self.calibration_data.random_rodriguez.T)[
+            :, 0:2
+        ][1].reshape(1, 1, 2)
+        pts_meter_corners = cv2.perspectiveTransform(
+            corners_planar, self.calibration_data.m
+        ).reshape(-1, 2)
+        return DotBotLH2Position(
+            x=pts_meter_corners[0][0], y=400 - pts_meter_corners[0][1], z=0.0
+        )

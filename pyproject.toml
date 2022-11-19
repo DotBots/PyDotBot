@@ -47,4 +47,3 @@ classifiers = [
 
 [project.scripts]
 dotbots-controller = "bot_controller.main:main"
-dotbots-generate-lh2-calibration = "utils.calibration.generate_calibration_data:main"

@@ -2,8 +2,6 @@
 
 import asyncio
 import json
-import os
-import pickle
 import time
 import webbrowser
 
@@ -30,10 +28,15 @@ from bot_controller.protocol import (
 )
 from bot_controller.serial_interface import SerialInterface, SerialInterfaceException
 
-# from bot_controller.models import DotBotModel, DotBotLH2Position, DotBotRgbLedCommandModel
+# from bot_controller.models import (
+#     DotBotModel,
+#     DotBotLH2Position,
+#     DotBotRgbLedCommandModel,
+# )
+
 from bot_controller.models import DotBotModel
 from bot_controller.server import web
-from bot_controller.lighthouse2 import save_camera_points, compute_coordinates
+from bot_controller.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 CONTROLLERS = {}
 DEFAULT_CALIBRATION_DIR = "/tmp"
@@ -66,13 +69,13 @@ class ControllerBase(ABC):
         #     "0000000000000001": DotBotModel(
         #         address="0000000000000001",
         #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=50, y=25, z=0),
+        #         lh2_position=DotBotLH2Position(x=200, y=100, z=0),
         #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
         #     ),
         #     "0000000000000002": DotBotModel(
         #         address="0000000000000002",
         #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=25, y=50, z=0),
+        #         lh2_position=DotBotLH2Position(x=100, y=200, z=0),
         #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
         #     ),
         #     "0000000000000003": DotBotModel(
@@ -91,14 +94,7 @@ class ControllerBase(ABC):
         self.hdlc_handler = HDLCHandler()
         self.serial = None
         self.websockets = []
-        calibration_path = os.path.join(
-            self.settings.calibration_dir, "/tmp/calibration.out"
-        )
-        if os.path.exists(calibration_path):
-            with open(calibration_path, "rb") as calibration_file:
-                self.calibration = pickle.load(calibration_file)
-        else:
-            self.calibration = None
+        self.lh2_manager = LighthouseManager(self.settings.calibration_dir)
 
     @abstractmethod
     def init(self):
@@ -205,23 +201,19 @@ class ControllerBase(ABC):
             active=(int(source, 16) == self.header.destination),
         )
         if payload.payload_type == PayloadType.LH2_RAW_DATA:
-            if self.settings.calibrate:
-                calibration_csv = os.path.join(
-                    self.settings.calibration_dir, "calibration.csv"
-                )
-                save_camera_points(payload.values, calibration_csv)
-            if self.calibration is not None:
-                coordinates = compute_coordinates(payload.values, self.calibration)
-                if coordinates is not None:
-                    # print("coordinates", coordinates)
+            self.lh2_manager.last_raw_data = payload.values
+            if self.lh2_manager.state == LighthouseManagerState.Calibrated:
+                dotbot.lh2_position = self.lh2_manager.compute_position(payload.values)
+                if dotbot.lh2_position is not None:
+                    print("position", dotbot.lh2_position)
                     asyncio.create_task(
                         self.notify_clients(
                             json.dumps(
                                 {
                                     "cmd": "lh2_position",
                                     "address": dotbot.address,
-                                    "x": coordinates[0],
-                                    "y": coordinates[1],
+                                    "x": dotbot.lh2_position.x,
+                                    "y": dotbot.lh2_position.y,
                                 }
                             )
                         )
