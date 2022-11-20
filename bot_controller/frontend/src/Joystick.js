@@ -84,12 +84,12 @@ export const Joystick = (props) => {
         <animated.div {...bind()} style={{ x, y, touchAction: 'none' }} role="button">
           <svg style={{ height: '100px', width: '100px' }}>
             <defs>
-              <radialGradient id="joystickHandleGradient">
+              <radialGradient id={`joystickHandleGradient${props.address}`}>
                 <stop offset="5%" stopColor="MediumSlateBlue" />
                 <stop offset="95%" stopColor="DarkSlateBlue" />
               </radialGradient>
             </defs>
-            <circle cx={50} cy={50} r={50} opacity="80%" fill="url('#joystickHandleGradient')" />
+            <circle cx={50} cy={50} r={50} opacity="80%" fill={`url('#joystickHandleGradient${props.address}')`} />
           </svg>
         </animated.div>
       </div>

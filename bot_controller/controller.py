@@ -65,17 +65,18 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
+        self.dotbots: Dict[str, DotBotModel] = {}
         # self.dotbots: Dict[str, DotBotModel] = {
         #     "0000000000000001": DotBotModel(
         #         address="0000000000000001",
         #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=200, y=100, z=0),
+        #         lh2_position=DotBotLH2Position(x=0, y=0, z=0),
         #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
         #     ),
         #     "0000000000000002": DotBotModel(
         #         address="0000000000000002",
         #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=100, y=200, z=0),
+        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
         #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
         #     ),
         #     "0000000000000003": DotBotModel(
@@ -83,7 +84,6 @@ class ControllerBase(ABC):
         #         last_seen=time.time(),
         #     ),
         # }
-        self.dotbots: Dict[str, DotBotModel] = {}
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
             int(settings.gw_address, 16),
@@ -205,7 +205,6 @@ class ControllerBase(ABC):
             if self.lh2_manager.state == LighthouseManagerState.Calibrated:
                 dotbot.lh2_position = self.lh2_manager.compute_position(payload.values)
                 if dotbot.lh2_position is not None:
-                    print("position", dotbot.lh2_position)
                     asyncio.create_task(
                         self.notify_clients(
                             json.dumps(

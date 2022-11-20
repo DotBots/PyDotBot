@@ -99,9 +99,16 @@ END_BUFFERS = [
         0b00010111110101110,
     ],
 ]
-INITIALIZATION_CAMERA_POINTS = [
-    [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],  # Cam A
-    [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],  # Cam B
+REFERENCE_POINTS_DEFAULT = [
+    [-0.2, 0.2],
+    [0, 0.2],
+    [0.2, 0.2],
+    [-0.2, 0],
+    [0, 0],
+    [0, 0.2],
+    [-0.2, -0.2],
+    [0, -0.2],
+    [0.2, -0.2],
 ]
 
 
@@ -211,7 +218,7 @@ class LighthouseManagerState(Enum):
     Calibrated = 3
 
 
-class LighthouseManager:
+class LighthouseManager:  # pylint: disable=too-many-instance-attributes
     """Class to manage the LightHouse positionning state and workflow."""
 
     def __init__(self, calibration_dir):
@@ -221,9 +228,10 @@ class LighthouseManager:
             self.calibration_dir, "calibration.out"
         )
         self.calibration_data = self._load_calibration()
-        self.calibration_points = np.zeros((2, 9, 2), dtype="float64")
+        self.calibration_points = np.zeros((2, 9, 2), dtype=np.float64)
         self.calibration_points_available = [False] * 9
         self.last_raw_data = None
+        self.reference_points = np.array([REFERENCE_POINTS_DEFAULT], dtype=np.float64)
 
     @property
     def state_model(self) -> DotBotCalibrationStateModel:
@@ -258,7 +266,7 @@ class LighthouseManager:
                 counts[1],
                 self.last_raw_data.locations[0].polynomial_index,
             ),
-            dtype="float64",
+            dtype=np.float64,
         )
         self.calibration_points[1][index] = np.asarray(
             calculate_camera_point(
@@ -266,7 +274,7 @@ class LighthouseManager:
                 counts[3],
                 self.last_raw_data.locations[2].polynomial_index,
             ),
-            dtype="float64",
+            dtype=np.float64,
         )
 
         if all(self.calibration_points_available) is False:
@@ -287,7 +295,7 @@ class LighthouseManager:
             camera_points[0].append(data)
         for data in self.calibration_points[1]:
             camera_points[1].append(data)
-        camera_points_arr = np.asarray(camera_points, dtype="float64")
+        camera_points_arr = np.asarray(camera_points, dtype=np.float64)
         homography_mat = cv2.findHomography(
             camera_points_arr[0][0 : len(camera_points[0])][:],
             camera_points_arr[1][0 : len(camera_points[1])][:],
@@ -327,26 +335,6 @@ class LighthouseManager:
             ]
         )
 
-        corners_irl = (
-            np.array(
-                [
-                    [
-                        [-35, 35],
-                        [0, 35],
-                        [35, 35],
-                        [-35, 0],
-                        [0, 0],
-                        [0, 35],
-                        [-35, -35],
-                        [0, -35],
-                        [35, -35],
-                    ]
-                ],
-                dtype=np.float64,
-            )
-            + 200
-        )
-
         pts_cam_new = np.hstack(
             (camera_points_arr[1], np.ones((len(camera_points_arr[1]), 1)))
         )
@@ -357,7 +345,7 @@ class LighthouseManager:
 
         M, _ = cv2.findHomography(
             final_points.dot(random_rodriguez.T)[:, 0:2],
-            corners_irl,
+            self.reference_points,
             cv2.RANSAC,
             5.0,
         )
@@ -389,7 +377,7 @@ class LighthouseManager:
                     counts[2], counts[3], raw_data.locations[2].polynomial_index
                 ),
             ],
-            dtype="float64",
+            dtype=np.float64,
         )
 
         pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
@@ -406,5 +394,5 @@ class LighthouseManager:
             corners_planar, self.calibration_data.m
         ).reshape(-1, 2)
         return DotBotLH2Position(
-            x=pts_meter_corners[0][0], y=400 - pts_meter_corners[0][1], z=0.0
+            x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
         )
