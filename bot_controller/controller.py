@@ -220,6 +220,9 @@ class ControllerBase(ABC):
                     )
         if source not in self.dotbots:
             asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
+        else:
+            dotbot.rgb_led = self.dotbots[source].rgb_led
+            dotbot.lh2_position = self.dotbots[source].lh2_position
         self.dotbots.update({dotbot.address: dotbot})
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
