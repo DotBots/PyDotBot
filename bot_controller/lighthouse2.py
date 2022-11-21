@@ -101,13 +101,8 @@ END_BUFFERS = [
 ]
 REFERENCE_POINTS_DEFAULT = [
     [-0.2, 0.2],
-    [0, 0.2],
     [0.2, 0.2],
-    [-0.2, 0],
-    [0, 0],
-    [0, 0.2],
     [-0.2, -0.2],
-    [0, -0.2],
     [0.2, -0.2],
 ]
 
@@ -223,15 +218,18 @@ class LighthouseManager:  # pylint: disable=too-many-instance-attributes
 
     def __init__(self, calibration_dir):
         self.state = LighthouseManagerState.NotCalibrated
+        self.reference_points = REFERENCE_POINTS_DEFAULT
         self.calibration_dir = calibration_dir
         self.calibration_output_path = os.path.join(
             self.calibration_dir, "calibration.out"
         )
         self.calibration_data = self._load_calibration()
-        self.calibration_points = np.zeros((2, 9, 2), dtype=np.float64)
-        self.calibration_points_available = [False] * 9
+        self.calibration_points = np.zeros(
+            (2, len(self.reference_points), 2),
+            dtype=np.float64
+        )
+        self.calibration_points_available = [False] * len(self.reference_points)
         self.last_raw_data = None
-        self.reference_points = np.array([REFERENCE_POINTS_DEFAULT], dtype=np.float64)
 
     @property
     def state_model(self) -> DotBotCalibrationStateModel:
@@ -345,7 +343,7 @@ class LighthouseManager:  # pylint: disable=too-many-instance-attributes
 
         M, _ = cv2.findHomography(
             final_points.dot(random_rodriguez.T)[:, 0:2],
-            self.reference_points,
+            np.array([self.reference_points], dtype=np.float64),
             cv2.RANSAC,
             5.0,
         )
