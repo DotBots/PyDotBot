@@ -157,6 +157,8 @@ const DotBots = () => {
       </div>
     </nav>
     <div className="container">
+      {dotbots && dotbots.length > 0 && (
+      <>
       <div className="card m-1">
         <div className="card-header">Available DotBots</div>
         <div className="card-body p-0 mb-1">
@@ -166,8 +168,10 @@ const DotBots = () => {
         </div>
       </div>
       <div className="p-0">
-        <DotBotsMap dotbots={dotbots} active={activeDotbot} />
+        <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={400} />
       </div>
+      </>
+      )}
     </div>
     </>
   );

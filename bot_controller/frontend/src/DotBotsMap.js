@@ -6,10 +6,10 @@ import {
 } from "./rest";
 
 const referencePoints = [
-  {x: -0.2, y: 0.2},
-  {x: 0.2, y: 0.2},
-  {x: -0.2, y: -0.2},
-  {x: 0.2, y: -0.2},
+  {x: -0.1, y: 0.1},
+  {x: 0.1, y: 0.1},
+  {x: -0.1, y: -0.1},
+  {x: 0.1, y: -0.1},
 ]
 
 const DotBotsMapPoint = (props) => {
@@ -21,9 +21,9 @@ const DotBotsMapPoint = (props) => {
   return (
     <>
     { (props.dotbot.address === props.active) &&
-      <circle cx={200 * (1 + parseFloat(props.dotbot.lh2_position.x))} cy={200 * (1 + parseFloat(props.dotbot.lh2_position.y))} r="8" stroke="black" strokeWidth="2" fill="none" />
+      <circle cx={props.mapSize * parseFloat(props.dotbot.lh2_position.x)} cy={props.mapSize * parseFloat(props.dotbot.lh2_position.y)} r="8" stroke="black" strokeWidth="2" fill="none" />
     }
-    <circle cx={200 * (1 + parseFloat(props.dotbot.lh2_position.x))} cy={200 * (1 + parseFloat(props.dotbot.lh2_position.y))} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor} />
+    <circle cx={props.mapSize * parseFloat(props.dotbot.lh2_position.x)} cy={props.mapSize * parseFloat(props.dotbot.lh2_position.y)} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor} />
     </>
   )
 }
@@ -59,7 +59,7 @@ export const DotBotsMap = (props) => {
   };
 
   const coordinateToPixel = (coordinate) => {
-    return 200 * (1 + coordinate) - 5;
+    return mapSize * (coordinate + 0.5) - 5;
   };
 
   useEffect(() => {
@@ -83,19 +83,23 @@ export const DotBotsMap = (props) => {
     calibrationButtonLabel = "Update calibration";
   }
 
+  const mapSize = props.mapSize;
+  const gridSize = `${mapSize + 1}px`;
+  const calibrationTextWidth = `${mapSize}px`;
+
   return (
     <div className={`${props.dotbots && props.dotbots.length > 0 ? "visible" : "invisible"}`}>
       <div className="row justify-content-center">
         <div className="col d-flex justify-content-center">
-          <div style={{ height: '401px', width: '401px' }}>
-            <svg style={{ height: '401px', width: '401px'}}>
+          <div style={{ height: gridSize, width: gridSize }}>
+            <svg style={{ height: gridSize, width: gridSize }}>
               <defs>
-                <pattern id="smallGrid" width="8" height="8" patternUnits="userSpaceOnUse">
-                  <path d="M 8 0 L 0 0 0 8" fill="none" stroke="gray" strokeWidth="0.5"/>
+                <pattern id="smallGrid" width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
+                  <path d={`M ${mapSize / 50} 0 L 0 0 0 ${mapSize / 50}`} fill="none" stroke="gray" strokeWidth="0.5"/>
                 </pattern>
-                <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-                  <rect width="80" height="80" fill="url(#smallGrid)"/>
-                  <path d="M 80 0 L 0 0 0 80" fill="none" stroke="gray" strokeWidth="1"/>
+                <pattern id="grid" width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
+                  <rect width={`${mapSize / 5}`} height={`${mapSize / 5}`} fill="url(#smallGrid)"/>
+                  <path d={`M ${mapSize / 5} 0 L 0 0 0 ${mapSize / 5}`} fill="none" stroke="gray" strokeWidth="1"/>
                 </pattern>
               </defs>
               {/* Map grid */}
@@ -104,12 +108,14 @@ export const DotBotsMap = (props) => {
               {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.lh2_position)
-                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active}/>)
+                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} mapSize={props.mapSize} />)
               }
               {
                 ["running", "ready"].includes(calibrationState) && (
                   <>
-                  {referencePoints.map((point, index) => <rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} onClick={() => pointClicked(index)} />)}
+                  {referencePoints.map((point, index) => (
+                    <><rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} onClick={() => pointClicked(index)}><title>{index + 1}</title></rect></>
+                  ))}
                   </>
                 )
               }
@@ -124,7 +130,7 @@ export const DotBotsMap = (props) => {
       </div>
       {calibrationState === "running" && (
       <div className="d-flex justify-content-center">
-        <p className="text-center" style={{ width: '400px' }}>
+        <p className="text-center" style={{ width: calibrationTextWidth }}>
           Place a DotBot on the marks on the ground and once done, click the corresponding rectangle on the grid. Repeat the operation for each marks.
           Once all rectangles are green, click "Apply calibration".
         </p>

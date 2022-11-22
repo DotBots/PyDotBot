@@ -70,7 +70,7 @@ class ControllerBase(ABC):
         #     "0000000000000001": DotBotModel(
         #         address="0000000000000001",
         #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0, y=0, z=0),
+        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
         #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
         #     ),
         #     "0000000000000002": DotBotModel(
