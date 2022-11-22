@@ -12,7 +12,7 @@ The firmware running on the DotBots can be found
 This package can also be used to control devices running the SailBot firmware
 application.
 
-![DotBots controller overview](dotbots.png)
+![DotBots controller overview](https://github.com/DotBots/BotController-python/blob/develop/dotbots.png?raw=True)
 
 ## Installation
 
