@@ -138,16 +138,16 @@ class Lh2RawLocation(ProtocolData):
     def fields(self) -> List[ProtocolField]:
         return [
             ProtocolField(self.bits, "bits", 8),
-            ProtocolField(self.polynomial_index, "poly"),
+            ProtocolField(self.polynomial_index, "poly", 1),
             ProtocolField(self.offset, "off.", 1, "big", True),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return Lh2RawLocation(
-            int.from_bytes(bytes_[0:8], "big"),
-            int.from_bytes(bytes_[8:9], "big"),
-            int.from_bytes(bytes_[9:10], "big", signed=True),
+            int.from_bytes(bytes_[0:8], "little"),
+            int.from_bytes(bytes_[8:9], "little"),
+            int.from_bytes(bytes_[9:10], "little", signed=True),
         )
 
 

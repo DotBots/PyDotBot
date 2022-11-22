@@ -46,10 +46,10 @@ from bot_controller.protocol import (
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
                     [
-                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
-                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
-                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
-                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
                     ],
                 ),
             ),

@@ -8,6 +8,9 @@ import { useDrag } from "@use-gesture/react";
 import { apiUpdateMoveRaw } from "./rest";
 
 
+const speedOffset = 30;
+
+
 export const Joystick = (props) => {
   const [state, setState] = useState({active: false, position: {x: 0, y: 0}});
 
@@ -31,21 +34,21 @@ export const Joystick = (props) => {
     const dir = (128 * state.position.y / 200) * -1;
     const angle = (128 * state.position.x / 200) * -1;
 
-    let leftSpeed = 1.5 * (dir - angle);
-    let rightSpeed = 1.5 * (dir + angle);
+    let leftSpeed = (dir + angle);
+    let rightSpeed = (dir - angle);
 
     // Use speed offset
     if (leftSpeed > 0) {
-      leftSpeed += 50;
+      leftSpeed += speedOffset;
     }
     if (rightSpeed > 0) {
-      rightSpeed += 50;
+      rightSpeed += speedOffset;
     }
     if (leftSpeed < 0) {
-      leftSpeed -= 50;
+      leftSpeed -= speedOffset;
     }
     if (rightSpeed < 0) {
-      rightSpeed -= 50;
+      rightSpeed -= speedOffset;
     }
 
     // Clamp speeds to int8 bounds
@@ -81,12 +84,12 @@ export const Joystick = (props) => {
         <animated.div {...bind()} style={{ x, y, touchAction: 'none' }} role="button">
           <svg style={{ height: '100px', width: '100px' }}>
             <defs>
-              <radialGradient id="joystickHandleGradient">
+              <radialGradient id={`joystickHandleGradient${props.address}`}>
                 <stop offset="5%" stopColor="MediumSlateBlue" />
                 <stop offset="95%" stopColor="DarkSlateBlue" />
               </radialGradient>
             </defs>
-            <circle cx={50} cy={50} r={50} opacity="80%" fill="url('#joystickHandleGradient')" />
+            <circle cx={50} cy={50} r={50} opacity="80%" fill={`url('#joystickHandleGradient${props.address}')`} />
           </svg>
         </animated.div>
       </div>

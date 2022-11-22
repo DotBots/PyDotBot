@@ -27,10 +27,19 @@ from bot_controller.protocol import (
     PayloadType,
 )
 from bot_controller.serial_interface import SerialInterface, SerialInterfaceException
+
+# from bot_controller.models import (
+#     DotBotModel,
+#     DotBotLH2Position,
+#     DotBotRgbLedCommandModel,
+# )
+
 from bot_controller.models import DotBotModel
 from bot_controller.server import web
+from bot_controller.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 CONTROLLERS = {}
+DEFAULT_CALIBRATION_DIR = "/tmp"
 
 
 class ControllerException(Exception):
@@ -38,7 +47,7 @@ class ControllerException(Exception):
 
 
 @dataclass
-class ControllerSettings:
+class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     """Data class that holds controller settings."""
 
     port: str
@@ -46,6 +55,8 @@ class ControllerSettings:
     dotbot_address: str
     gw_address: str
     swarm_id: str
+    calibration_dir: str = DEFAULT_CALIBRATION_DIR
+    calibrate: bool = False
     webbrowser: bool = False
     verbose: bool = False
 
@@ -54,21 +65,25 @@ class ControllerBase(ABC):
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
-        self.dotbots: Dict[str, DotBotModel] = {
-            "0000000000000001": DotBotModel(
-                address="0000000000000001",
-                last_seen=time.time(),
-            ),
-            "0000000000000002": DotBotModel(
-                address="0000000000000002",
-                last_seen=time.time(),
-            ),
-            "0000000000000003": DotBotModel(
-                address="0000000000000003",
-                last_seen=time.time(),
-            ),
-        }
         self.dotbots: Dict[str, DotBotModel] = {}
+        # self.dotbots: Dict[str, DotBotModel] = {
+        #     "0000000000000001": DotBotModel(
+        #         address="0000000000000001",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+        #     ),
+        #     "0000000000000002": DotBotModel(
+        #         address="0000000000000002",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
+        #     ),
+        #     "0000000000000003": DotBotModel(
+        #         address="0000000000000003",
+        #         last_seen=time.time(),
+        #     ),
+        # }
         self.header = ProtocolHeader(
             int(settings.dotbot_address, 16),
             int(settings.gw_address, 16),
@@ -79,6 +94,7 @@ class ControllerBase(ABC):
         self.hdlc_handler = HDLCHandler()
         self.serial = None
         self.websockets = []
+        self.lh2_manager = LighthouseManager(self.settings.calibration_dir)
 
     @abstractmethod
     def init(self):
@@ -184,8 +200,28 @@ class ControllerBase(ABC):
             last_seen=time.time(),
             active=(int(source, 16) == self.header.destination),
         )
+        if payload.payload_type == PayloadType.LH2_RAW_DATA:
+            self.lh2_manager.last_raw_data = payload.values
+            if self.lh2_manager.state == LighthouseManagerState.Calibrated:
+                dotbot.lh2_position = self.lh2_manager.compute_position(payload.values)
+                if dotbot.lh2_position is not None:
+                    asyncio.create_task(
+                        self.notify_clients(
+                            json.dumps(
+                                {
+                                    "cmd": "lh2_position",
+                                    "address": dotbot.address,
+                                    "x": dotbot.lh2_position.x,
+                                    "y": dotbot.lh2_position.y,
+                                }
+                            )
+                        )
+                    )
         if source not in self.dotbots:
             asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
+        else:
+            dotbot.rgb_led = self.dotbots[source].rgb_led
+            dotbot.lh2_position = self.dotbots[source].lh2_position
         self.dotbots.update({dotbot.address: dotbot})
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):

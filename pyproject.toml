@@ -5,11 +5,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 include = [
   "bot_controller/frontend/*",
+  "bot_controller/lib/*",
   "*.py"
 ]
 
 [tool.hatch.build.targets.sdist.hooks.custom]
-path = "utils/hooks/webapp.py"
+path = "utils/hooks/build.py"
 
 [project]
 name = "dotbots"
@@ -21,6 +22,8 @@ authors = [
 dependencies = [
     "click          == 8.1.3",
     "fastapi        == 0.85.1",
+    "numpy          == 1.23.4",
+    "opencv-python  == 4.6.0.66",
     "pygame         == 2.1.2",
     "pyserial       == 3.5",
     "pynput         == 1.7.6",

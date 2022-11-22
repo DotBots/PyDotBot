@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from bot_controller.models import (
+    DotBotCalibrationStateModel,
     DotBotModel,
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
@@ -152,6 +153,38 @@ async def dotbots():
     return sorted(
         list(app.controller.dotbots.values()), key=lambda dotbot: dotbot.address
     )
+
+
+@app.post(
+    path="/controller/lh2/calibration/{point_idx}",
+    summary="Trigger the acquisition of one LH2 point",
+    tags=["dotbots"],
+)
+async def controller_add_lh2_calibration_point(point_idx: int):
+    """LH2 calibration, add single calibration point."""
+    app.controller.lh2_manager.add_calibration_point(point_idx)
+
+
+@app.put(
+    path="/controller/lh2/calibration",
+    summary="Trigger a computation of the LH2 calibration",
+    tags=["dotbots"],
+)
+async def controller_apply_lh2_calibration():
+    """Apply LH2 calibration."""
+    app.controller.lh2_manager.compute_calibration()
+
+
+@app.get(
+    path="/controller/lh2/calibration",
+    response_model=DotBotCalibrationStateModel,
+    response_model_exclude_none=True,
+    summary="Return the LH2 calibration state",
+    tags=["dotbots"],
+)
+async def controller_get_lh2_calibration():
+    """LH2 calibration GET handler."""
+    return app.controller.lh2_manager.state_model
 
 
 @app.websocket("/controller/ws/status")
