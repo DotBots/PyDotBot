@@ -2,8 +2,8 @@
 
 from unittest.mock import patch
 
-from bot_controller.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
-from bot_controller.protocol import Lh2RawLocation, Lh2RawData
+from dotbots.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
+from dotbots.protocol import Lh2RawLocation, Lh2RawData
 
 
 EXPECTED_COUNTS = [49341, 85887, 49341, 85887]

@@ -5,8 +5,8 @@ import asyncio
 import os
 import sys
 
-from bot_controller.controller import ControllerBase
-from bot_controller.protocol import PayloadType, ProtocolPayload, CommandMoveRaw
+from dotbots.controller import ControllerBase
+from dotbots.protocol import PayloadType, ProtocolPayload, CommandMoveRaw
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"

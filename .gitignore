@@ -8,5 +8,4 @@
 .coverage
 .tox/
 dist/
-bot_controller/html/
 node_modules/

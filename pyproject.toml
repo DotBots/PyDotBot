@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "bot_controller/frontend/*",
-  "bot_controller/lib/*",
+  "dotbots/frontend/*",
+  "dotbots/lib/*",
   "*.py"
 ]
 
@@ -46,4 +46,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/BotController-python/issues"
 
 [project.scripts]
-dotbots-controller = "bot_controller.main:main"
+dotbots-controller = "dotbots.main:main"

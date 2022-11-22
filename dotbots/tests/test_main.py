@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 import serial
 from click.testing import CliRunner
 
-from bot_controller.main import main
+from dotbots.main import main
 
 
 MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
@@ -48,31 +48,25 @@ def test_main_invalid_controller_type():
     assert result.exit_code != 0
 
 
-@patch("bot_controller.serial_interface.serial.Serial.open")
-@patch("bot_controller.main.version")
-@patch("bot_controller.controller.ControllerBase.run")
+@patch("dotbots.serial_interface.serial.Serial.open")
+@patch("dotbots.main.version")
+@patch("dotbots.controller.ControllerBase.run")
 def test_main(run, version, _):
     version.return_value = "test"
     runner = CliRunner()
     result = runner.invoke(main)
     assert result.exit_code == 0
-    assert (
-        "Welcome to BotController (version: test), the universal SailBot and DotBot controller."
-        in result.output
-    )
+    assert "Welcome to the DotBots controller (version: test)." in result.output
     run.assert_called_once()
 
     version.side_effect = PackageNotFoundError
     result = runner.invoke(main)
     assert result.exit_code == 0
-    assert (
-        "Welcome to BotController (version: unknown), the universal SailBot and DotBot controller."
-        in result.output
-    )
+    assert "Welcome to the DotBots controller (version: unknown)." in result.output
 
 
-@patch("bot_controller.serial_interface.serial.Serial.open")
-@patch("bot_controller.controller.ControllerBase.run")
+@patch("dotbots.serial_interface.serial.Serial.open")
+@patch("dotbots.controller.ControllerBase.run")
 def test_main_interrupts(run, _):
     runner = CliRunner()
     run.side_effect = KeyboardInterrupt

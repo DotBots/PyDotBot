@@ -18,25 +18,26 @@ from fastapi import WebSocket
 from rich.live import Live
 from rich.table import Table
 
-from bot_controller.hdlc import HDLCHandler, HDLCState, hdlc_encode
-from bot_controller.protocol import (
+from dotbots.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbots.protocol import (
     ProtocolPayload,
     ProtocolHeader,
     PROTOCOL_VERSION,
     ProtocolPayloadParserException,
     PayloadType,
 )
-from bot_controller.serial_interface import SerialInterface, SerialInterfaceException
+from dotbots.serial_interface import SerialInterface, SerialInterfaceException
 
-# from bot_controller.models import (
+# from dotbots.models import (
 #     DotBotModel,
 #     DotBotLH2Position,
 #     DotBotRgbLedCommandModel,
 # )
 
-from bot_controller.models import DotBotModel
-from bot_controller.server import web
-from bot_controller.lighthouse2 import LighthouseManager, LighthouseManagerState
+from dotbots.models import DotBotModel
+from dotbots.server import web
+from dotbots.lighthouse2 import LighthouseManager, LighthouseManagerState
+
 
 CONTROLLERS = {}
 DEFAULT_CALIBRATION_DIR = "/tmp"

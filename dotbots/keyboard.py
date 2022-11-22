@@ -14,13 +14,13 @@ except ImportError:
 
     keyboard = mock.MagicMock()
 
-from bot_controller.protocol import (
+from dotbots.protocol import (
     PayloadType,
     ProtocolPayload,
     CommandMoveRaw,
     CommandRgbLed,
 )
-from bot_controller.controller import ControllerBase
+from dotbots.controller import ControllerBase
 
 
 DIR_KEYS = [

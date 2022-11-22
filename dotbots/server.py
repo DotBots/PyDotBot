@@ -10,14 +10,14 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from bot_controller.models import (
+from dotbots.models import (
     DotBotCalibrationStateModel,
     DotBotModel,
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
 )
-from bot_controller.protocol import (
+from dotbots.protocol import (
     PROTOCOL_VERSION,
     ProtocolHeader,
     ProtocolPayload,

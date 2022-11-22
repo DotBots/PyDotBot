@@ -10,14 +10,14 @@ from importlib.metadata import version, PackageNotFoundError
 import click
 import serial
 
-from bot_controller.controller import (
+from dotbots.controller import (
     ControllerSettings,
     controller_factory,
     register_controller,
     DEFAULT_CALIBRATION_DIR,
 )
-from bot_controller.keyboard import KeyboardController
-from bot_controller.joystick import JoystickController
+from dotbots.keyboard import KeyboardController
+from dotbots.joystick import JoystickController
 
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
@@ -118,12 +118,10 @@ def main(
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
     try:
-        package_version = version("dotbot_controller")
+        package_version = version("dotbots")
     except PackageNotFoundError:
         package_version = "unknown"
-    print(
-        f"Welcome to BotController (version: {package_version}), the universal SailBot and DotBot controller."
-    )
+    print(f"Welcome to the DotBots controller (version: {package_version}).")
 
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
