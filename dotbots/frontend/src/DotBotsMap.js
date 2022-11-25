@@ -18,12 +18,15 @@ const DotBotsMapPoint = (props) => {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
   }
 
+  const posX = props.mapSize * parseFloat(props.dotbot.lh2_position.x);
+  const posY = props.mapSize * parseFloat(props.dotbot.lh2_position.y);
+
   return (
     <>
     { (props.dotbot.address === props.active) &&
-      <circle cx={props.mapSize * parseFloat(props.dotbot.lh2_position.x)} cy={props.mapSize * parseFloat(props.dotbot.lh2_position.y)} r="8" stroke="black" strokeWidth="2" fill="none" />
+      <circle cx={posX} cy={posY} r="8" stroke="black" strokeWidth="2" fill="none" />
     }
-    <circle cx={props.mapSize * parseFloat(props.dotbot.lh2_position.x)} cy={props.mapSize * parseFloat(props.dotbot.lh2_position.y)} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor} />
+    <circle cx={posX} cy={posY} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor}><title>{`${props.dotbot.address}@${posX}x${posY}`}</title></circle>
     </>
   )
 }
