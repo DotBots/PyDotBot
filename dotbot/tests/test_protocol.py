@@ -1,7 +1,7 @@
 import pytest
 
 
-from dotbots.protocol import (
+from dotbot.protocol import (
     PayloadType,
     ProtocolPayload,
     ProtocolPayloadParserException,

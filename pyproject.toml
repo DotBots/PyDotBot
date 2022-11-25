@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "dotbots/frontend/*",
-  "dotbots/lib/*",
+  "dotbot/frontend/*",
+  "dotbot/lib/*",
   "*.py"
 ]
 
@@ -13,7 +13,7 @@ include = [
 path = "utils/hooks/build.py"
 
 [project]
-name = "dotbots"
+name = "pydotbot"
 version = "0.7.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
@@ -46,4 +46,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/BotController-python/issues"
 
 [project.scripts]
-dotbots-controller = "dotbots.main:main"
+dotbot-controller = "dotbot.main:main"

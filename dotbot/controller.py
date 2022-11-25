@@ -18,25 +18,25 @@ from fastapi import WebSocket
 from rich.live import Live
 from rich.table import Table
 
-from dotbots.hdlc import HDLCHandler, HDLCState, hdlc_encode
-from dotbots.protocol import (
+from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbot.protocol import (
     ProtocolPayload,
     ProtocolHeader,
     PROTOCOL_VERSION,
     ProtocolPayloadParserException,
     PayloadType,
 )
-from dotbots.serial_interface import SerialInterface, SerialInterfaceException
+from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
-# from dotbots.models import (
+# from dotbot.models import (
 #     DotBotModel,
 #     DotBotLH2Position,
 #     DotBotRgbLedCommandModel,
 # )
 
-from dotbots.models import DotBotModel
-from dotbots.server import web
-from dotbots.lighthouse2 import LighthouseManager, LighthouseManagerState
+from dotbot.models import DotBotModel
+from dotbot.server import web
+from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 
 CONTROLLERS = {}
@@ -136,7 +136,7 @@ class ControllerBase(ABC):
             webbrowser.open("http://localhost:8000/dotbots")
 
     async def _dotbots_update(self):
-        """Coroutine that periodically updates the list of known dotbots."""
+        """Coroutine that periodically updates the list of known dotbot."""
         while 1:
             to_remove = []
             for dotbot in self.dotbots.values():
@@ -149,7 +149,7 @@ class ControllerBase(ABC):
             await asyncio.sleep(1)
 
     async def _dotbots_table_refresh(self):
-        """Display and refresh a table of known dotbots."""
+        """Display and refresh a table of known dotbot."""
 
         def table():
             table = Table()

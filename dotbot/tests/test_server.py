@@ -6,13 +6,13 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from dotbots.models import (
+from dotbot.models import (
     DotBotModel,
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
 )
-from dotbots.protocol import (
+from dotbot.protocol import (
     ProtocolHeader,
     ProtocolPayload,
     PayloadType,
@@ -20,7 +20,7 @@ from dotbots.protocol import (
     CommandMoveRaw,
     CommandRgbLed,
 )
-from dotbots.server import app, web
+from dotbot.server import app, web
 
 
 client = TestClient(app)

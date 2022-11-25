@@ -9,16 +9,16 @@ from unittest.mock import patch
 import pytest
 import serial
 
-from dotbots.controller import (
+from dotbot.controller import (
     ControllerBase,
     ControllerException,
     ControllerSettings,
     controller_factory,
     register_controller,
 )
-from dotbots.hdlc import hdlc_encode
-from dotbots.models import DotBotModel
-from dotbots.protocol import (
+from dotbot.hdlc import hdlc_encode
+from dotbot.models import DotBotModel
+from dotbot.protocol import (
     ProtocolField,
     ProtocolPayload,
     ProtocolData,
@@ -58,9 +58,9 @@ class ControllerTest(ControllerBase):
 
 
 @pytest.mark.asyncio
-@patch("dotbots.serial_interface.serial.Serial.write")
-@patch("dotbots.serial_interface.serial.Serial.open")
-@patch("dotbots.serial_interface.serial.Serial.flush")
+@patch("dotbot.serial_interface.serial.Serial.write")
+@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
@@ -87,9 +87,9 @@ async def test_controller(_, __, serial_write, capsys):
 
 
 @pytest.mark.asyncio
-@patch("dotbots.serial_interface.serial.Serial.write")
-@patch("dotbots.serial_interface.serial.Serial.open")
-@patch("dotbots.serial_interface.serial.Serial.flush")
+@patch("dotbot.serial_interface.serial.Serial.write")
+@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
@@ -109,7 +109,7 @@ async def test_controller_dont_send(_, __, serial_write):
     assert serial_write.call_count == 0
 
 
-@patch("dotbots.serial_interface.serial.Serial.open")
+@patch("dotbot.serial_interface.serial.Serial.open")
 def test_controller_factory(_):
     settings = ControllerSettings("/dev/null", "115200", "123", "456", "78")
     with pytest.raises(ControllerException) as exc:

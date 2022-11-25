@@ -10,14 +10,14 @@ from importlib.metadata import version, PackageNotFoundError
 import click
 import serial
 
-from dotbots.controller import (
+from dotbot.controller import (
     ControllerSettings,
     controller_factory,
     register_controller,
     DEFAULT_CALIBRATION_DIR,
 )
-from dotbots.keyboard import KeyboardController
-from dotbots.joystick import JoystickController
+from dotbot.keyboard import KeyboardController
+from dotbot.joystick import JoystickController
 
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"

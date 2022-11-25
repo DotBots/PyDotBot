@@ -14,8 +14,8 @@ from typing import List, Optional
 import cv2
 import numpy as np
 
-from dotbots.models import DotBotLH2Position, DotBotCalibrationStateModel
-from dotbots.protocol import Lh2RawData
+from dotbot.models import DotBotLH2Position, DotBotCalibrationStateModel
+from dotbot.protocol import Lh2RawData
 
 
 LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib/lh2.so")

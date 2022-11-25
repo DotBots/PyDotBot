@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 import serial
 from click.testing import CliRunner
 
-from dotbots.main import main
+from dotbot.main import main
 
 
 MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
@@ -48,9 +48,9 @@ def test_main_invalid_controller_type():
     assert result.exit_code != 0
 
 
-@patch("dotbots.serial_interface.serial.Serial.open")
-@patch("dotbots.main.version")
-@patch("dotbots.controller.ControllerBase.run")
+@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.main.version")
+@patch("dotbot.controller.ControllerBase.run")
 def test_main(run, version, _):
     version.return_value = "test"
     runner = CliRunner()
@@ -65,8 +65,8 @@ def test_main(run, version, _):
     assert "Welcome to the DotBots controller (version: unknown)." in result.output
 
 
-@patch("dotbots.serial_interface.serial.Serial.open")
-@patch("dotbots.controller.ControllerBase.run")
+@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.controller.ControllerBase.run")
 def test_main_interrupts(run, _):
     runner = CliRunner()
     run.side_effect = KeyboardInterrupt

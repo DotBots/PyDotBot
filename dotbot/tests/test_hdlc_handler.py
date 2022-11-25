@@ -2,7 +2,7 @@
 
 import pytest
 
-from dotbots.hdlc import HDLCDecodeException, HDLCState, HDLCHandler
+from dotbot.hdlc import HDLCDecodeException, HDLCState, HDLCHandler
 
 
 def test_hdlc_handler_states():
