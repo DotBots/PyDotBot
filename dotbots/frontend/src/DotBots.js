@@ -159,16 +159,22 @@ const DotBots = () => {
     <div className="container">
       {dotbots && dotbots.length > 0 && (
       <>
-      <div className="card m-1">
-        <div className="card-header">Available DotBots</div>
-        <div className="card-body p-0 mb-1">
-          <div className="accordion accordion-flush" id="accordion-dotbots">
-            {dotbots && dotbots.map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)}
+      <div className="row">
+        <div className="col col-md-6">
+          <div className="card m-1">
+            <div className="card-header">Available DotBots</div>
+            <div className="card-body p-1">
+              <div className="accordion accordion-flush" id="accordion-dotbots">
+                {dotbots && dotbots.map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div className="p-0">
-        <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={400} />
+        <div className="col col-md-6">
+          <div className="m-1">
+            <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={650} />
+           </div>
+        </div>
       </div>
       </>
       )}
