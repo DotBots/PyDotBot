@@ -42,8 +42,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/DotBots/BotController-python"
-"Bug Tracker" = "https://github.com/DotBots/BotController-python/issues"
+"Homepage" = "https://github.com/DotBots/PyDotBot"
+"Bug Tracker" = "https://github.com/DotBots/PyDotBot/issues"
 
 [project.scripts]
 dotbot-controller = "dotbot.main:main"
