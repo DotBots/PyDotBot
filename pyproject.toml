@@ -14,7 +14,7 @@ path = "utils/hooks/build.py"
 
 [project]
 name = "pydotbot"
-version = "0.7.0"
+version = "0.8.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
