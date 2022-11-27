@@ -1,4 +1,4 @@
-# DotBots
+# PyDotBot
 
 This package contains a complete environment for controlling and visualizing
 [DotBots](http://www.dotbots.org).
@@ -16,7 +16,7 @@ application.
 
 ## Installation
 
-Run `pip install dotbots`
+Run `pip install pydotbot`
 
 ## Setup
 
