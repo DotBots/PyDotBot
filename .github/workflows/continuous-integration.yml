@@ -10,23 +10,25 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+        python-version: ["3.9", "3.10"]
     steps:
     - uses: actions/checkout@v3
-    - name: Set up Python 3.8
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
-        python-version: 3.8
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade --requirement tests_requirements.txt
         python -m pip install --upgrade .
     - name: Run tox
-      run: |
-        export CFLAGS=`python -c 'import sysconfig;print("-I"+sysconfig.get_paths()["include"])'`
-        export PY38_PATH=`python -c 'import sysconfig;print(sysconfig.get_paths()["include"])'`
-        mkdir -p $PY38_PATH/../../lib/python3.8/site-packages/bot_controller/frontend/build
-        tox
+      run: tox
     - name: Build a package tarball
       run: python -m build -n
     # - name: Publish package to TestPyPI
