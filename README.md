@@ -1,18 +1,18 @@
+[![CI][ci-badge]][ci-link]
+
 # PyDotBot
 
 This package contains a complete environment for controlling and visualizing
 [DotBots](http://www.dotbots.org).
 
 The DotBots hardware design can be found
-[here (PCB)](https://github.com/DotBots/DotBot-pcb) and
-[here (chassis)](https://github.com/DotBots/DotBot-chassis).
-The firmware running on the DotBots can be found
-[here](https://github.com/DotBots/DotBot-firmware).
+[here (PCB)][dotbot-pcb-repo] and [here (chassis)][dotbot-chassis-repo].
+The firmware running on the DotBots can be found [here][dotbot-firmware-repo].
 
 This package can also be used to control devices running the SailBot firmware
 application.
 
-![DotBots controller overview](https://github.com/DotBots/PyDotBot/blob/main/dotbots.png?raw=True)
+![DotBots controller overview][pydotbot-overview]
 
 ## Installation
 
@@ -22,7 +22,7 @@ Run `pip install pydotbot`
 
 Flash the required firmwares on the DotBots and gateway board (use an
 nRF52840DK board as gateway), as explained in
-[the DotBots firmware repository](https://github.com/DotBots/DotBot-firmware).
+[the DotBots firmware repository][dotbot-firmware-repo].
 
 ## Usage
 
@@ -64,7 +64,7 @@ a list of available DotBots, allows to set which one is active and controllable
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
 
-### Lighthouse
+### Lighthouse[pydotbot-overview]
 
 The DotBots firmware comes with a cheap indoor positionning system based on
 [Valve Lighthouse 2](https://www.valvesoftware.com/en/index/base-stations).
@@ -81,3 +81,11 @@ To run the tests, install [tox](https://pypi.org/project/tox/) and use it:
 ```
 tox
 ```
+
+
+[ci-badge]: https://github.com/DotBots/PyDotBot/workflows/CI/badge.svg
+[ci-link]: https://github.com/DotBots/PyDotBot/actions?query=workflow%3ACI+branch%3Amain
+[pydotbot-overview]: https://github.com/DotBots/PyDotBot/blob/main/dotbots.png?raw=True
+[dotbot-firmware-repo]: https://github.com/DotBots/DotBot-firmware
+[dotbot-pcb-repo]: https://github.com/DotBots/DotBot-pcb
+[dotbot-chassis-repo]: https://github.com/DotBots/DotBot-chassis
