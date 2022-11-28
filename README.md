@@ -7,7 +7,7 @@ The DotBots hardware design can be found
 [here (PCB)](https://github.com/DotBots/DotBot-pcb) and
 [here (chassis)](https://github.com/DotBots/DotBot-chassis).
 The firmware running on the DotBots can be found
-[here](https://github.com/DotBots/DotBot-firmware-fresh).
+[here](https://github.com/DotBots/DotBot-firmware).
 
 This package can also be used to control devices running the SailBot firmware
 application.
@@ -22,7 +22,7 @@ Run `pip install pydotbot`
 
 Flash the required firmwares on the DotBots and gateway board (use an
 nRF52840DK board as gateway), as explained in
-[the DotBots firmware repository](https://github.com/DotBots/DotBot-firmware-fresh).
+[the DotBots firmware repository](https://github.com/DotBots/DotBot-firmware).
 
 ## Usage
 
