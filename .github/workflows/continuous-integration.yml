@@ -29,6 +29,11 @@ jobs:
         python -m pip install --upgrade .
     - name: Run tox
       run: tox
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == 3.10 && matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v3
+      with:
+        verbose: true
     - name: Build a package tarball
       run: python -m build -n
     # - name: Publish package to TestPyPI
@@ -39,10 +44,13 @@ jobs:
     #     user: __token__
     #     password: ${{ secrets.test_pypi_password }}
     #     repository_url: https://test.pypi.org/legacy/
-    - name: Publish package to PyPI
+    - name: Publish package to PyPICCX
       uses: pypa/gh-action-pypi-publish@release/v1
       if: >-
-        github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+        github.event_name == 'push' &&
+        startsWith(github.event.ref, 'refs/tags') &&
+        matrix.python-version == 3.10 &&
+        matrix.os == 'ubuntu-latest'
       with:
         user: __token__
         password: ${{ secrets.pypi_password }}
