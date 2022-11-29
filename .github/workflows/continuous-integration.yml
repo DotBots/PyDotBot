@@ -36,7 +36,10 @@ jobs:
     - name: Run tox
       run: tox
     - name: Upload coverage to Codecov
-      if: matrix.python-version == 3.10 && matrix.os == 'ubuntu-latest'
+      if: >-
+        matrix.python-version == 3.10 &&
+        matrix.node-version == 18 &&
+        matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3
       with:
         verbose: true
@@ -56,6 +59,7 @@ jobs:
         github.event_name == 'push' &&
         startsWith(github.event.ref, 'refs/tags') &&
         matrix.python-version == 3.10 &&
+        matrix.node-version == 18 &&
         matrix.os == 'ubuntu-latest'
       with:
         user: __token__
