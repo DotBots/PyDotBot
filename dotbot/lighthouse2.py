@@ -20,10 +20,13 @@ from dotbot.protocol import Lh2RawData
 
 
 if sys.platform == "win32":
-    LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib", "lh2.dll")
+    LIB_EXT = "dll"
+elif sys.platform == "darwin":
+    LIB_EXT = "dylib"
 else:
-    LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib", "lh2.so")
+    LIB_EXT = "so"
 
+LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib", f"lh2.{LIB_EXT}")
 POLYNOMIALS = [
     0x0001D258,
     0x00017E04,
