@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from dotbot.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
 from dotbot.protocol import Lh2RawLocation, Lh2RawData
 
@@ -44,7 +46,6 @@ def test_raw_data_to_counts_no_lib(lib_exists):
 
 
 def test_camera_points():
-    assert calculate_camera_point(49341, 85887, 1) == (
-        -0.4255775370509014,
-        0.15468717476270966,
+    assert calculate_camera_point(49341, 85887, 1) == pytest.approx(
+        (-0.4255775370509014, 0.15468717476270966)
     )
