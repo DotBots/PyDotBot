@@ -30,4 +30,7 @@ class CustomBuildHook(BuildHookInterface):
 
         print("Building lighthouse reverse count library...")
         lib_dir = os.path.join(self.root, "dotbot/lib")
-        subprocess.run(["make", "clean", "all"], cwd=lib_dir, check=True)
+        build_dir = os.path.join(lib_dir, "_build")
+        subprocess.run(["mkdir", "-p", build_dir], cwd=lib_dir, check=True)
+        subprocess.run(["cmake", "..", "-G", "Ninja"], cwd=build_dir, check=True)
+        subprocess.run(["ninja", "all", "install"], cwd=build_dir, check=True)
