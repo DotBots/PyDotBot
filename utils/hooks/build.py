@@ -19,14 +19,12 @@ class CustomBuildHook(BuildHookInterface):
     def initialize(self, _, __):
         """Will be called before creating the source archive."""
 
-        print("Building React frontend application...")
         frontend_dir = os.path.join(self.root, "dotbot", "frontend")
-        subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
-        subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
-
-        if sys.platform != "linux":
-            # TODO: provide lh2 lib built for non Linux platforms (Win, Mac)
-            return
+        subprocess.run(["mkdir", "-p", "build"], cwd=frontend_dir, check=True)
+        if sys.platform == "linux":
+            print("Building React frontend application...")
+            subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
+            subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
 
         print("Building lighthouse reverse count library...")
         lib_dir = os.path.join(self.root, "dotbot", "lib")
