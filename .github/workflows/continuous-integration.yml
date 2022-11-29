@@ -10,6 +10,7 @@ on:
 
 jobs:
   build:
+    name: build (${{ matrix.os }}, python-${{ matrix.python-version }}, node-${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
