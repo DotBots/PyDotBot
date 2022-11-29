@@ -20,7 +20,7 @@ class CustomBuildHook(BuildHookInterface):
         """Will be called before creating the source archive."""
 
         print("Building React frontend application...")
-        frontend_dir = os.path.join(self.root, "dotbot/frontend")
+        frontend_dir = os.path.join(self.root, "dotbot", "frontend")
         subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
         subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
 
@@ -29,7 +29,7 @@ class CustomBuildHook(BuildHookInterface):
             return
 
         print("Building lighthouse reverse count library...")
-        lib_dir = os.path.join(self.root, "dotbot/lib")
+        lib_dir = os.path.join(self.root, "dotbot", "lib")
         build_dir = os.path.join(lib_dir, "_build")
         subprocess.run(["mkdir", "-p", build_dir], cwd=lib_dir, check=True)
         subprocess.run(["cmake", "..", "-G", "Ninja"], cwd=build_dir, check=True)
