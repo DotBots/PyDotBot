@@ -55,7 +55,8 @@ jobs:
     - name: Upload source package as artifact
       if: >-
         matrix.python-version == 3.10 &&
-        matrix.node-version == 18
+        matrix.node-version == 18 &&
+        matrix.os == ubuntu-latest
       uses: actions/upload-artifact@v3
       with:
         path: ./dist/*.tar.gz
