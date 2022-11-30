@@ -56,7 +56,7 @@ jobs:
       if: >-
         matrix.python-version == 3.10 &&
         matrix.node-version == 18 &&
-        matrix.os == ubuntu-latest
+        matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v3
       with:
         path: ./dist/*.tar.gz
@@ -84,6 +84,8 @@ jobs:
     - uses: actions/download-artifact@v3
       with:
         path: ./dist
+    - name: Check dist/ content
+      run: ls -lR ./dist
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
