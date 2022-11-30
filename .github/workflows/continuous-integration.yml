@@ -50,8 +50,27 @@ jobs:
       uses: codecov/codecov-action@v3
       with:
         verbose: true
-    - name: Build a package tarball
+    - name: Build a source package
       run: python -m build -n
+    - name: Upload source package as artifact
+      if: >-
+        matrix.python-version == 3.10 &&
+        matrix.node-version == 18
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./dist/*.tar.gz
+    - name: Build wheels
+      if: >-
+        matrix.python-version == 3.10 &&
+        matrix.node-version == 18
+      run: python -m cibuildwheel --output-dir dist
+    - name: Upload wheels as artifacts
+      if: >-
+        matrix.python-version == 3.10 &&
+        matrix.node-version == 18
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./dist/*.whl
     # - name: Publish package to TestPyPI
     #   uses: pypa/gh-action-pypi-publish@release/v1
     #   if: >-

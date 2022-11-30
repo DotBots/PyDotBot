@@ -9,4 +9,3 @@
 .tox/
 dist/
 node_modules/
-_build/
