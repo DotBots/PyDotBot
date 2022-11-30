@@ -34,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade --requirement tests_requirements.txt
-        python -m pip install --upgrade .
+        python -m pip install --upgrade --requirement build_requirements.txt
     - name: Run tox
       run: tox
     - name: Check cli
