@@ -24,10 +24,9 @@ def build_frontend(root):
     """Builds the ReactJS frontend."""
     frontend_dir = os.path.join(root, "dotbot", "frontend")
     subprocess.run(["mkdir", "-p", "build"], cwd=frontend_dir, check=True)
-    if sys.platform == "linux":
-        print("Building React frontend application...")
-        subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
-        subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
+    print("Building React frontend application...")
+    subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
+    subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
 
 
 def build_lh2(root):
