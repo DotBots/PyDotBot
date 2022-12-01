@@ -13,6 +13,8 @@ import {
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
 const inactiveAddress = "0000000000000000";
+const dotbotStatuses = ["alive", "lost", "dead"];
+const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
 const DotBotAccordionItem = (props) => {
 
@@ -53,18 +55,19 @@ const DotBotAccordionItem = (props) => {
           <div className="d-flex" style={{ width: '100%' }}>
             <div className="me-2">
               <svg style={{ height: '12px', width: '12px'}}>
-                <circle cx={5} cy={5} r={5} fill={rgbColor} />
+                <circle cx={5} cy={5} r={5} fill={rgbColor} opacity={`${props.dotbot.status === 0 ? "100%" : "30%"}`} />
               </svg>
             </div>
             <div className="me-auto">{props.dotbot.address}</div>
             <div className="me-2">
-            {
-              props.dotbot.address === props.active ? (
-                <div className="badge text-bg-success text-light border-0" onClick={() => props.updateActive(props.dotbot.address)}>active</div>
-              ) : (
-                <div className="badge text-bg-primary text-light border-0" onClick={() => props.updateActive(props.dotbot.address)}>activate</div>
-              )
-            }
+              <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
+                {dotbotStatuses[props.dotbot.status]}
+              </div>
+            </div>
+            <div className="me-2">
+              <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
+                {`${props.dotbot.address === props.active ? "active": "activate"}`}
+              </div>
             </div>
           </div>
         </button>

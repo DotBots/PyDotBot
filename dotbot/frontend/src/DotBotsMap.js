@@ -26,7 +26,7 @@ const DotBotsMapPoint = (props) => {
     { (props.dotbot.address === props.active) &&
       <circle cx={posX} cy={posY} r="8" stroke="black" strokeWidth="2" fill="none" />
     }
-    <circle cx={posX} cy={posY} r={props.dotbot.address === props.active ? 8: 5} opacity="80%" fill={rgbColor}><title>{`${props.dotbot.address}@${posX}x${posY}`}</title></circle>
+    <circle cx={posX} cy={posY} r={props.dotbot.address === props.active ? 8: 5} opacity={`${props.dotbot.status === 0 ? "80%" : "20%"}`} fill={rgbColor}><title>{`${props.dotbot.address}@${posX}x${posY}`}</title></circle>
     </>
   )
 }
@@ -111,6 +111,7 @@ export const DotBotsMap = (props) => {
               {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.lh2_position)
+                  .filter(dotbot => dotbot.status !== 2)
                   .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} mapSize={props.mapSize} />)
               }
               {

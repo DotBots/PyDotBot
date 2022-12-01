@@ -34,13 +34,15 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 #     DotBotRgbLedCommandModel,
 # )
 
-from dotbot.models import DotBotModel
+from dotbot.models import DotBotModel, DotBotStatus
 from dotbot.server import web
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 
 CONTROLLERS = {}
 DEFAULT_CALIBRATION_DIR = "/tmp"
+LOST_DELAY = 5  # seconds
+DEAD_DELAY = 60  # seconds
 
 
 class ControllerException(Exception):
@@ -135,16 +137,20 @@ class ControllerBase(ABC):
         if self.settings.webbrowser is True:
             webbrowser.open("http://localhost:8000/dotbots")
 
-    async def _dotbots_update(self):
-        """Coroutine that periodically updates the list of known dotbot."""
+    async def _dotbots_status_refresh(self):
+        """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            to_remove = []
+            needs_refresh = False
             for dotbot in self.dotbots.values():
-                if dotbot.last_seen + 3 < time.time():
-                    to_remove.append(dotbot)
-            for dotbot in to_remove:
-                self.dotbots.pop(dotbot.address)
-            if to_remove:
+                previous_status = dotbot.status
+                if dotbot.last_seen + DEAD_DELAY < time.time():
+                    dotbot.status = DotBotStatus.DEAD
+                elif dotbot.last_seen + LOST_DELAY < time.time():
+                    dotbot.status = DotBotStatus.LOST
+                else:
+                    dotbot.status = DotBotStatus.ALIVE
+                needs_refresh = previous_status != dotbot.status
+            if needs_refresh is True:
                 await self.notify_clients(json.dumps({"cmd": "reload"}))
             await asyncio.sleep(1)
 
@@ -156,13 +162,13 @@ class ControllerBase(ABC):
             if self.dotbots:
                 table.add_column("#", style="cyan")
                 table.add_column("address", style="magenta")
-                table.add_column("last seen", style="green")
+                table.add_column("status", style="green")
                 table.add_column("active", style="green")
                 for idx, dotbot in enumerate(self.dotbots.values()):
                     table.add_row(
                         f"{idx:<4}",
                         f"0x{dotbot.address}",
-                        f"{dotbot.last_seen:.3f}",
+                        f"{dotbot.status.name.capitalize()}",
                         f"{int(dotbot.address, 16) == self.header.destination}",
                     )
             return table
@@ -201,6 +207,15 @@ class ControllerBase(ABC):
             last_seen=time.time(),
             active=(int(source, 16) == self.header.destination),
         )
+        should_reload = False
+        if source in self.dotbots:
+            dotbot.rgb_led = self.dotbots[source].rgb_led
+            dotbot.lh2_position = self.dotbots[source].lh2_position
+            should_reload = dotbot.status != self.dotbots[source].status
+        else:
+            # only reload if a new dotbot comes in
+            should_reload = True
+
         if payload.payload_type == PayloadType.LH2_RAW_DATA:
             self.lh2_manager.last_raw_data = payload.values
             if self.lh2_manager.state == LighthouseManagerState.Calibrated:
@@ -218,12 +233,10 @@ class ControllerBase(ABC):
                             )
                         )
                     )
-        if source not in self.dotbots:
-            asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
-        else:
-            dotbot.rgb_led = self.dotbots[source].rgb_led
-            dotbot.lh2_position = self.dotbots[source].lh2_position
+
         self.dotbots.update({dotbot.address: dotbot})
+        if should_reload is True:
+            asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
         """Safely send a message to a websocket client."""
@@ -256,7 +269,7 @@ class ControllerBase(ABC):
                 asyncio.create_task(web(self)),
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
-                asyncio.create_task(self._dotbots_update()),
+                asyncio.create_task(self._dotbots_status_refresh()),
                 asyncio.create_task(self._dotbots_table_refresh()),
                 asyncio.create_task(self.start()),
             ]
