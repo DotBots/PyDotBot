@@ -1,16 +1,24 @@
 [build-system]
-requires = ["hatchling>=1.4.1"]
+requires = [
+    "hatchling>=1.4.1",
+    "cibuildwheel",
+    "cmake",
+    "ninja",
+]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "dotbot/frontend/*",
-  "dotbot/lib/*",
-  "*.py"
+    "dotbot/frontend/*",
+    "dotbot/lib/*",
+    "*.py"
 ]
 
 [tool.hatch.build.targets.sdist.hooks.custom]
-path = "utils/hooks/build.py"
+path = "utils/hooks/sdist.py"
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "utils/hooks/wheel.py"
 
 [project]
 name = "pydotbot"
@@ -36,9 +44,12 @@ readme = "README.md"
 license = { text="BSD" }
 requires-python = ">=3.7"
 classifiers = [
+    'Programming Language :: C',
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
-    "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
 ]
 
 [project.urls]

@@ -5,6 +5,7 @@
 import math
 import os
 import pickle
+import sys
 
 from ctypes import CDLL
 from dataclasses import dataclass
@@ -18,7 +19,14 @@ from dotbot.models import DotBotLH2Position, DotBotCalibrationStateModel
 from dotbot.protocol import Lh2RawData
 
 
-LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib/lh2.so")
+if sys.platform == "win32":
+    LIB_EXT = "dll"
+elif sys.platform == "darwin":
+    LIB_EXT = "dylib"
+else:
+    LIB_EXT = "so"
+
+LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib", f"lh2.{LIB_EXT}")
 POLYNOMIALS = [
     0x0001D258,
     0x00017E04,
