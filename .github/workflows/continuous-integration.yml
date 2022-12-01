@@ -9,8 +9,9 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: build (${{ matrix.os }}, python-${{ matrix.python-version }}, node-${{ matrix.node-version }})
+
+  test:
+    name: test (${{ matrix.os }}, python-${{ matrix.python-version }}, node-${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,8 +20,12 @@ jobs:
           - ubuntu-latest
           - macos-latest
           - windows-latest
-        python-version: ["3.9", "3.10"]
-        node-version: ["16", "18"]
+        python-version: ["3.10"]
+        node-version: ["18"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.9"
+            node-version: "16"
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
@@ -28,21 +33,17 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Set up nodejs ${{ matrix.node-version }}
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.node-version }}
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade --requirement tests_requirements.txt
-        python -m pip install --upgrade --requirement build_requirements.txt
+      run: python -m pip install --upgrade --requirement tests_requirements.txt
     - name: Run tox
       run: tox
     - name: Check cli
       if: matrix.os == 'ubuntu-latest'
       run: tox -e cli
-    - name: Test frontend
-      if: matrix.os == 'ubuntu-latest'
-      run: tox -e web
     - name: Upload coverage to Codecov
       if: >-
         matrix.python-version == 3.10 &&
@@ -50,39 +51,114 @@ jobs:
       uses: codecov/codecov-action@v3
       with:
         verbose: true
-    - name: Build a source package
-      run: python -m build -s
-    - name: Upload source package as artifact
-      if: >-
-        matrix.python-version == 3.10 &&
-        matrix.node-version == 18 &&
-        matrix.os == 'ubuntu-latest'
+
+  frontend:
+    name: check frontend
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up nodejs
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+    - run: npm install
+      working-directory: ./dotbot/frontend
+    - run: npm run test
+      working-directory: ./dotbot/frontend
+    - run: npm run lint
+      working-directory: ./dotbot/frontend
+    - run: npm run build
+      working-directory: ./dotbot/frontend
+    - name: Upload frontend build
       uses: actions/upload-artifact@v3
       with:
+        name: frontend
+        path: ./dotbot/frontend/build
+
+  package:
+    needs: [test, frontend]
+    name: build source package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade --requirement tests_requirements.txt
+        python -m pip install --upgrade --requirement build_requirements.txt
+    - name: Set up nodejs
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+    - name: Build package
+      run: python -m build
+    - name: Upload source package as artifact
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v3
+      with:
+        name: sdist
         path: ./dist/*.tar.gz
+
+  wheels:
+    needs: [test, frontend]
+    name: build wheels
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    - name: Install build dependencies
+      run: python -m pip install --upgrade --requirement build_requirements.txt
+    - uses: actions/download-artifact@v3
+      with:
+        name: frontend
+        path: ./dotbot/frontend/build
     - name: Build wheels
-      if: >-
-        matrix.python-version == 3.10 &&
-        matrix.node-version == 18
       run: python -m cibuildwheel --output-dir dist
       env:
         CIBW_SKIP: "cp36-* cp37-* cp38-* pp*"
         CIBW_BUILD_FRONTEND: "build"
     - name: Upload wheels as artifacts
-      if: >-
-        matrix.python-version == 3.10 &&
-        matrix.node-version == 18
       uses: actions/upload-artifact@v3
       with:
+        name: wheels
         path: ./dist/*.whl
+
   release:
-    needs: build
+    needs: [package, wheels]
+    name: publish release
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/download-artifact@v3
+    - name: name: Download sdist
+      uses: actions/download-artifact@v3
       with:
+        name: sdist
+        path: ./dist
+    - name: Download wheels
+      uses: actions/download-artifact@v3
+      with:
+        name: wheels
         path: ./dist
     - name: Check dist/ content
       run: ls -lR ./dist
