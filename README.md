@@ -66,12 +66,12 @@ a list of available DotBots, allows to set which one is active and controllable
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
 
-### Lighthouse[pydotbot-overview]
+### Lighthouse positioning
 
-The DotBots firmware comes with a cheap indoor positionning system based on
+The DotBots firmware comes with a cheap indoor positioning system based on
 [Valve Lighthouse 2](https://www.valvesoftware.com/en/index/base-stations).
 
-To get the positionning to work and the DotBots to be tracked in real-time the
+To get the positioning to work and the DotBots to be tracked in real-time the
 system must be first calibrated by clicking the "Start calibration" or
 "Update calibration" button below the grid map and then by following the
 instructions there.
