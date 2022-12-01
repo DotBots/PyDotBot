@@ -171,5 +171,5 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         generateReleaseNotes: true
-        artifacts: "dist/*.tar.gz,dist/*.whl"
+        artifacts: "./dist/*"
         token: ${{ secrets.RELEASE_TOKEN }}
