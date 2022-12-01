@@ -135,7 +135,7 @@ jobs:
     - name: Build wheels
       run: python -m cibuildwheel --output-dir dist
       env:
-        CIBW_SKIP: "cp36-* cp37-* cp38-* pp*"
+        CIBW_SKIP: "cp36-* cp37-* pp*"
         CIBW_BUILD_FRONTEND: "build"
     - name: Upload wheels as artifacts
       uses: actions/upload-artifact@v3
@@ -167,9 +167,9 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.pypi_password }}
-    - name: Create GitHub release
+    - name: Release
       uses: ncipollo/release-action@v1
       with:
         generateReleaseNotes: true
-        artifacts: "./dist/*"
+        artifacts: "dist/*.tar.gz,dist/*.whl"
         token: ${{ secrets.RELEASE_TOKEN }}
