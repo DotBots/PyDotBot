@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import tempfile
 import time
 import webbrowser
 
@@ -40,7 +41,7 @@ from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 
 CONTROLLERS = {}
-DEFAULT_CALIBRATION_DIR = "/tmp"
+DEFAULT_CALIBRATION_DIR = tempfile.gettempdir()
 LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
 
