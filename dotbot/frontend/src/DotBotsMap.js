@@ -97,16 +97,16 @@ export const DotBotsMap = (props) => {
           <div style={{ height: gridSize, width: gridSize }}>
             <svg style={{ height: gridSize, width: gridSize }}>
               <defs>
-                <pattern id="smallGrid" width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
+                <pattern id={`smallGrid${mapSize}`} width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
                   <path d={`M ${mapSize / 50} 0 L 0 0 0 ${mapSize / 50}`} fill="none" stroke="gray" strokeWidth="0.5"/>
                 </pattern>
-                <pattern id="grid" width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
-                  <rect width={`${mapSize / 5}`} height={`${mapSize / 5}`} fill="url(#smallGrid)"/>
+                <pattern id={`grid${mapSize}`} width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
+                  <rect width={`${mapSize / 5}`} height={`${mapSize / 5}`} fill={`url(#smallGrid${mapSize})`}/>
                   <path d={`M ${mapSize / 5} 0 L 0 0 0 ${mapSize / 5}`} fill="none" stroke="gray" strokeWidth="1"/>
                 </pattern>
               </defs>
               {/* Map grid */}
-              <rect width="100%" height="100%" fill="url(#grid)" />
+              <rect width="100%" height="100%" fill={`url(#grid${mapSize})`} />
               {/* DotBots points */}
               {
                 props.dotbots && props.dotbots

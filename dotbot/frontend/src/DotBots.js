@@ -163,7 +163,7 @@ const DotBots = () => {
       {dotbots && dotbots.length > 0 && (
       <>
       <div className="row">
-        <div className="col col-md-6">
+        <div className="col col-xxl-6">
           <div className="card m-1">
             <div className="card-header">Available DotBots</div>
             <div className="card-body p-1">
@@ -173,10 +173,13 @@ const DotBots = () => {
             </div>
           </div>
         </div>
-        <div className="col col-md-6">
-          <div className="m-1">
+        <div className="col col-xxl-6">
+          <div className="d-block d-md-none m-1">
+            <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={350} />
+          </div>
+          <div className="d-none d-md-block m-1">
             <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={650} />
-           </div>
+          </div>
         </div>
       </div>
       </>
