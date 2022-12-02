@@ -154,9 +154,19 @@ const DotBots = () => {
 
   return (
     <>
-    <nav className="navbar navbar-expand-lg bg-dark">
+    <nav className="navbar navbar-dark navbar-expand-lg bg-dark">
       <div className="container-fluid">
-        <a className="navbar-brand text-light" href="http://www.dotbots.org">DotBots</a>
+        <a className="navbar-brand text-light" href="http://www.dotbots.org">The DotBots project</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item">
+              <a class="nav-link active" aria-current="page" href="http://localhost:8000/api" target="_blank" rel="noreferrer noopener">API</a>
+            </li>
+          </ul>
+        </div>
       </div>
     </nav>
     <div className="container">
