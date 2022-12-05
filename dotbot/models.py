@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
 
+from dotbot.protocol import ApplicationType
+
 
 class DotBotAddressModel(BaseModel):
     """Simple model to hold a DotBot address."""
@@ -55,7 +57,7 @@ class DotBotModel(BaseModel):
     """Model class that defines a DotBot."""
 
     address: str
-    application: str = "DotBot"
+    application: ApplicationType = ApplicationType.DotBot
     swarm: str = "0000"
     status: DotBotStatus = DotBotStatus.ALIVE
     last_seen: float

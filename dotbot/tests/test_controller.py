@@ -25,6 +25,7 @@ from dotbot.protocol import (
     ProtocolHeader,
     PROTOCOL_VERSION,
     PayloadType,
+    ApplicationType,
 )
 
 
@@ -74,7 +75,7 @@ async def test_controller(_, __, serial_write, capsys):
     capture = capsys.readouterr()
     assert "start controller" in capture.out
     payload = ProtocolPayload(
-        ProtocolHeader(0, 0, 0, 0),
+        ProtocolHeader(0, 0, 0, 0, 0),
         PayloadType.CMD_MOVE_RAW,
         ProtocolDataTest(),
     )
@@ -100,7 +101,7 @@ async def test_controller_dont_send(_, __, serial_write):
     controller.init()
     await controller.start()
     payload = ProtocolPayload(
-        ProtocolHeader(123, 0, 0, 0),
+        ProtocolHeader(123, 0, 0, 0, 0),
         PayloadType.CMD_MOVE_RAW,
         ProtocolDataTest(),
     )
@@ -120,8 +121,9 @@ def test_controller_factory(_):
     controller = controller_factory("test", settings)
     assert controller.__class__.__name__ == "ControllerTest"
     assert controller.header == ProtocolHeader(
-        int(settings.dotbot_address, 16),
-        int(settings.gw_address, 16),
-        int(settings.swarm_id, 16),
-        PROTOCOL_VERSION,
+        destination=int(settings.dotbot_address, 16),
+        source=int(settings.gw_address, 16),
+        swarm_id=int(settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
     )

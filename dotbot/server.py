@@ -24,6 +24,7 @@ from dotbot.protocol import (
     PayloadType,
     CommandMoveRaw,
     CommandRgbLed,
+    ApplicationType,
 )
 
 
@@ -86,10 +87,11 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
-        int(address, 16),
-        int(app.controller.settings.gw_address, 16),
-        int(app.controller.settings.swarm_id, 16),
-        PROTOCOL_VERSION,
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
     )
     payload = ProtocolPayload(
         header,
@@ -113,10 +115,11 @@ async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
-        int(address, 16),
-        int(app.controller.settings.gw_address, 16),
-        int(app.controller.settings.swarm_id, 16),
-        PROTOCOL_VERSION,
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
     )
     payload = ProtocolPayload(
         header,
