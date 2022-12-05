@@ -45,6 +45,13 @@ class DotBotLH2Position(BaseModel):
     z: float
 
 
+class DotBotGPSPosition(BaseModel):
+    """GPS position of a DotBot, usually running a SailBot application."""
+
+    latitude: float
+    longitude: float
+
+
 class DotBotStatus(int, Enum):
     """Status of a DotBot."""
 
@@ -64,3 +71,4 @@ class DotBotModel(BaseModel):
     move_raw: Optional[DotBotMoveRawCommandModel]
     rgb_led: Optional[DotBotRgbLedCommandModel]
     lh2_position: Optional[DotBotLH2Position]
+    gps_position: Optional[DotBotGPSPosition]
