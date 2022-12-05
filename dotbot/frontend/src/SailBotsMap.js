@@ -1,6 +1,6 @@
 import React from "react";
 
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 
 const defaultPosition = [
   48.832313766146896, 2.4126897594949184
