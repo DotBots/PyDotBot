@@ -5,11 +5,16 @@ import useWebSocket from 'react-use-websocket';
 
 import { Joystick } from "./Joystick";
 import { DotBotsMap } from "./DotBotsMap";
+import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
   apiFetchDotbots, apiUpdateRgbLed
 } from "./rest";
 
+const ApplicationType = {
+  DotBot: 0,
+  SailBot: 1,
+};
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
 const inactiveAddress = "0000000000000000";
@@ -99,6 +104,26 @@ const DotBotAccordionItem = (props) => {
   )
 }
 
+const SailBotItem = (props) => {
+  return (
+    <div className="d-flex mx-2 p-2" style={{ width: '100%' }}>
+      <div className="me-auto">{props.dotbot.address}</div>
+      <div className="me-2">
+        <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
+          {dotbotStatuses[props.dotbot.status]}
+        </div>
+      </div>
+      <div className="me-3">
+        <button className="btn border-0 p-0" onClick={() => props.updateActive(props.dotbot.address === props.active ? inactiveAddress : props.dotbot.address)} type="button">
+          <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
+            {`${props.dotbot.address === props.active ? "active": "activate"}`}
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
@@ -172,26 +197,56 @@ const DotBots = () => {
     <div className="container">
       {dotbots && dotbots.length > 0 && (
       <>
+      {dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).length > 0 &&
       <div className="row">
         <div className="col col-xxl-6">
           <div className="card m-1">
             <div className="card-header">Available DotBots</div>
             <div className="card-body p-1">
               <div className="accordion accordion-flush" id="accordion-dotbots">
-                {dotbots && dotbots.map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)}
+                {dotbots
+                  .filter(dotbot => dotbot.application === ApplicationType.DotBot)
+                  .map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
+                }
               </div>
             </div>
           </div>
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={350} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots} active={activeDotbot} mapSize={650} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} mapSize={650} />
           </div>
         </div>
       </div>
+      }
+      {dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot).length > 0 &&
+      <div className="row">
+        <div className="col col-xxl-6">
+          <div className="card m-1">
+            <div className="card-header">Available SailBots</div>
+            <div className="card-body p-1">
+              <div className="accordion accordion-flush" id="accordion-sailbots">
+                {dotbots
+                  .filter(dotbot => dotbot.application === ApplicationType.SailBot)
+                  .map(dotbot => <SailBotItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="col col-xxl-6">
+          <div className="d-block d-md-none m-1">
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} mapSize={350} />
+          </div>
+          <div className="d-none d-md-block m-1">
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} mapSize={650} />
+          </div>
+        </div>
+      </div>
+      }
       </>
       )}
     </div>

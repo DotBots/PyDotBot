@@ -34,6 +34,29 @@ const server = setupServer(
                     swarm: "0000",
                     last_seen: 123.4,
                 },
+                {
+                    address: "5353",
+                    application: 0,
+                    swarm: "0000",
+                    last_seen: 123.4,
+                    status: 2,
+                    lh2_position: {x: 100.0, y: 100.0, z: 0.0},
+                },
+                {
+                    address: "5151",
+                    application: 1,
+                    swarm: "0000",
+                    last_seen: 123.4,
+                    gps_position: {latitude: 48.832313766146896, longitude: 2.4126897594949184},
+                },
+                {
+                    address: "5252",
+                    application: 1,
+                    swarm: "0000",
+                    last_seen: 123.4,
+                    status: 2,
+                    gps_position: {latitude: 48.832313766146896, longitude: 2.4126897594949184},
+                },
             ]
         ));
     }),
@@ -61,6 +84,7 @@ afterAll(() => server.close())
 test('DotBots main page', async () => {
     render(<DotBots />);
     await waitFor(() => expect(screen.getByText("Available DotBots")).toBeVisible());
+    await waitFor(() => expect(screen.getByText("Available SailBots")).toBeVisible());
     await waitFor(() => expect(screen.getAllByText('activate')[0]).toBeVisible());
     await waitFor(() => expect(screen.getByText('active')).toBeVisible());
 

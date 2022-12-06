@@ -32,6 +32,7 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
 # from dotbot.models import (
 #     DotBotModel,
+#     DotBotGPSPosition,
 #     DotBotLH2Position,
 #     DotBotRgbLedCommandModel,
 # )
@@ -87,6 +88,12 @@ class ControllerBase(ABC):
         #     "0000000000000003": DotBotModel(
         #         address="0000000000000003",
         #         last_seen=time.time(),
+        #     ),
+        #     "0000000000000004": DotBotModel(
+        #         address="0000000000000004",
+        #         application=ApplicationType.SailBot,
+        #         last_seen=time.time(),
+        #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
         #     ),
         # }
         self.header = ProtocolHeader(
