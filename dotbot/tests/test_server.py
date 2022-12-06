@@ -13,6 +13,7 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
 )
 from dotbot.protocol import (
+    ApplicationType,
     ProtocolHeader,
     ProtocolPayload,
     PayloadType,
@@ -69,7 +70,7 @@ def test_set_dotbot_address():
             {
                 "4242": DotBotModel(
                     address="4242",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -82,7 +83,7 @@ def test_set_dotbot_address():
             {
                 "56789": DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -98,10 +99,11 @@ def test_set_dotbots_move_raw(dotbots, code, found):
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
     header = ProtocolHeader(
-        int(address, 16),
-        int(app.controller.settings.gw_address, 16),
-        int(app.controller.settings.swarm_id, 16),
-        PROTOCOL_VERSION,
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
     )
     expected_payload = ProtocolPayload(
         header,
@@ -109,7 +111,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
         CommandMoveRaw(42, 0, 42, 0),
     )
     response = client.put(
-        f"/controller/dotbots/{address}/move_raw",
+        f"/controller/dotbots/{address}/0/move_raw",
         json=command.dict(),
     )
     assert response.status_code == code
@@ -126,7 +128,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
             {
                 "4242": DotBotModel(
                     address="4242",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -139,7 +141,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
             {
                 "56789": DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -155,10 +157,11 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
     header = ProtocolHeader(
-        int(address, 16),
-        int(app.controller.settings.gw_address, 16),
-        int(app.controller.settings.swarm_id, 16),
-        PROTOCOL_VERSION,
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
     )
     expected_payload = ProtocolPayload(
         header,
@@ -166,7 +169,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
         CommandRgbLed(42, 0, 42),
     )
     response = client.put(
-        f"/controller/dotbots/{address}/rgb_led",
+        f"/controller/dotbots/{address}/0/rgb_led",
         json=command.dict(),
     )
     assert response.status_code == code
@@ -185,7 +188,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
             {
                 "12345": DotBotModel(
                     address=12345,
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -193,7 +196,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
             [
                 DotBotModel(
                     address=12345,
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ).dict(exclude_none=True),
@@ -204,13 +207,13 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
             {
                 "56789": DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
                 "12345": DotBotModel(
                     address="12345",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -218,13 +221,13 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
             [
                 DotBotModel(
                     address="12345",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ).dict(exclude_none=True),
                 DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ).dict(exclude_none=True),
@@ -247,13 +250,13 @@ def test_get_dotbots(dotbots, result):
             {
                 "56789": DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
                 "12345": DotBotModel(
                     address="12345",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
@@ -263,7 +266,7 @@ def test_get_dotbots(dotbots, result):
             True,
             DotBotModel(
                 address="12345",
-                application="DotBot",
+                application=ApplicationType.DotBot,
                 swarm="0000",
                 last_seen=123.4,
             ).dict(exclude_none=True),
@@ -273,13 +276,13 @@ def test_get_dotbots(dotbots, result):
             {
                 "56789": DotBotModel(
                     address="56789",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),
                 "12345": DotBotModel(
                     address="12345",
-                    application="DotBot",
+                    application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
                 ),

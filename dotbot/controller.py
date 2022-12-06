@@ -26,6 +26,7 @@ from dotbot.protocol import (
     PROTOCOL_VERSION,
     ProtocolPayloadParserException,
     PayloadType,
+    ApplicationType,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
@@ -89,10 +90,11 @@ class ControllerBase(ABC):
         #     ),
         # }
         self.header = ProtocolHeader(
-            int(settings.dotbot_address, 16),
-            int(settings.gw_address, 16),
-            int(settings.swarm_id, 16),
-            PROTOCOL_VERSION,
+            destination=int(settings.dotbot_address, 16),
+            source=int(settings.gw_address, 16),
+            swarm_id=int(settings.swarm_id, 16),
+            application=ApplicationType.DotBot,
+            version=PROTOCOL_VERSION,
         )
         self.settings = settings
         self.hdlc_handler = HDLCHandler()
@@ -163,12 +165,14 @@ class ControllerBase(ABC):
             if self.dotbots:
                 table.add_column("#", style="cyan")
                 table.add_column("address", style="magenta")
+                table.add_column("application", style="yellow")
                 table.add_column("status", style="green")
                 table.add_column("active", style="green")
                 for idx, dotbot in enumerate(self.dotbots.values()):
                     table.add_row(
                         f"{idx:<4}",
                         f"0x{dotbot.address}",
+                        f"{dotbot.application.name}",
                         f"{dotbot.status.name.capitalize()}",
                         f"{int(dotbot.address, 16) == self.header.destination}",
                     )
@@ -205,6 +209,7 @@ class ControllerBase(ABC):
         source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
         dotbot = DotBotModel(
             address=source,
+            application=payload.header.application,
             last_seen=time.time(),
             active=(int(source, 16) == self.header.destination),
         )

@@ -16,21 +16,21 @@ const server = setupServer(
             [
                 {
                     address: "2020",
-                    application: "DotBot",
+                    application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
                     lh2_position: {x: 200.0, y: 200.0, z: 0.0},
                 },
                 {
                     address: "3131",
-                    application: "DotBot",
+                    application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
                     lh2_position: {x: 100.0, y: 100.0, z: 0.0},
                 },
                 {
                     address: "4242",
-                    application: "DotBot",
+                    application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
                 },

@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 
 class PayloadType(Enum):
@@ -22,6 +22,13 @@ class PayloadType(Enum):
     LH2_RAW_DATA = 2
     LH2_LOCATION = 3
     ADVERTISEMENT = 4
+
+
+class ApplicationType(int, Enum):
+    """Types of DotBot applications."""
+
+    DotBot = 0  # pylint: disable=invalid-name
+    SailBot = 1  # pylint: disable=invalid-name
 
 
 class ProtocolPayloadParserException(Exception):
@@ -61,6 +68,7 @@ class ProtocolHeader(ProtocolData):
     destination: int = 0xFFFFFFFFFFFFFFFF
     source: int = 0x0000000000000000
     swarm_id: int = 0x0000
+    application: ApplicationType = ApplicationType.DotBot
     version: int = PROTOCOL_VERSION
 
     @property
@@ -69,6 +77,7 @@ class ProtocolHeader(ProtocolData):
             ProtocolField(self.destination, "dst", 8, "big"),
             ProtocolField(self.source, "src", 8, "big"),
             ProtocolField(self.swarm_id, "swarm id", 2, "big"),
+            ProtocolField(self.application, "app."),
             ProtocolField(self.version, "ver."),
         ]
 
@@ -78,7 +87,8 @@ class ProtocolHeader(ProtocolData):
             int.from_bytes(bytes_[0:8], "big"),  # destination
             int.from_bytes(bytes_[8:16], "big"),  # source
             int.from_bytes(bytes_[16:18], "big"),  # swarm_id
-            int.from_bytes(bytes_[18:19], "big"),  # version
+            int.from_bytes(bytes_[18:19], "big"),  # application
+            int.from_bytes(bytes_[19:20], "big"),  # version
         )
 
 
@@ -211,14 +221,14 @@ class ProtocolPayload:
     @staticmethod
     def from_bytes(bytes_: bytes):
         """Parse a bytearray to return a protocol payload instance."""
-        header = ProtocolHeader.from_bytes(bytes_[0:19])
-        payload_type = PayloadType(int.from_bytes(bytes_[19:20], "big"))
+        header = ProtocolHeader.from_bytes(bytes_[0:20])
+        payload_type = PayloadType(int.from_bytes(bytes_[20:21], "big"))
         if payload_type == PayloadType.CMD_MOVE_RAW:
-            values = CommandMoveRaw.from_bytes(bytes_[20:25])
+            values = CommandMoveRaw.from_bytes(bytes_[21:26])
         elif payload_type == PayloadType.CMD_RGB_LED:
-            values = CommandRgbLed.from_bytes(bytes_[20:24])
+            values = CommandRgbLed.from_bytes(bytes_[21:25])
         elif payload_type == PayloadType.LH2_RAW_DATA:
-            values = Lh2RawData.from_bytes(bytes_[20:60])
+            values = Lh2RawData.from_bytes(bytes_[21:61])
         elif payload_type == PayloadType.ADVERTISEMENT:
             values = Advertisement.from_bytes(None)
         else:
@@ -258,7 +268,7 @@ class ProtocolPayload:
             + 1
             + sum(field.length for field in self.values.fields)
         )
-        if num_bytes > 24:
+        if num_bytes > 32:
             # put values on a separate row
             separators = header_separators + type_separators
             names = header_names + type_name
