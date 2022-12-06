@@ -111,7 +111,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
         CommandMoveRaw(42, 0, 42, 0),
     )
     response = client.put(
-        f"/controller/dotbots/{address}/move_raw",
+        f"/controller/dotbots/{address}/0/move_raw",
         json=command.dict(),
     )
     assert response.status_code == code
@@ -169,7 +169,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
         CommandRgbLed(42, 0, 42),
     )
     response = client.put(
-        f"/controller/dotbots/{address}/rgb_led",
+        f"/controller/dotbots/{address}/0/rgb_led",
         json=command.dict(),
     )
     assert response.status_code == code

@@ -77,11 +77,13 @@ async def controller_dotbot_address_update(data: DotBotAddressModel):
 
 
 @app.put(
-    path="/controller/dotbots/{address}/move_raw",
+    path="/controller/dotbots/{address}/{application}/move_raw",
     summary="Move the dotbot",
     tags=["dotbots"],
 )
-async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
+async def dotbots_move_raw(
+    address: str, application: int, command: DotBotMoveRawCommandModel
+):
     """Set the current active DotBot."""
     if address not in app.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
@@ -90,7 +92,7 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         destination=int(address, 16),
         source=int(app.controller.settings.gw_address, 16),
         swarm_id=int(app.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
+        application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
     payload = ProtocolPayload(
@@ -105,11 +107,13 @@ async def dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
 
 
 @app.put(
-    path="/controller/dotbots/{address}/rgb_led",
+    path="/controller/dotbots/{address}/{application}/rgb_led",
     summary="Set the dotbot RGB LED color",
     tags=["dotbots"],
 )
-async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
+async def dotbots_rgb_led(
+    address: str, application: int, command: DotBotRgbLedCommandModel
+):
     """Set the current active DotBot."""
     if address not in app.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
@@ -118,7 +122,7 @@ async def dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         destination=int(address, 16),
         source=int(app.controller.settings.gw_address, 16),
         swarm_id=int(app.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
+        application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
     payload = ProtocolPayload(

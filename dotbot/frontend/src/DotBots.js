@@ -22,7 +22,7 @@ const DotBotAccordionItem = (props) => {
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
   const applyColor = async () => {
-    await apiUpdateRgbLed(props.dotbot.address, color.r, color.g, color.b);
+    await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
     await props.refresh();
   }
 
@@ -76,7 +76,7 @@ const DotBotAccordionItem = (props) => {
         <div className="accordion-body">
           <div className="row">
             <div className={`col d-flex justify-content-center ${!expanded && "invisible"}`}>
-              <Joystick address={props.dotbot.address} />
+              <Joystick address={props.dotbot.address} application={props.dotbot.application} />
             </div>
             <div className="col m-2">
               <div className="row">
