@@ -22,7 +22,8 @@ class PayloadType(Enum):
     LH2_RAW_DATA = 2
     LH2_LOCATION = 3
     ADVERTISEMENT = 4
-    INVALID_PAYLOAD = 5  # Increase each time a new payload type is added
+    GPS_POSITION = 5
+    INVALID_PAYLOAD = 6  # Increase each time a new payload type is added
 
 
 class ApplicationType(int, Enum):
@@ -210,6 +211,28 @@ class LH2Location(ProtocolData):
 
 
 @dataclass
+class GPSPosition(ProtocolData):
+    """Dataclass that holds GPS positions."""
+
+    latitude: int = 0
+    longitude: int = 0
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.latitude, "latitude", 4, "big", True),
+            ProtocolField(self.longitude, "longitude", 4, "big", True),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return GPSPosition(
+            int.from_bytes(bytes_[0:4], "big", signed=True),
+            int.from_bytes(bytes_[4:8], "big", signed=True),
+        )
+
+
+@dataclass
 class Advertisement(ProtocolData):
     """Dataclass that holds an advertisement (emtpy)."""
 
@@ -259,6 +282,8 @@ class ProtocolPayload:
             values = LH2Location.from_bytes(bytes_[21:33])
         elif payload_type == PayloadType.ADVERTISEMENT:
             values = Advertisement.from_bytes(None)
+        elif payload_type == PayloadType.GPS_POSITION:
+            values = GPSPosition.from_bytes(bytes_[21:29])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"
