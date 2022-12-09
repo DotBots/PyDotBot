@@ -162,6 +162,18 @@ const DotBots = () => {
         }
       }
     }
+    if (message.cmd === "gps_position" && dotbots && dotbots.length > 0) {
+      let dotbotsTmp = dotbots.slice();
+      for (let idx = 0; idx < dotbots.length; idx++) {
+        if (dotbots[idx].address === message.address) {
+          dotbotsTmp[idx].gps_position = {
+            latitude: message.latitude,
+            longitude: message.longitude,
+          };
+          setDotbots(dotbotsTmp);
+        }
+      }
+    }
   };
 
   useWebSocket(websocketUrl, {
