@@ -38,7 +38,7 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 #     DotBotRgbLedCommandModel,
 # )
 
-from dotbot.models import DotBotModel, DotBotStatus
+from dotbot.models import DotBotModel, DotBotStatus, DotBotGPSPosition
 from dotbot.server import web
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
@@ -225,6 +225,7 @@ class ControllerBase(ABC):
         if source in self.dotbots:
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
+            dotbot.gps_position = self.dotbots[source].gps_position
             should_reload = dotbot.status != self.dotbots[source].status
         else:
             # only reload if a new dotbot comes in
@@ -266,6 +267,24 @@ class ControllerBase(ABC):
                             ),
                         )
                     )
+
+        if payload.payload_type == PayloadType.GPS_POSITION:
+            dotbot.gps_position = DotBotGPSPosition(
+                latitude=float(payload.values.latitude) / 1e6,
+                longitude=float(payload.values.longitude) / 1e6,
+            )
+            asyncio.create_task(
+                self.notify_clients(
+                    json.dumps(
+                        {
+                            "cmd": "gps_position",
+                            "address": dotbot.address,
+                            "latitude": dotbot.lh2_position.latitude,
+                            "longitude": dotbot.lh2_position.longitude,
+                        }
+                    )
+                )
+            )
 
         self.dotbots.update({dotbot.address: dotbot})
         if should_reload is True:
