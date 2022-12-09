@@ -4,6 +4,7 @@
 *.pyc
 *.gz
 *.whl
+*.orig
 *.egg-info/
 .coverage
 .tox/

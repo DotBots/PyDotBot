@@ -22,6 +22,7 @@ class PayloadType(Enum):
     LH2_RAW_DATA = 2
     LH2_LOCATION = 3
     ADVERTISEMENT = 4
+    INVALID_PAYLOAD = 5  # Increase each time a new payload type is added
 
 
 class ApplicationType(int, Enum):
@@ -184,6 +185,31 @@ class Lh2RawData(ProtocolData):
 
 
 @dataclass
+class LH2Location(ProtocolData):
+    """Dataclass that holds LH2 computed location data."""
+
+    pos_x: int = 0
+    pos_y: int = 0
+    pos_z: int = 0
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.pos_x, "x", 4, "little", True),
+            ProtocolField(self.pos_y, "y", 4, "little", True),
+            ProtocolField(self.pos_z, "z", 4, "little", True),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return LH2Location(
+            int.from_bytes(bytes_[0:4], "big", signed=True),
+            int.from_bytes(bytes_[4:8], "big", signed=True),
+            int.from_bytes(bytes_[8:12], "big", signed=True),
+        )
+
+
+@dataclass
 class Advertisement(ProtocolData):
     """Dataclass that holds an advertisement (emtpy)."""
 
@@ -229,6 +255,8 @@ class ProtocolPayload:
             values = CommandRgbLed.from_bytes(bytes_[21:25])
         elif payload_type == PayloadType.LH2_RAW_DATA:
             values = Lh2RawData.from_bytes(bytes_[21:61])
+        elif payload_type == PayloadType.LH2_LOCATION:
+            values = LH2Location.from_bytes(bytes_[21:33])
         elif payload_type == PayloadType.ADVERTISEMENT:
             values = Advertisement.from_bytes(None)
         else:

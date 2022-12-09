@@ -27,6 +27,7 @@ from dotbot.protocol import (
     ProtocolPayloadParserException,
     PayloadType,
     ApplicationType,
+    LH2Location,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
@@ -244,6 +245,25 @@ class ControllerBase(ABC):
                                     "y": dotbot.lh2_position.y,
                                 }
                             )
+                        )
+                    )
+                    # Send the computed position back to the dotbot
+                    header = ProtocolHeader(
+                        destination=int(source, 16),
+                        source=int(self.settings.gw_address, 16),
+                        swarm_id=int(self.settings.swarm_id, 16),
+                        application=dotbot.application,
+                        version=PROTOCOL_VERSION,
+                    )
+                    self.send_payload(
+                        ProtocolPayload(
+                            header,
+                            PayloadType.LH2_LOCATION,
+                            LH2Location(
+                                int(dotbot.lh2_position.x * 1e6),
+                                int(dotbot.lh2_position.y * 1e6),
+                                int(dotbot.lh2_position.z * 1e6),
+                            ),
                         )
                     )
 

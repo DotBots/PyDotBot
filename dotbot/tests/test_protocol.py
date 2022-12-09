@@ -11,6 +11,7 @@ from dotbot.protocol import (
     Advertisement,
     Lh2RawLocation,
     Lh2RawData,
+    LH2Location,
 )
 
 
@@ -56,6 +57,16 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x03"
+            b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
+            ProtocolPayload(
+                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                PayloadType.LH2_LOCATION,
+                LH2Location(1000, 1000, 2),
+            ),
+            id="LH2Location",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x04",
             ProtocolPayload(
                 ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
@@ -70,7 +81,7 @@ from dotbot.protocol import (
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x03",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x05",
             ProtocolPayloadParserException(),
             id="unsupported payload type",
         ),
@@ -154,6 +165,16 @@ def test_protocol_parser(payload, expected):
         pytest.param(
             ProtocolPayload(
                 ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.LH2_LOCATION,
+                LH2Location(1000, 1000, 2),
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x03"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            id="LH2Location",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
             ),
@@ -223,6 +244,25 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="LH2RawData",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.LH2_LOCATION,
+                LH2Location(1000, 1000, 2),
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                " LH2_LOCATION    | dst                              | src                              | swarm id | app. | ver. | type |\n"
+                " (33 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x03 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +------------------+------------------+------------------+\n"
+                "                 | x                | y                | z                |\n"
+                "                 | 0xe8030000       | 0xe8030000       | 0x02000000       |\n"
+                "                 +------------------+------------------+------------------+\n"
+                "\n"
+            ),
+            id="LH2Location",
         ),
         pytest.param(
             ProtocolPayload(
