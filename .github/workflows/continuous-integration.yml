@@ -101,6 +101,8 @@ jobs:
         node-version: "18"
     - name: Build package
       run: python -m build
+    - name: Check package
+      run: twine check dist/*
     - name: Upload source package as artifact
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v3
