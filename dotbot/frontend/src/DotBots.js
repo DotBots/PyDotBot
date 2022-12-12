@@ -8,7 +8,7 @@ import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
-  apiFetchDotbots, apiUpdateRgbLed
+  apiFetchDotbots, apiUpdateRgbLed, inactiveAddress
 } from "./rest";
 
 const ApplicationType = {
@@ -17,7 +17,6 @@ const ApplicationType = {
 };
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
-const inactiveAddress = "0000000000000000";
 const dotbotStatuses = ["alive", "lost", "dead"];
 const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
@@ -226,10 +225,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} mapSize={350} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} mapSize={650} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapSize={650} />
           </div>
         </div>
       </div>
