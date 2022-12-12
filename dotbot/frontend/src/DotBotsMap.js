@@ -61,6 +61,7 @@ const DotBotsMapPoint = (props) => {
 
 export const DotBotsMap = (props) => {
 
+  const [ displayGrid, setDisplayGrid ] = useState(true);
   const [ calibrationFetched, setCalibrationFetched ] = useState(false);
   const [ calibrationState, setCalibrationState ] = useState("unknown");
   const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
@@ -91,6 +92,10 @@ export const DotBotsMap = (props) => {
 
   const coordinateToPixel = (coordinate) => {
     return mapSize * (coordinate + 0.5) - 5;
+  };
+
+  const updateDisplayGrid = (event) => {
+    setDisplayGrid(event.target.checked);
   };
 
   useEffect(() => {
@@ -134,7 +139,7 @@ export const DotBotsMap = (props) => {
                 </pattern>
               </defs>
               {/* Map grid */}
-              <rect width="100%" height="100%" fill={`url(#grid${mapSize})`} />
+              <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1"/>
               {/* DotBots points */}
               {
                 props.dotbots && props.dotbots
@@ -155,19 +160,28 @@ export const DotBotsMap = (props) => {
           </div>
         </div>
       </div>
-      <div className="row">
-        <div className="col d-flex justify-content-center">
-          <button className={`btn btn-sm m-1 ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
+      <div className="card m-1">
+        <div className="card-header">Map settings</div>
+        <div className="card-body">
+          <div className="d-flex mb-2">
+            <div className="form-check">
+              <input className="form-check-input" type="checkbox" id="flexCheckDisplayGrid" defaultChecked={displayGrid} onChange={updateDisplayGrid} />
+              <label className="form-check-label" htmlFor="flexCheckDisplayGrid">Display grid</label>
+            </div>
+          </div>
+          <div className="d-flex">
+            <button className={`btn btn-sm ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
+          </div>
+          {calibrationState === "running" && (
+          <div className="d-flex">
+            <p style={{ width: calibrationTextWidth }}>
+              Place a DotBot on the marks on the ground and once done, click the corresponding rectangle on the grid. Repeat the operation for each marks.
+              Once all rectangles are green, click "Apply calibration".
+            </p>
+          </div>
+          )}
         </div>
       </div>
-      {calibrationState === "running" && (
-      <div className="d-flex justify-content-center">
-        <p className="text-center" style={{ width: calibrationTextWidth }}>
-          Place a DotBot on the marks on the ground and once done, click the corresponding rectangle on the grid. Repeat the operation for each marks.
-          Once all rectangles are green, click "Apply calibration".
-        </p>
-      </div>
-      )}
     </div>
   )
 }
