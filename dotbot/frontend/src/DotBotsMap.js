@@ -2,7 +2,8 @@ import React from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    apiFetchLH2CalibrationState, apiApplyLH2Calibration, apiAddLH2CalibrationPoint
+    apiFetchLH2CalibrationState, apiApplyLH2Calibration,
+    apiAddLH2CalibrationPoint, inactiveAddress
 } from "./rest";
 
 const referencePoints = [
@@ -13,6 +14,8 @@ const referencePoints = [
 ]
 
 const DotBotsMapPoint = (props) => {
+  const [hovered, setHovered ] = useState(false);
+
   let rgbColor = "rgb(0, 0, 0)"
   if (props.dotbot.rgb_led) {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
@@ -21,12 +24,37 @@ const DotBotsMapPoint = (props) => {
   const posX = props.mapSize * parseFloat(props.dotbot.lh2_position.x);
   const posY = props.mapSize * parseFloat(props.dotbot.lh2_position.y);
 
+  const onMouseEnter = () => {
+    if (props.dotbot.status !== 0) {
+      return;
+    }
+
+    setHovered(true);
+  };
+
+  const onMouseLeave = () => {
+    setHovered(false);
+  };
+
   return (
     <>
     { (props.dotbot.address === props.active) &&
       <circle cx={posX} cy={posY} r="8" stroke="black" strokeWidth="2" fill="none" />
     }
-    <circle cx={posX} cy={posY} r={props.dotbot.address === props.active ? 8: 5} opacity={`${props.dotbot.status === 0 ? "80%" : "20%"}`} fill={rgbColor}><title>{`${props.dotbot.address}@${posX}x${posY}`}</title></circle>
+    <circle cx={posX} cy={posY}
+        r={(props.dotbot.address === props.active || hovered) ? 8: 5}
+        opacity={`${props.dotbot.status === 0 ? "80%" : "20%"}`}
+        fill={rgbColor}
+        style={{ cursor: "pointer" }}
+        onClick={
+          () => {
+            props.updateActive(props.dotbot.address === props.active ? inactiveAddress : props.dotbot.address)
+          }
+        }
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave} >
+      <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
+    </circle>
     </>
   )
 }
@@ -112,13 +140,13 @@ export const DotBotsMap = (props) => {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.lh2_position)
                   .filter(dotbot => dotbot.status !== 2)
-                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} mapSize={props.mapSize} />)
+                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} updateActive={props.updateActive} mapSize={props.mapSize} />)
               }
               {
                 ["running", "ready"].includes(calibrationState) && (
                   <>
                   {referencePoints.map((point, index) => (
-                    <><rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} onClick={() => pointClicked(index)}><title>{index + 1}</title></rect></>
+                    <rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} style={{ cursor: "pointer" }} onClick={() => pointClicked(index)}><title>{index + 1}</title></rect>
                   ))}
                   </>
                 )

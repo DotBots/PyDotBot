@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+export const inactiveAddress = "0000000000000000";
+
 export const apiUpdateActiveDotbotAddress = async (address) => {
   return await axios.put(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
