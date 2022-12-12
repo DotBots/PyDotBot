@@ -26,7 +26,7 @@ export const Joystick = (props) => {
     set({ x: active ? mx : 0, y: active ? my : 0, immediate: active });
 
     if (!active) {
-      await apiUpdateMoveRaw(props.address, props.application, 0, 0).catch(error => console.log(error));
+      await apiUpdateMoveRaw(props.address, props.application, 0, 0, 0, 0).catch(error => console.log(error));
     }
   })
 
@@ -70,7 +70,7 @@ export const Joystick = (props) => {
 
   useInterval(async () => {
     const speeds = moveToSpeeds();
-    await apiUpdateMoveRaw(props.address, props.application, speeds.left, speeds.right).catch(error => console.log(error));
+    await apiUpdateMoveRaw(props.address, props.application, 0, speeds.left, 0, speeds.right).catch(error => console.log(error));
   }, state.active ? 100 : null);
 
   return (

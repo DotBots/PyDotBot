@@ -2,13 +2,14 @@ import React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { RgbColorPicker } from "react-colorful";
 import useWebSocket from 'react-use-websocket';
+import useInterval from "use-interval";
 
 import { Joystick } from "./Joystick";
 import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
-  apiFetchDotbots, apiUpdateRgbLed, inactiveAddress
+  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, inactiveAddress
 } from "./rest";
 
 const ApplicationType = {
@@ -104,20 +105,62 @@ const DotBotAccordionItem = (props) => {
 }
 
 const SailBotItem = (props) => {
+
+  const [ rudderValue, setRudderValue ] = useState(0);
+  const [ sailValue, setSailValue ] = useState(0);
+  const [ active, setActive ] = useState(true);
+
+  const rudderUpdate = async (event) => {
+    const newRudderValue = parseInt(event.target.value);
+    setRudderValue(newRudderValue);
+    setActive(newRudderValue !== 0);
+  };
+
+  const sailUpdate = async (event) => {
+    const newSailValue = parseInt(event.target.value);
+    setSailValue(newSailValue);
+    setActive(newSailValue !== 0);
+  };
+
+  useInterval(async () => {
+    if (rudderValue === 0 && sailValue === 0) {
+      setActive(false);
+    }
+    await apiUpdateMoveRaw(props.dotbot.address, props.dotbot.application, rudderValue, 0, 0, sailValue).catch(error => console.log(error));
+  }, active ? 100 : null);
+
   return (
-    <div className="d-flex mx-2 p-2" style={{ width: '100%' }}>
-      <div className="me-auto">{props.dotbot.address}</div>
-      <div className="me-2">
-        <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
-          {dotbotStatuses[props.dotbot.status]}
-        </div>
-      </div>
-      <div className="me-3">
-        <button className="btn border-0 p-0" onClick={() => props.updateActive(props.dotbot.address === props.active ? inactiveAddress : props.dotbot.address)} type="button">
-          <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
-            {`${props.dotbot.address === props.active ? "active": "activate"}`}
+    <div className="accordion-item">
+      <h2 className="accordion-header" id={`heading-${props.dotbot.address}`}>
+        <button className="accordion-button collapsed" onClick={() => props.updateActive(props.dotbot.address)} type="button" data-bs-toggle="collapse" data-bs-target={`#collapse-${props.dotbot.address}`} aria-controls={`collapse-${props.dotbot.address}`}>
+          <div className="d-flex" style={{ width: '100%' }}>
+            <div className="me-auto">{props.dotbot.address}</div>
+            <div className="me-2">
+              <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
+                {dotbotStatuses[props.dotbot.status]}
+              </div>
+            </div>
+            <div className="me-2">
+              <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
+                {`${props.dotbot.address === props.active ? "active": "activate"}`}
+              </div>
+            </div>
           </div>
         </button>
+      </h2>
+      <div id={`collapse-${props.dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${props.dotbot.address}`} data-bs-parent="#accordion-sailbots">
+        <div className="accordion-body">
+          <div className="d-flex">
+            <div className="mx-auto justify-content-center">
+              <p>{`Rudder: ${rudderValue}`}</p>
+              <input type="range" min="-128" max="127" defaultValue={rudderValue} onChange={rudderUpdate}/>
+            </div>
+            <div className="mx-auto justify-content-center">
+              <p>{`Sail: ${sailValue}`}</p>
+              <input type="range" min="-128" max="127" defaultValue={sailValue} onChange={sailUpdate}/>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -214,7 +257,7 @@ const DotBots = () => {
           <div className="card m-1">
             <div className="card-header">Available DotBots</div>
             <div className="card-body p-1">
-              <div className="accordion accordion-flush" id="accordion-dotbots">
+              <div className="accordion" id="accordion-dotbots">
                 {dotbots
                   .filter(dotbot => dotbot.application === ApplicationType.DotBot)
                   .map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
@@ -239,7 +282,7 @@ const DotBots = () => {
           <div className="card m-1">
             <div className="card-header">Available SailBots</div>
             <div className="card-body p-1">
-              <div className="accordion accordion-flush" id="accordion-sailbots">
+              <div className="accordion" id="accordion-sailbots">
                 {dotbots
                   .filter(dotbot => dotbot.application === ApplicationType.SailBot)
                   .map(dotbot => <SailBotItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
