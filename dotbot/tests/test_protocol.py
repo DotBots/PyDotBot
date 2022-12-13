@@ -78,7 +78,7 @@ from dotbot.protocol import (
         ),
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x05"
-            b"\x02\xe9~&\x00#\xe4]",
+            b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
                 PayloadType.GPS_POSITION,

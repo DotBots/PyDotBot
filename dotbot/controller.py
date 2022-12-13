@@ -279,8 +279,8 @@ class ControllerBase(ABC):
                         {
                             "cmd": "gps_position",
                             "address": dotbot.address,
-                            "latitude": dotbot.lh2_position.latitude,
-                            "longitude": dotbot.lh2_position.longitude,
+                            "latitude": dotbot.gps_position.latitude,
+                            "longitude": dotbot.gps_position.longitude,
                         }
                     )
                 )

@@ -227,8 +227,8 @@ class GPSPosition(ProtocolData):
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return GPSPosition(
-            int.from_bytes(bytes_[0:4], "big", signed=True),
-            int.from_bytes(bytes_[4:8], "big", signed=True),
+            int.from_bytes(bytes_[0:4], "little", signed=True),
+            int.from_bytes(bytes_[4:8], "little", signed=True),
         )
 
 
