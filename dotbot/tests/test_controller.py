@@ -66,7 +66,13 @@ async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
     controller = ControllerTest(settings)
-    controller.dotbots.update({"0000000000000000": time.time})
+    controller.dotbots.update(
+        {
+            "0000000000000000": DotBotModel(
+                address="0000000000000000", last_seen=time.time()
+            )
+        }
+    )
     controller.serial = serial.Serial(settings.port, settings.baudrate)
     controller.init()
     capture = capsys.readouterr()
