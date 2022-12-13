@@ -196,17 +196,17 @@ class LH2Location(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.pos_x, "x", 4, "little", True),
-            ProtocolField(self.pos_y, "y", 4, "little", True),
-            ProtocolField(self.pos_z, "z", 4, "little", True),
+            ProtocolField(self.pos_x, "x", 4, "little"),
+            ProtocolField(self.pos_y, "y", 4, "little"),
+            ProtocolField(self.pos_z, "z", 4, "little"),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return LH2Location(
-            int.from_bytes(bytes_[0:4], "big", signed=True),
-            int.from_bytes(bytes_[4:8], "big", signed=True),
-            int.from_bytes(bytes_[8:12], "big", signed=True),
+            int.from_bytes(bytes_[0:4], "big"),
+            int.from_bytes(bytes_[4:8], "big"),
+            int.from_bytes(bytes_[8:12], "big"),
         )
 
 
