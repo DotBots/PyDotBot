@@ -310,6 +310,8 @@ class ControllerBase(ABC):
         ).decode()
         if destination not in self.dotbots:
             return
+        # make sure the application in the payload matches the bot application
+        payload.header.application = self.dotbots[destination].application
         if self.serial is not None:
             self.serial.write(hdlc_encode(payload.to_bytes()))
 
