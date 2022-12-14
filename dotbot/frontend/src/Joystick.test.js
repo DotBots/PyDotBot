@@ -10,7 +10,7 @@ import React from 'react';
 import { Joystick } from './Joystick';
 
 const server = setupServer(
-  rest.put('/controller/dotbots/:address/move_raw', (req, res, ctx) => {
+  rest.put('/controller/dotbots/:address/:application/move_raw', (req, res, ctx) => {
       return res();
   }),
 );

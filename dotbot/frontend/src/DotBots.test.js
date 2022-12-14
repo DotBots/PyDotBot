@@ -72,6 +72,9 @@ const server = setupServer(
     rest.get('/controller/lh2/calibration', (req, res, ctx) => {
         return res(ctx.json({state: "done"}));
     }),
+    rest.put('/controller/dotbots/:address/:application/move_raw', (req, res, ctx) => {
+        return res();
+    }),
 );
 
 const wsServer = new WS("ws://localhost:8000/controller/ws/status");
