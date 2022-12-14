@@ -109,6 +109,12 @@ const SailBotItem = (props) => {
   const [ rudderValue, setRudderValue ] = useState(0);
   const [ sailValue, setSailValue ] = useState(0);
   const [ active, setActive ] = useState(true);
+  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
+
+  const applyColor = async () => {
+    await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
+    await props.refresh();
+  }
 
   const rudderUpdate = async (event) => {
     const newRudderValue = parseInt(event.target.value);
@@ -128,6 +134,14 @@ const SailBotItem = (props) => {
     }
     await apiUpdateMoveRaw(props.dotbot.address, props.dotbot.application, rudderValue, 0, 0, sailValue).catch(error => console.log(error));
   }, active ? 100 : null);
+
+  useEffect(() => {
+    if (props.dotbot.rgb_led) {
+      setColor({ r: props.dotbot.rgb_led.red, g: props.dotbot.rgb_led.green, b: props.dotbot.rgb_led.blue })
+    } else {
+      setColor({ r: 0, g: 0, b: 0 })
+    }
+  }, [props.dotbot.rgb_led, setColor]);
 
   return (
     <div className="accordion-item">
@@ -158,6 +172,16 @@ const SailBotItem = (props) => {
             <div className="mx-auto justify-content-center">
               <p>{`Sail: ${sailValue}`}</p>
               <input type="range" min="-128" max="127" defaultValue={sailValue} onChange={sailUpdate}/>
+            </div>
+          </div>
+          <div className="d-flex justify-content-center">
+            <div className="mx-auto justify-content-center">
+              <RgbColorPicker color={color} onChange={setColor} />
+            </div>
+          </div>
+          <div className="d-flex justify-content-center">
+            <div className="mx-auto justify-content-center">
+              <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
             </div>
           </div>
         </div>
@@ -293,10 +317,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} mapSize={350} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} mapSize={650} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapSize={650} />
           </div>
         </div>
       </div>
