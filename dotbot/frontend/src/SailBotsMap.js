@@ -20,24 +20,26 @@ export const SailBotMarker = (props) => {
     boatStroke = "black";
   }
 
+  const rotation = 0;
+
   const svgIcon = L.divIcon({
     html: `
       <svg
-        width="30"
+        width="50"
         height="50"
-        viewBox="0 0 45 75"
+        viewBox="-15 -15 75 75"
         version="1.1"
         preserveAspectRatio="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-      <g>
-        <path d="M 0 10 C 0 20 0 40 10 50 C 20 40 20 20 20 10 C 20 0 0 0 0 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
-        <path d="M 10 30 C 20 30 30 30 30 20" stroke="blue" strokeWidth="2" opacity="80%" fill="none" />
+      <g transform="rotate(${rotation} 25 25)">
+        <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
+        <path d="M 20 30 C 30 30 40 30 40 20" stroke="blue" strokeWidth="2" opacity="80%" fill="none" />
       </g>
       </svg>`,
     className: "",
     iconSize: [30, 50],
-    iconAnchor: [10, 10],
+    iconAnchor: [25, 10],
   });
 
   return (
