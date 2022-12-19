@@ -68,6 +68,7 @@ class DotBotModel(BaseModel):
     swarm: str = "0000"
     status: DotBotStatus = DotBotStatus.ALIVE
     last_seen: float
+    direction: Optional[int]
     move_raw: Optional[DotBotMoveRawCommandModel]
     rgb_led: Optional[DotBotRgbLedCommandModel]
     lh2_position: Optional[DotBotLH2Position]
