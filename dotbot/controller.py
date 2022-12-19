@@ -9,7 +9,7 @@ import webbrowser
 from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 import serial
 
@@ -40,7 +40,11 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
 from dotbot.models import DotBotModel, DotBotStatus, DotBotGPSPosition
 from dotbot.server import web
-from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
+from dotbot.lighthouse2 import (
+    LighthouseManager,
+    LighthouseManagerState,
+    DotBotLH2Position,
+)
 
 
 CONTROLLERS = {}
@@ -191,6 +195,19 @@ class ControllerBase(ABC):
                 live.update(table())
                 await asyncio.sleep(1)
 
+    def _compute_lh2_position(
+        self, payload: ProtocolPayload
+    ) -> Optional[DotBotLH2Position]:
+        if payload.payload_type not in (
+            PayloadType.LH2_RAW_DATA,
+            PayloadType.DOTBOT_DATA,
+        ):
+            return None
+        self.lh2_manager.last_raw_data = payload.values
+        if self.lh2_manager.state != LighthouseManagerState.Calibrated:
+            return None
+        return self.lh2_manager.compute_position(payload.values)
+
     def handle_byte(self, byte):
         """Called on each byte received over UART."""
         self.hdlc_handler.handle_byte(byte)
@@ -223,6 +240,7 @@ class ControllerBase(ABC):
         )
         should_reload = False
         if source in self.dotbots:
+            dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
@@ -231,42 +249,56 @@ class ControllerBase(ABC):
             # only reload if a new dotbot comes in
             should_reload = True
 
-        if payload.payload_type == PayloadType.LH2_RAW_DATA:
-            self.lh2_manager.last_raw_data = payload.values
-            if self.lh2_manager.state == LighthouseManagerState.Calibrated:
-                dotbot.lh2_position = self.lh2_manager.compute_position(payload.values)
-                if dotbot.lh2_position is not None:
-                    asyncio.create_task(
-                        self.notify_clients(
-                            json.dumps(
-                                {
-                                    "cmd": "lh2_position",
-                                    "address": dotbot.address,
-                                    "x": dotbot.lh2_position.x,
-                                    "y": dotbot.lh2_position.y,
-                                }
-                            )
-                        )
+        dotbot.lh2_position = self._compute_lh2_position(payload)
+        if dotbot.lh2_position is not None:
+            asyncio.create_task(
+                self.notify_clients(
+                    json.dumps(
+                        {
+                            "cmd": "lh2_position",
+                            "address": dotbot.address,
+                            "x": dotbot.lh2_position.x,
+                            "y": dotbot.lh2_position.y,
+                        }
                     )
-                    # Send the computed position back to the dotbot
-                    header = ProtocolHeader(
-                        destination=int(source, 16),
-                        source=int(self.settings.gw_address, 16),
-                        swarm_id=int(self.settings.swarm_id, 16),
-                        application=dotbot.application,
-                        version=PROTOCOL_VERSION,
+                )
+            )
+            # Send the computed position back to the dotbot
+            header = ProtocolHeader(
+                destination=int(source, 16),
+                source=int(self.settings.gw_address, 16),
+                swarm_id=int(self.settings.swarm_id, 16),
+                application=dotbot.application,
+                version=PROTOCOL_VERSION,
+            )
+            self.send_payload(
+                ProtocolPayload(
+                    header,
+                    PayloadType.LH2_LOCATION,
+                    LH2Location(
+                        int(dotbot.lh2_position.x * 1e6),
+                        int(dotbot.lh2_position.y * 1e6),
+                        int(dotbot.lh2_position.z * 1e6),
+                    ),
+                )
+            )
+
+        if (
+            payload.payload_type == PayloadType.DOTBOT_DATA
+            and payload.values.direction != 0xFFFF
+        ):
+            dotbot.direction = payload.values.direction
+            asyncio.create_task(
+                self.notify_clients(
+                    json.dumps(
+                        {
+                            "cmd": "direction",
+                            "address": dotbot.address,
+                            "direction": dotbot.direction,
+                        }
                     )
-                    self.send_payload(
-                        ProtocolPayload(
-                            header,
-                            PayloadType.LH2_LOCATION,
-                            LH2Location(
-                                int(dotbot.lh2_position.x * 1e6),
-                                int(dotbot.lh2_position.y * 1e6),
-                                int(dotbot.lh2_position.z * 1e6),
-                            ),
-                        )
-                    )
+                )
+            )
 
         if payload.payload_type == PayloadType.GPS_POSITION:
             dotbot.gps_position = DotBotGPSPosition(
