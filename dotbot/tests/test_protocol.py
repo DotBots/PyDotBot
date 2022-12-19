@@ -13,6 +13,7 @@ from dotbot.protocol import (
     Lh2RawData,
     LH2Location,
     GPSPosition,
+    DotBotData,
 )
 
 
@@ -87,12 +88,34 @@ from dotbot.protocol import (
             id="GPSPosition",
         ),
         pytest.param(
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x06"
+            b"-\x00"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.DOTBOT_DATA,
+                DotBotData(
+                    direction=45,
+                    locations=[
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                        Lh2RawLocation(0xF1DEBC9A78563412, 0x01, 0x02),
+                    ],
+                ),
+            ),
+            id="DotBotData",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\xff",
             ValueError(),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x06",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x07",
             ProtocolPayloadParserException(),
             id="unsupported payload type",
         ),
@@ -201,6 +224,24 @@ def test_protocol_parser(payload, expected):
             b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x05"
             b"\x02\xe9~&\x00#\xe4]",
             id="GPSPosition",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.DOTBOT_DATA,
+                DotBotData(
+                    direction=45,
+                    locations=[
+                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ],
+                ),
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x06"
+            b"\x00-"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
+            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
+            id="DotBotData",
         ),
     ],
 )
@@ -314,6 +355,31 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="GPSPosition",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.DOTBOT_DATA,
+                DotBotData(
+                    direction=45,
+                    locations=[
+                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                        Lh2RawLocation(0x123456789ABCDEF1, 0x01, 0x02),
+                    ],
+                ),
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                " DOTBOT_DATA     | dst                              | src                              | swarm id | app. | ver. | type |\n"
+                " (43 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x06 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------+----------------------------------+------+------+----------------------------------+------+------+\n"
+                "                 | dir.     | bits                             | poly | off. | bits                             | poly | off. |\n"
+                "                 | 0x002d   | 0x123456789abcdef1               | 0x01 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 |\n"
+                "                 +----------+----------------------------------+------+------+----------------------------------+------+------+\n"
+                "\n"
+            ),
+            id="DotBotData",
         ),
     ],
 )
