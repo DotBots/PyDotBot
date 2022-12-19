@@ -240,6 +240,15 @@ const DotBots = () => {
         }
       }
     }
+    if (message.cmd === "direction" && dotbots && dotbots.length > 0) {
+      let dotbotsTmp = dotbots.slice();
+      for (let idx = 0; idx < dotbots.length; idx++) {
+        if (dotbots[idx].address === message.address) {
+          dotbotsTmp[idx].direction = message.direction;
+          setDotbots(dotbotsTmp);
+        }
+      }
+    }
   };
 
   useWebSocket(websocketUrl, {
