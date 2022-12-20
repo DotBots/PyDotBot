@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import tempfile
 import time
 import webbrowser
 
@@ -48,7 +47,6 @@ from dotbot.lighthouse2 import (
 
 
 CONTROLLERS = {}
-DEFAULT_CALIBRATION_DIR = tempfile.gettempdir()
 LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
 
@@ -66,8 +64,6 @@ class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     dotbot_address: str
     gw_address: str
     swarm_id: str
-    calibration_dir: str = DEFAULT_CALIBRATION_DIR
-    calibrate: bool = False
     webbrowser: bool = False
     verbose: bool = False
 
@@ -112,7 +108,7 @@ class ControllerBase(ABC):
         self.hdlc_handler = HDLCHandler()
         self.serial = None
         self.websockets = []
-        self.lh2_manager = LighthouseManager(self.settings.calibration_dir)
+        self.lh2_manager = LighthouseManager()
 
     @abstractmethod
     def init(self):

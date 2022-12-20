@@ -14,7 +14,6 @@ from dotbot.controller import (
     ControllerSettings,
     controller_factory,
     register_controller,
-    DEFAULT_CALIBRATION_DIR,
 )
 from dotbot.keyboard import KeyboardController
 from dotbot.joystick import JoystickController
@@ -83,20 +82,6 @@ DEFAULT_CONTROLLERS = {
     help="Open a web browser automatically",
 )
 @click.option(
-    "-c",
-    "--calibrate",
-    is_flag=True,
-    default=False,
-    help="Run controller in calibration mode (lighthouse mode)",
-)
-@click.option(
-    "-D",
-    "--calibration-dir",
-    type=click.Path(),
-    default=DEFAULT_CALIBRATION_DIR,
-    help="Directory containing calibration files",
-)
-@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -111,8 +96,6 @@ def main(
     gw_address,
     swarm_id,
     webbrowser,
-    calibrate,
-    calibration_dir,
     verbose,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
@@ -134,8 +117,6 @@ def main(
                 dotbot_address,
                 gw_address,
                 swarm_id,
-                calibration_dir,
-                calibrate,
                 webbrowser,
                 verbose,
             ),
