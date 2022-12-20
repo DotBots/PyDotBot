@@ -23,6 +23,10 @@ const DotBotsMapPoint = (props) => {
 
   const posX = props.mapSize * parseFloat(props.dotbot.lh2_position.x);
   const posY = props.mapSize * parseFloat(props.dotbot.lh2_position.y);
+  const rotation = (props.dotbot.direction) ? props.dotbot.direction : 0;
+  const radius = (props.dotbot.address === props.active || hovered) ? 8: 5;
+  const directionShift = (props.dotbot.address === props.active || hovered) ? 2: 1;
+  const directionSize = (props.dotbot.address === props.active || hovered) ? 8: 5;
 
   const onMouseEnter = () => {
     if (props.dotbot.status !== 0) {
@@ -37,12 +41,9 @@ const DotBotsMapPoint = (props) => {
   };
 
   return (
-    <>
-    { (props.dotbot.address === props.active) &&
-      <circle cx={posX} cy={posY} r="8" stroke="black" strokeWidth="2" fill="none" />
-    }
+    <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
     <circle cx={posX} cy={posY}
-        r={(props.dotbot.address === props.active || hovered) ? 8: 5}
+        r={radius}
         opacity={`${props.dotbot.status === 0 ? "80%" : "20%"}`}
         fill={rgbColor}
         style={{ cursor: "pointer" }}
@@ -55,7 +56,8 @@ const DotBotsMapPoint = (props) => {
         onMouseLeave={onMouseLeave} >
       <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
     </circle>
-    </>
+    {(props.dotbot.direction) && <polygon points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} />}
+    </g>
   )
 }
 

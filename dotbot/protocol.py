@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 class PayloadType(Enum):
@@ -23,7 +23,8 @@ class PayloadType(Enum):
     LH2_LOCATION = 3
     ADVERTISEMENT = 4
     GPS_POSITION = 5
-    INVALID_PAYLOAD = 6  # Increase each time a new payload type is added
+    DOTBOT_DATA = 6
+    INVALID_PAYLOAD = 7  # Increase each time a new payload type is added
 
 
 class ApplicationType(int, Enum):
@@ -211,6 +212,32 @@ class LH2Location(ProtocolData):
 
 
 @dataclass
+class DotBotData(ProtocolData):
+    """Dataclass that holds direction and LH2 raw data from DotBot application."""
+
+    direction: int = 0xFFFF
+    locations: List[Lh2RawLocation] = dataclasses.field(default_factory=lambda: [])
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        _fields = [ProtocolField(self.direction, "dir.", 2, "big", True)]
+        _fields += list(chain(*[location.fields for location in self.locations]))
+        return _fields
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return DotBotData(
+            direction=int.from_bytes(bytes_[0:2], "little", signed=True),
+            locations=[
+                Lh2RawLocation.from_bytes(bytes_[2:12]),
+                Lh2RawLocation.from_bytes(bytes_[12:22]),
+                Lh2RawLocation.from_bytes(bytes_[22:32]),
+                Lh2RawLocation.from_bytes(bytes_[32:42]),
+            ],
+        )
+
+
+@dataclass
 class GPSPosition(ProtocolData):
     """Dataclass that holds GPS positions."""
 
@@ -284,6 +311,8 @@ class ProtocolPayload:
             values = Advertisement.from_bytes(None)
         elif payload_type == PayloadType.GPS_POSITION:
             values = GPSPosition.from_bytes(bytes_[21:29])
+        elif payload_type == PayloadType.DOTBOT_DATA:
+            values = DotBotData.from_bytes(bytes_[21:63])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"
