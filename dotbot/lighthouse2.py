@@ -10,6 +10,7 @@ import sys
 from ctypes import CDLL
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 import cv2
@@ -113,6 +114,7 @@ REFERENCE_POINTS_DEFAULT = [
     [-0.1, -0.1],
     [0.1, -0.1],
 ]
+CALIBRATION_DIR = Path.home() / ".pydotbot"
 
 
 def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
@@ -224,13 +226,11 @@ class LighthouseManagerState(Enum):
 class LighthouseManager:  # pylint: disable=too-many-instance-attributes
     """Class to manage the LightHouse positionning state and workflow."""
 
-    def __init__(self, calibration_dir):
+    def __init__(self):
         self.state = LighthouseManagerState.NotCalibrated
         self.reference_points = REFERENCE_POINTS_DEFAULT
-        self.calibration_dir = calibration_dir
-        self.calibration_output_path = os.path.join(
-            self.calibration_dir, "calibration.out"
-        )
+        Path.mkdir(CALIBRATION_DIR, exist_ok=True)
+        self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
         self.calibration_points = np.zeros(
             (2, len(self.reference_points), 2), dtype=np.float64
