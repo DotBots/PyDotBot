@@ -16,6 +16,7 @@ from dotbot.models import (
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
+    DotBotControlModeModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -24,6 +25,7 @@ from dotbot.protocol import (
     PayloadType,
     CommandMoveRaw,
     CommandRgbLed,
+    ControlMode,
     ApplicationType,
 )
 
@@ -132,6 +134,32 @@ async def dotbots_rgb_led(
     )
     app.controller.send_payload(payload)
     app.controller.dotbots[address].rgb_led = command
+
+
+@app.put(
+    path="/controller/dotbots/{address}/{application}/mode",
+    summary="Set the dotbot control mode",
+    tags=["dotbots"],
+)
+async def dotbots_mode(address: str, application: int, data: DotBotControlModeModel):
+    """Set the control mode of a DotBot."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType(application),
+        version=PROTOCOL_VERSION,
+    )
+    payload = ProtocolPayload(
+        header,
+        PayloadType.CONTROL_MODE,
+        ControlMode(data.mode),
+    )
+    app.controller.send_payload(payload)
+    app.controller.dotbots[address].mode = data.mode
 
 
 @app.get(

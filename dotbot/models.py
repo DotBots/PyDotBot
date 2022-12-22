@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
 
-from dotbot.protocol import ApplicationType
+from dotbot.protocol import ApplicationType, ControlModeType
 
 
 class DotBotAddressModel(BaseModel):
@@ -45,6 +45,12 @@ class DotBotLH2Position(BaseModel):
     z: float
 
 
+class DotBotControlModeModel(BaseModel):
+    """Mode of a DotBot."""
+
+    mode: ControlModeType
+
+
 class DotBotGPSPosition(BaseModel):
     """GPS position of a DotBot, usually running a SailBot application."""
 
@@ -67,6 +73,7 @@ class DotBotModel(BaseModel):
     application: ApplicationType = ApplicationType.DotBot
     swarm: str = "0000"
     status: DotBotStatus = DotBotStatus.ALIVE
+    mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
     direction: Optional[int]
     move_raw: Optional[DotBotMoveRawCommandModel]

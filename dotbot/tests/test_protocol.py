@@ -9,11 +9,13 @@ from dotbot.protocol import (
     CommandMoveRaw,
     CommandRgbLed,
     Advertisement,
+    ControlMode,
     Lh2RawLocation,
     Lh2RawData,
     LH2Location,
     GPSPosition,
     DotBotData,
+    ControlModeType,
 )
 
 
@@ -110,12 +112,21 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x07\x01",
+            ProtocolPayload(
+                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                PayloadType.CONTROL_MODE,
+                ControlMode(ControlModeType.AUTO),
+            ),
+            id="ControlMode",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\xff",
             ValueError(),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x07",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x09",
             ProtocolPayloadParserException(),
             id="unsupported payload type",
         ),
@@ -242,6 +253,15 @@ def test_protocol_parser(payload, expected):
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             id="DotBotData",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.CONTROL_MODE,
+                ControlMode(ControlModeType.AUTO),
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x07\x01",
+            id="ControlMode",
         ),
     ],
 )
@@ -380,6 +400,21 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="DotBotData",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.CONTROL_MODE,
+                ControlMode(1),
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+\n"
+                " CONTROL_MODE    | dst                              | src                              | swarm id | app. | ver. | type | mode |\n"
+                " (22 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x07 | 0x01 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+\n"
+                "\n"
+            ),
+            id="ControlMode",
         ),
     ],
 )

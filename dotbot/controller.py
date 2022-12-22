@@ -236,6 +236,7 @@ class ControllerBase(ABC):
         )
         should_reload = False
         if source in self.dotbots:
+            dotbot.mode = self.dotbots[source].mode
             dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position

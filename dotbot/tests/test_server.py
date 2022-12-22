@@ -12,6 +12,7 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
     DotBotCalibrationStateModel,
+    DotBotControlModeModel,
 )
 from dotbot.protocol import (
     ApplicationType,
@@ -21,6 +22,7 @@ from dotbot.protocol import (
     PROTOCOL_VERSION,
     CommandMoveRaw,
     CommandRgbLed,
+    ControlMode,
 )
 from dotbot.server import app, web
 
@@ -175,6 +177,65 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
     response = client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.dict(),
+    )
+    assert response.status_code == code
+
+    if found:
+        app.controller.send_payload.assert_called_with(expected_payload)
+    else:
+        app.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "dotbots,code,found",
+    [
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            200,
+            True,
+            id="found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            404,
+            False,
+            id="not_found",
+        ),
+    ],
+)
+def test_set_dotbots_mode(dotbots, code, found):
+    app.controller.dotbots = dotbots
+    address = "4242"
+    message = DotBotControlModeModel(mode=1)
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
+    )
+    expected_payload = ProtocolPayload(
+        header,
+        PayloadType.CONTROL_MODE,
+        ControlMode(1),
+    )
+    response = client.put(
+        f"/controller/dotbots/{address}/0/mode",
+        json=message.dict(),
     )
     assert response.status_code == code
 
