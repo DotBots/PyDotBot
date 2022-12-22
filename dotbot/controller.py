@@ -175,6 +175,7 @@ class ControllerBase(ABC):
                 table.add_column("address", style="magenta")
                 table.add_column("application", style="yellow")
                 table.add_column("status", style="green")
+                table.add_column("mode", style="green")
                 table.add_column("active", style="green")
                 for idx, dotbot in enumerate(self.dotbots.values()):
                     table.add_row(
@@ -182,6 +183,7 @@ class ControllerBase(ABC):
                         f"0x{dotbot.address}",
                         f"{dotbot.application.name}",
                         f"{dotbot.status.name.capitalize()}",
+                        f"{dotbot.mode.name.capitalize()}",
                         f"{int(dotbot.address, 16) == self.header.destination}",
                     )
             return table

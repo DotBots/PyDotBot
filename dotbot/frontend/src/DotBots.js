@@ -9,7 +9,8 @@ import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
-  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, inactiveAddress
+  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
+  inactiveAddress,
 } from "./rest";
 
 const ApplicationType = {
@@ -23,6 +24,7 @@ const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
 const DotBotAccordionItem = (props) => {
 
+  const [ modeAuto, setModeAuto ] = useState(false);
   const [ expanded, setExpanded ] = useState(false);
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
@@ -35,6 +37,11 @@ const DotBotAccordionItem = (props) => {
   if (props.dotbot.rgb_led) {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
   }
+
+  const updateModeAuto = async (event) => {
+    setModeAuto(event.target.checked);
+    await apiUpdateControlMode(props.dotbot.address, props.dotbot.application, event.target.checked);
+  };
 
   useEffect(() => {
     if (props.dotbot.rgb_led) {
@@ -79,25 +86,25 @@ const DotBotAccordionItem = (props) => {
       </h2>
       <div id={`collapse-${props.dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${props.dotbot.address}`} data-bs-parent="#accordion-dotbots">
         <div className="accordion-body">
-          <div className="row">
-            <div className={`col d-flex justify-content-center ${!expanded && "invisible"}`}>
+          <div className="d-flex">
+            <div className={`mx-auto justify-content-center ${!expanded && "invisible"}`}>
               <Joystick address={props.dotbot.address} application={props.dotbot.application} />
             </div>
-            <div className="col m-2">
-              <div className="row">
-                <div className="col">
-                  <div className="d-flex justify-content-center">
-                    <RgbColorPicker color={color} onChange={setColor} />
-                  </div>
-                </div>
+            <div className="mx-auto justify-content-center">
+              <div className="d-flex justify-content-center">
+                <RgbColorPicker color={color} onChange={setColor} />
               </div>
-              <div className="col m-2">
-                <div className="d-flex justify-content-center">
-                  <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
-                </div>
+              <div className="d-flex justify-content-center">
+                <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
               </div>
             </div>
           </div>
+          <div className="d-flex">
+            <div className="form-check">
+                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={modeAuto} onChange={updateModeAuto} />
+                <label className="form-check-label" htmlFor="flexCheckModeAuto">Autonomous mode</label>
+              </div>
+            </div>
         </div>
       </div>
     </div>
