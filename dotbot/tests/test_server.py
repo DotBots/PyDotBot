@@ -23,6 +23,8 @@ from dotbot.protocol import (
     CommandMoveRaw,
     CommandRgbLed,
     ControlMode,
+    LH2Location,
+    LH2Waypoints,
 )
 from dotbot.server import app, web
 
@@ -236,6 +238,65 @@ def test_set_dotbots_mode(dotbots, code, found):
     response = client.put(
         f"/controller/dotbots/{address}/0/mode",
         json=message.dict(),
+    )
+    assert response.status_code == code
+
+    if found:
+        app.controller.send_payload.assert_called_with(expected_payload)
+    else:
+        app.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "dotbots,code,found",
+    [
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            200,
+            True,
+            id="found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            404,
+            False,
+            id="not_found",
+        ),
+    ],
+)
+def test_set_dotbots_lh2_waypoints(dotbots, code, found):
+    app.controller.dotbots = dotbots
+    address = "4242"
+    message = [{"x": 0.5, "y": 0.1, "z": 0}]
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType.DotBot,
+        version=PROTOCOL_VERSION,
+    )
+    expected_payload = ProtocolPayload(
+        header,
+        PayloadType.LH2_WAYPOINTS,
+        LH2Waypoints([LH2Location(500000, 100000, 0)]),
+    )
+    response = client.put(
+        f"/controller/dotbots/{address}/0/lh2_waypoints",
+        json=message,
     )
     assert response.status_code == code
 

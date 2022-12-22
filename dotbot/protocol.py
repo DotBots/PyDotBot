@@ -299,6 +299,23 @@ class ControlMode(ProtocolData):
 
 
 @dataclass
+class LH2Waypoints(ProtocolData):
+    """Dataclass that holds a list of LH2 waypoints."""
+
+    waypoints: List[LH2Location] = dataclasses.field(default_factory=lambda: [])
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        _fields = [ProtocolField(len(self.waypoints), "len.")]
+        _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
+        return _fields
+
+    @staticmethod
+    def from_bytes(_) -> ProtocolData:
+        return LH2Waypoints(waypoints=[])
+
+
+@dataclass
 class ProtocolPayload:
     """Manage a protocol complete payload (header + type + values)."""
 
@@ -341,6 +358,8 @@ class ProtocolPayload:
             values = DotBotData.from_bytes(bytes_[21:63])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[21:22])
+        elif payload_type == PayloadType.LH2_WAYPOINTS:
+            values = LH2Waypoints.from_bytes(None)
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"

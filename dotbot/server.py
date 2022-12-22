@@ -17,6 +17,7 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
     DotBotControlModeModel,
+    DotBotLH2Position,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -26,6 +27,8 @@ from dotbot.protocol import (
     CommandMoveRaw,
     CommandRgbLed,
     ControlMode,
+    LH2Location,
+    LH2Waypoints,
     ApplicationType,
 )
 
@@ -160,6 +163,43 @@ async def dotbots_mode(address: str, application: int, data: DotBotControlModeMo
     )
     app.controller.send_payload(payload)
     app.controller.dotbots[address].mode = data.mode
+
+
+@app.put(
+    path="/controller/dotbots/{address}/{application}/lh2_waypoints",
+    summary="Set the dotbot control mode",
+    tags=["dotbots"],
+)
+async def dotbots_lh2_waypoints(
+    address: str, application: int, waypoints: List[DotBotLH2Position]
+):
+    """Set the lh2 waypoints of a DotBot."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(app.controller.settings.gw_address, 16),
+        swarm_id=int(app.controller.settings.swarm_id, 16),
+        application=ApplicationType(application),
+        version=PROTOCOL_VERSION,
+    )
+    payload = ProtocolPayload(
+        header,
+        PayloadType.LH2_WAYPOINTS,
+        LH2Waypoints(
+            [
+                LH2Location(
+                    pos_x=waypoint.x * 1e6,
+                    pos_y=waypoint.y * 1e6,
+                    pos_z=waypoint.z * 1e6,
+                )
+                for waypoint in waypoints
+            ]
+        ),
+    )
+    app.controller.send_payload(payload)
+    app.controller.dotbots[address].lh2_waypoints = waypoints
 
 
 @app.get(

@@ -242,6 +242,7 @@ class ControllerBase(ABC):
             dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
+            dotbot.lh2_waypoints = self.dotbots[source].lh2_waypoints
             dotbot.gps_position = self.dotbots[source].gps_position
             should_reload = dotbot.status != self.dotbots[source].status
         else:
@@ -249,7 +250,11 @@ class ControllerBase(ABC):
             should_reload = True
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
-        if dotbot.lh2_position is not None:
+        if (
+            dotbot.lh2_position is not None
+            and dotbot.lh2_position.x >= 0
+            and dotbot.lh2_position.y >= 0
+        ):
             asyncio.create_task(
                 self.notify_clients(
                     json.dumps(

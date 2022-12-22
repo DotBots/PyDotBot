@@ -16,6 +16,7 @@ from dotbot.protocol import (
     GPSPosition,
     DotBotData,
     ControlModeType,
+    LH2Waypoints,
 )
 
 
@@ -119,6 +120,17 @@ from dotbot.protocol import (
                 ControlMode(ControlModeType.AUTO),
             ),
             id="ControlMode",
+        ),
+        pytest.param(
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x08\x02"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.LH2_WAYPOINTS,
+                LH2Waypoints([]),
+            ),
+            id="LH2Waypoints",
         ),
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\xff",
@@ -262,6 +274,17 @@ def test_protocol_parser(payload, expected):
             ),
             b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x07\x01",
             id="ControlMode",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.LH2_WAYPOINTS,
+                LH2Waypoints([LH2Location(1000, 1000, 2), LH2Location(1000, 1000, 2)]),
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x08\x02"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            id="LH2Waypoints",
         ),
     ],
 )
@@ -415,6 +438,25 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="ControlMode",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.LH2_WAYPOINTS,
+                LH2Waypoints([LH2Location(1000, 1000, 2), LH2Location(1000, 1000, 2)]),
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                " LH2_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | type |\n"
+                " (46 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x08 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
+                "                 | len. | x                | y                | z                | x                | y                | z                |\n"
+                "                 | 0x02 | 0xe8030000       | 0xe8030000       | 0x02000000       | 0xe8030000       | 0xe8030000       | 0x02000000       |\n"
+                "                 +------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
+                "\n"
+            ),
+            id="LH2Waypoints",
         ),
     ],
 )
