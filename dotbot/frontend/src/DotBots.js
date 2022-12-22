@@ -10,7 +10,7 @@ import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
-  inactiveAddress,
+  apiUpdateLH2Waypoints, inactiveAddress,
 } from "./rest";
 
 const ApplicationType = {
@@ -18,13 +18,20 @@ const ApplicationType = {
   SailBot: 1,
 };
 
+const ControlModeType = {
+  Manual: 0,
+  Auto: 1,
+};
+
+const maxWaypoints = 8;
+
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
 const dotbotStatuses = ["alive", "lost", "dead"];
 const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
 const DotBotAccordionItem = (props) => {
 
-  const [ modeAuto, setModeAuto ] = useState(false);
+  // const [ modeAuto, setModeAuto ] = useState(false);
   const [ expanded, setExpanded ] = useState(false);
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
@@ -38,10 +45,9 @@ const DotBotAccordionItem = (props) => {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
   }
 
-  const updateModeAuto = async (event) => {
-    setModeAuto(event.target.checked);
-    await apiUpdateControlMode(props.dotbot.address, props.dotbot.application, event.target.checked);
-  };
+  const autoModeClicked = async (event) => {
+    await props.updateAutoMode(props.dotbot.address, props.dotbot.application, event.target.checked);
+  }
 
   useEffect(() => {
     if (props.dotbot.rgb_led) {
@@ -99,12 +105,20 @@ const DotBotAccordionItem = (props) => {
               </div>
             </div>
           </div>
-          <div className="d-flex">
-            <div className="form-check">
-                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={modeAuto} onChange={updateModeAuto} />
+          {props.dotbot.lh2_position &&
+            <div className="d-flex mx-auto">
+              <div className="form-check">
+                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={props.dotbot.mode} onChange={autoModeClicked} />
                 <label className="form-check-label" htmlFor="flexCheckModeAuto">Autonomous mode</label>
               </div>
             </div>
+          }
+          {props.dotbot.lh2_waypoints && props.dotbot.lh2_waypoints.length > 0 &&
+            <div className="d-flex mx-auto">
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address)}>Apply waypoints</button>
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address)}>Clear waypoints</button>
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -207,6 +221,18 @@ const DotBots = () => {
   }, [setActiveDotbot]
   );
 
+  const updateAutoMode = async (address, application, mode) => {
+    const newMode = mode ? ControlModeType.Auto : ControlModeType.Manual;
+    await apiUpdateControlMode(address, application, newMode);
+    let dotbotsTmp = dotbots.slice();
+    for (let idx = 0; idx < dotbots.length; idx++) {
+      if (dotbots[idx].address === address) {
+        dotbotsTmp[idx].mode = newMode;
+        setDotbots(dotbotsTmp);
+      }
+    }
+  };
+
   const fetchDotBots = useCallback(async () => {
     const data = await apiFetchDotbots().catch(error => console.log(error));
     setDotbots(data);
@@ -214,6 +240,70 @@ const DotBots = () => {
     setActiveDotbot(active);
   }, [setDotbots]
   );
+
+  const mapClicked = (x, y) => {
+    if (!dotbots || dotbots.length === 0) {
+      return;
+    }
+
+    const activeDotbots = dotbots.filter(dotbot => activeDotbot === dotbot.address);
+    // Do nothing if no active dotbot
+    if (activeDotbots.length === 0) {
+      return;
+    }
+
+    const dotbot = activeDotbots[0];
+    if (dotbot.mode !== ControlModeType.Auto) {
+      // Do nothing if dotbot is in manual mode
+      return;
+    }
+
+    if (dotbot.application === ApplicationType.SailBot) {
+      // TODO: implement sailbot support
+      return;
+    }
+    if (dotbot.application === ApplicationType.DotBot) {
+      // Limit number of waypoints to maxWaypoints
+      if (dotbot.lh2_waypoints.length >= maxWaypoints) {
+        return;
+      }
+      let dotbotsTmp = dotbots.slice();
+      for (let idx = 0; idx < dotbots.length; idx++) {
+        if (dotbots[idx].address === dotbot.address) {
+          if (dotbotsTmp[idx].lh2_waypoints.length === 0) {
+            dotbotsTmp[idx].lh2_waypoints.push({
+              x: dotbotsTmp[idx].lh2_position.x,
+              y: dotbotsTmp[idx].lh2_position.y,
+              z: 0
+            });
+          }
+          dotbotsTmp[idx].lh2_waypoints.push({x: x, y: y, z: 0});
+          setDotbots(dotbotsTmp);
+        }
+      }
+    }
+  };
+
+  const applyLH2Waypoints = async (address) => {
+    for (let idx = 0; idx < dotbots.length; idx++) {
+      if (dotbots[idx].address === address) {
+        await apiUpdateLH2Waypoints(address, ApplicationType.DotBot, dotbots[idx].lh2_waypoints);
+        return;
+      }
+    }
+  };
+
+  const clearLH2Waypoints = async (address) => {
+    let dotbotsTmp = dotbots.slice();
+    for (let idx = 0; idx < dotbots.length; idx++) {
+      if (dotbots[idx].address === address) {
+        dotbotsTmp[idx].lh2_waypoints = [];
+        await apiUpdateLH2Waypoints(address, ApplicationType.DotBot, []);
+        setDotbots(dotbotsTmp);
+        return;
+      }
+    }
+  };
 
   const onWsOpen = () => {
     console.log('websocket opened');
@@ -300,7 +390,18 @@ const DotBots = () => {
               <div className="accordion" id="accordion-dotbots">
                 {dotbots
                   .filter(dotbot => dotbot.application === ApplicationType.DotBot)
-                  .map(dotbot => <DotBotAccordionItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
+                  .map(dotbot =>
+                    <DotBotAccordionItem
+                      key={dotbot.address}
+                      dotbot={dotbot}
+                      active={activeDotbot}
+                      updateActive={updateActive}
+                      updateAutoMode={updateAutoMode}
+                      applyWaypoints={applyLH2Waypoints}
+                      clearWaypoints={clearLH2Waypoints}
+                      refresh={fetchDotBots}
+                    />
+                  )
                 }
               </div>
             </div>
@@ -308,10 +409,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapSize={350} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapSize={650} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>

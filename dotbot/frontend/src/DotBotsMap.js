@@ -13,6 +13,39 @@ const referencePoints = [
   {x: 0.1, y: -0.1},
 ]
 
+const DotBotsWaypoint = (props) => {
+  return (
+    <>
+      {(props.index === 0) ? (
+        <circle
+          cx={props.point.x * props.mapSize}
+          cy={props.point.y * props.mapSize}
+          r="4"
+          fill="none"
+          stroke={props.color}
+          strokeWidth="2"
+          opacity="50%"
+        />
+      ) : (
+        <>
+          <line
+            x1={props.waypoints[props.index - 1].x * props.mapSize}
+            y1={props.waypoints[props.index - 1].y * props.mapSize}
+            x2={props.point.x * props.mapSize}
+            y2={props.point.y * props.mapSize}
+            stroke={props.color} strokeWidth="2" strokeDasharray="2" opacity="50%"
+          />
+          <rect
+            x={props.point.x * props.mapSize - 2}
+            y={props.point.y * props.mapSize - 2}
+            width="4" height="4" fill={props.color} opacity="50%"
+          />
+        </>
+      )}
+    </>
+  )
+}
+
 const DotBotsMapPoint = (props) => {
   const [hovered, setHovered ] = useState(false);
 
@@ -41,6 +74,12 @@ const DotBotsMapPoint = (props) => {
   };
 
   return (
+    <>
+    {(props.dotbot.mode === 1 && props.dotbot.lh2_waypoints.length > 0) && (
+      props.dotbot.lh2_waypoints.map((point, index) => (
+        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.lh2_waypoints} {...props} />
+      ))
+    )}
     <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
     <circle cx={posX} cy={posY}
         r={radius}
@@ -58,6 +97,7 @@ const DotBotsMapPoint = (props) => {
     </circle>
     {(props.dotbot.direction) && <polygon points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} />}
     </g>
+    </>
   )
 }
 
@@ -90,6 +130,14 @@ export const DotBotsMap = (props) => {
       setCalibrationState("done");
       apiApplyLH2Calibration();
     }
+  };
+
+  const mapClicked = (event) => {
+    const { farthestViewportElement: svgRoot } = event.target;
+    const dim = svgRoot.getBoundingClientRect();
+    const x = event.clientX - dim.left;
+    const y = event.clientY - dim.top;
+    props.mapClicked(x / props.mapSize, y / props.mapSize);
   };
 
   const coordinateToPixel = (coordinate) => {
@@ -141,12 +189,12 @@ export const DotBotsMap = (props) => {
                 </pattern>
               </defs>
               {/* Map grid */}
-              <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1"/>
+              <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1" onClick={(event) => mapClicked(event)}/>
               {/* DotBots points */}
               {
                 props.dotbots && props.dotbots
-                  .filter(dotbot => dotbot.lh2_position)
                   .filter(dotbot => dotbot.status !== 2)
+                  .filter(dotbot => dotbot.lh2_position)
                   .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} updateActive={props.updateActive} mapSize={props.mapSize} />)
               }
               {
