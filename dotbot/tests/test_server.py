@@ -11,6 +11,7 @@ from dotbot.models import (
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
+    DotBotCalibrationStateModel,
 )
 from dotbot.protocol import (
     ApplicationType,
@@ -30,9 +31,12 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def controller():
     app.controller = MagicMock()
+    app.controller.websockets = []
     app.controller.header = MagicMock()
     app.controller.header.destination = MagicMock()
     app.controller.dotbots = MagicMock()
+    app.controller.lh2_manager = MagicMock()
+    app.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
     app.controller.send_payload = MagicMock()
     app.controller.settings = MagicMock()
     app.controller.settings.gw_address = "0000"
@@ -301,6 +305,41 @@ def test_get_dotbot(dotbots, address, code, found, result):
     assert response.status_code == code
     if found is True:
         assert response.json() == result
+
+
+def test_lh2_calibration():
+    response = client.get("/controller/lh2/calibration")
+    assert response.json() == DotBotCalibrationStateModel(state="test").dict()
+    assert response.status_code == 200
+
+    with patch(
+        "dotbot.server.app.controller.lh2_manager.add_calibration_point"
+    ) as point:
+        response = client.post(
+            "/controller/lh2/calibration/2",
+        )
+        assert response.status_code == 200
+        point.assert_called_with(2)
+
+    with patch(
+        "dotbot.server.app.controller.lh2_manager.compute_calibration"
+    ) as calibration:
+        response = client.put(
+            "/controller/lh2/calibration",
+        )
+        assert response.status_code == 200
+        calibration.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ws_client():
+    with client.websocket_connect("/controller/ws/status") as websocket:
+        await asyncio.sleep(0.1)
+        assert len(app.controller.websockets) == 1
+        app.controller.websockets[0]
+        websocket.close()
+        await asyncio.sleep(0.1)
+        assert len(app.controller.websockets) == 0
 
 
 @pytest.mark.asyncio
