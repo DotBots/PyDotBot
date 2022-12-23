@@ -289,7 +289,7 @@ class ControllerBase(ABC):
 
         if (
             payload.payload_type == PayloadType.DOTBOT_DATA
-            and payload.values.direction != 0xFFFF
+            and -500 <= payload.values.direction <= 500
         ):
             dotbot.direction = payload.values.direction
             asyncio.create_task(
