@@ -10,7 +10,7 @@ import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
-  apiUpdateLH2Waypoints, inactiveAddress,
+  apiUpdateWaypoints, inactiveAddress,
 } from "./rest";
 
 const ApplicationType = {
@@ -287,7 +287,7 @@ const DotBots = () => {
   const applyLH2Waypoints = async (address) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
-        await apiUpdateLH2Waypoints(address, ApplicationType.DotBot, dotbots[idx].lh2_waypoints);
+        await apiUpdateWaypoints(address, ApplicationType.DotBot, dotbots[idx].lh2_waypoints);
         return;
       }
     }
@@ -298,7 +298,7 @@ const DotBots = () => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].lh2_waypoints = [];
-        await apiUpdateLH2Waypoints(address, ApplicationType.DotBot, []);
+        await apiUpdateWaypoints(address, ApplicationType.DotBot, []);
         setDotbots(dotbotsTmp);
         return;
       }

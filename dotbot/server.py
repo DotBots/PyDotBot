@@ -166,7 +166,7 @@ async def dotbots_mode(address: str, application: int, data: DotBotControlModeMo
 
 
 @app.put(
-    path="/controller/dotbots/{address}/{application}/lh2_waypoints",
+    path="/controller/dotbots/{address}/{application}/waypoints",
     summary="Set the dotbot control mode",
     tags=["dotbots"],
 )

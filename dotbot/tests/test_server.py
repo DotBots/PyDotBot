@@ -295,7 +295,7 @@ def test_set_dotbots_lh2_waypoints(dotbots, code, found):
         LH2Waypoints([LH2Location(500000, 100000, 0)]),
     )
     response = client.put(
-        f"/controller/dotbots/{address}/0/lh2_waypoints",
+        f"/controller/dotbots/{address}/0/waypoints",
         json=message,
     )
     assert response.status_code == code
