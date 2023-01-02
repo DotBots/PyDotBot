@@ -81,3 +81,4 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position]
     lh2_waypoints: List[DotBotLH2Position] = []
     gps_position: Optional[DotBotGPSPosition]
+    gps_waypoints: List[DotBotGPSPosition] = []

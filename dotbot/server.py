@@ -1,9 +1,8 @@
 """Module for the web server application."""
-
 import asyncio
 import os
 from binascii import hexlify
-from typing import List
+from typing import List, Union
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -18,6 +17,7 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotControlModeModel,
     DotBotLH2Position,
+    DotBotGPSPosition,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -29,6 +29,8 @@ from dotbot.protocol import (
     ControlMode,
     LH2Location,
     LH2Waypoints,
+    GPSPosition,
+    GPSWaypoints,
     ApplicationType,
 )
 
@@ -170,8 +172,10 @@ async def dotbots_mode(address: str, application: int, data: DotBotControlModeMo
     summary="Set the dotbot control mode",
     tags=["dotbots"],
 )
-async def dotbots_lh2_waypoints(
-    address: str, application: int, waypoints: List[DotBotLH2Position]
+async def dotbots_waypoints(
+    address: str,
+    application: int,
+    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]],
 ):
     """Set the lh2 waypoints of a DotBot."""
     if address not in app.controller.dotbots:
@@ -184,22 +188,38 @@ async def dotbots_lh2_waypoints(
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
-    payload = ProtocolPayload(
-        header,
-        PayloadType.LH2_WAYPOINTS,
-        LH2Waypoints(
-            [
-                LH2Location(
-                    pos_x=waypoint.x * 1e6,
-                    pos_y=waypoint.y * 1e6,
-                    pos_z=waypoint.z * 1e6,
-                )
-                for waypoint in waypoints
-            ]
-        ),
-    )
+    if ApplicationType(application) == ApplicationType.SailBot:
+        payload = ProtocolPayload(
+            header,
+            PayloadType.GPS_WAYPOINTS,
+            GPSWaypoints(
+                [
+                    GPSPosition(
+                        latitude=waypoint.latitude * 1e6,
+                        longitude=waypoint.longitude * 1e6,
+                    )
+                    for waypoint in waypoints
+                ]
+            ),
+        )
+        app.controller.dotbots[address].gps_waypoints = waypoints
+    else:  # DotBot application
+        payload = ProtocolPayload(
+            header,
+            PayloadType.LH2_WAYPOINTS,
+            LH2Waypoints(
+                [
+                    LH2Location(
+                        pos_x=waypoint.x * 1e6,
+                        pos_y=waypoint.y * 1e6,
+                        pos_z=waypoint.z * 1e6,
+                    )
+                    for waypoint in waypoints
+                ]
+            ),
+        )
+        app.controller.dotbots[address].lh2_waypoints = waypoints
     app.controller.send_payload(payload)
-    app.controller.dotbots[address].lh2_waypoints = waypoints
 
 
 @app.get(
