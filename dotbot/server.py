@@ -202,7 +202,6 @@ async def dotbots_waypoints(
                 ]
             ),
         )
-        app.controller.dotbots[address].gps_waypoints = waypoints
     else:  # DotBot application
         payload = ProtocolPayload(
             header,
@@ -218,7 +217,7 @@ async def dotbots_waypoints(
                 ]
             ),
         )
-        app.controller.dotbots[address].lh2_waypoints = waypoints
+    app.controller.dotbots[address].waypoints = waypoints
     app.controller.send_payload(payload)
 
 

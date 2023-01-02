@@ -332,12 +332,15 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
             PayloadType.GPS_WAYPOINTS,
             GPSWaypoints([GPSPosition(latitude=500000, longitude=100000)]),
         )
+        expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
     else:  # DotBot application
         expected_payload = ProtocolPayload(
             header,
             PayloadType.LH2_WAYPOINTS,
             LH2Waypoints([LH2Location(500000, 100000, 0)]),
         )
+        expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
+
     response = client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,
@@ -346,14 +349,7 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
 
     if found:
         app.controller.send_payload.assert_called_with(expected_payload)
-        if application == ApplicationType.SailBot:
-            assert app.controller.dotbots[address].gps_waypoints == [
-                DotBotGPSPosition(latitude=0.5, longitude=0.1)
-            ]
-        else:
-            assert app.controller.dotbots[address].lh2_waypoints == [
-                DotBotLH2Position(x=0.5, y=0.1, z=0)
-            ]
+        assert app.controller.dotbots[address].waypoints == expected_waypoints
     else:
         app.controller.send_payload.assert_not_called()
 

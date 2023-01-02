@@ -12,26 +12,16 @@ import {
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
   apiUpdateWaypoints, inactiveAddress,
 } from "./rest";
+import { ApplicationType, ControlModeType, maxWaypoints } from "./constants";
 
-const ApplicationType = {
-  DotBot: 0,
-  SailBot: 1,
-};
-
-const ControlModeType = {
-  Manual: 0,
-  Auto: 1,
-};
-
-const maxWaypoints = 8;
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
 const dotbotStatuses = ["alive", "lost", "dead"];
 const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
+
 const DotBotAccordionItem = (props) => {
 
-  // const [ modeAuto, setModeAuto ] = useState(false);
   const [ expanded, setExpanded ] = useState(false);
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
@@ -113,10 +103,10 @@ const DotBotAccordionItem = (props) => {
               </div>
             </div>
           }
-          {props.dotbot.lh2_waypoints && props.dotbot.lh2_waypoints.length > 0 &&
+          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
             <div className="d-flex mx-auto">
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address)}>Apply waypoints</button>
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address)}>Clear waypoints</button>
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Apply waypoints</button>
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear waypoints</button>
             </div>
           }
         </div>
@@ -148,6 +138,10 @@ const SailBotItem = (props) => {
     setSailValue(newSailValue);
     setActive(newSailValue !== 0);
   };
+
+  const autoModeClicked = async (event) => {
+    await props.updateAutoMode(props.dotbot.address, props.dotbot.application, event.target.checked);
+  }
 
   useInterval(async () => {
     if (rudderValue === 0 && sailValue === 0) {
@@ -205,6 +199,20 @@ const SailBotItem = (props) => {
               <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
             </div>
           </div>
+          {props.dotbot.gps_position &&
+            <div className="d-flex mx-auto">
+              <div className="form-check">
+                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={props.dotbot.mode} onChange={autoModeClicked} />
+                <label className="form-check-label" htmlFor="flexCheckModeAuto">Autonomous mode</label>
+              </div>
+            </div>
+          }
+          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
+            <div className="d-flex mx-auto">
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Apply waypoints</button>
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Clear waypoints</button>
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -238,10 +246,10 @@ const DotBots = () => {
     setDotbots(data);
     const active = await apiFetchActiveDotbotAddress().catch(error => console.log(error));
     setActiveDotbot(active);
-  }, [setDotbots]
+  }, [setDotbots, setActiveDotbot]
   );
 
-  const mapClicked = (x, y) => {
+  const mapClicked = useCallback((x, y) => {
     if (!dotbots || dotbots.length === 0) {
       return;
     }
@@ -258,47 +266,60 @@ const DotBots = () => {
       return;
     }
 
-    if (dotbot.application === ApplicationType.SailBot) {
-      // TODO: implement sailbot support
+    // Limit number of waypoints to maxWaypoints
+    if (dotbot.waypoints.length >= maxWaypoints) {
       return;
     }
-    if (dotbot.application === ApplicationType.DotBot) {
-      // Limit number of waypoints to maxWaypoints
-      if (dotbot.lh2_waypoints.length >= maxWaypoints) {
-        return;
-      }
+
+    if (dotbot.application === ApplicationType.SailBot) {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === dotbot.address) {
-          if (dotbotsTmp[idx].lh2_waypoints.length === 0) {
-            dotbotsTmp[idx].lh2_waypoints.push({
+          if (dotbotsTmp[idx].waypoints.length === 0) {
+            dotbotsTmp[idx].waypoints.push({
+              latitude: dotbotsTmp[idx].gps_position.latitude,
+              longitude: dotbotsTmp[idx].gps_position.longitude,
+            });
+          }
+          dotbotsTmp[idx].waypoints.push({latitude: x, longitude: y});
+          setDotbots(dotbotsTmp);
+        }
+      }
+    }
+    if (dotbot.application === ApplicationType.DotBot) {
+      let dotbotsTmp = dotbots.slice();
+      for (let idx = 0; idx < dotbots.length; idx++) {
+        if (dotbots[idx].address === dotbot.address) {
+          if (dotbotsTmp[idx].waypoints.length === 0) {
+            dotbotsTmp[idx].waypoints.push({
               x: dotbotsTmp[idx].lh2_position.x,
               y: dotbotsTmp[idx].lh2_position.y,
               z: 0
             });
           }
-          dotbotsTmp[idx].lh2_waypoints.push({x: x, y: y, z: 0});
+          dotbotsTmp[idx].waypoints.push({x: x, y: y, z: 0});
           setDotbots(dotbotsTmp);
         }
       }
     }
-  };
+  }, [activeDotbot, dotbots, setDotbots]
+  );
 
-  const applyLH2Waypoints = async (address) => {
+  const applyWaypoints = async (address, application) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
-        await apiUpdateWaypoints(address, ApplicationType.DotBot, dotbots[idx].lh2_waypoints);
+        await apiUpdateWaypoints(address, application, dotbots[idx].waypoints);
         return;
       }
     }
   };
 
-  const clearLH2Waypoints = async (address) => {
+  const clearWaypoints = async (address, application) => {
     let dotbotsTmp = dotbots.slice();
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
-        dotbotsTmp[idx].lh2_waypoints = [];
-        await apiUpdateWaypoints(address, ApplicationType.DotBot, []);
+        dotbotsTmp[idx].waypoints = [];
+        await apiUpdateWaypoints(address, application, []);
         setDotbots(dotbotsTmp);
         return;
       }
@@ -397,8 +418,8 @@ const DotBots = () => {
                       active={activeDotbot}
                       updateActive={updateActive}
                       updateAutoMode={updateAutoMode}
-                      applyWaypoints={applyLH2Waypoints}
-                      clearWaypoints={clearLH2Waypoints}
+                      applyWaypoints={applyWaypoints}
+                      clearWaypoints={clearWaypoints}
                       refresh={fetchDotBots}
                     />
                   )
@@ -426,7 +447,18 @@ const DotBots = () => {
               <div className="accordion" id="accordion-sailbots">
                 {dotbots
                   .filter(dotbot => dotbot.application === ApplicationType.SailBot)
-                  .map(dotbot => <SailBotItem key={dotbot.address} dotbot={dotbot} active={activeDotbot} updateActive={updateActive} refresh={fetchDotBots} />)
+                  .map(dotbot =>
+                    <SailBotItem
+                      key={dotbot.address}
+                      dotbot={dotbot}
+                      active={activeDotbot}
+                      updateActive={updateActive}
+                      updateAutoMode={updateAutoMode}
+                      applyWaypoints={applyWaypoints}
+                      clearWaypoints={clearWaypoints}
+                      refresh={fetchDotBots}
+                    />
+                  )
                 }
               </div>
             </div>
@@ -434,10 +466,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapSize={350} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapSize={650} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>

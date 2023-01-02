@@ -2,7 +2,7 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel
 
 from dotbot.protocol import ApplicationType, ControlModeType
@@ -79,6 +79,5 @@ class DotBotModel(BaseModel):
     move_raw: Optional[DotBotMoveRawCommandModel]
     rgb_led: Optional[DotBotRgbLedCommandModel]
     lh2_position: Optional[DotBotLH2Position]
-    lh2_waypoints: List[DotBotLH2Position] = []
     gps_position: Optional[DotBotGPSPosition]
-    gps_waypoints: List[DotBotGPSPosition] = []
+    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
