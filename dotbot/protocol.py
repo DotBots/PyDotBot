@@ -298,7 +298,7 @@ class ProtocolPayload:
     def from_bytes(bytes_: bytes):
         """Parse a bytearray to return a protocol payload instance."""
         header = ProtocolHeader.from_bytes(bytes_[0:20])
-        payload_type = PayloadType(int.from_bytes(bytes_[20:21], "big"))
+        payload_type = PayloadType(int.from_bytes(bytes_[20:21], "little"))
         if payload_type == PayloadType.CMD_MOVE_RAW:
             values = CommandMoveRaw.from_bytes(bytes_[21:26])
         elif payload_type == PayloadType.CMD_RGB_LED:
@@ -339,7 +339,7 @@ class ProtocolPayload:
             for field in self.header.fields
         ]
         type_value = [
-            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'big')).decode():<3}"
+            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'little')).decode():<3}"
         ]
         values_values = [
             f" 0x{hexlify(int(field.value).to_bytes(field.length, field.endian, signed=field.signed)).decode():<{4 * field.length - 1}}"
