@@ -39,7 +39,7 @@ export const SailBotMarker = (props) => {
       </svg>`,
     className: "",
     iconSize: [30, 50],
-    iconAnchor: [25, 10],
+    iconAnchor: [25, 25],
   });
 
   return (
