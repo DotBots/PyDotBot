@@ -195,8 +195,8 @@ async def dotbots_waypoints(
             GPSWaypoints(
                 [
                     GPSPosition(
-                        latitude=waypoint.latitude * 1e6,
-                        longitude=waypoint.longitude * 1e6,
+                        latitude=int(waypoint.latitude * 1e6),
+                        longitude=int(waypoint.longitude * 1e6),
                     )
                     for waypoint in waypoints
                 ]
@@ -209,9 +209,9 @@ async def dotbots_waypoints(
             LH2Waypoints(
                 [
                     LH2Location(
-                        pos_x=waypoint.x * 1e6,
-                        pos_y=waypoint.y * 1e6,
-                        pos_z=waypoint.z * 1e6,
+                        pos_x=int(waypoint.x * 1e6),
+                        pos_y=int(waypoint.y * 1e6),
+                        pos_z=int(waypoint.z * 1e6),
                     )
                     for waypoint in waypoints
                 ]
