@@ -5,13 +5,14 @@ from binascii import hexlify
 from typing import List, Union
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dotbot.models import (
     DotBotCalibrationStateModel,
     DotBotModel,
+    DotBotQueryModel,
     DotBotAddressModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
@@ -228,11 +229,13 @@ async def dotbots_waypoints(
     summary="Return information about a dotbot given its address",
     tags=["dotbots"],
 )
-async def dotbot(address: str):
+async def dotbot(address: str, query: DotBotQueryModel = Depends()):
     """Dotbot HTTP GET handler."""
     if address not in app.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    return app.controller.dotbots[address]
+    _dotbot = DotBotModel(**app.controller.dotbots[address].dict())
+    _dotbot.position_history = _dotbot.position_history[: query.max_positions]
+    return _dotbot
 
 
 @app.get(
@@ -242,11 +245,9 @@ async def dotbot(address: str):
     summary="Return the list of available dotbots",
     tags=["dotbots"],
 )
-async def dotbots():
+async def dotbots(query: DotBotQueryModel = Depends()):
     """Dotbots HTTP GET handler."""
-    return sorted(
-        list(app.controller.dotbots.values()), key=lambda dotbot: dotbot.address
-    )
+    return app.controller.get_dotbots(query)
 
 
 @app.post(

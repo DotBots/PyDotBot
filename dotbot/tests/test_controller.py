@@ -10,6 +10,8 @@ import pytest
 import serial
 
 from dotbot.controller import (
+    gps_distance,
+    lh2_distance,
     ControllerBase,
     ControllerException,
     ControllerSettings,
@@ -17,7 +19,7 @@ from dotbot.controller import (
     register_controller,
 )
 from dotbot.hdlc import hdlc_encode
-from dotbot.models import DotBotModel
+from dotbot.models import DotBotModel, DotBotLH2Position, DotBotGPSPosition
 from dotbot.protocol import (
     ProtocolField,
     ProtocolPayload,
@@ -133,3 +135,34 @@ def test_controller_factory(_):
         application=ApplicationType.DotBot,
         version=PROTOCOL_VERSION,
     )
+
+
+@pytest.mark.parametrize(
+    "last,new,result",
+    [
+        (DotBotLH2Position(x=0, y=0, z=0), DotBotLH2Position(x=0, y=0, z=0), 0.0),
+        (DotBotLH2Position(x=1, y=0, z=0), DotBotLH2Position(x=0, y=0, z=0), 1.0),
+        (DotBotLH2Position(x=0, y=1, z=0), DotBotLH2Position(x=0, y=0, z=0), 1.0),
+    ],
+)
+def test_lh2_distance(last, new, result):
+    assert lh2_distance(last, new) == result
+
+
+@pytest.mark.parametrize(
+    "last,new,result",
+    [
+        (
+            DotBotGPSPosition(latitude=45.7597, longitude=4.8422),  # Lyon
+            DotBotGPSPosition(latitude=48.8567, longitude=2.3508),  # Paris
+            392217.25594,
+        ),
+        (
+            DotBotGPSPosition(latitude=51.509865, longitude=-0.118092),  # London
+            DotBotGPSPosition(latitude=48.8567, longitude=2.3508),  # Paris
+            343374.55271,
+        ),
+    ],
+)
+def test_gps_distance(last, new, result):
+    assert gps_distance(last, new) == pytest.approx(result)
