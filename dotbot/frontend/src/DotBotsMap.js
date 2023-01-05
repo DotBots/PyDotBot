@@ -46,6 +46,39 @@ const DotBotsWaypoint = (props) => {
   )
 }
 
+const DotBotsPosition = (props) => {
+  return (
+    <>
+      {(props.index === 0) ? (
+        <circle
+          cx={props.point.x * props.mapSize}
+          cy={props.point.y * props.mapSize}
+          r="4"
+          fill="none"
+          stroke={props.color}
+          strokeWidth="2"
+        />
+      ) : (
+        <>
+          <line
+            x1={props.history[props.index - 1].x * props.mapSize}
+            y1={props.history[props.index - 1].y * props.mapSize}
+            x2={props.point.x * props.mapSize}
+            y2={props.point.y * props.mapSize}
+            stroke={props.color} strokeWidth="2"
+          />
+          <circle
+            cx={props.point.x * props.mapSize}
+            cy={props.point.y * props.mapSize}
+            r="2"
+            fill={props.color}
+          />
+        </>
+      )}
+    </>
+  )
+}
+
 const DotBotsMapPoint = (props) => {
   const [hovered, setHovered ] = useState(false);
 
@@ -78,6 +111,11 @@ const DotBotsMapPoint = (props) => {
     {(props.dotbot.mode === 1 && props.dotbot.waypoints.length > 0) && (
       props.dotbot.waypoints.map((point, index) => (
         <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.waypoints} {...props} />
+      ))
+    )}
+    {props.dotbot.position_history.length > 0 && (
+      props.dotbot.position_history.map((point, index) => (
+        <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} history={props.dotbot.position_history} {...props} />
       ))
     )}
     <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">

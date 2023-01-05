@@ -12,7 +12,8 @@ import {
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
   apiUpdateWaypoints, inactiveAddress,
 } from "./rest";
-import { ApplicationType, ControlModeType, maxWaypoints } from "./constants";
+import { ApplicationType, ControlModeType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
+import { gps_distance, lh2_distance } from "./helpers";
 
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
@@ -341,7 +342,11 @@ const DotBots = () => {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.address) {
-          dotbotsTmp[idx].lh2_position = {x: message.x, y: message.y};
+          const newPosition = {x: message.x, y: message.y};
+          if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
+            dotbotsTmp[idx].position_history.push(newPosition);
+          }
+          dotbotsTmp[idx].lh2_position = newPosition;
           setDotbots(dotbotsTmp);
         }
       }
@@ -350,10 +355,14 @@ const DotBots = () => {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.address) {
-          dotbotsTmp[idx].gps_position = {
+          const newPosition = {
             latitude: message.latitude,
             longitude: message.longitude,
           };
+          if (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold) {
+            dotbotsTmp[idx].position_history.push(newPosition);
+          }
+          dotbotsTmp[idx].gps_position = newPosition;
           setDotbots(dotbotsTmp);
         }
       }
