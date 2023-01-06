@@ -1,5 +1,6 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
+import { ApplicationType } from "./constants";
 
 import {
     apiFetchLH2CalibrationState, apiApplyLH2Calibration,
@@ -113,7 +114,7 @@ const DotBotsMapPoint = (props) => {
         <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.waypoints} {...props} />
       ))
     )}
-    {props.dotbot.position_history.length > 0 && (
+    {(props.showHistory && props.dotbot.position_history.length > 0) && (
       props.dotbot.position_history.map((point, index) => (
         <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} history={props.dotbot.position_history} {...props} />
       ))
@@ -233,7 +234,7 @@ export const DotBotsMap = (props) => {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.status !== 2)
                   .filter(dotbot => dotbot.lh2_position)
-                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} updateActive={props.updateActive} mapSize={props.mapSize} />)
+                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} updateActive={props.updateActive} showHistory={props.showHistory} mapSize={props.mapSize} />)
               }
               {
                 ["running", "ready"].includes(calibrationState) && (
@@ -255,6 +256,12 @@ export const DotBotsMap = (props) => {
             <div className="form-check">
               <input className="form-check-input" type="checkbox" id="flexCheckDisplayGrid" defaultChecked={displayGrid} onChange={updateDisplayGrid} />
               <label className="form-check-label" htmlFor="flexCheckDisplayGrid">Display grid</label>
+            </div>
+          </div>
+          <div className="d-flex mb-2">
+            <div className="form-check">
+              <input className="form-check-input" type="checkbox" id="flexCheckDisplayHistory" defaultChecked={props.showHistory} onChange={(event) => props.updateShowHistory(event.target.checked, ApplicationType.DotBot)} />
+              <label className="form-check-label" htmlFor="flexCheckDisplayHistory">Display position history</label>
             </div>
           </div>
           <div className="d-flex">

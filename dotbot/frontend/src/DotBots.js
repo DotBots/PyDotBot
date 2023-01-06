@@ -223,6 +223,8 @@ const SailBotItem = (props) => {
 const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
+  const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
+  const [ showSailBotHistory, setShowSailBotHistory ] = useState(true);
 
   const updateActive = useCallback(async (address) => {
     await apiUpdateActiveDotbotAddress(address).catch((error) => console.error(error));
@@ -239,6 +241,14 @@ const DotBots = () => {
         dotbotsTmp[idx].mode = newMode;
         setDotbots(dotbotsTmp);
       }
+    }
+  };
+
+  const updateShowHistory = (show, application) => {
+    if (application === ApplicationType.SailBot) {
+      setShowSailBotHistory(show);
+    } else {
+      setShowDotBotHistory(show);
     }
   };
 
@@ -439,10 +449,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={350} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={650} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>
@@ -475,10 +485,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={350} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={650} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>
