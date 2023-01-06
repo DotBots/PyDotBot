@@ -25,7 +25,7 @@ const DotBotsWaypoint = (props) => {
           fill="none"
           stroke={props.color}
           strokeWidth="2"
-          opacity="50%"
+          opacity={props.opacity}
         />
       ) : (
         <>
@@ -34,12 +34,12 @@ const DotBotsWaypoint = (props) => {
             y1={props.waypoints[props.index - 1].y * props.mapSize}
             x2={props.point.x * props.mapSize}
             y2={props.point.y * props.mapSize}
-            stroke={props.color} strokeWidth="2" strokeDasharray="2" opacity="50%"
+            stroke={props.color} strokeWidth="2" strokeDasharray="2" opacity={props.opacity}
           />
           <rect
             x={props.point.x * props.mapSize - 2}
             y={props.point.y * props.mapSize - 2}
-            width="4" height="4" fill={props.color} opacity="50%"
+            width="4" height="4" fill={props.color} opacity={props.opacity}
           />
         </>
       )}
@@ -58,6 +58,7 @@ const DotBotsPosition = (props) => {
           fill="none"
           stroke={props.color}
           strokeWidth="2"
+          opacity={props.opacity}
         />
       ) : (
         <>
@@ -67,12 +68,14 @@ const DotBotsPosition = (props) => {
             x2={props.point.x * props.mapSize}
             y2={props.point.y * props.mapSize}
             stroke={props.color} strokeWidth="2"
+            opacity={props.opacity}
           />
           <circle
             cx={props.point.x * props.mapSize}
             cy={props.point.y * props.mapSize}
             r="2"
             fill={props.color}
+            opacity={props.opacity}
           />
         </>
       )}
@@ -94,6 +97,8 @@ const DotBotsMapPoint = (props) => {
   const radius = (props.dotbot.address === props.active || hovered) ? 8: 5;
   const directionShift = (props.dotbot.address === props.active || hovered) ? 2: 1;
   const directionSize = (props.dotbot.address === props.active || hovered) ? 8: 5;
+  const opacity = `${props.dotbot.status === 0 ? "80%" : "20%"}`
+  const waypointOpacity = `${props.dotbot.status === 0 ? "50%" : "10%"}`
 
   const onMouseEnter = () => {
     if (props.dotbot.status !== 0) {
@@ -111,18 +116,18 @@ const DotBotsMapPoint = (props) => {
     <>
     {(props.dotbot.mode === 1 && props.dotbot.waypoints.length > 0) && (
       props.dotbot.waypoints.map((point, index) => (
-        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.waypoints} {...props} />
+        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} opacity={waypointOpacity} waypoints={props.dotbot.waypoints} {...props} />
       ))
     )}
     {(props.showHistory && props.dotbot.position_history.length > 0) && (
       props.dotbot.position_history.map((point, index) => (
-        <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} history={props.dotbot.position_history} {...props} />
+        <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} opacity={opacity} history={props.dotbot.position_history} {...props} />
       ))
     )}
     <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
     <circle cx={posX} cy={posY}
         r={radius}
-        opacity={`${props.dotbot.status === 0 ? "80%" : "20%"}`}
+        opacity={opacity}
         fill={rgbColor}
         style={{ cursor: "pointer" }}
         onClick={
