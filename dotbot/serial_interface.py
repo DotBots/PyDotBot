@@ -1,10 +1,15 @@
 """Dotbot controller serial interface."""
 
 import threading
+import time
 
 from typing import Callable
 
 import serial
+
+
+PAYLOAD_CHUNK_SIZE = 64
+PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms
 
 
 class SerialInterfaceException(Exception):
@@ -37,5 +42,10 @@ class SerialInterface(threading.Thread):
 
     def write(self, bytes_):
         """Write bytes on serial."""
-        self.serial.write(bytes_)
-        self.serial.flush()
+        # Send 64 bytes at a time
+        pos = 0
+        while (pos % PAYLOAD_CHUNK_SIZE) == 0 and pos < len(bytes_):
+            self.serial.write(bytes_[pos : pos + PAYLOAD_CHUNK_SIZE])
+            self.serial.flush()
+            pos += PAYLOAD_CHUNK_SIZE
+            time.sleep(PAYLOAD_CHUNK_DELAY)
