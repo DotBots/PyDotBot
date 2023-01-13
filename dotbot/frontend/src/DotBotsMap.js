@@ -139,7 +139,7 @@ const DotBotsMapPoint = (props) => {
         onMouseLeave={onMouseLeave} >
       <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
     </circle>
-    {(props.dotbot.direction) && <polygon points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} />}
+    {(props.dotbot.direction) && <polygon points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />}
     </g>
     </>
   )
