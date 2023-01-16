@@ -2,10 +2,10 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
-from dotbot.protocol import ApplicationType
+from dotbot.protocol import ApplicationType, ControlModeType
 
 
 class DotBotAddressModel(BaseModel):
@@ -45,6 +45,12 @@ class DotBotLH2Position(BaseModel):
     z: float
 
 
+class DotBotControlModeModel(BaseModel):
+    """Mode of a DotBot."""
+
+    mode: ControlModeType
+
+
 class DotBotGPSPosition(BaseModel):
     """GPS position of a DotBot, usually running a SailBot application."""
 
@@ -67,9 +73,11 @@ class DotBotModel(BaseModel):
     application: ApplicationType = ApplicationType.DotBot
     swarm: str = "0000"
     status: DotBotStatus = DotBotStatus.ALIVE
+    mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
     direction: Optional[int]
     move_raw: Optional[DotBotMoveRawCommandModel]
     rgb_led: Optional[DotBotRgbLedCommandModel]
     lh2_position: Optional[DotBotLH2Position]
+    lh2_waypoints: List[DotBotLH2Position] = []
     gps_position: Optional[DotBotGPSPosition]

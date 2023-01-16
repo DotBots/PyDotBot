@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 
 class PayloadType(Enum):
@@ -24,7 +24,9 @@ class PayloadType(Enum):
     ADVERTISEMENT = 4
     GPS_POSITION = 5
     DOTBOT_DATA = 6
-    INVALID_PAYLOAD = 7  # Increase each time a new payload type is added
+    CONTROL_MODE = 7
+    LH2_WAYPOINTS = 8
+    INVALID_PAYLOAD = 9  # Increase each time a new payload type is added
 
 
 class ApplicationType(int, Enum):
@@ -32,6 +34,13 @@ class ApplicationType(int, Enum):
 
     DotBot = 0  # pylint: disable=invalid-name
     SailBot = 1  # pylint: disable=invalid-name
+
+
+class ControlModeType(int, Enum):
+    """Types of DotBot control modes."""
+
+    MANUAL = 0
+    AUTO = 1
 
 
 class ProtocolPayloadParserException(Exception):
@@ -273,6 +282,40 @@ class Advertisement(ProtocolData):
 
 
 @dataclass
+class ControlMode(ProtocolData):
+    """Dataclass that holds a control mode message."""
+
+    mode: ControlModeType = ControlModeType.MANUAL
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.mode, "mode"),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return ControlMode(bytes_[0])
+
+
+@dataclass
+class LH2Waypoints(ProtocolData):
+    """Dataclass that holds a list of LH2 waypoints."""
+
+    waypoints: List[LH2Location] = dataclasses.field(default_factory=lambda: [])
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        _fields = [ProtocolField(len(self.waypoints), "len.")]
+        _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
+        return _fields
+
+    @staticmethod
+    def from_bytes(_) -> ProtocolData:
+        return LH2Waypoints(waypoints=[])
+
+
+@dataclass
 class ProtocolPayload:
     """Manage a protocol complete payload (header + type + values)."""
 
@@ -313,6 +356,10 @@ class ProtocolPayload:
             values = GPSPosition.from_bytes(bytes_[21:29])
         elif payload_type == PayloadType.DOTBOT_DATA:
             values = DotBotData.from_bytes(bytes_[21:63])
+        elif payload_type == PayloadType.CONTROL_MODE:
+            values = ControlMode.from_bytes(bytes_[21:22])
+        elif payload_type == PayloadType.LH2_WAYPOINTS:
+            values = LH2Waypoints.from_bytes(None)
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"

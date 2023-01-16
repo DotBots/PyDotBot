@@ -46,6 +46,22 @@ export const apiUpdateRgbLed = async (address, application, red, green, blue) =>
   );
 }
 
+export const apiUpdateControlMode = async (address, application, mode) => {
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/mode`,
+    { mode: mode ? 1 : 0 },
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+export const apiUpdateWaypoints = async (address, application, waypoints) => {
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/waypoints`,
+    waypoints,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
 export const apiFetchLH2CalibrationState = async () => {
   return await axios.get(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration`,
