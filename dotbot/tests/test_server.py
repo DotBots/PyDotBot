@@ -43,6 +43,7 @@ def controller():
     app.controller.header = MagicMock()
     app.controller.header.destination = MagicMock()
     app.controller.dotbots = MagicMock()
+    app.controller.get_dotbots = MagicMock()
     app.controller.lh2_manager = MagicMock()
     app.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
     app.controller.send_payload = MagicMock()
@@ -411,7 +412,9 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
     ],
 )
 def test_get_dotbots(dotbots, result):
-    app.controller.dotbots = dotbots
+    app.controller.get_dotbots.return_value = list(
+        sorted(dotbots.values(), key=lambda dotbot: dotbot.address)
+    )
     response = client.get("/controller/dotbots")
     assert response.status_code == 200
     assert response.json() == result

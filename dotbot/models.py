@@ -66,6 +66,16 @@ class DotBotStatus(int, Enum):
     DEAD: int = 2
 
 
+class DotBotQueryModel(BaseModel):
+    """Model class used to filter DotBots."""
+
+    max_positions: int = 100
+    application: Optional[ApplicationType] = None
+    mode: Optional[ControlModeType] = None
+    status: Optional[DotBotStatus] = None
+    swarm: Optional[str] = None
+
+
 class DotBotModel(BaseModel):
     """Model class that defines a DotBot."""
 
@@ -81,3 +91,4 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position]
     gps_position: Optional[DotBotGPSPosition]
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []

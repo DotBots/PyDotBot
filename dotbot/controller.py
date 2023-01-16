@@ -2,18 +2,21 @@
 
 import asyncio
 import json
+import math
 import time
 import webbrowser
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import serial
-
 import websockets
+
 from fastapi import WebSocket
+
+from haversine import haversine, Unit
 
 from rich.live import Live
 from rich.table import Table
@@ -37,18 +40,23 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 #     DotBotRgbLedCommandModel,
 # )
 
-from dotbot.models import DotBotModel, DotBotStatus, DotBotGPSPosition
-from dotbot.server import web
-from dotbot.lighthouse2 import (
-    LighthouseManager,
-    LighthouseManagerState,
+from dotbot.models import (
+    DotBotModel,
+    DotBotQueryModel,
+    DotBotStatus,
     DotBotLH2Position,
+    DotBotGPSPosition,
 )
+from dotbot.server import web
+from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 
 CONTROLLERS = {}
 LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
+MAX_POSITION_HISTORY_SIZE = 1000
+LH2_POSITION_DISTANCE_THRESHOLD = 0.01
+GPS_POSITION_DISTANCE_THRESHOLD = 10  # meters
 
 
 class ControllerException(Exception):
@@ -66,6 +74,18 @@ class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     swarm_id: str
     webbrowser: bool = False
     verbose: bool = False
+
+
+def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
+    """Helper function that computes the distance between 2 LH2 positions."""
+    return math.sqrt(((new.x - last.x) ** 2) + ((new.y - last.y) ** 2))
+
+
+def gps_distance(last: DotBotGPSPosition, new: DotBotGPSPosition) -> float:
+    """Helper function that computes the distance between 2 GPS positions in m."""
+    return haversine(
+        (last.latitude, last.longitude), (new.latitude, new.longitude), unit=Unit.METERS
+    )
 
 
 class ControllerBase(ABC):
@@ -244,6 +264,7 @@ class ControllerBase(ABC):
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
             dotbot.waypoints = self.dotbots[source].waypoints
+            dotbot.position_history = self.dotbots[source].position_history
             should_reload = dotbot.status != self.dotbots[source].status
         else:
             # only reload if a new dotbot comes in
@@ -255,6 +276,19 @@ class ControllerBase(ABC):
             and dotbot.lh2_position.x >= 0
             and dotbot.lh2_position.y >= 0
         ):
+            new_position = DotBotLH2Position(
+                x=dotbot.lh2_position.x,
+                y=dotbot.lh2_position.y,
+                z=dotbot.lh2_position.z,
+            )
+            if (
+                not dotbot.position_history
+                or lh2_distance(dotbot.position_history[-1], new_position)
+                >= LH2_POSITION_DISTANCE_THRESHOLD
+            ):
+                dotbot.position_history.append(new_position)
+            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
+                dotbot.position_history.pop(0)
             asyncio.create_task(
                 self.notify_clients(
                     json.dumps(
@@ -309,6 +343,14 @@ class ControllerBase(ABC):
                 latitude=float(payload.values.latitude) / 1e6,
                 longitude=float(payload.values.longitude) / 1e6,
             )
+            if (
+                not dotbot.position_history
+                or gps_distance(dotbot.position_history[-1], new_position)
+                >= GPS_POSITION_DISTANCE_THRESHOLD
+            ):
+                dotbot.position_history.append(new_position)
+            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
+                dotbot.position_history.pop(0)
             asyncio.create_task(
                 self.notify_clients(
                     json.dumps(
@@ -350,6 +392,15 @@ class ControllerBase(ABC):
         payload.header.application = self.dotbots[destination].application
         if self.serial is not None:
             self.serial.write(hdlc_encode(payload.to_bytes()))
+
+    def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
+        """Returns the list of dotbots matching the query."""
+        dotbots: List[DotBotModel] = []
+        for dotbot in self.dotbots.values():
+            _dotbot = DotBotModel(**dotbot.dict())
+            _dotbot.position_history = _dotbot.position_history[: query.max_positions]
+            dotbots.append(_dotbot)
+        return sorted(dotbots, key=lambda dotbot: dotbot.address)
 
     async def run(self):
         """Launch the controller."""
