@@ -1,6 +1,7 @@
 import React from "react";
 
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { useCallback } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvent } from "react-leaflet";
 
 import L from "leaflet";
 
@@ -19,6 +20,13 @@ export const SailBotMarker = (props) => {
   if (props.sailbot.address === props.active) {
     boatStroke = "black";
   }
+
+  const waypointsOptions = {
+    color: rgbColor,
+    opacity: "50%",
+    weight: "2",
+    dashArray: "8"
+  };
 
   const rotation = (props.sailbot.direction) ? props.sailbot.direction : 0;
 
@@ -43,10 +51,38 @@ export const SailBotMarker = (props) => {
   });
 
   return (
+    <>
+    {(props.sailbot.mode === 1 && props.sailbot.waypoints.length > 0) && (
+      props.sailbot.waypoints.map((point, index) => (
+        <Polyline key={`waypoint-${index}`} pathOptions={waypointsOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
+      ))
+    )}
     <Marker key={props.sailbot.address} icon={svgIcon} position={[props.sailbot.gps_position.latitude, props.sailbot.gps_position.longitude]} opacity={`${props.sailbot.status === 0 ? "1" : "0.4"}`}>
       <Popup>{`SailBot@${props.sailbot.address}`}</Popup>
     </Marker>
+    </>
   );
+};
+
+const SailbotItems = (props) => {
+  const onClick = useCallback(
+    (event) => {
+      props.mapClicked(event.latlng.lat, event.latlng.lng)
+    }, [ props ],
+  );
+
+  useMapEvent('click', onClick);
+
+  return (
+    <>
+    {
+      props.sailbots
+        .filter(sailbot => sailbot.gps_position)
+        .filter(sailbot => sailbot.status !== 2)
+        .map(sailbot => <SailBotMarker key={sailbot.address} sailbot={sailbot} active={props.active} />)
+      }
+    </>
+  )
 };
 
 export const SailBotsMap = (props) => {
@@ -62,12 +98,7 @@ export const SailBotsMap = (props) => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {
-              props.sailbots
-                .filter(sailbot => sailbot.gps_position)
-                .filter(sailbot => sailbot.status !== 2)
-                .map(sailbot => <SailBotMarker key={sailbot.address} sailbot={sailbot} active={props.active} />)
-            }
+            <SailbotItems sailbots={props.sailbots} mapClicked={props.mapClicked} />
           </MapContainer>
         </div>
       </div>

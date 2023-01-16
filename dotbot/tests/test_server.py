@@ -13,6 +13,8 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotCalibrationStateModel,
     DotBotControlModeModel,
+    DotBotGPSPosition,
+    DotBotLH2Position,
 )
 from dotbot.protocol import (
     ApplicationType,
@@ -25,6 +27,8 @@ from dotbot.protocol import (
     ControlMode,
     LH2Location,
     LH2Waypoints,
+    GPSPosition,
+    GPSWaypoints,
 )
 from dotbot.server import app, web
 
@@ -248,7 +252,7 @@ def test_set_dotbots_mode(dotbots, code, found):
 
 
 @pytest.mark.parametrize(
-    "dotbots,code,found",
+    "dotbots,application,message,code,found",
     [
         pytest.param(
             {
@@ -259,9 +263,11 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            ApplicationType.DotBot,
+            [{"x": 0.5, "y": 0.1, "z": 0}],
             200,
             True,
-            id="found",
+            id="dotbot_found",
         ),
         pytest.param(
             {
@@ -272,36 +278,78 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            ApplicationType.DotBot,
+            [{"x": 0.5, "y": 0.1, "z": 0}],
             404,
             False,
-            id="not_found",
+            id="dotbot_not_found",
+        ),
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            ApplicationType.SailBot,
+            [{"latitude": 0.5, "longitude": 0.1}],
+            200,
+            True,
+            id="sailbot_found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            ApplicationType.SailBot,
+            [{"latitude": 0.5, "longitude": 0.1}],
+            404,
+            False,
+            id="sailbot_not_found",
         ),
     ],
 )
-def test_set_dotbots_lh2_waypoints(dotbots, code, found):
+def test_set_dotbots_waypoints(dotbots, application, message, code, found):
     app.controller.dotbots = dotbots
     address = "4242"
-    message = [{"x": 0.5, "y": 0.1, "z": 0}]
     header = ProtocolHeader(
         destination=int(address, 16),
         source=int(app.controller.settings.gw_address, 16),
         swarm_id=int(app.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
+        application=application,
         version=PROTOCOL_VERSION,
     )
-    expected_payload = ProtocolPayload(
-        header,
-        PayloadType.LH2_WAYPOINTS,
-        LH2Waypoints([LH2Location(500000, 100000, 0)]),
-    )
+    if application == ApplicationType.SailBot:
+        expected_payload = ProtocolPayload(
+            header,
+            PayloadType.GPS_WAYPOINTS,
+            GPSWaypoints([GPSPosition(latitude=500000, longitude=100000)]),
+        )
+        expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
+    else:  # DotBot application
+        expected_payload = ProtocolPayload(
+            header,
+            PayloadType.LH2_WAYPOINTS,
+            LH2Waypoints([LH2Location(500000, 100000, 0)]),
+        )
+        expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
+
     response = client.put(
-        f"/controller/dotbots/{address}/0/waypoints",
+        f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,
     )
     assert response.status_code == code
 
     if found:
         app.controller.send_payload.assert_called_with(expected_payload)
+        assert app.controller.dotbots[address].waypoints == expected_waypoints
     else:
         app.controller.send_payload.assert_not_called()
 

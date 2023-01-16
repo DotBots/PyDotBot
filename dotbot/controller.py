@@ -242,8 +242,8 @@ class ControllerBase(ABC):
             dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
-            dotbot.lh2_waypoints = self.dotbots[source].lh2_waypoints
             dotbot.gps_position = self.dotbots[source].gps_position
+            dotbot.waypoints = self.dotbots[source].waypoints
             should_reload = dotbot.status != self.dotbots[source].status
         else:
             # only reload if a new dotbot comes in

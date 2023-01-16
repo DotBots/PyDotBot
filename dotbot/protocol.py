@@ -26,7 +26,8 @@ class PayloadType(Enum):
     DOTBOT_DATA = 6
     CONTROL_MODE = 7
     LH2_WAYPOINTS = 8
-    INVALID_PAYLOAD = 9  # Increase each time a new payload type is added
+    GPS_WAYPOINTS = 9
+    INVALID_PAYLOAD = 10  # Increase each time a new payload type is added
 
 
 class ApplicationType(int, Enum):
@@ -316,6 +317,25 @@ class LH2Waypoints(ProtocolData):
 
 
 @dataclass
+class GPSWaypoints(ProtocolData):
+    """Dataclass that holds a list of GPS waypoints."""
+
+    waypoints: List[GPSPosition] = dataclasses.field(default_factory=lambda: [])
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        _fields = [ProtocolField(len(self.waypoints), "len.")]
+        _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
+        for field in _fields:
+            field.endian = "little"
+        return _fields
+
+    @staticmethod
+    def from_bytes(_) -> ProtocolData:
+        return GPSWaypoints(waypoints=[])
+
+
+@dataclass
 class ProtocolPayload:
     """Manage a protocol complete payload (header + type + values)."""
 
@@ -360,6 +380,8 @@ class ProtocolPayload:
             values = ControlMode.from_bytes(bytes_[21:22])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
+        elif payload_type == PayloadType.GPS_WAYPOINTS:
+            values = GPSWaypoints.from_bytes(None)
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type {payload_type}"

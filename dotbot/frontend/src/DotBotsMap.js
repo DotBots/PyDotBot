@@ -75,9 +75,9 @@ const DotBotsMapPoint = (props) => {
 
   return (
     <>
-    {(props.dotbot.mode === 1 && props.dotbot.lh2_waypoints.length > 0) && (
-      props.dotbot.lh2_waypoints.map((point, index) => (
-        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.lh2_waypoints} {...props} />
+    {(props.dotbot.mode === 1 && props.dotbot.waypoints.length > 0) && (
+      props.dotbot.waypoints.map((point, index) => (
+        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} waypoints={props.dotbot.waypoints} {...props} />
       ))
     )}
     <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
