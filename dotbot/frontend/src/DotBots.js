@@ -12,7 +12,8 @@ import {
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
   apiUpdateWaypoints, inactiveAddress,
 } from "./rest";
-import { ApplicationType, ControlModeType, maxWaypoints } from "./constants";
+import { ApplicationType, ControlModeType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
+import { gps_distance, lh2_distance } from "./helpers";
 
 
 const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
@@ -222,6 +223,8 @@ const SailBotItem = (props) => {
 const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
+  const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
+  const [ showSailBotHistory, setShowSailBotHistory ] = useState(true);
 
   const updateActive = useCallback(async (address) => {
     await apiUpdateActiveDotbotAddress(address).catch((error) => console.error(error));
@@ -238,6 +241,14 @@ const DotBots = () => {
         dotbotsTmp[idx].mode = newMode;
         setDotbots(dotbotsTmp);
       }
+    }
+  };
+
+  const updateShowHistory = (show, application) => {
+    if (application === ApplicationType.SailBot) {
+      setShowSailBotHistory(show);
+    } else {
+      setShowDotBotHistory(show);
     }
   };
 
@@ -341,7 +352,11 @@ const DotBots = () => {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.address) {
-          dotbotsTmp[idx].lh2_position = {x: message.x, y: message.y};
+          const newPosition = {x: message.x, y: message.y};
+          if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
+            dotbotsTmp[idx].position_history.push(newPosition);
+          }
+          dotbotsTmp[idx].lh2_position = newPosition;
           setDotbots(dotbotsTmp);
         }
       }
@@ -350,10 +365,14 @@ const DotBots = () => {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.address) {
-          dotbotsTmp[idx].gps_position = {
+          const newPosition = {
             latitude: message.latitude,
             longitude: message.longitude,
           };
+          if (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold) {
+            dotbotsTmp[idx].position_history.push(newPosition);
+          }
+          dotbotsTmp[idx].gps_position = newPosition;
           setDotbots(dotbotsTmp);
         }
       }
@@ -430,10 +449,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={350} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} mapClicked={mapClicked} mapSize={650} />
+            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>
@@ -466,10 +485,10 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={350} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
           </div>
           <div className="d-none d-md-block m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} mapClicked={mapClicked} mapSize={650} />
+            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
           </div>
         </div>
       </div>

@@ -9,3 +9,6 @@ export const ControlModeType = {
 };
 
 export const maxWaypoints = 8;
+
+export const lh2_distance_threshold = 0.01;
+export const gps_distance_threshold = 10;  // 10 meters

@@ -273,8 +273,8 @@ class ControllerBase(ABC):
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
             dotbot.lh2_position is not None
-            and dotbot.lh2_position.x >= 0
-            and dotbot.lh2_position.y >= 0
+            and 0 <= dotbot.lh2_position.x <= 1
+            and 0 <= dotbot.lh2_position.y <= 1
         ):
             new_position = DotBotLH2Position(
                 x=dotbot.lh2_position.x,

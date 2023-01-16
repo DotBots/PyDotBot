@@ -23,9 +23,15 @@ export const SailBotMarker = (props) => {
 
   const waypointsOptions = {
     color: rgbColor,
-    opacity: "50%",
+    opacity: `${props.sailbot.status === 0 ? "50%" : "20%"}`,
     weight: "2",
     dashArray: "8"
+  };
+
+  const positionsOptions = {
+    color: rgbColor,
+    weight: "2",
+    opacity: `${props.sailbot.status === 0 ? "100%" : "40%"}`,
   };
 
   const rotation = (props.sailbot.direction) ? props.sailbot.direction : 0;
@@ -53,9 +59,10 @@ export const SailBotMarker = (props) => {
   return (
     <>
     {(props.sailbot.mode === 1 && props.sailbot.waypoints.length > 0) && (
-      props.sailbot.waypoints.map((point, index) => (
-        <Polyline key={`waypoint-${index}`} pathOptions={waypointsOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
-      ))
+      <Polyline pathOptions={waypointsOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
+    )}
+    {(props.sailbot.position_history.length > 0) && (
+      <Polyline pathOptions={positionsOptions} positions={props.sailbot.position_history.map(position => Object.values(position))} />
     )}
     <Marker key={props.sailbot.address} icon={svgIcon} position={[props.sailbot.gps_position.latitude, props.sailbot.gps_position.longitude]} opacity={`${props.sailbot.status === 0 ? "1" : "0.4"}`}>
       <Popup>{`SailBot@${props.sailbot.address}`}</Popup>
