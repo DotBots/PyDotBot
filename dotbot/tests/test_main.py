@@ -46,7 +46,7 @@ def test_main_invalid_controller_type():
 
 
 @patch("dotbot.serial_interface.serial.Serial.open")
-@patch("dotbot.main.version")
+@patch("dotbot.version")
 @patch("dotbot.controller.ControllerBase.run")
 def test_main(run, version, _):
     version.return_value = "test"

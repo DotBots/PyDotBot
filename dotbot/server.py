@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depe
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from dotbot import pydotbot_version
 from dotbot.models import (
     DotBotCalibrationStateModel,
     DotBotModel,
@@ -43,7 +44,7 @@ app = FastAPI(
     debug=0,
     title="DotBot controller API",
     description="This is the DotBot controller API",
-    version="1.0.0",
+    version=pydotbot_version(),
     docs_url="/api",
     redoc_url=None,
 )

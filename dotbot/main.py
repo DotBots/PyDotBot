@@ -5,10 +5,10 @@
 import sys
 import asyncio
 
-from importlib.metadata import version, PackageNotFoundError
-
 import click
 import serial
+
+from dotbot import pydotbot_version
 
 from dotbot.controller import (
     ControllerSettings,
@@ -100,11 +100,7 @@ def main(
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
-    try:
-        package_version = version("pydotbot")
-    except PackageNotFoundError:
-        package_version = "unknown"
-    print(f"Welcome to the DotBots controller (version: {package_version}).")
+    print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
