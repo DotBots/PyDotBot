@@ -2,6 +2,7 @@ import pytest
 
 
 from dotbot.protocol import (
+    PROTOCOL_VERSION,
     PayloadType,
     ProtocolPayload,
     ProtocolPayloadParserException,
@@ -25,31 +26,37 @@ from dotbot.protocol import (
     "payload,expected",
     [
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x00\x00\x42\x00\x42",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x00\x00\x42\x00\x42",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 66, 0, 66),
             ),
             id="MoveRaw",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x01\x42\x42\x42",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x01\x42\x42\x42",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(66, 66, 66),
             ),
             id="RGBLed",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x02"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x04\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
                     [
@@ -63,43 +70,51 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x03"
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x03"
             b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.LH2_LOCATION,
                 LH2Location(1000, 1000, 2),
             ),
             id="LH2Location",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x04",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x04",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
             ),
             id="Advertisement",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x05"
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x05"
             b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.GPS_POSITION,
                 GPSPosition(48856614, 2352221),  # Paris coordinates
             ),
             id="GPSPosition",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x06"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x04\x06"
             b"-\x00"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
                     direction=45,
@@ -114,44 +129,57 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x01\x07\x01",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x04\x07\x01",
             ProtocolPayload(
-                ProtocolHeader(0x1122221111111111, 0x1212121212121212, 0x1234, 0, 1),
+                ProtocolHeader(
+                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.CONTROL_MODE,
                 ControlMode(ControlModeType.AUTO),
             ),
             id="ControlMode",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x08\x02"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x04\x08\x02"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints([]),
             ),
             id="LH2Waypoints",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x09\x02"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x04\x09\x02"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                ),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints([]),
             ),
             id="GPSWaypoints",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\xff",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x04\xff",
             ValueError(),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x01\x0a",
-            ProtocolPayloadParserException(),
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x04\x0a",
+            ProtocolPayloadParserException("Unsupported payload type '10'"),
             id="unsupported payload type",
+        ),
+        pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x03\x0a",
+            ProtocolPayloadParserException(
+                f"Unsupported payload version '3' (expected: {PROTOCOL_VERSION})"
+            ),
+            id="unsupported protocol version",
         ),
     ],
 )
