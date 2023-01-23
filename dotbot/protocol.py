@@ -4,7 +4,7 @@ import dataclasses
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
-from enum import Enum
+from enum import Enum, IntEnum
 from itertools import chain
 from typing import List
 
@@ -30,14 +30,14 @@ class PayloadType(Enum):
     INVALID_PAYLOAD = 10  # Increase each time a new payload type is added
 
 
-class ApplicationType(int, Enum):
+class ApplicationType(IntEnum):
     """Types of DotBot applications."""
 
     DotBot = 0  # pylint: disable=invalid-name
     SailBot = 1  # pylint: disable=invalid-name
 
 
-class ControlModeType(int, Enum):
+class ControlModeType(IntEnum):
     """Types of DotBot control modes."""
 
     MANUAL = 0

@@ -1,7 +1,7 @@
 """Pydantic models used by the controller and server application."""
 # pylint: disable=too-few-public-methods,no-name-in-module
 
-from enum import Enum
+from enum import IntEnum
 from typing import List, Optional, Union
 from pydantic import BaseModel
 
@@ -58,7 +58,7 @@ class DotBotGPSPosition(BaseModel):
     longitude: float
 
 
-class DotBotStatus(int, Enum):
+class DotBotStatus(IntEnum):
     """Status of a DotBot."""
 
     ALIVE: int = 0
