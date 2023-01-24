@@ -1,6 +1,6 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { ApplicationType } from "./constants";
+import { ApplicationType, lh2_waypoint_area_radius } from "./constants";
 
 import {
     apiFetchLH2CalibrationState, apiApplyLH2Calibration,
@@ -29,6 +29,14 @@ const DotBotsWaypoint = (props) => {
         />
       ) : (
         <>
+          <circle
+            cx={props.point.x * props.mapSize}
+            cy={props.point.y * props.mapSize}
+            r={lh2_waypoint_area_radius * props.mapSize}
+            fill={props.color}
+            stroke="none"
+            opacity="10%"
+          />
           <line
             x1={props.waypoints[props.index - 1].x * props.mapSize}
             y1={props.waypoints[props.index - 1].y * props.mapSize}
