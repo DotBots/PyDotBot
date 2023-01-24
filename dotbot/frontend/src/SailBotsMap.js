@@ -1,9 +1,11 @@
 import React from "react";
 
 import { useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvent } from "react-leaflet";
+import { Circle, MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvent } from "react-leaflet";
 
 import L from "leaflet";
+
+import { gps_waypoint_area_radius } from "./constants";
 
 const defaultPosition = [
   48.832313766146896, 2.4126897594949184
@@ -21,11 +23,23 @@ export const SailBotMarker = (props) => {
     boatStroke = "black";
   }
 
-  const waypointsOptions = {
+  const waypointsLineOptions = {
     color: rgbColor,
     opacity: `${props.sailbot.status === 0 ? "50%" : "20%"}`,
     weight: "2",
     dashArray: "8"
+  };
+
+  const waypointsOptions = {
+    color: rgbColor,
+    opacity: `${props.sailbot.status === 0 ? "80%" : "30%"}`,
+    weight: "6",
+  };
+
+  const waypointsRadiusOptions = {
+    color: rgbColor,
+    opacity: `${props.sailbot.status === 0 ? "20%" : "10%"}`,
+    weight: "0",
   };
 
   const positionsOptions = {
@@ -58,9 +72,18 @@ export const SailBotMarker = (props) => {
 
   return (
     <>
+    {
+      props.sailbot.mode === 1 && props.sailbot.waypoints
+        .slice(1) // Skip first waypoint which is the start position
+        .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsRadiusOptions} radius={gps_waypoint_area_radius} />)
+    }
     {(props.sailbot.mode === 1 && props.sailbot.waypoints.length > 0) && (
-      <Polyline pathOptions={waypointsOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
+      <Polyline pathOptions={waypointsLineOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
     )}
+    {
+      props.sailbot.mode === 1 && props.sailbot.waypoints
+        .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsOptions} radius={1} />)
+    }
     {(props.sailbot.position_history.length > 0) && (
       <Polyline pathOptions={positionsOptions} positions={props.sailbot.position_history.map(position => Object.values(position))} />
     )}
