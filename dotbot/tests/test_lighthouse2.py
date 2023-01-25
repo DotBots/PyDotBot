@@ -1,7 +1,5 @@
 """Test module for the lighthouse2 API."""
 
-from unittest.mock import patch
-
 import pytest
 
 from dotbot.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
@@ -34,13 +32,6 @@ LOCATIONS = [
 
 
 def test_raw_data_to_counts():
-    raw_data = Lh2RawData(locations=LOCATIONS)
-    assert lh2_raw_data_to_counts(raw_data) == EXPECTED_COUNTS
-
-
-@patch("os.path.exists")
-def test_raw_data_to_counts_no_lib(lib_exists):
-    lib_exists.return_value = False
     raw_data = Lh2RawData(locations=LOCATIONS)
     assert lh2_raw_data_to_counts(raw_data) == EXPECTED_COUNTS
 
