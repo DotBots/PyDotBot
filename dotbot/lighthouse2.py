@@ -28,6 +28,8 @@ else:
     LIB_EXT = "so"
 
 LH2_LIB_PATH = os.path.join(os.path.dirname(__file__), "lib", f"lh2.{LIB_EXT}")
+LH2_LIB = CDLL(LH2_LIB_PATH)
+
 POLYNOMIALS = [
     0x0001D258,
     0x00017E04,
@@ -138,46 +140,9 @@ def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
     return counts
 
 
-def _lh2_raw_data_to_counts_lib(raw_data: Lh2RawData) -> List[int]:
-    lh2_lib = CDLL(LH2_LIB_PATH)
-    return _lh2_raw_data_to_counts(raw_data, lh2_lib.reverse_count_p)
-
-
-def _reverse_count_py(index, bit_seq):
-    poly = POLYNOMIALS[index]
-
-    count = 0
-    match = False
-    buffer = bit_seq
-
-    while match is False:
-        for idx in range(16):
-            if buffer == END_BUFFERS[index][idx]:
-                count = count + 8192 * idx - 1
-                match = True
-                return count
-
-        b17 = buffer & 0b1
-        buffer = buffer & 0x1FFFE
-        buffer = buffer >> 1
-        masked_buffer = buffer & poly
-        result = bin(masked_buffer).count("1") % 2
-        result = result ^ b17
-        result = result << 16
-        buffer = buffer | result
-        result = 0
-        count = count + 1
-
-
-def _lh2_raw_data_to_counts_py(raw_data: Lh2RawData) -> List[int]:
-    return _lh2_raw_data_to_counts(raw_data, _reverse_count_py)
-
-
 def lh2_raw_data_to_counts(raw_data: Lh2RawData) -> List[int]:
     """Convert bits sequence to an array of counts."""
-    if os.path.exists(LH2_LIB_PATH):
-        return _lh2_raw_data_to_counts_lib(raw_data)
-    return _lh2_raw_data_to_counts_py(raw_data)
+    return _lh2_raw_data_to_counts(raw_data, LH2_LIB.reverse_count_p)
 
 
 def calculate_camera_point(count1, count2, poly_in):
