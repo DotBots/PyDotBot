@@ -397,6 +397,15 @@ class ControllerBase(ABC):
         """Returns the list of dotbots matching the query."""
         dotbots: List[DotBotModel] = []
         for dotbot in self.dotbots.values():
+            if (
+                query.application is not None
+                and dotbot.application != query.application
+            ):
+                continue
+            if query.mode is not None and dotbot.mode != query.mode:
+                continue
+            if query.status is not None and dotbot.status != query.status:
+                continue
             _dotbot = DotBotModel(**dotbot.dict())
             _dotbot.position_history = _dotbot.position_history[: query.max_positions]
             dotbots.append(_dotbot)
