@@ -29,8 +29,8 @@ nRF52840DK board as gateway), as explained in
 ## Usage
 
 ```
-dotbots-controller --help
-Usage: dotbots-controller [OPTIONS]
+dotbot-controller --help
+Usage: dotbot-controller [OPTIONS]
 
   BotController, universal SailBot and DotBot controller.
 
