@@ -82,6 +82,13 @@ DEFAULT_CONTROLLERS = {
     help="Open a web browser automatically",
 )
 @click.option(
+    "-T",
+    "--table",
+    is_flag=True,
+    default=False,
+    help="Display table in terminal",
+)
+@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -96,6 +103,7 @@ def main(
     gw_address,
     swarm_id,
     webbrowser,
+    table,
     verbose,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
@@ -114,6 +122,7 @@ def main(
                 gw_address,
                 swarm_id,
                 webbrowser,
+                table,
                 verbose,
             ),
         )

@@ -73,6 +73,7 @@ class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     gw_address: str
     swarm_id: str
     webbrowser: bool = False
+    table: bool = False
     verbose: bool = False
 
 
@@ -420,9 +421,10 @@ class ControllerBase(ABC):
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
-                asyncio.create_task(self._dotbots_table_refresh()),
                 asyncio.create_task(self.start()),
             ]
+            if self.settings.table is True:
+                tasks += asyncio.create_task(self._dotbots_table_refresh())
             await asyncio.gather(*tasks)
         except (
             SystemExit,
