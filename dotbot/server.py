@@ -223,6 +223,18 @@ async def dotbots_waypoints(
     app.controller.send_payload(payload)
 
 
+@app.delete(
+    path="/controller/dotbots/{address}/positions",
+    summary="Clear the history of positions of a DotBot",
+    tags=["dotbots"],
+)
+async def dotbot_positions_history_clear(address: str):
+    """Clear the history of positions of a dotbot."""
+    if address not in app.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+    app.controller.dotbots[address].position_history = []
+
+
 @app.get(
     path="/controller/dotbots/{address}",
     response_model=DotBotModel,

@@ -480,6 +480,115 @@ def test_get_dotbot(dotbots, address, code, found, result):
         assert response.json() == result
 
 
+@pytest.mark.parametrize(
+    "dotbots,address,code,found",
+    [
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    position_history=[
+                        DotBotLH2Position(x=0.0, y=0.5, z=0.0),
+                        DotBotLH2Position(x=0.5, y=0.5, z=0.0),
+                    ],
+                ),
+                "12345": DotBotModel(
+                    address="12345",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    position_history=[
+                        DotBotLH2Position(x=0.5, y=0.5, z=0.0),
+                        DotBotLH2Position(x=0.5, y=0.0, z=0.0),
+                    ],
+                ),
+            },
+            "12345",
+            200,
+            True,
+            id="dotbot_found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+                "12345": DotBotModel(
+                    address="12345",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            "34567",
+            404,
+            False,
+            id="dotbot_not_found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    position_history=[
+                        DotBotGPSPosition(latitude=45.7597, longitude=4.8422),
+                        DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
+                    ],
+                ),
+                "12345": DotBotModel(
+                    address="12345",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    position_history=[
+                        DotBotGPSPosition(latitude=51.509865, longitude=-0.118092),
+                        DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
+                    ],
+                ),
+            },
+            "34567",
+            404,
+            False,
+            id="sailbot_found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+                "12345": DotBotModel(
+                    address="12345",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            "34567",
+            404,
+            False,
+            id="sailbot_not_found",
+        ),
+    ],
+)
+def test_clear_dotbot_position_history(dotbots, address, code, found):
+    app.controller.dotbots = dotbots
+    response = client.delete(f"/controller/dotbots/{address}/positions")
+    assert response.status_code == code
+    if found is True:
+        assert app.controller.dotbots[address].position_history == []
+
+
 def test_lh2_calibration():
     response = client.get("/controller/lh2/calibration")
     assert response.json() == DotBotCalibrationStateModel(state="test").dict()
