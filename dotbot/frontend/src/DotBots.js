@@ -10,7 +10,7 @@ import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
-  apiUpdateWaypoints, inactiveAddress,
+  apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
 } from "./rest";
 import { ApplicationType, ControlModeType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
 import { gps_distance, lh2_distance } from "./helpers";
@@ -108,6 +108,11 @@ const DotBotAccordionItem = (props) => {
             <div className="d-flex mx-auto">
               <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Apply waypoints</button>
               <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear waypoints</button>
+            </div>
+          }
+          {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
+            <div className="d-flex me-auto">
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearPositionsHistory(props.dotbot.address)}>Clear positions history</button>
             </div>
           }
         </div>
@@ -212,6 +217,11 @@ const SailBotItem = (props) => {
             <div className="d-flex mx-auto">
               <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Apply waypoints</button>
               <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Clear waypoints</button>
+            </div>
+          }
+          {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
+            <div className="d-flex me-auto">
+              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearPositionsHistory(props.dotbot.address)}>Clear positions history</button>
             </div>
           }
         </div>
@@ -337,6 +347,18 @@ const DotBots = () => {
     }
   };
 
+  const clearPositionsHistory = async (address) => {
+    let dotbotsTmp = dotbots.slice();
+    for (let idx = 0; idx < dotbots.length; idx++) {
+      if (dotbots[idx].address === address) {
+        dotbotsTmp[idx].position_history = [];
+        await apiClearPositionsHistory(address);
+        setDotbots(dotbotsTmp);
+        return;
+      }
+    }
+  };
+
   const onWsOpen = () => {
     console.log('websocket opened');
     fetchDotBots();
@@ -439,6 +461,7 @@ const DotBots = () => {
                       updateAutoMode={updateAutoMode}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
+                      clearPositionsHistory={clearPositionsHistory}
                       refresh={fetchDotBots}
                     />
                   )
@@ -449,10 +472,26 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
+            <DotBotsMap
+              dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)}
+              active={activeDotbot}
+              updateActive={updateActive}
+              showHistory={showDotBotHistory}
+              updateShowHistory={updateShowHistory}
+              mapClicked={mapClicked}
+              mapSize={350}
+            />
           </div>
           <div className="d-none d-md-block m-1">
-            <DotBotsMap dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)} active={activeDotbot} updateActive={updateActive} showHistory={showDotBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
+            <DotBotsMap
+              dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)}
+              active={activeDotbot}
+              updateActive={updateActive}
+              showHistory={showDotBotHistory}
+              updateShowHistory={updateShowHistory}
+              mapClicked={mapClicked}
+              mapSize={650}
+            />
           </div>
         </div>
       </div>
@@ -475,6 +514,7 @@ const DotBots = () => {
                       updateAutoMode={updateAutoMode}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
+                      clearPositionsHistory={clearPositionsHistory}
                       refresh={fetchDotBots}
                     />
                   )
@@ -485,10 +525,24 @@ const DotBots = () => {
         </div>
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={350} />
+            <SailBotsMap
+              sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)}
+              active={activeDotbot}
+              showHistory={showSailBotHistory}
+              updateShowHistory={updateShowHistory}
+              mapClicked={mapClicked}
+              mapSize={350}
+            />
           </div>
           <div className="d-none d-md-block m-1">
-            <SailBotsMap sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)} active={activeDotbot} showHistory={showSailBotHistory} updateShowHistory={updateShowHistory} mapClicked={mapClicked} mapSize={650} />
+            <SailBotsMap
+              sailbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot)}
+              active={activeDotbot}
+              showHistory={showSailBotHistory}
+              updateShowHistory={updateShowHistory}
+              mapClicked={mapClicked}
+              mapSize={650}
+            />
           </div>
         </div>
       </div>
