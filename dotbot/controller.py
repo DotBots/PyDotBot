@@ -73,6 +73,7 @@ class ControllerSettings:  # pylint: disable=too-many-instance-attributes
     gw_address: str
     swarm_id: str
     webbrowser: bool = False
+    table: bool = False
     verbose: bool = False
 
 
@@ -125,7 +126,7 @@ class ControllerBase(ABC):
             version=PROTOCOL_VERSION,
         )
         self.settings = settings
-        self.hdlc_handler = HDLCHandler()
+        self.hdlc_handler = HDLCHandler(verbose=settings.verbose)
         self.serial = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
@@ -235,7 +236,8 @@ class ControllerBase(ABC):
                 try:
                     payload = ProtocolPayload.from_bytes(payload)
                 except ProtocolPayloadParserException:
-                    print(f"Cannot parse payload '{payload}'")
+                    if self.settings.verbose is True:
+                        print(f"Cannot parse payload '{payload}'")
                     return
                 self.handle_received_payload(payload)
 
@@ -247,7 +249,7 @@ class ControllerBase(ABC):
             PayloadType.CMD_RGB_LED,
         ]:
             return
-        if self.settings.verbose:
+        if self.settings.verbose is True:
             print(payload)
         source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
         dotbot = DotBotModel(
@@ -420,9 +422,10 @@ class ControllerBase(ABC):
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
-                asyncio.create_task(self._dotbots_table_refresh()),
                 asyncio.create_task(self.start()),
             ]
+            if self.settings.table is True:
+                tasks += asyncio.create_task(self._dotbots_table_refresh())
             await asyncio.gather(*tasks)
         except (
             SystemExit,

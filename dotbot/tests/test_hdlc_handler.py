@@ -52,7 +52,7 @@ def test_hdlc_handler_decode_with_flags():
 
 
 def test_hdlc_handler_invalid_state():
-    handler = HDLCHandler()
+    handler = HDLCHandler(verbose=True)
     for byte in b"~test\x42\x42":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
     with pytest.raises(HDLCDecodeException) as exc:
@@ -61,7 +61,7 @@ def test_hdlc_handler_invalid_state():
 
 
 def test_hdlc_handler_invalid_fcs(capsys):
-    handler = HDLCHandler()
+    handler = HDLCHandler(verbose=True)
     for byte in b"~test\x42\x42~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
     payload = handler.payload
@@ -71,7 +71,7 @@ def test_hdlc_handler_invalid_fcs(capsys):
 
 
 def test_hdlc_handler_payload_too_short(capsys):
-    handler = HDLCHandler()
+    handler = HDLCHandler(verbose=True)
     for byte in b"~a~":
         handler.handle_byte(int(byte).to_bytes(1, "little"))
     payload = handler.payload
