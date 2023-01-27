@@ -241,7 +241,9 @@ class ControllerBase(ABC):
                     return
                 self.handle_received_payload(payload)
 
-    def handle_received_payload(self, payload: ProtocolPayload):
+    def handle_received_payload(
+        self, payload: ProtocolPayload
+    ):  # pylint:disable=too-many-branches
         """Handle a received payload."""
         # Controller is not interested by command messages received
         if payload.payload_type in [
@@ -252,6 +254,9 @@ class ControllerBase(ABC):
         if self.settings.verbose is True:
             print(payload)
         source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
+        if source == "0000000000000000":
+            print(f"Invalid source in payload type {payload.payload_type}")
+            return
         dotbot = DotBotModel(
             address=source,
             application=payload.header.application,
