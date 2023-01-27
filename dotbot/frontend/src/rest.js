@@ -62,6 +62,13 @@ export const apiUpdateWaypoints = async (address, application, waypoints) => {
   );
 }
 
+export const apiClearPositionsHistory = async (address) => {
+  return await axios.delete(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/positions`,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
 export const apiFetchLH2CalibrationState = async () => {
   return await axios.get(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration`,
