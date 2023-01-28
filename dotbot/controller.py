@@ -425,7 +425,7 @@ class ControllerBase(ABC):
                 asyncio.create_task(self.start()),
             ]
             if self.settings.table is True:
-                tasks += asyncio.create_task(self._dotbots_table_refresh())
+                tasks.append(asyncio.create_task(self._dotbots_table_refresh()))
             await asyncio.gather(*tasks)
         except (
             SystemExit,
