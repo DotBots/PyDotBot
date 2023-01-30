@@ -21,6 +21,7 @@ from haversine import haversine, Unit
 from rich.live import Live
 from rich.table import Table
 
+from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.protocol import (
     ProtocolPayload,
@@ -254,7 +255,7 @@ class ControllerBase(ABC):
         if self.settings.verbose is True:
             print(payload)
         source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
-        if source == "0000000000000000":
+        if source == GATEWAY_ADDRESS_DEFAULT:
             print(f"Invalid source in payload type {payload.payload_type}")
             return
         dotbot = DotBotModel(
