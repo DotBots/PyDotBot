@@ -8,7 +8,14 @@ import asyncio
 import click
 import serial
 
-from dotbot import pydotbot_version
+from dotbot import (
+    pydotbot_version,
+    DOTBOT_ADDRESS_DEFAULT,
+    GATEWAY_ADDRESS_DEFAULT,
+    SERIAL_BAUDRATE_DEFAULT,
+    SERIAL_PORT_DEFAULT,
+    SWARM_ID_DEFAULT,
+)
 
 from dotbot.controller import (
     ControllerSettings,
@@ -19,11 +26,6 @@ from dotbot.keyboard import KeyboardController
 from dotbot.joystick import JoystickController
 
 
-SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
-SERIAL_BAUDRATE_DEFAULT = 1000000
-DOTBOT_ADDRESS_DEFAULT = "FFFFFFFFFFFFFFFF"  # Broadcast by default
-GATEWAY_ADDRESS_DEFAULT = "0000000000000000"
-SWARM_ID_DEFAULT = "0000"
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {
     "keyboard": KeyboardController,
