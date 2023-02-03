@@ -73,15 +73,15 @@ export const SailBotMarker = (props) => {
   return (
     <>
     {
-      props.sailbot.mode === 1 && props.sailbot.waypoints
+      props.sailbot.waypoints
         .slice(1) // Skip first waypoint which is the start position
         .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsRadiusOptions} radius={gps_waypoint_area_radius} />)
     }
-    {(props.sailbot.mode === 1 && props.sailbot.waypoints.length > 0) && (
+    {(props.sailbot.waypoints.length > 0) && (
       <Polyline pathOptions={waypointsLineOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />
     )}
     {
-      props.sailbot.mode === 1 && props.sailbot.waypoints
+      props.sailbot.waypoints
         .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsOptions} radius={1} />)
     }
     {(props.sailbot.position_history.length > 0) && (

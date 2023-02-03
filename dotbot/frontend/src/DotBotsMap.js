@@ -122,7 +122,7 @@ const DotBotsMapPoint = (props) => {
 
   return (
     <>
-    {(props.dotbot.mode === 1 && props.dotbot.waypoints.length > 0) && (
+    {(props.dotbot.waypoints.length > 0) && (
       props.dotbot.waypoints.map((point, index) => (
         <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} opacity={waypointOpacity} waypoints={props.dotbot.waypoints} {...props} />
       ))

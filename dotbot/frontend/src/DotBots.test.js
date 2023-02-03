@@ -21,6 +21,7 @@ const server = setupServer(
                     last_seen: 123.4,
                     lh2_position: {x: 200.0, y: 200.0, z: 0.0},
                     position_history: [],
+                    waypoints: [],
                 },
                 {
                     address: "3131",
@@ -29,6 +30,7 @@ const server = setupServer(
                     last_seen: 123.4,
                     lh2_position: {x: 100.0, y: 100.0, z: 0.0},
                     position_history: [],
+                    waypoints: [],
                 },
                 {
                     address: "4242",
@@ -36,6 +38,7 @@ const server = setupServer(
                     swarm: "0000",
                     last_seen: 123.4,
                     position_history: [],
+                    waypoints: [],
                 },
                 {
                     address: "5353",
@@ -45,6 +48,7 @@ const server = setupServer(
                     status: 2,
                     lh2_position: {x: 100.0, y: 100.0, z: 0.0},
                     position_history: [],
+                    waypoints: [],
                 },
                 {
                     address: "5151",
@@ -53,6 +57,7 @@ const server = setupServer(
                     last_seen: 123.4,
                     gps_position: {latitude: 48.832313766146896, longitude: 2.4126897594949184},
                     position_history: [],
+                    waypoints: [],
                 },
                 {
                     address: "5252",
@@ -62,6 +67,7 @@ const server = setupServer(
                     status: 2,
                     gps_position: {latitude: 48.832313766146896, longitude: 2.4126897594949184},
                     position_history: [],
+                    waypoints: [],
                 },
             ]
         ));

@@ -9,10 +9,10 @@ import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
-  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw, apiUpdateControlMode,
+  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw,
   apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
 } from "./rest";
-import { ApplicationType, ControlModeType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
+import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
 import { gps_distance, lh2_distance } from "./helpers";
 
 
@@ -34,10 +34,6 @@ const DotBotAccordionItem = (props) => {
   let rgbColor = "rgb(0, 0, 0)"
   if (props.dotbot.rgb_led) {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
-  }
-
-  const autoModeClicked = async (event) => {
-    await props.updateAutoMode(props.dotbot.address, props.dotbot.application, event.target.checked);
   }
 
   useEffect(() => {
@@ -96,19 +92,18 @@ const DotBotAccordionItem = (props) => {
               </div>
             </div>
           </div>
-          {props.dotbot.lh2_position &&
-            <div className="d-flex mx-auto">
-              <div className="form-check">
-                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={props.dotbot.mode} onChange={autoModeClicked} />
-                <label className="form-check-label" htmlFor="flexCheckModeAuto">Autonomous mode</label>
+          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
+          <>
+            <div className="d-flex mx-auto card">
+              <div className="card-body p-1">
+                <p className="m-0 p-0">
+                  <span>Autonomous mode: </span>
+                  <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Start</button>
+                  <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear</button>
+                </p>
               </div>
             </div>
-          }
-          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
-            <div className="d-flex mx-auto">
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Apply waypoints</button>
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear waypoints</button>
-            </div>
+          </>
           }
           {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
             <div className="d-flex me-auto">
@@ -144,10 +139,6 @@ const SailBotItem = (props) => {
     setSailValue(newSailValue);
     setActive(newSailValue !== 0);
   };
-
-  const autoModeClicked = async (event) => {
-    await props.updateAutoMode(props.dotbot.address, props.dotbot.application, event.target.checked);
-  }
 
   useInterval(async () => {
     if (rudderValue === 0 && sailValue === 0) {
@@ -205,19 +196,18 @@ const SailBotItem = (props) => {
               <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
             </div>
           </div>
-          {props.dotbot.gps_position &&
-            <div className="d-flex mx-auto">
-              <div className="form-check">
-                <input className="form-check-input" type="checkbox" id="flexCheckModeAuto" defaultChecked={props.dotbot.mode} onChange={autoModeClicked} />
-                <label className="form-check-label" htmlFor="flexCheckModeAuto">Autonomous mode</label>
-              </div>
-            </div>
-          }
           {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
-            <div className="d-flex mx-auto">
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Apply waypoints</button>
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Clear waypoints</button>
-            </div>
+            <>
+              <div className="d-flex mx-auto card">
+                <div className="card-body p-1">
+                  <p className="m-0 p-0">
+                    <span>Autonomous mode: </span>
+                    <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Start</button>
+                    <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Stop</button>
+                  </p>
+                </div>
+              </div>
+            </>
           }
           {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
             <div className="d-flex me-auto">
@@ -241,18 +231,6 @@ const DotBots = () => {
     setActiveDotbot(address);
   }, [setActiveDotbot]
   );
-
-  const updateAutoMode = async (address, application, mode) => {
-    const newMode = mode ? ControlModeType.Auto : ControlModeType.Manual;
-    await apiUpdateControlMode(address, application, newMode);
-    let dotbotsTmp = dotbots.slice();
-    for (let idx = 0; idx < dotbots.length; idx++) {
-      if (dotbots[idx].address === address) {
-        dotbotsTmp[idx].mode = newMode;
-        setDotbots(dotbotsTmp);
-      }
-    }
-  };
 
   const updateShowHistory = (show, application) => {
     if (application === ApplicationType.SailBot) {
@@ -282,10 +260,6 @@ const DotBots = () => {
     }
 
     const dotbot = activeDotbots[0];
-    if (dotbot.mode !== ControlModeType.Auto) {
-      // Do nothing if dotbot is in manual mode
-      return;
-    }
 
     // Limit number of waypoints to maxWaypoints
     if (dotbot.waypoints.length >= maxWaypoints) {
@@ -458,7 +432,6 @@ const DotBots = () => {
                       dotbot={dotbot}
                       active={activeDotbot}
                       updateActive={updateActive}
-                      updateAutoMode={updateAutoMode}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
@@ -511,7 +484,6 @@ const DotBots = () => {
                       dotbot={dotbot}
                       active={activeDotbot}
                       updateActive={updateActive}
-                      updateAutoMode={updateAutoMode}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
