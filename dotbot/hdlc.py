@@ -60,6 +60,19 @@ def _to_byte(value):
     return int(value).to_bytes(1, "little")
 
 
+def _escape_byte(byte) -> bytes:
+    result = bytearray()
+    if byte == HDLC_ESCAPE:
+        result += HDLC_ESCAPE
+        result += HDLC_ESCAPE_ESCAPED
+    elif byte == HDLC_FLAG:
+        result += HDLC_ESCAPE
+        result += HDLC_FLAG_ESCAPED
+    else:
+        result += byte
+    return result
+
+
 def hdlc_encode(payload: bytes) -> bytes:
     """Encodes a payload in an HDLC frame.
     >>> hdlc_encode(b"test")
@@ -74,6 +87,10 @@ def hdlc_encode(payload: bytes) -> bytes:
     bytearray(b'~}^test}^\\x9d\\xa6~')
     >>> hdlc_encode(b"~test}")
     bytearray(b'~}^test}]\\x06\\x94~')
+    >>> hdlc_encode(b"\\xe7\\x94:\\xa6")
+    bytearray(b'~\\xe7\\x94:\\xa6\\x83}^~')
+    >>> hdlc_encode(b"'$W\\x82")
+    bytearray(b"~\\'$W\\x82\\x13}]~")
     """
     # initialize output buffer
     hdlc_frame = bytearray()
@@ -87,19 +104,12 @@ def hdlc_encode(payload: bytes) -> bytes:
     # write payload in frame
     for byte in payload:
         fcs = _fcs_update(fcs, _to_byte(byte))
-        if _to_byte(byte) == HDLC_ESCAPE:
-            hdlc_frame += HDLC_ESCAPE
-            hdlc_frame += HDLC_ESCAPE_ESCAPED
-        elif _to_byte(byte) == HDLC_FLAG:
-            hdlc_frame += HDLC_ESCAPE
-            hdlc_frame += HDLC_FLAG_ESCAPED
-        else:
-            hdlc_frame += _to_byte(byte)
+        hdlc_frame += _escape_byte(_to_byte(byte))
     fcs = 0xFFFF - fcs
 
     # add FCS
-    hdlc_frame += _to_byte(fcs & 0xFF)
-    hdlc_frame += _to_byte((fcs & 0xFF00) >> 8)
+    hdlc_frame += _escape_byte(_to_byte(fcs & 0xFF))
+    hdlc_frame += _escape_byte(_to_byte((fcs & 0xFF00) >> 8))
 
     # add end flag
     hdlc_frame += HDLC_FLAG
@@ -120,6 +130,10 @@ def hdlc_decode(frame: bytes) -> bytes:
     bytearray(b'~test~')
     >>> hdlc_decode(b"~}^test}]\\x06\\x94~")
     bytearray(b'~test}')
+    >>> hdlc_decode(b"~\\xe7\\x94:\\xa6\\x83}^~")
+    bytearray(b'\\xe7\\x94:\\xa6')
+    >>> hdlc_decode(b"~\\'$W\\x82\\x13}]~")
+    bytearray(b"\\'$W\\x82")
     >>> hdlc_decode(b"~\\x00\\x00~")
     bytearray(b'')
     >>> hdlc_decode(b"~test\\x42\\x42~")
