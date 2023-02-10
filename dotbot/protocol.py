@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 
 
 class PayloadType(Enum):
@@ -190,8 +190,6 @@ class Lh2RawData(ProtocolData):
             [
                 Lh2RawLocation.from_bytes(bytes_[0:10]),
                 Lh2RawLocation.from_bytes(bytes_[10:20]),
-                Lh2RawLocation.from_bytes(bytes_[20:30]),
-                Lh2RawLocation.from_bytes(bytes_[30:40]),
             ]
         )
 
@@ -241,8 +239,6 @@ class DotBotData(ProtocolData):
             locations=[
                 Lh2RawLocation.from_bytes(bytes_[2:12]),
                 Lh2RawLocation.from_bytes(bytes_[12:22]),
-                Lh2RawLocation.from_bytes(bytes_[22:32]),
-                Lh2RawLocation.from_bytes(bytes_[32:42]),
             ],
         )
 
@@ -371,7 +367,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.CMD_RGB_LED:
             values = CommandRgbLed.from_bytes(bytes_[21:25])
         elif payload_type == PayloadType.LH2_RAW_DATA:
-            values = Lh2RawData.from_bytes(bytes_[21:61])
+            values = Lh2RawData.from_bytes(bytes_[21:41])
         elif payload_type == PayloadType.LH2_LOCATION:
             values = LH2Location.from_bytes(bytes_[21:33])
         elif payload_type == PayloadType.ADVERTISEMENT:
@@ -379,7 +375,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.GPS_POSITION:
             values = GPSPosition.from_bytes(bytes_[21:29])
         elif payload_type == PayloadType.DOTBOT_DATA:
-            values = DotBotData.from_bytes(bytes_[21:63])
+            values = DotBotData.from_bytes(bytes_[21:43])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[21:22])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
