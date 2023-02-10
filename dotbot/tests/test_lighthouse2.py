@@ -6,7 +6,7 @@ from dotbot.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
 from dotbot.protocol import Lh2RawLocation, Lh2RawData
 
 
-EXPECTED_COUNTS = [49341, 85887, 49341, 85887]
+EXPECTED_COUNTS = [49341, 85887]
 LOCATIONS = [
     Lh2RawLocation(
         bits=0b1110000100011111111001110010111000000100001001100011001010001110,
@@ -17,16 +17,6 @@ LOCATIONS = [
         bits=0b1011101111101010101101010010101010100100111101101001000111011100,
         polynomial_index=1,
         offset=1,
-    ),
-    Lh2RawLocation(
-        bits=0b1100001000111111110011100101110000001000010011000110010100011100,
-        polynomial_index=1,
-        offset=2,
-    ),
-    Lh2RawLocation(
-        bits=0b0111011111010101011010100101010101001001111011010010001110111000,
-        polynomial_index=1,
-        offset=0,
     ),
 ]
 

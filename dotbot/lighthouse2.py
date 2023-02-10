@@ -39,18 +39,18 @@ CALIBRATION_DIR = Path.home() / ".pydotbot"
 
 
 def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
-    counts = [0] * 4
+    counts = [0] * 2
     pos_A = 0
     pos_B = 0
-    for i in range(4):
+    for i in range(2):
         index = 0
         if raw_data.locations[i].polynomial_index in [0, 1]:
             index = pos_A
             pos_A += 1
-        elif raw_data.locations[i].polynomial_index in [2, 3]:
+        elif raw_data.locations[i].polynomial_index in [0, 1]:
             index = 2 + pos_B
             pos_B += 1
-        if index > 3:
+        if index > 1:
             continue
         counts[index] = func(
             raw_data.locations[i].polynomial_index,
@@ -159,8 +159,8 @@ class LighthouseManager:  # pylint: disable=too-many-instance-attributes
         )
         self.calibration_points[1][index] = np.asarray(
             calculate_camera_point(
-                counts[2],
-                counts[3],
+                counts[0],
+                counts[1],
                 self.last_raw_data.locations[2].polynomial_index,
             ),
             dtype=np.float64,
@@ -253,7 +253,7 @@ class LighthouseManager:  # pylint: disable=too-many-instance-attributes
         if self.state != LighthouseManagerState.Calibrated:
             return None
 
-        if any(raw_data.locations[index].bits == 0 for index in range(4)):
+        if any(raw_data.locations[index].bits == 0 for index in range(2)):
             return None
 
         counts = lh2_raw_data_to_counts(raw_data)
@@ -263,7 +263,7 @@ class LighthouseManager:  # pylint: disable=too-many-instance-attributes
                     counts[0], counts[1], raw_data.locations[0].polynomial_index
                 ),
                 calculate_camera_point(
-                    counts[2], counts[3], raw_data.locations[2].polynomial_index
+                    counts[0], counts[1], raw_data.locations[1].polynomial_index
                 ),
             ],
             dtype=np.float64,
