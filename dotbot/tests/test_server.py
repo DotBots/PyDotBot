@@ -265,7 +265,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                 ),
             },
             ApplicationType.DotBot,
-            [{"x": 0.5, "y": 0.1, "z": 0}],
+            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
             200,
             True,
             id="dotbot_found",
@@ -280,7 +280,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                 ),
             },
             ApplicationType.DotBot,
-            [{"x": 0.5, "y": 0.1, "z": 0}],
+            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
             404,
             False,
             id="dotbot_not_found",
@@ -295,7 +295,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                 ),
             },
             ApplicationType.SailBot,
-            [{"latitude": 0.5, "longitude": 0.1}],
+            {"threshold": 10, "waypoints": [{"latitude": 0.5, "longitude": 0.1}]},
             200,
             True,
             id="sailbot_found",
@@ -310,7 +310,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                 ),
             },
             ApplicationType.SailBot,
-            [{"latitude": 0.5, "longitude": 0.1}],
+            {"threshold": 10, "waypoints": [{"latitude": 0.5, "longitude": 0.1}]},
             404,
             False,
             id="sailbot_not_found",
@@ -331,15 +331,19 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
         expected_payload = ProtocolPayload(
             header,
             PayloadType.GPS_WAYPOINTS,
-            GPSWaypoints([GPSPosition(latitude=500000, longitude=100000)]),
+            GPSWaypoints(
+                threshold=10, waypoints=[GPSPosition(latitude=500000, longitude=100000)]
+            ),
         )
+        expected_threshold = 10
         expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
     else:  # DotBot application
         expected_payload = ProtocolPayload(
             header,
             PayloadType.LH2_WAYPOINTS,
-            LH2Waypoints([LH2Location(500000, 100000, 0)]),
+            LH2Waypoints(threshold=10, waypoints=[LH2Location(500000, 100000, 0)]),
         )
+        expected_threshold = 10
         expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
     response = client.put(
@@ -351,6 +355,7 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
     if found:
         app.controller.send_payload.assert_called_with(expected_payload)
         assert app.controller.dotbots[address].waypoints == expected_waypoints
+        assert app.controller.dotbots[address].waypoints_threshold == expected_threshold
     else:
         app.controller.send_payload.assert_not_called()
 

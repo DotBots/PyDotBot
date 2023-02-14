@@ -65,7 +65,7 @@ class ControllerException(Exception):
 
 
 @dataclass
-class ControllerSettings:  # pylint: disable=too-many-instance-attributes
+class ControllerSettings:
     """Data class that holds controller settings."""
 
     port: str
@@ -272,6 +272,7 @@ class ControllerBase(ABC):
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
             dotbot.waypoints = self.dotbots[source].waypoints
+            dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
             dotbot.position_history = self.dotbots[source].position_history
             should_reload = dotbot.status != self.dotbots[source].status
         else:
