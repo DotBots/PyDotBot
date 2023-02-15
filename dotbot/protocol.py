@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 
 
 class PayloadType(Enum):
