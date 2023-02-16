@@ -5,8 +5,6 @@ import { Circle, MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvent }
 
 import L from "leaflet";
 
-import { gps_waypoint_area_radius } from "./constants";
-
 const defaultPosition = [
   48.832313766146896, 2.4126897594949184
 ];
@@ -75,7 +73,7 @@ export const SailBotMarker = (props) => {
     {
       props.sailbot.waypoints
         .slice(1) // Skip first waypoint which is the start position
-        .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsRadiusOptions} radius={gps_waypoint_area_radius} />)
+        .map(waypoint => <Circle center={Object.values(waypoint)} pathOptions={waypointsRadiusOptions} radius={props.sailbot.waypoints_threshold} />)
     }
     {(props.sailbot.waypoints.length > 0) && (
       <Polyline pathOptions={waypointsLineOptions} positions={props.sailbot.waypoints.map(waypoint => Object.values(waypoint))} />

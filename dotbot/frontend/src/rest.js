@@ -54,10 +54,10 @@ export const apiUpdateControlMode = async (address, application, mode) => {
   );
 }
 
-export const apiUpdateWaypoints = async (address, application, waypoints) => {
+export const apiUpdateWaypoints = async (address, application, waypoints, threshold) => {
   return await axios.put(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/waypoints`,
-    waypoints,
+    {threshold: threshold, waypoints: waypoints},
     { headers: { 'Content-Type': 'application/json' } }
   );
 }

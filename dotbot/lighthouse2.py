@@ -107,7 +107,7 @@ class LighthouseManagerState(Enum):
     Calibrated = 3
 
 
-class LighthouseManager:  # pylint: disable=too-many-instance-attributes
+class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
     def __init__(self):

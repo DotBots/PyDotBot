@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 
 
 class PayloadType(Enum):
@@ -299,28 +299,32 @@ class ControlMode(ProtocolData):
 class LH2Waypoints(ProtocolData):
     """Dataclass that holds a list of LH2 waypoints."""
 
+    threshold: int
     waypoints: List[LH2Location] = dataclasses.field(default_factory=lambda: [])
 
     @property
     def fields(self) -> List[ProtocolField]:
         _fields = [ProtocolField(len(self.waypoints), "len.")]
+        _fields += [ProtocolField(value=self.threshold, name="thr.", endian="little")]
         _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
         return _fields
 
     @staticmethod
     def from_bytes(_) -> ProtocolData:
-        return LH2Waypoints(waypoints=[])
+        return LH2Waypoints(threshold=0, waypoints=[])
 
 
 @dataclass
 class GPSWaypoints(ProtocolData):
     """Dataclass that holds a list of GPS waypoints."""
 
+    threshold: int
     waypoints: List[GPSPosition] = dataclasses.field(default_factory=lambda: [])
 
     @property
     def fields(self) -> List[ProtocolField]:
         _fields = [ProtocolField(len(self.waypoints), "len.")]
+        _fields += [ProtocolField(value=self.threshold, name="thr.", endian="little")]
         _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
         for field in _fields:
             field.endian = "little"
@@ -328,7 +332,7 @@ class GPSWaypoints(ProtocolData):
 
     @staticmethod
     def from_bytes(_) -> ProtocolData:
-        return GPSWaypoints(waypoints=[])
+        return GPSWaypoints(threshold=0, waypoints=[])
 
 
 @dataclass

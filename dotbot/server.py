@@ -2,7 +2,7 @@
 import asyncio
 import os
 from binascii import hexlify
-from typing import List, Union
+from typing import List
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
@@ -18,8 +18,7 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
     DotBotControlModeModel,
-    DotBotLH2Position,
-    DotBotGPSPosition,
+    DotBotWaypoints,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -177,9 +176,9 @@ async def dotbots_mode(address: str, application: int, data: DotBotControlModeMo
 async def dotbots_waypoints(
     address: str,
     application: int,
-    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]],
+    waypoints: DotBotWaypoints,
 ):
-    """Set the lh2 waypoints of a DotBot."""
+    """Set the waypoints of a DotBot."""
     if address not in app.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
@@ -195,13 +194,14 @@ async def dotbots_waypoints(
             header,
             PayloadType.GPS_WAYPOINTS,
             GPSWaypoints(
-                [
+                threshold=waypoints.threshold,
+                waypoints=[
                     GPSPosition(
                         latitude=int(waypoint.latitude * 1e6),
                         longitude=int(waypoint.longitude * 1e6),
                     )
-                    for waypoint in waypoints
-                ]
+                    for waypoint in waypoints.waypoints
+                ],
             ),
         )
     else:  # DotBot application
@@ -209,17 +209,19 @@ async def dotbots_waypoints(
             header,
             PayloadType.LH2_WAYPOINTS,
             LH2Waypoints(
-                [
+                threshold=waypoints.threshold,
+                waypoints=[
                     LH2Location(
                         pos_x=int(waypoint.x * 1e6),
                         pos_y=int(waypoint.y * 1e6),
                         pos_z=int(waypoint.z * 1e6),
                     )
-                    for waypoint in waypoints
-                ]
+                    for waypoint in waypoints.waypoints
+                ],
             ),
         )
-    app.controller.dotbots[address].waypoints = waypoints
+    app.controller.dotbots[address].waypoints = waypoints.waypoints
+    app.controller.dotbots[address].waypoints_threshold = waypoints.threshold
     app.controller.send_payload(payload)
 
 

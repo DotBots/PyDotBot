@@ -58,6 +58,13 @@ class DotBotGPSPosition(BaseModel):
     longitude: float
 
 
+class DotBotWaypoints(BaseModel):
+    """Waypoints model."""
+
+    threshold: int
+    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]]
+
+
 class DotBotStatus(IntEnum):
     """Status of a DotBot."""
 
@@ -91,4 +98,5 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position]
     gps_position: Optional[DotBotGPSPosition]
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    waypoints_threshold: int = 40
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []

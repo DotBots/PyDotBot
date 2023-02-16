@@ -31,6 +31,10 @@ const DotBotAccordionItem = (props) => {
     await props.refresh();
   }
 
+  const thresholdUpdate = async (event) => {
+    props.updateWaypointThreshold(props.dotbot.address, parseInt(event.target.value));
+  };
+
   let rgbColor = "rgb(0, 0, 0)"
   if (props.dotbot.rgb_led) {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
@@ -101,6 +105,10 @@ const DotBotAccordionItem = (props) => {
                   <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Start</button>
                   <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear</button>
                 </p>
+                <div className="mx-auto justify-content-center">
+                  <p>{`Target threshold: ${props.dotbot.waypoints_threshold}`}</p>
+                  <input type="range" min="0" max="100" defaultValue={props.dotbot.waypoints_threshold} onChange={thresholdUpdate}/>
+                </div>
               </div>
             </div>
           </>
@@ -138,6 +146,10 @@ const SailBotItem = (props) => {
     const newSailValue = parseInt(event.target.value);
     setSailValue(newSailValue);
     setActive(newSailValue !== 0);
+  };
+
+  const thresholdUpdate = async (event) => {
+    props.updateWaypointThreshold(props.dotbot.address, parseInt(event.target.value));
   };
 
   useInterval(async () => {
@@ -205,6 +217,10 @@ const SailBotItem = (props) => {
                     <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Start</button>
                     <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Stop</button>
                   </p>
+                  <div className="mx-auto justify-content-center">
+                    <p>{`Target threshold: ${props.dotbot.waypoints_threshold}`}</p>
+                    <input type="range" min="0" max="100" defaultValue={props.dotbot.waypoints_threshold} onChange={thresholdUpdate}/>
+                </div>
                 </div>
               </div>
             </>
@@ -303,7 +319,7 @@ const DotBots = () => {
   const applyWaypoints = async (address, application) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
-        await apiUpdateWaypoints(address, application, dotbots[idx].waypoints);
+        await apiUpdateWaypoints(address, application, dotbots[idx].waypoints, dotbots[idx].waypoints_threshold);
         return;
       }
     }
@@ -314,7 +330,7 @@ const DotBots = () => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].waypoints = [];
-        await apiUpdateWaypoints(address, application, []);
+        await apiUpdateWaypoints(address, application, [], dotbotsTmp[idx].waypoints_threshold);
         setDotbots(dotbotsTmp);
         return;
       }
@@ -327,6 +343,17 @@ const DotBots = () => {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].position_history = [];
         await apiClearPositionsHistory(address);
+        setDotbots(dotbotsTmp);
+        return;
+      }
+    }
+  };
+
+  const updateWaypointThreshold = (address, threshold) => {
+    let dotbotsTmp = dotbots.slice();
+    for (let idx = 0; idx < dotbots.length; idx++) {
+      if (dotbots[idx].address === address) {
+        dotbotsTmp[idx].waypoints_threshold = threshold;
         setDotbots(dotbotsTmp);
         return;
       }
@@ -435,6 +462,7 @@ const DotBots = () => {
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
+                      updateWaypointThreshold={updateWaypointThreshold}
                       refresh={fetchDotBots}
                     />
                   )
@@ -487,6 +515,7 @@ const DotBots = () => {
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
+                      updateWaypointThreshold={updateWaypointThreshold}
                       refresh={fetchDotBots}
                     />
                   )

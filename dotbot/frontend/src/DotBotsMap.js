@@ -1,6 +1,6 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { ApplicationType, lh2_waypoint_area_radius } from "./constants";
+import { ApplicationType } from "./constants";
 
 import {
     apiFetchLH2CalibrationState, apiApplyLH2Calibration,
@@ -32,7 +32,7 @@ const DotBotsWaypoint = (props) => {
           <circle
             cx={props.point.x * props.mapSize}
             cy={props.point.y * props.mapSize}
-            r={lh2_waypoint_area_radius * props.mapSize}
+            r={props.threshold * props.mapSize}
             fill={props.color}
             stroke="none"
             opacity="10%"
@@ -124,7 +124,16 @@ const DotBotsMapPoint = (props) => {
     <>
     {(props.dotbot.waypoints.length > 0) && (
       props.dotbot.waypoints.map((point, index) => (
-        <DotBotsWaypoint key={`waypoint-${index}`} index={index} point={point} color={rgbColor} opacity={waypointOpacity} waypoints={props.dotbot.waypoints} {...props} />
+        <DotBotsWaypoint
+          key={`waypoint-${index}`}
+          index={index}
+          point={point}
+          color={rgbColor}
+          opacity={waypointOpacity}
+          waypoints={props.dotbot.waypoints}
+          threshold={props.dotbot.waypoints_threshold / 1000}
+          {...props}
+          />
       ))
     )}
     {(props.showHistory && props.dotbot.position_history.length > 0) && (
