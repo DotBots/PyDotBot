@@ -21,6 +21,34 @@ const dotbotStatuses = ["alive", "lost", "dead"];
 const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
 
+const useKeyPress = (targetKey) => {
+  const [keyPressed, setKeyPressed] = useState(false);
+
+  const downHandler = ({ key }) => {
+    if (key === targetKey) {
+      setKeyPressed(true);
+    }
+  };
+
+  const upHandler = ({ key }) => {
+    if (key === targetKey) {
+      setKeyPressed(false);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener("keydown", downHandler);
+    window.addEventListener("keyup", upHandler);
+    return () => {
+      window.removeEventListener("keydown", downHandler);
+      window.removeEventListener("keyup", upHandler);
+    };
+  });
+
+  return keyPressed;
+};
+
+
 const DotBotAccordionItem = (props) => {
 
   const [ expanded, setExpanded ] = useState(false);
@@ -242,6 +270,10 @@ const DotBots = () => {
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ showSailBotHistory, setShowSailBotHistory ] = useState(true);
 
+  const control = useKeyPress("Control");
+  const enter = useKeyPress("Enter")
+  const backspace = useKeyPress("Backspace");
+
   const updateActive = useCallback(async (address) => {
     await apiUpdateActiveDotbotAddress(address).catch((error) => console.error(error));
     setActiveDotbot(address);
@@ -316,16 +348,17 @@ const DotBots = () => {
   }, [activeDotbot, dotbots, setDotbots]
   );
 
-  const applyWaypoints = async (address, application) => {
+  const applyWaypoints = useCallback(async (address, application) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         await apiUpdateWaypoints(address, application, dotbots[idx].waypoints, dotbots[idx].waypoints_threshold);
         return;
       }
     }
-  };
+  }, [dotbots]
+  );
 
-  const clearWaypoints = async (address, application) => {
+  const clearWaypoints = useCallback(async (address, application) => {
     let dotbotsTmp = dotbots.slice();
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
@@ -335,7 +368,8 @@ const DotBots = () => {
         return;
       }
     }
-  };
+  }, [dotbots]
+  );
 
   const clearPositionsHistory = async (address) => {
     let dotbotsTmp = dotbots.slice();
@@ -422,7 +456,32 @@ const DotBots = () => {
     if (!dotbots) {
       fetchDotBots();
     }
-  }, [dotbots, fetchDotBots]);
+
+    if (dotbots && control && enter) {
+      if (activeDotbot !== inactiveAddress) {
+        for (let idx = 0; idx < dotbots.length; idx++) {
+          if (dotbots[idx].address === activeDotbot) {
+            applyWaypoints(activeDotbot, dotbots[idx].application);
+            break;
+          }
+        }
+      }
+    }
+    if (dotbots && control && backspace) {
+      if (activeDotbot !== inactiveAddress) {
+        for (let idx = 0; idx < dotbots.length; idx++) {
+          if (dotbots[idx].address === activeDotbot) {
+            clearWaypoints(activeDotbot, dotbots[idx].application);
+            break;
+          }
+        }
+      }
+    }
+  }, [
+    dotbots, fetchDotBots,
+    control, enter, backspace,
+    applyWaypoints, clearWaypoints, activeDotbot
+  ]);
 
   return (
     <>
