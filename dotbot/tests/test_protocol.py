@@ -16,6 +16,7 @@ from dotbot.protocol import (
     LH2Location,
     GPSPosition,
     DotBotData,
+    SailBotData,
     ControlModeType,
     LH2Waypoints,
     GPSWaypoints,
@@ -26,7 +27,7 @@ from dotbot.protocol import (
     "payload,expected",
     [
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x00\x00\x42\x00\x42",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x00\x00\x42\x00\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -37,7 +38,7 @@ from dotbot.protocol import (
             id="MoveRaw",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x01\x42\x42\x42",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x01\x42\x42\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -48,7 +49,7 @@ from dotbot.protocol import (
             id="RGBLed",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x06\x02"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
@@ -66,7 +67,7 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x03"
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x03"
             b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
             ProtocolPayload(
                 ProtocolHeader(
@@ -78,7 +79,7 @@ from dotbot.protocol import (
             id="LH2Location",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x04",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x04",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -89,7 +90,7 @@ from dotbot.protocol import (
             id="Advertisement",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x05"
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x05"
             b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -101,7 +102,7 @@ from dotbot.protocol import (
             id="GPSPosition",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x06\x06"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x06"
             b"-\x00"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
@@ -121,7 +122,7 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x06\x07\x01",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x07\x01",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -132,7 +133,7 @@ from dotbot.protocol import (
             id="ControlMode",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x06\x08\x02\x0a"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x08\x02\x0a"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
@@ -145,7 +146,7 @@ from dotbot.protocol import (
             id="LH2Waypoints",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x06\x09\x02\x0a"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -157,13 +158,25 @@ from dotbot.protocol import (
             id="GPSWaypoints",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x06\xff",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x0a"
+            b"-\x00&~\xe9\x02]\xe4#\x00",
+            ProtocolPayload(
+                ProtocolHeader(
+                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                ),
+                PayloadType.SAILBOT_DATA,
+                SailBotData(direction=45, latitude=48856614, longitude=2352221),
+            ),
+            id="SailBotData",
+        ),
+        pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x07\xff",
             ValueError(),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x06\x0a",
-            ProtocolPayloadParserException("Unsupported payload type '10'"),
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x07\x0b",
+            ProtocolPayloadParserException("Unsupported payload type '15'"),
             id="unsupported payload type",
         ),
         pytest.param(
@@ -335,6 +348,18 @@ def test_protocol_parser(payload, expected):
             b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             id="GPSWaypoints",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.SAILBOT_DATA,
+                SailBotData(
+                    direction=45, latitude=48856614, longitude=2352221
+                ),  # Paris coordinates
+            ),
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x0a"
+            b"\x00-\x02\xe9~&\x00#\xe4]",
+            id="SailBotData",
         ),
     ],
 )
@@ -535,6 +560,23 @@ def test_payload(payload, expected):
                 "\n"
             ),
             id="GPSWaypoints",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                PayloadType.SAILBOT_DATA,
+                SailBotData(
+                    direction=45, latitude=48856614, longitude=2352221
+                ),  # Paris coordinates
+            ),
+            (
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+----------+------------------+------------------+\n"
+                " SAILBOT_DATA    | dst                              | src                              | swarm id | app. | ver. | type | dir.     | latitude         | longitude        |\n"
+                " (31 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x0a | 0x002d   | 0x02e97e26       | 0x0023e45d       |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------+----------+------------------+------------------+\n"
+                "\n"
+            ),
+            id="SailBotData",
         ),
     ],
 )

@@ -331,7 +331,7 @@ class ControllerBase(ABC):
             )
 
         if (
-            payload.payload_type == PayloadType.DOTBOT_DATA
+            payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
             and -500 <= payload.values.direction <= 500
         ):
             dotbot.direction = payload.values.direction
@@ -347,7 +347,7 @@ class ControllerBase(ABC):
                 )
             )
 
-        if payload.payload_type == PayloadType.GPS_POSITION:
+        if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
                 longitude=float(payload.values.longitude) / 1e6,

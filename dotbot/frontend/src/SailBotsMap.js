@@ -46,7 +46,7 @@ export const SailBotMarker = (props) => {
     opacity: `${props.sailbot.status === 0 ? "100%" : "40%"}`,
   };
 
-  const rotation = (props.sailbot.direction) ? props.sailbot.direction : 0;
+  const rotation = (props.sailbot.direction) ? props.sailbot.direction - 180 : 180;
 
   const svgIcon = L.divIcon({
     html: `

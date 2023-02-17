@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 6
+PROTOCOL_VERSION = 7
 
 
 class PayloadType(Enum):
@@ -27,7 +27,8 @@ class PayloadType(Enum):
     CONTROL_MODE = 7
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
-    INVALID_PAYLOAD = 10  # Increase each time a new payload type is added
+    SAILBOT_DATA = 10
+    INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -260,8 +261,33 @@ class GPSPosition(ProtocolData):
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return GPSPosition(
-            int.from_bytes(bytes_[0:4], "little", signed=True),
-            int.from_bytes(bytes_[4:8], "little", signed=True),
+            latitude=int.from_bytes(bytes_[0:4], "little", signed=True),
+            longitude=int.from_bytes(bytes_[4:8], "little", signed=True),
+        )
+
+
+@dataclass
+class SailBotData(ProtocolData):
+    """Dataclass that holds direction and GPS data and heading from SailBot application."""
+
+    direction: int = 0xFFFF
+    latitude: int = 0
+    longitude: int = 0
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.direction, "dir.", 2, "big"),
+            ProtocolField(self.latitude, "latitude", 4, "big", True),
+            ProtocolField(self.longitude, "longitude", 4, "big", True),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return SailBotData(
+            direction=int.from_bytes(bytes_[0:2], "little"),
+            latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
+            longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
         )
 
 
@@ -380,6 +406,8 @@ class ProtocolPayload:
             values = GPSPosition.from_bytes(bytes_[21:29])
         elif payload_type == PayloadType.DOTBOT_DATA:
             values = DotBotData.from_bytes(bytes_[21:43])
+        elif payload_type == PayloadType.SAILBOT_DATA:
+            values = SailBotData.from_bytes(bytes_[21:31])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[21:22])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
