@@ -348,10 +348,11 @@ class ControllerBase(ABC):
             )
 
         if payload.payload_type == PayloadType.GPS_POSITION:
-            dotbot.gps_position = DotBotGPSPosition(
+            new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
                 longitude=float(payload.values.longitude) / 1e6,
             )
+            dotbot.gps_position = new_position
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
