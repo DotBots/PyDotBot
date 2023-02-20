@@ -8,7 +8,13 @@ export const ControlModeType = {
   Auto: 1,
 };
 
-export const maxWaypoints = 8;
+export const NotificationType = {
+  None: 0,
+  Reload: 1,
+  Update: 2,
+};
+
+export const maxWaypoints = 16;
 
 export const lh2_distance_threshold = 0.01;
-export const gps_distance_threshold = 10;  // 10 meters
+export const gps_distance_threshold = 5;  // 5 meters

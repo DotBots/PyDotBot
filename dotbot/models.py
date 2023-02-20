@@ -8,6 +8,9 @@ from pydantic import BaseModel
 from dotbot.protocol import ApplicationType, ControlModeType
 
 
+MAX_POSITION_HISTORY_SIZE = 1000
+
+
 class DotBotAddressModel(BaseModel):
     """Simple model to hold a DotBot address."""
 
@@ -76,11 +79,35 @@ class DotBotStatus(IntEnum):
 class DotBotQueryModel(BaseModel):
     """Model class used to filter DotBots."""
 
-    max_positions: int = 100
+    max_positions: int = MAX_POSITION_HISTORY_SIZE
     application: Optional[ApplicationType] = None
     mode: Optional[ControlModeType] = None
     status: Optional[DotBotStatus] = None
     swarm: Optional[str] = None
+
+
+class DotBotNotificationCommand(IntEnum):
+    """Notification command of a DotBot."""
+
+    NONE: int = 0
+    RELOAD: int = 1
+    UPDATE: int = 2
+
+
+class DotBotNotificationUpdate(BaseModel):
+    """Update notification model."""
+
+    address: str
+    direction: Optional[int]
+    lh2_position: Optional[DotBotLH2Position]
+    gps_position: Optional[DotBotGPSPosition]
+
+
+class DotBotNotificationModel(BaseModel):
+    """Model class used to send controller notifications."""
+
+    cmd: DotBotNotificationCommand
+    data: Optional[DotBotNotificationUpdate]
 
 
 class DotBotModel(BaseModel):

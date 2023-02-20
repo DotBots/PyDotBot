@@ -12,7 +12,7 @@ import {
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw,
   apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
 } from "./rest";
-import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints } from "./constants";
+import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints, NotificationType } from "./constants";
 import { gps_distance, lh2_distance } from "./helpers";
 
 
@@ -401,44 +401,38 @@ const DotBots = () => {
 
   const onWsMessage = (event) => {
     const message = JSON.parse(event.data);
+    console.log(message)
 
-    if (message.cmd === "reload") {
+    if (message.cmd === NotificationType.Reload) {
       fetchDotBots();
     }
-    if (message.cmd === "lh2_position" && dotbots && dotbots.length > 0) {
+    if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === message.address) {
-          const newPosition = {x: message.x, y: message.y};
-          if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
-            dotbotsTmp[idx].position_history.push(newPosition);
+        if (dotbots[idx].address === message.data.address) {
+          if (message.data.direction) {
+            dotbotsTmp[idx].direction = message.data.direction;
           }
-          dotbotsTmp[idx].lh2_position = newPosition;
-          setDotbots(dotbotsTmp);
-        }
-      }
-    }
-    if (message.cmd === "gps_position" && dotbots && dotbots.length > 0) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === message.address) {
-          const newPosition = {
-            latitude: message.latitude,
-            longitude: message.longitude,
-          };
-          if (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold) {
-            dotbotsTmp[idx].position_history.push(newPosition);
+          if (message.data.lh2_position) {
+            const newPosition = {
+              x: message.data.lh2_position.x,
+              y: message.data.lh2_position.y
+            };
+            if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
+              dotbotsTmp[idx].position_history.push(newPosition);
+            }
+            dotbotsTmp[idx].lh2_position = newPosition;
           }
-          dotbotsTmp[idx].gps_position = newPosition;
-          setDotbots(dotbotsTmp);
-        }
-      }
-    }
-    if (message.cmd === "direction" && dotbots && dotbots.length > 0) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === message.address) {
-          dotbotsTmp[idx].direction = message.direction;
+          if (message.data.gps_position) {
+            const newPosition = {
+              latitude: message.data.gps_position.latitude,
+              longitude: message.data.gps_position.longitude
+            };
+            if (dotbotsTmp[idx].gps_position && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
+              dotbotsTmp[idx].position_history.push(newPosition);
+            }
+            dotbotsTmp[idx].gps_position = newPosition;
+          }
           setDotbots(dotbotsTmp);
         }
       }
