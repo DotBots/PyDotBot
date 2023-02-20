@@ -47,6 +47,10 @@ from dotbot.models import (
     DotBotStatus,
     DotBotLH2Position,
     DotBotGPSPosition,
+    DotBotNotificationCommand,
+    DotBotNotificationModel,
+    DotBotNotificationUpdate,
+    MAX_POSITION_HISTORY_SIZE,
 )
 from dotbot.server import web
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
@@ -55,7 +59,6 @@ from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 CONTROLLERS = {}
 LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
-MAX_POSITION_HISTORY_SIZE = 1000
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
@@ -264,7 +267,7 @@ class ControllerBase(ABC):
             last_seen=time.time(),
             active=(int(source, 16) == self.header.destination),
         )
-        should_reload = False
+        notification_cmd = DotBotNotificationCommand.NONE
         if source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
             dotbot.direction = self.dotbots[source].direction
@@ -274,10 +277,15 @@ class ControllerBase(ABC):
             dotbot.waypoints = self.dotbots[source].waypoints
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
             dotbot.position_history = self.dotbots[source].position_history
-            should_reload = dotbot.status != self.dotbots[source].status
         else:
-            # only reload if a new dotbot comes in
-            should_reload = True
+            # reload if a new dotbot comes in
+            notification_cmd = DotBotNotificationCommand.RELOAD
+
+        if (
+            payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
+            and -500 <= payload.values.direction <= 500
+        ):
+            dotbot.direction = payload.values.direction
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
@@ -296,20 +304,9 @@ class ControllerBase(ABC):
                 >= LH2_POSITION_DISTANCE_THRESHOLD
             ):
                 dotbot.position_history.append(new_position)
+                notification_cmd = DotBotNotificationCommand.UPDATE
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
-            asyncio.create_task(
-                self.notify_clients(
-                    json.dumps(
-                        {
-                            "cmd": "lh2_position",
-                            "address": dotbot.address,
-                            "x": dotbot.lh2_position.x,
-                            "y": dotbot.lh2_position.y,
-                        }
-                    )
-                )
-            )
             # Send the computed position back to the dotbot
             header = ProtocolHeader(
                 destination=int(source, 16),
@@ -330,23 +327,6 @@ class ControllerBase(ABC):
                 )
             )
 
-        if (
-            payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
-            and -500 <= payload.values.direction <= 500
-        ):
-            dotbot.direction = payload.values.direction
-            asyncio.create_task(
-                self.notify_clients(
-                    json.dumps(
-                        {
-                            "cmd": "direction",
-                            "address": dotbot.address,
-                            "direction": dotbot.direction,
-                        }
-                    )
-                )
-            )
-
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
@@ -361,22 +341,26 @@ class ControllerBase(ABC):
                 dotbot.position_history.append(new_position)
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
-            asyncio.create_task(
-                self.notify_clients(
-                    json.dumps(
-                        {
-                            "cmd": "gps_position",
-                            "address": dotbot.address,
-                            "latitude": dotbot.gps_position.latitude,
-                            "longitude": dotbot.gps_position.longitude,
-                        }
-                    )
-                )
+            notification_cmd = DotBotNotificationCommand.UPDATE
+
+        if notification_cmd == DotBotNotificationCommand.UPDATE:
+            notification = DotBotNotificationModel(
+                cmd=notification_cmd.value,
+                data=DotBotNotificationUpdate(
+                    address=dotbot.address,
+                    direction=dotbot.direction,
+                    lh2_position=dotbot.lh2_position,
+                    gps_position=dotbot.gps_position,
+                ),
             )
+        else:
+            notification = DotBotNotificationModel(cmd=notification_cmd.value)
 
         self.dotbots.update({dotbot.address: dotbot})
-        if should_reload is True:
-            asyncio.create_task(self.notify_clients(json.dumps({"cmd": "reload"})))
+        if notification_cmd != DotBotNotificationCommand.NONE:
+            asyncio.create_task(
+                self.notify_clients(json.dumps(notification.dict(exclude_none=True)))
+            )
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
         """Safely send a message to a websocket client."""
