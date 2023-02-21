@@ -12,7 +12,7 @@ import {
   apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw,
   apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
 } from "./rest";
-import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints, NotificationType } from "./constants";
+import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints, NotificationType, maxPositionHistory } from "./constants";
 import { gps_distance, lh2_distance } from "./helpers";
 
 
@@ -268,6 +268,7 @@ const DotBots = () => {
   const [ dotbots, setDotbots ] = useState();
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
+  const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
   const [ showSailBotHistory, setShowSailBotHistory ] = useState(true);
 
   const control = useKeyPress("Control");
@@ -530,6 +531,8 @@ const DotBots = () => {
               updateActive={updateActive}
               showHistory={showDotBotHistory}
               updateShowHistory={updateShowHistory}
+              historySize={dotbotHistorySize}
+              setHistorySize={setDotbotHistorySize}
               mapClicked={mapClicked}
               mapSize={350}
             />
@@ -541,6 +544,8 @@ const DotBots = () => {
               updateActive={updateActive}
               showHistory={showDotBotHistory}
               updateShowHistory={updateShowHistory}
+              historySize={dotbotHistorySize}
+              setHistorySize={setDotbotHistorySize}
               mapClicked={mapClicked}
               mapSize={650}
             />

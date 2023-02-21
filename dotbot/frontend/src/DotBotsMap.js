@@ -137,8 +137,10 @@ const DotBotsMapPoint = (props) => {
       ))
     )}
     {(props.showHistory && props.dotbot.position_history.length > 0) && (
-      props.dotbot.position_history.map((point, index) => (
-        <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} opacity={opacity} history={props.dotbot.position_history} {...props} />
+      props.dotbot.position_history
+        .slice(-props.historySize)
+        .map((point, index) => (
+        <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} opacity={opacity} history={props.dotbot.position_history.slice(-props.historySize)} {...props} />
       ))
     )}
     <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
@@ -256,7 +258,7 @@ export const DotBotsMap = (props) => {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.status !== 2)
                   .filter(dotbot => dotbot.lh2_position)
-                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} active={props.active} updateActive={props.updateActive} showHistory={props.showHistory} mapSize={props.mapSize} />)
+                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} {...props} />)
               }
               {
                 ["running", "ready"].includes(calibrationState) && (
@@ -286,6 +288,10 @@ export const DotBotsMap = (props) => {
               <label className="form-check-label" htmlFor="flexCheckDisplayHistory">Display position history</label>
             </div>
           </div>
+          <form className="form-inline">
+            <label htmlFor="dotbotHistorySize">Position history size:</label>
+            <input className="form-control my-1 mr-sm-2" type="number" id="dotbotHistorySize" min="10" max="1000" value={props.historySize} onChange={event => props.setHistorySize(event.target.value)}/>
+          </form>
           <div className="d-flex">
             <button className={`btn btn-sm ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
           </div>
