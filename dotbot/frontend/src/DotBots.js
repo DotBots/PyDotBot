@@ -401,8 +401,6 @@ const DotBots = () => {
 
   const onWsMessage = (event) => {
     const message = JSON.parse(event.data);
-    console.log(message)
-
     if (message.cmd === NotificationType.Reload) {
       fetchDotBots();
     }
