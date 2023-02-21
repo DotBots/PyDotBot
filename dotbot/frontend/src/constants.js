@@ -15,6 +15,7 @@ export const NotificationType = {
 };
 
 export const maxWaypoints = 16;
+export const maxPositionHistory = 100;
 
 export const lh2_distance_threshold = 0.01;
 export const gps_distance_threshold = 5;  // 5 meters
