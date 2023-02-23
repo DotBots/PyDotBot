@@ -37,6 +37,7 @@ dependencies = [
     "pyserial       == 3.5",
     "pynput         == 1.7.6",
     "rich           == 12.6.0",
+    "structlog      == 22.3.0",
     "uvicorn        == 0.18.3",
     "websockets     == 10.4",
 ]

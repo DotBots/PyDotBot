@@ -5,6 +5,7 @@
 *.gz
 *.whl
 *.orig
+*.log
 *.egg-info/
 .coverage
 .tox/

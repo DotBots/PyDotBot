@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import serial
+import structlog
 import websockets
 
 from fastapi import WebSocket
@@ -23,6 +24,7 @@ from rich.table import Table
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbot.logger import setup_logging
 from dotbot.protocol import (
     ProtocolPayload,
     ProtocolHeader,
@@ -79,6 +81,8 @@ class ControllerSettings:
     webbrowser: bool = False
     table: bool = False
     verbose: bool = False
+    log_level: str = "info"
+    log_output: str = ""
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -130,10 +134,12 @@ class ControllerBase(ABC):
             version=PROTOCOL_VERSION,
         )
         self.settings = settings
+        setup_logging(settings.log_output, settings.log_level)
         self.hdlc_handler = HDLCHandler(verbose=settings.verbose)
         self.serial = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
+        self.logger = structlog.get_logger()
 
     @abstractmethod
     def init(self):
@@ -171,6 +177,7 @@ class ControllerBase(ABC):
                 writer.close()
                 break
         if self.settings.webbrowser is True:
+            self.logger.info("webbrowser")
             webbrowser.open("http://localhost:8000/dotbots")
 
     async def _dotbots_status_refresh(self):
@@ -187,7 +194,9 @@ class ControllerBase(ABC):
                     dotbot.status = DotBotStatus.ALIVE
                 needs_refresh = previous_status != dotbot.status
             if needs_refresh is True:
-                await self.notify_clients(json.dumps({"cmd": "reload"}))
+                await self.notify_clients(
+                    DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+                )
             await asyncio.sleep(1)
 
     async def _dotbots_table_refresh(self):
@@ -247,7 +256,7 @@ class ControllerBase(ABC):
 
     def handle_received_payload(
         self, payload: ProtocolPayload
-    ):  # pylint:disable=too-many-branches
+    ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received payload."""
         # Controller is not interested by command messages received
         if payload.payload_type in [
@@ -261,6 +270,12 @@ class ControllerBase(ABC):
         if source == GATEWAY_ADDRESS_DEFAULT:
             print(f"Invalid source in payload type {payload.payload_type}")
             return
+        self.logger.debug(
+            "payload",
+            source=source,
+            payload_type=payload.payload_type.value,
+            application=payload.header.application,
+        )
         dotbot = DotBotModel(
             address=source,
             application=payload.header.application,
@@ -286,6 +301,13 @@ class ControllerBase(ABC):
             and -500 <= payload.values.direction <= 500
         ):
             dotbot.direction = payload.values.direction
+            self.logger.debug(
+                "direction",
+                source=source,
+                payload_type=payload.payload_type.value,
+                application=payload.header.application,
+                direction=dotbot.direction,
+            )
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
@@ -297,6 +319,14 @@ class ControllerBase(ABC):
                 x=dotbot.lh2_position.x,
                 y=dotbot.lh2_position.y,
                 z=dotbot.lh2_position.z,
+            )
+            self.logger.debug(
+                "lh2",
+                source=source,
+                payload_type=payload.payload_type.value,
+                application=payload.header.application,
+                x=dotbot.lh2_position.x,
+                y=dotbot.lh2_position.y,
             )
             if (
                 not dotbot.position_history
@@ -333,6 +363,14 @@ class ControllerBase(ABC):
                 longitude=float(payload.values.longitude) / 1e6,
             )
             dotbot.gps_position = new_position
+            self.logger.debug(
+                "gps",
+                source=source,
+                payload_type=payload.payload_type.value,
+                application=payload.header.application,
+                lat=new_position.latitude,
+                long=new_position.longitude,
+            )
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
@@ -358,9 +396,7 @@ class ControllerBase(ABC):
 
         self.dotbots.update({dotbot.address: dotbot})
         if notification_cmd != DotBotNotificationCommand.NONE:
-            asyncio.create_task(
-                self.notify_clients(json.dumps(notification.dict(exclude_none=True)))
-            )
+            asyncio.create_task(self.notify_clients(notification))
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
         """Safely send a message to a websocket client."""
@@ -369,10 +405,15 @@ class ControllerBase(ABC):
         except websockets.exceptions.ConnectionClosedError:
             await asyncio.sleep(0.1)
 
-    async def notify_clients(self, message):
+    async def notify_clients(self, notification):
         """Send a message to all clients connected."""
+        notification_dict = notification.dict(exclude_none=True)
+        self.logger.info("notify", **notification_dict)
         await asyncio.gather(
-            *[self._ws_send_safe(websocket, message) for websocket in self.websockets]
+            *[
+                self._ws_send_safe(websocket, json.dumps(notification_dict))
+                for websocket in self.websockets
+            ]
         )
 
     def send_payload(self, payload: ProtocolPayload):
@@ -385,6 +426,12 @@ class ControllerBase(ABC):
         # make sure the application in the payload matches the bot application
         payload.header.application = self.dotbots[destination].application
         if self.serial is not None:
+            self.logger.debug(
+                "send_payload",
+                application=payload.header.application,
+                destination=destination,
+                payload_type=payload.payload_type.value,
+            )
             self.serial.write(hdlc_encode(payload.to_bytes()))
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
