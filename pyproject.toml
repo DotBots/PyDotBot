@@ -59,3 +59,8 @@ classifiers = [
 
 [project.scripts]
 dotbot-controller = "dotbot.main:main"
+
+[tool.ruff]
+select = ["E", "F"]
+line-length = 88
+ignore = ["E501"]
