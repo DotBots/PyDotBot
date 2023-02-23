@@ -48,8 +48,11 @@ Options:
   -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
   -w, --webbrowser                Open a web browser automatically
   -T, --table                     Display table in terminal
-  -v, --verbose                   Run in verbose mode (all payloads received are
-                                  printed in terminal)
+  -v, --verbose                   Run in verbose mode (all payloads received
+                                  are printed in terminal)
+  --log-level [debug|info|warning|error]
+                                  Logging level. Defaults to info
+  --log-output PATH               Filename where logs are redirected
   --help                          Show this message and exit.
 ```
 
