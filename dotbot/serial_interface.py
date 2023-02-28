@@ -7,6 +7,8 @@ from typing import Callable
 
 import serial
 
+from dotbot.logger import LOGGER
+
 
 PAYLOAD_CHUNK_SIZE = 64
 PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms
@@ -24,6 +26,8 @@ class SerialInterface(threading.Thread):
         self.serial = serial.Serial(port, baudrate)
         super().__init__(daemon=True)
         self.start()
+        self._logger = LOGGER.bind(context=__name__)
+        self._logger.info("Serial port thread started")
 
     def run(self):
         """Listen continuously at each byte received on serial."""
@@ -31,13 +35,15 @@ class SerialInterface(threading.Thread):
             while 1:
                 byte = self.serial.read(1)
                 if byte is None:
-                    raise SerialInterfaceException("Serial port disconnected")
+                    msg = "Serial port disconnected"
+                    self._logger.warning(msg)
+                    raise SerialInterfaceException(msg)
                 self.callback(byte)
         except serial.serialutil.PortNotOpenError as exc:
-            print(f"{exc}")
+            self._logger.error(f"{exc}")
             raise SerialInterfaceException(f"{exc}") from exc
         except serial.serialutil.SerialException as exc:
-            print(f"{exc}")
+            self._logger.error(f"{exc}")
             raise SerialInterfaceException(f"{exc}") from exc
 
     def write(self, bytes_):

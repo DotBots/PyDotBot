@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
+from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotCalibrationStateModel,
     DotBotModel,
@@ -312,12 +313,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
 async def web(controller):
     """Starts the web server application."""
+    logger = LOGGER.bind(context=__name__)
     app.controller = controller
     config = uvicorn.Config(app, port=8000, log_level="warning")
     server = uvicorn.Server(config)
     try:
+        logger.info("Starting web server")
         await server.serve()
     except asyncio.exceptions.CancelledError:
-        print("Web server cancelled")
+        logger.info("Web server cancelled")
     else:
+        logger.info("Stopping web server")
         raise SystemExit()

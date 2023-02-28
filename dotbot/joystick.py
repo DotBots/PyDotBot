@@ -36,6 +36,8 @@ class JoystickController(ControllerBase):
                 f"Not enough axes on your joystick. {num_axes} found, expected at least {JOYSTICK_AXIS_COUNT}."
             )
         self.previous_positions = NULL_POSITION
+        self.logger = self.logger.bind(controller_type="joystick", context=__name__)
+        self.logger.info("Controller initialized", num_axes=num_axes)
 
     def pos_from_joystick(self):
         """Fetch positions of the joystick."""
@@ -65,5 +67,6 @@ class JoystickController(ControllerBase):
                         CommandMoveRaw(*positions),
                     )
                 )
+                self.logger.info(keyboard_event="move", positions=positions)
             self.previous_positions = positions
             await asyncio.sleep(REFRESH_PERIOD)  # 50ms delay between each update

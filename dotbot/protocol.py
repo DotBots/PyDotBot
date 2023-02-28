@@ -101,7 +101,7 @@ class ProtocolHeader(ProtocolData):
             int.from_bytes(bytes_[0:8], "big"),  # destination
             int.from_bytes(bytes_[8:16], "big"),  # source
             int.from_bytes(bytes_[16:18], "big"),  # swarm_id
-            int.from_bytes(bytes_[18:19], "big"),  # application
+            ApplicationType(int.from_bytes(bytes_[18:19], "big")),  # application
             int.from_bytes(bytes_[19:20], "big"),  # version
         )
 

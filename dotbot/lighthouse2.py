@@ -16,6 +16,7 @@ from typing import List, Optional
 import cv2
 import numpy as np
 
+from dotbot.logger import LOGGER
 from dotbot.models import DotBotLH2Position, DotBotCalibrationStateModel
 from dotbot.protocol import Lh2RawData
 
@@ -121,6 +122,8 @@ class LighthouseManager:
         )
         self.calibration_points_available = [False] * len(self.reference_points)
         self.last_raw_data = None
+        self.logger = LOGGER.bind(context=__name__)
+        self.logger.info("Lighthouse initialized")
 
     @property
     def state_model(self) -> DotBotCalibrationStateModel:
@@ -174,10 +177,10 @@ class LighthouseManager:
     def compute_calibration(self):  # pylint: disable=too-many-locals
         """Compute the calibration values and matrices."""
         if self.state != LighthouseManagerState.Ready:
-            print("Calibration points are not ready, cannot compute calibration")
+            self.logger.warning("Not ready, skipping calibration")
             return
 
-        print("Calibration points:", self.calibration_points)
+        self.logger.info("Calibrating", points=self.calibration_points)
 
         camera_points = [[], []]
         for data in self.calibration_points[0]:
@@ -241,12 +244,11 @@ class LighthouseManager:
 
         self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
 
-        print("Calibration data:", self.calibration_data)
-
         with open(self.calibration_output_path, "wb") as output_file:
             pickle.dump(self.calibration_data, output_file)
 
         self.state = LighthouseManagerState.Calibrated
+        self.logger.info("Calibration done", data=self.calibration_data)
 
     def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
         """Compute the position coordinates from LH2 raw data and available calibration."""

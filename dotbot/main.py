@@ -25,6 +25,7 @@ from dotbot.controller import (
 )
 from dotbot.keyboard import KeyboardController
 from dotbot.joystick import JoystickController
+from dotbot.logger import setup_logging
 
 
 CONTROLLER_TYPE_DEFAULT = "keyboard"
@@ -127,6 +128,8 @@ def main(
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
+    handlers = ["console", "file"] if table is False else ["file"]
+    setup_logging(log_output, log_level, handlers)
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
     try:
@@ -141,8 +144,6 @@ def main(
                 webbrowser,
                 table,
                 verbose,
-                log_level,
-                log_output,
             ),
         )
         asyncio.run(controller.run())

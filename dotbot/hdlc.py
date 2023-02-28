@@ -2,6 +2,8 @@
 
 from enum import Enum
 
+from dotbot.logger import LOGGER
+
 
 HDLC_FLAG = b"\x7E"
 HDLC_FLAG_ESCAPED = b"\x5E"
@@ -179,12 +181,12 @@ class HDLCState(Enum):
 class HDLCHandler:
     """Handles the reception of an HDLC frame byte by byte."""
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self):
         self.state = HDLCState.IDLE
         self.fcs = HDLC_FCS_INIT
         self.output = bytearray()
         self.escape_byte = False
-        self.verbose = verbose
+        self._logger = LOGGER.bind(context=__name__)
 
     @property
     def payload(self):
@@ -194,12 +196,10 @@ class HDLCHandler:
 
         self.state = HDLCState.IDLE
         if len(self.output) < 2:
-            if self.verbose is True:
-                print("Invalid payload")
+            self._logger.error("Invalid payload")
             return bytearray()
         if self.fcs != HDLC_FCS_OK:
-            if self.verbose is True:
-                print("Invalid FCS")
+            self._logger.error("Invalid FCS")
             return bytearray()
         self.fcs = HDLC_FCS_INIT
         return self.output[:-2]
