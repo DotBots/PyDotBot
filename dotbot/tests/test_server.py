@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from unittest.mock import MagicMock, patch
 
@@ -631,10 +632,10 @@ async def test_ws_client():
 
 @pytest.mark.asyncio
 @patch("uvicorn.Server.serve")
-async def test_web(serve, capsys):
+async def test_web(serve, caplog):
+    caplog.set_level(logging.DEBUG, logger="pydotbot")
     with pytest.raises(SystemExit):
         await web(None)
     serve.side_effect = asyncio.exceptions.CancelledError()
     await web(None)
-    out, _ = capsys.readouterr()
-    assert "Web server cancelled" in out
+    assert "Web server cancelled" in caplog.text

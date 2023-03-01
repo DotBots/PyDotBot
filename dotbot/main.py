@@ -2,6 +2,7 @@
 
 """Main module of the Dotbot controller command line tool."""
 
+import os
 import sys
 import asyncio
 
@@ -24,6 +25,7 @@ from dotbot.controller import (
 )
 from dotbot.keyboard import KeyboardController
 from dotbot.joystick import JoystickController
+from dotbot.logger import setup_logging
 
 
 CONTROLLER_TYPE_DEFAULT = "keyboard"
@@ -97,6 +99,18 @@ DEFAULT_CONTROLLERS = {
     default=False,
     help="Run in verbose mode (all payloads received are printed in terminal)",
 )
+@click.option(
+    "--log-level",
+    type=click.Choice(["debug", "info", "warning", "error"]),
+    default="info",
+    help="Logging level. Defaults to info",
+)
+@click.option(
+    "--log-output",
+    type=click.Path(),
+    default=os.path.join(os.getcwd(), "pydotbot.log"),
+    help="Filename where logs are redirected",
+)
 def main(
     type,
     port,
@@ -107,11 +121,15 @@ def main(
     webbrowser,
     table,
     verbose,
+    log_level,
+    log_output,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
+    handlers = ["console", "file"] if table is False else ["file"]
+    setup_logging(log_output, log_level, handlers)
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
     try:

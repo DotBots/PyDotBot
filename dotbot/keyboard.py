@@ -21,6 +21,7 @@ from dotbot.protocol import (
     CommandRgbLed,
 )
 from dotbot.controller import ControllerBase
+from dotbot.logger import LOGGER
 
 
 DIR_KEYS = [
@@ -103,6 +104,8 @@ class KeyboardController(ControllerBase):
         self.previous_speeds = (0, 0)
         self.active_keys = []
         self.event_queue = asyncio.Queue()
+        self._logger = LOGGER.bind(context=__name__)
+        self._logger.info("Controller initialized")
 
     async def update_active_keys(self):
         """Coroutine used to handle keyboard events asynchronously."""
@@ -116,6 +119,7 @@ class KeyboardController(ControllerBase):
                 self.event_queue.put_nowait,
                 KeyboardEvent(KeyboardEventType.PRESSED, key),
             )
+            self._logger.debug("key pressed", key=key)
 
         def on_release(key):
             """Callback called on each keyboard key release event."""
@@ -125,6 +129,7 @@ class KeyboardController(ControllerBase):
                 self.event_queue.put_nowait,
                 KeyboardEvent(KeyboardEventType.RELEASED, key),
             )
+            self._logger.debug("key released", key=key)
 
         listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.start()
@@ -143,6 +148,7 @@ class KeyboardController(ControllerBase):
                             CommandRgbLed(red, green, blue),
                         )
                     )
+                    self._logger.info("color pressed", red=red, green=green, blue=blue)
                     continue
                 self.active_keys.append(event.key)
             self.refresh_speeds()
@@ -196,6 +202,7 @@ class KeyboardController(ControllerBase):
                     CommandMoveRaw(0, left_speed, 0, right_speed),
                 )
             )
+            self._logger.info("refresh speeds", left=left_speed, right=right_speed)
         # pylint: disable=attribute-defined-outside-init
         self.previous_speeds = (left_speed, right_speed)
 
