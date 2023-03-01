@@ -56,7 +56,6 @@ class ProtocolField:
     value: int = 0
     name: str = ""
     length: int = 1
-    endian: str = "big"
     signed: bool = False
 
 
@@ -88,21 +87,21 @@ class ProtocolHeader(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.destination, "dst", 8, "big"),
-            ProtocolField(self.source, "src", 8, "big"),
-            ProtocolField(self.swarm_id, "swarm id", 2, "big"),
-            ProtocolField(self.application, "app."),
-            ProtocolField(self.version, "ver."),
+            ProtocolField(self.destination, name="dst", length=8),
+            ProtocolField(self.source, name="src", length=8),
+            ProtocolField(self.swarm_id, name="swarm id", length=2),
+            ProtocolField(self.application, name="app."),
+            ProtocolField(self.version, name="ver."),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return ProtocolHeader(
-            int.from_bytes(bytes_[0:8], "big"),  # destination
-            int.from_bytes(bytes_[8:16], "big"),  # source
-            int.from_bytes(bytes_[16:18], "big"),  # swarm_id
-            ApplicationType(int.from_bytes(bytes_[18:19], "big")),  # application
-            int.from_bytes(bytes_[19:20], "big"),  # version
+            int.from_bytes(bytes_[0:8], "little"),  # destination
+            int.from_bytes(bytes_[8:16], "little"),  # source
+            int.from_bytes(bytes_[16:18], "little"),  # swarm_id
+            ApplicationType(int.from_bytes(bytes_[18:19], "little")),  # application
+            int.from_bytes(bytes_[19:20], "little"),  # version
         )
 
 
@@ -118,10 +117,10 @@ class CommandMoveRaw(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.left_x, "lx", 1, "big", True),
-            ProtocolField(self.left_y, "ly", 1, "big", True),
-            ProtocolField(self.right_x, "rx", 1, "big", True),
-            ProtocolField(self.right_y, "ry", 1, "big", True),
+            ProtocolField(self.left_x, name="lx", length=1, signed=True),
+            ProtocolField(self.left_y, name="ly", length=1, signed=True),
+            ProtocolField(self.right_x, name="rx", length=1, signed=True),
+            ProtocolField(self.right_y, name="ry", length=1, signed=True),
         ]
 
     @staticmethod
@@ -140,9 +139,9 @@ class CommandRgbLed(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.red, "red"),
-            ProtocolField(self.green, "green"),
-            ProtocolField(self.blue, "blue"),
+            ProtocolField(self.red, name="red"),
+            ProtocolField(self.green, name="green"),
+            ProtocolField(self.blue, name="blue"),
         ]
 
     @staticmethod
@@ -161,9 +160,9 @@ class Lh2RawLocation(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.bits, "bits", 8),
-            ProtocolField(self.polynomial_index, "poly", 1),
-            ProtocolField(self.offset, "off.", 1, "big", True),
+            ProtocolField(self.bits, name="bits", length=8),
+            ProtocolField(self.polynomial_index, name="poly", length=1),
+            ProtocolField(self.offset, name="off.", length=1, signed=True),
         ]
 
     @staticmethod
@@ -206,17 +205,17 @@ class LH2Location(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.pos_x, "x", 4, "little"),
-            ProtocolField(self.pos_y, "y", 4, "little"),
-            ProtocolField(self.pos_z, "z", 4, "little"),
+            ProtocolField(self.pos_x, name="x", length=4),
+            ProtocolField(self.pos_y, name="y", length=4),
+            ProtocolField(self.pos_z, name="z", length=4),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return LH2Location(
-            int.from_bytes(bytes_[0:4], "big"),
-            int.from_bytes(bytes_[4:8], "big"),
-            int.from_bytes(bytes_[8:12], "big"),
+            int.from_bytes(bytes_[0:4], "little"),
+            int.from_bytes(bytes_[4:8], "little"),
+            int.from_bytes(bytes_[8:12], "little"),
         )
 
 
@@ -229,7 +228,7 @@ class DotBotData(ProtocolData):
 
     @property
     def fields(self) -> List[ProtocolField]:
-        _fields = [ProtocolField(self.direction, "dir.", 2, "big", True)]
+        _fields = [ProtocolField(self.direction, name="dir.", length=2, signed=True)]
         _fields += list(chain(*[location.fields for location in self.locations]))
         return _fields
 
@@ -254,8 +253,8 @@ class GPSPosition(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.latitude, "latitude", 4, "big", True),
-            ProtocolField(self.longitude, "longitude", 4, "big", True),
+            ProtocolField(self.latitude, name="latitude", length=4, signed=True),
+            ProtocolField(self.longitude, name="longitude", length=4, signed=True),
         ]
 
     @staticmethod
@@ -277,9 +276,9 @@ class SailBotData(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.direction, "dir.", 2, "big"),
-            ProtocolField(self.latitude, "latitude", 4, "big", True),
-            ProtocolField(self.longitude, "longitude", 4, "big", True),
+            ProtocolField(self.direction, name="dir.", length=2),
+            ProtocolField(self.latitude, name="latitude", length=4, signed=True),
+            ProtocolField(self.longitude, name="longitude", length=4, signed=True),
         ]
 
     @staticmethod
@@ -330,8 +329,8 @@ class LH2Waypoints(ProtocolData):
 
     @property
     def fields(self) -> List[ProtocolField]:
-        _fields = [ProtocolField(len(self.waypoints), "len.")]
-        _fields += [ProtocolField(value=self.threshold, name="thr.", endian="little")]
+        _fields = [ProtocolField(len(self.waypoints), name="len.")]
+        _fields += [ProtocolField(value=self.threshold, name="thr.")]
         _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
         return _fields
 
@@ -349,11 +348,9 @@ class GPSWaypoints(ProtocolData):
 
     @property
     def fields(self) -> List[ProtocolField]:
-        _fields = [ProtocolField(len(self.waypoints), "len.")]
-        _fields += [ProtocolField(value=self.threshold, name="thr.", endian="little")]
+        _fields = [ProtocolField(len(self.waypoints), name="len.")]
+        _fields += [ProtocolField(value=self.threshold, name="thr.")]
         _fields += list(chain(*[waypoint.fields for waypoint in self.waypoints]))
-        for field in _fields:
-            field.endian = "little"
         return _fields
 
     @staticmethod
@@ -369,17 +366,17 @@ class ProtocolPayload:
     payload_type: PayloadType
     values: ProtocolData
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, endian="big") -> bytes:
         """Converts a payload to a bytearray."""
         buffer = bytearray()
         for field in self.header.fields:
             buffer += int(field.value).to_bytes(
-                field.length, field.endian, signed=field.signed
+                length=field.length, byteorder=endian, signed=field.signed
             )
-        buffer += int(self.payload_type.value).to_bytes(1, "big")
+        buffer += int(self.payload_type.value).to_bytes(length=1, byteorder=endian)
         for field in self.values.fields:
             buffer += int(field.value).to_bytes(
-                field.length, field.endian, signed=field.signed
+                length=field.length, byteorder=endian, signed=field.signed
             )
         return buffer
 
@@ -436,14 +433,14 @@ class ProtocolPayload:
             f" {field.name:<{4 * field.length + 1}}" for field in self.values.fields
         ]
         header_values = [
-            f" 0x{hexlify(int(field.value).to_bytes(field.length, field.endian, signed=field.signed)).decode():<{4 * field.length - 1}}"
+            f" 0x{hexlify(int(field.value).to_bytes(field.length, 'big', signed=field.signed)).decode():<{4 * field.length - 1}}"
             for field in self.header.fields
         ]
         type_value = [
-            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'little')).decode():<3}"
+            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'big')).decode():<3}"
         ]
         values_values = [
-            f" 0x{hexlify(int(field.value).to_bytes(field.length, field.endian, signed=field.signed)).decode():<{4 * field.length - 1}}"
+            f" 0x{hexlify(int(field.value).to_bytes(field.length, 'big', signed=field.signed)).decode():<{4 * field.length - 1}}"
             for field in self.values.fields
         ]
         num_bytes = (

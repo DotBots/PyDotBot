@@ -27,7 +27,7 @@ from dotbot.protocol import (
     "payload,expected",
     [
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x00\x00\x42\x00\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x00\x00\x42\x00\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -38,7 +38,7 @@ from dotbot.protocol import (
             id="MoveRaw",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x01\x42\x42\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x01\x42\x42\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -49,12 +49,12 @@ from dotbot.protocol import (
             id="RGBLed",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x02"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
                 ),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
@@ -67,8 +67,8 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x03"
-            b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x03"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -79,7 +79,7 @@ from dotbot.protocol import (
             id="LH2Location",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x04",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x04",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -90,7 +90,7 @@ from dotbot.protocol import (
             id="Advertisement",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x05"
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x05"
             b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -102,13 +102,13 @@ from dotbot.protocol import (
             id="GPSPosition",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x06"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x06"
             b"-\x00"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
                 ),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
@@ -122,7 +122,7 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x12\x34\x00\x07\x07\x01",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x07\x01",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
@@ -133,12 +133,12 @@ from dotbot.protocol import (
             id="ControlMode",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x08\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x08\x02\x0a"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
                 ),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints(threshold=0, waypoints=[]),
@@ -146,11 +146,11 @@ from dotbot.protocol import (
             id="LH2Waypoints",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x09\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
                 ),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints(threshold=0, waypoints=[]),
@@ -158,11 +158,11 @@ from dotbot.protocol import (
             id="GPSWaypoints",
         ),
         pytest.param(
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x07\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x0a"
             b"-\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x2442, 0, PROTOCOL_VERSION
+                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
                 ),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(direction=45, latitude=48856614, longitude=2352221),
@@ -204,52 +204,52 @@ def test_protocol_parser(payload, expected):
     [
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 66, 0, 66),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x00\x00\x42\x00\x42",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x00\x00\x42\x00\x42",
             id="MoveRaw1",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 0, 0, 0),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x00\x00\x00\x00\x00",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x00\x00\x00\x00\x00",
             id="MoveRaw2",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(-10, -10, -10, -10),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x00\xf6\xf6\xf6\xf6",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x00\xf6\xf6\xf6\xf6",
             id="MoveRaw3",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(0, 0, 0),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x01\x00\x00\x00",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x01\x00\x00\x00",
             id="RGBLed1",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(255, 255, 255),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x01\xff\xff\xff",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x01\xff\xff\xff",
             id="RGBLed2",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
                     [
@@ -258,43 +258,43 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x02"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             id="LH2RawData",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.LH2_LOCATION,
                 LH2Location(1000, 1000, 2),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x03"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x03"
+            b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
             id="LH2Location",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x04",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x04",
             id="Advertisement",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.GPS_POSITION,
                 GPSPosition(48856614, 2352221),  # Paris coordinates
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x05"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x05"
             b"\x02\xe9~&\x00#\xe4]",
             id="GPSPosition",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
                     direction=45,
@@ -304,7 +304,7 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x06"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x06"
             b"\x00-"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
@@ -312,30 +312,30 @@ def test_protocol_parser(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.CONTROL_MODE,
                 ControlMode(ControlModeType.AUTO),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x07\x01",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x07\x01",
             id="ControlMode",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints(
                     threshold=10,
                     waypoints=[LH2Location(1000, 1000, 2), LH2Location(1000, 1000, 2)],
                 ),
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x08\x02\x0a"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x08\x02\x0a"
+            b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02"
+            b"\x00\x00\x03\xe8\x00\x00\x03\xe8\x00\x00\x00\x02",
             id="LH2Waypoints",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints(
                     threshold=10,
@@ -345,19 +345,19 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),  # Paris coordinates x 2
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x09\x02\x0a"
-            b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x09\x02\x0a"
+            b"\x02\xe9~&\x00#\xe4]\x02\xe9~&\x00#\xe4]",
             id="GPSWaypoints",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(
                     direction=45, latitude=48856614, longitude=2352221
                 ),  # Paris coordinates
             ),
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x24\x42\x00\x01\x0a"
+            b"\x11\x22\x33\x44\x55\x66\x77\x88\x12\x22\x12\x22\x12\x22\x12\x21\x14\x42\x00\x01\x0a"
             b"\x00-\x02\xe9~&\x00#\xe4]",
             id="SailBotData",
         ),
@@ -438,7 +438,7 @@ def test_payload(payload, expected):
                 "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
                 "                 +------------------+------------------+------------------+\n"
                 "                 | x                | y                | z                |\n"
-                "                 | 0xe8030000       | 0xe8030000       | 0x02000000       |\n"
+                "                 | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
                 "                 +------------------+------------------+------------------+\n"
                 "\n"
             ),
@@ -530,7 +530,7 @@ def test_payload(payload, expected):
                 "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
                 "                 | len. | thr. | x                | y                | z                | x                | y                | z                |\n"
-                "                 | 0x02 | 0x0a | 0xe8030000       | 0xe8030000       | 0x02000000       | 0xe8030000       | 0xe8030000       | 0x02000000       |\n"
+                "                 | 0x02 | 0x0a | 0x000003e8       | 0x000003e8       | 0x00000002       | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
                 "\n"
             ),
@@ -555,7 +555,7 @@ def test_payload(payload, expected):
                 "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+\n"
                 "                 | len. | thr. | latitude         | longitude        | latitude         | longitude        |\n"
-                "                 | 0x02 | 0x0a | 0x267ee902       | 0x5de42300       | 0x267ee902       | 0x5de42300       |\n"
+                "                 | 0x02 | 0x0a | 0x02e97e26       | 0x0023e45d       | 0x02e97e26       | 0x0023e45d       |\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+\n"
                 "\n"
             ),
