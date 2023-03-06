@@ -366,7 +366,7 @@ class ProtocolPayload:
     payload_type: PayloadType
     values: ProtocolData
 
-    def to_bytes(self, endian="big") -> bytes:
+    def to_bytes(self, endian="little") -> bytes:
         """Converts a payload to a bytearray."""
         buffer = bytearray()
         for field in self.header.fields:
