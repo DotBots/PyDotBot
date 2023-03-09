@@ -79,6 +79,7 @@ class ControllerSettings:
     swarm_id: str
     webbrowser: bool = False
     table: bool = False
+    handshake: bool = False
     verbose: bool = False
 
 
@@ -154,9 +155,25 @@ class ControllerBase(ABC):
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
+        async def _wait_for_handshake(queue):
+            """Waits for handshake reply and checks it."""
+            try:
+                byte = await queue.get()
+            except asyncio.exceptions.CancelledError as exc:
+                raise SerialInterfaceException("Handshake timeout") from exc
+            if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
+                raise SerialInterfaceException("Handshake failed")
+
         self.serial = SerialInterface(
             self.settings.port, self.settings.baudrate, on_byte_received
         )
+
+        self.serial.write(
+            int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
+        )
+        if self.settings.handshake is True:
+            await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
+            self.logger.info("Serial handshake success")
 
         while 1:
             byte = await queue.get()
@@ -189,7 +206,17 @@ class ControllerBase(ABC):
                     dotbot.status = DotBotStatus.LOST
                 else:
                     dotbot.status = DotBotStatus.ALIVE
+                logger = self.logger.bind(
+                    source=dotbot.address,
+                    application=dotbot.application.name,
+                )
                 needs_refresh = previous_status != dotbot.status
+                if needs_refresh:
+                    logger.info(
+                        "Dotbot status changed",
+                        previous_status=previous_status.name,
+                        status=dotbot.status.name,
+                    )
             if needs_refresh is True:
                 await self.notify_clients(
                     DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
@@ -280,6 +307,7 @@ class ControllerBase(ABC):
         notification_cmd = DotBotNotificationCommand.NONE
         if source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
+            dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
@@ -289,6 +317,7 @@ class ControllerBase(ABC):
             dotbot.position_history = self.dotbots[source].position_history
         else:
             # reload if a new dotbot comes in
+            logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
 
         if (
@@ -445,11 +474,13 @@ class ControllerBase(ABC):
                 tasks.append(asyncio.create_task(self._dotbots_table_refresh()))
             await asyncio.gather(*tasks)
         except (
-            SystemExit,
             SerialInterfaceException,
             serial.serialutil.SerialException,
         ) as exc:
-            self.logger.info(f"Stopping controller {exc}")
+            self.logger.error(f"Error: {exc}")
+        except SystemExit:
+            self.logger.info("Stopping controller")
+        finally:
             for task in tasks:
                 task.cancel()
 

@@ -315,7 +315,7 @@ async def web(controller):
     """Starts the web server application."""
     logger = LOGGER.bind(context=__name__)
     app.controller = controller
-    config = uvicorn.Config(app, port=8000, log_level="warning")
+    config = uvicorn.Config(app, port=8000, log_level="critical")
     server = uvicorn.Server(config)
     try:
         logger.info("Starting web server")

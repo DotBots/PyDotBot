@@ -111,6 +111,12 @@ DEFAULT_CONTROLLERS = {
     default=os.path.join(os.getcwd(), "pydotbot.log"),
     help="Filename where logs are redirected",
 )
+@click.option(
+    "--handshake",
+    is_flag=True,
+    default=False,
+    help="Perform a basic handshake with the gateway board on startup",
+)
 def main(
     type,
     port,
@@ -123,6 +129,7 @@ def main(
     verbose,
     log_level,
     log_output,
+    handshake,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """BotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -143,6 +150,7 @@ def main(
                 swarm_id,
                 webbrowser,
                 table,
+                handshake,
                 verbose,
             ),
         )
