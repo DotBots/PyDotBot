@@ -189,7 +189,17 @@ class ControllerBase(ABC):
                     dotbot.status = DotBotStatus.LOST
                 else:
                     dotbot.status = DotBotStatus.ALIVE
+                logger = self.logger.bind(
+                    source=dotbot.address,
+                    application=dotbot.application.name,
+                )
                 needs_refresh = previous_status != dotbot.status
+                if needs_refresh:
+                    logger.info(
+                        "Dotbot status changed",
+                        previous_status=previous_status.name,
+                        status=dotbot.status.name,
+                    )
             if needs_refresh is True:
                 await self.notify_clients(
                     DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
@@ -280,6 +290,7 @@ class ControllerBase(ABC):
         notification_cmd = DotBotNotificationCommand.NONE
         if source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
+            dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
@@ -289,6 +300,7 @@ class ControllerBase(ABC):
             dotbot.position_history = self.dotbots[source].position_history
         else:
             # reload if a new dotbot comes in
+            logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
 
         if (
@@ -445,11 +457,13 @@ class ControllerBase(ABC):
                 tasks.append(asyncio.create_task(self._dotbots_table_refresh()))
             await asyncio.gather(*tasks)
         except (
-            SystemExit,
             SerialInterfaceException,
             serial.serialutil.SerialException,
         ) as exc:
-            self.logger.info(f"Stopping controller {exc}")
+            self.logger.error(f"Error: {exc}")
+        except SystemExit:
+            self.logger.info("Stopping controller")
+        finally:
             for task in tasks:
                 task.cancel()
 
