@@ -53,6 +53,8 @@ Options:
   --log-level [debug|info|warning|error]
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
+  --handshake                     Perform a basic handshake with the gateway
+                                  board on startup
   --help                          Show this message and exit.
 ```
 
