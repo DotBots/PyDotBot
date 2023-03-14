@@ -147,6 +147,7 @@ class LighthouseManager:
     def add_calibration_point(self, index):
         """Register a new camera points for calibration."""
         if self.last_raw_data is None:
+            self.logger.warning("Missing raw data", index=index)
             return
 
         self.calibration_points_available[index] = True
@@ -164,15 +165,16 @@ class LighthouseManager:
             calculate_camera_point(
                 counts[0],
                 counts[1],
-                self.last_raw_data.locations[2].polynomial_index,
+                self.last_raw_data.locations[1].polynomial_index,
             ),
             dtype=np.float64,
         )
 
         if all(self.calibration_points_available) is False:
             self.state = LighthouseManagerState.CalibrationInProgress
-        if all(self.calibration_points_available):
+        if all(self.calibration_points_available) is True:
             self.state = LighthouseManagerState.Ready
+        self.logger.info("Calibration point added", index=index, state=self.state)
 
     def compute_calibration(self):  # pylint: disable=too-many-locals
         """Compute the calibration values and matrices."""
