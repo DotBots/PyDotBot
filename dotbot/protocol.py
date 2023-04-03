@@ -28,7 +28,9 @@ class PayloadType(Enum):
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
-    INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
+    EKF_DEBUG = 11
+
+    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -359,6 +361,39 @@ class GPSWaypoints(ProtocolData):
 
 
 @dataclass
+class EKFDebugData(ProtocolData):
+    """Dataclass that holds the internal state and control variables """
+
+    x: int = 0xFFFF
+    y: int = 0xFFFF
+    theta: int = 0xFFFF
+    V: int = 0xFFFF
+    w: int = 0xFFFF
+    angle_to_target: int = 0xFFFF
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.x, name="x", length=4, signed=True),
+            ProtocolField(self.y, name="y", length=4, signed=True),
+            ProtocolField(self.theta, name="theta", length=4, signed=True),
+            ProtocolField(self.V, name="V", length=2),
+            ProtocolField(self.w, name="w", length=4, signed=True),
+            ProtocolField(self.angle_to_target, name="angle_to_target", length=4, signed=True),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return EKFDebugData(
+            x=int.from_bytes(bytes_[0:4], "little", signed=True),
+            y=int.from_bytes(bytes_[4:8], "little", signed=True),
+            theta=int.from_bytes(bytes_[8:12], "little", signed=True),
+            V=int.from_bytes(bytes_[12:14], "little"),
+            w=int.from_bytes(bytes_[14:18], "little", signed=True),
+            angle_to_target=int.from_bytes(bytes_[18:22], "little", signed=True),
+        )
+
+@dataclass
 class ProtocolPayload:
     """Manage a protocol complete payload (header + type + values)."""
 
@@ -411,6 +446,8 @@ class ProtocolPayload:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
             values = GPSWaypoints.from_bytes(None)
+        elif payload_type == PayloadType.EKF_DEBUG:
+            values = EKFDebugData.from_bytes(bytes_[21:41])            
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type}'"
