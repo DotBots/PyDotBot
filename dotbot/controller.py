@@ -461,6 +461,7 @@ class ControllerBase(ABC):
 
     async def run(self):
         """Launch the controller."""
+        tasks = []
         try:
             self.init()
             tasks = [

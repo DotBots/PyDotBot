@@ -26,17 +26,19 @@ class JoystickController(ControllerBase):
         """Initialize the joystick controller."""
         pygame.init()  # pylint: disable=no-member
         pygame.joystick.init()  # joysticks initialization
+        self.logger = self.logger.bind(controller_type="joystick", context=__name__)
         if pygame.joystick.get_count() == 0:
+            self.logger.error("No joystick connected")
             sys.exit("Error: No joystick connected.\nExiting program...")
         self.joystick = pygame.joystick.Joystick(0)  # instantiation of a joystick
         self.joystick.init()  # initialization of the joystick
         num_axes = self.joystick.get_numaxes()
         if num_axes < JOYSTICK_AXIS_COUNT:
+            self.logger.error("Not enough axes")
             sys.exit(
                 f"Not enough axes on your joystick. {num_axes} found, expected at least {JOYSTICK_AXIS_COUNT}."
             )
         self.previous_positions = NULL_POSITION
-        self.logger = self.logger.bind(controller_type="joystick", context=__name__)
         self.logger.info("Controller initialized", num_axes=num_axes)
 
     def pos_from_joystick(self):
@@ -67,6 +69,6 @@ class JoystickController(ControllerBase):
                         CommandMoveRaw(*positions),
                     )
                 )
-                self.logger.info(keyboard_event="move", positions=positions)
+                self.logger.info("refresh positions", positions=positions)
             self.previous_positions = positions
             await asyncio.sleep(REFRESH_PERIOD)  # 50ms delay between each update
