@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 
 
 class PayloadType(Enum):
@@ -377,7 +377,7 @@ class EKFDebugData(ProtocolData):
             ProtocolField(self.x, name="x", length=4, signed=True),
             ProtocolField(self.y, name="y", length=4, signed=True),
             ProtocolField(self.theta, name="theta", length=4, signed=True),
-            ProtocolField(self.V, name="V", length=2),
+            ProtocolField(self.V, name="V", length=2, signed=True),
             ProtocolField(self.w, name="w", length=4, signed=True),
             ProtocolField(self.angle_to_target, name="angle_to_target", length=4, signed=True),
         ]
@@ -388,7 +388,7 @@ class EKFDebugData(ProtocolData):
             x=int.from_bytes(bytes_[0:4], "little", signed=True),
             y=int.from_bytes(bytes_[4:8], "little", signed=True),
             theta=int.from_bytes(bytes_[8:12], "little", signed=True),
-            V=int.from_bytes(bytes_[12:14], "little"),
+            V=int.from_bytes(bytes_[12:14], "little", signed=True),
             w=int.from_bytes(bytes_[14:18], "little", signed=True),
             angle_to_target=int.from_bytes(bytes_[18:22], "little", signed=True),
         )
