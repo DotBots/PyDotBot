@@ -294,6 +294,7 @@ class ControllerBase(ABC):
             source=source,
             payload_type=payload.payload_type.name,
             application=payload.header.application.name,
+            msg_id=payload.header.msg_id,
         )
         if source == GATEWAY_ADDRESS_DEFAULT:
             logger.warning("Invalid source in payload")
