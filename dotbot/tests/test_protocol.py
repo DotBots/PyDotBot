@@ -27,10 +27,15 @@ from dotbot.protocol import (
     "payload,expected",
     [
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x00\x00\x42\x00\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x00\x00\x42\x00\x42",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 66, 0, 66),
@@ -38,10 +43,15 @@ from dotbot.protocol import (
             id="MoveRaw",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x01\x42\x42\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x01\x42\x42\x42",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(66, 66, 66),
@@ -49,12 +59,17 @@ from dotbot.protocol import (
             id="RGBLed",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x02"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
@@ -67,11 +82,16 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x03"
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x03"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.LH2_LOCATION,
                 LH2Location(1000, 1000, 2),
@@ -79,10 +99,15 @@ from dotbot.protocol import (
             id="LH2Location",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x04",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x04",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
@@ -90,11 +115,16 @@ from dotbot.protocol import (
             id="Advertisement",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x05"
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x05"
             b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.GPS_POSITION,
                 GPSPosition(48856614, 2352221),  # Paris coordinates
@@ -102,13 +132,18 @@ from dotbot.protocol import (
             id="GPSPosition",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x06"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x06"
             b"-\x00"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
@@ -122,10 +157,15 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x07\x07\x01",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x07\x01",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122221111111111, 0x1212121212121212, 0x1234, 0, PROTOCOL_VERSION
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.CONTROL_MODE,
                 ControlMode(ControlModeType.AUTO),
@@ -133,12 +173,17 @@ from dotbot.protocol import (
             id="ControlMode",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x08\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x08\x02\x0a"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints(threshold=0, waypoints=[]),
@@ -146,11 +191,16 @@ from dotbot.protocol import (
             id="LH2Waypoints",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x09\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints(threshold=0, waypoints=[]),
@@ -158,11 +208,16 @@ from dotbot.protocol import (
             id="GPSWaypoints",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x07\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x0a"
             b"-\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
-                    0x1122334455667788, 0x1222122212221221, 0x1442, 0, PROTOCOL_VERSION
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
                 ),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(direction=45, latitude=48856614, longitude=2352221),
@@ -170,17 +225,17 @@ from dotbot.protocol import (
             id="SailBotData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x07\xff",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\xff",
             ValueError(),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x07\x0b",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0b",
             ProtocolPayloadParserException("Unsupported payload type '15'"),
             id="unsupported payload type",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x03\x0a",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x03\x00\x00\x00\x00\x0a",
             ProtocolPayloadParserException(
                 f"Unsupported payload version '3' (expected: {PROTOCOL_VERSION})"
             ),
@@ -204,52 +259,52 @@ def test_protocol_parser(payload, expected):
     [
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 66, 0, 66),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x42\x00\x42",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x00\x00\x42\x00\x42",
             id="MoveRaw1",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 0, 0, 0),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x00",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             id="MoveRaw2",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(-10, -10, -10, -10),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\xf6\xf6\xf6\xf6",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x00\xf6\xf6\xf6\xf6",
             id="MoveRaw3",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(0, 0, 0),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x01\x00\x00\x00",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x01\x00\x00\x00",
             id="RGBLed1",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(255, 255, 255),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x01\xff\xff\xff",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x01\xff\xff\xff",
             id="RGBLed2",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
                     [
@@ -258,43 +313,43 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x02"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
             id="LH2RawData",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.LH2_LOCATION,
                 LH2Location(1000, 1000, 2),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x03"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x03"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             id="LH2Location",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x04",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x04",
             id="Advertisement",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.GPS_POSITION,
                 GPSPosition(48856614, 2352221),  # Paris coordinates
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x05"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x05"
             b"&~\xe9\x02]\xe4#\x00",
             id="GPSPosition",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
                     direction=45,
@@ -304,7 +359,7 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x06"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x06"
             b"-\x00"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
@@ -312,30 +367,30 @@ def test_protocol_parser(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.CONTROL_MODE,
                 ControlMode(ControlModeType.AUTO),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x07\x01",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x07\x01",
             id="ControlMode",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints(
                     threshold=10,
                     waypoints=[LH2Location(1000, 1000, 2), LH2Location(1000, 1000, 2)],
                 ),
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x08\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x08\x02\x0a"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             id="LH2Waypoints",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints(
                     threshold=10,
@@ -345,19 +400,19 @@ def test_protocol_parser(payload, expected):
                     ],
                 ),  # Paris coordinates x 2
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x09\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             id="GPSWaypoints",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(
                     direction=45, latitude=48856614, longitude=2352221
                 ),  # Paris coordinates
             ),
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x0a"
             b"-\x00&~\xe9\x02]\xe4#\x00",
             id="SailBotData",
         ),
@@ -373,37 +428,37 @@ def test_payload(payload, expected):
     [
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.CMD_MOVE_RAW,
                 CommandMoveRaw(0, 66, 0, 66),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+------+------+------+\n"
-                " CMD_MOVE_RAW    | dst                              | src                              | swarm id | app. | ver. | type | lx   | ly   | rx   | ry   |\n"
-                " (25 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00 | 0x00 | 0x42 | 0x00 | 0x42 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+------+------+------+\n"
+                " CMD_MOVE_RAW    | dst                              | src                              | swarm id | app. | ver. | msg id           | type | lx   | ly   | rx   | ry   |\n"
+                " (29 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x00 | 0x00 | 0x42 | 0x00 | 0x42 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+------+------+------+\n"
                 "\n"
             ),
             id="MoveRaw",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.CMD_RGB_LED,
                 CommandRgbLed(0, 0, 0),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+------+------+\n"
-                " CMD_RGB_LED     | dst                              | src                              | swarm id | app. | ver. | type | red  | green| blue |\n"
-                " (24 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x01 | 0x00 | 0x00 | 0x00 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+------+------+\n"
+                " CMD_RGB_LED     | dst                              | src                              | swarm id | app. | ver. | msg id           | type | red  | green| blue |\n"
+                " (28 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x01 | 0x00 | 0x00 | 0x00 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+------+------+\n"
                 "\n"
             ),
             id="RGBLed",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.LH2_RAW_DATA,
                 Lh2RawData(
                     [
@@ -413,10 +468,10 @@ def test_payload(payload, expected):
                 ),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " LH2_RAW_DATA    | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (41 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x02 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " LH2_RAW_DATA    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (45 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x02 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "                 +----------------------------------+------+------+----------------------------------+------+------+\n"
                 "                 | bits                             | poly | off. | bits                             | poly | off. |\n"
                 "                 | 0x123456789abcdef1               | 0x01 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 |\n"
@@ -427,15 +482,15 @@ def test_payload(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.LH2_LOCATION,
                 LH2Location(1000, 1000, 2),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " LH2_LOCATION    | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (33 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x03 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " LH2_LOCATION    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (37 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x03 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "                 +------------------+------------------+------------------+\n"
                 "                 | x                | y                | z                |\n"
                 "                 | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
@@ -446,37 +501,41 @@ def test_payload(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.ADVERTISEMENT,
                 Advertisement(),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " ADVERTISEMENT   | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (21 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x04 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " ADVERTISEMENT   | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (25 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x04 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "\n"
             ),
             id="Advertisement",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.GPS_POSITION,
                 GPSPosition(48856614, 2352221),  # Paris coordinates
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------------------+------------------+\n"
-                " GPS_POSITION    | dst                              | src                              | swarm id | app. | ver. | type | latitude         | longitude        |\n"
-                " (29 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x05 | 0x02e97e26       | 0x0023e45d       |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------------------+------------------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " GPS_POSITION    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (33 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x05 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                "                 +------------------+------------------+\n"
+                "                 | latitude         | longitude        |\n"
+                "                 | 0x02e97e26       | 0x0023e45d       |\n"
+                "                 +------------------+------------------+\n"
                 "\n"
             ),
             id="GPSPosition",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.DOTBOT_DATA,
                 DotBotData(
                     direction=45,
@@ -487,10 +546,10 @@ def test_payload(payload, expected):
                 ),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " DOTBOT_DATA     | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (43 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x06 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " DOTBOT_DATA     | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (47 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x06 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "                 +----------+----------------------------------+------+------+----------------------------------+------+------+\n"
                 "                 | dir.     | bits                             | poly | off. | bits                             | poly | off. |\n"
                 "                 | 0x002d   | 0x123456789abcdef1               | 0x01 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 |\n"
@@ -501,22 +560,22 @@ def test_payload(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.CONTROL_MODE,
                 ControlMode(1),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+\n"
-                " CONTROL_MODE    | dst                              | src                              | swarm id | app. | ver. | type | mode |\n"
-                " (22 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x07 | 0x01 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+\n"
+                " CONTROL_MODE    | dst                              | src                              | swarm id | app. | ver. | msg id           | type | mode |\n"
+                " (26 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x07 | 0x01 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+------+\n"
                 "\n"
             ),
             id="ControlMode",
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.LH2_WAYPOINTS,
                 LH2Waypoints(
                     threshold=10,
@@ -524,10 +583,10 @@ def test_payload(payload, expected):
                 ),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " LH2_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (47 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x08 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " LH2_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (51 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x08 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
                 "                 | len. | thr. | x                | y                | z                | x                | y                | z                |\n"
                 "                 | 0x02 | 0x0a | 0x000003e8       | 0x000003e8       | 0x00000002       | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
@@ -538,7 +597,7 @@ def test_payload(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.GPS_WAYPOINTS,
                 GPSWaypoints(
                     threshold=10,
@@ -549,10 +608,10 @@ def test_payload(payload, expected):
                 ),  # Paris coordinates x 2
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
-                " GPS_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | type |\n"
-                " (39 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x09 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " GPS_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (43 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x09 |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 "                 +------+------+------------------+------------------+------------------+------------------+\n"
                 "                 | len. | thr. | latitude         | longitude        | latitude         | longitude        |\n"
                 "                 | 0x02 | 0x0a | 0x02e97e26       | 0x0023e45d       | 0x02e97e26       | 0x0023e45d       |\n"
@@ -563,17 +622,21 @@ def test_payload(payload, expected):
         ),
         pytest.param(
             ProtocolPayload(
-                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1),
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x2442, 0, 1, 0),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(
                     direction=45, latitude=48856614, longitude=2352221
                 ),  # Paris coordinates
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+----------+------------------+------------------+\n"
-                " SAILBOT_DATA    | dst                              | src                              | swarm id | app. | ver. | type | dir.     | latitude         | longitude        |\n"
-                " (31 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x0a | 0x002d   | 0x02e97e26       | 0x0023e45d       |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------+----------+------------------+------------------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                " SAILBOT_DATA    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
+                " (35 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x0a |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
+                "                 +----------+------------------+------------------+\n"
+                "                 | dir.     | latitude         | longitude        |\n"
+                "                 | 0x002d   | 0x02e97e26       | 0x0023e45d       |\n"
+                "                 +----------+------------------+------------------+\n"
                 "\n"
             ),
             id="SailBotData",
