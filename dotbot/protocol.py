@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 
 
 class PayloadType(Enum):
@@ -83,6 +83,7 @@ class ProtocolHeader(ProtocolData):
     swarm_id: int = 0x0000
     application: ApplicationType = ApplicationType.DotBot
     version: int = PROTOCOL_VERSION
+    msg_id: int = 0
 
     @property
     def fields(self) -> List[ProtocolField]:
@@ -92,6 +93,7 @@ class ProtocolHeader(ProtocolData):
             ProtocolField(self.swarm_id, name="swarm id", length=2),
             ProtocolField(self.application, name="app."),
             ProtocolField(self.version, name="ver."),
+            ProtocolField(self.msg_id, name="msg id", length=4),
         ]
 
     @staticmethod
@@ -102,6 +104,7 @@ class ProtocolHeader(ProtocolData):
             int.from_bytes(bytes_[16:18], "little"),  # swarm_id
             ApplicationType(int.from_bytes(bytes_[18:19], "little")),  # application
             int.from_bytes(bytes_[19:20], "little"),  # version
+            int.from_bytes(bytes_[20:24], "little"),  # msg id
         )
 
 
@@ -383,30 +386,30 @@ class ProtocolPayload:
     @staticmethod
     def from_bytes(bytes_: bytes):
         """Parse a bytearray to return a protocol payload instance."""
-        header = ProtocolHeader.from_bytes(bytes_[0:20])
+        header = ProtocolHeader.from_bytes(bytes_[0:24])
         if header.version != PROTOCOL_VERSION:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload version '{header.version}' (expected: {PROTOCOL_VERSION})"
             )
-        payload_type = PayloadType(int.from_bytes(bytes_[20:21], "little"))
+        payload_type = PayloadType(int.from_bytes(bytes_[24:25], "little"))
         if payload_type == PayloadType.CMD_MOVE_RAW:
-            values = CommandMoveRaw.from_bytes(bytes_[21:26])
+            values = CommandMoveRaw.from_bytes(bytes_[25:30])
         elif payload_type == PayloadType.CMD_RGB_LED:
-            values = CommandRgbLed.from_bytes(bytes_[21:25])
+            values = CommandRgbLed.from_bytes(bytes_[25:29])
         elif payload_type == PayloadType.LH2_RAW_DATA:
-            values = Lh2RawData.from_bytes(bytes_[21:41])
+            values = Lh2RawData.from_bytes(bytes_[25:45])
         elif payload_type == PayloadType.LH2_LOCATION:
-            values = LH2Location.from_bytes(bytes_[21:33])
+            values = LH2Location.from_bytes(bytes_[25:37])
         elif payload_type == PayloadType.ADVERTISEMENT:
             values = Advertisement.from_bytes(None)
         elif payload_type == PayloadType.GPS_POSITION:
-            values = GPSPosition.from_bytes(bytes_[21:29])
+            values = GPSPosition.from_bytes(bytes_[25:33])
         elif payload_type == PayloadType.DOTBOT_DATA:
-            values = DotBotData.from_bytes(bytes_[21:43])
+            values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
-            values = SailBotData.from_bytes(bytes_[21:31])
+            values = SailBotData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:
-            values = ControlMode.from_bytes(bytes_[21:22])
+            values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
