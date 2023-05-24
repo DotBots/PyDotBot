@@ -32,6 +32,7 @@ from dotbot.protocol import (
     PayloadType,
     ApplicationType,
     LH2Location,
+    LH2Data,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
@@ -360,11 +361,15 @@ class ControllerBase(ABC):
             self.send_payload(
                 ProtocolPayload(
                     header,
-                    PayloadType.LH2_LOCATION,
-                    LH2Location(
-                        int(dotbot.lh2_position.x * 1e6),
-                        int(dotbot.lh2_position.y * 1e6),
-                        int(dotbot.lh2_position.z * 1e6),
+                    PayloadType.LH2_DATA,
+                    LH2Data(
+                        LH2Location(
+                            int(dotbot.lh2_position.x * 1e6),
+                            int(dotbot.lh2_position.y * 1e6),
+                            int(dotbot.lh2_position.z * 1e6),
+                        ),
+                        width=self.lh2_manager.calibration_data.width,
+                        height=self.lh2_manager.calibration_data.height,
                     ),
                 )
             )

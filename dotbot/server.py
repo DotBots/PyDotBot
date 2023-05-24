@@ -13,6 +13,7 @@ from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotCalibrationStateModel,
+    DotBotCalibrationSizeModel,
     DotBotModel,
     DotBotQueryModel,
     DotBotAddressModel,
@@ -310,6 +311,31 @@ async def controller_apply_lh2_calibration():
 async def controller_get_lh2_calibration():
     """LH2 calibration GET handler."""
     return app.controller.lh2_manager.state_model
+
+
+@app.put(
+    path="/controller/lh2/calibration/size",
+    summary="Set the size of the LH2 map.",
+    tags=["dotbots"],
+)
+async def controller_set_lh2_size(size: DotBotCalibrationSizeModel):
+    """Set the size of the LH2 map."""
+    app.controller.lh2_manager.calibration_data.width = size.width
+    app.controller.lh2_manager.calibration_data.height = size.height
+
+
+@app.get(
+    path="/controller/lh2/calibration/size",
+    response_model=DotBotCalibrationSizeModel,
+    summary="Get the size of the LH2 map.",
+    tags=["dotbots"],
+)
+async def controller_lh2_size():
+    """Set the width of the LH2 map."""
+    return DotBotCalibrationSizeModel(
+        width=app.controller.lh2_manager.calibration_data.width,
+        height=app.controller.lh2_manager.calibration_data.height,
+    )
 
 
 @app.websocket("/controller/ws/status")
