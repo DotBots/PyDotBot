@@ -86,3 +86,17 @@ export const apiAddLH2CalibrationPoint = async (index) => {
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration/${index}`,
   );
 }
+
+export const apiFetchLH2MapSize = async (width, height) => {
+  return await axios.get(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration/size`,
+  ).then(res => res.data);
+}
+
+export const apiUpdateLH2MapSize = async (width, height) => {
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration/size`,
+    {width: width, height: height},
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
