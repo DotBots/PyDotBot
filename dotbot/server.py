@@ -20,6 +20,8 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotControlModeModel,
     DotBotWaypoints,
+    DotBotNotificationCommand,
+    DotBotNotificationModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -190,7 +192,11 @@ async def dotbots_waypoints(
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
+    waypoints_list = []
     if ApplicationType(application) == ApplicationType.SailBot:
+        waypoints_list = (
+            app.controller.dotbots[address].gps_position + waypoints.waypoints
+        )
         payload = ProtocolPayload(
             header,
             PayloadType.GPS_WAYPOINTS,
@@ -201,11 +207,14 @@ async def dotbots_waypoints(
                         latitude=int(waypoint.latitude * 1e6),
                         longitude=int(waypoint.longitude * 1e6),
                     )
-                    for waypoint in waypoints.waypoints
+                    for waypoint in waypoints_list
                 ],
             ),
         )
     else:  # DotBot application
+        waypoints_list = [
+            app.controller.dotbots[address].lh2_position
+        ] + waypoints.waypoints
         payload = ProtocolPayload(
             header,
             PayloadType.LH2_WAYPOINTS,
@@ -217,13 +226,16 @@ async def dotbots_waypoints(
                         pos_y=int(waypoint.y * 1e6),
                         pos_z=int(waypoint.z * 1e6),
                     )
-                    for waypoint in waypoints.waypoints
+                    for waypoint in waypoints_list
                 ],
             ),
         )
-    app.controller.dotbots[address].waypoints = waypoints.waypoints
+    app.controller.dotbots[address].waypoints = waypoints_list
     app.controller.dotbots[address].waypoints_threshold = waypoints.threshold
     app.controller.send_payload(payload)
+    await app.controller.notify_clients(
+        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    )
 
 
 @app.delete(
