@@ -192,11 +192,12 @@ async def dotbots_waypoints(
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
-    waypoints_list = []
+    waypoints_list = waypoints.waypoints
     if ApplicationType(application) == ApplicationType.SailBot:
-        waypoints_list = (
-            app.controller.dotbots[address].gps_position + waypoints.waypoints
-        )
+        if app.controller.dotbots[address].gps_position is not None:
+            waypoints_list = [
+                app.controller.dotbots[address].gps_position
+            ] + waypoints.waypoints
         payload = ProtocolPayload(
             header,
             PayloadType.GPS_WAYPOINTS,
@@ -207,14 +208,15 @@ async def dotbots_waypoints(
                         latitude=int(waypoint.latitude * 1e6),
                         longitude=int(waypoint.longitude * 1e6),
                     )
-                    for waypoint in waypoints_list
+                    for waypoint in waypoints.waypoints
                 ],
             ),
         )
     else:  # DotBot application
-        waypoints_list = [
-            app.controller.dotbots[address].lh2_position
-        ] + waypoints.waypoints
+        if app.controller.dotbots[address].lh2_position is not None:
+            waypoints_list = [
+                app.controller.dotbots[address].lh2_position
+            ] + waypoints.waypoints
         payload = ProtocolPayload(
             header,
             PayloadType.LH2_WAYPOINTS,
@@ -226,7 +228,7 @@ async def dotbots_waypoints(
                         pos_y=int(waypoint.y * 1e6),
                         pos_z=int(waypoint.z * 1e6),
                     )
-                    for waypoint in waypoints_list
+                    for waypoint in waypoints.waypoints
                 ],
             ),
         )
