@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -47,6 +47,7 @@ def controller():
     app.controller.get_dotbots = MagicMock()
     app.controller.lh2_manager = MagicMock()
     app.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
+    app.controller.notify_clients = AsyncMock()
     app.controller.send_payload = MagicMock()
     app.controller.settings = MagicMock()
     app.controller.settings.gw_address = "0000"
@@ -254,7 +255,7 @@ def test_set_dotbots_mode(dotbots, code, found):
 
 
 @pytest.mark.parametrize(
-    "dotbots,application,message,code,found",
+    "dotbots,has_position,application,message,code,found",
     [
         pytest.param(
             {
@@ -265,11 +266,29 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            False,
             ApplicationType.DotBot,
             {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
             200,
             True,
             id="dotbot_found",
+        ),
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    lh2_position=DotBotLH2Position(x=0.1, y=0.5, z=0),
+                ),
+            },
+            True,
+            ApplicationType.DotBot,
+            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
+            200,
+            True,
+            id="dotbot_with_position_found",
         ),
         pytest.param(
             {
@@ -280,6 +299,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            False,
             ApplicationType.DotBot,
             {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
             404,
@@ -295,11 +315,29 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            False,
             ApplicationType.SailBot,
             {"threshold": 10, "waypoints": [{"latitude": 0.5, "longitude": 0.1}]},
             200,
             True,
             id="sailbot_found",
+        ),
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.SailBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                    gps_position=DotBotGPSPosition(latitude=0.1, longitude=0.5),
+                ),
+            },
+            True,
+            ApplicationType.SailBot,
+            {"threshold": 10, "waypoints": [{"latitude": 0.5, "longitude": 0.1}]},
+            200,
+            True,
+            id="sailbot_with_position_found",
         ),
         pytest.param(
             {
@@ -310,6 +348,7 @@ def test_set_dotbots_mode(dotbots, code, found):
                     last_seen=123.4,
                 ),
             },
+            False,
             ApplicationType.SailBot,
             {"threshold": 10, "waypoints": [{"latitude": 0.5, "longitude": 0.1}]},
             404,
@@ -318,7 +357,9 @@ def test_set_dotbots_mode(dotbots, code, found):
         ),
     ],
 )
-def test_set_dotbots_waypoints(dotbots, application, message, code, found):
+def test_set_dotbots_waypoints(
+    dotbots, has_position, application, message, code, found
+):
     app.controller.dotbots = dotbots
     address = "4242"
     header = ProtocolHeader(
@@ -337,7 +378,13 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
             ),
         )
         expected_threshold = 10
-        expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
+        if has_position is True:
+            expected_waypoints = [
+                DotBotGPSPosition(latitude=0.1, longitude=0.5),
+                DotBotGPSPosition(latitude=0.5, longitude=0.1),
+            ]
+        else:
+            expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
     else:  # DotBot application
         expected_payload = ProtocolPayload(
             header,
@@ -345,7 +392,13 @@ def test_set_dotbots_waypoints(dotbots, application, message, code, found):
             LH2Waypoints(threshold=10, waypoints=[LH2Location(500000, 100000, 0)]),
         )
         expected_threshold = 10
-        expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
+        if has_position is True:
+            expected_waypoints = [
+                DotBotLH2Position(x=0.1, y=0.5, z=0),
+                DotBotLH2Position(x=0.5, y=0.1, z=0),
+            ]
+        else:
+            expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
     response = client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
