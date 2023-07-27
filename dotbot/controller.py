@@ -330,7 +330,13 @@ class ControllerBase(ABC):
             dotbot.direction = payload.values.direction
             logger = logger.bind(direction=dotbot.direction)
 
-        dotbot.lh2_position = self._compute_lh2_position(payload)
+        zzzz = self._compute_lh2_position(payload) # Add this to get the raw counts into the logger
+        
+        if zzzz is not None:
+            counts, dotbot.lh2_position = zzzz
+        else: 
+            dotbot.lh2_position = None
+        
         if (
             dotbot.lh2_position is not None
             and 0 <= dotbot.lh2_position.x <= 1
@@ -341,7 +347,7 @@ class ControllerBase(ABC):
                 y=dotbot.lh2_position.y,
                 z=dotbot.lh2_position.z,
             )
-            logger.info("lh2", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)  ## TODO
+            logger.info("lh2", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y, c0=counts[0], c1=counts[1])  ## TODO
             if (
                 not dotbot.position_history
                 or lh2_distance(dotbot.position_history[-1], new_position)
