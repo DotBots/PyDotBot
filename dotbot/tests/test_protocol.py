@@ -226,27 +226,35 @@ from dotbot.protocol import (
         ),
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\xff",
-            ValueError(),
+            ValueError("255 is not a valid PayloadType"),
             id="invalid payload",
         ),
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0b",
-            ProtocolPayloadParserException("Unsupported payload type '15'"),
+            ProtocolPayloadParserException("Unsupported payload type '11'"),
             id="unsupported payload type",
         ),
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x03\x00\x00\x00\x00\x0a",
             ProtocolPayloadParserException(
-                f"Unsupported payload version '3' (expected: {PROTOCOL_VERSION})"
+                f"Invalid header: Unsupported payload version '3' (expected: {PROTOCOL_VERSION})"
             ),
             id="unsupported protocol version",
+        ),
+        pytest.param(
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\xff\x08\x00\x00\x00\x00\x0a",
+            ProtocolPayloadParserException(
+                f"Invalid header: 255 is not a valid ApplicationType"
+            ),
+            id="Invalid application type",
         ),
     ],
 )
 def test_protocol_parser(payload, expected):
     if isinstance(expected, Exception):
-        with pytest.raises(expected.__class__):
+        with pytest.raises(expected.__class__) as exc_info:
             _ = ProtocolPayload.from_bytes(payload)
+        assert str(exc_info.value) == str(expected)
     else:
         protocol = ProtocolPayload.from_bytes(payload)
         assert protocol.header == expected.header

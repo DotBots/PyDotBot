@@ -386,10 +386,13 @@ class ProtocolPayload:
     @staticmethod
     def from_bytes(bytes_: bytes):
         """Parse a bytearray to return a protocol payload instance."""
-        header = ProtocolHeader.from_bytes(bytes_[0:24])
+        try:
+            header = ProtocolHeader.from_bytes(bytes_[0:24])
+        except ValueError as exc:
+            raise ProtocolPayloadParserException(f"Invalid header: {exc}") from exc
         if header.version != PROTOCOL_VERSION:
             raise ProtocolPayloadParserException(
-                f"Unsupported payload version '{header.version}' (expected: {PROTOCOL_VERSION})"
+                f"Invalid header: Unsupported payload version '{header.version}' (expected: {PROTOCOL_VERSION})"
             )
         payload_type = PayloadType(int.from_bytes(bytes_[24:25], "little"))
         if payload_type == PayloadType.CMD_MOVE_RAW:
@@ -416,7 +419,7 @@ class ProtocolPayload:
             values = GPSWaypoints.from_bytes(None)
         else:
             raise ProtocolPayloadParserException(
-                f"Unsupported payload type '{payload_type}'"
+                f"Unsupported payload type '{payload_type.value}'"
             )
         return ProtocolPayload(header, payload_type, values)
 
