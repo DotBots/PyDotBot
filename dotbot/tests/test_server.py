@@ -691,12 +691,15 @@ async def test_lh2_calibration():
 @pytest.mark.asyncio
 async def test_lh2_calibration_size():
     response = await client.get("/controller/lh2/calibration/size")
-    assert response.json() == DotBotCalibrationSizeModel(width=100, height=100).dict()
+    assert (
+        response.json()
+        == DotBotCalibrationSizeModel(width=100, height=100).model_dump()
+    )
     assert response.status_code == 200
 
     response = await client.put(
         "/controller/lh2/calibration/size",
-        json=DotBotCalibrationSizeModel(width=300, height=400).dict(),
+        json=DotBotCalibrationSizeModel(width=300, height=400).model_dump(),
     )
     assert response.status_code == 200
     assert app.controller.lh2_manager.calibration_data.width == 300
