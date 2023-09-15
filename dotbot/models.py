@@ -99,15 +99,15 @@ class DotBotNotificationUpdate(BaseModel):
 
     address: str
     direction: Optional[int]
-    lh2_position: Optional[DotBotLH2Position]
-    gps_position: Optional[DotBotGPSPosition]
+    lh2_position: Optional[DotBotLH2Position] = None
+    gps_position: Optional[DotBotGPSPosition] = None
 
 
 class DotBotNotificationModel(BaseModel):
     """Model class used to send controller notifications."""
 
     cmd: DotBotNotificationCommand
-    data: Optional[DotBotNotificationUpdate]
+    data: Optional[DotBotNotificationUpdate] = None
 
 
 class DotBotModel(BaseModel):
@@ -119,11 +119,11 @@ class DotBotModel(BaseModel):
     status: DotBotStatus = DotBotStatus.ALIVE
     mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
-    direction: Optional[int]
-    move_raw: Optional[DotBotMoveRawCommandModel]
-    rgb_led: Optional[DotBotRgbLedCommandModel]
-    lh2_position: Optional[DotBotLH2Position]
-    gps_position: Optional[DotBotGPSPosition]
+    direction: Optional[int] = None
+    move_raw: Optional[DotBotMoveRawCommandModel] = None
+    rgb_led: Optional[DotBotRgbLedCommandModel] = None
+    lh2_position: Optional[DotBotLH2Position] = None
+    gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 40
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []

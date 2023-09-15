@@ -421,7 +421,7 @@ def test_set_dotbots_waypoints(
         pytest.param(
             {
                 "12345": DotBotModel(
-                    address=12345,
+                    address="12345",
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
@@ -429,7 +429,7 @@ def test_set_dotbots_waypoints(
             },
             [
                 DotBotModel(
-                    address=12345,
+                    address="12345",
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
