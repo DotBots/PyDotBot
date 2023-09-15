@@ -244,7 +244,7 @@ from dotbot.protocol import (
         pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\xff\x08\x00\x00\x00\x00\x0a",
             ProtocolPayloadParserException(
-                f"Invalid header: 255 is not a valid ApplicationType"
+                "Invalid header: 255 is not a valid ApplicationType"
             ),
             id="Invalid application type",
         ),
