@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from httpx import AsyncClient
 from fastapi.testclient import TestClient
 
 from dotbot.models import (
@@ -34,7 +35,7 @@ from dotbot.protocol import (
 from dotbot.server import app, web
 
 
-client = TestClient(app)
+client = AsyncClient(app=app, base_url="http://testserver")
 
 
 @pytest.fixture(autouse=True)
@@ -54,23 +55,26 @@ def controller():
     app.controller.settings.swarm_id = "0000"
 
 
-def test_openapi_exists():
-    response = client.get("/api")
+@pytest.mark.asyncio
+async def test_openapi_exists():
+    response = await client.get("/api")
     assert response.status_code == 200
 
 
-def test_get_dotbot_address():
+@pytest.mark.asyncio
+async def test_get_dotbot_address():
     result_address = "0000000000004242"
     result = DotBotAddressModel(address=result_address)
     app.controller.header.destination = int(result_address, 16)
-    response = client.get("/controller/dotbot_address")
+    response = await client.get("/controller/dotbot_address")
     assert response.status_code == 200
     assert response.json() == result.dict()
 
 
-def test_set_dotbot_address():
+@pytest.mark.asyncio
+async def test_set_dotbot_address():
     new_address = "0000000000004242"
-    response = client.put(
+    response = await client.put(
         "/controller/dotbot_address",
         json=DotBotAddressModel(address=new_address).dict(),
     )
@@ -78,6 +82,7 @@ def test_set_dotbot_address():
     assert app.controller.header.destination == int(new_address, 16)
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,code,found",
     [
@@ -109,7 +114,7 @@ def test_set_dotbot_address():
         ),
     ],
 )
-def test_set_dotbots_move_raw(dotbots, code, found):
+async def test_set_dotbots_move_raw(dotbots, code, found):
     app.controller.dotbots = dotbots
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
@@ -125,7 +130,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
         PayloadType.CMD_MOVE_RAW,
         CommandMoveRaw(42, 0, 42, 0),
     )
-    response = client.put(
+    response = await client.put(
         f"/controller/dotbots/{address}/0/move_raw",
         json=command.dict(),
     )
@@ -136,6 +141,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
         app.controller.send_payload.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,code,found",
     [
@@ -167,7 +173,7 @@ def test_set_dotbots_move_raw(dotbots, code, found):
         ),
     ],
 )
-def test_set_dotbots_rgb_led(dotbots, code, found):
+async def test_set_dotbots_rgb_led(dotbots, code, found):
     app.controller.dotbots = dotbots
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
@@ -183,7 +189,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
         PayloadType.CMD_RGB_LED,
         CommandRgbLed(42, 0, 42),
     )
-    response = client.put(
+    response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.dict(),
     )
@@ -195,6 +201,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
         app.controller.send_payload.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,code,found",
     [
@@ -226,7 +233,7 @@ def test_set_dotbots_rgb_led(dotbots, code, found):
         ),
     ],
 )
-def test_set_dotbots_mode(dotbots, code, found):
+async def test_set_dotbots_mode(dotbots, code, found):
     app.controller.dotbots = dotbots
     address = "4242"
     message = DotBotControlModeModel(mode=1)
@@ -242,7 +249,7 @@ def test_set_dotbots_mode(dotbots, code, found):
         PayloadType.CONTROL_MODE,
         ControlMode(1),
     )
-    response = client.put(
+    response = await client.put(
         f"/controller/dotbots/{address}/0/mode",
         json=message.dict(),
     )
@@ -254,6 +261,7 @@ def test_set_dotbots_mode(dotbots, code, found):
         app.controller.send_payload.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,has_position,application,message,code,found",
     [
@@ -357,7 +365,7 @@ def test_set_dotbots_mode(dotbots, code, found):
         ),
     ],
 )
-def test_set_dotbots_waypoints(
+async def test_set_dotbots_waypoints(
     dotbots, has_position, application, message, code, found
 ):
     app.controller.dotbots = dotbots
@@ -400,7 +408,7 @@ def test_set_dotbots_waypoints(
         else:
             expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
-    response = client.put(
+    response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,
     )
@@ -414,6 +422,7 @@ def test_set_dotbots_waypoints(
         app.controller.send_payload.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,result",
     [
@@ -470,15 +479,16 @@ def test_set_dotbots_waypoints(
         ),
     ],
 )
-def test_get_dotbots(dotbots, result):
+async def test_get_dotbots(dotbots, result):
     app.controller.get_dotbots.return_value = list(
         sorted(dotbots.values(), key=lambda dotbot: dotbot.address)
     )
-    response = client.get("/controller/dotbots")
+    response = await client.get("/controller/dotbots")
     assert response.status_code == 200
     assert response.json() == result
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,address,code,found,result",
     [
@@ -531,14 +541,15 @@ def test_get_dotbots(dotbots, result):
         ),
     ],
 )
-def test_get_dotbot(dotbots, address, code, found, result):
+async def test_get_dotbot(dotbots, address, code, found, result):
     app.controller.dotbots = dotbots
-    response = client.get(f"/controller/dotbots/{address}")
+    response = await client.get(f"/controller/dotbots/{address}")
     assert response.status_code == code
     if found is True:
         assert response.json() == result
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,address,code,found",
     [
@@ -640,23 +651,24 @@ def test_get_dotbot(dotbots, address, code, found, result):
         ),
     ],
 )
-def test_clear_dotbot_position_history(dotbots, address, code, found):
+async def test_clear_dotbot_position_history(dotbots, address, code, found):
     app.controller.dotbots = dotbots
-    response = client.delete(f"/controller/dotbots/{address}/positions")
+    response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
         assert app.controller.dotbots[address].position_history == []
 
 
-def test_lh2_calibration():
-    response = client.get("/controller/lh2/calibration")
+@pytest.mark.asyncio
+async def test_lh2_calibration():
+    response = await client.get("/controller/lh2/calibration")
     assert response.json() == DotBotCalibrationStateModel(state="test").dict()
     assert response.status_code == 200
 
     with patch(
         "dotbot.server.app.controller.lh2_manager.add_calibration_point"
     ) as point:
-        response = client.post(
+        response = await client.post(
             "/controller/lh2/calibration/2",
         )
         assert response.status_code == 200
@@ -665,7 +677,7 @@ def test_lh2_calibration():
     with patch(
         "dotbot.server.app.controller.lh2_manager.compute_calibration"
     ) as calibration:
-        response = client.put(
+        response = await client.put(
             "/controller/lh2/calibration",
         )
         assert response.status_code == 200
@@ -674,10 +686,9 @@ def test_lh2_calibration():
 
 @pytest.mark.asyncio
 async def test_ws_client():
-    with client.websocket_connect("/controller/ws/status") as websocket:
+    with TestClient(app).websocket_connect("/controller/ws/status") as websocket:
         await asyncio.sleep(0.1)
         assert len(app.controller.websockets) == 1
-        app.controller.websockets[0]
         websocket.close()
         await asyncio.sleep(0.1)
         assert len(app.controller.websockets) == 0
