@@ -681,7 +681,7 @@ async def test_lh2_calibration():
     with patch(
         "dotbot.server.app.controller.lh2_manager.compute_calibration"
     ) as calibration:
-        response = client.put(
+        response = await client.put(
             "/controller/lh2/calibration",
         )
         assert response.status_code == 200
