@@ -68,7 +68,7 @@ async def test_get_dotbot_address():
     app.controller.header.destination = int(result_address, 16)
     response = await client.get("/controller/dotbot_address")
     assert response.status_code == 200
-    assert response.json() == result.dict()
+    assert response.json() == result.model_dump()
 
 
 @pytest.mark.asyncio
@@ -76,7 +76,7 @@ async def test_set_dotbot_address():
     new_address = "0000000000004242"
     response = await client.put(
         "/controller/dotbot_address",
-        json=DotBotAddressModel(address=new_address).dict(),
+        json=DotBotAddressModel(address=new_address).model_dump(),
     )
     assert response.status_code == 200
     assert app.controller.header.destination == int(new_address, 16)
@@ -132,7 +132,7 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     )
     response = await client.put(
         f"/controller/dotbots/{address}/0/move_raw",
-        json=command.dict(),
+        json=command.model_dump(),
     )
     assert response.status_code == code
     if found is True:
@@ -191,7 +191,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     )
     response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
-        json=command.dict(),
+        json=command.model_dump(),
     )
     assert response.status_code == code
 
@@ -251,7 +251,7 @@ async def test_set_dotbots_mode(dotbots, code, found):
     )
     response = await client.put(
         f"/controller/dotbots/{address}/0/mode",
-        json=message.dict(),
+        json=message.model_dump(),
     )
     assert response.status_code == code
 
@@ -442,7 +442,7 @@ async def test_set_dotbots_waypoints(
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                ).dict(exclude_none=True),
+                ).model_dump(exclude_none=True),
             ],
             id="one",
         ),
@@ -467,13 +467,13 @@ async def test_set_dotbots_waypoints(
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                ).dict(exclude_none=True),
+                ).model_dump(exclude_none=True),
                 DotBotModel(
                     address="56789",
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                ).dict(exclude_none=True),
+                ).model_dump(exclude_none=True),
             ],
             id="sorted",
         ),
@@ -515,7 +515,7 @@ async def test_get_dotbots(dotbots, result):
                 application=ApplicationType.DotBot,
                 swarm="0000",
                 last_seen=123.4,
-            ).dict(exclude_none=True),
+            ).model_dump(exclude_none=True),
             id="found",
         ),
         pytest.param(
@@ -662,7 +662,7 @@ async def test_clear_dotbot_position_history(dotbots, address, code, found):
 @pytest.mark.asyncio
 async def test_lh2_calibration():
     response = await client.get("/controller/lh2/calibration")
-    assert response.json() == DotBotCalibrationStateModel(state="test").dict()
+    assert response.json() == DotBotCalibrationStateModel(state="test").model_dump()
     assert response.status_code == 200
 
     with patch(

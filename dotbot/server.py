@@ -263,7 +263,7 @@ async def dotbot(address: str, query: DotBotQueryModel = Depends()):
     """Dotbot HTTP GET handler."""
     if address not in app.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    _dotbot = DotBotModel(**app.controller.dotbots[address].dict())
+    _dotbot = DotBotModel(**app.controller.dotbots[address].model_dump())
     _dotbot.position_history = _dotbot.position_history[: query.max_positions]
     return _dotbot
 
