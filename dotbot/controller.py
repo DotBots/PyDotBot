@@ -368,6 +368,8 @@ class ControllerBase(ABC):
                     ),
                 )
             )
+        elif payload.payload_type == PayloadType.DOTBOT_DATA:
+            logger.warning("lh2: invalid position")
 
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
