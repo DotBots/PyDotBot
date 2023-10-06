@@ -290,6 +290,30 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
         </div>
       </div>
       }
+      {dotbots.filter(dotbot => dotbot.application === ApplicationType.XGO).length > 0 &&
+      <div className="row">
+        <div className="col">
+          <div className="card m-1">
+            <div className="card-header">Available XGO</div>
+            <div className="card-body p-1">
+              <div className="accordion" id="accordion-xgo">
+                {dotbots
+                  .filter(dotbot => dotbot.application === ApplicationType.XGO)
+                  .map(dotbot =>
+                    <XGOItem
+                      key={dotbot.address}
+                      dotbot={dotbot}
+                      updateActive={updateActive}
+		      publishCommand={publishCommand}
+                    />
+                  )
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      }
       </>
       )}
     </div>
