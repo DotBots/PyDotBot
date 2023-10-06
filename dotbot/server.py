@@ -25,6 +25,7 @@ from dotbot.protocol import (
     ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
+    CommandXgoAction,
     ControlMode,
     GPSPosition,
     GPSWaypoints,
@@ -139,6 +140,27 @@ async def dotbots_rgb_led(
     )
     api.controller.send_payload(payload)
     api.controller.dotbots[address].rgb_led = command
+
+
+@api.put(
+    path="/controller/dotbots/{address}/{application}/xgo_action/{action}",
+    summary="Send an action to perform by the robot",
+    tags=["dotbots"],
+)
+async def dotbots_action(address: str, application: int, action: int):
+    """Send an action to perform by the robot."""
+    if address not in api.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
+        application=ApplicationType(application),
+        version=PROTOCOL_VERSION,
+    )
+    payload = ProtocolPayload(header, PayloadType.XGO_ACTION, CommandXgoAction(action))
+    api.controller.send_payload(payload)
 
 
 @api.put(

@@ -25,7 +25,8 @@ class PayloadType(Enum):
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
-    INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
+    XGO_ACTION = 11
+    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -33,6 +34,7 @@ class ApplicationType(IntEnum):
 
     DotBot = 0  # pylint: disable=invalid-name
     SailBot = 1  # pylint: disable=invalid-name
+    XGO = 2  # pylint: disable=invalid-name
 
 
 class ControlModeType(IntEnum):
@@ -147,6 +149,23 @@ class CommandRgbLed(ProtocolData):
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return CommandRgbLed(*bytes_[0:3])
+
+
+@dataclass
+class CommandXgoAction(ProtocolData):
+    """Dataclass that holds an XGO action."""
+
+    action: int = 0
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.action, name="action"),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return CommandXgoAction(bytes_[0])
 
 
 @dataclass
