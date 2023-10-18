@@ -5,6 +5,8 @@ import json
 import math
 import time
 import webbrowser
+from datetime import datetime
+import pytz
 
 from abc import ABC, abstractmethod
 from binascii import hexlify
@@ -137,6 +139,7 @@ class ControllerBase(ABC):
         self.websockets = []
         self.lh2_manager = LighthouseManager()
         self.logger = LOGGER.bind(context=__name__)
+        self.now_utc = datetime.now(tz=pytz.utc)
 
     @abstractmethod
     def init(self):
@@ -328,7 +331,13 @@ class ControllerBase(ABC):
             dotbot.direction = payload.values.direction
             logger = logger.bind(direction=dotbot.direction)
 
-        dotbot.lh2_position = self._compute_lh2_position(payload)
+        zzzz = self._compute_lh2_position(payload) # Add this to get the raw counts into the logger
+        
+        if zzzz is not None:
+            counts, dotbot.lh2_position = zzzz
+        else: 
+            dotbot.lh2_position = None
+        
         if (
             dotbot.lh2_position is not None
             and 0 <= dotbot.lh2_position.x <= 1
@@ -339,7 +348,7 @@ class ControllerBase(ABC):
                 y=dotbot.lh2_position.y,
                 z=dotbot.lh2_position.z,
             )
-            logger.info("lh2", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)
+            logger.info("lh2", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y, c0=counts[0], c1=counts[1])  ## TODO
             if (
                 not dotbot.position_history
                 or lh2_distance(dotbot.position_history[-1], new_position)
@@ -400,6 +409,19 @@ class ControllerBase(ABC):
             )
         else:
             notification = DotBotNotificationModel(cmd=notification_cmd.value)
+
+        ### EKF DATA PACKET
+        if  payload.payload_type == PayloadType.EKF_DEBUG:
+            x = payload.values.x / 1e4  # [cm]
+            y = payload.values.y / 1e4  # [cm]
+            theta = payload.values.theta / 1e3  # [degrees]
+            V = payload.values.V / 10.0 # [cm/s]
+            w = payload.values.w  / 1e3 # [degrees per second]
+            angle_to_target = payload.values.angle_to_target  # [degrees]
+            # Print all this information
+            now_utc = datetime.now(tz=pytz.utc)
+            print(f"{now_utc.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}\tx={x:<12.2f}\ty={y:<12.2f}\tthe={theta:<12.2f}\tV={V:<12.2f}\tw={w:<12.2f}\ttarget={angle_to_target:<12.2f}")
+            # print(payload)
 
         if self.settings.verbose is True:
             print(payload)
