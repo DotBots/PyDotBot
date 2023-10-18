@@ -362,9 +362,15 @@ class ControllerBase(ABC):
                     header,
                     PayloadType.LH2_LOCATION,
                     LH2Location(
-                        int(dotbot.lh2_position.x * 1e6),
-                        int(dotbot.lh2_position.y * 1e6),
-                        int(dotbot.lh2_position.z * 1e6),
+                        int(
+                            dotbot.lh2_position.x
+                            * self.lh2_manager.calibration_data.width
+                        ),
+                        int(
+                            dotbot.lh2_position.y
+                            * self.lh2_manager.calibration_data.height
+                        ),
+                        int(dotbot.lh2_position.z * 1e3),
                     ),
                 )
             )

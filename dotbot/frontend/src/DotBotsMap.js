@@ -4,7 +4,8 @@ import { ApplicationType } from "./constants";
 
 import {
     apiFetchLH2CalibrationState, apiApplyLH2Calibration,
-    apiAddLH2CalibrationPoint, inactiveAddress
+    apiAddLH2CalibrationPoint, apiFetchLH2MapSize, apiUpdateLH2MapSize,
+    inactiveAddress
 } from "./rest";
 
 const referencePoints = [
@@ -169,6 +170,9 @@ export const DotBotsMap = (props) => {
   const [ displayGrid, setDisplayGrid ] = useState(true);
   const [ calibrationFetched, setCalibrationFetched ] = useState(false);
   const [ calibrationState, setCalibrationState ] = useState("unknown");
+  const [ mapSizeFetched, setMapSizeFetched ] = useState(false);
+  const [ mapWidth, setMapWidth ] = useState(200);
+  const [ mapHeight, setMapHeight ] = useState(200);
   const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
 
   const fetchCalibrationState = useCallback(async () => {
@@ -176,6 +180,14 @@ export const DotBotsMap = (props) => {
     setCalibrationState(state.state);
     setCalibrationFetched(true);
   }, [setCalibrationFetched, setCalibrationState]
+  );
+
+  const fetchMapSize = useCallback(async () => {
+    const size = await apiFetchLH2MapSize().catch((error) => console.error(error));
+    setMapWidth(size.width);
+    setMapHeight(size.height);
+    setMapSizeFetched(true);
+  }, [setMapSizeFetched, setMapWidth, setMapHeight]
   );
 
   const pointClicked = (index) => {
@@ -191,6 +203,7 @@ export const DotBotsMap = (props) => {
       setCalibrationState("running");
     } else if (calibrationState === "ready") {
       setCalibrationState("done");
+      apiUpdateLH2MapSize(mapWidth, mapHeight);
       apiApplyLH2Calibration();
     }
   };
@@ -215,10 +228,17 @@ export const DotBotsMap = (props) => {
     if (!calibrationFetched) {
       fetchCalibrationState();
     }
+    if (!mapSizeFetched) {
+      fetchMapSize();
+    }
     if (pointsChecked.every(v => v === true)) {
       setCalibrationState("ready");
     }
-  }, [calibrationFetched, fetchCalibrationState, pointsChecked, setCalibrationState]);
+  }, [
+    calibrationFetched, fetchCalibrationState,
+    mapSizeFetched, fetchMapSize,
+    pointsChecked, setCalibrationState
+  ]);
 
   let calibrationButtonLabel = "Start calibration";
   let calibrationButtonClass = "btn-primary";
@@ -292,6 +312,15 @@ export const DotBotsMap = (props) => {
             <label htmlFor="dotbotHistorySize">Position history size:</label>
             <input className="form-control my-1 mr-sm-2" type="number" id="dotbotHistorySize" min="10" max="1000" value={props.historySize} onChange={event => props.setHistorySize(event.target.value)}/>
           </form>
+          <form className="form-inline">
+            <label htmlFor="dotbotMapWidth">Map width (in mm):</label>
+            <input className="form-control my-1 mr-sm-2" type="number" id="dotbotMapWidth" min="10" max="65535" value={mapWidth} onChange={event => setMapWidth(event.target.value)}/>
+            <label htmlFor="dotbotMapHeight">Map height (in mm):</label>
+            <input className="form-control my-1 mr-sm-2" type="number" id="dotbotMapHeight" min="10" max="65535" value={mapHeight} onChange={event => setMapHeight(event.target.value)}/>
+          </form>
+          {/* <div className="d-flex">
+            <button className="btn btn-sm btn-primary" onClick={updateMapSize}>Update map size</button>
+          </div> */}
           <div className="d-flex">
             <button className={`btn btn-sm ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
           </div>

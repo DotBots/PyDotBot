@@ -17,7 +17,11 @@ import cv2
 import numpy as np
 
 from dotbot.logger import LOGGER
-from dotbot.models import DotBotLH2Position, DotBotCalibrationStateModel
+from dotbot.models import (
+    DotBotLH2Position,
+    DotBotCalibrationStateModel,
+    DotBotCalibrationSizeModel,
+)
 from dotbot.protocol import Lh2RawData
 
 
@@ -97,6 +101,8 @@ class CalibrationData:
     random_rodriguez: np.array
     normal: np.array
     m: np.array
+    width: int = 200
+    height: int = 200
 
 
 class LighthouseManagerState(Enum):
@@ -115,6 +121,7 @@ class LighthouseManager:
         self.state = LighthouseManagerState.NotCalibrated
         self.reference_points = REFERENCE_POINTS_DEFAULT
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
+        self.calibration_size = DotBotCalibrationSizeModel()
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
         self.calibration_points = np.zeros(
@@ -245,12 +252,15 @@ class LighthouseManager:
         )
 
         self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
-
-        with open(self.calibration_output_path, "wb") as output_file:
-            pickle.dump(self.calibration_data, output_file)
+        self.save_calibration()
 
         self.state = LighthouseManagerState.Calibrated
         self.logger.info("Calibration done", data=self.calibration_data)
+
+    def save_calibration(self):
+        """Store the calibration data in a file."""
+        with open(self.calibration_output_path, "wb") as output_file:
+            pickle.dump(self.calibration_data, output_file)
 
     def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
         """Compute the position coordinates from LH2 raw data and available calibration."""

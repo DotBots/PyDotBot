@@ -27,7 +27,7 @@ from dotbot.protocol import (
     "payload,expected",
     [
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x00\x00\x42\x00\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x00\x00\x42\x00\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111,
@@ -43,7 +43,7 @@ from dotbot.protocol import (
             id="MoveRaw",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x01\x42\x42\x42",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x01\x42\x42\x42",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111,
@@ -59,7 +59,7 @@ from dotbot.protocol import (
             id="RGBLed",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x02"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x09\x00\x00\x00\x00\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
             ProtocolPayload(
@@ -82,8 +82,8 @@ from dotbot.protocol import (
             id="LH2RawData",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x03"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x03"
+            b"\xe8\x03\xe8\x03\x02\x00",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111,
@@ -99,7 +99,7 @@ from dotbot.protocol import (
             id="LH2Location",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x04",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x04",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111,
@@ -115,7 +115,7 @@ from dotbot.protocol import (
             id="Advertisement",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x05"
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x05"
             b"&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -132,7 +132,7 @@ from dotbot.protocol import (
             id="GPSPosition",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x06"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x09\x00\x00\x00\x00\x06"
             b"-\x00"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
@@ -157,7 +157,7 @@ from dotbot.protocol import (
             id="DotBotData",
         ),
         pytest.param(
-            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x07\x01",
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x09\x00\x00\x00\x00\x07\x01",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122221111111111,
@@ -173,9 +173,8 @@ from dotbot.protocol import (
             id="ControlMode",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x08\x02\x0a"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x09\x00\x00\x00\x00\x08\x02\x0a"
+            b"\xe8\x03\xe8\x03\x02\x00\xe8\x03\xe8\x03\x02\x00",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122334455667788,
@@ -191,7 +190,7 @@ from dotbot.protocol import (
             id="LH2Waypoints",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x09\x02\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x09\x00\x00\x00\x00\x09\x02\x0a"
             b"&~\xe9\x02]\xe4#\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -208,7 +207,7 @@ from dotbot.protocol import (
             id="GPSWaypoints",
         ),
         pytest.param(
-            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x0a"
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x09\x00\x00\x00\x00\x0a"
             b"-\x00&~\xe9\x02]\xe4#\x00",
             ProtocolPayload(
                 ProtocolHeader(
@@ -225,12 +224,12 @@ from dotbot.protocol import (
             id="SailBotData",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\xff",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x09\x00\x00\x00\x00\xff",
             ValueError("255 is not a valid PayloadType"),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0b",
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x09\x00\x00\x00\x00\x0b",
             ProtocolPayloadParserException("Unsupported payload type '11'"),
             id="unsupported payload type",
         ),
@@ -333,7 +332,7 @@ def test_protocol_parser(payload, expected):
                 LH2Location(1000, 1000, 2),
             ),
             b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x03"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\xe8\x03\xe8\x03\x02\x00",
             id="LH2Location",
         ),
         pytest.param(
@@ -392,8 +391,7 @@ def test_protocol_parser(payload, expected):
                 ),
             ),
             b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x08\x02\x0a"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\xe8\x03\xe8\x03\x02\x00\xe8\x03\xe8\x03\x02\x00",
             id="LH2Waypoints",
         ),
         pytest.param(
@@ -495,14 +493,10 @@ def test_payload(payload, expected):
                 LH2Location(1000, 1000, 2),
             ),
             (
-                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
-                " LH2_LOCATION    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
-                " (37 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x03 |\n"
-                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
-                "                 +------------------+------------------+------------------+\n"
-                "                 | x                | y                | z                |\n"
-                "                 | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
-                "                 +------------------+------------------+------------------+\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+----------+----------+----------+\n"
+                " LH2_LOCATION    | dst                              | src                              | swarm id | app. | ver. | msg id           | type | x        | y        | z        |\n"
+                " (31 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x03 | 0x03e8   | 0x03e8   | 0x0002   |\n"
+                "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+----------+----------+----------+\n"
                 "\n"
             ),
             id="LH2Location",
@@ -593,12 +587,12 @@ def test_payload(payload, expected):
             (
                 "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 " LH2_WAYPOINTS   | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
-                " (51 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x08 |\n"
+                " (39 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x08 |\n"
                 "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
-                "                 | len. | thr. | x                | y                | z                | x                | y                | z                |\n"
-                "                 | 0x02 | 0x0a | 0x000003e8       | 0x000003e8       | 0x00000002       | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
+                "                 +------+------+----------+----------+----------+----------+----------+----------+\n"
+                "                 | len. | thr. | x        | y        | z        | x        | y        | z        |\n"
+                "                 | 0x02 | 0x0a | 0x03e8   | 0x03e8   | 0x0002   | 0x03e8   | 0x03e8   | 0x0002   |\n"
+                "                 +------+------+----------+----------+----------+----------+----------+----------+\n"
                 "\n"
             ),
             id="LH2Waypoints",

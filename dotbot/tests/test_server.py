@@ -14,6 +14,7 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
     DotBotCalibrationStateModel,
+    DotBotCalibrationSizeModel,
     DotBotControlModeModel,
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -49,6 +50,9 @@ def controller():
     app.controller.lh2_manager = MagicMock()
     app.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
     app.controller.notify_clients = AsyncMock()
+    app.controller.lh2_manager.calibration_data = MagicMock()
+    app.controller.lh2_manager.calibration_data.width = 100
+    app.controller.lh2_manager.calibration_data.height = 100
     app.controller.send_payload = MagicMock()
     app.controller.settings = MagicMock()
     app.controller.settings.gw_address = "0000"
@@ -682,6 +686,24 @@ async def test_lh2_calibration():
         )
         assert response.status_code == 200
         calibration.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_lh2_calibration_size():
+    response = await client.get("/controller/lh2/calibration/size")
+    assert (
+        response.json()
+        == DotBotCalibrationSizeModel(width=100, height=100).model_dump()
+    )
+    assert response.status_code == 200
+
+    response = await client.put(
+        "/controller/lh2/calibration/size",
+        json=DotBotCalibrationSizeModel(width=300, height=400).model_dump(),
+    )
+    assert response.status_code == 200
+    assert app.controller.lh2_manager.calibration_data.width == 300
+    assert app.controller.lh2_manager.calibration_data.height == 400
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 
 
 class PayloadType(Enum):
@@ -208,17 +208,17 @@ class LH2Location(ProtocolData):
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.pos_x, name="x", length=4),
-            ProtocolField(self.pos_y, name="y", length=4),
-            ProtocolField(self.pos_z, name="z", length=4),
+            ProtocolField(self.pos_x, name="x", length=2),
+            ProtocolField(self.pos_y, name="y", length=2),
+            ProtocolField(self.pos_z, name="z", length=2),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return LH2Location(
-            int.from_bytes(bytes_[0:4], "little"),
-            int.from_bytes(bytes_[4:8], "little"),
-            int.from_bytes(bytes_[8:12], "little"),
+            pos_x=int.from_bytes(bytes_[0:2], "little"),
+            pos_y=int.from_bytes(bytes_[2:4], "little"),
+            pos_z=int.from_bytes(bytes_[4:6], "little"),
         )
 
 
@@ -402,7 +402,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.LH2_RAW_DATA:
             values = Lh2RawData.from_bytes(bytes_[25:45])
         elif payload_type == PayloadType.LH2_LOCATION:
-            values = LH2Location.from_bytes(bytes_[25:37])
+            values = LH2Location.from_bytes(bytes_[25:31])
         elif payload_type == PayloadType.ADVERTISEMENT:
             values = Advertisement.from_bytes(None)
         elif payload_type == PayloadType.GPS_POSITION:

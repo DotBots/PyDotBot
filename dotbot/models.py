@@ -23,6 +23,13 @@ class DotBotCalibrationStateModel(BaseModel):
     state: str
 
 
+class DotBotCalibrationSizeModel(BaseModel):
+    """Model that holds the width and height of the LH2 calibration whole map."""
+
+    width: int = 200  # size in millimeters
+    height: int = 200
+
+
 class DotBotMoveRawCommandModel(BaseModel):
     """Model class that defines a move raw command."""
 
@@ -46,6 +53,8 @@ class DotBotLH2Position(BaseModel):
     x: float
     y: float
     z: float
+    width: int = 200
+    height: int = 200
 
 
 class DotBotControlModeModel(BaseModel):
