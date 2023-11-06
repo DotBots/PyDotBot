@@ -94,7 +94,7 @@ tox
 [pypi-badge]: https://badge.fury.io/py/pydotbot.svg
 [pypi-link]: https://badge.fury.io/py/pydotbot
 [license-badge]: https://img.shields.io/pypi/l/pydotbot
-[license-link]: https://github.com/DotBots/pydotbot/blob/main/LICENSE
+[license-link]: https://github.com/DotBots/pydotbot/blob/main/LICENSE.txt
 
 [codecov-badge]: https://codecov.io/gh/DotBots/PyDotBot/branch/main/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/DotBots/PyDotBot
