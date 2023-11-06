@@ -15,12 +15,12 @@ from dotbot import (
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
     SWARM_ID_DEFAULT,
-    pydotbot_version
+    pydotbot_version,
 )
 from dotbot.controller import (
     ControllerSettings,
     controller_factory,
-    register_controller
+    register_controller,
 )
 from dotbot.joystick import JoystickController
 from dotbot.keyboard import KeyboardController

@@ -18,7 +18,7 @@ from dotbot.protocol import (
     ProtocolHeader,
     ProtocolPayload,
     ProtocolPayloadParserException,
-    SailBotData
+    SailBotData,
 )
 
 

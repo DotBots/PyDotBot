@@ -15,7 +15,7 @@ from dotbot.controller import (
     controller_factory,
     gps_distance,
     lh2_distance,
-    register_controller
+    register_controller,
 )
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
@@ -26,7 +26,7 @@ from dotbot.protocol import (
     ProtocolData,
     ProtocolField,
     ProtocolHeader,
-    ProtocolPayload
+    ProtocolPayload,
 )
 
 

@@ -14,7 +14,7 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotMoveRawCommandModel,
-    DotBotRgbLedCommandModel
+    DotBotRgbLedCommandModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -28,7 +28,7 @@ from dotbot.protocol import (
     LH2Waypoints,
     PayloadType,
     ProtocolHeader,
-    ProtocolPayload
+    ProtocolPayload,
 )
 from dotbot.server import app, web
 

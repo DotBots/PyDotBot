@@ -15,12 +15,7 @@ except ImportError:
 
 from dotbot.controller import ControllerBase
 from dotbot.logger import LOGGER
-from dotbot.protocol import (
-    CommandMoveRaw,
-    CommandRgbLed,
-    PayloadType,
-    ProtocolPayload
-)
+from dotbot.protocol import CommandMoveRaw, CommandRgbLed, PayloadType, ProtocolPayload
 
 DIR_KEYS = [
     keyboard.Key.up,

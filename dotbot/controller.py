@@ -30,7 +30,7 @@ from dotbot.models import (
     DotBotNotificationModel,
     DotBotNotificationUpdate,
     DotBotQueryModel,
-    DotBotStatus
+    DotBotStatus,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -39,7 +39,7 @@ from dotbot.protocol import (
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
-    ProtocolPayloadParserException
+    ProtocolPayloadParserException,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import web
@@ -50,7 +50,6 @@ from dotbot.server import web
 #     DotBotLH2Position,
 #     DotBotRgbLedCommandModel,
 # )
-
 
 
 CONTROLLERS = {}

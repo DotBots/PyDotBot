@@ -68,3 +68,4 @@ ignore = ["E501"]
 
 [tool.isort]
 multi_line_output = 3  # Use Vertical Hanging Indent
+profile = "black"
