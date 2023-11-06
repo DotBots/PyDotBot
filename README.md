@@ -1,6 +1,7 @@
 [![CI][ci-badge]][ci-link]
 [![Coverage][codecov-badge]][codecov-link]
 [![PyPI version][pypi-badge]][pypi-link]
+[![License][license-badge]][license-link]
 
 # PyDotBot
 
@@ -92,6 +93,9 @@ tox
 [ci-link]: https://github.com/DotBots/PyDotBot/actions?query=workflow%3ACI+branch%3Amain
 [pypi-badge]: https://badge.fury.io/py/pydotbot.svg
 [pypi-link]: https://badge.fury.io/py/pydotbot
+[license-badge]: https://img.shields.io/pypi/l/pydotbot
+[license-link]: https://github.com/DotBots/pydotbot/blob/main/LICENSE
+
 [codecov-badge]: https://codecov.io/gh/DotBots/PyDotBot/branch/main/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/DotBots/PyDotBot
 
