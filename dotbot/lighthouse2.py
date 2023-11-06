@@ -6,7 +6,6 @@ import math
 import os
 import pickle
 import sys
-
 from ctypes import CDLL
 from dataclasses import dataclass
 from enum import Enum
@@ -17,9 +16,8 @@ import cv2
 import numpy as np
 
 from dotbot.logger import LOGGER
-from dotbot.models import DotBotLH2Position, DotBotCalibrationStateModel
+from dotbot.models import DotBotCalibrationStateModel, DotBotLH2Position
 from dotbot.protocol import Lh2RawData
-
 
 if sys.platform == "win32":
     LIB_EXT = "dll"

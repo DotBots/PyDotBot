@@ -3,10 +3,10 @@
 
 from enum import IntEnum
 from typing import List, Optional, Union
+
 from pydantic import BaseModel
 
 from dotbot.protocol import ApplicationType, ControlModeType
-
 
 MAX_POSITION_HISTORY_SIZE = 1000
 

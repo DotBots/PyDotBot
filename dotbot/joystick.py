@@ -6,12 +6,11 @@ import os
 import sys
 
 from dotbot.controller import ControllerBase
-from dotbot.protocol import PayloadType, ProtocolPayload, CommandMoveRaw
+from dotbot.protocol import CommandMoveRaw, PayloadType, ProtocolPayload
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame  # noqa: E402, pylint: disable=wrong-import-order, wrong-import-position
-
 
 JOYSTICK_HYSTERERIS_THRES = 0.09
 JOYSTICK_AXIS_COUNT = 4

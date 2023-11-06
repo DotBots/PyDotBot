@@ -1,15 +1,12 @@
 """Module for the Dotbot protocol API."""
 
 import dataclasses
-
 from abc import ABC, abstractmethod
 from binascii import hexlify
+from dataclasses import dataclass
 from enum import Enum, IntEnum
 from itertools import chain
 from typing import List
-
-from dataclasses import dataclass
-
 
 PROTOCOL_VERSION = 8
 

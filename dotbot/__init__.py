@@ -1,7 +1,6 @@
 """Pydotbot module."""
 
-from importlib.metadata import version, PackageNotFoundError
-
+from importlib.metadata import PackageNotFoundError, version
 
 SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
 SERIAL_BAUDRATE_DEFAULT = 1000000

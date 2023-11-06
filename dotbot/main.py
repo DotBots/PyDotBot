@@ -2,31 +2,29 @@
 
 """Main module of the Dotbot controller command line tool."""
 
+import asyncio
 import os
 import sys
-import asyncio
 
 import click
 import serial
 
 from dotbot import (
-    pydotbot_version,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
     SWARM_ID_DEFAULT,
+    pydotbot_version
 )
-
 from dotbot.controller import (
     ControllerSettings,
     controller_factory,
-    register_controller,
+    register_controller
 )
-from dotbot.keyboard import KeyboardController
 from dotbot.joystick import JoystickController
+from dotbot.keyboard import KeyboardController
 from dotbot.logger import setup_logging
-
 
 CONTROLLER_TYPE_DEFAULT = "keyboard"
 DEFAULT_CONTROLLERS = {

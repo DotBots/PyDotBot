@@ -1,7 +1,6 @@
 """Test module for controller base class."""
 
 import time
-
 from dataclasses import dataclass
 from typing import List
 from unittest.mock import patch
@@ -10,24 +9,24 @@ import pytest
 import serial
 
 from dotbot.controller import (
-    gps_distance,
-    lh2_distance,
     ControllerBase,
     ControllerException,
     ControllerSettings,
     controller_factory,
-    register_controller,
+    gps_distance,
+    lh2_distance,
+    register_controller
 )
 from dotbot.hdlc import hdlc_encode
-from dotbot.models import DotBotModel, DotBotLH2Position, DotBotGPSPosition
+from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
 from dotbot.protocol import (
-    ProtocolField,
-    ProtocolPayload,
-    ProtocolData,
-    ProtocolHeader,
     PROTOCOL_VERSION,
-    PayloadType,
     ApplicationType,
+    PayloadType,
+    ProtocolData,
+    ProtocolField,
+    ProtocolHeader,
+    ProtocolPayload
 )
 
 

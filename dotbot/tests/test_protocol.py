@@ -1,25 +1,24 @@
 import pytest
 
-
 from dotbot.protocol import (
     PROTOCOL_VERSION,
-    PayloadType,
-    ProtocolPayload,
-    ProtocolPayloadParserException,
-    ProtocolHeader,
+    Advertisement,
     CommandMoveRaw,
     CommandRgbLed,
-    Advertisement,
     ControlMode,
-    Lh2RawLocation,
-    Lh2RawData,
-    LH2Location,
-    GPSPosition,
-    DotBotData,
-    SailBotData,
     ControlModeType,
-    LH2Waypoints,
+    DotBotData,
+    GPSPosition,
     GPSWaypoints,
+    LH2Location,
+    Lh2RawData,
+    Lh2RawLocation,
+    LH2Waypoints,
+    PayloadType,
+    ProtocolHeader,
+    ProtocolPayload,
+    ProtocolPayloadParserException,
+    SailBotData
 )
 
 

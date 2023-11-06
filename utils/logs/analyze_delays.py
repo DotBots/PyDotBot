@@ -9,7 +9,6 @@ from io import StringIO
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from logfmt_pandas import read_logfmt
 
 # Check the logs file path

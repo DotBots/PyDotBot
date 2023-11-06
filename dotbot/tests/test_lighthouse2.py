@@ -3,8 +3,7 @@
 import pytest
 
 from dotbot.lighthouse2 import calculate_camera_point, lh2_raw_data_to_counts
-from dotbot.protocol import Lh2RawLocation, Lh2RawData
-
+from dotbot.protocol import Lh2RawData, Lh2RawLocation
 
 EXPECTED_COUNTS = [49341, 85887]
 LOCATIONS = [

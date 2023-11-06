@@ -1,8 +1,8 @@
 """Logger module."""
 
 import logging
-import structlog
 
+import structlog
 
 LOG_LEVEL_MAP = {
     "debug": logging.DEBUG,

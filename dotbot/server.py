@@ -5,39 +5,44 @@ from binascii import hexlify
 from typing import List
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    DotBotCalibrationStateModel,
-    DotBotModel,
-    DotBotQueryModel,
     DotBotAddressModel,
-    DotBotMoveRawCommandModel,
-    DotBotRgbLedCommandModel,
+    DotBotCalibrationStateModel,
     DotBotControlModeModel,
-    DotBotWaypoints,
+    DotBotModel,
+    DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
+    DotBotQueryModel,
+    DotBotRgbLedCommandModel,
+    DotBotWaypoints
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
-    ProtocolHeader,
-    ProtocolPayload,
-    PayloadType,
+    ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
     ControlMode,
-    LH2Location,
-    LH2Waypoints,
     GPSPosition,
     GPSWaypoints,
-    ApplicationType,
+    LH2Location,
+    LH2Waypoints,
+    PayloadType,
+    ProtocolHeader,
+    ProtocolPayload
 )
-
 
 STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 

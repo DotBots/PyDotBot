@@ -4,7 +4,6 @@ from enum import Enum
 
 from dotbot.logger import LOGGER
 
-
 HDLC_FLAG = b"\x7E"
 HDLC_FLAG_ESCAPED = b"\x5E"
 HDLC_ESCAPE = b"\x7D"

@@ -2,13 +2,11 @@
 
 import threading
 import time
-
 from typing import Callable
 
 import serial
 
 from dotbot.logger import LOGGER
-
 
 PAYLOAD_CHUNK_SIZE = 64
 PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms

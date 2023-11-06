@@ -1,13 +1,12 @@
 """Test module for the main function."""
 
-from unittest.mock import patch
 from importlib.metadata import PackageNotFoundError
+from unittest.mock import patch
 
 import serial
 from click.testing import CliRunner
 
 from dotbot.main import main
-
 
 MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
 

@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 
-
 # pylint: disable=duplicate-code
 if sys.platform == "win32":
     LIB_EXT = "dll"

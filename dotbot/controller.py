@@ -5,7 +5,6 @@ import json
 import math
 import time
 import webbrowser
-
 from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
@@ -13,27 +12,37 @@ from typing import Dict, List, Optional
 
 import serial
 import websockets
-
 from fastapi import WebSocket
-
-from haversine import haversine, Unit
-
+from haversine import Unit, haversine
 from rich.live import Live
 from rich.table import Table
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
+from dotbot.models import (
+    MAX_POSITION_HISTORY_SIZE,
+    DotBotGPSPosition,
+    DotBotLH2Position,
+    DotBotModel,
+    DotBotNotificationCommand,
+    DotBotNotificationModel,
+    DotBotNotificationUpdate,
+    DotBotQueryModel,
+    DotBotStatus
+)
 from dotbot.protocol import (
-    ProtocolPayload,
-    ProtocolHeader,
     PROTOCOL_VERSION,
-    ProtocolPayloadParserException,
-    PayloadType,
     ApplicationType,
     LH2Location,
+    PayloadType,
+    ProtocolHeader,
+    ProtocolPayload,
+    ProtocolPayloadParserException
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
+from dotbot.server import web
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -42,19 +51,6 @@ from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 #     DotBotRgbLedCommandModel,
 # )
 
-from dotbot.models import (
-    DotBotModel,
-    DotBotQueryModel,
-    DotBotStatus,
-    DotBotLH2Position,
-    DotBotGPSPosition,
-    DotBotNotificationCommand,
-    DotBotNotificationModel,
-    DotBotNotificationUpdate,
-    MAX_POSITION_HISTORY_SIZE,
-)
-from dotbot.server import web
-from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 
 
 CONTROLLERS = {}

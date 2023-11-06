@@ -1,39 +1,36 @@
 import asyncio
 import logging
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from httpx import AsyncClient
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 from dotbot.models import (
-    DotBotModel,
     DotBotAddressModel,
-    DotBotMoveRawCommandModel,
-    DotBotRgbLedCommandModel,
     DotBotCalibrationStateModel,
     DotBotControlModeModel,
     DotBotGPSPosition,
     DotBotLH2Position,
+    DotBotModel,
+    DotBotMoveRawCommandModel,
+    DotBotRgbLedCommandModel
 )
 from dotbot.protocol import (
-    ApplicationType,
-    ProtocolHeader,
-    ProtocolPayload,
-    PayloadType,
     PROTOCOL_VERSION,
+    ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
     ControlMode,
-    LH2Location,
-    LH2Waypoints,
     GPSPosition,
     GPSWaypoints,
+    LH2Location,
+    LH2Waypoints,
+    PayloadType,
+    ProtocolHeader,
+    ProtocolPayload
 )
 from dotbot.server import app, web
-
 
 client = AsyncClient(app=app, base_url="http://testserver")
 

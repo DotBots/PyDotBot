@@ -1,7 +1,6 @@
 """Module implementing a keyboard Dotbot controller."""
 
 import asyncio
-
 from dataclasses import dataclass
 from enum import Enum
 
@@ -14,15 +13,14 @@ except ImportError:
 
     keyboard = mock.MagicMock()
 
-from dotbot.protocol import (
-    PayloadType,
-    ProtocolPayload,
-    CommandMoveRaw,
-    CommandRgbLed,
-)
 from dotbot.controller import ControllerBase
 from dotbot.logger import LOGGER
-
+from dotbot.protocol import (
+    CommandMoveRaw,
+    CommandRgbLed,
+    PayloadType,
+    ProtocolPayload
+)
 
 DIR_KEYS = [
     keyboard.Key.up,
