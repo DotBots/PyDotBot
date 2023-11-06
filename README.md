@@ -1,6 +1,6 @@
 [![CI][ci-badge]][ci-link]
-[![Coverage][codecov-badge]][codecov-link]
 [![PyPI version][pypi-badge]][pypi-link]
+[![Coverage][codecov-badge]][codecov-link]
 [![License][license-badge]][license-link]
 
 # PyDotBot
