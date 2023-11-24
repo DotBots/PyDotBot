@@ -31,6 +31,9 @@ nitpick_ignore_regex = [
     ("py:class", r"pynput.*"),
     ("py:class", r"threading.*"),
     ("py:class", r"starlette.*"),
+    ("py:class", r"ConfigDict"),
+    ("py:class", r"FieldInfo"),
+    ("py:class", r"<MagicMock.*>"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
