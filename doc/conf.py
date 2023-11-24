@@ -87,6 +87,10 @@ html_theme_options = {
     "footer_center": ["sphinx-version"],
 }
 
+# -- Options for linkcheck ---------------------------------------------
+
+linkcheck_ignore = [r'http://localhost:\d+/']
+
 # -- Options for autosummary/autodoc output -----------------------------------
 autosummary_generate = True
 autodoc_typehints = "description"
