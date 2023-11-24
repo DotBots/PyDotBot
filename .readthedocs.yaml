@@ -4,10 +4,8 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
-
-python:
-  install:
-  - requirements: doc/requirements.txt
-
-sphinx:
-  configuration: doc/conf.py
+  commands:
+  - pip install tox
+  - tox -e doc
+  - mkdir -p $READTHEDOCS_OUTPUT/html
+  - cp -r doc/_build/html/* $READTHEDOCS_OUTPUT/html
