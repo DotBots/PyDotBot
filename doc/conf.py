@@ -23,6 +23,15 @@ extensions = [
 tls_verify = False
 templates_path = ["_templates"]
 exclude_patterns = ["_build"]
+nitpick_ignore_regex = [
+    ('py:class', r'abc.*'),
+    ('py:class', r'enum.*'),
+    ('py:class', r'numpy.*'),
+    ('py:class', r'pydantic.*'),
+    ('py:class', r'pynput.*'),
+    ('py:class', r'threading.*'),
+    ('py:class', r'starlette.*'),
+]
 
 # -- Options for HTML output -------------------------------------------------
 
