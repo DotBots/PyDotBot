@@ -3,7 +3,7 @@ import os
 # Configuration file for the Sphinx documentation builder.
 
 project = "PyDotBot"
-copyright = "2023, Alexandre Abadie"
+copyright = "2023, Inria"
 author = "Alexandre Abadie"
 
 # -- General configuration ---------------------------------------------------
