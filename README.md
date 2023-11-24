@@ -8,8 +8,7 @@
 This package contains a complete environment for controlling and visualizing
 [DotBots](http://www.dotbots.org).
 
-The DotBots hardware design can be found
-[here (PCB)][dotbot-pcb-repo] and [here (chassis)][dotbot-chassis-repo].
+The DotBots hardware design can be found [here (PCB)][dotbot-pcb-repo].
 The firmware running on the DotBots can be found [here][dotbot-firmware-repo].
 
 This package can also be used to control devices running the SailBot firmware
@@ -101,5 +100,4 @@ tox
 
 [pydotbot-overview]: https://github.com/DotBots/PyDotBot/blob/main/dotbots.png?raw=True
 [dotbot-firmware-repo]: https://github.com/DotBots/DotBot-firmware
-[dotbot-pcb-repo]: https://github.com/DotBots/DotBot-pcb
-[dotbot-chassis-repo]: https://github.com/DotBots/DotBot-chassis
+[dotbot-pcb-repo]: https://github.com/DotBots/DotBot-hardware
