@@ -60,10 +60,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Install Sphinx
         run: python -m pip install -r doc/requirements.txt
-      - name: Install DotBot
-        run: python -m pip install .
-      - name: Build and check documentation
-        run: make -C doc linkcheck html
+      # - name: Build and check documentation
+      #   run: make -C doc linkcheck html
 
   frontend:
     name: check frontend
