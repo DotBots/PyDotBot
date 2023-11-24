@@ -2,9 +2,9 @@ import os
 
 # Configuration file for the Sphinx documentation builder.
 
-project = 'PyDotBot'
-copyright = '2023, Alexandre Abadie'
-author = 'Alexandre Abadie'
+project = "PyDotBot"
+copyright = "2023, Alexandre Abadie"
+author = "Alexandre Abadie"
 
 # -- General configuration ---------------------------------------------------
 
@@ -12,7 +12,7 @@ extensions = [
     "myst_parser",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    'sphinx.ext.doctest',
+    "sphinx.ext.doctest",
     "sphinx.ext.githubpages",
     "sphinx.ext.graphviz",
     "sphinx.ext.inheritance_diagram",
@@ -21,8 +21,8 @@ extensions = [
 ]
 
 tls_verify = False
-templates_path = ['_templates']
-exclude_patterns = ['_build']
+templates_path = ["_templates"]
+exclude_patterns = ["_build"]
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -53,21 +53,21 @@ html_theme_options = {
             "url": "https://github.com/DotBots/DotBot-firmware",
             "name": "DotBot firmware",
             "attributes": {
-               "target" : "_blank",
-               "rel" : "noopener me",
+                "target": "_blank",
+                "rel": "noopener me",
             },
         },
         {
             "url": "https://github.com/DotBots/DotBot-hardware",
             "name": "DotBot hardware",
             "attributes": {
-               "target" : "_blank",
-               "rel" : "noopener me",
+                "target": "_blank",
+                "rel": "noopener me",
             },
         },
     ],
     "icon_links": [
-         {
+        {
             "name": "GitHub",
             "url": "https://github.com/DotBots/PyDotBot",
             "icon": "fa-brands fa-github",
