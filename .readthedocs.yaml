@@ -6,6 +6,7 @@ build:
     python: "3.12"
     nodejs: "18"
   commands:
+  - python -m pip install pip --upgrade
   - python -m pip install --upgrade --requirement tests_requirements.txt
   - tox -e doc
   - mkdir -p $READTHEDOCS_OUTPUT/html
