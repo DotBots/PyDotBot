@@ -6,7 +6,7 @@ build:
     python: "3.12"
     nodejs: "18"
   commands:
-  - pip install tox
+  - python -m pip install --upgrade --requirement tests_requirements.txt
   - tox -e doc
   - mkdir -p $READTHEDOCS_OUTPUT/html
   - cp -r doc/_build/html/* $READTHEDOCS_OUTPUT/html
