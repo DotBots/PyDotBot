@@ -31,7 +31,7 @@ pip install -U requests
 
 ## The basics
 
-First let's start by fetching the information about available DotBots using
+First, let's start by fetching the information about available DotBots using
 the following script:
 
 ```py
@@ -69,10 +69,13 @@ If a DotBot is connected, this script should give an output similar to:
 This is a list of all DotBots connected to the `dotbot-controller`. In the
 example above, there is only one DotBot connected.
 The 8-byte `address` uniquely identifies a DotBot in the controller. The
-`status` indicates whether the DotBot is `Alive` (0), `Lost` (1) or `Dead` (2).
+`status` indicates whether the DotBot is `Alive` (value=0, the DotBot has been
+seen within the last 5 seconds), `Lost` (value=1, the DotBot hasn't been seen
+within the last 5 sec) or `Dead` (value=2, the DotBot hasn't been seen for more
+than 60 sec).
 
 If the DotBot `address` is already known by the controller, e.g. it identifies
-one of the DotBots returned by the previous request, use the
+one of the DotBots returned a the previous request, use the
 `contoller/dotbots/<address>` to fetch information about that particular
 DotBot (for example `contoller/dotbots/9903ef26257feb31`).
 

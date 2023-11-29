@@ -5,8 +5,8 @@ a DotBot gateway and a DotBot robot.
 
 ## Prerequisites
 
-Make sure you have access to an nRF DK board (nrf52833dk, nrf52840dk or
-nrf5340dk) and to a DotBot (v1 or v2).
+Make sure you have access to an nRF DK board (nRF52833DK, nRF52840DK or
+nRF5340DK) and to a DotBot (v1 or v2).
 
 Follow the instructions in the
 [DotBot firmware getting started page][dotbot-firmware-getting-started].
@@ -21,8 +21,9 @@ pip install pydotbot -U
 
 ## Setup the gateway
 
-The gateway is used to bridge the UART communication between PyDotBot running on
-a computer and the BLE radio used to communicate wirelessly with the DotBot(s).
+The gateway is an nRF DK used to bridge the UART communication between PyDotBot
+running on a computer and the BLE radio used to communicate wirelessly with the
+DotBot(s).
 
 1. Connect the nRF DK gateway to your computer
 
@@ -75,11 +76,11 @@ and you should have one item corresponding to your DotBot.
 ```
 
 4. Check that you can control the DotBot:
-  - Move it using the virtual joystick in the UI
-  - Move it using the arrow keys of your keyboard
-  - Change RGB LED color by pressing "b", "g" or "b" or by using the color picker
-    in the UI
-
+  - by clicking on the joystick and dragging it in the direction that you want
+    the DotBot to move
+  - control it using the arrow keys of your keyboard
+  - change the RGB LED color by pressing "b", "g" or "b" or by using the color
+    selector in the UI
 
 [dotbot-firmware-getting-started]: https://dotbot-firmware.readthedocs.io/en/latest/getting_started.html
 [pydotbot-pypi]: https://pypi.org/project/pydotbot/
