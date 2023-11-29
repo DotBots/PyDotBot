@@ -1,14 +1,14 @@
 # Getting started
 
-This document will guide through setting up PyDotBot connected to a DotBot
-gateway and a DotBot robot.
+This document will help guide you through the setup of PyDotBot connected to
+a DotBot gateway and a DotBot robot.
 
 ## Prerequisites
 
 Make sure you have access to an nRF DK board (nrf52833dk, nrf52840dk or
 nrf5340dk) and to a DotBot (v1 or v2).
 
-Follow the instructions of the
+Follow the instructions in the
 [DotBot firmware getting started page][dotbot-firmware-getting-started].
 
 ## Install PyDotBot
@@ -27,17 +27,19 @@ a computer and the BLE radio used to communicate wirelessly with the DotBot(s).
 1. Connect the nRF DK gateway to your computer
 
 2. Identify the TTY port it is connected to. On Linux, it should be `/dev/ttyACM0`.
-  On Windows, check the device manager, it should be `COM1`, `COM2`, `COM3`, etc
+  On Windows, check the device manager, it should be `COM1`, `COM2`, `COM3`, etc.
+  If using an nRF5340DK, you might see 2 TTY port, use the one with the lowest
+  id.
 
-3. From a terminal, run `dotbot-controller` with the TTY port you identified
-  above:
+3. From a terminal window (or powershell on Windows), run `dotbot-controller`
+  with the TTY port you identified above:
 
 ```
 dotbot-contoller --port <tty port>
 ```
 
 At this point, if the DotBot is powered on with fully charged batteries, you
-should see it poping up in the logs, with a similar output:
+should see an output in the logs that looks something like:
 
 ```
 Welcome to the DotBots controller (version: 0.xx).
@@ -50,8 +52,8 @@ Welcome to the DotBots controller (version: 0.xx).
 
 ## Control your DotBot
 
-1. Open [http://localhost:8000/dotbots](http://localhost:8000/dotbots) and you
-should have one item corresponding to your DotBot.
+1. In a browser, open [http://localhost:8000/dotbots](http://localhost:8000/dotbots)
+and you should have one item corresponding to your DotBot.
 
 2. Activate it by clicking on the DotBot item:
 
