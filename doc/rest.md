@@ -1,12 +1,12 @@
 # REST
 
-When running and connected to a DotBot gateway, the `dotbot-controller`
-application provides a REST server to get information and control connected
-DotBots.
+While connected to a DotBot gateway, the `dotbot-controller`
+application provides a REST server to send commands to and receive information
+from connected DotBots.
 
 The REST API is documented in the running `dotbot-controller` application itself
 at [http://localhost:8000/api](http://localhost:8000/api). This page also allows
-to play with the API directly from the browser.
+you to play with the API directly from the browser.
 
 ```{image} _static/images/pydotbot-ui-openapi.png
 :alt: Open API UI
@@ -67,14 +67,14 @@ If a DotBot is connected, this script should give an output similar to:
 ```
 
 This is a list of all DotBots connected to the `dotbot-controller`. In the
-example above, there's only one DotBot connected.
-The `address` is an 8 bytes data that uniquely identifies a DotBot in the
-controller. The `status` tells if the DotBot is `Alive` (0), `Lost` (1) or
-`Dead` (2).
+example above, there is only one DotBot connected.
+The 8-byte `address` uniquely identifies a DotBot in the controller. The
+`status` indicates whether the DotBot is `Alive` (0), `Lost` (1) or `Dead` (2).
 
-If the DotBot `address` is already known, use the `contoller/dotbots/<address>`
-to fetch information about that particular DotBot (for example
-`contoller/dotbots/9903ef26257feb31`).
+If the DotBot `address` is already known by the controller, e.g. it identifies
+one of the DotBots returned by the previous request, use the
+`contoller/dotbots/<address>` to fetch information about that particular
+DotBot (for example `contoller/dotbots/9903ef26257feb31`).
 
 ## Change the color of the RGB LED
 
@@ -130,7 +130,7 @@ This request, according to the API is also a PUT request and requires a payload:
 }
 ```
 
-For the DotBot application type, only left_y and right_y values are useful,
+To control the DotBot motors, only left_y and right_y values are useful,
 left_x and right_x being ignored by the firmware running on the DotBots.
 
 ```{admonition} Note 1
