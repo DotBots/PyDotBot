@@ -85,7 +85,7 @@ html_theme_options = {
             "icon": "fa-brands fa-github",
         },
     ],
-    "header_links_before_dropdown": 4,
+    "header_links_before_dropdown": 3,
     "logo": {
         "text": "PyDotBot",
     },
