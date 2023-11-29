@@ -133,13 +133,13 @@ This request, according to the API is also a PUT request and requires a payload:
 }
 ```
 
-To control the DotBot motors, only left_y and right_y values are useful,
-left_x and right_x being ignored by the firmware running on the DotBots.
+To control the DotBot motors, only `left_y` and `right_y` values are useful,
+`left_x` and `right_x` being ignored by the firmware running on the DotBots.
 
 ```{admonition} Note 1
 :class: info
-left_{x,y} and right_{x,y} values must be within the range [-100, 100]
-and it's important to know that absolute values < 50 won't move the motors
+left_{x,y} and right_{x,y} values must be within the range **[-100, 100]**
+and it's important to know that absolute values below 50 won't move the motors
 (because of limited power in electronic circuit and internal friction of the motors).
 ```
 
@@ -147,7 +147,7 @@ and it's important to know that absolute values < 50 won't move the motors
 :class: info
 The firmware running on the DotBot stops automatically the motors if
 no move command is received after 200ms. To move the DotBot continuously,
-several commands must be sent with a delay <200ms between them.
+several commands must be sent with a delay below 200ms between them.
 ```
 
 Here is an example Python script to send a "move raw" request to one DotBot:
