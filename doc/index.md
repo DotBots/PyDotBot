@@ -1,5 +1,7 @@
 ```{toctree}
 :hidden:
+getting_started
+rest
 api
 ```
 
