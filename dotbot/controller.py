@@ -14,8 +14,6 @@ import serial
 import websockets
 from fastapi import WebSocket
 from haversine import Unit, haversine
-from rich.live import Live
-from rich.table import Table
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
@@ -73,7 +71,6 @@ class ControllerSettings:
     gw_address: str
     swarm_id: str
     webbrowser: bool = False
-    table: bool = False
     handshake: bool = False
     verbose: bool = False
 
@@ -217,34 +214,6 @@ class ControllerBase(ABC):
                     DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
                 )
             await asyncio.sleep(1)
-
-    async def _dotbots_table_refresh(self):
-        """Display and refresh a table of known dotbot."""
-
-        def table():
-            table = Table()
-            if self.dotbots:
-                table.add_column("#", style="cyan")
-                table.add_column("address", style="magenta")
-                table.add_column("application", style="yellow")
-                table.add_column("status", style="green")
-                table.add_column("mode", style="green")
-                table.add_column("active", style="green")
-                for idx, dotbot in enumerate(self.dotbots.values()):
-                    table.add_row(
-                        f"{idx:<4}",
-                        f"0x{dotbot.address}",
-                        f"{dotbot.application.name}",
-                        f"{dotbot.status.name.capitalize()}",
-                        f"{dotbot.mode.name.capitalize()}",
-                        f"{int(dotbot.address, 16) == self.header.destination}",
-                    )
-            return table
-
-        with Live(table(), refresh_per_second=10) as live:
-            while 1:
-                live.update(table())
-                await asyncio.sleep(1)
 
     def _compute_lh2_position(
         self, payload: ProtocolPayload
@@ -469,8 +438,6 @@ class ControllerBase(ABC):
                 asyncio.create_task(self._dotbots_status_refresh()),
                 asyncio.create_task(self.start()),
             ]
-            if self.settings.table is True:
-                tasks.append(asyncio.create_task(self._dotbots_table_refresh()))
             await asyncio.gather(*tasks)
         except (
             SerialInterfaceException,

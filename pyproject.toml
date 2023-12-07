@@ -36,7 +36,6 @@ dependencies = [
     "pygame         == 2.5.1",
     "pyserial       == 3.5",
     "pynput         == 1.7.6",
-    "rich           == 13.5.2",
     "structlog      == 23.1.0",
     "uvicorn        == 0.23.2",
     "websockets     == 11.0.3",

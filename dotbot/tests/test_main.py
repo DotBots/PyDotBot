@@ -25,7 +25,6 @@ Options:
                                   0000000000000000
   -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
   -w, --webbrowser                Open a web browser automatically
-  -T, --table                     Display table in terminal
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)
   --log-level [debug|info|warning|error]

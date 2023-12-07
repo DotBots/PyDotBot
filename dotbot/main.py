@@ -84,13 +84,6 @@ DEFAULT_CONTROLLERS = {
     help="Open a web browser automatically",
 )
 @click.option(
-    "-T",
-    "--table",
-    is_flag=True,
-    default=False,
-    help="Display table in terminal",
-)
-@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -123,7 +116,6 @@ def main(
     gw_address,
     swarm_id,
     webbrowser,
-    table,
     verbose,
     log_level,
     log_output,
@@ -133,8 +125,7 @@ def main(
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
-    handlers = ["console", "file"] if table is False else ["file"]
-    setup_logging(log_output, log_level, handlers)
+    setup_logging(log_output, log_level, ["console", "file"])
     for controller, controller_cls in DEFAULT_CONTROLLERS.items():
         register_controller(controller, controller_cls)
     try:
@@ -147,7 +138,6 @@ def main(
                 gw_address,
                 swarm_id,
                 webbrowser,
-                table,
                 handshake,
                 verbose,
             ),
