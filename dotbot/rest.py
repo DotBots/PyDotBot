@@ -1,4 +1,4 @@
-"""Async helpers to interact with the controller REST API."""
+"""Module containing client code to interact with the controller REST API."""
 
 import httpx
 

@@ -21,5 +21,6 @@ Submodules
    dotbot.main
    dotbot.models
    dotbot.protocol
+   dotbot.rest
    dotbot.serial_interface
    dotbot.server
