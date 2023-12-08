@@ -101,11 +101,6 @@ const DotBotAccordionItem = (props) => {
                 {dotbotStatuses[props.dotbot.status]}
               </div>
             </div>
-            <div className="me-2">
-              <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
-                {`${props.dotbot.address === props.active ? "active": "activate"}`}
-              </div>
-            </div>
           </div>
         </button>
       </h2>
@@ -204,11 +199,6 @@ const SailBotItem = (props) => {
             <div className="me-2">
               <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
                 {dotbotStatuses[props.dotbot.status]}
-              </div>
-            </div>
-            <div className="me-2">
-              <div className={`badge text-bg-${props.dotbot.address === props.active ? "success" : "primary"} text-light border-0`}>
-                {`${props.dotbot.address === props.active ? "active": "activate"}`}
               </div>
             </div>
           </div>

@@ -17,30 +17,11 @@ from dotbot import (
     SWARM_ID_DEFAULT,
     pydotbot_version,
 )
-from dotbot.controller import (
-    ControllerSettings,
-    controller_factory,
-    register_controller,
-)
-from dotbot.joystick import JoystickController
-from dotbot.keyboard import KeyboardController
+from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
-
-CONTROLLER_TYPE_DEFAULT = "keyboard"
-DEFAULT_CONTROLLERS = {
-    "keyboard": KeyboardController,
-    "joystick": JoystickController,
-}
 
 
 @click.command()
-@click.option(
-    "-t",
-    "--type",
-    type=click.Choice(["joystick", "keyboard"]),
-    default=CONTROLLER_TYPE_DEFAULT,
-    help="Type of your controller. Defaults to 'keyboard'",
-)
 @click.option(
     "-p",
     "--port",
@@ -109,7 +90,6 @@ DEFAULT_CONTROLLERS = {
     help="Perform a basic handshake with the gateway board on startup",
 )
 def main(
-    type,
     port,
     baudrate,
     dotbot_address,
@@ -121,16 +101,13 @@ def main(
     log_output,
     handshake,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
-    """BotController, universal SailBot and DotBot controller."""
+    """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
     setup_logging(log_output, log_level, ["console", "file"])
-    for controller, controller_cls in DEFAULT_CONTROLLERS.items():
-        register_controller(controller, controller_cls)
     try:
-        controller = controller_factory(
-            type,
+        controller = Controller(
             ControllerSettings(
                 port,
                 baudrate,
