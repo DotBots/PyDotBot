@@ -76,8 +76,8 @@ than 60 sec).
 
 If the DotBot `address` is already known by the controller, e.g. it identifies
 one of the DotBots returned a the previous request, use the
-`contoller/dotbots/<address>` to fetch information about that particular
-DotBot (for example `contoller/dotbots/9903ef26257feb31`).
+`controller/dotbots/<address>` to fetch information about that particular
+DotBot (for example `controller/dotbots/9903ef26257feb31`).
 
 ## Change the color of the RGB LED
 
