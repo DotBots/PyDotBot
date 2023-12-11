@@ -1,3 +1,5 @@
+"""Module for MQTT communication."""
+
 import json
 
 from fastapi_mqtt import FastMQTT, MQTTConfig
@@ -20,6 +22,8 @@ from dotbot.protocol import (
 
 
 class MqttSettings(BaseSettings):
+    """Mqtt broker connection settings."""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     mqtt_host: str
     mqtt_port: int
@@ -44,6 +48,7 @@ mqtt = FastMQTT(
 def mqtt_command_move_raw(
     address: str, application: ApplicationType, command: DotBotMoveRawCommandModel
 ):
+    """MQTT callback for move_raw command."""
     logger = LOGGER.bind(
         context=__name__,
         address=address,
@@ -79,6 +84,7 @@ def mqtt_command_move_raw(
 def mqtt_command_rgb_led(
     address: str, application: ApplicationType, command: DotBotRgbLedCommandModel
 ):
+    """MQTT callback for rgb_led command."""
     logger = LOGGER.bind(
         context=__name__,
         address=address,
@@ -120,6 +126,7 @@ MQTT_TOPICS = {
 
 @mqtt.on_connect()
 def connect(client, flags, rc, properties):
+    """MQTT callback called on broker connection."""
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
@@ -128,6 +135,7 @@ def connect(client, flags, rc, properties):
 
 @mqtt.on_message()
 async def message(_, topic, payload, qos, properties):
+    """MQTT callback called on message received."""
     logger = LOGGER.bind(context=__name__, topic=topic, qos=qos, **properties)
     topic = topic.split("/")[2:]
     if len(topic) < 3:
@@ -147,12 +155,14 @@ async def message(_, topic, payload, qos, properties):
 
 @mqtt.on_disconnect()
 def disconnect(_, packet, exc=None):
+    """MQTT callback called on broker disconnect."""
     logger = LOGGER.bind(context=__name__, packet=packet, exc=exc)
     logger.info("Disconnected")
 
 
 @mqtt.on_subscribe()
 def subscribe(client, mid, qos, properties):
+    """MQTT callback called on topic subscription."""
     logger = LOGGER.bind(context=__name__, qos=qos, **properties)
     topic = (
         client.get_subscriptions_by_mid(mid)[0].topic
