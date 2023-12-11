@@ -3,6 +3,7 @@
 import json
 
 from fastapi_mqtt import FastMQTT, MQTTConfig
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dotbot.logger import LOGGER
@@ -25,10 +26,10 @@ class MqttSettings(BaseSettings):
     """Mqtt broker connection settings."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-    mqtt_host: str
-    mqtt_port: int
-    mqtt_username: str
-    mqtt_password: str
+    mqtt_host: str = Field(default="localhost")
+    mqtt_port: int = Field(default=8883)
+    mqtt_username: str = Field(default="user")
+    mqtt_password: str = Field(default="password")
 
 
 settings = MqttSettings()
