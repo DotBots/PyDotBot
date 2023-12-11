@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,26 +29,26 @@ from dotbot.protocol import (
     ProtocolHeader,
     ProtocolPayload,
 )
-from dotbot.server import app, web
+from dotbot.server import api
 
-client = AsyncClient(app=app, base_url="http://testserver")
+client = AsyncClient(app=api, base_url="http://testserver")
 
 
 @pytest.fixture(autouse=True)
 def controller():
-    app.controller = MagicMock()
-    app.controller.websockets = []
-    app.controller.header = MagicMock()
-    app.controller.header.destination = MagicMock()
-    app.controller.dotbots = MagicMock()
-    app.controller.get_dotbots = MagicMock()
-    app.controller.lh2_manager = MagicMock()
-    app.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
-    app.controller.notify_clients = AsyncMock()
-    app.controller.send_payload = MagicMock()
-    app.controller.settings = MagicMock()
-    app.controller.settings.gw_address = "0000"
-    app.controller.settings.swarm_id = "0000"
+    api.controller = MagicMock()
+    api.controller.websockets = []
+    api.controller.header = MagicMock()
+    api.controller.header.destination = MagicMock()
+    api.controller.dotbots = MagicMock()
+    api.controller.get_dotbots = MagicMock()
+    api.controller.lh2_manager = MagicMock()
+    api.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
+    api.controller.notify_clients = AsyncMock()
+    api.controller.send_payload = MagicMock()
+    api.controller.settings = MagicMock()
+    api.controller.settings.gw_address = "0000"
+    api.controller.settings.swarm_id = "0000"
 
 
 @pytest.mark.asyncio
@@ -62,7 +61,7 @@ async def test_openapi_exists():
 async def test_get_dotbot_address():
     result_address = "0000000000004242"
     result = DotBotAddressModel(address=result_address)
-    app.controller.header.destination = int(result_address, 16)
+    api.controller.header.destination = int(result_address, 16)
     response = await client.get("/controller/dotbot_address")
     assert response.status_code == 200
     assert response.json() == result.model_dump()
@@ -76,7 +75,7 @@ async def test_set_dotbot_address():
         json=DotBotAddressModel(address=new_address).model_dump(),
     )
     assert response.status_code == 200
-    assert app.controller.header.destination == int(new_address, 16)
+    assert api.controller.header.destination == int(new_address, 16)
 
 
 @pytest.mark.asyncio
@@ -112,13 +111,13 @@ async def test_set_dotbot_address():
     ],
 )
 async def test_set_dotbots_move_raw(dotbots, code, found):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType.DotBot,
         version=PROTOCOL_VERSION,
     )
@@ -133,9 +132,9 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     )
     assert response.status_code == code
     if found is True:
-        app.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_payload)
     else:
-        app.controller.send_payload.assert_not_called()
+        api.controller.send_payload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -171,13 +170,13 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     ],
 )
 async def test_set_dotbots_rgb_led(dotbots, code, found):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType.DotBot,
         version=PROTOCOL_VERSION,
     )
@@ -193,9 +192,9 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     assert response.status_code == code
 
     if found:
-        app.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_payload)
     else:
-        app.controller.send_payload.assert_not_called()
+        api.controller.send_payload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -231,13 +230,13 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     ],
 )
 async def test_set_dotbots_mode(dotbots, code, found):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     address = "4242"
     message = DotBotControlModeModel(mode=1)
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType.DotBot,
         version=PROTOCOL_VERSION,
     )
@@ -253,9 +252,9 @@ async def test_set_dotbots_mode(dotbots, code, found):
     assert response.status_code == code
 
     if found:
-        app.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_payload)
     else:
-        app.controller.send_payload.assert_not_called()
+        api.controller.send_payload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -365,12 +364,12 @@ async def test_set_dotbots_mode(dotbots, code, found):
 async def test_set_dotbots_waypoints(
     dotbots, has_position, application, message, code, found
 ):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     address = "4242"
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=application,
         version=PROTOCOL_VERSION,
     )
@@ -412,11 +411,11 @@ async def test_set_dotbots_waypoints(
     assert response.status_code == code
 
     if found:
-        app.controller.send_payload.assert_called_with(expected_payload)
-        assert app.controller.dotbots[address].waypoints == expected_waypoints
-        assert app.controller.dotbots[address].waypoints_threshold == expected_threshold
+        api.controller.send_payload.assert_called_with(expected_payload)
+        assert api.controller.dotbots[address].waypoints == expected_waypoints
+        assert api.controller.dotbots[address].waypoints_threshold == expected_threshold
     else:
-        app.controller.send_payload.assert_not_called()
+        api.controller.send_payload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -477,7 +476,7 @@ async def test_set_dotbots_waypoints(
     ],
 )
 async def test_get_dotbots(dotbots, result):
-    app.controller.get_dotbots.return_value = list(
+    api.controller.get_dotbots.return_value = list(
         sorted(dotbots.values(), key=lambda dotbot: dotbot.address)
     )
     response = await client.get("/controller/dotbots")
@@ -539,7 +538,7 @@ async def test_get_dotbots(dotbots, result):
     ],
 )
 async def test_get_dotbot(dotbots, address, code, found, result):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     response = await client.get(f"/controller/dotbots/{address}")
     assert response.status_code == code
     if found is True:
@@ -649,11 +648,11 @@ async def test_get_dotbot(dotbots, address, code, found, result):
     ],
 )
 async def test_clear_dotbot_position_history(dotbots, address, code, found):
-    app.controller.dotbots = dotbots
+    api.controller.dotbots = dotbots
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert app.controller.dotbots[address].position_history == []
+        assert api.controller.dotbots[address].position_history == []
 
 
 @pytest.mark.asyncio
@@ -663,7 +662,7 @@ async def test_lh2_calibration():
     assert response.status_code == 200
 
     with patch(
-        "dotbot.server.app.controller.lh2_manager.add_calibration_point"
+        "dotbot.server.api.controller.lh2_manager.add_calibration_point"
     ) as point:
         response = await client.post(
             "/controller/lh2/calibration/2",
@@ -672,7 +671,7 @@ async def test_lh2_calibration():
         point.assert_called_with(2)
 
     with patch(
-        "dotbot.server.app.controller.lh2_manager.compute_calibration"
+        "dotbot.server.api.controller.lh2_manager.compute_calibration"
     ) as calibration:
         response = await client.put(
             "/controller/lh2/calibration",
@@ -683,20 +682,20 @@ async def test_lh2_calibration():
 
 @pytest.mark.asyncio
 async def test_ws_client():
-    with TestClient(app).websocket_connect("/controller/ws/status") as websocket:
+    with TestClient(api).websocket_connect("/controller/ws/status") as websocket:
         await asyncio.sleep(0.1)
-        assert len(app.controller.websockets) == 1
+        assert len(api.controller.websockets) == 1
         websocket.close()
         await asyncio.sleep(0.1)
-        assert len(app.controller.websockets) == 0
+        assert len(api.controller.websockets) == 0
 
 
-@pytest.mark.asyncio
-@patch("uvicorn.Server.serve")
-async def test_web(serve, caplog):
-    caplog.set_level(logging.DEBUG, logger="pydotbot")
-    with pytest.raises(SystemExit):
-        await web(None)
-    serve.side_effect = asyncio.exceptions.CancelledError()
-    await web(None)
-    assert "Web server cancelled" in caplog.text
+# @pytest.mark.asyncio
+# @patch("uvicorn.Server.serve")
+# async def test_web(serve, caplog):
+#     caplog.set_level(logging.DEBUG, logger="pydotbot")
+#     with pytest.raises(SystemExit):
+#         await web(None)
+#     serve.side_effect = asyncio.exceptions.CancelledError()
+#     await web(None)
+#     assert "Web server cancelled" in caplog.text

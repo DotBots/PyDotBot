@@ -29,6 +29,7 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotStatus,
 )
+from dotbot.mqtt import mqtt
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
@@ -39,7 +40,7 @@ from dotbot.protocol import (
     ProtocolPayloadParserException,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
-from dotbot.server import web
+from dotbot.server import api
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -71,6 +72,7 @@ class ControllerSettings:
     swarm_id: str
     webbrowser: bool = False
     handshake: bool = False
+    use_mqtt: bool = False
     verbose: bool = False
 
 
@@ -127,6 +129,12 @@ class Controller:
         self.serial = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
+        self.api = api
+        api.controller = self
+        self.mqtt = mqtt
+        mqtt.controller = self
+        if settings.use_mqtt is True:
+            self.mqtt.init_app(api)
         self.logger = LOGGER.bind(context=__name__)
 
     async def _start_serial(self):
@@ -379,6 +387,11 @@ class Controller:
                 for websocket in self.websockets
             ]
         )
+        if self.mqtt.client.is_connected is True:
+            self.mqtt.publish(
+                "/dotbots/notifications",
+                json.dumps(notification.dict(exclude_none=True)),
+            )
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
@@ -421,10 +434,11 @@ class Controller:
         tasks = []
         try:
             tasks = [
-                asyncio.create_task(web(self)),
+                asyncio.create_task(self.web()),
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
+                asyncio.create_task(self._publish_dotbots()),
             ]
             await asyncio.gather(*tasks)
         except (

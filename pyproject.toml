@@ -30,10 +30,12 @@ authors = [
 dependencies = [
     "click          == 8.1.7",
     "fastapi        == 0.103.1",
+    "fastapi-mqtt   == 2.0.0",
     "haversine      == 2.8.0",
     "httpx          == 0.25.2",
     "numpy          == 1.25.2",
     "opencv-python  == 4.8.0.76",
+    "pydantic-settings == 2.1.0",
     "pygame         == 2.5.1",
     "pyserial       == 3.5",
     "pynput         == 1.7.6",
