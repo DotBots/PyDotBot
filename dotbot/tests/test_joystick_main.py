@@ -11,6 +11,7 @@ MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
   DotBot joystick controller.
 
 Options:
+  -j, --joystick INTEGER          Index of the joystick to use. Defaults to 0
   -h, --hostname TEXT             Hostname of the controller. Defaults to
                                   'localhost'
   -p, --port INTEGER              HTTP port. Defaults to '8000'

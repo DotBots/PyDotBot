@@ -37,7 +37,9 @@ APPLICATION_TYPE_MAP = {
 class JoystickController:
     """A Dotbot controller for a joystick interface."""
 
-    def __init__(self, hostname, port, https, dotbot_address, application):
+    def __init__(
+        self, joystick_index, hostname, port, https, dotbot_address, application
+    ):
         """Initialize the joystick controller."""
         self.api = RestClient(hostname, port, https)
         self.dotbots = []
@@ -46,10 +48,12 @@ class JoystickController:
         pygame.init()  # pylint: disable=no-member
         pygame.joystick.init()  # joysticks initialization
         self._logger = LOGGER.bind(context=__name__)
-        if pygame.joystick.get_count() == 0:
+        if pygame.joystick.get_count() < joystick_index + 1:
             self._logger.error("No joystick connected")
             sys.exit("Error: No joystick connected.\nExiting program...")
-        self.joystick = pygame.joystick.Joystick(0)  # instantiation of a joystick
+        self.joystick = pygame.joystick.Joystick(
+            joystick_index
+        )  # instantiation of a joystick
         self.joystick.init()  # initialization of the joystick
         num_axes = self.joystick.get_numaxes()
         if num_axes < JOYSTICK_AXIS_COUNT:
@@ -113,6 +117,13 @@ class JoystickController:
 
 @click.command()
 @click.option(
+    "-j",
+    "--joystick",
+    type=int,
+    default=0,
+    help="Index of the joystick to use. Defaults to 0",
+)
+@click.option(
     "-h",
     "--hostname",
     type=str,
@@ -153,11 +164,12 @@ class JoystickController:
     default="info",
     help="Logging level. Defaults to info",
 )
-def main(hostname, port, https, dotbot_address, application, log_level):
+def main(joystick, hostname, port, https, dotbot_address, application, log_level):
     """DotBot joystick controller."""
     print(f"Welcome to the DotBots joystick interface (version: {pydotbot_version()}).")
     setup_logging(None, log_level, ["console"])
     joystick_controller = JoystickController(
+        joystick,
         hostname,
         port,
         https,
