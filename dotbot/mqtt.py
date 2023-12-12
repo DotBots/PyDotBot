@@ -47,7 +47,10 @@ mqtt = FastMQTT(
 
 
 def mqtt_command_move_raw(
-    address: str, application: ApplicationType, command: DotBotMoveRawCommandModel
+    address: str,
+    swarm_id: str,
+    application: ApplicationType,
+    command: DotBotMoveRawCommandModel,
 ):
     """MQTT callback for move_raw command."""
     logger = LOGGER.bind(
@@ -64,7 +67,7 @@ def mqtt_command_move_raw(
     header = ProtocolHeader(
         destination=int(address, 16),
         source=int(mqtt.controller.settings.gw_address, 16),
-        swarm_id=int(mqtt.controller.settings.swarm_id, 16),
+        swarm_id=int(swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
@@ -83,7 +86,10 @@ def mqtt_command_move_raw(
 
 
 def mqtt_command_rgb_led(
-    address: str, application: ApplicationType, command: DotBotRgbLedCommandModel
+    address: str,
+    swarm_id: str,
+    application: ApplicationType,
+    command: DotBotRgbLedCommandModel,
 ):
     """MQTT callback for rgb_led command."""
     logger = LOGGER.bind(
@@ -100,7 +106,7 @@ def mqtt_command_rgb_led(
     header = ProtocolHeader(
         destination=int(address, 16),
         source=int(mqtt.controller.settings.gw_address, 16),
-        swarm_id=int(mqtt.controller.settings.swarm_id, 16),
+        swarm_id=int(swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
@@ -131,7 +137,7 @@ def connect(client, flags, rc, properties):
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
-        client.subscribe(f"/dotbots/+/+/{topic}")
+        client.subscribe(f"/dotbots/+/+/+/{topic}")
 
 
 @mqtt.on_message()
@@ -142,7 +148,7 @@ async def message(_, topic, payload, qos, properties):
     if len(topic) < 3:
         logger.warning(f"Invalid topic '{topic}'")
         return
-    address, application, cmd = topic
+    swarm_id, address, application, cmd = topic
     try:
         payload = json.loads(payload.decode())
     except json.JSONDecodeError:
@@ -150,7 +156,10 @@ async def message(_, topic, payload, qos, properties):
         return
     logger.info("Command received")
     MQTT_TOPICS[cmd]["callback"](
-        address, ApplicationType(int(application)), MQTT_TOPICS[cmd]["model"](**payload)
+        address,
+        swarm_id,
+        ApplicationType(int(application)),
+        MQTT_TOPICS[cmd]["model"](**payload),
     )
 
 
@@ -170,4 +179,4 @@ def subscribe(client, mid, qos, properties):
         if client.get_subscriptions_by_mid(mid)
         else None
     )
-    logger.info(f"Subscribed to topic {topic}")
+    logger.info(f"Subscribed to {topic}")
