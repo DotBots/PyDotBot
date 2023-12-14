@@ -29,7 +29,7 @@ export const apiFetchActiveDotbotAddress = async () => {
 }
 
 export const apiUpdateMoveRaw = async (address, application, left_x, left_y, right_x, right_y) => {
-  const command = { left_x: left_x, left_y: left_y, right_x: right_x, right_y: right_y };
+  const command = { left_x: parseInt(left_x), left_y: parseInt(left_y), right_x: parseInt(right_x), right_y: parseInt(right_y) };
   return await axios.put(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/move_raw`,
     command,
