@@ -1,9 +1,10 @@
 """Module for MQTT communication."""
 
 import json
+from typing import Optional
 
 from fastapi_mqtt import FastMQTT, MQTTConfig
-from pydantic import Field
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dotbot.logger import LOGGER
@@ -27,9 +28,10 @@ class MqttSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     mqtt_host: str = Field(default="localhost")
-    mqtt_port: int = Field(default=8883)
-    mqtt_username: str = Field(default="user")
-    mqtt_password: str = Field(default="password")
+    mqtt_port: int = Field(default=1883)
+    mqtt_use_ssl: bool = Field(default=False)
+    mqtt_username: Optional[str] = Field(default=None)
+    mqtt_password: Optional[str] = Field(default=None)
 
 
 settings = MqttSettings()
@@ -38,7 +40,7 @@ mqtt_config = MQTTConfig(
     port=settings.mqtt_port,
     username=settings.mqtt_username,
     password=settings.mqtt_password,
-    ssl=True,
+    ssl=settings.mqtt_use_ssl,
 )
 
 mqtt = FastMQTT(
@@ -60,10 +62,10 @@ def mqtt_command_move_raw(
         command="move_raw",
         **command.dict(),
     )
-    logger.info("Sending command")
     if address not in mqtt.controller.dotbots:
-        logger.warning(f"DotBot {address} not found in controller")
+        logger.warning("DotBot not found")
         return
+    logger.info("Sending command")
     header = ProtocolHeader(
         destination=int(address, 16),
         source=int(mqtt.controller.settings.gw_address, 16),
@@ -99,10 +101,10 @@ def mqtt_command_rgb_led(
         command="rgb_led",
         **command.dict(),
     )
-    logger.info("Sending command")
     if address not in mqtt.controller.dotbots:
-        logger.warning(f"DotBot {address} not found in controller")
+        logger.warning("DotBot not found")
         return
+    logger.info("Sending command")
     header = ProtocolHeader(
         destination=int(address, 16),
         source=int(mqtt.controller.settings.gw_address, 16),
@@ -129,6 +131,7 @@ MQTT_TOPICS = {
         "model": DotBotRgbLedCommandModel,
     },
 }
+MQTT_TOPIC_BASE = "/dotbots/+/+/+"
 
 
 @mqtt.on_connect()
@@ -137,7 +140,7 @@ def connect(client, flags, rc, properties):
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
-        client.subscribe(f"/dotbots/+/+/+/{topic}")
+        client.subscribe(f"{MQTT_TOPIC_BASE}/{topic}")
 
 
 @mqtt.on_message()
@@ -154,13 +157,16 @@ async def message(_, topic, payload, qos, properties):
     except json.JSONDecodeError:
         logger.warning("Invalid JSON payload")
         return
-    logger.info("Command received")
-    MQTT_TOPICS[cmd]["callback"](
-        address,
-        swarm_id,
-        ApplicationType(int(application)),
-        MQTT_TOPICS[cmd]["model"](**payload),
-    )
+    logger.info("Message received")
+    try:
+        MQTT_TOPICS[cmd]["callback"](
+            address,
+            swarm_id,
+            ApplicationType(int(application)),
+            MQTT_TOPICS[cmd]["model"](**payload),
+        )
+    except ValidationError as exc:
+        logger.warning(f"Invalid payload: {exc.errors()}")
 
 
 @mqtt.on_disconnect()
