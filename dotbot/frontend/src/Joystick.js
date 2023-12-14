@@ -32,7 +32,7 @@ export const Joystick = (props) => {
 
   const moveToSpeeds = () => {
     const dir = (128 * state.position.y / 200) * -1;
-    const angle = (128 * state.position.x / 200) * -1;
+    const angle = (128 * state.position.x / 200);
 
     let leftSpeed = (dir + angle);
     let rightSpeed = (dir - angle);
