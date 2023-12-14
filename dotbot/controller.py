@@ -5,7 +5,6 @@ import json
 import math
 import time
 import webbrowser
-from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -15,7 +14,7 @@ import websockets
 from fastapi import WebSocket
 from haversine import Unit, haversine
 
-from dotbot import GATEWAY_ADDRESS_DEFAULT
+from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -87,7 +86,7 @@ def gps_distance(last: DotBotGPSPosition, new: DotBotGPSPosition) -> float:
     )
 
 
-class ControllerBase(ABC):
+class Controller:
     """Abstract base class of specific implementations of Dotbot controllers."""
 
     def __init__(self, settings: ControllerSettings):
@@ -117,7 +116,7 @@ class ControllerBase(ABC):
         #     ),
         # }
         self.header = ProtocolHeader(
-            destination=int(settings.dotbot_address, 16),
+            destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
             swarm_id=int(settings.swarm_id, 16),
             application=ApplicationType.DotBot,
@@ -129,14 +128,6 @@ class ControllerBase(ABC):
         self.websockets = []
         self.lh2_manager = LighthouseManager()
         self.logger = LOGGER.bind(context=__name__)
-
-    @abstractmethod
-    def init(self):
-        """Abstract method to initialize a controller."""
-
-    @abstractmethod
-    async def start(self):
-        """Abstract method to start a controller."""
 
     async def _start_serial(self):
         """Starts the serial listener thread in a coroutine."""
@@ -267,7 +258,6 @@ class ControllerBase(ABC):
             address=source,
             application=payload.header.application,
             last_seen=time.time(),
-            active=(int(source, 16) == self.header.destination),
         )
         notification_cmd = DotBotNotificationCommand.NONE
         if source in self.dotbots:
@@ -430,13 +420,11 @@ class ControllerBase(ABC):
         """Launch the controller."""
         tasks = []
         try:
-            self.init()
             tasks = [
                 asyncio.create_task(web(self)),
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
-                asyncio.create_task(self.start()),
             ]
             await asyncio.gather(*tasks)
         except (
@@ -449,15 +437,3 @@ class ControllerBase(ABC):
         finally:
             for task in tasks:
                 task.cancel()
-
-
-def register_controller(type_, cls):
-    """Register a new controller."""
-    CONTROLLERS.update({type_: cls})
-
-
-def controller_factory(type_, settings: ControllerSettings):
-    """Returns an instance of a concrete Dotbot controller."""
-    if type_ not in CONTROLLERS:
-        raise ControllerException("Invalid controller")
-    return CONTROLLERS[type_](settings)

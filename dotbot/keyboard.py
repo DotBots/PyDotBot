@@ -1,8 +1,11 @@
 """Module implementing a keyboard Dotbot controller."""
 
 import asyncio
+import sys
 from dataclasses import dataclass
 from enum import Enum
+
+import click
 
 try:
     from pynput import keyboard
@@ -13,10 +16,22 @@ except ImportError:
 
     keyboard = mock.MagicMock()
 
-from dotbot.controller import ControllerBase
-from dotbot.logger import LOGGER
-from dotbot.protocol import CommandMoveRaw, CommandRgbLed, PayloadType, ProtocolPayload
+from dotbot import (
+    CONTROLLER_HOSTNAME_DEFAULT,
+    CONTROLLER_PORT_DEFAULT,
+    DOTBOT_ADDRESS_DEFAULT,
+    pydotbot_version,
+)
+from dotbot.logger import LOGGER, setup_logging
+from dotbot.models import DotBotMoveRawCommandModel, DotBotRgbLedCommandModel
+from dotbot.protocol import ApplicationType
+from dotbot.rest import RestClient
 
+DOTBOT_APPLICATION_DEFAULT = "dotbot"
+APPLICATION_TYPE_MAP = {
+    "dotbot": ApplicationType.DotBot,
+    "sailbot": ApplicationType.SailBot,
+}
 DIR_KEYS = [
     keyboard.Key.up,
     keyboard.Key.down,
@@ -88,17 +103,34 @@ class KeyboardEvent:
     key: keyboard.Key
 
 
-class KeyboardController(ControllerBase):
+class KeyboardController:
     """Dotbot controller for a keyboard interface."""
 
-    def init(self):
-        # pylint: disable=attribute-defined-outside-init
+    def __init__(self, hostname, port, https, dotbot_address, application):
         """Initializes the keyboard controller."""
+        self.api = RestClient(hostname, port, https)
+        self.dotbots = []
+        self.dotbot_address = dotbot_address
+        self.application = APPLICATION_TYPE_MAP[application]
         self.previous_speeds = (0, 0)
         self.active_keys = []
         self.event_queue = asyncio.Queue()
         self._logger = LOGGER.bind(context=__name__)
         self._logger.info("Controller initialized")
+
+    @property
+    def active_dotbot(self):
+        _active_dotbot = self.dotbot_address
+        if _active_dotbot == DOTBOT_ADDRESS_DEFAULT:
+            if self.dotbots and self.dotbots[0]["status"] == 0:
+                _active_dotbot = self.dotbots[0]["address"]
+            else:
+                self._logger.info("No active DotBot")
+                return
+        elif _active_dotbot not in [dotbot["address"] for dotbot in self.dotbots]:
+            self._logger.info("Active DotBot not available")
+            return
+        return _active_dotbot
 
     async def update_active_keys(self):
         """Coroutine used to handle keyboard events asynchronously."""
@@ -130,21 +162,18 @@ class KeyboardController(ControllerBase):
         while 1:
             event = await self.event_queue.get()
             if event.type_ == KeyboardEventType.RELEASED:
-                self.active_keys.remove(event.key)
+                while event.key in self.active_keys:
+                    self.active_keys.remove(event.key)
             if event.type_ == KeyboardEventType.PRESSED:
                 if hasattr(event.key, "char") and event.key.char in COLOR_KEYS:
                     red, green, blue = rgb_from_key(event.key.char)
-                    self.send_payload(
-                        ProtocolPayload(
-                            self.header,
-                            PayloadType.CMD_RGB_LED,
-                            CommandRgbLed(red, green, blue),
-                        )
-                    )
                     self._logger.info("color pressed", red=red, green=green, blue=blue)
-                    continue
-                self.active_keys.append(event.key)
-            self.refresh_speeds()
+                    await self.api.send_rgb_led_command(
+                        self.active_dotbot,
+                        DotBotRgbLedCommandModel(red=red, green=green, blue=blue),
+                    )
+                if event.key not in self.active_keys:
+                    self.active_keys.append(event.key)
 
     def speeds_from_keys(self):  # pylint: disable=too-many-return-statements
         """Computes the left/right wheels speeds from current key pressed."""
@@ -184,24 +213,92 @@ class KeyboardController(ControllerBase):
                 return speed.value, 0
         return 0, 0
 
-    def refresh_speeds(self):
+    async def refresh_speeds(self):
         """Refresh the motor speeds and send an update if needed."""
         left_speed, right_speed = self.speeds_from_keys()
         if (left_speed, right_speed) != (0, 0) or self.previous_speeds != (0, 0):
-            self.send_payload(
-                ProtocolPayload(
-                    self.header,
-                    PayloadType.CMD_MOVE_RAW,
-                    CommandMoveRaw(0, left_speed, 0, right_speed),
-                )
-            )
             self._logger.info("refresh speeds", left=left_speed, right=right_speed)
-        # pylint: disable=attribute-defined-outside-init
+            await self.api.send_move_raw_command(
+                self.active_dotbot,
+                self.application,
+                DotBotMoveRawCommandModel(
+                    left_x=0, left_y=left_speed, right_x=0, right_y=right_speed
+                ),
+            )
         self.previous_speeds = (left_speed, right_speed)
+        await asyncio.sleep(0.05)
+
+    async def fetch_active_dotbots(self):
+        while 1:
+            self.dotbots = await self.api.fetch_active_dotbots()
+            await asyncio.sleep(1)
 
     async def start(self):
         """Starts to continuously listen on keyboard key press/release events."""
+        asyncio.create_task(self.fetch_active_dotbots())
         asyncio.create_task(self.update_active_keys())
         while 1:
-            self.refresh_speeds()
-            await asyncio.sleep(0.05)
+            await self.refresh_speeds()
+
+
+@click.command()
+@click.option(
+    "-h",
+    "--hostname",
+    type=str,
+    default=CONTROLLER_HOSTNAME_DEFAULT,
+    help="Hostname of the controller. Defaults to 'localhost'",
+)
+@click.option(
+    "-p",
+    "--port",
+    type=int,
+    default=CONTROLLER_PORT_DEFAULT,
+    help=f"HTTP port. Defaults to '{CONTROLLER_PORT_DEFAULT}'",
+)
+@click.option(
+    "-s",
+    "--https",
+    is_flag=True,
+    default=False,
+    help="Use HTTPS protocol instead of HTTP",
+)
+@click.option(
+    "-d",
+    "--dotbot-address",
+    type=str,
+    default=DOTBOT_ADDRESS_DEFAULT,
+    help=f"Address in hex of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:>0{16}}",
+)
+@click.option(
+    "-a",
+    "--application",
+    type=click.Choice(["dotbot", "sailbot"]),
+    default=DOTBOT_APPLICATION_DEFAULT,
+    help=f"Application to control. Defaults to {DOTBOT_APPLICATION_DEFAULT}",
+)
+@click.option(
+    "--log-level",
+    type=click.Choice(["debug", "info", "warning", "error"]),
+    default="info",
+    help="Logging level. Defaults to info",
+)
+def main(hostname, port, https, dotbot_address, application, log_level):
+    """DotBot keyboard controller."""
+    print(f"Welcome to the DotBots keyboard interface (version: {pydotbot_version()}).")
+    setup_logging(None, log_level, ["console"])
+    keyboard_controller = KeyboardController(
+        hostname,
+        port,
+        https,
+        dotbot_address,
+        application,
+    )
+    try:
+        asyncio.run(keyboard_controller.start())
+    except (SystemExit, KeyboardInterrupt):
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()  # pragma: nocover, pylint: disable=no-value-for-parameter

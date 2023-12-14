@@ -10,11 +10,9 @@ from dotbot.main import main
 
 MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
 
-  BotController, universal SailBot and DotBot controller.
+  DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -t, --type [joystick|keyboard]  Type of your controller. Defaults to
-                                  'keyboard'
   -p, --port TEXT                 Linux users: path to port in '/dev' folder ;
                                   Windows users: COM port. Defaults to
                                   '/dev/ttyACM0'
@@ -43,15 +41,9 @@ def test_main_help():
     assert result.output == MAIN_HELP_EXPECTED
 
 
-def test_main_invalid_controller_type():
-    runner = CliRunner()
-    result = runner.invoke(main, ["--type", "invalid"])
-    assert result.exit_code != 0
-
-
 @patch("dotbot.serial_interface.serial.Serial.open")
 @patch("dotbot.version")
-@patch("dotbot.controller.ControllerBase.run")
+@patch("dotbot.controller.Controller.run")
 def test_main(run, version, _):
     version.return_value = "test"
     runner = CliRunner()
@@ -67,7 +59,7 @@ def test_main(run, version, _):
 
 
 @patch("dotbot.serial_interface.serial.Serial.open")
-@patch("dotbot.controller.ControllerBase.run")
+@patch("dotbot.controller.Controller.run")
 def test_main_interrupts(run, _):
     runner = CliRunner()
     run.side_effect = KeyboardInterrupt

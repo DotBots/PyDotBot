@@ -36,7 +36,7 @@ DotBot(s).
   with the TTY port you identified above:
 
 ```
-dotbot-contoller --port <tty port>
+dotbot-controller --port <tty port>
 ```
 
 At this point, if the DotBot is powered on with fully charged batteries, you
@@ -45,7 +45,6 @@ should see an output in the logs that looks something like:
 ```
 Welcome to the DotBots controller (version: 0.xx).
 2023-11-29T07:55:11.725907Z [info     ] Lighthouse initialized         [pydotbot] context=dotbot.lighthouse2
-2023-11-29T07:55:11.726325Z [info     ] Controller initialized         [pydotbot] context=dotbot.keyboard
 2023-11-29T07:55:11.726746Z [info     ] Starting web server            [pydotbot] context=dotbot.server
 2023-11-29T07:55:11.739085Z [info     ] Serial port thread started     [pydotbot] context=dotbot.serial_interface
 2023-11-29T07:55:12.197714Z [info     ] New dotbot                     [pydotbot] application=DotBot context=dotbot.controller msg_id=90350129 payload_type=ADVERTISEMENT source=9903ef26257feb31
@@ -56,7 +55,7 @@ Welcome to the DotBots controller (version: 0.xx).
 1. In a browser, open [http://localhost:8000/dotbots](http://localhost:8000/dotbots)
 and you should have one item corresponding to your DotBot.
 
-2. Activate it by clicking on the DotBot item:
+2. Select it by clicking on the DotBot item:
 
 ```{image} _static/images/pydotbot-ui-activate.png
 :alt: Single DotBot item not active
@@ -78,9 +77,23 @@ and you should have one item corresponding to your DotBot.
 4. Check that you can control the DotBot:
   - by clicking on the joystick and dragging it in the direction that you want
     the DotBot to move
-  - control it using the arrow keys of your keyboard
-  - change the RGB LED color by pressing "b", "g" or "b" or by using the color
-    selector in the UI
+  - by using the color selector in the UI
+
+5. In a separate command window, launch `dotbot-keyboard`:
+```
+Welcome to the DotBots keyboard interface (version: 0.16).
+2023-12-08T10:07:32.597536Z [info     ] Controller initialized         [pydotbot] context=dotbot.keyboard
+```
+
+6. Check that you can control the DotBot using your keyboard:
+  - control it using the arrow keys
+  - change the RGB LED color by pressing "r", "g", "b", "y", "w", "n" keys
+```{admonition} Note
+:class: info
+You might have to set the mouse focus on a separate application to have the keyboard
+key events correctly taken into account. This is a limitation of the `pynput`
+library used to track the keyboard events.
+```
 
 [dotbot-firmware-getting-started]: https://dotbot-firmware.readthedocs.io/en/latest/getting_started.html
 [pydotbot-pypi]: https://pypi.org/project/pydotbot/

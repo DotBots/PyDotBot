@@ -20,4 +20,4 @@ help:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 generate-api:
-	sphinx-apidoc dotbot --ext-autodoc -M -T -f -e -o doc/api
+	sphinx-apidoc ../dotbot --ext-autodoc -M -T -f -e -o api

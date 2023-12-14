@@ -19,6 +19,7 @@ const server = setupServer(
                     application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
+                    status: 0,
                     lh2_position: {x: 200.0, y: 200.0, z: 0.0},
                     position_history: [],
                     waypoints: [],
@@ -28,6 +29,7 @@ const server = setupServer(
                     application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
+                    status: 0,
                     lh2_position: {x: 100.0, y: 100.0, z: 0.0},
                     position_history: [],
                     waypoints: [],
@@ -37,6 +39,7 @@ const server = setupServer(
                     application: 0,
                     swarm: "0000",
                     last_seen: 123.4,
+                    status: 0,
                     position_history: [],
                     waypoints: [],
                 },
@@ -55,6 +58,7 @@ const server = setupServer(
                     application: 1,
                     swarm: "0000",
                     last_seen: 123.4,
+                    status: 2,
                     gps_position: {latitude: 48.832313766146896, longitude: 2.4126897594949184},
                     position_history: [],
                     waypoints: [],
@@ -100,23 +104,12 @@ test('DotBots main page', async () => {
     render(<DotBots />);
     await waitFor(() => expect(screen.getByText("Available DotBots")).toBeVisible());
     await waitFor(() => expect(screen.getByText("Available SailBots")).toBeVisible());
-    await waitFor(() => expect(screen.getAllByText('activate')[0]).toBeVisible());
-    await waitFor(() => expect(screen.getByText('active')).toBeVisible());
 
-    await user.click(screen.getAllByText('activate')[0]);
+    await user.click(screen.getAllByText('alive')[0]);
     await new Promise(r => setTimeout(r, 100));
     expect(currentActive).toEqual("2020");
 
     // send reload command via websocket
     await waitFor(() => wsServer.send('{"cmd":"reload"}'));
     expect(currentActive).toEqual("2020");
-
-    // Click on the active one => no more current active dotbot
-    await user.click(screen.getByText('active'));
-    await new Promise(r => setTimeout(r, 200));
-    expect(currentActive).toEqual("2020");
-
-    await user.click(screen.getAllByText('activate')[0]);
-    await new Promise(r => setTimeout(r, 100));
-    expect(currentActive).toEqual("3131");
 });
