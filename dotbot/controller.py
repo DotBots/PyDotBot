@@ -40,7 +40,7 @@ from dotbot.protocol import (
     ProtocolPayload,
     ProtocolPayloadParserException,
 )
-from dotbot.serial_interface import SerialInterface, SerialInterfaceException
+from dotbot.serial_interface import SerialInterface, SerialInterfaceException, FauxBotSerialInterface
 from dotbot.server import api
 
 # from dotbot.models import (
@@ -147,25 +147,28 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        async def _wait_for_handshake(queue):
-            """Waits for handshake reply and checks it."""
-            try:
-                byte = await queue.get()
-            except asyncio.exceptions.CancelledError as exc:
-                raise SerialInterfaceException("Handshake timeout") from exc
-            if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
-                raise SerialInterfaceException("Handshake failed")
+        if self.settings.port == "SIMU":
+            self.serial = FauxBotSerialInterface(on_byte_received)
+        else:
+            async def _wait_for_handshake(queue):
+                """Waits for handshake reply and checks it."""
+                try:
+                    byte = await queue.get()
+                except asyncio.exceptions.CancelledError as exc:
+                    raise SerialInterfaceException("Handshake timeout") from exc
+                if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
+                    raise SerialInterfaceException("Handshake failed")
 
-        self.serial = SerialInterface(
-            self.settings.port, self.settings.baudrate, on_byte_received
-        )
+            self.serial = SerialInterface(
+                self.settings.port, self.settings.baudrate, on_byte_received
+            )
 
-        self.serial.write(
-            int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
-        )
-        if self.settings.handshake is True:
-            await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
-            self.logger.info("Serial handshake success")
+            self.serial.write(
+                int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
+            )
+            if self.settings.handshake is True:
+                await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
+                self.logger.info("Serial handshake success")
 
         while 1:
             byte = await queue.get()
@@ -334,6 +337,18 @@ class Controller:
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
+        if payload.payload_type == PayloadType.FAUXBOT_DATA:
+            dotbot.direction = payload.values.theta
+            
+            new_position = DotBotLH2Position(
+                x=payload.values.pos_x/1e6,
+                y=payload.values.pos_x/1e6,
+                z=0,
+            )
+            dotbot.lh2_position = new_position
+            dotbot.position_history.append(new_position)
+            notification_cmd = DotBotNotificationCommand.UPDATE
+            
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
