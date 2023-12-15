@@ -55,7 +55,7 @@ from dotbot.protocol import (
     ProtocolPayloadParserException,
 )
 from dotbot.sailbot_simulator import SailbotSimulatorSerialInterface
-from dotbot.serial_interface import SerialInterface, SerialInterfaceException
+from dotbot.serial_interface import SerialInterface, SerialInterfaceException, FauxBotSerialInterface
 from dotbot.server import api
 
 # from dotbot.models import (
@@ -424,6 +424,8 @@ class Controller:
 
         if self.settings.port == "sailbot-simulator":
             self.serial = SailbotSimulatorSerialInterface(on_byte_received)
+        elif self.settings.port == "dotbot-simulator":
+            self.serial = FauxBotSerialInterface(on_byte_received)
         else:
             self.serial = SerialInterface(
                 self.settings.port, self.settings.baudrate, on_byte_received
@@ -614,6 +616,18 @@ class Controller:
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
+        if payload.payload_type == PayloadType.FAUXBOT_DATA:
+            dotbot.direction = payload.values.theta
+            
+            new_position = DotBotLH2Position(
+                x=payload.values.pos_x/1e6,
+                y=payload.values.pos_x/1e6,
+                z=0,
+            )
+            dotbot.lh2_position = new_position
+            dotbot.position_history.append(new_position)
+            notification_cmd = DotBotNotificationCommand.UPDATE
+            
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,

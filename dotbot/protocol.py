@@ -25,7 +25,8 @@ class PayloadType(Enum):
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
-    INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
+    FAUXBOT_DATA = 11
+    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -300,6 +301,31 @@ class SailBotData(ProtocolData):
 
 
 @dataclass
+class FauxBotData(ProtocolData):
+    """Dataclass that holds direction and GPS data and heading from SailBot application."""
+
+    theta: int = 0xFFFF
+    pos_x: int = 0
+    pos_y: int = 0
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.theta, name="theta", length=2),
+            ProtocolField(self.pos_x, name="pos_x", length=4),
+            ProtocolField(self.pos_y, name="pos_y", length=4),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return FauxBotData(
+            theta=int.from_bytes(bytes_[0:2], "little"),
+            pos_x=int.from_bytes(bytes_[2:6], "little"),
+            pos_y=int.from_bytes(bytes_[6:10], "little"),
+        )
+
+
+@dataclass
 class Advertisement(ProtocolData):
     """Dataclass that holds an advertisement (emtpy)."""
 
@@ -432,6 +458,8 @@ class ProtocolPayload:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
             values = SailBotData.from_bytes(bytes_[25:39])
+        elif payload_type == PayloadType.FAUXBOT_DATA:
+            values = FauxBotData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:

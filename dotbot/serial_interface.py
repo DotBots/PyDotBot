@@ -9,6 +9,7 @@ import serial
 from serial.tools import list_ports
 
 from dotbot.logger import LOGGER
+from dotbot.fauxbot import FauxBot
 
 PAYLOAD_CHUNK_SIZE = 64
 PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms
@@ -27,7 +28,6 @@ def get_default_port():
 
 class SerialInterfaceException(Exception):
     """Exception raised when serial port is disconnected."""
-
 
 class SerialInterface(threading.Thread):
     """Bidirectional serial interface."""
@@ -66,3 +66,44 @@ class SerialInterface(threading.Thread):
             self.serial.flush()
             pos += PAYLOAD_CHUNK_SIZE
             time.sleep(PAYLOAD_CHUNK_DELAY)
+
+class FauxBotSerialInterface(threading.Thread):
+    """Bidirectional serial interface to control simulated robots"""
+    
+    def __init__(self, callback:Callable):
+        
+        # create a robot
+        self.dotbot = FauxBot("1234567890123456")
+        
+        self.callback = callback
+        super().__init__(daemon=True)
+        self.start()
+        self._logger = LOGGER.bind(context=__name__)
+        self._logger.info("FauxBot Simulation Started")
+    
+        
+    def run(self):
+        advertising_interval = 0
+        """Listen continuously at each byte received on the fake serial interface."""
+        for byte in self.dotbot.advertise():
+            self.callback(byte.to_bytes(length=1, byteorder="little"))
+            time.sleep(0.001)
+            
+        while 1:
+            for byte in self.dotbot.update():
+                self.callback(byte.to_bytes(length=1, byteorder="little"))
+                time.sleep(0.001)
+            
+            advertising_interval += 1
+            if (advertising_interval == 4):
+                for byte in self.dotbot.advertise():
+                    self.callback(byte.to_bytes(length=1, byteorder="little"))
+                    time.sleep(0.001)
+                advertising_interval = 0
+            time.sleep(1)
+    
+    def write(self, bytes_):
+        """Write bytes on the fake serial. It is an identical interface to the real gateway."""
+        self.dotbot.parse_serial_input(bytes_)
+        
+        
