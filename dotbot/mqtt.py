@@ -131,7 +131,7 @@ MQTT_TOPICS = {
         "model": DotBotRgbLedCommandModel,
     },
 }
-MQTT_TOPIC_BASE = "/dotbots/+/+/+"
+MQTT_TOPIC_BASE = "/dotbots/{swarm_id}/+/+"
 
 
 @mqtt.on_connect()
@@ -140,7 +140,9 @@ def connect(client, flags, rc, properties):
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
-        client.subscribe(f"{MQTT_TOPIC_BASE}/{topic}")
+        client.subscribe(
+            f"{MQTT_TOPIC_BASE.format(swarm_id=mqtt.controller.settings.swarm_id)}/{topic}"
+        )
 
 
 @mqtt.on_message()
