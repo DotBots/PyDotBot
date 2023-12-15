@@ -1,6 +1,7 @@
 """Module for MQTT communication."""
 
 import json
+import os
 from typing import Optional
 
 from fastapi_mqtt import FastMQTT, MQTTConfig
@@ -131,7 +132,7 @@ MQTT_TOPICS = {
         "model": DotBotRgbLedCommandModel,
     },
 }
-MQTT_TOPIC_BASE = "/dotbots/{swarm_id}/+/+"
+MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
 @mqtt.on_connect()
@@ -140,9 +141,7 @@ def connect(client, flags, rc, properties):
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
-        client.subscribe(
-            f"{MQTT_TOPIC_BASE.format(swarm_id=mqtt.controller.settings.swarm_id)}/{topic}"
-        )
+        client.subscribe(f"{MQTT_ROOT}/{mqtt.controller.settings.swarm_id}/+/+/{topic}")
 
 
 @mqtt.on_message()
