@@ -46,6 +46,13 @@ export const apiUpdateRgbLed = async (address, application, red, green, blue) =>
   );
 }
 
+export const apiUpdateXgoAction = async (address, application, action) => {
+  return await axios.put(
+    `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/xgo_action/${action}`,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
 export const apiUpdateControlMode = async (address, application, mode) => {
   return await axios.put(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}/${application}/mode`,
