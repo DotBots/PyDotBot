@@ -2,6 +2,7 @@
 :hidden:
 getting_started
 rest
+mqtt
 api
 ```
 

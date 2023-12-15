@@ -11,3 +11,4 @@
 .tox/
 dist/
 node_modules/
+.env

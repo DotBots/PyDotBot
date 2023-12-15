@@ -30,6 +30,8 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --handshake                     Perform a basic handshake with the gateway
                                   board on startup
+  --use-mqtt                      Connect to the MQTT broker configured in the
+                                  .env file
   --help                          Show this message and exit.
 """
 

@@ -1,16 +1,13 @@
 """Module for the web server application."""
-import asyncio
 import os
 from binascii import hexlify
 from typing import List
 
-import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
-from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotAddressModel,
     DotBotCalibrationStateModel,
@@ -41,7 +38,7 @@ from dotbot.protocol import (
 STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 
 
-app = FastAPI(
+api = FastAPI(
     debug=0,
     title="DotBot controller API",
     description="This is the DotBot controller API",
@@ -49,19 +46,19 @@ app = FastAPI(
     docs_url="/api",
     redoc_url=None,
 )
-app.add_middleware(
+api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount(
+api.mount(
     "/dotbots", StaticFiles(directory=STATIC_FILES_DIR, html=True), name="dotbots"
 )
 
 
-@app.get(
+@api.get(
     path="/controller/dotbot_address",
     response_model=DotBotAddressModel,
     summary="Return the controller active dotbot address",
@@ -71,22 +68,22 @@ async def controller_dotbot_address():
     """Returns the active dotbot address."""
     return DotBotAddressModel(
         address=hexlify(
-            int(app.controller.header.destination).to_bytes(8, "big")
+            int(api.controller.header.destination).to_bytes(8, "big")
         ).decode()
     )
 
 
-@app.put(
+@api.put(
     path="/controller/dotbot_address",
     summary="Sets the controller active dotbot address",
     tags=["controller"],
 )
 async def controller_dotbot_address_update(data: DotBotAddressModel):
     """Updates the active dotbot address."""
-    app.controller.header.destination = int(data.address, 16)
+    api.controller.header.destination = int(data.address, 16)
 
 
-@app.put(
+@api.put(
     path="/controller/dotbots/{address}/{application}/move_raw",
     summary="Move the dotbot",
     tags=["dotbots"],
@@ -95,13 +92,13 @@ async def dotbots_move_raw(
     address: str, application: int, command: DotBotMoveRawCommandModel
 ):
     """Set the current active DotBot."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
@@ -112,11 +109,11 @@ async def dotbots_move_raw(
             command.left_x, command.left_y, command.right_x, command.right_y
         ),
     )
-    app.controller.send_payload(payload)
-    app.controller.dotbots[address].move_raw = command
+    api.controller.send_payload(payload)
+    api.controller.dotbots[address].move_raw = command
 
 
-@app.put(
+@api.put(
     path="/controller/dotbots/{address}/{application}/rgb_led",
     summary="Set the dotbot RGB LED color",
     tags=["dotbots"],
@@ -125,13 +122,13 @@ async def dotbots_rgb_led(
     address: str, application: int, command: DotBotRgbLedCommandModel
 ):
     """Set the current active DotBot."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
@@ -140,24 +137,24 @@ async def dotbots_rgb_led(
         PayloadType.CMD_RGB_LED,
         CommandRgbLed(command.red, command.green, command.blue),
     )
-    app.controller.send_payload(payload)
-    app.controller.dotbots[address].rgb_led = command
+    api.controller.send_payload(payload)
+    api.controller.dotbots[address].rgb_led = command
 
 
-@app.put(
+@api.put(
     path="/controller/dotbots/{address}/{application}/mode",
     summary="Set the dotbot control mode",
     tags=["dotbots"],
 )
 async def dotbots_mode(address: str, application: int, data: DotBotControlModeModel):
     """Set the control mode of a DotBot."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
@@ -166,11 +163,11 @@ async def dotbots_mode(address: str, application: int, data: DotBotControlModeMo
         PayloadType.CONTROL_MODE,
         ControlMode(data.mode),
     )
-    app.controller.send_payload(payload)
-    app.controller.dotbots[address].mode = data.mode
+    api.controller.send_payload(payload)
+    api.controller.dotbots[address].mode = data.mode
 
 
-@app.put(
+@api.put(
     path="/controller/dotbots/{address}/{application}/waypoints",
     summary="Set the dotbot control mode",
     tags=["dotbots"],
@@ -181,21 +178,21 @@ async def dotbots_waypoints(
     waypoints: DotBotWaypoints,
 ):
     """Set the waypoints of a DotBot."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = ProtocolHeader(
         destination=int(address, 16),
-        source=int(app.controller.settings.gw_address, 16),
-        swarm_id=int(app.controller.settings.swarm_id, 16),
+        source=int(api.controller.settings.gw_address, 16),
+        swarm_id=int(api.controller.settings.swarm_id, 16),
         application=ApplicationType(application),
         version=PROTOCOL_VERSION,
     )
     waypoints_list = waypoints.waypoints
     if ApplicationType(application) == ApplicationType.SailBot:
-        if app.controller.dotbots[address].gps_position is not None:
+        if api.controller.dotbots[address].gps_position is not None:
             waypoints_list = [
-                app.controller.dotbots[address].gps_position
+                api.controller.dotbots[address].gps_position
             ] + waypoints.waypoints
         payload = ProtocolPayload(
             header,
@@ -212,9 +209,9 @@ async def dotbots_waypoints(
             ),
         )
     else:  # DotBot application
-        if app.controller.dotbots[address].lh2_position is not None:
+        if api.controller.dotbots[address].lh2_position is not None:
             waypoints_list = [
-                app.controller.dotbots[address].lh2_position
+                api.controller.dotbots[address].lh2_position
             ] + waypoints.waypoints
         payload = ProtocolPayload(
             header,
@@ -231,27 +228,27 @@ async def dotbots_waypoints(
                 ],
             ),
         )
-    app.controller.dotbots[address].waypoints = waypoints_list
-    app.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    app.controller.send_payload(payload)
-    await app.controller.notify_clients(
+    api.controller.dotbots[address].waypoints = waypoints_list
+    api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
+    api.controller.send_payload(payload)
+    await api.controller.notify_clients(
         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
     )
 
 
-@app.delete(
+@api.delete(
     path="/controller/dotbots/{address}/positions",
     summary="Clear the history of positions of a DotBot",
     tags=["dotbots"],
 )
 async def dotbot_positions_history_clear(address: str):
     """Clear the history of positions of a dotbot."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    app.controller.dotbots[address].position_history = []
+    api.controller.dotbots[address].position_history = []
 
 
-@app.get(
+@api.get(
     path="/controller/dotbots/{address}",
     response_model=DotBotModel,
     response_model_exclude_none=True,
@@ -260,14 +257,14 @@ async def dotbot_positions_history_clear(address: str):
 )
 async def dotbot(address: str, query: DotBotQueryModel = Depends()):
     """Dotbot HTTP GET handler."""
-    if address not in app.controller.dotbots:
+    if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    _dotbot = DotBotModel(**app.controller.dotbots[address].model_dump())
+    _dotbot = DotBotModel(**api.controller.dotbots[address].model_dump())
     _dotbot.position_history = _dotbot.position_history[: query.max_positions]
     return _dotbot
 
 
-@app.get(
+@api.get(
     path="/controller/dotbots",
     response_model=List[DotBotModel],
     response_model_exclude_none=True,
@@ -276,30 +273,30 @@ async def dotbot(address: str, query: DotBotQueryModel = Depends()):
 )
 async def dotbots(query: DotBotQueryModel = Depends()):
     """Dotbots HTTP GET handler."""
-    return app.controller.get_dotbots(query)
+    return api.controller.get_dotbots(query)
 
 
-@app.post(
+@api.post(
     path="/controller/lh2/calibration/{point_idx}",
     summary="Trigger the acquisition of one LH2 point",
     tags=["dotbots"],
 )
 async def controller_add_lh2_calibration_point(point_idx: int):
     """LH2 calibration, add single calibration point."""
-    app.controller.lh2_manager.add_calibration_point(point_idx)
+    api.controller.lh2_manager.add_calibration_point(point_idx)
 
 
-@app.put(
+@api.put(
     path="/controller/lh2/calibration",
     summary="Trigger a computation of the LH2 calibration",
     tags=["dotbots"],
 )
 async def controller_apply_lh2_calibration():
     """Apply LH2 calibration."""
-    app.controller.lh2_manager.compute_calibration()
+    api.controller.lh2_manager.compute_calibration()
 
 
-@app.get(
+@api.get(
     path="/controller/lh2/calibration",
     response_model=DotBotCalibrationStateModel,
     response_model_exclude_none=True,
@@ -308,33 +305,17 @@ async def controller_apply_lh2_calibration():
 )
 async def controller_get_lh2_calibration():
     """LH2 calibration GET handler."""
-    return app.controller.lh2_manager.state_model
+    return api.controller.lh2_manager.state_model
 
 
-@app.websocket("/controller/ws/status")
+@api.websocket("/controller/ws/status")
 async def websocket_endpoint(websocket: WebSocket):
     """Websocket server endpoint."""
     await websocket.accept()
-    app.controller.websockets.append(websocket)
+    api.controller.websockets.append(websocket)
     try:
         while True:
             _ = await websocket.receive_text()
     except WebSocketDisconnect:
-        if websocket in app.controller.websockets:
-            app.controller.websockets.remove(websocket)
-
-
-async def web(controller):
-    """Starts the web server application."""
-    logger = LOGGER.bind(context=__name__)
-    app.controller = controller
-    config = uvicorn.Config(app, port=8000, log_level="critical")
-    server = uvicorn.Server(config)
-    try:
-        logger.info("Starting web server")
-        await server.serve()
-    except asyncio.exceptions.CancelledError:
-        logger.info("Web server cancelled")
-    else:
-        logger.info("Stopping web server")
-        raise SystemExit()
+        if websocket in api.controller.websockets:
+            api.controller.websockets.remove(websocket)
