@@ -62,7 +62,6 @@ elif rtd_version == "stable":
     rtd_version = f"{rtd_git_identifier}"
 elif rtd_version_type == "tag":
     rtd_version = f"{rtd_git_identifier}"
-release = rtd_version
 
 html_theme_options = {
     "external_links": [
