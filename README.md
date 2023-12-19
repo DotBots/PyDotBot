@@ -24,7 +24,7 @@ Run `pip install pydotbot`
 ## Setup
 
 Flash the required firmwares on the DotBots and gateway board (use an
-nRF52840DK board as gateway), as explained in
+nRF52833DK/nRF52840DK/nrf5340DK board as gateway), as explained in
 [the DotBots firmware repository][dotbot-firmware-repo].
 
 ## Usage
@@ -33,11 +33,9 @@ nRF52840DK board as gateway), as explained in
 dotbot-controller --help
 Usage: dotbot-controller [OPTIONS]
 
-  BotController, universal SailBot and DotBot controller.
+  DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -t, --type [joystick|keyboard]  Type of your controller. Defaults to
-                                  'keyboard'
   -p, --port TEXT                 Linux users: path to port in '/dev' folder ;
                                   Windows users: COM port. Defaults to
                                   '/dev/ttyACM0'
@@ -48,7 +46,6 @@ Options:
                                   0000000000000000
   -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
   -w, --webbrowser                Open a web browser automatically
-  -T, --table                     Display table in terminal
   -v, --verbose                   Run in verbose mode (all payloads received
                                   are printed in terminal)
   --log-level [debug|info|warning|error]
@@ -56,6 +53,8 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --handshake                     Perform a basic handshake with the gateway
                                   board on startup
+  --use-mqtt                      Connect to the MQTT broker configured in the
+                                  .env file
   --help                          Show this message and exit.
 ```
 
