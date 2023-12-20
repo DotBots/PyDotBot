@@ -2,7 +2,9 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-SERIAL_PORT_DEFAULT = "/dev/ttyACM0"
+from dotbot.serial_interface import get_default_port
+
+SERIAL_PORT_DEFAULT = get_default_port()
 SERIAL_BAUDRATE_DEFAULT = 1000000
 DOTBOT_ADDRESS_DEFAULT = "FFFFFFFFFFFFFFFF"  # Broadcast by default
 GATEWAY_ADDRESS_DEFAULT = "0000000000000000"

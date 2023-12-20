@@ -36,9 +36,7 @@ Usage: dotbot-controller [OPTIONS]
   DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -p, --port TEXT                 Linux users: path to port in '/dev' folder ;
-                                  Windows users: COM port. Defaults to
-                                  '/dev/ttyACM0'
+  -p, --port TEXT                 Virtual com port. Defaults to '/dev/ttyACM0'
   -b, --baudrate INTEGER          Serial baudrate. Defaults to 1000000
   -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
                                   Defaults to FFFFFFFFFFFFFFFF
