@@ -7,15 +7,14 @@ import serial
 from click.testing import CliRunner
 
 from dotbot.main import main
+from dotbot.serial_interface import get_default_port
 
-MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
+MAIN_HELP_EXPECTED = f"""Usage: main [OPTIONS]
 
   DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -p, --port TEXT                 Linux users: path to port in '/dev' folder ;
-                                  Windows users: COM port. Defaults to
-                                  '/dev/ttyACM0'
+  -p, --port TEXT                 Virtual com port. Defaults to '{get_default_port()}'
   -b, --baudrate INTEGER          Serial baudrate. Defaults to 1000000
   -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
                                   Defaults to FFFFFFFFFFFFFFFF

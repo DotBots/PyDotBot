@@ -27,7 +27,7 @@ from dotbot.logger import setup_logging
     "--port",
     type=str,
     default=SERIAL_PORT_DEFAULT,
-    help=f"Linux users: path to port in '/dev' folder ; Windows users: COM port. Defaults to '{SERIAL_PORT_DEFAULT}'",
+    help=f"Virtual com port. Defaults to '{SERIAL_PORT_DEFAULT}'",
 )
 @click.option(
     "-b",
