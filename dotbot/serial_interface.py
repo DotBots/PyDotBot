@@ -1,5 +1,6 @@
 """Dotbot controller serial interface."""
 
+import sys
 import threading
 import time
 from typing import Callable
@@ -15,7 +16,9 @@ PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms
 
 def get_default_port():
     """Return default serial port."""
-    ports = [port for port in list_ports.comports() if "J-Link" == port.product]
+    ports = [port for port in list_ports.comports()]
+    if sys.platform != "win32":
+        ports = [port for port in ports if "J-Link" == port.product]
     if not ports:
         return "/dev/ttyACM0"
     # return last JLink port
