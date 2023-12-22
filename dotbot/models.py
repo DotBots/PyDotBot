@@ -24,6 +24,12 @@ class DotBotCalibrationStateModel(BaseModel):
     state: str
 
 
+class MqttPinCodeModel(BaseModel):
+    """Pin code used to derive crypto keys for MQTT."""
+
+    pin: int
+
+
 class DotBotMoveRawCommandModel(BaseModel):
     """Model class that defines a move raw command."""
 

@@ -7,6 +7,7 @@ import time
 import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
+from random import randint
 from typing import Dict, List, Optional
 
 import serial
@@ -57,6 +58,7 @@ LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
+PIN_CODE_SIZE = 8
 
 
 class ControllerException(Exception):
@@ -134,6 +136,7 @@ class Controller:
         self.websockets = []
         self.lh2_manager = LighthouseManager()
         self.api = api
+        self.pin_code = randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
         api.controller = self
         self.mqtt = mqtt
         mqtt.controller = self
@@ -476,6 +479,12 @@ class Controller:
             )
             await asyncio.sleep(1)
 
+    async def _rotate_pin_code(self):
+        while 1:
+            await asyncio.sleep(30 * 60)  # 30 minutes
+            self.pin_code = randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
+            self.logger.info("Pin code changed", pin_code=self.pin_code)
+
     async def web(self):
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
@@ -501,6 +510,7 @@ class Controller:
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
                 asyncio.create_task(self._publish_dotbots()),
+                asyncio.create_task(self._rotate_pin_code()),
             ]
             await asyncio.gather(*tasks)
         except (

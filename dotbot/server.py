@@ -1,11 +1,14 @@
 """Module for the web server application."""
 
+import io
 import os
 from binascii import hexlify
 from typing import List
 
+import segno
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
@@ -20,6 +23,7 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
+    MqttPinCodeModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -307,6 +311,38 @@ async def controller_apply_lh2_calibration():
 async def controller_get_lh2_calibration():
     """LH2 calibration GET handler."""
     return api.controller.lh2_manager.state_model
+
+
+@api.get(
+    path="/controller/mqtt/pin_code",
+    response_model=MqttPinCodeModel,
+    summary="Return the controller current pin code",
+    tags=["mqtt"],
+)
+async def mqtt_pin_code():
+    """Returns the MQTT pin code."""
+    return MqttPinCodeModel(
+        pin=api.controller.pin_code,
+    )
+
+
+@api.get(
+    path="/controller/mqtt/pin_code/qr_code",
+    response_class=Response,
+    summary="Return the controller current pin code as QR code",
+    tags=["mqtt"],
+)
+async def mqtt_pin_code_qr_code():
+    """Returns the MQTT pin code as QR code."""
+    buff = io.BytesIO()
+    qrcode = segno.make_qr(str(api.controller.pin_code))
+    qrcode.save(buff, kind="svg", scale=10, light=None)
+    headers = {"Cache-Control": "no-cache"}
+    return Response(
+        buff.getvalue().decode(),
+        headers=headers,
+        media_type="image/svg+xml",
+    )
 
 
 @api.websocket("/controller/ws/status")
