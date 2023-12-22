@@ -1,5 +1,6 @@
 """Module for MQTT communication."""
 
+import base64
 import json
 import os
 from typing import Optional
@@ -8,6 +9,7 @@ from fastapi_mqtt import FastMQTT, MQTTConfig
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from dotbot.crypto import decrypt
 from dotbot.logger import LOGGER
 from dotbot.models import (
     ApplicationType,
@@ -135,20 +137,29 @@ MQTT_TOPICS = {
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
+def mqtt_root_topic():
+    if mqtt.controller.settings.use_mqtt_crypto is True:
+        return f"{MQTT_ROOT}/{mqtt.controller.mqtt_topic}/{mqtt.controller.settings.swarm_id}"
+    return f"{MQTT_ROOT}/{mqtt.controller.settings.swarm_id}"
+
+
 @mqtt.on_connect()
 def connect(client, flags, rc, properties):
     """MQTT callback called on broker connection."""
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
     for topic in MQTT_TOPICS.keys():
-        client.subscribe(f"{MQTT_ROOT}/{mqtt.controller.settings.swarm_id}/+/+/{topic}")
+        client.subscribe(f"{mqtt_root_topic()}/+/+/{topic}")
 
 
 @mqtt.on_message()
 async def message(_, topic, payload, qos, properties):
     """MQTT callback called on message received."""
     logger = LOGGER.bind(context=__name__, topic=topic, qos=qos, **properties)
-    topic = topic.split("/")[2:]
+    if mqtt.controller.settings.use_mqtt_crypto is True:
+        topic = topic.split("/")[3:]
+    else:
+        topic = topic.split("/")[2:]
     if len(topic) < 3:
         logger.warning(f"Invalid topic '{topic}'")
         return
@@ -159,6 +170,20 @@ async def message(_, topic, payload, qos, properties):
         logger.warning("Invalid JSON payload")
         return
     logger.info("Message received")
+    if mqtt.controller.settings.use_mqtt_crypto is True:
+        payload = decrypt(
+            base64.b64decode(payload["message"].encode()),
+            mqtt.controller.mqtt_aes_key,
+            bytes.fromhex(payload["nonce"]),
+        )
+        if not payload:
+            logger.warning("Invalid payload")
+            return
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON payload")
+            return
     try:
         MQTT_TOPICS[cmd]["callback"](
             address,

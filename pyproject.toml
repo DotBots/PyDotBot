@@ -29,6 +29,7 @@ authors = [
 ]
 dependencies = [
     "click          == 8.1.7",
+    "cryptography   == 41.0.5",
     "fastapi        == 0.109.0",
     "fastapi-mqtt   == 2.1.0",
     "haversine      == 2.8.0",
