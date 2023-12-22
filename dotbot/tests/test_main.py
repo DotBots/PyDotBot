@@ -31,6 +31,8 @@ Options:
                                   board on startup
   --use-mqtt                      Connect to the MQTT broker configured in the
                                   .env file
+  --use-mqtt-crypto               Use HKDF and AES encryption to secure MQTT
+                                  communication
   --help                          Show this message and exit.
 """
 

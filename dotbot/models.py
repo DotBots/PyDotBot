@@ -99,6 +99,7 @@ class DotBotNotificationCommand(IntEnum):
     NONE: int = 0
     RELOAD: int = 1
     UPDATE: int = 2
+    PIN_CODE_UPDATE: int = 3
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -118,6 +119,14 @@ class DotBotNotificationModel(BaseModel):
 
     cmd: DotBotNotificationCommand
     data: Optional[DotBotNotificationUpdate] = None
+    pin_code: Optional[int] = None
+
+
+class DotBotMqttEncryptedMessageModel(BaseModel):
+    """Model class used to send encrypted MQTT messages."""
+
+    nonce: str
+    message: str
 
 
 class DotBotModel(BaseModel):

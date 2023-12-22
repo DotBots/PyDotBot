@@ -17,6 +17,7 @@ from fastapi import WebSocket
 from haversine import Unit, haversine
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
+from dotbot.crypto import encrypt, get_aes_key, get_topic
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -25,13 +26,14 @@ from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
+    DotBotMqttEncryptedMessageModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
     DotBotQueryModel,
     DotBotStatus,
 )
-from dotbot.mqtt import mqtt
+from dotbot.mqtt import mqtt, mqtt_root_topic
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
@@ -77,6 +79,7 @@ class ControllerSettings:
     webbrowser: bool = False
     handshake: bool = False
     use_mqtt: bool = False
+    use_mqtt_crypto: bool = False
     verbose: bool = False
 
 
@@ -123,6 +126,7 @@ class Controller:
         #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
         #     ),
         # }
+        self.logger = LOGGER.bind(context=__name__)
         self.header = ProtocolHeader(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
@@ -136,13 +140,24 @@ class Controller:
         self.websockets = []
         self.lh2_manager = LighthouseManager()
         self.api = api
-        self.pin_code = randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
+        if settings.use_mqtt is True and self.settings.use_mqtt_crypto is True:
+            self._update_crypto()
         api.controller = self
         self.mqtt = mqtt
         mqtt.controller = self
         if settings.use_mqtt is True:
             self.mqtt.init_app(api)
-        self.logger = LOGGER.bind(context=__name__)
+
+    def _update_crypto(self):
+        self.pin_code = randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
+        self.mqtt_aes_key = get_aes_key(self.pin_code)
+        self.mqtt_topic = get_topic(self.pin_code)
+        self.logger.debug(
+            "MQTT crypto update",
+            pin_code=self.pin_code,
+            aes_key=self.mqtt_aes_key.hex(),
+            topic=self.mqtt_topic,
+        )
 
     async def _start_serial(self):
         """Starts the serial listener thread in a coroutine."""
@@ -423,10 +438,16 @@ class Controller:
             ]
         )
         if self.mqtt.client.is_connected is True:
-            self.mqtt.publish(
-                f"/dotbots/{self.settings.swarm_id}/notifications",
-                json.dumps(notification.dict(exclude_none=True)),
-            )
+            message = json.dumps(notification.dict(exclude_none=True))
+            if self.settings.use_mqtt_crypto is True:
+                encrypted, nonce = encrypt(
+                    json.dumps(message).encode(), self.mqtt_aes_key
+                )
+                message = DotBotMqttEncryptedMessageModel(
+                    nonce=nonce.hex(),
+                    message=encrypted.decode(),
+                ).dict()
+            self.mqtt.publish(f"{mqtt_root_topic()}/notifications", message)
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
@@ -470,20 +491,31 @@ class Controller:
                 await asyncio.sleep(1)
                 continue
             self.logger.debug("Publish dotbots to MQTT")
-            self.mqtt.publish(
-                f"/dotbots/{self.settings.swarm_id}",
-                [
-                    dotbot.dict(exclude_none=True)
-                    for dotbot in self.get_dotbots(DotBotQueryModel())
-                ],
-            )
+            message = [
+                dotbot.dict(exclude_none=True)
+                for dotbot in self.get_dotbots(DotBotQueryModel())
+            ]
+            if self.settings.use_mqtt_crypto is True:
+                encrypted, nonce = encrypt(
+                    json.dumps(message).encode(), self.mqtt_aes_key
+                )
+                message = DotBotMqttEncryptedMessageModel(
+                    nonce=nonce.hex(),
+                    message=encrypted.decode(),
+                ).dict()
+            self.mqtt.publish(mqtt_root_topic(), message)
             await asyncio.sleep(1)
 
     async def _rotate_pin_code(self):
         while 1:
             await asyncio.sleep(30 * 60)  # 30 minutes
-            self.pin_code = randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
-            self.logger.info("Pin code changed", pin_code=self.pin_code)
+            self._update_crypto()
+            await self.notify_clients(
+                DotBotNotificationModel(
+                    cmd=DotBotNotificationCommand.PIN_CODE_UPDATE,
+                    pin_code=self.pin_code,
+                )
+            )
 
     async def web(self):
         """Starts the web server application."""

@@ -12,5 +12,5 @@
 .tox/
 dist/
 node_modules/
-.env
+.env*
 venv
