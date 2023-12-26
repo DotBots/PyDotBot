@@ -212,7 +212,7 @@ class Controller:
                 writer.close()
                 break
         if self.settings.webbrowser is True:
-            url = "http://localhost:8000/dotbots"
+            url = "http://localhost:8000"
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 
