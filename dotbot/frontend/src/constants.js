@@ -12,6 +12,7 @@ export const NotificationType = {
   None: 0,
   Reload: 1,
   Update: 2,
+  PinCodeUpdate: 3,
 };
 
 export const maxWaypoints = 16;
