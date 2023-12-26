@@ -86,6 +86,29 @@ jobs:
         name: frontend
         path: ./dotbot/frontend/build
 
+  pin_code_ui:
+    name: check pin_code_ui
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up nodejs
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+    - run: npm install
+      working-directory: ./dotbot/pin_code_ui
+    - run: npm run test
+      working-directory: ./dotbot/pin_code_ui
+    - run: npm run lint
+      working-directory: ./dotbot/pin_code_ui
+    - run: npm run build
+      working-directory: ./dotbot/pin_code_ui
+    - name: Upload pin_code_ui build
+      uses: actions/upload-artifact@v3
+      with:
+        name: pin_code_ui
+        path: ./dotbot/pin_code_ui/build
+
   package:
     needs: [test, doc, frontend]
     name: build source package
