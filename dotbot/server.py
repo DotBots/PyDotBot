@@ -57,9 +57,6 @@ api.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-api.mount(
-    "/dotbots", StaticFiles(directory=STATIC_FILES_DIR, html=True), name="dotbots"
-)
 
 
 @api.get(
@@ -355,3 +352,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in api.controller.websockets:
             api.controller.websockets.remove(websocket)
+
+
+# Mount static files after all routes are defined
+api.mount("/", StaticFiles(directory=STATIC_FILES_DIR, html=True), name="dotbots")
