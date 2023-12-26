@@ -59,6 +59,9 @@ DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
+PIN_CODE_REFRESH_PERIOD_S = 15 * 60  # 5 minutes
+PIN_CODE_DISABLE_DELAY_S = 2 * 60  # 2 minutes
+
 
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
@@ -501,7 +504,7 @@ class Controller:
 
     async def _disable_old_mqtt_crypto(self):
         """Disable old MQTT crypto after 5 minutes."""
-        await asyncio.sleep(2 * 60)  # 2 minutes
+        await asyncio.sleep(PIN_CODE_DISABLE_DELAY_S)
         if self.mqtt.client.is_connected is True:
             self.logger.info(
                 "Last pin code update notification", topic=self.old_mqtt_topic
@@ -526,7 +529,7 @@ class Controller:
 
     async def _rotate_pin_code(self):
         while 1:
-            await asyncio.sleep(30 * 60)  # 30 minutes
+            await asyncio.sleep(PIN_CODE_REFRESH_PERIOD_S)
             self.pin_code = generate_pin_code()
             await self.notify_clients(
                 DotBotNotificationModel(
