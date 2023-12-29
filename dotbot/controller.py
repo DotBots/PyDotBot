@@ -62,7 +62,7 @@ GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 PIN_CODE_REFRESH_PERIOD_S = 15 * 60  # 15 minutes
 PIN_CODE_DISABLE_DELAY_S = 2 * 60  # 2 minutes
 # PIN_CODE_REFRESH_PERIOD_S = 15  # 30 seconds
-# PIN_CODE_DISABLE_DELAY_S = 5 # 2 seconds
+# PIN_CODE_DISABLE_DELAY_S = 5  # 2 seconds
 
 
 class ControllerException(Exception):
@@ -80,8 +80,6 @@ class ControllerSettings:
     swarm_id: str
     webbrowser: bool = False
     handshake: bool = False
-    use_mqtt: bool = False
-    use_mqtt_crypto: bool = False
     verbose: bool = False
 
 
@@ -145,15 +143,13 @@ class Controller:
         api.controller = self
         self.mqtt = mqtt
         mqtt.controller = self
-        if settings.use_mqtt is True:
-            if self.settings.use_mqtt_crypto is True:
-                self.mqtt_aes_key = None
-                self.mqtt_topic = None
-                self.old_mqtt_aes_key = None
-                self.old_mqtt_topic = None
-                self.pin_code = generate_pin_code()
-                self._update_crypto()
-            self.mqtt.init_app(api)
+        self.mqtt_aes_key = None
+        self.mqtt_topic = None
+        self.old_mqtt_aes_key = None
+        self.old_mqtt_topic = None
+        self.pin_code = generate_pin_code()
+        self._update_crypto()
+        self.mqtt.init_app(api)
 
     def _update_crypto(self):
         self.old_mqtt_aes_key = self.mqtt_aes_key
@@ -244,10 +240,10 @@ class Controller:
                         previous_status=previous_status.name,
                         status=dotbot.status.name,
                     )
-            # if needs_refresh is True:
-            #     await self.notify_clients(
-            #         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-            #     )
+            if needs_refresh is True:
+                await self.notify_clients(
+                    DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+                )
             await asyncio.sleep(1)
 
     def _compute_lh2_position(
@@ -320,7 +316,7 @@ class Controller:
         else:
             # reload if a new dotbot comes in
             logger.info("New dotbot")
-            # notification_cmd = DotBotNotificationCommand.RELOAD
+            notification_cmd = DotBotNotificationCommand.RELOAD
 
         if (
             payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
@@ -448,9 +444,10 @@ class Controller:
             ]
         )
         if self.mqtt.client.is_connected is True:
-            message = json.dumps(notification.model_dump(exclude_none=True))
-            if self.settings.use_mqtt_crypto is True:
-                message = encrypt(message, self.mqtt_aes_key)
+            message = encrypt(
+                json.dumps(notification.model_dump(exclude_none=True)),
+                self.mqtt_aes_key,
+            )
             self.mqtt.publish(f"{mqtt_root_topic()}/notifications", message)
 
     def send_payload(self, payload: ProtocolPayload):
@@ -489,20 +486,16 @@ class Controller:
             dotbots.append(_dotbot)
         return sorted(dotbots, key=lambda dotbot: dotbot.address)
 
-    async def _publish_dotbots(self):
-        while 1:
-            if self.mqtt.client.is_connected is False:
-                await asyncio.sleep(1)
-                continue
-            self.logger.debug("Publish dotbots to MQTT")
-            message = [
-                dotbot.model_dump(exclude_none=True)
-                for dotbot in self.get_dotbots(DotBotQueryModel())
-            ]
-            if self.settings.use_mqtt_crypto is True:
-                message = encrypt(json.dumps(message), self.mqtt_aes_key)
-            self.mqtt.publish(mqtt_root_topic(), message)
-            await asyncio.sleep(1)
+    def publish_dotbots(self, topic):
+        if self.mqtt.client.is_connected is False:
+            return
+        self.logger.debug("Publish dotbots to MQTT")
+        message = [
+            dotbot.model_dump(exclude_none=True)
+            for dotbot in self.get_dotbots(DotBotQueryModel())
+        ]
+        message = encrypt(json.dumps(message), self.mqtt_aes_key)
+        self.mqtt.publish(topic, message)
 
     async def _disable_old_mqtt_crypto(self):
         """Disable old MQTT crypto after 5 minutes."""
@@ -566,7 +559,6 @@ class Controller:
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
-                asyncio.create_task(self._publish_dotbots()),
                 asyncio.create_task(self._rotate_pin_code()),
             ]
             await asyncio.gather(*tasks)

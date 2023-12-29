@@ -122,6 +122,13 @@ class DotBotNotificationModel(BaseModel):
     pin_code: Optional[int] = None
 
 
+class DotBotRequestModel(BaseModel):
+    """Model class used to handle controller request."""
+
+    cmd: DotBotNotificationCommand
+    reply: str
+
+
 class DotBotModel(BaseModel):
     """Model class that defines a DotBot."""
 

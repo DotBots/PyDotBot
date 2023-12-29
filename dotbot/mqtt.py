@@ -13,6 +13,8 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     ApplicationType,
     DotBotMoveRawCommandModel,
+    DotBotNotificationCommand,
+    DotBotRequestModel,
     DotBotRgbLedCommandModel,
 )
 from dotbot.protocol import (
@@ -136,14 +138,47 @@ MQTT_TOPICS = {
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
-def mqtt_root_topic(old=False):
-    if mqtt.controller.settings.use_mqtt_crypto is True:
-        return (
-            f"{MQTT_ROOT}/{mqtt.controller.mqtt_topic}"
-            if old is False
-            else f"{MQTT_ROOT}/{mqtt.controller.old_mqtt_topic}"
+async def handle_command(_, swarm_id, address, application, cmd, command):
+    logger = LOGGER.bind(
+        context=__name__,
+        swarm_id=swarm_id,
+        address=address,
+        application=application,
+        cmd=cmd,
+        **command,
+    )
+    try:
+        MQTT_TOPICS[cmd]["callback"](
+            address,
+            swarm_id,
+            ApplicationType(int(application)),
+            MQTT_TOPICS[cmd]["model"](**command),
         )
-    return f"{MQTT_ROOT}"
+    except ValidationError as exc:
+        logger.warning(f"Invalid command: {exc.errors()}")
+
+
+async def handle_request(client, request):
+    logger = LOGGER.bind(context=__name__, **request)
+    logger.info("Request received")
+    try:
+        request = DotBotRequestModel(**request)
+    except ValidationError as exc:
+        logger.warning(f"Invalid request: {exc.errors()}")
+        return
+
+    if request.cmd == DotBotNotificationCommand.RELOAD:
+        mqtt.controller.publish_dotbots(f"{mqtt_root_topic()}/reply/{request.reply}")
+    else:
+        logger.warning("Invalid request command")
+
+
+def mqtt_root_topic(old=False):
+    return (
+        f"{MQTT_ROOT}/{mqtt.controller.mqtt_topic}"
+        if old is False
+        else f"{MQTT_ROOT}/{mqtt.controller.old_mqtt_topic}"
+    )
 
 
 def subscribe_to_mqtt_topics(client):
@@ -152,6 +187,7 @@ def subscribe_to_mqtt_topics(client):
         client.subscribe(
             f"{mqtt_root_topic()}/{mqtt.controller.settings.swarm_id}/+/+/{topic}"
         )
+    client.subscribe(f"{mqtt_root_topic()}/request")
 
 
 @mqtt.on_connect()
@@ -163,45 +199,36 @@ def connect(client, flags, rc, properties):
 
 
 @mqtt.on_message()
-async def message(_, topic, payload, qos, properties):
+async def message(client, topic, payload, qos, properties):
     """MQTT callback called on message received."""
     logger = LOGGER.bind(context=__name__, topic=topic, qos=qos, **properties)
-    if mqtt.controller.settings.use_mqtt_crypto is True:
-        topic = topic.split("/")[3:]
-    else:
-        topic = topic.split("/")[2:]
-    if len(topic) < 4:
-        logger.warning(f"Invalid topic '{topic}'")
-        return
-    swarm_id, address, application, cmd = topic
-    if mqtt.controller.settings.use_mqtt_crypto is True:
-        secret_topic = topic[2]
-        if secret_topic == mqtt.controller.old_mqtt_topic:
-            secret_key = mqtt.controller.old_mqtt_aes_key
-            if secret_key is None:
-                logger.warning("Topic was disabled", topic=secret_topic)
-                return
-        else:
-            secret_key = mqtt.controller.mqtt_aes_key
-        payload = decrypt(payload, secret_key)
-        if not payload:
-            logger.warning("Invalid payload")
+    topic_split = topic.split("/")[2:]
+    secret_topic = topic_split[0]
+    if secret_topic == mqtt.controller.old_mqtt_topic:
+        secret_key = mqtt.controller.old_mqtt_aes_key
+        if secret_key is None:
+            logger.warning("Topic was disabled", topic=secret_topic)
             return
+    else:
+        secret_key = mqtt.controller.mqtt_aes_key
+    payload = decrypt(payload, secret_key)
+    if not payload:
+        logger.warning("Invalid payload")
+        return
     try:
         payload = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Invalid JSON payload")
         return
     logger.info("Message received")
-    try:
-        MQTT_TOPICS[cmd]["callback"](
-            address,
-            swarm_id,
-            ApplicationType(int(application)),
-            MQTT_TOPICS[cmd]["model"](**payload),
-        )
-    except ValidationError as exc:
-        logger.warning(f"Invalid payload: {exc.errors()}")
+
+    if len(topic_split) == 2:  # Request
+        await handle_request(client, payload)
+    elif len(topic_split) == 5:  # Command
+        swarm_id, address, application, cmd = topic_split[1:]
+        await handle_command(client, swarm_id, address, application, cmd, payload)
+    else:
+        logger.warning(f"Invalid topic '{topic}'")
 
 
 @mqtt.on_disconnect()

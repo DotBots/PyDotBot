@@ -12,6 +12,7 @@ from dotbot.protocol import PROTOCOL_VERSION
 PIN_CODE_SIZE = 8
 JOSE_PROTECTED = {"alg": "dir", "enc": "A256GCM"}
 
+
 def generate_pin_code() -> int:
     return randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
 

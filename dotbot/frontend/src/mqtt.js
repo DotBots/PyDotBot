@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { encrypt, decrypt } from "./crypto";
 import mqtt from "mqtt";
 
-export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey }) => {
+export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey, pin }) => {
   const [client, setClient] = useState(null);
   const [connected, setConnected] = useState(false);
 
   const mqttPublish = async (topic, message) => {
     if (client && connected) {
+      console.log(`Publishing to ${topic}: ${message}`);
       let encrypted = await encrypt(message, secretKey);
       client.publish(topic, encrypted);
     }
@@ -46,8 +47,9 @@ export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey }
     }
 
     if (client && !connected) {
-      client.on('connect', () => {
+        client.on('connect', () => {
         console.log(`Connected to ${client.options.protocol}://${client.options.host}:${client.options.port}`);
+        // onConnect();
         setConnected(true);
       });
       client.on('error', (err) => {
@@ -58,13 +60,14 @@ export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey }
       client.on('reconnect', () => {
         console.log('Reconnecting');
       });
+      client.off('message', mqttMessageReceived);
     }
 
-    if (client) {
+    if (client && pin) {
       client.once('message', mqttMessageReceived);
     }
-  }, [brokerUrl, brokerOptions, client, connected, mqttMessageReceived]
+  }, [brokerUrl, brokerOptions, client, connected, mqttMessageReceived, pin]
   );
 
-  return [connected, mqttPublish, mqttSubscribe, mqttUnsubscribe];
+  return [client, connected, mqttPublish, mqttSubscribe, mqttUnsubscribe];
 };
