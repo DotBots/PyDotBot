@@ -7,6 +7,7 @@ import { gps_distance_threshold, lh2_distance_threshold, NotificationType } from
 import { gps_distance, lh2_distance } from "./helpers";
 
 import DotBots from './DotBots';
+import './App.css';
 
 const App = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -112,6 +113,12 @@ const App = () => {
   }, [setMqttSubscribed, mqttUnsubscribe]
   );
 
+  const onInputPinChange = (event) => {
+    if (event.target.value.length === 8) {
+      setPin(event.target.value);
+    }
+  }
+
   useEffect(() => {
     if (!pin && searchParams && searchParams.has('pin')) {
       setPin(searchParams.get('pin'));
@@ -147,7 +154,14 @@ const App = () => {
         publishCommand={publishCommand}
       />
       ) : (
-        <span>No pin code provided</span>
+        <div className="container">
+          <form id="pin-code-input">
+            <p>Enter pin code:</p>
+            <p>
+              <input type="password" className="form-control" autofocus="autofocus" onChange={(event) => onInputPinChange(event)} />
+            </p>
+          </form>
+        </div>
     )}
     </>
   );
