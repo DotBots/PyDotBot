@@ -1,22 +1,17 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { RgbColorPicker } from "react-colorful";
-import useWebSocket from 'react-use-websocket';
 import useInterval from "use-interval";
 
 import { Joystick } from "./Joystick";
 import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
-  apiUpdateActiveDotbotAddress, apiFetchActiveDotbotAddress,
-  apiFetchDotbots, apiUpdateRgbLed, apiUpdateMoveRaw,
   apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
 } from "./rest";
-import { ApplicationType, gps_distance_threshold, lh2_distance_threshold, maxWaypoints, NotificationType, maxPositionHistory } from "./constants";
-import { gps_distance, lh2_distance } from "./helpers";
+import { ApplicationType, maxWaypoints, maxPositionHistory } from "./constants";
 
 
-const websocketUrl = `${process.env.REACT_APP_DOTBOTS_WS_URL}/controller/ws/status`;
 const dotbotStatuses = ["alive", "lost", "dead"];
 const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
@@ -55,8 +50,8 @@ const DotBotAccordionItem = (props) => {
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
   const applyColor = async () => {
-    await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
-    await props.refresh();
+    console.log(`Applying color ${color.r}, ${color.g}, ${color.b}`);
+    await props.publishCommand(props.dotbot.address, props.dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
   }
 
   const thresholdUpdate = async (event) => {
@@ -108,7 +103,7 @@ const DotBotAccordionItem = (props) => {
         <div className="accordion-body">
           <div className="d-flex">
             <div className={`mx-auto justify-content-center ${!expanded && "invisible"}`}>
-              <Joystick address={props.dotbot.address} application={props.dotbot.application} />
+              <Joystick address={props.dotbot.address} application={props.dotbot.application} publishCommand={props.publishCommand} />
             </div>
             <div className="mx-auto justify-content-center">
               <div className="d-flex justify-content-center">
@@ -156,8 +151,7 @@ const SailBotItem = (props) => {
   const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
 
   const applyColor = async () => {
-    await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
-    await props.refresh();
+    await props.publishCommand(props.dotbot.address, props.dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
   }
 
   const handleTextClick = () => {
@@ -189,12 +183,12 @@ const SailBotItem = (props) => {
     }
   };
 
-  const rudderUpdate = (input) => {
+  const rudderUpdate = async (event) => {
     let newRudderValue;
-    if (typeof input === 'object' && input.target) {
-      newRudderValue = parseInt(input.target.value, 10);
-    } else if (typeof input === 'number') {
-      newRudderValue = input;
+    if (typeof event === 'object' && event.target) {
+      newRudderValue = parseInt(event.target.value, 10);
+    } else if (typeof event === 'number') {
+      newRudderValue = event;
     } else {
       return;
     }
@@ -216,7 +210,7 @@ const SailBotItem = (props) => {
     if (rudderValue === 0 && sailValue === 0) {
       setActive(false);
     }
-    await apiUpdateMoveRaw(props.dotbot.address, props.dotbot.application, rudderValue, 0, 0, sailValue).catch(error => console.log(error));
+    await props.publishCommand(props.dotbot.address, props.dotbot.application, "move_raw", { left_x: rudderValue, left_y: 0, right_x: 0, right_y: sailValue });
   }, active ? 100 : null);
 
   useEffect(() => {
@@ -304,8 +298,7 @@ const SailBotItem = (props) => {
   );
 }
 
-const DotBots = () => {
-  const [ dotbots, setDotbots ] = useState();
+const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
@@ -316,7 +309,6 @@ const DotBots = () => {
   const backspace = useKeyPress("Backspace");
 
   const updateActive = useCallback(async (address) => {
-    await apiUpdateActiveDotbotAddress(address).catch((error) => console.error(error));
     setActiveDotbot(address);
   }, [setActiveDotbot]
   );
@@ -328,14 +320,6 @@ const DotBots = () => {
       setShowDotBotHistory(show);
     }
   };
-
-  const fetchDotBots = useCallback(async () => {
-    const data = await apiFetchDotbots().catch(error => console.log(error));
-    setDotbots(data);
-    const active = await apiFetchActiveDotbotAddress().catch(error => console.log(error));
-    setActiveDotbot(active);
-  }, [setDotbots, setActiveDotbot]
-  );
 
   const mapClicked = useCallback((x, y) => {
     if (!dotbots || dotbots.length === 0) {
@@ -366,7 +350,7 @@ const DotBots = () => {
             });
           }
           dotbotsTmp[idx].waypoints.push({latitude: x, longitude: y});
-          setDotbots(dotbotsTmp);
+          updateDotbots(dotbotsTmp);
         }
       }
     }
@@ -382,11 +366,11 @@ const DotBots = () => {
             });
           }
           dotbotsTmp[idx].waypoints.push({x: x, y: y, z: 0});
-          setDotbots(dotbotsTmp);
+          updateDotbots(dotbotsTmp);
         }
       }
     }
-  }, [activeDotbot, dotbots, setDotbots]
+  }, [activeDotbot, dotbots, updateDotbots]
   );
 
   const applyWaypoints = useCallback(async (address, application) => {
@@ -405,11 +389,11 @@ const DotBots = () => {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].waypoints = [];
         await apiUpdateWaypoints(address, application, [], dotbotsTmp[idx].waypoints_threshold);
-        setDotbots(dotbotsTmp);
+        updateDotbots(dotbotsTmp);
         return;
       }
     }
-  }, [dotbots]
+  }, [dotbots, updateDotbots]
   );
 
   const clearPositionsHistory = async (address) => {
@@ -418,7 +402,7 @@ const DotBots = () => {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].position_history = [];
         await apiClearPositionsHistory(address);
-        setDotbots(dotbotsTmp);
+        updateDotbots(dotbotsTmp);
         return;
       }
     }
@@ -429,75 +413,13 @@ const DotBots = () => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].waypoints_threshold = threshold;
-        setDotbots(dotbotsTmp);
+        updateDotbots(dotbotsTmp);
         return;
       }
     }
   };
 
-  const onWsOpen = () => {
-    console.log('websocket opened');
-    fetchDotBots();
-  };
-
-  const onWsMessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.cmd === NotificationType.Reload) {
-      fetchDotBots();
-    }
-    if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === message.data.address) {
-          if (message.data.direction !== undefined && message.data.direction !== null) {
-            dotbotsTmp[idx].direction = message.data.direction;
-          }
-          if (message.data.wind_angle !== undefined && message.data.wind_angle !== null) {
-            dotbotsTmp[idx].wind_angle = message.data.wind_angle;
-          }
-          if (message.data.rudder_angle !== undefined && message.data.rudder_angle !== null) {
-            dotbotsTmp[idx].rudder_angle = message.data.rudder_angle;
-          }
-          if (message.data.sail_angle !== undefined && message.data.sail_angle !== null) {
-            dotbotsTmp[idx].sail_angle = message.data.sail_angle;
-          }
-          if (message.data.lh2_position !== undefined && message.data.lh2_position !== null) {
-            const newPosition = {
-              x: message.data.lh2_position.x,
-              y: message.data.lh2_position.y
-            };
-            if (dotbotsTmp[idx].lh2_position !== undefined && dotbotsTmp[idx].lh2_position !== null && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
-              dotbotsTmp[idx].position_history.push(newPosition);
-            }
-            dotbotsTmp[idx].lh2_position = newPosition;
-          }
-          if (message.data.gps_position !== undefined && message.data.gps_position !== null) {
-            const newPosition = {
-              latitude: message.data.gps_position.latitude,
-              longitude: message.data.gps_position.longitude
-            };
-            if (dotbotsTmp[idx].gps_position !== undefined && dotbotsTmp[idx].gps_position !== null && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
-              dotbotsTmp[idx].position_history.push(newPosition);
-            }
-            dotbotsTmp[idx].gps_position = newPosition;
-          }
-          setDotbots(dotbotsTmp);
-        }
-      }
-    }
-  };
-
-  useWebSocket(websocketUrl, {
-    onOpen: () => onWsOpen(),
-    onClose: () => console.log("websocket closed"),
-    onMessage: (event) => onWsMessage(event),
-    shouldReconnect: (event) => true,
-  });
-
   useEffect(() => {
-    if (!dotbots) {
-      fetchDotBots();
-    }
 
     if (dotbots && control && enter) {
       if (activeDotbot !== inactiveAddress) {
@@ -520,7 +442,7 @@ const DotBots = () => {
       }
     }
   }, [
-    dotbots, fetchDotBots,
+    dotbots,
     control, enter, backspace,
     applyWaypoints, clearWaypoints, activeDotbot
   ]);
@@ -533,13 +455,13 @@ const DotBots = () => {
         <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
           <span className="navbar-toggler-icon"></span>
         </button>
-        <div className="collapse navbar-collapse" id="navbarNav">
+        {/* <div className="collapse navbar-collapse" id="navbarNav">
           <ul className="navbar-nav">
             <li className="nav-item">
               <a className="nav-link active" aria-current="page" href="http://localhost:8000/api" target="_blank" rel="noreferrer noopener">API</a>
             </li>
           </ul>
-        </div>
+        </div> */}
       </div>
     </nav>
     <div className="container">
@@ -564,7 +486,7 @@ const DotBots = () => {
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
                       updateWaypointThreshold={updateWaypointThreshold}
-                      refresh={fetchDotBots}
+                      publishCommand={publishCommand}
                     />
                   )
                 }
@@ -621,7 +543,7 @@ const DotBots = () => {
                       clearWaypoints={clearWaypoints}
                       clearPositionsHistory={clearPositionsHistory}
                       updateWaypointThreshold={updateWaypointThreshold}
-                      refresh={fetchDotBots}
+                      publishCommand={publishCommand}
                     />
                   )
                 }
