@@ -1,3 +1,5 @@
+export const ProtocolVersion = 8;
+
 export const ApplicationType = {
   DotBot: 0,
   SailBot: 1,
