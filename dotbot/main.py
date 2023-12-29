@@ -89,18 +89,6 @@ from dotbot.logger import setup_logging
     default=False,
     help="Perform a basic handshake with the gateway board on startup",
 )
-@click.option(
-    "--use-mqtt",
-    is_flag=True,
-    default=False,
-    help="Connect to the MQTT broker configured in the .env file",
-)
-@click.option(
-    "--use-mqtt-crypto",
-    is_flag=True,
-    default=False,
-    help="Use HKDF and AES encryption to secure MQTT communication",
-)
 def main(
     port,
     baudrate,
@@ -112,8 +100,6 @@ def main(
     log_level,
     log_output,
     handshake,
-    use_mqtt,
-    use_mqtt_crypto,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -130,8 +116,6 @@ def main(
                 swarm_id,
                 webbrowser,
                 handshake,
-                use_mqtt,
-                use_mqtt_crypto,
                 verbose,
             ),
         )

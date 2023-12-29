@@ -9,9 +9,6 @@ export const deriveKey = (pin) => {
   const info = `secret_key_${ProtocolVersion}`;
   const hash = 'SHA-256';
 
-  // let key = hkdf(`${pin}`, length, {salt, info, hash});
-  // console.log(`Derive Key: ${Buffer.from(key).toString("hex")} from ${pin}`);
-  // return key;
   return hkdf(`${pin}`, length, {salt, info, hash});
 };
 
@@ -21,9 +18,6 @@ export const deriveTopic = (pin) => {
   const info = `secret_topic_${ProtocolVersion}`;
   const hash = 'SHA-256';
 
-  // const topic = Buffer.from(hkdf(`${pin}`, length, {salt, info, hash})).toString("base64").replace(/\+/g,'-').replace(/\//g,'_');
-  // console.log(`Derive Topic: ${topic} from ${pin}`);
-  // return topic;
   // Topic is encoded in url safe base64
   return Buffer.from(hkdf(`${pin}`, length, {salt, info, hash})).toString("base64").replace(/\+/g,'-').replace(/\//g,'_');
 };
