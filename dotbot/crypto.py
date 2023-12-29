@@ -5,12 +5,12 @@ from random import randint
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from jose import jwe
+from joserfc import jwe
 
 from dotbot.protocol import PROTOCOL_VERSION
 
 PIN_CODE_SIZE = 8
-
+JOSE_PROTECTED = {"alg": "dir", "enc": "A256GCM"}
 
 def generate_pin_code() -> int:
     return randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
@@ -41,13 +41,9 @@ def derive_aes_key(pin_code: int) -> bytes:
 
 def encrypt(data: str, key: bytes) -> str:
     """Encrypt data with AES-GCM."""
-    return jwe.encrypt(data, key).decode()
+    return jwe.encrypt_compact(JOSE_PROTECTED, data, key)
 
 
 def decrypt(data: str, key: bytes) -> str:
     """Decrypt data with AES-GCM."""
-    try:
-        return jwe.decrypt(data, key)
-    except jwe.JWEParseError as _:
-        print("Cannot decrypt data")
-        return ""
+    return jwe.decrypt_compact(data, key).plaintext.decode()
