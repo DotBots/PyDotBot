@@ -59,8 +59,10 @@ DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
-PIN_CODE_REFRESH_PERIOD_S = 15 * 60  # 5 minutes
+PIN_CODE_REFRESH_PERIOD_S = 15 * 60  # 15 minutes
 PIN_CODE_DISABLE_DELAY_S = 2 * 60  # 2 minutes
+# PIN_CODE_REFRESH_PERIOD_S = 15  # 30 seconds
+# PIN_CODE_DISABLE_DELAY_S = 5 # 2 seconds
 
 
 class ControllerException(Exception):
@@ -215,7 +217,7 @@ class Controller:
                 writer.close()
                 break
         if self.settings.webbrowser is True:
-            url = "http://localhost:8000"
+            url = f"http://localhost:8000/PyDotBot?pin={self.pin_code}"
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 
@@ -242,10 +244,10 @@ class Controller:
                         previous_status=previous_status.name,
                         status=dotbot.status.name,
                     )
-            if needs_refresh is True:
-                await self.notify_clients(
-                    DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-                )
+            # if needs_refresh is True:
+            #     await self.notify_clients(
+            #         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+            #     )
             await asyncio.sleep(1)
 
     def _compute_lh2_position(
@@ -318,7 +320,7 @@ class Controller:
         else:
             # reload if a new dotbot comes in
             logger.info("New dotbot")
-            notification_cmd = DotBotNotificationCommand.RELOAD
+            # notification_cmd = DotBotNotificationCommand.RELOAD
 
         if (
             payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
@@ -448,7 +450,7 @@ class Controller:
         if self.mqtt.client.is_connected is True:
             message = json.dumps(notification.model_dump(exclude_none=True))
             if self.settings.use_mqtt_crypto is True:
-                message = encrypt(json.dumps(message), self.mqtt_aes_key)
+                message = encrypt(message, self.mqtt_aes_key)
             self.mqtt.publish(f"{mqtt_root_topic()}/notifications", message)
 
     def send_payload(self, payload: ProtocolPayload):

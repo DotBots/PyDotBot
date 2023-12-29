@@ -52,7 +52,7 @@ Welcome to the DotBots controller (version: 0.xx).
 
 ## Control your DotBot
 
-1. In a browser, open [http://localhost:8000](http://localhost:8000)
+1. In a browser, open [http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot)
 and you should have one item corresponding to your DotBot.
 
 2. Select it by clicking on the DotBot item:

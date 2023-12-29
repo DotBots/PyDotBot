@@ -40,10 +40,8 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
-PIN_CODE_DIR = os.path.join(os.path.dirname(__file__), "pin_code_ui", "build")
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
-    "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/pydotbot"
+    "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"
 )
 
 
@@ -337,7 +335,7 @@ async def mqtt_pin_code_qr_code():
     """Returns the MQTT pin code as QR code."""
     buff = io.BytesIO()
     qrcode = segno.make_qr(
-        f"{PYDOTBOT_FRONTEND_BASE_URL}/{str(api.controller.pin_code)}"
+        f"{PYDOTBOT_FRONTEND_BASE_URL}?pin={str(api.controller.pin_code)}"
     )
     qrcode.save(buff, kind="svg", scale=10, light=None)
     headers = {"Cache-Control": "no-cache"}
@@ -362,5 +360,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # Mount static files after all routes are defined
-api.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="dotbots")
-api.mount("/pin_code", StaticFiles(directory=PIN_CODE_DIR, html=True), name="pin_code")
+PIN_CODE_DIR = os.path.join(os.path.dirname(__file__), "pin_code_ui", "build")
+api.mount("/pin", StaticFiles(directory=PIN_CODE_DIR, html=True), name="pin_code")
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
+api.mount("/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot")

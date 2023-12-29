@@ -188,7 +188,7 @@ async def message(_, topic, payload, qos, properties):
             logger.warning("Invalid payload")
             return
     try:
-        payload = json.loads(payload.decode())
+        payload = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Invalid JSON payload")
         return
