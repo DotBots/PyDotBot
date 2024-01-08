@@ -618,10 +618,9 @@ class Controller:
 
         if payload.payload_type == PayloadType.FAUXBOT_DATA:
             dotbot.direction = payload.values.theta
-            
             new_position = DotBotLH2Position(
                 x=payload.values.pos_x/1e6,
-                y=payload.values.pos_x/1e6,
+                y=payload.values.pos_y/1e6,
                 z=0,
             )
             dotbot.lh2_position = new_position
