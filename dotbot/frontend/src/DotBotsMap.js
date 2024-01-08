@@ -1,11 +1,11 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { ApplicationType } from "./constants";
+import { ApplicationType } from "./utils/constants";
 
 import {
     apiFetchLH2CalibrationState, apiApplyLH2Calibration,
     apiAddLH2CalibrationPoint, inactiveAddress
-} from "./rest";
+} from "./utils/rest";
 
 const referencePoints = [
   {x: -0.1, y: 0.1},

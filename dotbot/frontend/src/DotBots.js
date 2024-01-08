@@ -8,8 +8,8 @@ import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
   apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
-} from "./rest";
-import { ApplicationType, maxWaypoints, maxPositionHistory } from "./constants";
+} from "./utils/rest";
+import { ApplicationType, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
 const dotbotStatuses = ["alive", "lost", "dead"];

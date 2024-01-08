@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { encrypt, decrypt } from "./crypto";
+import { encrypt, decrypt } from "../utils/crypto";
 import mqtt from "mqtt";
 
 export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey, pin }) => {
