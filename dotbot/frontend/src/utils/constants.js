@@ -17,6 +17,8 @@ export const NotificationType = {
   PinCodeUpdate: 3,
 };
 
+export const inactiveAddress = "0000000000000000";
+
 export const maxWaypoints = 16;
 export const maxPositionHistory = 100;
 

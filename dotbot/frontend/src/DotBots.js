@@ -7,9 +7,9 @@ import { Joystick } from "./Joystick";
 import { DotBotsMap } from "./DotBotsMap";
 import { SailBotsMap } from "./SailBotsMap";
 import {
-  apiUpdateWaypoints, apiClearPositionsHistory, inactiveAddress,
+  apiUpdateWaypoints, apiClearPositionsHistory,
 } from "./utils/rest";
-import { ApplicationType, maxWaypoints, maxPositionHistory } from "./utils/constants";
+import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
 const dotbotStatuses = ["alive", "lost", "dead"];
