@@ -36,8 +36,6 @@ def diff_drive_bot(x_pos_old, y_pos_old, theta_old, v_right, v_left):
 
 class FauxBot:
     def __init__(self, address):
-        self._registry.append(self)
-
         self.address = address
         self.pos_x = 0.5 * 1e6
         self.pos_y = 0.5 * 1e6
