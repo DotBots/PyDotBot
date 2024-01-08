@@ -1,302 +1,13 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { RgbColorPicker } from "react-colorful";
-import useInterval from "use-interval";
 
-import { Joystick } from "./Joystick";
+import { useKeyPress } from "./hooks/keyPress";
+import { DotBotItem } from "./DotBotItem";
 import { DotBotsMap } from "./DotBotsMap";
+import { SailBotItem } from "./SailBotItem";
 import { SailBotsMap } from "./SailBotsMap";
-import {
-  apiUpdateWaypoints, apiClearPositionsHistory,
-} from "./utils/rest";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
-
-const dotbotStatuses = ["alive", "lost", "dead"];
-const dotbotBadgeStatuses = ["success", "secondary", "danger"];
-
-
-const useKeyPress = (targetKey) => {
-  const [keyPressed, setKeyPressed] = useState(false);
-
-  const downHandler = ({ key }) => {
-    if (key === targetKey) {
-      setKeyPressed(true);
-    }
-  };
-
-  const upHandler = ({ key }) => {
-    if (key === targetKey) {
-      setKeyPressed(false);
-    }
-  };
-
-  useEffect(() => {
-    window.addEventListener("keydown", downHandler);
-    window.addEventListener("keyup", upHandler);
-    return () => {
-      window.removeEventListener("keydown", downHandler);
-      window.removeEventListener("keyup", upHandler);
-    };
-  });
-
-  return keyPressed;
-};
-
-
-const DotBotAccordionItem = (props) => {
-
-  const [ expanded, setExpanded ] = useState(false);
-  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
-
-  const applyColor = async () => {
-    console.log(`Applying color ${color.r}, ${color.g}, ${color.b}`);
-    await props.publishCommand(props.dotbot.address, props.dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
-  }
-
-  const thresholdUpdate = async (event) => {
-    props.updateWaypointThreshold(props.dotbot.address, parseInt(event.target.value));
-  };
-
-  let rgbColor = "rgb(0, 0, 0)"
-  if (props.dotbot.rgb_led) {
-    rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
-  }
-
-  useEffect(() => {
-    if (props.dotbot.rgb_led) {
-      setColor({ r: props.dotbot.rgb_led.red, g: props.dotbot.rgb_led.green, b: props.dotbot.rgb_led.blue })
-    } else {
-      setColor({ r: 0, g: 0, b: 0 })
-    }
-
-    // Add collapse/expand event listener to avoid weird effects with the joystick
-    let collapsibleElement = document.getElementById(`collapse-${props.dotbot.address}`)
-    collapsibleElement.addEventListener('hide.bs.collapse', () => {
-      setExpanded(false);
-    })
-    collapsibleElement.addEventListener('shown.bs.collapse', () => {
-      setExpanded(true);
-    })
-  }, [props.dotbot.address, props.dotbot.rgb_led, setColor, setExpanded]);
-
-  return (
-    <div className="accordion-item">
-      <h2 className="accordion-header" id={`heading-${props.dotbot.address}`}>
-        <button className="accordion-button collapsed" onClick={() => props.updateActive(props.dotbot.address)} type="button" data-bs-toggle="collapse" data-bs-target={`#collapse-${props.dotbot.address}`} aria-controls={`collapse-${props.dotbot.address}`}>
-          <div className="d-flex" style={{ width: '100%' }}>
-            <div className="me-2">
-              <svg style={{ height: '12px', width: '12px'}}>
-                <circle cx={5} cy={5} r={5} fill={rgbColor} opacity={`${props.dotbot.status === 0 ? "100%" : "30%"}`} />
-              </svg>
-            </div>
-            <div className="me-auto">{props.dotbot.address}</div>
-            <div className="me-2">
-              <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
-                {dotbotStatuses[props.dotbot.status]}
-              </div>
-            </div>
-          </div>
-        </button>
-      </h2>
-      <div id={`collapse-${props.dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${props.dotbot.address}`} data-bs-parent="#accordion-dotbots">
-        <div className="accordion-body">
-          <div className="d-flex">
-            <div className={`mx-auto justify-content-center ${!expanded && "invisible"}`}>
-              <Joystick address={props.dotbot.address} application={props.dotbot.application} publishCommand={props.publishCommand} />
-            </div>
-            <div className="mx-auto justify-content-center">
-              <div className="d-flex justify-content-center">
-                <RgbColorPicker color={color} onChange={setColor} />
-              </div>
-              <div className="d-flex justify-content-center">
-                <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
-              </div>
-            </div>
-          </div>
-          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
-          <>
-            <div className="d-flex mx-auto card">
-              <div className="card-body p-1">
-                <p className="m-0 p-0">
-                  <span>Autonomous mode: </span>
-                  <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, props.dotbot.application)}>Start</button>
-                  <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, props.dotbot.application)}>Clear</button>
-                </p>
-                <div className="mx-auto justify-content-center">
-                  <p>{`Target threshold: ${props.dotbot.waypoints_threshold}`}</p>
-                  <input type="range" min="0" max="100" defaultValue={props.dotbot.waypoints_threshold} onChange={thresholdUpdate}/>
-                </div>
-              </div>
-            </div>
-          </>
-          }
-          {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
-            <div className="d-flex me-auto">
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearPositionsHistory(props.dotbot.address)}>Clear positions history</button>
-            </div>
-          }
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const SailBotItem = (props) => {
-  const [rudderValue, setRudderValue] = useState(0);
-  const [sailValue, setSailValue] = useState(0);
-  const [active, setActive] = useState(true);
-  const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
-
-  const applyColor = async () => {
-    await props.publishCommand(props.dotbot.address, props.dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
-  }
-
-  const handleTextClick = () => {
-    setIsEditing(true);
-    setEditValue(rudderValue.toString());
-  };
-
-  const clampValue = (value) => {
-    const num = parseInt(value, 10);
-    if (isNaN(num)) return 0;
-    return Math.min(Math.max(num, -128), 127);
-  };
-
-  const handleInputChange = (event) => {
-    setEditValue(event.target.value);
-  };
-
-  const handleInputConfirm = () => {
-    const newValue = clampValue(editValue);
-    rudderUpdate(newValue);
-    setIsEditing(false);
-  };
-
-  const handleInputBlur = () => handleInputConfirm();
-  const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      handleInputConfirm();
-    }
-  };
-
-  const rudderUpdate = async (event) => {
-    let newRudderValue;
-    if (typeof event === 'object' && event.target) {
-      newRudderValue = parseInt(event.target.value, 10);
-    } else if (typeof event === 'number') {
-      newRudderValue = event;
-    } else {
-      return;
-    }
-    setRudderValue(newRudderValue);
-    setActive(newRudderValue !== undefined && newRudderValue !== null);
-  };
-
-  const sailUpdate = async (event) => {
-    const newSailValue = parseInt(event.target.value);
-    setSailValue(newSailValue);
-    setActive(newSailValue !== undefined && newSailValue !== null);
-  };
-
-  const thresholdUpdate = async (event) => {
-    props.updateWaypointThreshold(props.dotbot.address, parseInt(event.target.value));
-  };
-
-  useInterval(async () => {
-    if (rudderValue === 0 && sailValue === 0) {
-      setActive(false);
-    }
-    await props.publishCommand(props.dotbot.address, props.dotbot.application, "move_raw", { left_x: rudderValue, left_y: 0, right_x: 0, right_y: sailValue });
-  }, active ? 100 : null);
-
-  useEffect(() => {
-    if (props.dotbot.rgb_led) {
-      setColor({ r: props.dotbot.rgb_led.red, g: props.dotbot.rgb_led.green, b: props.dotbot.rgb_led.blue })
-    } else {
-      setColor({ r: 0, g: 0, b: 0 })
-    }
-  }, [props.dotbot.rgb_led, setColor]);
-
-  return (
-    <div className="accordion-item">
-      <h2 className="accordion-header" id={`heading-${props.dotbot.address}`}>
-        <button className="accordion-button collapsed" onClick={() => props.updateActive(props.dotbot.address)} type="button" data-bs-toggle="collapse" data-bs-target={`#collapse-${props.dotbot.address}`} aria-controls={`collapse-${props.dotbot.address}`}>
-          <div className="d-flex" style={{ width: '100%' }}>
-            <div className="me-auto">{props.dotbot.address}</div>
-            <div className="me-2">
-              <div className={`badge text-bg-${dotbotBadgeStatuses[props.dotbot.status]} text-light border-0`}>
-                {dotbotStatuses[props.dotbot.status]}
-              </div>
-            </div>
-          </div>
-        </button>
-      </h2>
-      <div id={`collapse-${props.dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${props.dotbot.address}`} data-bs-parent="#accordion-sailbots">
-        <div className="accordion-body">
-          <div className="d-flex">
-            <div className="mx-auto justify-content-center">
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={editValue}
-                  onChange={handleInputChange}
-                  onBlur={handleInputBlur}
-                  onKeyPress={handleKeyPress}
-                  autoFocus
-                />
-              ) : (
-                <p onClick={handleTextClick}>{`Rudder: ${rudderValue}`}</p>
-              )}
-              <input
-                type="range" min="-128" max="127" value={rudderValue} onChange={rudderUpdate}
-              />
-            </div>
-            <div className="mx-auto justify-content-center">
-              <p>{`Sail: ${sailValue}`}</p>
-              <input type="range" min="-128" max="127" defaultValue={sailValue} onChange={sailUpdate}/>
-            </div>
-          </div>
-          <div className="d-flex justify-content-center">
-            <div className="mx-auto justify-content-center">
-              <RgbColorPicker color={color} onChange={setColor} />
-            </div>
-          </div>
-          <div className="d-flex justify-content-center">
-            <div className="mx-auto justify-content-center">
-              <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
-            </div>
-          </div>
-          {props.dotbot.waypoints && props.dotbot.waypoints.length > 0 &&
-            <>
-              <div className="d-flex mx-auto card">
-                <div className="card-body p-1">
-                  <p className="m-0 p-0">
-                    <span>Autonomous mode: </span>
-                    <button className="btn btn-primary btn-sm m-1" onClick={async () => props.applyWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Start</button>
-                    <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearWaypoints(props.dotbot.address, ApplicationType.SailBot)}>Stop</button>
-                  </p>
-                  <div className="mx-auto justify-content-center">
-                    <p>{`Target threshold: ${props.dotbot.waypoints_threshold}`}</p>
-                    <input type="range" min="0" max="100" defaultValue={props.dotbot.waypoints_threshold} onChange={thresholdUpdate}/>
-                </div>
-                </div>
-              </div>
-            </>
-          }
-          {props.dotbot.position_history && props.dotbot.position_history.length > 0 &&
-            <div className="d-flex me-auto">
-              <button className="btn btn-primary btn-sm m-1" onClick={async () => props.clearPositionsHistory(props.dotbot.address)}>Clear positions history</button>
-            </div>
-          }
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
@@ -376,11 +87,11 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
   const applyWaypoints = useCallback(async (address, application) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
-        await apiUpdateWaypoints(address, application, dotbots[idx].waypoints, dotbots[idx].waypoints_threshold);
+        await publishCommand(address, application, "waypoints", { threshold: dotbots[idx].waypoints_threshold, waypoints: dotbots[idx].waypoints });
         return;
       }
     }
-  }, [dotbots]
+  }, [dotbots, publishCommand]
   );
 
   const clearWaypoints = useCallback(async (address, application) => {
@@ -388,12 +99,12 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].waypoints = [];
-        await apiUpdateWaypoints(address, application, [], dotbotsTmp[idx].waypoints_threshold);
+        await publishCommand(address, application, "waypoints", { threshold: dotbots[idx].waypoints_threshold, waypoints: [] });
         updateDotbots(dotbotsTmp);
         return;
       }
     }
-  }, [dotbots, updateDotbots]
+  }, [dotbots, updateDotbots, publishCommand]
   );
 
   const clearPositionsHistory = async (address) => {
@@ -401,7 +112,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].position_history = [];
-        await apiClearPositionsHistory(address);
+        await publishCommand(address, dotbots[idx].application, "clear_history", "");
         updateDotbots(dotbotsTmp);
         return;
       }
@@ -477,10 +188,9 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
                 {dotbots
                   .filter(dotbot => dotbot.application === ApplicationType.DotBot)
                   .map(dotbot =>
-                    <DotBotAccordionItem
+                    <DotBotItem
                       key={dotbot.address}
                       dotbot={dotbot}
-                      active={activeDotbot}
                       updateActive={updateActive}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
@@ -537,7 +247,6 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand }) => {
                     <SailBotItem
                       key={dotbot.address}
                       dotbot={dotbot}
-                      active={activeDotbot}
                       updateActive={updateActive}
                       applyWaypoints={applyWaypoints}
                       clearWaypoints={clearWaypoints}
