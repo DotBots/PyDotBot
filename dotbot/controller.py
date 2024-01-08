@@ -19,6 +19,7 @@ from pydantic.tools import parse_obj_as
 from qrkey import QrkeyController, SubscriptionModel
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
+from dotbot.fauxbot import FauxBotSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -55,7 +56,7 @@ from dotbot.protocol import (
     ProtocolPayloadParserException,
 )
 from dotbot.sailbot_simulator import SailbotSimulatorSerialInterface
-from dotbot.serial_interface import SerialInterface, SerialInterfaceException, FauxBotSerialInterface
+from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
 # from dotbot.models import (
@@ -619,14 +620,14 @@ class Controller:
         if payload.payload_type == PayloadType.FAUXBOT_DATA:
             dotbot.direction = payload.values.theta
             new_position = DotBotLH2Position(
-                x=payload.values.pos_x/1e6,
-                y=payload.values.pos_y/1e6,
+                x=payload.values.pos_x / 1e6,
+                y=payload.values.pos_y / 1e6,
                 z=0,
             )
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
-            
+
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
