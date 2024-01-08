@@ -1,10 +1,10 @@
 import React from 'react';
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from 'react-router-dom';
-import { useMqttBroker } from "./mqtt";
-import { deriveKey, deriveTopic } from "./crypto";
-import { gps_distance_threshold, lh2_distance_threshold, NotificationType } from "./constants";
-import { gps_distance, lh2_distance } from "./helpers";
+import { useMqttBroker } from "./hooks/mqtt";
+import { deriveKey, deriveTopic } from "./utils/crypto";
+import { gps_distance_threshold, lh2_distance_threshold, NotificationType } from "./utils/constants";
+import { gps_distance, lh2_distance, loadLocalPin, saveLocalPin } from "./utils/helpers";
 
 import DotBots from './DotBots';
 import PinForm from './PinForm';
@@ -17,8 +17,6 @@ const App = () => {
   const [mqttSubscribed, setMqttSubscribed] = useState(false);
   const [fullscreen, setFullscreen] = useState(null);
   const [request, setRequest] = useState(null);
-  // const [, updateState] = React.useState();
-  // const forceUpdate = React.useCallback(() => updateState({}), []);
 
   const secretKey = deriveKey(pin);
   const secretTopic = deriveTopic(pin);
@@ -40,6 +38,7 @@ const App = () => {
       // Process notifications
       const message = parsed;
       if (message.cmd === NotificationType.PinCodeUpdate) {
+        saveLocalPin(message.pin_code);
         setPin(message.pin_code);
       } else if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
         let dotbotsTmp = dotbots.slice();
@@ -139,12 +138,25 @@ const App = () => {
     }
   }
 
+  const updatePinFromForm = (pin) => {
+    setPin(pin);
+    saveLocalPin(pin);
+  };
+
   useEffect(() => {
     if (!pin && searchParams && searchParams.has('pin')) {
-      setPin(searchParams.get('pin'));
+      const queryPin = searchParams.get('pin');
+      setPin(queryPin);
+      saveLocalPin(queryPin);
       searchParams.delete('pin');
       setSearchParams(searchParams);
     }
+
+    if (!pin) {
+      console.log("No pin, loading from local storage");
+      setPin(loadLocalPin());
+    }
+
   }, [pin, setPin, searchParams, setSearchParams]
   );
 
@@ -190,7 +202,7 @@ const App = () => {
           publishCommand={publishCommand}
         />
       </div>
-      ) : <PinForm pinUpdate={setPin} />
+      ) : <PinForm pinUpdate={updatePinFromForm} />
     }
     </>
   );
