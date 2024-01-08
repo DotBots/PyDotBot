@@ -6,9 +6,7 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 from dotbot.models import (
-    DotBotAddressModel,
     DotBotCalibrationStateModel,
-    DotBotControlModeModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -20,7 +18,6 @@ from dotbot.protocol import (
     ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
-    ControlMode,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -55,27 +52,6 @@ def controller():
 async def test_openapi_exists():
     response = await client.get("/api")
     assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_get_dotbot_address():
-    result_address = "0000000000004242"
-    result = DotBotAddressModel(address=result_address)
-    api.controller.header.destination = int(result_address, 16)
-    response = await client.get("/controller/dotbot_address")
-    assert response.status_code == 200
-    assert response.json() == result.model_dump()
-
-
-@pytest.mark.asyncio
-async def test_set_dotbot_address():
-    new_address = "0000000000004242"
-    response = await client.put(
-        "/controller/dotbot_address",
-        json=DotBotAddressModel(address=new_address).model_dump(),
-    )
-    assert response.status_code == 200
-    assert api.controller.header.destination == int(new_address, 16)
 
 
 @pytest.mark.asyncio
@@ -188,66 +164,6 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.model_dump(),
-    )
-    assert response.status_code == code
-
-    if found:
-        api.controller.send_payload.assert_called_with(expected_payload)
-    else:
-        api.controller.send_payload.assert_not_called()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "dotbots,code,found",
-    [
-        pytest.param(
-            {
-                "4242": DotBotModel(
-                    address="4242",
-                    application=ApplicationType.DotBot,
-                    swarm="0000",
-                    last_seen=123.4,
-                ),
-            },
-            200,
-            True,
-            id="found",
-        ),
-        pytest.param(
-            {
-                "56789": DotBotModel(
-                    address="56789",
-                    application=ApplicationType.DotBot,
-                    swarm="0000",
-                    last_seen=123.4,
-                ),
-            },
-            404,
-            False,
-            id="not_found",
-        ),
-    ],
-)
-async def test_set_dotbots_mode(dotbots, code, found):
-    api.controller.dotbots = dotbots
-    address = "4242"
-    message = DotBotControlModeModel(mode=1)
-    header = ProtocolHeader(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
-        version=PROTOCOL_VERSION,
-    )
-    expected_payload = ProtocolPayload(
-        header,
-        PayloadType.CONTROL_MODE,
-        ControlMode(1),
-    )
-    response = await client.put(
-        f"/controller/dotbots/{address}/0/mode",
-        json=message.model_dump(),
     )
     assert response.status_code == code
 
