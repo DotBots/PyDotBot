@@ -2,10 +2,11 @@
 
 import json
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi_mqtt import FastMQTT, MQTTConfig
 from pydantic import Field, ValidationError
+from pydantic.tools import parse_obj_as
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dotbot.crypto import decrypt
@@ -14,13 +15,19 @@ from dotbot.models import (
     ApplicationType,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
+    DotBotNotificationModel,
     DotBotRequestModel,
     DotBotRgbLedCommandModel,
+    DotBotWaypoints,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     CommandMoveRaw,
     CommandRgbLed,
+    GPSPosition,
+    GPSWaypoints,
+    LH2Location,
+    LH2Waypoints,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
@@ -52,13 +59,18 @@ mqtt = FastMQTT(
 )
 
 
-def mqtt_command_move_raw(
+async def mqtt_command_move_raw(
     address: str,
     swarm_id: str,
     application: ApplicationType,
-    command: DotBotMoveRawCommandModel,
+    command: Any,
 ):
     """MQTT callback for move_raw command."""
+    try:
+        command = DotBotMoveRawCommandModel(**command)
+    except ValidationError as exc:
+        LOGGER.warning(f"Invalid move raw command: {exc.errors()}")
+        return
     logger = LOGGER.bind(
         context=__name__,
         address=address,
@@ -91,13 +103,18 @@ def mqtt_command_move_raw(
     mqtt.controller.dotbots[address].move_raw = command
 
 
-def mqtt_command_rgb_led(
+async def mqtt_command_rgb_led(
     address: str,
     swarm_id: str,
     application: ApplicationType,
-    command: DotBotRgbLedCommandModel,
+    command: Any,
 ):
     """MQTT callback for rgb_led command."""
+    try:
+        command = DotBotRgbLedCommandModel(**command)
+    except ValidationError as exc:
+        LOGGER.warning(f"Invalid rgb led command: {exc.errors()}")
+        return
     logger = LOGGER.bind(
         context=__name__,
         address=address,
@@ -125,40 +142,109 @@ def mqtt_command_rgb_led(
     mqtt.controller.dotbots[address].rgb_led = command
 
 
+async def mqtt_command_waypoints(
+    address: str,
+    swarm_id: str,
+    application: ApplicationType,
+    command: Any,
+):
+    command = parse_obj_as(DotBotWaypoints, command)
+    logger = LOGGER.bind(
+        context=__name__,
+        address=address,
+        application=application.name,
+        command="waypoints",
+        threshold=command.threshold,
+        length=len(command.waypoints),
+    )
+    if address not in mqtt.controller.dotbots:
+        logger.warning("DotBot not found")
+        return
+    logger.info("Sending command")
+    header = ProtocolHeader(
+        destination=int(address, 16),
+        source=int(mqtt.controller.settings.gw_address, 16),
+        swarm_id=int(swarm_id, 16),
+        application=ApplicationType(application),
+        version=PROTOCOL_VERSION,
+    )
+    waypoints_list = command.waypoints
+    if ApplicationType(application) == ApplicationType.SailBot:
+        if mqtt.controller.dotbots[address].gps_position is not None:
+            waypoints_list = [
+                mqtt.controller.dotbots[address].gps_position
+            ] + command.waypoints
+        payload = ProtocolPayload(
+            header,
+            PayloadType.GPS_WAYPOINTS,
+            GPSWaypoints(
+                threshold=command.threshold,
+                waypoints=[
+                    GPSPosition(
+                        latitude=int(waypoint.latitude * 1e6),
+                        longitude=int(waypoint.longitude * 1e6),
+                    )
+                    for waypoint in command.waypoints
+                ],
+            ),
+        )
+    else:  # DotBot application
+        if mqtt.controller.dotbots[address].lh2_position is not None:
+            waypoints_list = [
+                mqtt.controller.dotbots[address].lh2_position
+            ] + command.waypoints
+        payload = ProtocolPayload(
+            header,
+            PayloadType.LH2_WAYPOINTS,
+            LH2Waypoints(
+                threshold=command.threshold,
+                waypoints=[
+                    LH2Location(
+                        pos_x=int(waypoint.x * 1e6),
+                        pos_y=int(waypoint.y * 1e6),
+                        pos_z=int(waypoint.z * 1e6),
+                    )
+                    for waypoint in command.waypoints
+                ],
+            ),
+        )
+    mqtt.controller.send_payload(payload)
+    mqtt.controller.dotbots[address].waypoints = waypoints_list
+    mqtt.controller.dotbots[address].waypoints_threshold = command.threshold
+    await mqtt.controller.notify_clients(
+        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    )
+
+
+async def mqtt_command_clear_history(
+    address: str,
+    _: str,
+    application: ApplicationType,
+    command: str,
+):
+    logger = LOGGER.bind(
+        context=__name__,
+        address=address,
+        application=application.name,
+        command=command,
+    )
+    if address not in mqtt.controller.dotbots:
+        logger.warning("DotBot not found")
+        return
+    logger.info("Sending command")
+    mqtt.controller.dotbots[address].position_history = []
+
+
 MQTT_TOPICS = {
-    "move_raw": {
-        "callback": mqtt_command_move_raw,
-        "model": DotBotMoveRawCommandModel,
-    },
-    "rgb_led": {
-        "callback": mqtt_command_rgb_led,
-        "model": DotBotRgbLedCommandModel,
-    },
+    "move_raw": mqtt_command_move_raw,
+    "rgb_led": mqtt_command_rgb_led,
+    "waypoints": mqtt_command_waypoints,
+    "clear_history": mqtt_command_clear_history,
 }
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
-async def handle_command(_, swarm_id, address, application, cmd, command):
-    logger = LOGGER.bind(
-        context=__name__,
-        swarm_id=swarm_id,
-        address=address,
-        application=application,
-        cmd=cmd,
-        **command,
-    )
-    try:
-        MQTT_TOPICS[cmd]["callback"](
-            address,
-            swarm_id,
-            ApplicationType(int(application)),
-            MQTT_TOPICS[cmd]["model"](**command),
-        )
-    except ValidationError as exc:
-        logger.warning(f"Invalid command: {exc.errors()}")
-
-
-async def handle_request(client, request):
+async def handle_request(_, request):
     logger = LOGGER.bind(context=__name__, **request)
     logger.info("Request received")
     try:
@@ -226,7 +312,12 @@ async def message(client, topic, payload, qos, properties):
         await handle_request(client, payload)
     elif len(topic_split) == 5:  # Command
         swarm_id, address, application, cmd = topic_split[1:]
-        await handle_command(client, swarm_id, address, application, cmd, payload)
+        await MQTT_TOPICS[cmd](
+            address,
+            swarm_id,
+            ApplicationType(int(application)),
+            payload,
+        )
     else:
         logger.warning(f"Invalid topic '{topic}'")
 
