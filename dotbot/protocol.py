@@ -243,6 +243,7 @@ class DotBotData(ProtocolData):
             ],
         )
 
+
 @dataclass
 class GPSPosition(ProtocolData):
     """Dataclass that holds GPS positions."""
@@ -288,6 +289,7 @@ class SailBotData(ProtocolData):
             latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
             longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
         )
+
 
 @dataclass
 class FauxBotData(ProtocolData):
