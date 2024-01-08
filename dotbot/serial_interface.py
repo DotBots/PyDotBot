@@ -73,7 +73,13 @@ class FauxBotSerialInterface(threading.Thread):
     def __init__(self, callback:Callable):
         
         # create a robot
-        self.dotbot = FauxBot("1234567890123456")
+        self.dotbot1 = FauxBot("1234567890123456")
+        
+        # create a second robot??
+        self.dotbot2 = FauxBot("4987654321098765")
+        
+        #for fauxbotObject in FauxBot:
+        #    print(fauxbotObject)
         
         self.callback = callback
         super().__init__(daemon=True)
@@ -83,27 +89,58 @@ class FauxBotSerialInterface(threading.Thread):
     
         
     def run(self):
-        advertising_interval = 0
-        """Listen continuously at each byte received on the fake serial interface."""
-        for byte in self.dotbot.advertise():
-            self.callback(byte.to_bytes(length=1, byteorder="little"))
-            time.sleep(0.001)
+    
+        advertising_interval = []
+        dotBotIterIndex = 0
+        for fauxbotObject in FauxBot:
+            #print(fauxbotObject.address)
+            advertising_interval.append(0)
             
+            """Listen continuously at each byte received on the fake serial interface."""
+            for byte in fauxbotObject.advertise():
+                self.callback(byte.to_bytes(length=1, byteorder="little"))
+                time.sleep(0.001)
+                
+        
+        advertising_interval1 = 0
+        advertising_interval2 = 0
+        """Listen continuously at each byte received on the fake serial interface."""
+        #for byte in self.dotbot1.advertise():
+        #    self.callback(byte.to_bytes(length=1, byteorder="little"))
+        #    time.sleep(0.001)
+        
+        #for byte in self.dotbot2.advertise():
+        #    self.callback(byte.to_bytes(length=1, byteorder="little"))
+        #    time.sleep(0.001)
+        
         while 1:
-            for byte in self.dotbot.update():
+            for byte in self.dotbot1.update():
                 self.callback(byte.to_bytes(length=1, byteorder="little"))
                 time.sleep(0.001)
             
-            advertising_interval += 1
-            if (advertising_interval == 4):
-                for byte in self.dotbot.advertise():
+            advertising_interval1 += 1
+            if (advertising_interval1 == 4):
+                for byte in self.dotbot1.advertise():
+                    self.callback(byte.to_bytes(length=1, byteorder="little"))
+                    time.sleep(0.001)
+                advertising_interval1 = 0
+            #time.sleep(0.01)
+            
+            for byte in self.dotbot2.update():
+                self.callback(byte.to_bytes(length=1, byteorder="little"))
+                time.sleep(0.001)
+            
+            advertising_interval2 += 1
+            if (advertising_interval2 == 4):
+                for byte in self.dotbot2.advertise():
                     self.callback(byte.to_bytes(length=1, byteorder="little"))
                     time.sleep(0.001)
                 advertising_interval = 0
-            time.sleep(1)
+            time.sleep(0.01)
     
     def write(self, bytes_):
         """Write bytes on the fake serial. It is an identical interface to the real gateway."""
-        self.dotbot.parse_serial_input(bytes_)
+        self.dotbot1.parse_serial_input(bytes_)
+        self.dotbot2.parse_serial_input(bytes_)
         
         
