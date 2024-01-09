@@ -9,13 +9,15 @@ from pydantic import Field, ValidationError
 from pydantic.tools import parse_obj_as
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from dotbot.crypto import decrypt
+from dotbot.crypto import decrypt, encrypt
 from dotbot.logger import LOGGER
 from dotbot.models import (
     ApplicationType,
+    DotBotCalibrationIndexModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
+    DotBotQueryModel,
     DotBotRequestModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
@@ -57,6 +59,31 @@ mqtt_config = MQTTConfig(
 mqtt = FastMQTT(
     config=mqtt_config,
 )
+
+
+def publish_dotbots(topic):
+    if mqtt.client.is_connected is False:
+        return
+    logger = LOGGER.bind(context=__name__, topic=topic)
+    logger.debug("Publish dotbots")
+    message = [
+        dotbot.model_dump(exclude_none=True)
+        for dotbot in mqtt.controller.get_dotbots(DotBotQueryModel())
+    ]
+    message = encrypt(json.dumps(message), mqtt.controller.mqtt_aes_key)
+    mqtt.publish(topic, message)
+
+
+def publish_lh2_state(topic):
+    if mqtt.client.is_connected is False:
+        return
+    logger = LOGGER.bind(context=__name__, topic=topic)
+    logger.debug("Publish LH2 state")
+    message = encrypt(
+        json.dumps(mqtt.controller.lh2_manager.state_model.model_dump()),
+        mqtt.controller.mqtt_aes_key,
+    )
+    mqtt.publish(topic, message)
 
 
 async def mqtt_command_move_raw(
@@ -235,11 +262,35 @@ async def mqtt_command_clear_history(
     mqtt.controller.dotbots[address].position_history = []
 
 
-MQTT_TOPICS = {
+async def mqtt_lh2_add_calibration(payload):
+    try:
+        payload = DotBotCalibrationIndexModel(**payload)
+    except ValidationError as exc:
+        LOGGER.warning(f"Invalid calibration index payload: {exc.errors()}")
+        return
+    logger = LOGGER.bind(
+        context=__name__,
+        **payload.model_dump(),
+    )
+    logger.info("Add calibration point")
+    mqtt.controller.lh2_manager.add_calibration_point(payload.index)
+
+
+async def mqtt_lh2_start_calibration():
+    logger = LOGGER.bind(context=__name__)
+    logger.info("Start calibration")
+    mqtt.controller.lh2_manager.compute_calibration()
+
+
+MQTT_COMMAND_TOPICS = {
     "move_raw": mqtt_command_move_raw,
     "rgb_led": mqtt_command_rgb_led,
     "waypoints": mqtt_command_waypoints,
     "clear_history": mqtt_command_clear_history,
+}
+MQTT_LH2_CALIBRATION_TOPICS = {
+    "add": mqtt_lh2_add_calibration,
+    "start": mqtt_lh2_start_calibration,
 }
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
@@ -253,8 +304,11 @@ async def handle_request(_, request):
         logger.warning(f"Invalid request: {exc.errors()}")
         return
 
+    reply_topic = f"{mqtt_root_topic()}/reply/{request.reply}"
     if request.cmd == DotBotNotificationCommand.RELOAD:
-        mqtt.controller.publish_dotbots(f"{mqtt_root_topic()}/reply/{request.reply}")
+        publish_dotbots(reply_topic)
+    elif request.cmd == DotBotNotificationCommand.LH2_CALIBRATION_STATE:
+        publish_lh2_state(reply_topic)
     else:
         logger.warning("Invalid request command")
 
@@ -269,10 +323,12 @@ def mqtt_root_topic(old=False):
 
 def subscribe_to_mqtt_topics(client):
     """Subscribe to all topics for a DotBot swarm."""
-    for topic in MQTT_TOPICS.keys():
+    for topic in MQTT_COMMAND_TOPICS.keys():
         client.subscribe(
             f"{mqtt_root_topic()}/{mqtt.controller.settings.swarm_id}/+/+/{topic}"
         )
+    for topic in MQTT_LH2_CALIBRATION_TOPICS.keys():
+        client.subscribe(f"{mqtt_root_topic()}/lh2/calibrarion/{topic}")
     client.subscribe(f"{mqtt_root_topic()}/request")
 
 
@@ -310,9 +366,14 @@ async def message(client, topic, payload, qos, properties):
 
     if len(topic_split) == 2:  # Request
         await handle_request(client, payload)
+    elif len(topic_split) == 4:  # LH2 calibration
+        cmd = topic_split[-1]
+        await MQTT_LH2_CALIBRATION_TOPICS[cmd](
+            payload
+        ) if payload else await MQTT_LH2_CALIBRATION_TOPICS[cmd]()
     elif len(topic_split) == 5:  # Command
         swarm_id, address, application, cmd = topic_split[1:]
-        await MQTT_TOPICS[cmd](
+        await MQTT_COMMAND_TOPICS[cmd](
             address,
             swarm_id,
             ApplicationType(int(application)),
