@@ -486,17 +486,6 @@ class Controller:
             dotbots.append(_dotbot)
         return sorted(dotbots, key=lambda dotbot: dotbot.address)
 
-    def publish_dotbots(self, topic):
-        if self.mqtt.client.is_connected is False:
-            return
-        self.logger.debug("Publish dotbots to MQTT")
-        message = [
-            dotbot.model_dump(exclude_none=True)
-            for dotbot in self.get_dotbots(DotBotQueryModel())
-        ]
-        message = encrypt(json.dumps(message), self.mqtt_aes_key)
-        self.mqtt.publish(topic, message)
-
     async def _disable_old_mqtt_crypto(self):
         """Disable old MQTT crypto after 5 minutes."""
         await asyncio.sleep(PIN_CODE_DISABLE_DELAY_S)

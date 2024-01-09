@@ -24,6 +24,12 @@ class DotBotCalibrationStateModel(BaseModel):
     state: str
 
 
+class DotBotCalibrationIndexModel(BaseModel):
+    """Model that holds the controller LH2 calibration index."""
+
+    index: int
+
+
 class MqttPinCodeModel(BaseModel):
     """Pin code used to derive crypto keys for MQTT."""
 
@@ -100,6 +106,7 @@ class DotBotNotificationCommand(IntEnum):
     RELOAD: int = 1
     UPDATE: int = 2
     PIN_CODE_UPDATE: int = 3
+    LH2_CALIBRATION_STATE: int = 4
 
 
 class DotBotNotificationUpdate(BaseModel):
