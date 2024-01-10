@@ -5,6 +5,7 @@ import mqtt from "mqtt";
 export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, secretKey }) => {
   const [client, setClient] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [refreshMessageCallback, setRefreshMessageCallback] = useState(false);
 
   const mqttPublish = async (topic, message) => {
     if (client && connected) {
@@ -36,7 +37,10 @@ export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, sec
       return;
     }
     setMessage({topic: topic, payload: decrypted});
-  }, [setMessage, secretKey]
+    if (client) {
+      setRefreshMessageCallback(true);
+    }
+  }, [client, setRefreshMessageCallback, setMessage, secretKey]
   );
 
   const setupMqttClient = useCallback((mqttClient) => {
@@ -52,8 +56,8 @@ export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, sec
     mqttClient.on('reconnect', () => {
       console.log('Reconnecting');
     });
-    mqttClient.on('message', mqttMessageReceived);
-  }, [mqttMessageReceived, setConnected]
+    setRefreshMessageCallback(true);
+  }, [setConnected]
   );
 
   useEffect(() => {
@@ -63,7 +67,11 @@ export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, sec
       setClient(mqttClient);
       setupMqttClient(mqttClient);
     }
-  }, [start, brokerUrl, brokerOptions, client, setClient, setupMqttClient]
+
+    if (client && refreshMessageCallback) {
+      client.once('message', mqttMessageReceived);
+    }
+  }, [start, brokerUrl, brokerOptions, client, setClient, setupMqttClient, mqttMessageReceived, refreshMessageCallback]
   );
 
   return [client, connected, mqttPublish, mqttSubscribe, mqttUnsubscribe];
