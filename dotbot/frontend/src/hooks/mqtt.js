@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { encrypt, decrypt } from "../utils/crypto";
 import mqtt from "mqtt";
 
-export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey, pin }) => {
+export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, secretKey }) => {
   const [client, setClient] = useState(null);
   const [connected, setConnected] = useState(false);
 
@@ -35,38 +35,35 @@ export const useMqttBroker = ({ brokerUrl, brokerOptions, onMessage, secretKey, 
       console.log("Decryption failed");
       return;
     }
-    onMessage(topic, decrypted);
-  }, [onMessage, secretKey]
+    setMessage({topic: topic, payload: decrypted});
+  }, [setMessage, secretKey]
+  );
+
+  const setupMqttClient = useCallback((mqttClient) => {
+    mqttClient.on('connect', () => {
+      console.log(`Connected to ${mqttClient.options.protocol}://${mqttClient.options.host}:${mqttClient.options.port}`);
+      setConnected(true);
+    });
+    mqttClient.on('error', (err) => {
+      console.error('Connection error: ', err);
+      mqttClient.end();
+      setConnected(false);
+    });
+    mqttClient.on('reconnect', () => {
+      console.log('Reconnecting');
+    });
+    mqttClient.on('message', mqttMessageReceived);
+  }, [mqttMessageReceived, setConnected]
   );
 
   useEffect(() => {
-    if (!client) {
+    if (start && !client) {
       console.log(`Connecting to mqtt`);
       const mqttClient = mqtt.connect(`${brokerUrl}/mqtt`, brokerOptions);
       setClient(mqttClient);
+      setupMqttClient(mqttClient);
     }
-
-    if (client && !connected) {
-        client.on('connect', () => {
-        console.log(`Connected to ${client.options.protocol}://${client.options.host}:${client.options.port}`);
-        // onConnect();
-        setConnected(true);
-      });
-      client.on('error', (err) => {
-        console.error('Connection error: ', err);
-        client.end();
-        setConnected(false);
-      });
-      client.on('reconnect', () => {
-        console.log('Reconnecting');
-      });
-      client.off('message', mqttMessageReceived);
-    }
-
-    if (client && pin) {
-      client.once('message', mqttMessageReceived);
-    }
-  }, [brokerUrl, brokerOptions, client, connected, mqttMessageReceived, pin]
+  }, [start, brokerUrl, brokerOptions, client, setClient, setupMqttClient]
   );
 
   return [client, connected, mqttPublish, mqttSubscribe, mqttUnsubscribe];
