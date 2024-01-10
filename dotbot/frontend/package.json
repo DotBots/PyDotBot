@@ -31,6 +31,7 @@
     "assert": "^2.1.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
+    "gh-pages": "^6.1.1",
     "https-browserify": "^1.0.0",
     "jest-websocket-mock": "^2.4.0",
     "mock-socket": "^9.1.5",
@@ -50,7 +51,9 @@
     "build": "react-app-rewired build",
     "lint": "eslint src/.",
     "test": "react-app-rewired test --watchAll=false --collectCoverage --colors --transformIgnorePatterns \"node_modules/(?!react-leaflet)/\"",
-    "eject": "react-app-rewired eject"
+    "eject": "react-app-rewired eject",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": [
