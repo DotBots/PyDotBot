@@ -53,7 +53,7 @@ const App = () => {
       if (parsed.request === RequestType.DotBots) {
         setDotbots(parsed.data);
       } else if (parsed.request === RequestType.LH2CalibrationState) {
-        setCalibrationState(parsed.data);
+        setCalibrationState(parsed.data.state);
       }
     } else if (message.topic === `/dotbots/${secretTopic}/notifications`) {
       // Process notifications
@@ -233,6 +233,7 @@ const App = () => {
           publishCommand={publishCommand}
           publish={publish}
           calibrationState={calibrationState}
+          setCalibrationState={setCalibrationState}
         />
       </div>
       : <PinForm pinUpdate={updatePinFromForm} ready={!initializing} />
