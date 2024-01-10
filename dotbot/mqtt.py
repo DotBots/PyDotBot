@@ -18,7 +18,9 @@ from dotbot.models import (
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotQueryModel,
+    DotBotReplyModel,
     DotBotRequestModel,
+    DotBotRequestType,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
 )
@@ -65,11 +67,15 @@ def publish_dotbots(topic):
     if mqtt.client.is_connected is False:
         return
     logger = LOGGER.bind(context=__name__, topic=topic)
-    logger.debug("Publish dotbots")
-    message = [
+    logger.info("Publish dotbots")
+    data = [
         dotbot.model_dump(exclude_none=True)
         for dotbot in mqtt.controller.get_dotbots(DotBotQueryModel())
     ]
+    message = DotBotReplyModel(
+        request=DotBotRequestType.DOTBOTS,
+        data=data,
+    ).model_dump(exclude_none=True)
     message = encrypt(json.dumps(message), mqtt.controller.mqtt_aes_key)
     mqtt.publish(topic, message)
 
@@ -78,11 +84,12 @@ def publish_lh2_state(topic):
     if mqtt.client.is_connected is False:
         return
     logger = LOGGER.bind(context=__name__, topic=topic)
-    logger.debug("Publish LH2 state")
-    message = encrypt(
-        json.dumps(mqtt.controller.lh2_manager.state_model.model_dump()),
-        mqtt.controller.mqtt_aes_key,
-    )
+    logger.info("Publish LH2 state")
+    message = DotBotReplyModel(
+        request=DotBotRequestType.LH2_CALIBRATION_STATE,
+        data=mqtt.controller.lh2_manager.state_model.model_dump(),
+    ).model_dump(exclude_none=True)
+    message = encrypt(json.dumps(message), mqtt.controller.mqtt_aes_key)
     mqtt.publish(topic, message)
 
 
@@ -305,9 +312,9 @@ async def handle_request(_, request):
         return
 
     reply_topic = f"{mqtt_root_topic()}/reply/{request.reply}"
-    if request.cmd == DotBotNotificationCommand.RELOAD:
+    if request.request == DotBotRequestType.DOTBOTS:
         publish_dotbots(reply_topic)
-    elif request.cmd == DotBotNotificationCommand.LH2_CALIBRATION_STATE:
+    elif request.request == DotBotRequestType.LH2_CALIBRATION_STATE:
         publish_lh2_state(reply_topic)
     else:
         logger.warning("Invalid request command")
@@ -328,7 +335,7 @@ def subscribe_to_mqtt_topics(client):
             f"{mqtt_root_topic()}/{mqtt.controller.settings.swarm_id}/+/+/{topic}"
         )
     for topic in MQTT_LH2_CALIBRATION_TOPICS.keys():
-        client.subscribe(f"{mqtt_root_topic()}/lh2/calibrarion/{topic}")
+        client.subscribe(f"{mqtt_root_topic()}/lh2/calibration/{topic}")
     client.subscribe(f"{mqtt_root_topic()}/request")
 
 
