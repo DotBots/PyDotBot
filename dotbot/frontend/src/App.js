@@ -3,64 +3,84 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from 'react-router-dom';
 import { useMqttBroker } from "./hooks/mqtt";
 import { deriveKey, deriveTopic } from "./utils/crypto";
-import { gps_distance_threshold, lh2_distance_threshold, NotificationType } from "./utils/constants";
+import { gps_distance_threshold, lh2_distance_threshold, NotificationType, RequestType } from "./utils/constants";
 import { gps_distance, lh2_distance, loadLocalPin, saveLocalPin } from "./utils/helpers";
 
 import DotBots from './DotBots';
 import PinForm from './PinForm';
 
 const App = () => {
+  const [initializing, setInitializing] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [dotbots, setDotbots] = useState([]);
+  const [calibrationState, setCalibrationState] = useState("unknown");
   const [previousPin, setPreviousPin] = useState(null);
   const [pin, setPin] = useState(null);
   const [mqttSubscribed, setMqttSubscribed] = useState(false);
-  const [fullscreen, setFullscreen] = useState(null);
   const [request, setRequest] = useState(null);
+  const [message, setMessage] = useState(null);
 
   const secretKey = deriveKey(pin);
   const secretTopic = deriveTopic(pin);
   const previousSecretTopic = deriveTopic(previousPin);
 
-  const onMqttMessage = (topic, message) => {
-    console.log(`Received message: ${message}`);
+  const [client, connected, mqttPublish, mqttSubscribe, mqttUnsubscribe] = useMqttBroker({
+    start: pin !== null,
+    brokerUrl: `wss://${process.env.REACT_APP_MQTT_BROKER_HOST}:${process.env.REACT_APP_MQTT_BROKER_PORT}`,
+    brokerOptions: {
+      keepalive: 60,
+      clean: true,
+      reconnectPeriod: 1000,
+      connectTimeout: 30 * 1000,
+      protocolVersion: 5,
+    },
+    setMessage: setMessage,
+    secretKey: secretKey,
+  });
+
+  const handleMessage = useCallback(() => {
+    console.log(`Handle received message: ${message.payload}`);
     let parsed = null;
     try {
-      parsed = JSON.parse(message);
+      parsed = JSON.parse(message.payload);
     } catch (error) {
       console.log(`${error.name}: ${error.message}`);
       return;
     }
-    if (topic === `/dotbots/${secretTopic}/reply/${client.options.clientId}`) {
+    if (message.topic === `/dotbots/${secretTopic}/reply/${client.options.clientId}`) {
       // Received the list of dotbots
-      setDotbots(parsed);
-    } else if (topic === `/dotbots/${secretTopic}/notifications`) {
+      if (parsed.request === RequestType.DotBots) {
+        setDotbots(parsed.data);
+      } else if (parsed.request === RequestType.LH2CalibrationState) {
+        setCalibrationState(parsed.data);
+      }
+    } else if (message.topic === `/dotbots/${secretTopic}/notifications`) {
       // Process notifications
-      const message = parsed;
-      if (message.cmd === NotificationType.PinCodeUpdate) {
-        saveLocalPin(message.pin_code);
-        setPin(message.pin_code);
-      } else if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
+      if (parsed.cmd === NotificationType.PinCodeUpdate) {
+        saveLocalPin(parsed.pin_code);
+        setPin(parsed.pin_code);
+      } else if (parsed.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
         let dotbotsTmp = dotbots.slice();
         for (let idx = 0; idx < dotbots.length; idx++) {
-          if (dotbots[idx].address === message.data.address) {
-            if (message.data.direction) {
-              dotbotsTmp[idx].direction = message.data.direction;
+          if (dotbots[idx].address === parsed.data.address) {
+            if (parsed.data.direction) {
+              dotbotsTmp[idx].direction = parsed.data.direction;
             }
-            if (message.data.lh2_position) {
+            if (parsed.data.lh2_position) {
               const newPosition = {
-                x: message.data.lh2_position.x,
-                y: message.data.lh2_position.y
+                x: parsed.data.lh2_position.x,
+                y: parsed.data.lh2_position.y
               };
               if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
                 dotbotsTmp[idx].position_history.push(newPosition);
               }
               dotbotsTmp[idx].lh2_position = newPosition;
             }
-            if (message.data.gps_position) {
+            if (parsed.data.gps_position) {
               const newPosition = {
-                latitude: message.data.gps_position.latitude,
-                longitude: message.data.gps_position.longitude
+                latitude: parsed.data.gps_position.latitude,
+                longitude: parsed.data.gps_position.longitude
               };
               if (dotbotsTmp[idx].gps_position && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
                 dotbotsTmp[idx].position_history.push(newPosition);
@@ -70,53 +90,40 @@ const App = () => {
             setDotbots(dotbotsTmp);
           }
         }
-      } else if (message.cmd === NotificationType.Reload) {
+      } else if (parsed.cmd === NotificationType.Reload) {
         console.log("Reload notification");
-        setRequest({cmd: NotificationType.Reload, reply: `${client.options.clientId}`});
+        setRequest({request: RequestType.DotBots, reply: `${client.options.clientId}`});
       }
     }
-  };
+  },[client, secretTopic, dotbots, setDotbots, setCalibrationState, setRequest, message, setPin]
+  );
 
-  const [client, connected, mqttPublish, mqttSubscribe, mqttUnsubscribe] = useMqttBroker({
-    brokerUrl: `wss://${process.env.REACT_APP_MQTT_BROKER_HOST}:${process.env.REACT_APP_MQTT_BROKER_PORT}`,
-    brokerOptions: {
-      keepalive: 60,
-      clean: true,
-      reconnectPeriod: 1000,
-      connectTimeout: 30 * 1000,
-      protocolVersion: 5,
-    },
-    onMessage: onMqttMessage,
-    secretKey: secretKey,
-    pin: pin
-  });
+  const publish = useCallback(async (subTopic, payload) => {
+    const baseTopic = `/dotbots/${secretTopic}`;
+    await mqttPublish(`${baseTopic}/${subTopic}`, JSON.stringify(payload));
+  }, [mqttPublish, secretTopic]
+  );
 
   const publishCommand = async (address, application, command_topic, command) => {
-    const topic = `/dotbots/${secretTopic}/0000/${address}/${application}/${command_topic}`;
-    await mqttPublish(topic, JSON.stringify(command));
+    const subTopic = `0000/${address}/${application}/${command_topic}`;
+    await publish(subTopic, command);
   }
 
   const publishRequest = useCallback(async () => {
-    const topic = `/dotbots/${secretTopic}/request`;
-    await mqttPublish(topic, JSON.stringify(request));
-  }, [mqttPublish, secretTopic, request]
+    await publish("request", request);
+  }, [request, publish]
   );
 
   const setupSubscriptions = useCallback((topic) => {
     if (mqttSubscribed) {
       return;
     }
-
     [
       `/dotbots/${topic}/notifications`,
       `/dotbots/${topic}/reply/${client.options.clientId}`,
     ].forEach((t) => {mqttSubscribe(t)});
     setMqttSubscribed(true);
-    if (!request) {
-      // Only publish request on initial subscription
-      setRequest({cmd: NotificationType.Reload, reply: `${client.options.clientId}`});
-    }
-  }, [mqttSubscribed, setMqttSubscribed, mqttSubscribe, client, request, setRequest]
+  }, [mqttSubscribed, setMqttSubscribed, mqttSubscribe, client]
   );
 
   const disableSubscriptions = useCallback((topic) => {
@@ -128,36 +135,36 @@ const App = () => {
   }, [setMqttSubscribed, mqttUnsubscribe, client]
   );
 
-  const openFullscreen = (elem) => {
-    if (elem.requestFullscreen) {
-      elem.requestFullscreen();
-    } else if (elem.webkitRequestFullscreen) { /* Safari */
-      elem.webkitRequestFullscreen();
-    } else if (elem.msRequestFullscreen) { /* IE11 */
-      elem.msRequestFullscreen();
-    }
-  }
-
   const updatePinFromForm = (pin) => {
     setPin(pin);
     saveLocalPin(pin);
   };
 
   useEffect(() => {
+    if (pin) {
+      return;
+    }
+
     if (!pin && searchParams && searchParams.has('pin')) {
       const queryPin = searchParams.get('pin');
-      setPin(queryPin);
+      console.log(`Pin ${queryPin} provided in query string`);
       saveLocalPin(queryPin);
       searchParams.delete('pin');
       setSearchParams(searchParams);
+      return;
     }
 
     if (!pin) {
-      console.log("No pin, loading from local storage");
-      setPin(loadLocalPin());
+      console.log("Loading from local storage");
+      const localPin = loadLocalPin();
+      if (localPin) {
+        setPin(localPin);
+      }
     }
 
-  }, [pin, setPin, searchParams, setSearchParams]
+    setInitializing(false);
+
+  }, [pin, setPin, searchParams, setSearchParams, setInitializing]
   );
 
   useEffect(() => {
@@ -165,17 +172,7 @@ const App = () => {
       return;
     }
 
-    if (fullscreen === null) {
-      openFullscreen(document.getElementById("dotbots"));
-      setFullscreen(true);
-    }
-
     if (connected) {
-      if (request) {
-        publishRequest();
-        setRequest(null);
-      }
-
       if (mqttSubscribed && previousPin !== pin) {
         disableSubscriptions(previousSecretTopic);
       }
@@ -188,21 +185,57 @@ const App = () => {
   }, [
     pin, connected, mqttSubscribed, previousPin,
     disableSubscriptions, previousSecretTopic,
-    setupSubscriptions, secretTopic, setPreviousPin, fullscreen,
-    publishRequest, request, setRequest
+    setupSubscriptions, secretTopic, setPreviousPin,
+    request, publishRequest, setRequest
   ]);
+
+  useEffect(() => {
+    if (!initialized && mqttSubscribed) {
+      // Ask for the list of dotbots and the LH2 calibration state at startup
+      setRequest({request: RequestType.DotBots, reply: `${client.options.clientId}`});
+      setTimeout(setRequest, 500, ({request: RequestType.LH2CalibrationState, reply: `${client.options.clientId}`}));
+      setInitialized(true);
+    }
+  }, [
+      initialized, setInitialized, mqttSubscribed, setRequest, client
+  ]);
+
+  useEffect(() => {
+    // Publish the request if connected and a request is pending
+    if (!connected || !request) {
+      return;
+    }
+
+    publishRequest();
+    setRequest(null);
+  }, [
+    connected, request, publishRequest, setRequest
+  ]);
+
+  useEffect(() => {
+    // Process incoming messages if any
+    if (!message) {
+      return;
+    }
+
+    handleMessage(message.topic, message.payload);
+    setMessage(null);
+  }, [message, setMessage, handleMessage, mqttSubscribed]
+  );
 
   return (
     <>
-    {pin ? (
+    {pin ?
       <div id="dotbots">
         <DotBots
           dotbots={dotbots}
           updateDotbots={setDotbots}
           publishCommand={publishCommand}
+          publish={publish}
+          calibrationState={calibrationState}
         />
       </div>
-      ) : <PinForm pinUpdate={updatePinFromForm} />
+      : <PinForm pinUpdate={updatePinFromForm} ready={!initializing} />
     }
     </>
   );

@@ -1,6 +1,6 @@
 import './PinForm.css';
 
-const PinForm = ({ pinUpdate }) => {
+const PinForm = ({ pinUpdate, ready }) => {
 
   const onInputPinChange = (event) => {
     if (event.target.value.length === 8) {
@@ -9,6 +9,8 @@ const PinForm = ({ pinUpdate }) => {
   };
 
   return (
+    <>
+    {ready && (
     <div className="container">
       <form id="pin-code-input">
         <p>Enter pin code:</p>
@@ -17,6 +19,8 @@ const PinForm = ({ pinUpdate }) => {
         </p>
       </form>
     </div>
+    )}
+    </>
   );
 };
 
