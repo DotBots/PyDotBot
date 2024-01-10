@@ -9,7 +9,7 @@ import { SailBotsMap } from "./SailBotsMap";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
-const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationState }) => {
+const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationState, setCalibrationState }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
@@ -218,6 +218,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
               mapSize={350}
               publish={publish}
               calibrationState={calibrationState}
+              setCalibrationState={setCalibrationState}
             />
           </div>
           <div className="d-none d-md-block m-1">
@@ -233,6 +234,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
               mapSize={650}
               publish={publish}
               calibrationState={calibrationState}
+              setCalibrationState={setCalibrationState}
             />
           </div>
         </div>

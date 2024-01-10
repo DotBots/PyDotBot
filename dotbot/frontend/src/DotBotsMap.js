@@ -2,8 +2,6 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { ApplicationType, inactiveAddress } from "./utils/constants";
 
-import {apiApplyLH2Calibration, apiAddLH2CalibrationPoint} from "./utils/rest";
-
 const referencePoints = [
   {x: -0.1, y: 0.1},
   {x: 0.1, y: 0.1},
@@ -166,20 +164,24 @@ export const DotBotsMap = (props) => {
   const [ displayGrid, setDisplayGrid ] = useState(true);
   const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
 
-  const pointClicked = (index) => {
+  const addCalibrationPointTopic = "lh2/calibration/add";
+  const startCalibrationTopic = "lh2/calibration/start";
+
+  const pointClicked = async (index) => {
     let pointsCheckedTmp = pointsChecked.slice();
     pointsCheckedTmp[index] = true;
     setPointsChecked(pointsCheckedTmp);
-    apiAddLH2CalibrationPoint(index);
+    await props.publish(addCalibrationPointTopic, { index: index });
   };
 
-  const calibrateClicked = () => {
+  const calibrateClicked = async () => {
+    console.log(`Calibrate clicked ${props.calibrationState}`)
     if (["unknown", "done"].includes(props.calibrationState)) {
       setPointsChecked([false, false, false, false]);
       props.setCalibrationState("running");
     } else if (props.calibrationState === "ready") {
       props.setCalibrationState("done");
-      apiApplyLH2Calibration();
+      await props.publish(startCalibrationTopic, "");
     }
   };
 
