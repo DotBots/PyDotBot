@@ -36,12 +36,12 @@ export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, sec
     log.debug(`Message received on topic ${topic}, decrypt using ${Buffer.from(secretKey).toString("hex")}`);
     const decrypted = await decrypt(message, secretKey);
     if (!decrypted) {
-      log.warning("Decryption failed");
+      log.warn("Decryption failed");
       return;
     }
     setMessage({topic: topic, payload: decrypted});
     setRefreshMessageCallback(true);
-  }, [setRefreshMessageCallback, setMessage, secretKey]
+}, [setMessage, secretKey, setRefreshMessageCallback]
   );
 
   const setupMqttClient = useCallback((mqttClient) => {
@@ -70,7 +70,8 @@ export const useMqttBroker = ({ start, brokerUrl, brokerOptions, setMessage, sec
     }
 
     if (client && refreshMessageCallback) {
-      client.once('message', mqttMessageReceived);
+      client.removeAllListeners('message');
+      client.on('message', mqttMessageReceived);
     }
   }, [start, brokerUrl, brokerOptions, client, setClient, setupMqttClient, mqttMessageReceived, refreshMessageCallback]
   );
