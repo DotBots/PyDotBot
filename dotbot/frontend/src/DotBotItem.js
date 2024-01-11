@@ -3,13 +3,16 @@ import { RgbColorPicker } from "react-colorful";
 import { Joystick } from "./Joystick";
 import { dotbotStatuses, dotbotBadgeStatuses } from "./utils/constants";
 
+import logger from './utils/logger';
+const log = logger.child({module: 'dotbot-item'});
+
 export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints, clearWaypoints, updateWaypointThreshold, clearPositionsHistory}) => {
 
   const [ expanded, setExpanded ] = useState(false);
   const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
 
   const applyColor = async () => {
-    console.log(`Applying color ${color.r}, ${color.g}, ${color.b}`);
+    log.info(`Applying color ${color.r}, ${color.g}, ${color.b}`);
     await publishCommand(dotbot.address, dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
   }
 

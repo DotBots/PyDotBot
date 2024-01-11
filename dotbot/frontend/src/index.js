@@ -5,11 +5,13 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import App from './App';
+import logger from './utils/logger';
 
 import 'bootstrap/dist/css/bootstrap.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import 'bootstrap/dist/js/bootstrap.bundle.min';
 
+logger.info(`Starting dotbot frontend`);
 
 const router = createBrowserRouter([
   {

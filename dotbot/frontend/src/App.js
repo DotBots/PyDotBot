@@ -9,6 +9,9 @@ import { gps_distance, lh2_distance, loadLocalPin, saveLocalPin } from "./utils/
 import DotBots from './DotBots';
 import PinForm from './PinForm';
 
+import logger from './utils/logger';
+const log = logger.child({module: 'app'});
+
 const App = () => {
   const [initializing, setInitializing] = useState(true);
   const [initialized, setInitialized] = useState(false);
@@ -40,12 +43,12 @@ const App = () => {
   });
 
   const handleMessage = useCallback(() => {
-    console.log(`Handle received message: ${message.payload}`);
+    log.info(`Handle received message: ${message.payload}`);
     let parsed = null;
     try {
       parsed = JSON.parse(message.payload);
     } catch (error) {
-      console.log(`${error.name}: ${error.message}`);
+      log.warning(`${error.name}: ${error.message}`);
       return;
     }
     if (message.topic === `/dotbots/${secretTopic}/reply/${client.options.clientId}`) {
@@ -91,7 +94,7 @@ const App = () => {
           }
         }
       } else if (parsed.cmd === NotificationType.Reload) {
-        console.log("Reload notification");
+        log.info("Reload notification");
         setRequest({request: RequestType.DotBots, reply: `${client.options.clientId}`});
       }
     }
@@ -147,7 +150,7 @@ const App = () => {
 
     if (!pin && searchParams && searchParams.has('pin')) {
       const queryPin = searchParams.get('pin');
-      console.log(`Pin ${queryPin} provided in query string`);
+      log.debug(`Pin ${queryPin} provided in query string`);
       saveLocalPin(queryPin);
       searchParams.delete('pin');
       setSearchParams(searchParams);
@@ -155,7 +158,7 @@ const App = () => {
     }
 
     if (!pin) {
-      console.log("Loading from local storage");
+      log.debug("Loading from local storage");
       const localPin = loadLocalPin();
       if (localPin) {
         setPin(localPin);
