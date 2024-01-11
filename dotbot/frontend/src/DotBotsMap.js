@@ -2,6 +2,9 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { ApplicationType, inactiveAddress } from "./utils/constants";
 
+import logger from './utils/logger';
+const log = logger.child({module: 'dotbot-item'});
+
 const referencePoints = [
   {x: -0.1, y: 0.1},
   {x: 0.1, y: 0.1},
@@ -175,7 +178,7 @@ export const DotBotsMap = (props) => {
   };
 
   const calibrateClicked = async () => {
-    console.log(`Calibrate clicked ${props.calibrationState}`)
+    log.info(`Calibrate clicked ${props.calibrationState}`)
     if (["unknown", "done"].includes(props.calibrationState)) {
       setPointsChecked([false, false, false, false]);
       props.setCalibrationState("running");

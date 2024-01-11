@@ -3,6 +3,9 @@ import * as jose from 'jose'
 
 import { ProtocolVersion } from "./constants";
 
+import logger from './logger';
+const log = logger.child({module: 'crypto'});
+
 export const deriveKey = (pin) => {
   const length = 32;
   const salt = '';
@@ -36,7 +39,7 @@ export const decrypt = async (message, key) => {
     const decrypted = await jose.compactDecrypt(message, key)
     return new TextDecoder().decode(decrypted.plaintext);
   } catch (error) {
-    console.log(`${error.name}: ${error.message}`);
+    log.debug(`${error.name}: ${error.message}`);
     return;
   }
 };
