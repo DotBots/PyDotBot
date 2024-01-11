@@ -196,7 +196,7 @@ const App = () => {
     if (!initialized && mqttSubscribed) {
       // Ask for the list of dotbots and the LH2 calibration state at startup
       setRequest({request: RequestType.DotBots, reply: `${client.options.clientId}`});
-      setTimeout(setRequest, 500, ({request: RequestType.LH2CalibrationState, reply: `${client.options.clientId}`}));
+      setTimeout(setRequest, 250, ({request: RequestType.LH2CalibrationState, reply: `${client.options.clientId}`}));
       setInitialized(true);
     }
   }, [
