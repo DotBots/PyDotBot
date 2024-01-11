@@ -110,7 +110,7 @@ jobs:
         path: ./dotbot/pin_code_ui/build
 
   package:
-    needs: [test, doc, frontend]
+    needs: [test, doc, frontend, pin_code_ui]
     name: build source package
     runs-on: ${{ matrix.os }}
     strategy:
@@ -145,7 +145,7 @@ jobs:
         path: ./dist/*.tar.gz
 
   wheels:
-    needs: [test, frontend]
+    needs: [test, frontend, pin_code_ui]
     name: build wheels
     if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
