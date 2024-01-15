@@ -63,7 +63,7 @@ mqtt = FastMQTT(
 )
 
 
-def publish_dotbots(topic):
+def publish_dotbots(topic, key):
     if mqtt.client.is_connected is False:
         return
     logger = LOGGER.bind(context=__name__, topic=topic)
@@ -76,11 +76,11 @@ def publish_dotbots(topic):
         request=DotBotRequestType.DOTBOTS,
         data=data,
     ).model_dump(exclude_none=True)
-    message = encrypt(json.dumps(message), mqtt.controller.mqtt_aes_key)
+    message = encrypt(json.dumps(message), key)
     mqtt.publish(topic, message)
 
 
-def publish_lh2_state(topic):
+def publish_lh2_state(topic, key):
     if mqtt.client.is_connected is False:
         return
     logger = LOGGER.bind(context=__name__, topic=topic)
@@ -89,7 +89,7 @@ def publish_lh2_state(topic):
         request=DotBotRequestType.LH2_CALIBRATION_STATE,
         data=mqtt.controller.lh2_manager.state_model.model_dump(),
     ).model_dump(exclude_none=True)
-    message = encrypt(json.dumps(message), mqtt.controller.mqtt_aes_key)
+    message = encrypt(json.dumps(message), key)
     mqtt.publish(topic, message)
 
 
@@ -302,8 +302,8 @@ MQTT_LH2_CALIBRATION_TOPICS = {
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
-async def handle_request(_, request):
-    logger = LOGGER.bind(context=__name__, **request)
+async def handle_request(topic, secret_key, request):
+    logger = LOGGER.bind(context=__name__, topic=topic, **request)
     logger.info("Request received")
     try:
         request = DotBotRequestModel(**request)
@@ -311,11 +311,17 @@ async def handle_request(_, request):
         logger.warning(f"Invalid request: {exc.errors()}")
         return
 
-    reply_topic = f"{mqtt_root_topic()}/reply/{request.reply}"
+    if (
+        mqtt.controller.old_mqtt_topic is not None
+        and topic == mqtt.controller.old_mqtt_topic
+    ):
+        reply_topic = f"{mqtt_root_topic(old=True)}/reply/{request.reply}"
+    else:
+        reply_topic = f"{mqtt_root_topic()}/reply/{request.reply}"
     if request.request == DotBotRequestType.DOTBOTS:
-        publish_dotbots(reply_topic)
+        publish_dotbots(reply_topic, secret_key)
     elif request.request == DotBotRequestType.LH2_CALIBRATION_STATE:
-        publish_lh2_state(reply_topic)
+        publish_lh2_state(reply_topic, secret_key)
     else:
         logger.warning("Invalid request command")
 
@@ -372,7 +378,7 @@ async def message(client, topic, payload, qos, properties):
     logger.info("Message received")
 
     if len(topic_split) == 2:  # Request
-        await handle_request(client, payload)
+        await handle_request(secret_topic, secret_key, payload)
     elif len(topic_split) == 4:  # LH2 calibration
         cmd = topic_split[-1]
         await MQTT_LH2_CALIBRATION_TOPICS[cmd](
