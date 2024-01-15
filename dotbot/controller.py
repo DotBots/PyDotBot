@@ -449,6 +449,12 @@ class Controller:
                 self.mqtt_aes_key,
             )
             self.mqtt.publish(f"{mqtt_root_topic()}/notifications", message)
+            if self.old_mqtt_aes_key is not None:
+                message = encrypt(
+                    json.dumps(notification.model_dump(exclude_none=True)),
+                    self.old_mqtt_aes_key,
+                )
+                self.mqtt.publish(f"{mqtt_root_topic(old=True)}/notifications", message)
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
