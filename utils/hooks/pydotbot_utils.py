@@ -22,7 +22,8 @@ NPM_BUILD_CMD = "npm run build"
 def build_frontend(root):
     """Builds the ReactJS frontend."""
     frontend_dir = os.path.join(root, "dotbot", "frontend")
-    subprocess.run(["mkdir", "-p", "build"], cwd=frontend_dir, check=True)
+    os.makedirs(os.path.join(frontend_dir, "build"), exist_ok=True)
+
     if sys.platform != "win32":
         print("Building React frontend application...")
         subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
@@ -39,6 +40,7 @@ def build_lh2(root):
     lib_path = os.path.join(lib_dir, f"lh2.{LIB_EXT}")
     if os.path.exists(lib_path):
         os.remove(lib_path)
-    subprocess.run(["mkdir", "-p", build_dir], cwd=lib_dir, check=True)
+
+    os.makedirs(build_dir, exist_ok=True)
     subprocess.run(["cmake", "..", "-G", "Ninja"], cwd=build_dir, check=True)
     subprocess.run(["ninja", "all", "install"], cwd=build_dir, check=True)

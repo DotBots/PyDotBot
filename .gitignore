@@ -1,6 +1,7 @@
 *.xml
 *.iml
 .idea/
+.vscode/
 *.pyc
 *.gz
 *.whl
@@ -12,3 +13,4 @@
 dist/
 node_modules/
 .env
+venv
