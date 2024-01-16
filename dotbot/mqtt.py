@@ -348,7 +348,9 @@ def subscribe_to_mqtt_topics(client):
 @mqtt.on_connect()
 def connect(client, flags, rc, properties):
     """MQTT callback called on broker connection."""
-    logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
+    logger = LOGGER.bind(
+        context=__name__, rc=rc, flags=flags, **properties, **settings.dict()
+    )
     logger.info("Connected")
     subscribe_to_mqtt_topics(client)
 
