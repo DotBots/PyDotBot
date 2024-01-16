@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.24)
 
 project(lh2)
 
+
 if (MSVC)
-    add_compile_options(/std:c11 /Ox /W4 /WX)
+    set(CMAKE_BUILD_TYPE Release)
 else()
     add_compile_options(-std=c11 -Ofast -Wall -Werror)
 endif()
