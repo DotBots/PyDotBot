@@ -109,7 +109,12 @@ class JoystickController:
                 await self.api.send_move_raw_command(
                     self.active_dotbot,
                     self.application,
-                    DotBotMoveRawCommandModel(*positions),
+                    DotBotMoveRawCommandModel(
+                        left_x=int(positions[0]),
+                        left_y=int(positions[1]),
+                        right_x=int(positions[2]),
+                        right_y=int(positions[3]),
+                    ),
                 )
             self.previous_positions = positions
             await asyncio.sleep(REFRESH_PERIOD)  # 50ms delay between each update
