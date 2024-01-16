@@ -75,4 +75,4 @@ class RestClient:
 
     async def send_rgb_led_command(self, address, command):
         """Send an RGB LED command to a DotBot."""
-        await self._send_command(address, ApplicationType.SailBot, "move_raw", command)
+        await self._send_command(address, ApplicationType.SailBot, "rgb_led", command)
