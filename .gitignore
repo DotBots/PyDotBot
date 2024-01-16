@@ -12,6 +12,7 @@
 .tox/
 dist/
 node_modules/
-.env*
-!*/**/.env*
+.env.*
+!.env.example
+!*/**/.env.test
 venv
