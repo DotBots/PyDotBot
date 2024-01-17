@@ -29,7 +29,7 @@ authors = [
 ]
 dependencies = [
     "click          == 8.1.7",
-    "cryptography   == 41.0.5",
+    "cryptography   == 41.0.7",
     "fastapi        == 0.109.0",
     "fastapi-mqtt   == 2.1.0",
     "haversine      == 2.8.0",
@@ -38,8 +38,9 @@ dependencies = [
     "opencv-python  == 4.9.0.80",
     "pydantic-settings == 2.1.0",
     "pygame         == 2.5.2",
-    "pyserial       == 3.5",
     "pynput         == 1.7.6",
+    "pyserial       == 3.5",
+    "python-jose    == 3.3.0",
     "segno          == 1.6.0",
     "structlog      == 24.1.0",
     "uvicorn        == 0.25.0",

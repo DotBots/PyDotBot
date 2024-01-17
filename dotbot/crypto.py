@@ -1,17 +1,22 @@
 """Crypto functions for MQTT with crypto mode."""
 
 import base64
-import os
-from typing import List
+from random import randint
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from jose import jwe
 
 from dotbot.protocol import PROTOCOL_VERSION
 
+PIN_CODE_SIZE = 8
 
-def get_topic(pin_code: int) -> str:
+
+def generate_pin_code() -> int:
+    return randint(10 ** (PIN_CODE_SIZE - 1), 10**PIN_CODE_SIZE - 1)
+
+
+def derive_topic(pin_code: int) -> str:
     """Derive a topic from a pin code."""
     kdf_topic = HKDF(
         algorithm=hashes.SHA256(),
@@ -23,7 +28,7 @@ def get_topic(pin_code: int) -> str:
     return base64.urlsafe_b64encode(topic).decode()
 
 
-def get_aes_key(pin_code: int) -> bytes:
+def derive_aes_key(pin_code: int) -> bytes:
     """Derive an AES key from a pin code."""
     kdf_key = HKDF(
         algorithm=hashes.SHA256(),
@@ -31,25 +36,18 @@ def get_aes_key(pin_code: int) -> bytes:
         salt=b"",
         info=f"secret_key_{PROTOCOL_VERSION}".encode(),
     )
-    key = kdf_key.derive(str(pin_code).encode())
-    return key
+    return kdf_key.derive(str(pin_code).encode())
 
 
-def encrypt(data: bytes, key: bytes) -> List[bytes]:
+def encrypt(data: str, key: bytes) -> str:
     """Encrypt data with AES-GCM."""
-    aad = str(PROTOCOL_VERSION).encode()
-    aesgcm = AESGCM(key)
-    nonce = os.urandom(16)
-    encrypted = aesgcm.encrypt(nonce, data, aad)
-    return base64.b64encode(encrypted), nonce
+    return jwe.encrypt(data, key).decode()
 
 
-def decrypt(data: str, key, nonce: bytes) -> bytes:
+def decrypt(data: str, key: bytes) -> str:
     """Decrypt data with AES-GCM."""
-    aad = str(PROTOCOL_VERSION).encode()
-    aesgcm = AESGCM(key)
     try:
-        return aesgcm.decrypt(nonce, data, aad).decode()
-    except Exception as exc:
-        print(exc)
-        return b""
+        return jwe.decrypt(data, key)
+    except jwe.JWEParseError as _:
+        print("Cannot decrypt data")
+        return ""

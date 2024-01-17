@@ -122,13 +122,6 @@ class DotBotNotificationModel(BaseModel):
     pin_code: Optional[int] = None
 
 
-class DotBotMqttEncryptedMessageModel(BaseModel):
-    """Model class used to send encrypted MQTT messages."""
-
-    nonce: str
-    message: str
-
-
 class DotBotModel(BaseModel):
     """Model class that defines a DotBot."""
 

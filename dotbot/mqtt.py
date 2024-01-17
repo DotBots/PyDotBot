@@ -1,6 +1,5 @@
 """Module for MQTT communication."""
 
-import base64
 import json
 import os
 from typing import Optional
@@ -63,7 +62,7 @@ def mqtt_command_move_raw(
         address=address,
         application=application.name,
         command="move_raw",
-        **command.dict(),
+        **command.model_dump(),
     )
     if address not in mqtt.controller.dotbots:
         logger.warning("DotBot not found")
@@ -102,7 +101,7 @@ def mqtt_command_rgb_led(
         address=address,
         application=application.name,
         command="rgb_led",
-        **command.dict(),
+        **command.model_dump(),
     )
     if address not in mqtt.controller.dotbots:
         logger.warning("DotBot not found")
@@ -137,10 +136,22 @@ MQTT_TOPICS = {
 MQTT_ROOT = os.getenv("DOTBOT_MQTT_ROOT", "/dotbots")
 
 
-def mqtt_root_topic():
+def mqtt_root_topic(old=False):
     if mqtt.controller.settings.use_mqtt_crypto is True:
-        return f"{MQTT_ROOT}/{mqtt.controller.mqtt_topic}/{mqtt.controller.settings.swarm_id}"
-    return f"{MQTT_ROOT}/{mqtt.controller.settings.swarm_id}"
+        return (
+            f"{MQTT_ROOT}/{mqtt.controller.mqtt_topic}"
+            if old is False
+            else f"{MQTT_ROOT}/{mqtt.controller.old_mqtt_topic}"
+        )
+    return f"{MQTT_ROOT}"
+
+
+def subscribe_to_mqtt_topics(client):
+    """Subscribe to all topics for a DotBot swarm."""
+    for topic in MQTT_TOPICS.keys():
+        client.subscribe(
+            f"{mqtt_root_topic()}/{mqtt.controller.settings.swarm_id}/+/+/{topic}"
+        )
 
 
 @mqtt.on_connect()
@@ -148,8 +159,7 @@ def connect(client, flags, rc, properties):
     """MQTT callback called on broker connection."""
     logger = LOGGER.bind(context=__name__, rc=rc, flags=flags, **properties)
     logger.info("Connected")
-    for topic in MQTT_TOPICS.keys():
-        client.subscribe(f"{mqtt_root_topic()}/+/+/{topic}")
+    subscribe_to_mqtt_topics(client)
 
 
 @mqtt.on_message()
@@ -160,30 +170,29 @@ async def message(_, topic, payload, qos, properties):
         topic = topic.split("/")[3:]
     else:
         topic = topic.split("/")[2:]
-    if len(topic) < 3:
+    if len(topic) < 4:
         logger.warning(f"Invalid topic '{topic}'")
         return
     swarm_id, address, application, cmd = topic
+    if mqtt.controller.settings.use_mqtt_crypto is True:
+        secret_topic = topic[2]
+        if secret_topic == mqtt.controller.old_mqtt_topic:
+            secret_key = mqtt.controller.old_mqtt_aes_key
+            if secret_key is None:
+                logger.warning("Topic was disabled", topic=secret_topic)
+                return
+        else:
+            secret_key = mqtt.controller.mqtt_aes_key
+        payload = decrypt(payload, secret_key)
+        if not payload:
+            logger.warning("Invalid payload")
+            return
     try:
         payload = json.loads(payload.decode())
     except json.JSONDecodeError:
         logger.warning("Invalid JSON payload")
         return
     logger.info("Message received")
-    if mqtt.controller.settings.use_mqtt_crypto is True:
-        payload = decrypt(
-            base64.b64decode(payload["message"].encode()),
-            mqtt.controller.mqtt_aes_key,
-            bytes.fromhex(payload["nonce"]),
-        )
-        if not payload:
-            logger.warning("Invalid payload")
-            return
-        try:
-            payload = json.loads(payload)
-        except json.JSONDecodeError:
-            logger.warning("Invalid JSON payload")
-            return
     try:
         MQTT_TOPICS[cmd]["callback"](
             address,
