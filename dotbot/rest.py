@@ -56,7 +56,7 @@ class RestClient:
                         "Accept": "application/json",
                         "Content-Type": "application/json",
                     },
-                    content=command.json(),
+                    content=command.model_dump_json(),
                 )
             except httpx.ConnectError as exc:
                 self._logger.warning(f"Failed to send command: {exc}")
