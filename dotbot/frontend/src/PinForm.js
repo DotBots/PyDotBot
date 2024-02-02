@@ -3,7 +3,7 @@ import './PinForm.css';
 const PinForm = ({ pinUpdate, ready }) => {
 
   const onInputPinChange = (event) => {
-    if (event.target.value.length === 8) {
+    if (event.target.value.length === parseInt(process.env.REACT_APP_PIN_CODE_LENGTH)) {
       pinUpdate(event.target.value);
     }
   };

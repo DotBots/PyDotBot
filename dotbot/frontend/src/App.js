@@ -1,8 +1,8 @@
 import React from 'react';
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from 'react-router-dom';
-import { useMqttBroker } from "./hooks/mqtt";
-import { deriveKey, deriveTopic } from "./utils/crypto";
+import { useMqttBroker } from "qrkey";
+import { deriveKey, deriveTopic } from "qrkey";
 import { gps_distance_threshold, lh2_distance_threshold, NotificationType, RequestType } from "./utils/constants";
 import { gps_distance, lh2_distance, loadLocalPin, saveLocalPin } from "./utils/helpers";
 
@@ -49,18 +49,24 @@ const App = () => {
     let parsed = null;
     try {
       parsed = JSON.parse(message.payload);
+      log.info(JSON.stringify(parsed));
     } catch (error) {
       log.warning(`${error.name}: ${error.message}`);
       return;
     }
-    if (message.topic === `/dotbots/${secretTopic}/reply/${client.options.clientId}`) {
+    if ((parsed.timestamp < (Date.now() / 1000) - 1) || (parsed.timestamp > (Date.now() / 1000) + 1)) {
+      log.warning(`Message timestamp out of range: ${parsed.timestamp}`);
+      return;
+    }
+    parsed = parsed.payload;
+    if (message.topic === `${process.env.REACT_APP_ROOT_TOPIC}/${secretTopic}/reply/${client.options.clientId}`) {
       // Received the list of dotbots
       if (parsed.request === RequestType.DotBots) {
         setDotbots(parsed.data);
       } else if (parsed.request === RequestType.LH2CalibrationState) {
         setCalibrationState(parsed.data.state);
       }
-    } else if (message.topic === `/dotbots/${secretTopic}/notifications`) {
+    } else if (message.topic === `${process.env.REACT_APP_ROOT_TOPIC}/${secretTopic}/notify`) {
       // Process notifications
       if (parsed.cmd === NotificationType.PinCodeUpdate) {
         saveLocalPin(parsed.pin_code);
@@ -104,13 +110,17 @@ const App = () => {
   );
 
   const publish = useCallback(async (subTopic, payload) => {
-    const baseTopic = `/dotbots/${secretTopic}`;
-    await mqttPublish(`${baseTopic}/${subTopic}`, JSON.stringify(payload));
+    const baseTopic = `${process.env.REACT_APP_ROOT_TOPIC}/${secretTopic}`;
+    const message = {
+      timestamp: Date.now() / 1000,  // in seconds
+      payload: payload,
+    }
+    await mqttPublish(`${baseTopic}/${subTopic}`, JSON.stringify(message));
   }, [mqttPublish, secretTopic]
   );
 
   const publishCommand = async (address, application, command_topic, command) => {
-    const subTopic = `0000/${address}/${application}/${command_topic}`;
+    const subTopic = `command/0000/${address}/${application}/${command_topic}`;
     await publish(subTopic, command);
   }
 
@@ -124,8 +134,8 @@ const App = () => {
       return;
     }
     [
-      `/dotbots/${topic}/notifications`,
-      `/dotbots/${topic}/reply/${client.options.clientId}`,
+      `${process.env.REACT_APP_ROOT_TOPIC}/${topic}/notify`,
+      `${process.env.REACT_APP_ROOT_TOPIC}/${topic}/reply/${client.options.clientId}`,
     ].forEach((t) => {mqttSubscribe(t)});
     setMqttSubscribed(true);
   }, [mqttSubscribed, setMqttSubscribed, mqttSubscribe, client]
@@ -133,8 +143,8 @@ const App = () => {
 
   const disableSubscriptions = useCallback((topic) => {
     [
-      `/dotbots/${topic}/notifications`,
-      `/dotbots/${topic}/reply/${client.options.clientId}`,
+      `${process.env.REACT_APP_ROOT_TOPIC}/${topic}/notify`,
+      `${process.env.REACT_APP_ROOT_TOPIC}/${topic}/reply/${client.options.clientId}`,
     ].forEach((t) => {mqttUnsubscribe(t)});
     setMqttSubscribed(false);
   }, [setMqttSubscribed, mqttUnsubscribe, client]
