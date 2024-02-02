@@ -1,13 +1,10 @@
 """Module for the web server application."""
 
-import io
 import os
 from typing import List
 
-import segno
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
@@ -20,7 +17,6 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
-    MqttPinCodeModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
@@ -257,40 +253,6 @@ async def controller_get_lh2_calibration():
     return api.controller.lh2_manager.state_model
 
 
-@api.get(
-    path="/controller/mqtt/pin_code",
-    response_model=MqttPinCodeModel,
-    summary="Return the controller current pin code",
-    tags=["mqtt"],
-)
-async def mqtt_pin_code():
-    """Returns the MQTT pin code."""
-    return MqttPinCodeModel(
-        pin=api.controller.pin_code,
-    )
-
-
-@api.get(
-    path="/controller/mqtt/pin_code/qr_code",
-    response_class=Response,
-    summary="Return the controller current pin code as QR code",
-    tags=["mqtt"],
-)
-async def mqtt_pin_code_qr_code():
-    """Returns the MQTT pin code as QR code."""
-    buff = io.BytesIO()
-    qrcode = segno.make_qr(
-        f"{PYDOTBOT_FRONTEND_BASE_URL}?pin={str(api.controller.pin_code)}"
-    )
-    qrcode.save(buff, kind="svg", scale=10, light=None)
-    headers = {"Cache-Control": "no-cache"}
-    return Response(
-        buff.getvalue().decode(),
-        headers=headers,
-        media_type="image/svg+xml",
-    )
-
-
 @api.websocket("/controller/ws/status")
 async def websocket_endpoint(websocket: WebSocket):
     """Websocket server endpoint."""
@@ -305,7 +267,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # Mount static files after all routes are defined
-PIN_CODE_DIR = os.path.join(os.path.dirname(__file__), "pin_code_ui", "build")
-api.mount("/pin", StaticFiles(directory=PIN_CODE_DIR, html=True), name="pin_code")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 api.mount("/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot")
