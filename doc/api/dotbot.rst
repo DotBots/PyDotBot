@@ -20,7 +20,6 @@ Submodules
    dotbot.logger
    dotbot.main
    dotbot.models
-   dotbot.mqtt
    dotbot.protocol
    dotbot.rest
    dotbot.serial_interface
