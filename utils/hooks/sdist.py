@@ -8,7 +8,7 @@ import sys
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 sys.path.append(os.path.dirname(__file__))
-from pydotbot_utils import build_frontend, build_lh2, build_pin_code_ui  # noqa: E402
+from pydotbot_utils import build_frontend, build_lh2  # noqa: E402
 
 
 class CustomBuildHook(BuildHookInterface):
@@ -17,5 +17,4 @@ class CustomBuildHook(BuildHookInterface):
     def initialize(self, _, __):
         """Will be called before creating the source archive."""
         build_frontend(self.root)
-        build_pin_code_ui(self.root)
         build_lh2(self.root)
