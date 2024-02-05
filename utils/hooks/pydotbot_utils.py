@@ -30,16 +30,6 @@ def build_frontend(root):
         subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
 
 
-def build_pin_code_ui(root):
-    """Builds the ReactJS frontend."""
-    pin_code_ui_dir = os.path.join(root, "dotbot", "pin_code_ui")
-    os.makedirs(os.path.join(pin_code_ui_dir, "build"), exist_ok=True)
-    if sys.platform != "win32":
-        print("Building React pin_code_ui application...")
-        subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=pin_code_ui_dir, check=True)
-        subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=pin_code_ui_dir, check=True)
-
-
 def build_lh2(root):
     """Builds the Lighthouse 2 C library."""
     print("Building lighthouse reverse count library...")

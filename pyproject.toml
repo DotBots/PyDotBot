@@ -10,7 +10,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 include = [
     "dotbot/frontend/*",
-    "dotbot/pin_code_ui/*",
     "dotbot/lib/*",
     "*.py"
 ]
