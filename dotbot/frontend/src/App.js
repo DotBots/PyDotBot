@@ -49,7 +49,6 @@ const App = () => {
     let parsed = null;
     try {
       parsed = JSON.parse(message.payload);
-      log.info(JSON.stringify(parsed));
     } catch (error) {
       log.warning(`${error.name}: ${error.message}`);
       return;
