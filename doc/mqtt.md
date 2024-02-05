@@ -108,7 +108,7 @@ if dotbot["status"] != 0:
 dotbot_addr = dotbot["address"]
 print(f"DotBot address: {dotbot_addr}")
 
-pin_data = requests.get('http://localhost:8000/controller/mqtt/pin_code').json()
+pin_data = requests.get('http://localhost:8080/pin_code').json()
 pin = str(pin_data["pin"]).encode()
 print(f"Pin code: {pin.decode()}")
 ```
