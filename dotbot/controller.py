@@ -16,8 +16,7 @@ from fastapi import WebSocket
 from haversine import Unit, haversine
 from pydantic import ValidationError
 from pydantic.tools import parse_obj_as
-from qrkey.models import SubscriptionModel
-from qrkey.mqtt import QrKeyController
+from qrkey import QrkeyController, SubscriptionModel
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
@@ -150,7 +149,7 @@ class Controller:
         self.lh2_manager = LighthouseManager()
         self.api = api
         api.controller = self
-        self.qrkey = QrKeyController(self.on_request, LOGGER, root_topic="/pydotbot")
+        self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
         self.subscriptions = [
             SubscriptionModel(
                 topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
@@ -318,7 +317,10 @@ class Controller:
         self.dotbots[address].waypoints = waypoints_list
         self.dotbots[address].waypoints_threshold = command.threshold
         self.qrkey.publish(
-            "/notify", DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+            "/notify",
+            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
+                exclude_none=True
+            ),
         )
 
     def on_command_clear_position_history(self, topic, _):
@@ -674,9 +676,7 @@ class Controller:
                 for websocket in self.websockets
             ]
         )
-        self.qrkey.publish(
-            "/notify", json.dumps(notification.model_dump(exclude_none=True))
-        )
+        self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
