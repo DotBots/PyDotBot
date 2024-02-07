@@ -47,6 +47,8 @@ export const SailBotMarker = (props) => {
   };
 
   const rotation = (props.sailbot.direction) ? props.sailbot.direction - 180 : 180;
+  const wind_angle = props.sailbot.wind_angle;
+  console.log(wind_angle)
 
   const svgIcon = L.divIcon({
     html: `

@@ -268,25 +268,33 @@ class GPSPosition(ProtocolData):
 @dataclass
 class SailBotData(ProtocolData):
     """Dataclass that holds direction and GPS data and heading from SailBot application."""
+    # Also handle windsensor uint16_t (2 bytes) ?
 
+    # Initialized as 0xFFFF because then at controller .py: -500 <= payload.values.direction <= 500
     direction: int = 0xFFFF
     latitude: int = 0
     longitude: int = 0
+    # The sensor has a 14-bit resolution, so a maximum of 0x3FFF is reachable.
+    # If there is a 0xFFFF value, there is an error
+    wind_angle: int = 0xFFFF
 
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.direction, name="dir.", length=2),
+            ProtocolField(self.direction, name="dir.", length=2, signed=False),
             ProtocolField(self.latitude, name="latitude", length=4, signed=True),
             ProtocolField(self.longitude, name="longitude", length=4, signed=True),
+            ProtocolField(self.wind_angle, name="wind_angle", length=2, signed=False),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return SailBotData(
-            direction=int.from_bytes(bytes_[0:2], "little"),
+            direction=int.from_bytes(bytes_[0:2], "little", signed=False),
             latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
             longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
+            # This could be a source of bugs. (What is little, big??)
+            wind_angle=int.from_bytes(bytes_[10:12], "little", signed=False),
         )
 
 
@@ -407,7 +415,8 @@ class ProtocolPayload:
         elif payload_type == PayloadType.DOTBOT_DATA:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
-            values = SailBotData.from_bytes(bytes_[25:35])
+            # 2 bytes heading, 4 lat, 4 lon ? Add 2 more bytes (uint16_t) for wind sensor
+            values = SailBotData.from_bytes(bytes_[25:35+2]) 
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:

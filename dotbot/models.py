@@ -120,6 +120,7 @@ class DotBotModel(BaseModel):
     mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
     direction: Optional[int] = None
+    wind_angle: Optional[int] = None
     move_raw: Optional[DotBotMoveRawCommandModel] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
     lh2_position: Optional[DotBotLH2Position] = None

@@ -43,12 +43,12 @@ from dotbot.protocol import (
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
-# from dotbot.models import (
-#     DotBotModel,
-#     DotBotGPSPosition,
-#     DotBotLH2Position,
-#     DotBotRgbLedCommandModel,
-# )
+from dotbot.models import (
+    DotBotModel,
+    DotBotGPSPosition,
+    DotBotLH2Position,
+    DotBotRgbLedCommandModel,
+)
 
 
 CONTROLLERS = {}
@@ -94,30 +94,31 @@ class Controller:
 
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
-        # self.dotbots: Dict[str, DotBotModel] = {
-        #     "0000000000000001": DotBotModel(
-        #         address="0000000000000001",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-        #     ),
-        #     "0000000000000002": DotBotModel(
-        #         address="0000000000000002",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
-        #     ),
-        #     "0000000000000003": DotBotModel(
-        #         address="0000000000000003",
-        #         last_seen=time.time(),
-        #     ),
-        #     "0000000000000004": DotBotModel(
-        #         address="0000000000000004",
-        #         application=ApplicationType.SailBot,
-        #         last_seen=time.time(),
-        #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
-        #     ),
-        # }
+        self.dotbots: Dict[str, DotBotModel] = {
+            # "0000000000000001": DotBotModel(
+            #     address="0000000000000001",
+            #     last_seen=time.time(),
+            #     lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
+            #     rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+            # ),
+            # "0000000000000002": DotBotModel(
+            #     address="0000000000000002",
+            #     last_seen=time.time(),
+            #     lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
+            #     rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
+            # ),
+            # "0000000000000003": DotBotModel(
+            #     address="0000000000000003",
+            #     last_seen=time.time(),
+            # ),
+            "0000000000000004": DotBotModel(
+                address="0000000000000004",
+                application=ApplicationType.SailBot,
+                last_seen=time.time(),
+                wind_angle=180,
+                gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
+            ),
+        }
         self.header = ProtocolHeader(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
@@ -340,7 +341,9 @@ class Controller:
                 longitude=float(payload.values.longitude) / 1e6,
             )
             dotbot.gps_position = new_position
-            logger.info("gps", lat=new_position.latitude, long=new_position.longitude)
+            # Read wind sensor measurements
+            dotbot.wind_angle = payload.values.wind_angle
+            logger.info("gps", lat=new_position.latitude, long=new_position.longitude, wind_angle=dotbot.wind_angle)
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
@@ -467,8 +470,8 @@ class Controller:
             tasks = [
                 asyncio.create_task(self.web()),
                 asyncio.create_task(self._open_webbrowser()),
-                asyncio.create_task(self._start_serial()),
-                asyncio.create_task(self._dotbots_status_refresh()),
+                #asyncio.create_task(self._start_serial()),
+                #asyncio.create_task(self._dotbots_status_refresh()),
                 asyncio.create_task(self._publish_dotbots()),
             ]
             await asyncio.gather(*tasks)
