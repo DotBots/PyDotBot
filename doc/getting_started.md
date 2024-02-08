@@ -5,10 +5,14 @@ a DotBot gateway and a DotBot robot.
 
 ## Prerequisites
 
-Make sure you have access to an nRF DK board (nRF52833DK, nRF52840DK or
+1. Make sure that you have access to the internet since the controller has to
+connect to [https://broker.hivemq.com](https://broker.hivemq.com) to communicate
+with the web client.
+
+2. Make sure you have access to an nRF DK board (nRF52833DK, nRF52840DK or
 nRF5340DK) and to a DotBot (v1 or v2).
 
-Follow the instructions in the
+3. Follow the instructions in the
 [DotBot firmware getting started page][dotbot-firmware-getting-started].
 
 ## Install PyDotBot
@@ -33,10 +37,11 @@ DotBot(s).
   id.
 
 3. From a terminal window (or powershell on Windows), run `dotbot-controller`
-  with the TTY port you identified above:
+  with the TTY port you identified above and the `--webbrowser` flag to
+  automatically open the web client:
 
 ```
-dotbot-controller --port <tty port>
+dotbot-controller --port <tty port> --webbrowser
 ```
 
 At this point, if the DotBot is powered on with fully charged batteries, you
@@ -52,8 +57,8 @@ Welcome to the DotBots controller (version: 0.xx).
 
 ## Control your DotBot
 
-1. In a browser, open [http://localhost:8000/dotbots](http://localhost:8000/dotbots)
-and you should have one item corresponding to your DotBot.
+1. In the web client opened in the browser, you should have one item
+  corresponding to your DotBot.
 
 2. Select it by clicking on the DotBot item:
 
