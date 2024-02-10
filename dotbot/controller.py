@@ -43,12 +43,12 @@ from dotbot.protocol import (
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
-from dotbot.models import (
-    DotBotModel,
-    DotBotGPSPosition,
-    DotBotLH2Position,
-    DotBotRgbLedCommandModel,
-)
+# from dotbot.models import (
+#     DotBotModel,
+#     DotBotGPSPosition,
+#     DotBotLH2Position,
+#     DotBotRgbLedCommandModel,
+# )
 
 
 CONTROLLERS = {}
@@ -94,7 +94,7 @@ class Controller:
 
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
-        self.dotbots: Dict[str, DotBotModel] = {
+        # self.dotbots: Dict[str, DotBotModel] = {
             # "0000000000000001": DotBotModel(
             #     address="0000000000000001",
             #     last_seen=time.time(),
@@ -111,14 +111,15 @@ class Controller:
             #     address="0000000000000003",
             #     last_seen=time.time(),
             # ),
-            "0000000000000004": DotBotModel(
-                address="0000000000000004",
-                application=ApplicationType.SailBot,
-                last_seen=time.time(),
-                wind_angle=180,
-                gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
-            ),
-        }
+            # "0000000000000004": DotBotModel(
+            #     address="0000000000000004",
+            #     application=ApplicationType.SailBot,
+            #     last_seen=time.time(),
+            #     wind_angle=135,
+            #     rotation=49,
+            #     gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
+            # ),
+        # }
         self.header = ProtocolHeader(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
@@ -274,6 +275,7 @@ class Controller:
             dotbot.mode = self.dotbots[source].mode
             dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
+            dotbot.wind_angle = self.dotbots[source].wind_angle
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
@@ -291,6 +293,9 @@ class Controller:
         ):
             dotbot.direction = payload.values.direction
             logger = logger.bind(direction=dotbot.direction)
+
+        if payload.payload_type in [PayloadType.SAILBOT_DATA]:
+            logger = logger.bind(direction=dotbot.wind_angle)
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
@@ -470,8 +475,8 @@ class Controller:
             tasks = [
                 asyncio.create_task(self.web()),
                 asyncio.create_task(self._open_webbrowser()),
-                #asyncio.create_task(self._start_serial()),
-                #asyncio.create_task(self._dotbots_status_refresh()),
+                asyncio.create_task(self._start_serial()),
+                asyncio.create_task(self._dotbots_status_refresh()),
                 asyncio.create_task(self._publish_dotbots()),
             ]
             await asyncio.gather(*tasks)
