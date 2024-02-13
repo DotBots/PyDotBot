@@ -99,6 +99,7 @@ class DotBotNotificationUpdate(BaseModel):
 
     address: str
     direction: Optional[int]
+    wind_angle: Optional[int]
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
 

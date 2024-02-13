@@ -47,6 +47,7 @@ export const SailBotMarker = (props) => {
   };
 
   const rotation = (props.sailbot.direction) ? props.sailbot.direction - 180 : 180;
+
   // props.sailbot.wind_angle ranges from 0x0000 to 0x3FFF
   const wind_angle =  (props.sailbot.wind_angle / 16383.) * 359.978026;
   console.log("wind: " + wind_angle + ", heading: " + rotation)
