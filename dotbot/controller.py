@@ -12,6 +12,8 @@ import json
 import math
 import time
 import webbrowser
+import requests
+import lakers
 from binascii import hexlify
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -67,6 +69,7 @@ from dotbot.protocol import (
     ProtocolHeader,
     ProtocolPayload,
     ProtocolPayloadParserException,
+    EdhocMessage,
 )
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
@@ -86,6 +89,9 @@ DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
+CRED_I = bytes.fromhex("A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8")
+V = bytes.fromhex("72cc4761dbd4c78f758931aa589d348d1ef874a7e303ede2f140dcf3e6aa4aac")
+CRED_V = bytes.fromhex("a2026b6578616d706c652e65647508a101a501020241322001215820bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f02258204519e257236b2a0ce2023f0931f1f386ca7afda64fcde0108c224c51eabf6072")
 
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
@@ -578,6 +584,39 @@ class Controller:
                     return
                 self.handle_received_payload(payload)
 
+    async def request_voucher_for_dotbot(self, dotbot: DotBotModel, ead_1: bytes, message_1: bytes):
+        loc_w, voucher_request = self.edhoc_ead_authenticator.process_ead_1(ead_1, message_1)
+        # NOTE: overriding loc_w, so that we can run the flow using the existing test vectors
+        if loc_w == b"coap://enrollment.server":
+            loc_w = "http://localhost:8000/.well-known/lake-authz/voucher-request"
+        else:
+            self.logger.error("Unknown enrollment server", loc_w=loc_w)
+            self.pending_dobots.remove(dotbot.address)
+            return
+        response = requests.post(loc_w, data=voucher_request)
+        if response.status_code == 200:
+            self.logger.info("Got voucher", voucher=response.content)
+            ead_2 = self.edhoc_ead_authenticator.prepare_ead_2(response.content)
+            message_2 = self.edhoc_responder.prepare_message_2(lakers.CredentialTransfer.ByReference, None, ead_2)
+
+            header = ProtocolHeader(
+                destination=int(dotbot.address, 16),
+                source=int(self.settings.gw_address, 16),
+                swarm_id=int(self.settings.swarm_id, 16),
+                application=dotbot.application,
+                version=PROTOCOL_VERSION,
+            )
+            self.send_payload_to_pending(
+                ProtocolPayload(
+                    header,
+                    PayloadType.EDHOC_MESSAGE,
+                    EdhocMessage(value=message_2),
+                )
+            )
+        else:
+            self.logger.error("Error requesting voucher", status_code=response.status_code)
+            self.pending_dobots.remove(dotbot.address)
+
     def handle_received_payload(
         self, payload: ProtocolPayload
     ):  # pylint:disable=too-many-branches,too-many-statements
@@ -604,7 +643,38 @@ class Controller:
             last_seen=time.time(),
         )
         notification_cmd = DotBotNotificationCommand.NONE
-        if source in self.dotbots:
+        if source not in self.dotbots and source not in self.pending_dotbots and payload.payload_type == PayloadType.EDHOC_MESSAGE: # or PayloadType.ADVERTISEMENT:
+            logger.info("New potential dotbot")
+            try:
+                logger.debug("Will process EDHOC message", values=payload.values)
+                message_1 = payload.values.value
+                logger.debug("Will process EDHOC message", message_1=message_1)
+                ead_1 = self.edhoc_responder.process_message_1(message_1)
+            except Exception as e:
+                logger.error("Error processing message 1", error=e)
+                return
+            if ead_1 and ead_1.label() == 1:
+                self.pending_dotbots[dotbot.address] = dotbot
+                asyncio.create_task(self.request_voucher_for_dotbot(dotbot, ead_1, message_1))
+                return
+            else:
+                logger.error("EDHOC message 1 should contain a valid EAD_1")
+                return
+        elif source not in self.dotbots and source in self.pending_dotbots and payload.payload_type == PayloadType.EDHOC_MESSAGE:
+            logger.info("Message from pending dotbot")
+            # verify message 3
+            try:
+                message_3 = payload.values[0]
+                id_cred_i, _ead_3 = self.edhoc_responder.parse_message_3(message_3)
+                valid_cred_i = lakers.credential_check_or_fetch(id_cred_i, CRED_I)
+                _r_prk_out = self.edhoc_responder.verify_message_3(valid_cred_i)
+            except Exception as e:
+                logger.error("Error processing message 3", error=e)
+                return
+            logger.info("New dotbot")
+            self.pending_dotbots.remove(source)
+            notification_cmd = DotBotNotificationCommand.RELOAD
+        elif source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
             dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
@@ -618,6 +688,7 @@ class Controller:
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
             dotbot.position_history = self.dotbots[source].position_history
         else:
+            # what do to here?
             # reload if a new dotbot comes in
             logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
@@ -771,7 +842,26 @@ class Controller:
         payload.header.application = self.dotbots[destination].application
         if self.serial is not None:
             self.serial.write(hdlc_encode(payload.to_bytes()))
-            self.logger.debug(
+            self.logger.info(
+                "Payload sent",
+                application=payload.header.application.name,
+                destination=destination,
+                payload_type=payload.payload_type.name,
+            )
+
+    def send_payload_to_pending(self, payload: ProtocolPayload):
+        """Sends a command in an HDLC frame over serial."""
+        destination = hexlify(
+            int(payload.header.destination).to_bytes(8, "big")
+        ).decode()
+        if destination not in self.pending_dotbots:
+            return
+        # make sure the application in the payload matches the bot application
+        payload.header.application = self.pending_dotbots[destination].application
+        print("sending...")
+        if self.serial is not None:
+            self.serial.write(hdlc_encode(payload.to_bytes()))
+            self.logger.info(
                 "Payload sent",
                 application=payload.header.application.name,
                 destination=destination,

@@ -33,7 +33,8 @@ class PayloadType(Enum):
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
     CMD_XGO_ACTION = 11
-    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
+    INVALID_PAYLOAD = 12  
+    EDHOC_MESSAGE = 13 # Increase each time a new payload type is added
     DOTBOT_SIMULATOR_DATA = 250
 
 
@@ -366,6 +367,23 @@ class Advertisement(ProtocolData):
 
 
 @dataclass
+class EdhocMessage(ProtocolData):
+    """Dataclass that holds an EDHOC Message."""
+
+    value: bytes = b""
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.value, "value", len(self.value)),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_: bytes) -> ProtocolData:
+        return EdhocMessage(value=bytes_)
+
+
+@dataclass
 class ControlMode(ProtocolData):
     """Dataclass that holds a control mode message."""
 
@@ -469,9 +487,13 @@ class ProtocolPayload:
             )
         buffer += int(self.payload_type.value).to_bytes(length=1, byteorder=endian)
         for field in self.values.fields:
-            buffer += int(field.value).to_bytes(
-                length=field.length, byteorder=endian, signed=field.signed
-            )
+            try:
+                buffer += int(field.value).to_bytes(
+                    length=field.length, byteorder=endian, signed=field.signed
+                )
+            except ValueError:
+                # TODO: better way to do this? (encode values that already are 'bytes' and should just be sent as-is)
+                buffer += field.value
         return buffer
 
     @staticmethod
