@@ -586,14 +586,9 @@ class Controller:
 
     async def request_voucher_for_dotbot(self, dotbot: DotBotModel, ead_1: bytes, message_1: bytes):
         loc_w, voucher_request = self.edhoc_ead_authenticator.process_ead_1(ead_1, message_1)
-        # NOTE: overriding loc_w, so that we can run the flow using the existing test vectors
-        if loc_w == b"coap://enrollment.server":
-            loc_w = "http://localhost:8000/.well-known/lake-authz/voucher-request"
-        else:
-            self.logger.error("Unknown enrollment server", loc_w=loc_w)
-            self.pending_dotbots.pop(dotbot.address)
-            return
-        response = requests.post(loc_w, data=voucher_request)
+        voucher_request_url = f"{loc_w}/.well-known/lake-authz/voucher-request"
+        self.logger.info("Requesting voucher", url=voucher_request_url, voucher_request=voucher_request)
+        response = requests.post(voucher_request_url, data=voucher_request)
         if response.status_code == 200:
             self.logger.info("Got voucher", voucher=response.content)
             ead_2 = self.edhoc_ead_authenticator.prepare_ead_2(response.content)
