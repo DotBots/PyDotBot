@@ -591,7 +591,7 @@ class Controller:
             loc_w = "http://localhost:8000/.well-known/lake-authz/voucher-request"
         else:
             self.logger.error("Unknown enrollment server", loc_w=loc_w)
-            self.pending_dobots.remove(dotbot.address)
+            self.pending_dotbots.pop(dotbot.address)
             return
         response = requests.post(loc_w, data=voucher_request)
         if response.status_code == 200:
@@ -615,7 +615,7 @@ class Controller:
             )
         else:
             self.logger.error("Error requesting voucher", status_code=response.status_code)
-            self.pending_dobots.remove(dotbot.address)
+            self.pending_dotbots.pop(dotbot.address)
 
     def handle_received_payload(
         self, payload: ProtocolPayload
@@ -646,7 +646,6 @@ class Controller:
         if source not in self.dotbots and source not in self.pending_dotbots and payload.payload_type == PayloadType.EDHOC_MESSAGE: # or PayloadType.ADVERTISEMENT:
             logger.info("New potential dotbot")
             try:
-                logger.debug("Will process EDHOC message", values=payload.values)
                 message_1 = payload.values.value
                 logger.debug("Will process EDHOC message", message_1=message_1)
                 ead_1 = self.edhoc_responder.process_message_1(message_1)
@@ -664,7 +663,8 @@ class Controller:
             logger.info("Message from pending dotbot")
             # verify message 3
             try:
-                message_3 = payload.values[0]
+                message_3 = payload.values.value
+                logger.debug("Will process EDHOC message", message_3=message_3)
                 id_cred_i, _ead_3 = self.edhoc_responder.parse_message_3(message_3)
                 valid_cred_i = lakers.credential_check_or_fetch(id_cred_i, CRED_I)
                 _r_prk_out = self.edhoc_responder.verify_message_3(valid_cred_i)
@@ -672,7 +672,7 @@ class Controller:
                 logger.error("Error processing message 3", error=e)
                 return
             logger.info("New dotbot")
-            self.pending_dotbots.remove(source)
+            self.pending_dotbots.pop(source)
             notification_cmd = DotBotNotificationCommand.RELOAD
         elif source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
