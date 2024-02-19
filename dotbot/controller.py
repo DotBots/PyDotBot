@@ -536,7 +536,7 @@ class Controller:
     async def web(self):
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
-        config = uvicorn.Config(api, port=10000, log_level="critical")
+        config = uvicorn.Config(api, port=8000, log_level="critical")
         server = uvicorn.Server(config)
 
         try:
