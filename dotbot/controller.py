@@ -88,9 +88,14 @@ DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
-CRED_I = bytes.fromhex("A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8")
+CRED_I = bytes.fromhex(
+    "A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8"
+)
 V = bytes.fromhex("72cc4761dbd4c78f758931aa589d348d1ef874a7e303ede2f140dcf3e6aa4aac")
-CRED_V = bytes.fromhex("a2026b6578616d706c652e65647508a101a501020241322001215820bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f02258204519e257236b2a0ce2023f0931f1f386ca7afda64fcde0108c224c51eabf6072")
+CRED_V = bytes.fromhex(
+    "a2026b6578616d706c652e65647508a101a501020241322001215820bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f02258204519e257236b2a0ce2023f0931f1f386ca7afda64fcde0108c224c51eabf6072"
+)
+
 
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
@@ -583,15 +588,25 @@ class Controller:
                     return
                 self.handle_received_payload(payload)
 
-    async def request_voucher_for_dotbot(self, dotbot: DotBotModel, ead_1: bytes, message_1: bytes):
-        loc_w, voucher_request = self.edhoc_ead_authenticator.process_ead_1(ead_1, message_1)
+    async def request_voucher_for_dotbot(
+        self, dotbot: DotBotModel, ead_1: bytes, message_1: bytes
+    ):
+        loc_w, voucher_request = self.edhoc_ead_authenticator.process_ead_1(
+            ead_1, message_1
+        )
         voucher_request_url = f"{loc_w}/.well-known/lake-authz/voucher-request"
-        self.logger.info("Requesting voucher", url=voucher_request_url, voucher_request=voucher_request)
+        self.logger.info(
+            "Requesting voucher",
+            url=voucher_request_url,
+            voucher_request=voucher_request,
+        )
         response = requests.post(voucher_request_url, data=voucher_request)
         if response.status_code == 200:
             self.logger.info("Got voucher", voucher=response.content)
             ead_2 = self.edhoc_ead_authenticator.prepare_ead_2(response.content)
-            message_2 = self.edhoc_responder.prepare_message_2(lakers.CredentialTransfer.ByValue, None, ead_2)
+            message_2 = self.edhoc_responder.prepare_message_2(
+                lakers.CredentialTransfer.ByValue, None, ead_2
+            )
 
             header = ProtocolHeader(
                 destination=int(dotbot.address, 16),
@@ -608,7 +623,9 @@ class Controller:
                 )
             )
         else:
-            self.logger.error("Error requesting voucher", status_code=response.status_code)
+            self.logger.error(
+                "Error requesting voucher", status_code=response.status_code
+            )
             self.pending_dotbots.pop(dotbot.address)
 
     def handle_received_payload(
@@ -637,7 +654,11 @@ class Controller:
             last_seen=time.time(),
         )
         notification_cmd = DotBotNotificationCommand.NONE
-        if source not in self.dotbots and source not in self.pending_dotbots and payload.payload_type == PayloadType.EDHOC_MESSAGE: # or PayloadType.ADVERTISEMENT:
+        if (
+            source not in self.dotbots
+            and source not in self.pending_dotbots
+            and payload.payload_type == PayloadType.EDHOC_MESSAGE
+        ):  # or PayloadType.ADVERTISEMENT:
             logger.info("New potential dotbot")
             try:
                 message_1 = payload.values.value
@@ -648,12 +669,18 @@ class Controller:
                 return
             if ead_1 and ead_1.label() == 1:
                 self.pending_dotbots[dotbot.address] = dotbot
-                asyncio.create_task(self.request_voucher_for_dotbot(dotbot, ead_1, message_1))
+                asyncio.create_task(
+                    self.request_voucher_for_dotbot(dotbot, ead_1, message_1)
+                )
                 return
             else:
                 logger.error("EDHOC message 1 should contain a valid EAD_1")
                 return
-        elif source not in self.dotbots and source in self.pending_dotbots and payload.payload_type == PayloadType.EDHOC_MESSAGE:
+        elif (
+            source not in self.dotbots
+            and source in self.pending_dotbots
+            and payload.payload_type == PayloadType.EDHOC_MESSAGE
+        ):
             logger.info("Message from pending dotbot")
             # verify message 3
             try:
