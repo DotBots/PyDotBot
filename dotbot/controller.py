@@ -5,12 +5,12 @@ import json
 import math
 import time
 import webbrowser
-import requests
-import lakers
 from binascii import hexlify
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import lakers
+import requests
 import serial
 import uvicorn
 import websockets
@@ -36,12 +36,12 @@ from dotbot.mqtt import mqtt
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
+    EdhocMessage,
     LH2Location,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
     ProtocolPayloadParserException,
-    EdhocMessage,
 )
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
