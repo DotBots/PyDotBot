@@ -5,6 +5,7 @@ project(lh2)
 
 if (MSVC)
     set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 else()
     add_compile_options(-std=c11 -Ofast -Wall -Werror)
 endif()
