@@ -12,12 +12,12 @@ import json
 import math
 import time
 import webbrowser
-import requests
-import lakers
 from binascii import hexlify
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import lakers
+import requests
 import serial
 import uvicorn
 import websockets
@@ -69,7 +69,6 @@ from dotbot.protocol import (
     ProtocolHeader,
     ProtocolPayload,
     ProtocolPayloadParserException,
-    EdhocMessage,
 )
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException

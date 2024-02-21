@@ -48,6 +48,7 @@ dependencies = [
     "structlog      == 24.1.0",
     "uvicorn        == 0.25.0",
     "websockets     == 12.0",
+    "lakers-python  == 0.2.0",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"

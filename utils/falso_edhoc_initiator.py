@@ -10,22 +10,24 @@ It will output the paths to the created virtual serial ports, for example /dev/p
 Then, start the dotbot-controller with -p /dev/pts/74, and run this script with /dev/pts/75 as the serial port.
 """
 
-import serial, sys, lakers
+import sys
 import time
 
-from dotbot.hdlc import hdlc_decode, hdlc_encode
+import lakers
+import serial
+
 from dotbot import GATEWAY_ADDRESS_DEFAULT, SWARM_ID_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
-from dotbot.logger import LOGGER
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     Advertisement,
-    EdhocMessage,
     ApplicationType,
+    EdhocMessage,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
 )
+
 
 class FalsoBot:
     def __init__(self, address):
@@ -95,9 +97,9 @@ class EdhocBot:
         c_r, id_cred_r, ead_2 = self.initiator.parse_message_2(message_2)
         valid_cred_r = lakers.credential_check_or_fetch(id_cred_r, None)
         assert self.device.process_ead_2(ead_2, valid_cred_r)
-        print(f"Authz voucher is valid!")
+        print("Authz voucher is valid!")
         self.initiator.verify_message_2(self.I, self.CRED_I, valid_cred_r)
-        print(f"Message 2 is valid!")
+        print("Message 2 is valid!")
         message_3, i_prk_out = self.initiator.prepare_message_3(lakers.CredentialTransfer.ByReference, None)
         ser.write(self.fb.edhoc_message(message_3))
         time.sleep(1)
