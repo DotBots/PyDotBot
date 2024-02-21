@@ -70,12 +70,12 @@ class FalsoBot:
 
 
 class EdhocBot:
-    def __init__(self, I, CRED_I, ID_U, G_W, LOC_W):
+    def __init__(self, PRIV_I, CRED_I, ID_U, G_W, LOC_W):
         self.initiator = lakers.EdhocInitiator()
         self.device = lakers.AuthzDevice(ID_U, G_W, LOC_W)
         self.fb = FalsoBot(ID_U.hex())
         self.ID_U = ID_U
-        self.I = I
+        self.PRIV_I = PRIV_I
         self.CRED_I = CRED_I
 
     def run_handshake(self, ser):
@@ -98,7 +98,7 @@ class EdhocBot:
         valid_cred_r = lakers.credential_check_or_fetch(id_cred_r, None)
         assert self.device.process_ead_2(ead_2, valid_cred_r)
         print("Authz voucher is valid!")
-        self.initiator.verify_message_2(self.I, self.CRED_I, valid_cred_r)
+        self.initiator.verify_message_2(self.PRIV_I, self.CRED_I, valid_cred_r)
         print("Message 2 is valid!")
         message_3, i_prk_out = self.initiator.prepare_message_3(lakers.CredentialTransfer.ByReference, None)
         ser.write(self.fb.edhoc_message(message_3))
@@ -115,15 +115,15 @@ G_W = bytes.fromhex("FFA4F102134029B3B156890B88C9D9619501196574174DCB68A07DB0588
 LOC_W = "http://localhost:18000"
 
 CRED_I = bytes.fromhex("A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8")
-I = bytes.fromhex("fb13adeb6518cee5f88417660841142e830a81fe334380a953406a1305e8706b")
+PRIV_I = bytes.fromhex("fb13adeb6518cee5f88417660841142e830a81fe334380a953406a1305e8706b")
 
 edhoc_bots = [
     EdhocBot(
-        I, CRED_I,
+        PRIV_I, CRED_I,
         bytes.fromhex("a104412b"), G_W, LOC_W,
     ),
     EdhocBot(
-        I, CRED_I,
+        PRIV_I, CRED_I,
         bytes.fromhex("a104413c"), G_W, LOC_W,
     )
 ]
