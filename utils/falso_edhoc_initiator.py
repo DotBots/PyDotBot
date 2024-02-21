@@ -66,8 +66,46 @@ class FalsoBot:
         else:
             raise Exception("message not for me or not an edhoc message")
 
-fb = FalsoBot("1234567890123456")
 
+class EdhocBot:
+    def __init__(self, I, CRED_I, ID_U, G_W, LOC_W):
+        self.initiator = lakers.EdhocInitiator()
+        self.device = lakers.AuthzDevice(ID_U, G_W, LOC_W)
+        self.fb = FalsoBot(ID_U.hex())
+        self.ID_U = ID_U
+        self.I = I
+        self.CRED_I = CRED_I
+
+    def run_handshake(self, ser):
+        print(f"Starting EDHOC handshake with ID_U={self.ID_U.hex()}")
+        ead_1 = self.device.prepare_ead_1(
+            self.initiator.compute_ephemeral_secret(self.device.get_g_w()),
+            self.initiator.selected_cipher_suite(),
+        )
+        message_1 = self.initiator.prepare_message_1(c_i=None, ead_1=ead_1)
+        self.device.set_h_message_1(self.initiator.get_h_message_1())
+
+        print("sending msg1:", self.fb.edhoc_message(message_1))
+        ser.write(self.fb.edhoc_message(message_1))
+        while True:
+            message_2 = ser.read(256)
+            if len(message_2) > 0:
+                message_2 = self.fb.parse_serial_input(message_2)
+                break
+        c_r, id_cred_r, ead_2 = self.initiator.parse_message_2(message_2)
+        valid_cred_r = lakers.credential_check_or_fetch(id_cred_r, None)
+        assert self.device.process_ead_2(ead_2, valid_cred_r)
+        print(f"Authz voucher is valid!")
+        self.initiator.verify_message_2(self.I, self.CRED_I, valid_cred_r)
+        print(f"Message 2 is valid!")
+        message_3, i_prk_out = self.initiator.prepare_message_3(lakers.CredentialTransfer.ByReference, None)
+        ser.write(self.fb.edhoc_message(message_3))
+        time.sleep(1)
+        ser.write(self.fb.advertise())
+        print("sent msg3 and advertise")
+
+# open serial port
+ser = serial.Serial(sys.argv[1], timeout=1)
 
 # values from traces-zeroconf.ipynb
 ID_U = bytes.fromhex("a104412b")
@@ -76,40 +114,18 @@ LOC_W = "http://localhost:18000"
 
 CRED_I = bytes.fromhex("A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8")
 I = bytes.fromhex("fb13adeb6518cee5f88417660841142e830a81fe334380a953406a1305e8706b")
-CRED_V = bytes.fromhex("a2026b6578616d706c652e65647508a101a501020241322001215820bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f02258204519e257236b2a0ce2023f0931f1f386ca7afda64fcde0108c224c51eabf6072")
 
-initiator = lakers.EdhocInitiator()
-device = lakers.AuthzDevice(
-    ID_U,
-    G_W,
-    LOC_W,
-)
+edhoc_bots = [
+    EdhocBot(
+        I, CRED_I,
+        bytes.fromhex("a104412b"), G_W, LOC_W,
+    ),
+    EdhocBot(
+        I, CRED_I,
+        bytes.fromhex("a104413c"), G_W, LOC_W,
+    )
+]
 
-ead_1 = device.prepare_ead_1(
-    initiator.compute_ephemeral_secret(device.get_g_w()),
-    initiator.selected_cipher_suite(),
-)
-message_1 = initiator.prepare_message_1(c_i=None, ead_1=ead_1)
-device.set_h_message_1(initiator.get_h_message_1())
-
-
-with serial.Serial(sys.argv[1], timeout=1) as ser:
-    print("sending msg1:", fb.edhoc_message(message_1))
-    ser.write(fb.edhoc_message(message_1))
-    while True:
-        message_2 = ser.read(256)
-        if len(message_2) > 0:
-            message_2 = fb.parse_serial_input(message_2)
-            break
-    c_r, id_cred_r, ead_2 = initiator.parse_message_2(message_2)
-    valid_cred_r = lakers.credential_check_or_fetch(id_cred_r, CRED_V)
-    assert device.process_ead_2(ead_2, CRED_V)
-    print(f"Authz voucher is valid!")
-    initiator.verify_message_2(I, CRED_I, valid_cred_r)
-    print(f"Message 2 is valid!")
-    message_3, i_prk_out = initiator.prepare_message_3(lakers.CredentialTransfer.ByReference, None)
-    ser.write(fb.edhoc_message(message_3))
-    time.sleep(1)
-    ser.write(fb.advertise())
-    while True:
-        time.sleep(0.1)
+for edhoc_bot in edhoc_bots:
+    print("==== starting handshake ====")
+    edhoc_bot.run_handshake(ser)

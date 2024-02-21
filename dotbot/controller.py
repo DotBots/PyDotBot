@@ -592,7 +592,7 @@ class Controller:
         if response.status_code == 200:
             self.logger.info("Got voucher", voucher=response.content)
             ead_2 = self.edhoc_ead_authenticator.prepare_ead_2(response.content)
-            message_2 = self.edhoc_responder.prepare_message_2(lakers.CredentialTransfer.ByReference, None, ead_2)
+            message_2 = self.edhoc_responder.prepare_message_2(lakers.CredentialTransfer.ByValue, None, ead_2)
 
             header = ProtocolHeader(
                 destination=int(dotbot.address, 16),
