@@ -229,8 +229,8 @@ from dotbot.protocol import (
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0b",
-            ProtocolPayloadParserException("Unsupported payload type '11'"),
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0c",
+            ProtocolPayloadParserException("Unsupported payload type '12'"),
             id="unsupported payload type",
         ),
         pytest.param(
