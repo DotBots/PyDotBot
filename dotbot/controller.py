@@ -73,6 +73,7 @@ from dotbot.protocol import (
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
+from dotbot.authz import fetch_credential
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -654,6 +655,7 @@ class Controller:
             last_seen=time.time(),
         )
         notification_cmd = DotBotNotificationCommand.NONE
+
         if (
             source not in self.dotbots
             and source not in self.pending_dotbots
@@ -682,15 +684,21 @@ class Controller:
             and payload.payload_type == PayloadType.EDHOC_MESSAGE
         ):
             logger.info("Message from pending dotbot")
-            # verify message 3
             try:
                 message_3 = payload.values.value
                 logger.debug("Will process EDHOC message", message_3=message_3)
                 id_cred_i, _ead_3 = self.edhoc_responder.parse_message_3(message_3)
-                valid_cred_i = lakers.credential_check_or_fetch(id_cred_i, CRED_I)
-                _r_prk_out = self.edhoc_responder.verify_message_3(valid_cred_i)
+                try:
+                    cred_i = fetch_credential(id_cred_i)
+                except Exception as e:
+                    logger.error("Error fetching credential", error=e)
+                    self.pending_dotbots.pop(dotbot.address)
+                    return
+                _r_prk_out = self.edhoc_responder.verify_message_3(cred_i)
+                logger.info("EDHOC handshake worked")
             except Exception as e:
                 logger.error("Error processing message 3", error=e)
+                self.pending_dotbots.pop(dotbot.address)
                 return
             logger.info("New dotbot")
             self.pending_dotbots.pop(source)

@@ -120,29 +120,17 @@ ID_U = bytes.fromhex("a104412b")
 G_W = bytes.fromhex("FFA4F102134029B3B156890B88C9D9619501196574174DCB68A07DB0588E4D41")
 LOC_W = "http://localhost:18000"
 
-CRED_I = bytes.fromhex(
-    "A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8"
-)
-PRIV_I = bytes.fromhex(
-    "fb13adeb6518cee5f88417660841142e830a81fe334380a953406a1305e8706b"
-)
-
-edhoc_bots = [
-    EdhocBot(
-        PRIV_I,
-        CRED_I,
-        bytes.fromhex("a104412b"),
-        G_W,
-        LOC_W,
-    ),
-    EdhocBot(
-        PRIV_I,
-        CRED_I,
-        bytes.fromhex("a104413c"),
-        G_W,
-        LOC_W,
-    ),
-]
+edhoc_bots = []
+for i in range(1, 5):
+    with open(f"/home/gfedrech/.dotbots-deployment1/dotbot{i}-priv-bytes", "rb") as f:
+        priv = f.read()
+    with open(
+        f"/home/gfedrech/.dotbots-deployment1/dotbot{i}-cred-rpk.cbor", "rb"
+    ) as f:
+        cred = f.read()
+    edhoc_bots.append(
+        EdhocBot(priv, cred, bytes.fromhex(f"a10441{format(i, '02x')}"), G_W, LOC_W)
+    )
 
 for edhoc_bot in edhoc_bots:
     print("==== starting handshake ====")
