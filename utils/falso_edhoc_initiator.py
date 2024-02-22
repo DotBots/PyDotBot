@@ -106,6 +106,9 @@ class EdhocBot:
         message_3, i_prk_out = self.initiator.prepare_message_3(
             lakers.CredentialTransfer.ByReference, None
         )
+        print("c_r:", c_r)
+        message_3 = c_r.to_bytes(1, "big") + message_3 # prepend c_r to message_3
+        print("message_3:", message_3)
         ser.write(self.fb.edhoc_message(message_3))
         time.sleep(1)
         ser.write(self.fb.advertise())
