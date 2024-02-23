@@ -14,18 +14,18 @@ PROTOCOL_VERSION = 8
 class PayloadType(Enum):
     """Types of DotBot payload types."""
 
-    CMD_MOVE_RAW = 0
-    CMD_RGB_LED = 1
-    LH2_RAW_DATA = 2
-    LH2_LOCATION = 3
-    ADVERTISEMENT = 4
-    GPS_POSITION = 5
-    DOTBOT_DATA = 6
-    CONTROL_MODE = 7
-    LH2_WAYPOINTS = 8
-    GPS_WAYPOINTS = 9
-    SAILBOT_DATA = 10
-    FAUXBOT_DATA = 11
+    CMD_MOVE_RAW    = 0
+    CMD_RGB_LED     = 1
+    LH2_RAW_DATA    = 2
+    LH2_LOCATION    = 3
+    ADVERTISEMENT   = 4
+    GPS_POSITION    = 5
+    DOTBOT_DATA     = 6
+    CONTROL_MODE    = 7
+    LH2_WAYPOINTS   = 8
+    GPS_WAYPOINTS   = 9
+    SAILBOT_DATA    = 10
+    FAUXBOT_DATA    = 11
     INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
@@ -273,12 +273,10 @@ class SailBotData(ProtocolData):
 
     # Initialized as 0xFFFF because then at controller .py: -500 <= payload.values.direction <= 500
     direction: int = 0xFFFF
-    latitude: int = 0
+    latitude:  int = 0
     longitude: int = 0
-    # The sensor has a 14-bit resolution, so a maximum of 0x3FFF is reachable.
-    # If there is a 0xFFFF value, there is an error
-    wind_angle: int = 0xFFFF
-
+    wind_angle: int = 0xFFFF    # uint angles from 0 to 359
+    
     @property
     def fields(self) -> List[ProtocolField]:
         return [
@@ -291,10 +289,10 @@ class SailBotData(ProtocolData):
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return SailBotData(
-            direction=int.from_bytes(bytes_[0:2], "little", signed=False),
-            latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
-            longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
-            wind_angle=int.from_bytes(bytes_[10:12], "little", signed=False),
+            direction = int.from_bytes(bytes_[0:2], "little", signed=False),
+            latitude = int.from_bytes(bytes_[2:6], "little", signed=True),
+            longitude = int.from_bytes(bytes_[6:10], "little", signed=True),
+            wind_angle = int.from_bytes(bytes_[10:12], "little", signed=False),
         )
 
 @dataclass
@@ -320,7 +318,7 @@ class FauxBotData(ProtocolData):
             pos_x=int.from_bytes(bytes_[2:6], "little"),
             pos_y=int.from_bytes(bytes_[6:10], "little"),
         )
-    
+
 @dataclass
 class Advertisement(ProtocolData):
     """Dataclass that holds an advertisement (emtpy)."""
@@ -438,8 +436,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.DOTBOT_DATA:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
-            # 2 bytes heading, 4 lat, 4 lon ? Add 2 more bytes (uint16_t) for wind sensor
-            values = SailBotData.from_bytes(bytes_[25:35+2]) 
+            values = SailBotData.from_bytes(bytes_[25:37]) 
         elif payload_type == PayloadType.FAUXBOT_DATA:
             values = FauxBotData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:

@@ -17,6 +17,7 @@ from haversine import Unit, haversine
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.fauxbot import FauxBotSerialInterface
+from dotbot.sailbot_simulator import SailSimSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -150,8 +151,10 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        if self.settings.port == "SIMU":
+        if self.settings.port == "dotbot-sim":
             self.serial = FauxBotSerialInterface(on_byte_received)
+        elif self.settings.port == "sailbot-sim":
+            self.serial = SailSimSerialInterface(on_byte_received)
         else:
             async def _wait_for_handshake(queue):
                 """Waits for handshake reply and checks it."""
@@ -167,9 +170,7 @@ class Controller:
             )
 
             self.serial.write(
-                int(PROTOCOL_VERSION).to_bytes(
-                    length=1, byteorder="little", signed=False
-                )
+                int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
             )
             if self.settings.handshake is True:
                 await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)

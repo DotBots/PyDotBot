@@ -21,18 +21,6 @@ L = 2
 t_step = 0.01
 
 
-def diff_drive_bot(x_pos_old, y_pos_old, theta_old, v_right, v_left):
-    ## second step - execute state space model of a rigid differential drive robot
-    x_dot = R / 2 * (v_right + v_left) * cos(theta_old - pi) * (50000)
-    y_dot = R / 2 * (v_right + v_left) * sin(theta_old - pi) * (50000)
-    theta_dot = R / L * (-v_right + v_left)
-
-    x_pos = x_pos_old + x_dot * t_step
-    y_pos = y_pos_old + y_dot * t_step
-    theta = (theta_old + theta_dot * t_step) % (2 * pi)
-
-    return x_pos, y_pos, theta
-
 
 class FauxBot:
     def __init__(self, address):
@@ -61,6 +49,19 @@ class FauxBot:
             application=ApplicationType.DotBot,
             version=PROTOCOL_VERSION,
         )
+    
+
+    def diff_drive_bot(self, v_right, v_left):
+        ## second step - execute state space model of a rigid differential drive robot
+        x_dot = R / 2 * (v_right + v_left) * cos(self.theta - pi) * (50000)
+        y_dot = R / 2 * (v_right + v_left) * sin(self.theta - pi) * (50000)
+        theta_dot = R / L * (-v_right + v_left)
+
+        x_pos = self.pos_x + x_dot * t_step
+        y_pos = self.pos_y + y_dot * t_step
+        theta = (self.theta + theta_dot * t_step) % (2 * pi)
+
+        return x_pos, y_pos, theta
 
     def update(self):
         pos_x_old = self.pos_x
@@ -68,8 +69,8 @@ class FauxBot:
         theta_old = self.theta
 
         if self.controller == "MANUAL":
-            self.pos_x, self.pos_y, self.theta = diff_drive_bot(
-                pos_x_old, pos_y_old, theta_old, self.v_right, self.v_left
+            self.pos_x, self.pos_y, self.theta = self.diff_drive_bot(
+                self.v_right, self.v_left
             )
 
         elif self.controller == "AUTOMATIC":
@@ -79,7 +80,7 @@ class FauxBot:
 
             # check if we are close enough to the "next" waypoint
             if distanceToTarget < self.waypoint_threshold:
-                print("reached one!")
+                # print("reached one!")
                 self.waypoint_index += 1
 
                 # check if there are no more waypoints:
@@ -98,8 +99,8 @@ class FauxBot:
                 #    angleToTarget = 2*pi + angleToTarget
 
                 error_angle = ((angleToTarget - robotAngle + pi) % (2 * pi)) - pi
-                print(robotAngle, angleToTarget)
-                print(error_angle)
+                # print(robotAngle, angleToTarget)
+                # print(error_angle)
 
                 angular_speed = error_angle * 200
                 self.v_left = 100 + angular_speed
@@ -114,9 +115,7 @@ class FauxBot:
                 if self.v_right < 0:
                     self.v_right = 0
 
-            self.pos_x, self.pos_y, self.theta = diff_drive_bot(
-                self.pos_x, self.pos_y, self.theta, self.v_right, self.v_left
-            )
+            self.pos_x, self.pos_y, self.theta = self.diff_drive_bot(self.v_right, self.v_left)
 
         return self.encode_serial_output()
 
