@@ -412,8 +412,6 @@ class ProtocolPayload:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
             values = SailBotData.from_bytes(bytes_[25:37]) 
-        elif payload_type == PayloadType.FAUXBOT_DATA:
-            values = FauxBotData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
