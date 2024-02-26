@@ -61,9 +61,8 @@ class SailSim:
         if self.address == hex(payload.header.destination)[2:]:
             if payload.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.controller = "MANUAL"
-                # see line 227 sailbot app (left_x and right_y are used)
-                self.rudder_slider = payload.values.left_x
-                self.sail_slider = payload.values.right_y
+                self.rudder_slider = payload.values.left_x - 256 if payload.values.left_x > 127 else payload.values.left_x
+                self.sail_slider = payload.values.right_y - 256 if payload.values.right_y > 127 else payload.values.right_y
 
         print(self.rudder_slider, self.sail_slider)
 
