@@ -16,7 +16,6 @@ from fastapi import WebSocket
 from haversine import Unit, haversine
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
-from dotbot.fauxbot import FauxBotSerialInterface
 from dotbot.sailbot_simulator import SailSimSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
@@ -151,9 +150,7 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        if self.settings.port == "dotbot-sim":
-            self.serial = FauxBotSerialInterface(on_byte_received)
-        elif self.settings.port == "sailbot-sim":
+        if self.settings.port == "sailbot-sim":
             self.serial = SailSimSerialInterface(on_byte_received)
         else:
             async def _wait_for_handshake(queue):
@@ -346,17 +343,6 @@ class Controller:
             )
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
-
-        if payload.payload_type == PayloadType.FAUXBOT_DATA:
-            dotbot.direction = payload.values.theta
-            new_position = DotBotLH2Position(
-                x=payload.values.pos_x / 1e6,
-                y=payload.values.pos_y / 1e6,
-                z=0,
-            )
-            dotbot.lh2_position = new_position
-            dotbot.position_history.append(new_position)
-            notification_cmd = DotBotNotificationCommand.UPDATE
 
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
