@@ -21,6 +21,12 @@ class SailBotSim:
     def __init__(self, address):
         self.address = address
 
+        # Values taken from SailBot app
+        self.earth_radius_km = 6371
+        self.origin_coord_latitude = 48.825908
+        self.origin_coord_longitude = 2.406433
+        self.cos_phi_0 = 0.658139837
+
         self.true_wind_angle = 30	# global coordinates
 
         self.latitude = 48.832313   # int32 when sending (multiply by 1E6, only six decimals needed)
@@ -28,13 +34,13 @@ class SailBotSim:
         self.wind_angle = 0        	# uint when sending (angles from 0 to 359)
 
         self.direction = 0          # uint16 when sending (should be angles from 0 to 359, verify!)
-        self.x = 0
-        self.y = 0
+        self.x, self.y = self.convert_geographical_to_cartesian(self.latitude, self.longitude)
         self.speed = 0
         self.ang_speed = 0
 
         self.rudder_slider = 0
         self.sail_slider = 0
+
 
         self.controller = "MANUAL"
 
@@ -49,8 +55,8 @@ class SailBotSim:
         )
 
     def state_space_model(self):
-        self.x = self.x + self.rudder_slider
-        self.y = self.y + self.sail_slider
+        self.x += self.rudder_slider
+        self.y += self.sail_slider
         self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
 
         self.direction = (self.direction + 10) % 360
@@ -93,17 +99,17 @@ class SailBotSim:
         return hdlc_encode(payload.to_bytes())
 
     def convert_cartesian_to_geographical(self, x, y):
-        # Values taken from SailBot app
-        earth_radius_km = 6371
-        origin_coord_latitude = 48.825908
-        origin_coord_longitude = 2.406433
-        cos_phi_0 = 0.658139837
-
-        latitude = ((((y * 180.0 / 1000.0) / math.pi) / earth_radius_km) + origin_coord_latitude)
-        longitude = ((((x * 180.0 / 1000.0) / math.pi / cos_phi_0) / earth_radius_km) + origin_coord_longitude)
+        latitude = ((((y * 0.180) / math.pi) / self.earth_radius_km) + self.origin_coord_latitude)
+        longitude = ((((x * 0.180) / math.pi / self.cos_phi_0) / self.earth_radius_km) + self.origin_coord_longitude)
 
         return latitude, longitude
 
+    def convert_geographical_to_cartesian(self, latitude, longitude):
+        x = ((longitude - self.origin_coord_longitude) * self.earth_radius_km * self.cos_phi_0 * math.pi) / 0.180
+        y = ((latitude - self.origin_coord_latitude) * self.earth_radius_km * math.pi) / 0.180
+
+        return x, y
+    
 
 class SailBotSimSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
