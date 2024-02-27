@@ -43,7 +43,7 @@ class SailSim:
             version=PROTOCOL_VERSION,
         )
     
-    def space_state_model(self):
+    def state_space_model(self):
         self.latitude  = self.latitude  + self.rudder_slider*1E-6
         self.longitude = self.longitude + self.sail_slider*1E-6
         self.direction = (self.direction + 10) % 360
@@ -51,7 +51,7 @@ class SailSim:
 
     def update(self):
         if self.controller == "MANUAL":
-            self.space_state_model()
+            self.state_space_model()
             
         return self.encode_serial_output()
 
