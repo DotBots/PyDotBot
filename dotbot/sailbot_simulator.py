@@ -1,7 +1,7 @@
 import threading
 import time
 from typing import Callable
-
+import math
 from dotbot import GATEWAY_ADDRESS_DEFAULT, SWARM_ID_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
@@ -21,12 +21,17 @@ class SailBotSim:
     def __init__(self, address):
         self.address = address
 
-        self.wind_angle_real = 30	# global coordinates
+        self.true_wind_angle = 30	# global coordinates
 
-        self.direction = 0          # uint16 when sending (should be angles from 0 to 359, verify!)
         self.latitude = 48.832313   # int32 when sending (multiply by 1E6, only six decimals needed)
         self.longitude = 2.412689   # int32 when sending (multiply by 1E6, only six decimals needed)
         self.wind_angle = 0        	# uint when sending (angles from 0 to 359)
+
+        self.direction = 0          # uint16 when sending (should be angles from 0 to 359, verify!)
+        self.x = 0
+        self.y = 0
+        self.speed = 0
+        self.ang_speed = 0
 
         self.rudder_slider = 0
         self.sail_slider = 0
@@ -42,12 +47,14 @@ class SailBotSim:
             application=ApplicationType.SailBot,
             version=PROTOCOL_VERSION,
         )
-    
+
     def state_space_model(self):
-        self.latitude  = self.latitude  + self.rudder_slider*1E-6
-        self.longitude = self.longitude + self.sail_slider*1E-6
+        self.x = self.x + self.rudder_slider
+        self.y = self.y + self.sail_slider
+        self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
+
         self.direction = (self.direction + 10) % 360
-        self.wind_angle = (-self.direction + self.wind_angle_real) % 360
+        self.wind_angle = (-self.direction + self.true_wind_angle) % 360
 
     def update(self):
         if self.controller == "MANUAL":
@@ -76,7 +83,7 @@ class SailBotSim:
             ),
         )
         return hdlc_encode(payload.to_bytes())
-    
+
     def advertise(self):
         payload = ProtocolPayload(
             self.header,
@@ -84,6 +91,18 @@ class SailBotSim:
             Advertisement(),
         )
         return hdlc_encode(payload.to_bytes())
+
+    def convert_cartesian_to_geographical(self, x, y):
+        # Values taken from SailBot app
+        earth_radius_km = 6371
+        origin_coord_latitude = 48.825908
+        origin_coord_longitude = 2.406433
+        cos_phi_0 = 0.658139837
+
+        latitude = ((((y * 180.0 / 1000.0) / math.pi) / earth_radius_km) + origin_coord_latitude)
+        longitude = ((((x * 180.0 / 1000.0) / math.pi / cos_phi_0) / earth_radius_km) + origin_coord_longitude)
+
+        return latitude, longitude
 
 
 class SailBotSimSerialInterface(threading.Thread):
