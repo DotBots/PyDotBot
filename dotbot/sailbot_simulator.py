@@ -15,9 +15,9 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-delta_t = 0.4  # In seconds, used to simulate microcontroller interruptions
+delta_t = 0.5  # In seconds, used to simulate microcontroller interruptions
 
-class SailSim:
+class SailBotSim:
     def __init__(self, address):
         self.address = address
 
@@ -86,12 +86,12 @@ class SailSim:
         return hdlc_encode(payload.to_bytes())
 
 
-class SailSimSerialInterface(threading.Thread):
+class SailBotSimSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
 
     def __init__(self, callback: Callable):
         self.sailbots = [
-            SailSim("0000000000000001"),
+            SailBotSim("1234567890123456"),
         ]
 
         self.callback = callback

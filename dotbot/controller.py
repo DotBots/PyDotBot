@@ -16,7 +16,7 @@ from fastapi import WebSocket
 from haversine import Unit, haversine
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
-from dotbot.sailbot_simulator import SailSimSerialInterface
+from dotbot.sailbot_simulator import SailBotSimSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -151,7 +151,7 @@ class Controller:
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
         if self.settings.port == "sailbot-simulator":
-            self.serial = SailSimSerialInterface(on_byte_received)
+            self.serial = SailBotSimSerialInterface(on_byte_received)
         else:
             async def _wait_for_handshake(queue):
                 """Waits for handshake reply and checks it."""
