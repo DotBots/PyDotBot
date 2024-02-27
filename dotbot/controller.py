@@ -150,7 +150,7 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        if self.settings.port == "sailbot-sim":
+        if self.settings.port == "sailbot-simulator":
             self.serial = SailSimSerialInterface(on_byte_received)
         else:
             async def _wait_for_handshake(queue):

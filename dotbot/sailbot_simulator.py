@@ -23,7 +23,7 @@ class SailSim:
 
         self.wind_angle_real = 30	# global coordinates
 
-        self.direction = 360         # uint16 when sending (should be angles from 0 to 359, verify!)
+        self.direction = 0          # uint16 when sending (should be angles from 0 to 359, verify!)
         self.latitude = 48.832313   # int32 when sending (multiply by 1E6, only six decimals needed)
         self.longitude = 2.412689   # int32 when sending (multiply by 1E6, only six decimals needed)
         self.wind_angle = 0        	# uint when sending (angles from 0 to 359)
@@ -46,7 +46,7 @@ class SailSim:
     def diff_drive_bot(self):
         self.latitude  = self.latitude  + self.rudder_slider*1E-6
         self.longitude = self.longitude + self.sail_slider*1E-6
-        self.direction = (self.direction + 20) % 360
+        self.direction = (self.direction + 10) % 360
         self.wind_angle = (-self.direction + self.wind_angle_real) % 360
 
     def update(self):
@@ -63,8 +63,6 @@ class SailSim:
                 self.controller = "MANUAL"
                 self.rudder_slider = payload.values.left_x - 256 if payload.values.left_x > 127 else payload.values.left_x
                 self.sail_slider = payload.values.right_y - 256 if payload.values.right_y > 127 else payload.values.right_y
-
-        print(self.rudder_slider, self.sail_slider)
 
     def encode_serial_output(self):
         payload = ProtocolPayload(
