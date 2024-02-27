@@ -15,7 +15,7 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-delta_t = 0.5  # In seconds, used to simulate microcontroller interruptions
+delta_t = 0.4  # In seconds, used to simulate microcontroller interruptions
 
 class SailSim:
     def __init__(self, address):
@@ -43,7 +43,7 @@ class SailSim:
             version=PROTOCOL_VERSION,
         )
     
-    def diff_drive_bot(self):
+    def space_state_model(self):
         self.latitude  = self.latitude  + self.rudder_slider*1E-6
         self.longitude = self.longitude + self.sail_slider*1E-6
         self.direction = (self.direction + 10) % 360
@@ -51,11 +51,11 @@ class SailSim:
 
     def update(self):
         if self.controller == "MANUAL":
-            self.diff_drive_bot()
+            self.space_state_model()
             
         return self.encode_serial_output()
 
-    def parse_serial_input(self, frame):
+    def decode_serial_input(self, frame):
         payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(payload.header.destination)[2:]:
@@ -76,6 +76,14 @@ class SailSim:
             ),
         )
         return hdlc_encode(payload.to_bytes())
+    
+    def advertise(self):
+        payload = ProtocolPayload(
+            self.header,
+            PayloadType.ADVERTISEMENT,
+            Advertisement(),
+        )
+        return hdlc_encode(payload.to_bytes())
 
 
 class SailSimSerialInterface(threading.Thread):
@@ -83,29 +91,33 @@ class SailSimSerialInterface(threading.Thread):
 
     def __init__(self, callback: Callable):
         self.sailbots = [
-            SailSim("1234567890123456"),
+            SailSim("0000000000000001"),
         ]
 
         self.callback = callback
-        super().__init__(daemon=True) # automatically close when the main program exits
+        super().__init__(daemon=True) # Automatically close when the main program exits
         self.start()
         self._logger = LOGGER.bind(context=__name__)
         self._logger.info("SailBot Simulation Started")
 
     def run(self):
         """Listen continuously at each byte received on the fake serial interface."""
-        
-        next_ad_time = time.time() + delta_t
+        for sailbot in self.sailbots:
+            for byte in sailbot.advertise():
+                self.callback(byte.to_bytes(length=1, byteorder="little"))
+
+        next_time = time.time() + delta_t
 
         while True:
             current_time = time.time()  # Simulate microcontroller clock interruptions
-            if current_time >= next_ad_time:
+            if current_time >= next_time:
                 for sailbot in self.sailbots:
                     for byte in sailbot.update():
                         self.callback(byte.to_bytes(length=1, byteorder="little"))
-                next_ad_time = current_time + delta_t
+
+                next_time = current_time + delta_t
 
     def write(self, bytes_):
         """Write bytes on the fake serial. It is an identical interface to the real gateway."""
         for sailbot in self.sailbots:
-            sailbot.parse_serial_input(bytes_)
+            sailbot.decode_serial_input(bytes_)
