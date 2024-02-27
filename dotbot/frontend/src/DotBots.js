@@ -399,25 +399,25 @@ const DotBots = () => {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.data.address) {
-          if (message.data.direction) {
+          if (message.data.direction !== undefined && message.data.direction !== null) {
             dotbotsTmp[idx].direction = message.data.direction;
           }
-          if (message.data.lh2_position) {
+          if (message.data.lh2_position !== undefined && message.data.lh2_position !== null) {
             const newPosition = {
               x: message.data.lh2_position.x,
               y: message.data.lh2_position.y
             };
-            if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
+            if (dotbotsTmp[idx].lh2_position !== undefined && dotbotsTmp[idx].lh2_position !== null && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
               dotbotsTmp[idx].position_history.push(newPosition);
             }
             dotbotsTmp[idx].lh2_position = newPosition;
           }
-          if (message.data.gps_position) {
+          if (message.data.gps_position !== undefined && message.data.gps_position !== null) {
             const newPosition = {
               latitude: message.data.gps_position.latitude,
               longitude: message.data.gps_position.longitude
             };
-            if (dotbotsTmp[idx].gps_position && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
+            if (dotbotsTmp[idx].gps_position !== undefined && dotbotsTmp[idx].gps_position !== null && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
               dotbotsTmp[idx].position_history.push(newPosition);
             }
             dotbotsTmp[idx].gps_position = newPosition;
