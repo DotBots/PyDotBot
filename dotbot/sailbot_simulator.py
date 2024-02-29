@@ -22,15 +22,13 @@ class SailBotSim:
         self.address = address
 
         # Constants
-        # Values taken from SailBot app
         self.earth_radius_km = 6371
         self.origin_coord_lat = 48.825908
         self.origin_coord_lon = 2.406433
         self.cos_phi_0 = 0.658139837
 
-        self.true_wind_speed = 8    # m/s
+        self.true_wind_speed = 5    # m/s
         self.true_wind_angle = 30	# global coordinates
-
 
         # Initialisations
         self.latitude = 48.832313   # int32 when sending (multiply by 1E6, only six decimals needed)
@@ -39,8 +37,8 @@ class SailBotSim:
 
         self.direction = 0          # uint16 when sending (angles from 0 to 359)
         self.x, self.y = self.convert_geographical_to_cartesian(self.latitude, self.longitude)
-        self.v = 0      # speed [m/s]
-        self.w = 0      # angular velocity [rad/s]
+        self.v = 0.     # speed [m/s]
+        self.w = 0.     # angular velocity [rad/s]
 
         # Inputs
         self.rudder_in = 0    # rudder slider
@@ -76,8 +74,8 @@ class SailBotSim:
         # Convert to radians
         direction_rad = math.radians(self.direction)
         true_wind_angle_rad = math.radians(self.true_wind_angle)
-        rudder_in_rad = self.map_slider(self.rudder_in, -math.pi/6, math.pi/6)  # Map rudder slider
-        sail_in_rad = self.map_slider(self.sail_in, -math.pi/5.2, math.pi/5.2)  # Map sail slider
+        rudder_in_rad = self.map_slider(self.rudder_in, -math.pi/6, math.pi/6)
+        sail_in_rad = self.map_slider(self.sail_in, -math.pi/5.2, math.pi/5.2)
         app_wind_speed, app_wind_angle_rad = self.true2apparent_wind(direction_rad, true_wind_angle_rad)
 
         # rudder and sail forces
@@ -88,7 +86,7 @@ class SailBotSim:
         y_dot = self.v * math.cos(direction_rad) + p1 * self.true_wind_speed * math.cos(true_wind_angle_rad)
         direction_dot = self.w
         v_dot = (g_s * math.sin(sail_in_rad) - g_r * p11 * math.sin(rudder_in_rad) - p2 * self.v**2) / p9
-        w_dot = (g_s * (p6 - p7 * math.cos(sail_in_rad)) - g_r * p8 * math.cos(rudder_in_rad) + p3 * self.w * self.v) / p10 
+        w_dot = (g_s * (p6 - p7 * math.cos(sail_in_rad)) - g_r * p8 * math.cos(rudder_in_rad) - p3 * self.w * self.v) / p10 
 
 
         # Update state-space variables and apparent wind angle
@@ -98,12 +96,15 @@ class SailBotSim:
         self.v += v_dot * delta_t
         self.w += w_dot * delta_t
 
+        # Get latitude and longitude from cartesian coordinates
         self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
+
+        # Update apparent wind angle with new speed and heading
         _, self.wind_angle = self.true2apparent_wind(self.direction, true_wind_angle_rad)
 
         # Convert back to degrees
-        self.direction = int(math.degrees(self.direction))
-        self.wind_angle = int(math.degrees(self.wind_angle))
+        self.direction = int(math.degrees(self.direction)) % 360
+        self.wind_angle = int(math.degrees(self.wind_angle)) % 360
 
         # self.x += self.rudder_in
         # self.y += self.sail_in
@@ -116,12 +117,12 @@ class SailBotSim:
                  self.true_wind_speed * math.sin(direction_rad - true_wind_angle_rad))
 
         app_wind_speed = math.sqrt(Wc_aw[0]**2 + Wc_aw[1]**2)
-        app_wind_angle = math.atan2(Wc_aw[1], Wc_aw[0])
+        app_wind_angle = -math.atan2(Wc_aw[1], Wc_aw[0])
 
         return app_wind_speed, app_wind_angle
 
     def map_slider(self, value, target_min, target_max):
-        slider_min, slider_max = -128, 127
+        slider_min, slider_max = -127, 127
         return target_min + (target_max - target_min) * (value - slider_min) / (slider_max - slider_min)
 
     def update(self):
