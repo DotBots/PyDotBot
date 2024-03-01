@@ -60,8 +60,8 @@ class SailBotSim:
 
     def debug_mode(self):
         # Mode for testing GUI, inputs and outputs
-        self.x += self.rudder_in
-        self.y += self.sail_in
+        self.x += 0.1 * self.rudder_in
+        self.y += 0.1 * self.sail_in
         self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
 
         self.direction = (self.direction + math.pi / 36) % (math.pi * 2)
@@ -146,6 +146,8 @@ class SailBotSim:
                 int(self.latitude * 1e6),
                 int(self.longitude * 1e6),
                 ( -int(math.degrees(self.wind_angle)) ) % 360,
+                int( math.degrees(self.map_slider(self.rudder_in, -math.pi/6, math.pi/6)) ),
+                int( math.degrees(self.map_slider(self.sail_in, -math.pi/5.2, math.pi/5.2)) ),
             ),
         )
         return hdlc_encode(payload.to_bytes())

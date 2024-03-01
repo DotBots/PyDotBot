@@ -280,6 +280,8 @@ class Controller:
             dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
             dotbot.wind_angle = self.dotbots[source].wind_angle
+            dotbot.rudder_angle = self.dotbots[source].rudder_angle
+            dotbot.sail_angle = self.dotbots[source].sail_angle
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
@@ -300,6 +302,8 @@ class Controller:
 
         if payload.payload_type in [PayloadType.SAILBOT_DATA]:
             logger = logger.bind(wind_angle=dotbot.wind_angle)
+            logger = logger.bind(rudder_angle=dotbot.rudder_angle)
+            logger = logger.bind(sail_angle=dotbot.sail_angle)
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
@@ -352,7 +356,16 @@ class Controller:
             dotbot.gps_position = new_position
             # Read wind sensor measurements
             dotbot.wind_angle = payload.values.wind_angle
-            logger.info("gps", lat=new_position.latitude, long=new_position.longitude, wind_angle=dotbot.wind_angle)
+            dotbot.rudder_angle = payload.values.rudder_angle
+            dotbot.sail_angle = payload.values.sail_angle
+            logger.info(
+                "gps",
+                lat=new_position.latitude,
+                long=new_position.longitude,
+                wind_angle=dotbot.wind_angle,
+                rudder_angle=dotbot.rudder_angle,
+                sail_angle=dotbot.sail_angle,
+                )
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
@@ -370,6 +383,8 @@ class Controller:
                     address=dotbot.address,
                     direction=dotbot.direction,
                     wind_angle=dotbot.wind_angle,
+                    rudder_angle=dotbot.rudder_angle,
+                    sail_angle=dotbot.sail_angle,
                     lh2_position=dotbot.lh2_position,
                     gps_position=dotbot.gps_position,
                 ),
