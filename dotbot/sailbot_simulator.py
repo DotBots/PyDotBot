@@ -58,6 +58,15 @@ class SailBotSim:
             version=PROTOCOL_VERSION,
         )
 
+    def debug_mode(self):
+        # Mode for testing GUI, inputs and outputs
+        self.x += self.rudder_in
+        self.y += self.sail_in
+        self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
+
+        self.direction = (self.direction + math.pi / 36) % (math.pi * 2)
+        self.wind_angle = (self.wind_angle - math.pi / 10) % (math.pi * 2)
+
     def state_space_model(self):
         # Define model parameters
         p1 = 0.03  # drift coefficient [-]
@@ -114,7 +123,8 @@ class SailBotSim:
 
     def update(self):
         if self.controller == "MANUAL":
-            self.state_space_model()
+            # self.state_space_model()
+            self.debug_mode()
             
         return self.encode_serial_output()
 
