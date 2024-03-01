@@ -405,6 +405,12 @@ const DotBots = () => {
           if (message.data.wind_angle !== undefined && message.data.wind_angle !== null) {
             dotbotsTmp[idx].wind_angle = message.data.wind_angle;
           }
+          if (message.data.rudder_angle !== undefined && message.data.rudder_angle !== null) {
+            dotbotsTmp[idx].rudder_angle = message.data.rudder_angle;
+          }
+          if (message.data.sail_angle !== undefined && message.data.sail_angle !== null) {
+            dotbotsTmp[idx].sail_angle = message.data.sail_angle;
+          }
           if (message.data.lh2_position !== undefined && message.data.lh2_position !== null) {
             const newPosition = {
               x: message.data.lh2_position.x,
