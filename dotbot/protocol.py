@@ -178,26 +178,32 @@ class Lh2RawLocation(ProtocolData):
 
 @dataclass
 class Lh2ProcessedData(ProtocolData):
-    """Dataclass that holds preprocessed LH2 poly-count data."""
+    """Dataclass that holds preprocessed LH2 poly-count data.
+    Two LH sweeps are received."""
 
-    polynomial_index: int = 0x00
-    lfsr_location: int = 0x00000000
-    delay_us: int = 0x00000000
+    polynomial_indices: tuple[int, int] = (0x00, 0x00)
+    lfsr_locations: tuple[int, int] = (0x00000000, 0x00000000)
 
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.polynomial_index, name="poly", length=1),
-            ProtocolField(self.lfsr_location, name="lfsr", length=4),
-            ProtocolField(self.delay_us, name="delay", length=4),
+            ProtocolField(self.polynomial_indices[0], name="poly1", length=1),
+            ProtocolField(self.polynomial_indices[1], name="poly2", length=1),
+            ProtocolField(self.lsfr_locations[0], name="lsfr1", length=4),
+            ProtocolField(self.lsfr_locations[1], name="lsfr2", length=4)
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return Lh2ProcessedData(
-            int.from_bytes(bytes_[0:1], "little"),
-            int.from_bytes(bytes_[1:5], "little"),
-            int.from_bytes(bytes_[5:9], "little"),
+            (
+                int.from_bytes(bytes_[0:1], "little"),
+                int.from_bytes(bytes_[1:2], "little")
+            ),
+            (
+                int.from_bytes(bytes_[2:6], "little"),
+                int.from_bytes(bytes_[6:10], "little")
+            )
         )
 
 
@@ -438,7 +444,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_PROCESSED_DATA:
-            values = Lh2ProcessedData.from_bytes(bytes_[25:34])
+            values = Lh2ProcessedData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
