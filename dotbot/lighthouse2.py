@@ -119,7 +119,7 @@ class LighthouseManager:
             (2, len(self.reference_points), 2), dtype=np.float64
         )
         self.calibration_points_available = [False] * len(self.reference_points)
-        self.last_raw_data = None
+        self.last_processed_data = None
         self.logger = LOGGER.bind(context=__name__)
         self.logger.info("Lighthouse initialized")
 
@@ -144,26 +144,25 @@ class LighthouseManager:
 
     def add_calibration_point(self, index):
         """Register a new camera points for calibration."""
-        if self.last_raw_data is None:
-            self.logger.warning("Missing raw data", index=index)
+        if self.last_processed_data is None:
+            self.logger.warning("Missing processed data", index=index)
             return
 
         self.calibration_points_available[index] = True
 
-        counts = lh2_raw_data_to_counts(self.last_raw_data)
         self.calibration_points[0][index] = np.asarray(
             calculate_camera_point(
-                counts[0],
-                counts[1],
-                self.last_raw_data.locations[0].polynomial_index,
+                self.last_processed_data.lfsr_locations[0],
+                self.last_processed_data.lfsr_locations[1],
+                self.last_processed_data.polynomial_indices[0],
             ),
             dtype=np.float64,
         )
         self.calibration_points[1][index] = np.asarray(
             calculate_camera_point(
-                counts[0],
-                counts[1],
-                self.last_raw_data.locations[1].polynomial_index,
+                self.last_processed_data.lfsr_locations[0],
+                self.last_processed_data.lfsr_locations[1],
+                self.last_processed_data.polynomial_indices[1],
             ),
             dtype=np.float64,
         )
@@ -288,3 +287,42 @@ class LighthouseManager:
         return DotBotLH2Position(
             x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
         )
+
+    # def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
+    #     """Compute the position coordinates from LH2 raw data and available calibration."""
+    #     if self.state != LighthouseManagerState.Calibrated:
+    #         return None
+    #
+    #     if any(raw_data.locations[index].bits == 0 for index in range(2)):
+    #         return None
+    #
+    #     counts = lh2_raw_data_to_counts(raw_data)
+    #     print(counts)
+    #     camera_points = np.asarray(
+    #         [
+    #             calculate_camera_point(
+    #                 counts[0], counts[1], raw_data.locations[0].polynomial_index
+    #             ),
+    #             calculate_camera_point(
+    #                 counts[0], counts[1], raw_data.locations[1].polynomial_index
+    #             ),
+    #         ],
+    #         dtype=np.float64,
+    #     )
+    #
+    #     pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
+    #     scales = (1 / self.calibration_data.zeta) / np.matmul(
+    #         self.calibration_data.normal, pts_cam_new.T
+    #     )
+    #     scales_matrix = np.vstack((scales, scales, scales))
+    #     final_points = scales_matrix * pts_cam_new.T
+    #     final_points = final_points.T
+    #     corners_planar = final_points.dot(self.calibration_data.random_rodriguez.T)[
+    #         :, 0:2
+    #     ][1].reshape(1, 1, 2)
+    #     pts_meter_corners = cv2.perspectiveTransform(
+    #         corners_planar, self.calibration_data.m
+    #     ).reshape(-1, 2)
+    #     return DotBotLH2Position(
+    #         x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
+    #     )
