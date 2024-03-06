@@ -259,6 +259,7 @@ class LighthouseManager:
             return None
 
         counts = lh2_raw_data_to_counts(raw_data)
+        print(counts)
         camera_points = np.asarray(
             [
                 calculate_camera_point(

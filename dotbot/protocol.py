@@ -8,7 +8,7 @@ from enum import Enum, IntEnum
 from itertools import chain
 from typing import List
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 
 
 class PayloadType(Enum):
@@ -25,7 +25,8 @@ class PayloadType(Enum):
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
-    INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
+    LH2_PROCESSED_DATA = 11
+    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -33,6 +34,7 @@ class ApplicationType(IntEnum):
 
     DotBot = 0  # pylint: disable=invalid-name
     SailBot = 1  # pylint: disable=invalid-name
+    LH2_mini_mote = 2  # pylint: disable=invalid-name
 
 
 class ControlModeType(IntEnum):
@@ -171,6 +173,31 @@ class Lh2RawLocation(ProtocolData):
             int.from_bytes(bytes_[0:8], "little"),
             int.from_bytes(bytes_[8:9], "little"),
             int.from_bytes(bytes_[9:10], "little", signed=True),
+        )
+
+
+@dataclass
+class Lh2ProcessedData(ProtocolData):
+    """Dataclass that holds preprocessed LH2 poly-count data."""
+
+    polynomial_index: int = 0x00
+    lfsr_location: int = 0x00000000
+    delay_us: int = 0x00000000
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.polynomial_index, name="poly", length=1),
+            ProtocolField(self.lfsr_location, name="lfsr", length=4),
+            ProtocolField(self.delay_us, name="delay", length=4),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return Lh2ProcessedData(
+            int.from_bytes(bytes_[0:1], "little"),
+            int.from_bytes(bytes_[1:5], "little"),
+            int.from_bytes(bytes_[5:9], "little"),
         )
 
 
@@ -410,6 +437,8 @@ class ProtocolPayload:
             values = SailBotData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
+        elif payload_type == PayloadType.LH2_PROCESSED_DATA:
+            values = Lh2ProcessedData.from_bytes(bytes_[25:34])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:

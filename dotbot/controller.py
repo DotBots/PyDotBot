@@ -334,6 +334,10 @@ class Controller:
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
+        # Get and log the the processed LH2 packets
+        if payload.payload_type == PayloadType.LH2_PROCESSED_DATA:
+            logger.info("lh2-4", poly=payload.values.polynomial_index, lfsr_count=payload.values.lfsr_location, delay=payload.values.delay_us)
+
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
