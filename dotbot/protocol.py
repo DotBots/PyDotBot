@@ -189,8 +189,8 @@ class Lh2ProcessedData(ProtocolData):
         return [
             ProtocolField(self.polynomial_indices[0], name="poly1", length=1),
             ProtocolField(self.polynomial_indices[1], name="poly2", length=1),
-            ProtocolField(self.lsfr_locations[0], name="lsfr1", length=4),
-            ProtocolField(self.lsfr_locations[1], name="lsfr2", length=4)
+            ProtocolField(self.lfsr_locations[0], name="lfsr1", length=4),
+            ProtocolField(self.lfsr_locations[1], name="lfsr2", length=4)
         ]
 
     @staticmethod
