@@ -17,7 +17,7 @@ import numpy as np
 
 from dotbot.logger import LOGGER
 from dotbot.models import DotBotCalibrationStateModel, DotBotLH2Position
-from dotbot.protocol import Lh2RawData
+from dotbot.protocol import Lh2ProcessedData, Lh2RawData
 
 if sys.platform == "win32":
     LIB_EXT = "dll"
@@ -38,6 +38,7 @@ CALIBRATION_DIR = Path.home() / ".pydotbot"
 
 
 def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
+    # TODO: Delete this function (this logic is now in the DotBot)
     counts = [0] * 2
     pos_A = 0
     pos_B = 0
@@ -59,6 +60,7 @@ def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
 
 
 def lh2_raw_data_to_counts(raw_data: Lh2RawData) -> List[int]:
+    # TODO: Delete this function (this logic is now in the DotBot)
     """Convert bits sequence to an array of counts."""
     return _lh2_raw_data_to_counts(raw_data, LH2_LIB.reverse_count_p)
 
@@ -249,23 +251,22 @@ class LighthouseManager:
         self.state = LighthouseManagerState.Calibrated
         self.logger.info("Calibration done", data=self.calibration_data)
 
-    def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
+    def compute_position(self, processed_data: Lh2ProcessedData) -> Optional[DotBotLH2Position]:
         """Compute the position coordinates from LH2 raw data and available calibration."""
         if self.state != LighthouseManagerState.Calibrated:
             return None
 
-        if any(raw_data.locations[index].bits == 0 for index in range(2)):
-            return None
-
-        counts = lh2_raw_data_to_counts(raw_data)
-        print(counts)
         camera_points = np.asarray(
             [
                 calculate_camera_point(
-                    counts[0], counts[1], raw_data.locations[0].polynomial_index
+                    processed_data.lfsr_locations[0],
+                    processed_data.lfsr_locations[1],
+                    processed_data.polynomial_indices[0]
                 ),
                 calculate_camera_point(
-                    counts[0], counts[1], raw_data.locations[1].polynomial_index
+                    processed_data.lfsr_locations[0],
+                    processed_data.lfsr_locations[1],
+                    processed_data.polynomial_indices[1]
                 ),
             ],
             dtype=np.float64,
@@ -287,42 +288,3 @@ class LighthouseManager:
         return DotBotLH2Position(
             x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
         )
-
-    # def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
-    #     """Compute the position coordinates from LH2 raw data and available calibration."""
-    #     if self.state != LighthouseManagerState.Calibrated:
-    #         return None
-    #
-    #     if any(raw_data.locations[index].bits == 0 for index in range(2)):
-    #         return None
-    #
-    #     counts = lh2_raw_data_to_counts(raw_data)
-    #     print(counts)
-    #     camera_points = np.asarray(
-    #         [
-    #             calculate_camera_point(
-    #                 counts[0], counts[1], raw_data.locations[0].polynomial_index
-    #             ),
-    #             calculate_camera_point(
-    #                 counts[0], counts[1], raw_data.locations[1].polynomial_index
-    #             ),
-    #         ],
-    #         dtype=np.float64,
-    #     )
-    #
-    #     pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
-    #     scales = (1 / self.calibration_data.zeta) / np.matmul(
-    #         self.calibration_data.normal, pts_cam_new.T
-    #     )
-    #     scales_matrix = np.vstack((scales, scales, scales))
-    #     final_points = scales_matrix * pts_cam_new.T
-    #     final_points = final_points.T
-    #     corners_planar = final_points.dot(self.calibration_data.random_rodriguez.T)[
-    #         :, 0:2
-    #     ][1].reshape(1, 1, 2)
-    #     pts_meter_corners = cv2.perspectiveTransform(
-    #         corners_planar, self.calibration_data.m
-    #     ).reshape(-1, 2)
-    #     return DotBotLH2Position(
-    #         x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
-    #     )
