@@ -37,6 +37,7 @@ nitpick_ignore_regex = [
     ("py:class", r"Path"),
     ("py:class", r"SettingsConfigDict"),
     ("py:class", r"<MagicMock.*>"),
+    ("py:class", r"ComputedFieldInfo"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
