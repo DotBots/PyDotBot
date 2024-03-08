@@ -671,7 +671,7 @@ async def test_lh2_calibration():
         point.assert_called_with(2)
 
     with patch(
-        "dotbot.server.api.controller.lh2_manager.compute_calibration"
+        "dotbot.server.api.controller.lh2_manager.compute_calibration_1LH"
     ) as calibration:
         response = await client.put(
             "/controller/lh2/calibration",

@@ -90,13 +90,19 @@ def _unitize(x_in, y_in):
 
 
 @dataclass
-class CalibrationData:
+class CalibrationData_2LH:
     """Class that stores calibration data."""
 
     zeta: float
     random_rodriguez: np.array
     normal: np.array
     m: np.array
+
+@dataclass
+class CalibrationData_1LH:
+    """Class that stores calibration data."""
+
+    H: np.array
 
 
 class LighthouseManagerState(Enum):
@@ -117,8 +123,8 @@ class LighthouseManager:
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
-        self.calibration_points = np.zeros(
-            (2, len(self.reference_points), 2), dtype=np.float64
+        self.calibration_points = np.zeros(                         # changed to only 1 LH, later change to 4 LH.
+            (len(self.reference_points), 2), dtype=np.float64
         )
         self.calibration_points_available = [False] * len(self.reference_points)
         self.last_processed_data = None
@@ -136,7 +142,7 @@ class LighthouseManager:
             return DotBotCalibrationStateModel(state="done")
         return DotBotCalibrationStateModel(state="unknown")
 
-    def _load_calibration(self) -> Optional[CalibrationData]:
+    def _load_calibration(self) -> Optional[CalibrationData_1LH]:
         if not os.path.exists(self.calibration_output_path):
             return None
         with open(self.calibration_output_path, "rb") as calibration_file:
@@ -152,19 +158,11 @@ class LighthouseManager:
 
         self.calibration_points_available[index] = True
 
-        self.calibration_points[0][index] = np.asarray(
+        self.calibration_points[index] = np.asarray(
             calculate_camera_point(
                 self.last_processed_data.lfsr_locations[0],
                 self.last_processed_data.lfsr_locations[1],
                 self.last_processed_data.polynomial_indices[0],
-            ),
-            dtype=np.float64,
-        )
-        self.calibration_points[1][index] = np.asarray(
-            calculate_camera_point(
-                self.last_processed_data.lfsr_locations[0],
-                self.last_processed_data.lfsr_locations[1],
-                self.last_processed_data.polynomial_indices[1],
             ),
             dtype=np.float64,
         )
@@ -175,7 +173,31 @@ class LighthouseManager:
             self.state = LighthouseManagerState.Ready
         self.logger.info("Calibration point added", index=index, state=self.state)
 
-    def compute_calibration(self):  # pylint: disable=too-many-locals
+    def compute_calibration_1LH(self):  # pylint: disable=too-many-locals
+        """Compute the calibration values and matrices."""
+        if self.state != LighthouseManagerState.Ready:
+            self.logger.warning("Not ready, skipping calibration")
+            return
+
+        self.logger.info("Calibrating", points=self.calibration_points)
+
+        camera_points_arr = np.asarray(self.calibration_points, dtype=np.float64)
+        homography_mat, status = cv2.findHomography(
+            camera_points_arr,
+            np.array(self.reference_points, dtype=np.float64) + 0.5,
+            method=cv2.RANSAC,
+            ransacReprojThreshold=0.001,
+        )
+
+        self.calibration_data = CalibrationData_1LH(homography_mat)
+
+        with open(self.calibration_output_path, "wb") as output_file:
+            pickle.dump(self.calibration_data, output_file)
+
+        self.state = LighthouseManagerState.Calibrated
+        self.logger.info("Calibration done", data=self.calibration_data)
+
+    def compute_calibration_2LH(self):  # pylint: disable=too-many-locals
         """Compute the calibration values and matrices."""
         if self.state != LighthouseManagerState.Ready:
             self.logger.warning("Not ready, skipping calibration")
@@ -243,7 +265,7 @@ class LighthouseManager:
             5.0,
         )
 
-        self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
+        self.calibration_data = CalibrationData_1LH(zeta, random_rodriguez, n, M)
 
         with open(self.calibration_output_path, "wb") as output_file:
             pickle.dump(self.calibration_data, output_file)
@@ -251,7 +273,32 @@ class LighthouseManager:
         self.state = LighthouseManagerState.Calibrated
         self.logger.info("Calibration done", data=self.calibration_data)
 
-    def compute_position(self, processed_data: Lh2ProcessedData) -> Optional[DotBotLH2Position]:
+    def compute_position_1LH(self, processed_data: Lh2ProcessedData) -> Optional[DotBotLH2Position]:
+        """Compute the position coordinates from LH2 raw data and available calibration."""
+        if self.state != LighthouseManagerState.Calibrated:
+            return None
+
+        camera_points = np.asarray(
+            [
+                calculate_camera_point(
+                    processed_data.lfsr_locations[0],
+                    processed_data.lfsr_locations[1],
+                    processed_data.polynomial_indices[0]
+                )
+            ],
+            dtype=np.float64,
+        )
+        camera_points = camera_points[np.newaxis,:,:]  # Shape of the input array must be (1, n_points, 2)
+
+        pts_meter_corners = cv2.perspectiveTransform(
+            camera_points, self.calibration_data.H
+        ).reshape(-1, 2)
+
+        return DotBotLH2Position(
+            x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
+        )
+    
+    def compute_position_2LH(self, processed_data: Lh2ProcessedData) -> Optional[DotBotLH2Position]:
         """Compute the position coordinates from LH2 raw data and available calibration."""
         if self.state != LighthouseManagerState.Calibrated:
             return None

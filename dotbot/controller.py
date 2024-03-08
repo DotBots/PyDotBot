@@ -223,7 +223,7 @@ class Controller:
         self.lh2_manager.last_processed_data = payload.values
         if self.lh2_manager.state != LighthouseManagerState.Calibrated:
             return None
-        return self.lh2_manager.compute_position(payload.values)
+        return self.lh2_manager.compute_position_1LH(payload.values)
 
     def handle_byte(self, byte):
         """Called on each byte received over UART."""
@@ -333,7 +333,8 @@ class Controller:
 
         # Get and log the the processed LH2 packets
         if payload.payload_type == PayloadType.LH2_PROCESSED_DATA:
-            logger.info("lh2-4", poly=payload.values.polynomial_indices, lfsr_count=payload.values.lfsr_locations)
+            if self.settings.verbose:
+                logger.info("lh2-4", poly=payload.values.polynomial_indices, lfsr_count=payload.values.lfsr_locations)
 
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
