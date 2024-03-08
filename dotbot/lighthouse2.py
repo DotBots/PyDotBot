@@ -189,7 +189,7 @@ class LighthouseManager:
             ransacReprojThreshold=0.001,
         )
 
-        self.calibration_data = CalibrationData_1LH(homography_mat)
+        self.calibration_data = CalibrationData_1LH(homography_mat.astype(np.float32))
 
         with open(self.calibration_output_path, "wb") as output_file:
             pickle.dump(self.calibration_data, output_file)
@@ -265,7 +265,7 @@ class LighthouseManager:
             5.0,
         )
 
-        self.calibration_data = CalibrationData_1LH(zeta, random_rodriguez, n, M)
+        self.calibration_data = CalibrationData_1LH(zeta, random_rodriguez, n, M.astype(np.float32))
 
         with open(self.calibration_output_path, "wb") as output_file:
             pickle.dump(self.calibration_data, output_file)

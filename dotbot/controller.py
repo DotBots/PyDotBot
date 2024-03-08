@@ -33,8 +33,10 @@ from dotbot.models import (
 from dotbot.mqtt import mqtt
 from dotbot.protocol import (
     PROTOCOL_VERSION,
+    DB_BROADCAST_ADDRESS,
     ApplicationType,
     LH2Location,
+    OneLhCalibData,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
@@ -395,6 +397,29 @@ class Controller:
                 f"/dotbots/{self.settings.swarm_id}/notifications",
                 json.dumps(notification.dict(exclude_none=True)),
             )
+
+    def send_calibration_data(self):
+        """Sends calibration data to the dotbots."""
+        if self.lh2_manager.calibration_data is None:
+            return
+        header = ProtocolHeader(
+            destination=DB_BROADCAST_ADDRESS,
+            source=int(self.settings.gw_address, 16),
+            swarm_id=int(self.settings.swarm_id, 16),
+            application=ApplicationType.DotBot,
+            version=PROTOCOL_VERSION,
+        )
+        homography_mat = self.lh2_manager.calibration_data.H
+        self.send_payload(
+            ProtocolPayload(
+                header,
+                PayloadType.ONELH_CALIB_DATA,
+                OneLhCalibData(
+                    0x00,
+                    homography_mat.flatten()
+                ),
+            )
+        )
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""

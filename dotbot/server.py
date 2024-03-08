@@ -294,6 +294,7 @@ async def controller_add_lh2_calibration_point(point_idx: int):
 async def controller_apply_lh2_calibration():
     """Apply LH2 calibration."""
     api.controller.lh2_manager.compute_calibration_1LH()
+    api.controller.send_calibration_data()
 
 
 @api.get(

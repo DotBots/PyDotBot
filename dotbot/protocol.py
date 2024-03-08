@@ -1,6 +1,8 @@
 """Module for the Dotbot protocol API."""
 
 import dataclasses
+import numpy as np
+import struct
 from abc import ABC, abstractmethod
 from binascii import hexlify
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from itertools import chain
 from typing import List
 
 PROTOCOL_VERSION = 9
+DB_BROADCAST_ADDRESS = 0xffffffffffffffff
 
 
 class PayloadType(Enum):
@@ -26,7 +29,8 @@ class PayloadType(Enum):
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
     LH2_PROCESSED_DATA = 11
-    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
+    ONELH_CALIB_DATA = 12
+    INVALID_PAYLOAD = 13  # Increase each time a new payload type is added
 
 
 class ApplicationType(IntEnum):
@@ -204,6 +208,28 @@ class Lh2ProcessedData(ProtocolData):
                 int.from_bytes(bytes_[2:6], "little"),
                 int.from_bytes(bytes_[6:10], "little")
             )
+        )
+
+
+@dataclass
+class OneLhCalibData(ProtocolData):
+    """Dataclass that holds calibration data (homography matrix) to be sent to the DotBots."""
+
+    base_station = (0x00)
+    homography_mat: tuple[np.float32, ...] = 9 * (0x00000000,)
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.base_station, name="base_station", length=1),
+            ProtocolField(self.homography_mat, name="H", length=4*9)
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return OneLhCalibData(
+            int.from_bytes(bytes_[0:1], "little"),
+            struct.unpack('<fffffffff', bytes_[1:1+9*4])
         )
 
 
@@ -449,6 +475,8 @@ class ProtocolPayload:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
             values = GPSWaypoints.from_bytes(None)
+        elif payload_type == PayloadType.ONELH_CALIB_DATA:
+            values = OneLhCalibData.from_bytes(bytes_[25:25+1+4*9])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type.value}'"
