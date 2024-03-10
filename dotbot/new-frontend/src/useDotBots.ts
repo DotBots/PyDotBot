@@ -93,6 +93,7 @@ export default function useDotBots() {
     }
   };
 
+  console.log(import.meta.env)
   console.log("WS URL: ", WEBSOCKET_URL);
 
   useWebSocket(WEBSOCKET_URL, {

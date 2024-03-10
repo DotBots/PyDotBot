@@ -16,6 +16,7 @@
     "@types/eslint": "^8.56.5",
     "@types/node": "^20.11.25",
     "axios": "^1.6.7",
+    "dotenv": "^16.4.5",
     "framer-motion": "^11.0.8",
     "react": "^18.2.0",
     "react-colorful": "^5.6.1",
