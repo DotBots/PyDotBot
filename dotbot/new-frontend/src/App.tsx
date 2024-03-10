@@ -1,32 +1,24 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from 'react'
+import useDotBots from './useDotBots'
+import { DotBotModel } from './models'
 
 function App() {
+
+  const { dotBots } = useDotBots();
 
   return (
     <>
       <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+        { dotBots && dotBots.map((dotBot: DotBotModel, index: number) => {
+          return (
+            <div key={index}>
+              <div>DotBot {index + 1}</div>
+              <div>Address: {dotBot.address}</div>
+              <div>Position: {dotBot.lh2_position && <b>{dotBot.lh2_position.x}, {dotBot.lh2_position.y}</b>}</div>
+            </div>
+          )
+        })}
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
     </>
   )
 }
