@@ -100,7 +100,7 @@ export async function applyLH2Calibration() {
   );
 }
 
-export async function apiAddLH2CalibrationPoint(index: number | string) {
+export async function addLH2CalibrationPoint(index: number | string) {
   return await axios.post(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/lh2/calibration/${index}`,
   );
