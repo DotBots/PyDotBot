@@ -31,79 +31,79 @@ export enum DotBotNotificationCommand {
 }
 
 /* Simple model to hold a DotBot address. */
-export type DotBotAddressModel = {
+export interface DotBotAddressModel {
   address: string;
-};
+}
 
 /* Model that holds the controller LH2 calibration state. */
-export type DotBotCalibrationStateModel = {
+export interface DotBotCalibrationStateModel {
   state: string;
-};
+}
 
 /* Model class that defines a move raw command. */
-export type DotBotMoveRawCommandModel = {
+export interface DotBotMoveRawCommandModel {
   left_x: number;
   left_y: number;
   right_x: number;
   right_y: number;
-};
+}
 
 /* Model class that defines an RGB LED command. */
-export type DotBotRgbLedCommandModel = {
+export interface DotBotRgbLedCommandModel {
   red: number;
   green: number;
   blue: number;
-};
+}
 
 /* Position of a DotBot. */
-export type DotBotLH2Position = {
+export interface DotBotLH2Position {
   x: number;
   y: number;
   z?: number;
-};
+}
 
 /* Mode of a DotBot. */
-export type DotBotControlModeModel = {
+export interface DotBotControlModeModel {
   mode: ControlModeType;
-};
+}
 
 /* GPS position of a DotBot, usually running a SailBot application. */
-export type DotBotGPSPosition = {
+export interface DotBotGPSPosition {
   latitude: number;
   longitude: number;
-};
+}
 
 /* Waypoints model. */
-export type DotBotWaypoints = {
+export interface DotBotWaypoints {
   threshold: number;
   waypoints: (DotBotLH2Position | DotBotGPSPosition)[];
-};
+}
 
 /* Model class used to filter DotBots. */
-export type DotBotQueryModel = {
+export interface DotBotQueryModel {
   max_positions: number;
   application?: ApplicationType;
   mode?: ControlModeType;
   status?: DotBotStatus;
   swarm?: string;
-};
+}
 
 /* Update notification model. */
-export type DotBotNotificationUpdate = {
+export interface DotBotNotificationUpdate {
   address: string;
   direction?: number;
   lh2_position?: DotBotLH2Position;
   gps_position?: DotBotGPSPosition;
-};
+}
 
 /* Model class used to send controller notifications. */
-export type DotBotNotificationModel = {
+export interface DotBotNotificationModel {
   cmd: DotBotNotificationCommand;
   data?: DotBotNotificationUpdate;
-};
+}
 
 /* Model class that defines a DotBot. */
-export type DotBotModel = {
+export interface DotBotModel {
   address: string;
   application: ApplicationType;
   swarm: string;
@@ -118,4 +118,4 @@ export type DotBotModel = {
   waypoints: (DotBotLH2Position | DotBotGPSPosition)[];
   waypoints_threshold: number;
   position_history: (DotBotLH2Position | DotBotGPSPosition)[];
-};
+}
