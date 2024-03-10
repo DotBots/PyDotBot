@@ -25,7 +25,7 @@ export async function fetchDotbot(address: string) {
   return dotbot
 }
 
-export const fetchActiveDotbotAddress = async () => {
+export async function fetchActiveDotbotAddress() {
   const { data: address } = await axios.get<models.DotBotAddressModel>(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`
   )
