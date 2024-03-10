@@ -59,7 +59,7 @@ export type DotBotRgbLedCommandModel = {
 export type DotBotLH2Position = {
   x: number;
   y: number;
-  z: number;
+  z?: number;
 };
 
 /* Mode of a DotBot. */
