@@ -1,9 +1,8 @@
 import axios from "axios";
 import * as models from "./models";
 
-export const inactiveAddress = "0000000000000000";
 
-export async function updateActiveDotbotAddress(address: string) {
+export async function updateActiveDotBotAddress(address: string) {
   return await axios.put(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`,
     { address: address },
@@ -11,21 +10,21 @@ export async function updateActiveDotbotAddress(address: string) {
   );
 }
 
-export async function fetchDotbots() {
+export async function fetchDotBots() {
   const { data: dotbots } = await axios.get<models.DotBotModel[]>(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots`
   )
   return dotbots
 }
 
-export async function fetchDotbot(address: string) {
+export async function fetchDotBot(address: string) {
   const { data: dotbot } = await axios.get<models.DotBotModel>(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbots/${address}`,
   )
   return dotbot
 }
 
-export async function fetchActiveDotbotAddress() {
+export async function fetchActiveDotBotAddress() {
   const { data: address } = await axios.get<models.DotBotAddressModel>(
     `${process.env.REACT_APP_DOTBOTS_BASE_URL}/controller/dotbot_address`
   )
