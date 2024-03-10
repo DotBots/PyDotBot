@@ -4,44 +4,44 @@
  */
 
 /* Types of DotBot applications. */
-enum ApplicationType {
+export enum ApplicationType {
   DotBot = 0,
   SailBot = 1,
   LH2_mini_mote = 2,
 }
 
 /* Types of DotBot control modes. */
-enum ControlModeType {
+export enum ControlModeType {
   MANUAL = 0,
   AUTO = 1,
 }
 
 /* Status of a DotBot. */
-enum DotBotStatus {
+export enum DotBotStatus {
   ALIVE = 0,
   LOST = 1,
   DEAD = 2,
 }
 
 /* Notification command of a DotBot. */
-enum DotBotNotificationCommand {
+export enum DotBotNotificationCommand {
   NONE = 0,
   RELOAD = 1,
   UPDATE = 2,
 }
 
 /* Simple model to hold a DotBot address. */
-type DotBotAddressModel = {
+export type DotBotAddressModel = {
   address: string;
 };
 
 /* Model that holds the controller LH2 calibration state. */
-type DotBotCalibrationStateModel = {
+export type DotBotCalibrationStateModel = {
   state: string;
 };
 
 /* Model class that defines a move raw command. */
-type DotBotMoveRawCommandModel = {
+export type DotBotMoveRawCommandModel = {
   left_x: number;
   left_y: number;
   right_x: number;
@@ -49,38 +49,38 @@ type DotBotMoveRawCommandModel = {
 };
 
 /* Model class that defines an RGB LED command. */
-type DotBotRgbLedCommandModel = {
+export type DotBotRgbLedCommandModel = {
   red: number;
   green: number;
   blue: number;
 };
 
 /* Position of a DotBot. */
-type DotBotLH2Position = {
+export type DotBotLH2Position = {
   x: number;
   y: number;
   z: number;
 };
 
 /* Mode of a DotBot. */
-type DotBotControlModeModel = {
+export type DotBotControlModeModel = {
   mode: ControlModeType;
 };
 
 /* GPS position of a DotBot, usually running a SailBot application. */
-type DotBotGPSPosition = {
+export type DotBotGPSPosition = {
   latitude: number;
   longitude: number;
 };
 
 /* Waypoints model. */
-type DotBotWaypoints = {
+export type DotBotWaypoints = {
   threshold: number;
   waypoints: (DotBotLH2Position | DotBotGPSPosition)[];
 };
 
 /* Model class used to filter DotBots. */
-type DotBotQueryModel = {
+export type DotBotQueryModel = {
   max_positions: number;
   application?: ApplicationType;
   mode?: ControlModeType;
@@ -89,7 +89,7 @@ type DotBotQueryModel = {
 };
 
 /* Update notification model. */
-type DotBotNotificationUpdate = {
+export type DotBotNotificationUpdate = {
   address: string;
   direction?: number;
   lh2_position?: DotBotLH2Position;
@@ -97,13 +97,13 @@ type DotBotNotificationUpdate = {
 };
 
 /* Model class used to send controller notifications. */
-type DotBotNotificationModel = {
+export type DotBotNotificationModel = {
   cmd: DotBotNotificationCommand;
   data?: DotBotNotificationUpdate;
 };
 
 /* Model class that defines a DotBot. */
-type DotBotModel = {
+export type DotBotModel = {
   address: string;
   application: ApplicationType;
   swarm: string;
