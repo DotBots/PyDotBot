@@ -1,4 +1,3 @@
-import React from 'react'
 import useDotBots from './useDotBots'
 import { DotBotModel } from './models'
 
@@ -9,6 +8,7 @@ function App() {
   return (
     <>
       <div>
+        <p>DotBot info</p>
         { dotBots && dotBots.map((dotBot: DotBotModel, index: number) => {
           return (
             <div key={index}>
