@@ -1,4 +1,4 @@
-import { useState, createContext } from "react";
+import { useState } from "react";
 import useDotBots from "./useDotBots";
 import { DotBotsMap } from "./DotBotsMap";
 import { InteractiveSVGContainer } from "./InteractiveSVGContainer";
