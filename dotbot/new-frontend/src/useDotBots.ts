@@ -30,6 +30,14 @@ export default function useDotBots() {
     address: INACTIVE_ADDRESS,
   });
 
+  // Update the active DotBot address.
+  const updateActiveDotBot = useCallback((address: DotBotAddressModel) => {
+    api.updateActiveDotBotAddress(address.address)
+      .then(() => setActiveDotBot(address))
+      .catch((error) => console.error(error));
+  }, [setActiveDotBot]
+  );
+
   // Use the API to fetch the list of dotBots and the active DotBot address.
   const getAllDotBots = useCallback(async () => {
     const data = await api.fetchDotBots().catch((error) => console.log(error));
@@ -101,5 +109,5 @@ export default function useDotBots() {
     shouldReconnect: () => true,
   });
 
-  return { dotBots, activeDotBot };
+  return { dotBots, activeDotBot, updateActiveDotBot };
 }
