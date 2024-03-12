@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { INACTIVE_ADDRESS } from "./constants";
 import {
+  CalibrationState,
   DotBotAddressModel,
   DotBotLH2Position,
   DotBotModel,
@@ -9,10 +10,10 @@ import {
 import * as api from "./api";
 
 const referencePoints = [
-  { x: -0.1, y: 0.1 },
-  { x: 0.1, y: 0.1 },
-  { x: -0.1, y: -0.1 },
-  { x: 0.1, y: -0.1 },
+  { x: 0.4, y: 0.6 },
+  { x: 0.6, y: 0.6 },
+  { x: 0.4, y: 0.4 },
+  { x: 0.6, y: 0.4 },
 ];
 
 interface DotBotPositionProps {
@@ -228,6 +229,9 @@ interface DotBotsMapProps {
   updateActive: (address: DotBotAddressModel) => void;
   showHistory: boolean;
   historySize: number;
+  calibrationState: CalibrationState;
+  pointsChecked: boolean[];
+  setPointsChecked: (points: boolean[]) => void;
 }
 
 export const DotBotsMap = ({
@@ -238,14 +242,10 @@ export const DotBotsMap = ({
   updateActive,
   showHistory,
   historySize,
+  calibrationState,
+  pointsChecked,
+  setPointsChecked,
 }: DotBotsMapProps) => {
-  const [calibrationState, setCalibrationState] = useState("unknown");
-  const [pointsChecked, setPointsChecked] = useState([
-    false,
-    false,
-    false,
-    false,
-  ]);
 
   const pointClicked = useCallback(
     (index: number) => {
@@ -259,9 +259,8 @@ export const DotBotsMap = ({
     [pointsChecked, setPointsChecked],
   );
 
-  const gridSize = `${mapSize + 1}px`;
   return (
-    <svg style={{ height: gridSize, width: gridSize }}>
+    <svg>
       <defs>
         <pattern
           id={`smallGrid${mapSize}`}
@@ -320,13 +319,6 @@ export const DotBotsMap = ({
               updateActive={updateActive}
             />
           ))}
-      {/*
-      {dotBots && dotBots.length > 0 && dotBots[0].lh2_position &&
-        <g transform="scale(500)">
-      <circle cx={dotBots[0].lh2_position.x} cy={dotBots[0].lh2_position.y} r={0.02} fill="red"> </circle>
-          <rect x={0} y={0} width="1" height="1" stroke="black" stroke-width="0.01" fill="transparent"></rect>
-      </g>}
-      */}
       {["running", "ready"].includes(calibrationState) && (
         <>
           {referencePoints.map((point, index) => (
@@ -334,10 +326,11 @@ export const DotBotsMap = ({
               key={index}
               x={point.x}
               y={point.y}
-              width="10"
-              height="10"
+              width="0.02"
+              height="0.02"
               fill={pointsChecked[index] ? "green" : "grey"}
               style={{ cursor: "pointer" }}
+              transform={`scale(${mapSize})`}
               onClick={() => pointClicked(index)}
             >
               <title>{index + 1}</title>

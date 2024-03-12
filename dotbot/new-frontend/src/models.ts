@@ -30,6 +30,8 @@ export enum DotBotNotificationCommand {
   UPDATE = 2,
 }
 
+export type CalibrationState = "unknown" | "ready" | "running" | "done";
+
 /* Simple model to hold a DotBot address. */
 export interface DotBotAddressModel {
   address: string;
@@ -37,7 +39,7 @@ export interface DotBotAddressModel {
 
 /* Model that holds the controller LH2 calibration state. */
 export interface DotBotCalibrationStateModel {
-  state: "unknown" | "ready" | "running" | "done";
+  state: CalibrationState;
 }
 
 /* Model class that defines a move raw command. */

@@ -11,6 +11,14 @@ interface InteractiveSVGContainerProps {
   width: number;
   height: number;
   children?: ReactNode;
+  translationX: number;
+  setTranslationX: (x: number) => void;
+  translationY: number;
+  setTranslationY: (y: number) => void;
+  scale: number;
+  setScale: (scale: number) => void;
+  rotation: number;
+  setRotation: (rotation: number) => void;
 }
 
 /**
@@ -20,13 +28,15 @@ export const InteractiveSVGContainer = ({
   width,
   height,
   children,
+  translationX,
+  setTranslationX,
+  translationY,
+  setTranslationY,
+  scale,
+  setScale,
+  rotation,
+  setRotation,
 }: InteractiveSVGContainerProps): React.JSX.Element => {
-  // Transformation state
-  const [translationX, setTranslationX] = useState<number>(0);
-  const [translationY, setTranslationY] = useState<number>(0);
-  const [scale, setScale] = useState<number>(1);
-  const [rotation, setRotation] = useState<number>(0);
-
   // Mouse state
   const [isPanning, setIsPanning] = useState<boolean>(false);
   const [isRotating, setIsRotating] = useState<boolean>(false);

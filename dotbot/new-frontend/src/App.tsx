@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import useDotBots from "./useDotBots";
 import { DotBotsMap } from "./DotBotsMap";
 import { InteractiveSVGContainer } from "./InteractiveSVGContainer";
@@ -15,16 +15,43 @@ import {
   AiOutlineCompass,
   AiOutlineCaretRight,
   AiOutlinePause,
+  AiOutlineCamera,
 } from "react-icons/ai";
 import { DotBotList } from "./menu/DotBotList";
 import { MapSettings } from "./menu/MapSettings";
+import { CalibrationMenu } from "./menu/CalibrationMenu";
 import { MAP_SIZE, MAX_POSITION_HISTORY } from "./constants";
-
+import { CalibrationState } from "./models";
 
 function App() {
+  // Transformation state (pan, zoom, rotate)
+  const [translationX, setTranslationX] = useState<number>(0);
+  const [translationY, setTranslationY] = useState<number>(0);
+  const [scale, setScale] = useState<number>(1);
+  const [rotation, setRotation] = useState<number>(0);
+  const resetCameraView = useCallback(() => {
+    setTranslationX(0);
+    setTranslationY(0);
+    setScale(1);
+    setRotation(0);
+  }, [setTranslationX, setTranslationY, setScale, setRotation]);
+
+  // Map settings
   const [displayGrid, setDisplayGrid] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [historySize, setHistorySize] = useState(MAX_POSITION_HISTORY);
+
+  // Calibration states
+  const [calibrationState, setCalibrationState] =
+    useState<CalibrationState>("unknown");
+  const [pointsChecked, setPointsChecked] = useState([
+    false,
+    false,
+    false,
+    false,
+  ]);
+
+  // DotBots data
   const { dotBots, activeDotBot, updateActiveDotBot } = useDotBots();
 
   return (
@@ -43,8 +70,31 @@ function App() {
             <DotBotList dotBots={dotBots} />
           </VStack>
         </GridItem>
+        <GridItem gridArea="r">
+          <VStack>
+            <Tooltip hasArrow label="Reset camera view">
+              <IconButton
+                aria-label="Reset camera view"
+                fontSize="25px"
+                icon={<AiOutlineCamera />}
+                onClick={resetCameraView}
+              />
+            </Tooltip>
+          </VStack>
+        </GridItem>
         <GridItem gridArea="c">
-          <InteractiveSVGContainer width={MAP_SIZE} height={MAP_SIZE}>
+          <InteractiveSVGContainer
+            translationX={translationX}
+            setTranslationX={setTranslationX}
+            translationY={translationY}
+            setTranslationY={setTranslationY}
+            scale={scale}
+            setScale={setScale}
+            rotation={rotation}
+            setRotation={setRotation}
+            width={MAP_SIZE}
+            height={MAP_SIZE}
+          >
             {dotBots && (
               <DotBotsMap
                 mapSize={MAP_SIZE}
@@ -54,6 +104,9 @@ function App() {
                 showHistory={showHistory}
                 historySize={historySize}
                 updateActive={updateActiveDotBot}
+                pointsChecked={pointsChecked}
+                setPointsChecked={setPointsChecked}
+                calibrationState={calibrationState}
               />
             )}
           </InteractiveSVGContainer>
@@ -68,13 +121,12 @@ function App() {
               displayGrid={displayGrid}
               setDisplayGrid={setDisplayGrid}
             />
-            <Tooltip hasArrow label="Start/stop calibration">
-              <IconButton
-                aria-label="Start/stop calibration"
-                fontSize="25px"
-                icon={<AiOutlineCompass />}
-              />
-            </Tooltip>
+            <CalibrationMenu
+              calibrationState={calibrationState}
+              setCalibrationState={setCalibrationState}
+              pointsChecked={pointsChecked}
+              setPointsChecked={setPointsChecked}
+            />
             <Tooltip hasArrow label="Start DotBot movement">
               <IconButton
                 aria-label="Start DotBot movement"
