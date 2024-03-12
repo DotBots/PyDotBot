@@ -32,7 +32,7 @@ export const MenuButton = ({
   popoverContent,
 }: MenuButtonProps) => {
   return (
-    <Popover placement={popoverPlacement}>
+    <Popover placement={popoverPlacement} closeOnBlur={false}>
       <Tooltip hasArrow label={label} placement={tooltipPlacement}>
         <Box display="inline-block">
           <PopoverTrigger>
