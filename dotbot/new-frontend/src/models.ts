@@ -76,7 +76,7 @@ export interface DotBotGPSPosition {
 /* Waypoints model. */
 export interface DotBotWaypoints {
   threshold: number;
-  waypoints: (DotBotLH2Position | DotBotGPSPosition)[];
+  waypoints: DotBotLH2Position[] | DotBotGPSPosition[];
 }
 
 /* Model class used to filter DotBots. */
@@ -115,7 +115,7 @@ export interface DotBotModel {
   rgb_led?: DotBotRgbLedCommandModel;
   lh2_position?: DotBotLH2Position;
   gps_position?: DotBotGPSPosition;
-  waypoints: (DotBotLH2Position | DotBotGPSPosition)[];
+  waypoints: DotBotLH2Position[] | DotBotGPSPosition[];
   waypoints_threshold: number;
-  position_history: (DotBotLH2Position | DotBotGPSPosition)[];
+  position_history: DotBotLH2Position[] | DotBotGPSPosition[];
 }
