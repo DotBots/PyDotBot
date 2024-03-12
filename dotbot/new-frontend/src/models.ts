@@ -37,7 +37,7 @@ export interface DotBotAddressModel {
 
 /* Model that holds the controller LH2 calibration state. */
 export interface DotBotCalibrationStateModel {
-  state: string;
+  state: "unknown" | "ready" | "running" | "done";
 }
 
 /* Model class that defines a move raw command. */
