@@ -54,7 +54,7 @@ export const SailBotMarker = (props) => {
   const rudder_angle = props.sailbot.rudder_angle
   const sail_angle = props.sailbot.sail_angle
 
-  console.log("wind: " + wind_angle + ", heading: " + rotation, "(r,s): (" + rudder_angle + ',' + sail_angle + ')')
+  // console.log("wind: " + wind_angle + ", heading: " + rotation, "(r,s): (" + rudder_angle + ',' + sail_angle + ')')
 
   const svgIcon = L.divIcon({
     html: `
@@ -69,10 +69,10 @@ export const SailBotMarker = (props) => {
       <g>
         <g transform="scale(0.7) rotate(${rotation + 180} 20 25)">
           <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
-          <g transform=" translate(20,-7) rotate(${rudder_angle} 0 10)" >
+          <g transform=" translate(20,-7) rotate(${-rudder_angle} 0 10)" >
             <line x1="0" y1="10" x2="0" y2="0" stroke="red" stroke-width="2" opacity="80% "/>
           </g>
-          <g transform=" translate(20,8) rotate(${sail_angle} 0 15)">
+          <g transform=" translate(20,8) rotate(${-sail_angle} 0 15)">
             <line x1="0" y1="15" x2="0" y2="0" stroke="red" stroke-width="2.4" opacity="80%"/>
           </g>
           <g transform=" translate(20,3) rotate(${wind_angle + 180} 0 20)">

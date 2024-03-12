@@ -15,22 +15,22 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-delta_t = 0.1  # seconds, used to simulate microcontroller interruptions
+delta_t = 0.01  # seconds, used to simulate microcontroller interruptions
 
 class SailBotSim:
     def __init__(self, address):
         self.address = address
 
-        # Constants
+        # constants
         self.earth_radius_km = 6371
         self.origin_coord_lat = 48.825908
         self.origin_coord_lon = 2.406433
         self.cos_phi_0 = 0.658139837
 
-        self.true_wind_speed = 5  # [m/s]
-        self.true_wind_angle = 0.34906  # [rad]
+        self.true_wind_speed = 4  # [m/s]
+        self.true_wind_angle = 0.34906  # [rad] (20 degrees)
 
-        # Initialisations
+        # initialisations
         self.latitude = 48.832313
         self.longitude = 2.412689
         self.wind_angle = 0.  # [rad]
@@ -41,9 +41,9 @@ class SailBotSim:
         self.v = 0.     # speed [m/s]
         self.w = 0.     # angular velocity [rad/s]
 
-        # Inputs
+        # inputs
         self.rudder_in = 0    # rudder slider
-        self.sail_in = 0    # sail slider
+        self.sail_in = 0      # sail slider
 
 
         self.controller = "MANUAL"
@@ -59,7 +59,7 @@ class SailBotSim:
         )
 
     def debug_mode(self):
-        # Mode for testing GUI, inputs and outputs
+        # mode for testing GUI, inputs and outputs
         self.x += 0.1 * self.rudder_in
         self.y += 0.1 * self.sail_in
         self.latitude, self.longitude  = self.convert_cartesian_to_geographical(self.x, self.y)
@@ -68,7 +68,7 @@ class SailBotSim:
         self.wind_angle = (self.wind_angle - math.pi / 10) % (math.pi * 2)
 
     def state_space_model(self):
-        # Define model parameters
+        # define model parameters
         p1 = 0.03  # drift coefficient [-]
         p2 = 40    # tangential friction [kgs^−1]
         p3 = 6000  # angular friction [kgm]
@@ -81,11 +81,11 @@ class SailBotSim:
         p10 = 400  # moment of inertia [kgm^2]
         p11 = 0.2  # rudder break coefficient [-]
 
-        # Convert to radians
+        # convert to radians
         rudder_in_rad = self.map_slider(self.rudder_in, -math.pi/6, math.pi/6)
-        sail_in_rad = self.map_slider(self.sail_in, -math.pi/5.2, math.pi/5.2)
+        sail_in_rad = self.map_slider(self.sail_in, -math.pi/2, math.pi/2)
 
-        # Get apparent wind speed and angle, f(v,heading,true_wind)
+        # get apparent wind speed and angle, f(v,heading,true_wind)
         self.true2apparent_wind()
 
         # rudder and sail forces

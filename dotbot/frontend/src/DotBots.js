@@ -148,27 +148,66 @@ const DotBotAccordionItem = (props) => {
 }
 
 const SailBotItem = (props) => {
-
-  const [ rudderValue, setRudderValue ] = useState(0);
-  const [ sailValue, setSailValue ] = useState(0);
-  const [ active, setActive ] = useState(true);
-  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
+  const [rudderValue, setRudderValue] = useState(0);
+  const [sailValue, setSailValue] = useState(0);
+  const [active, setActive] = useState(true);
+  const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('0'); // Used for editing the value as a string
 
   const applyColor = async () => {
     await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
     await props.refresh();
   }
 
-  const rudderUpdate = async (event) => {
-    const newRudderValue = parseInt(event.target.value);
+  const handleTextClick = () => {
+    setIsEditing(true);
+    setEditValue(rudderValue.toString()); // Set the current rudder value for editing
+  };
+
+  const clampValue = (value) => {
+    const num = parseInt(value, 10);
+    if (isNaN(num)) return 0; // Return 0 if not a number
+    return Math.min(Math.max(num, -128), 127);
+  };
+
+  const handleInputChange = (event) => {
+    setEditValue(event.target.value); // Directly set editValue allowing negative and positive numbers
+  };
+
+  const handleInputConfirm = () => {
+    const newValue = clampValue(editValue); // Clamp the value when confirming.
+    console.log("New value to set for rudder:", newValue); // Debug: Log the clamped newValue
+    rudderUpdate(newValue); // Update using the clamped value.
+    setIsEditing(false); // Exit editing mode.
+  };
+
+  // Apply the new value when the input loses focus or "Enter" is pressed
+  const handleInputBlur = () => handleInputConfirm();
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault(); // Prevent form submission or other default actions
+      handleInputConfirm(); // Confirm the input, which includes calling rudderUpdate
+    }
+  };
+
+  const rudderUpdate = (input) => {
+    let newRudderValue;
+    if (typeof input === 'object' && input.target) {
+      newRudderValue = parseInt(input.target.value, 10);
+    } else if (typeof input === 'number') {
+      newRudderValue = input;
+    } else {
+      return;
+    }
     setRudderValue(newRudderValue);
-    setActive(newRudderValue !== 0);
+    setActive(newRudderValue !== undefined && newRudderValue !== null);
   };
 
   const sailUpdate = async (event) => {
     const newSailValue = parseInt(event.target.value);
     setSailValue(newSailValue);
-    setActive(newSailValue !== 0);
+    setActive(newSailValue !== undefined && newSailValue !== null);
   };
 
   const thresholdUpdate = async (event) => {
@@ -208,8 +247,21 @@ const SailBotItem = (props) => {
         <div className="accordion-body">
           <div className="d-flex">
             <div className="mx-auto justify-content-center">
-              <p>{`Rudder: ${rudderValue}`}</p>
-              <input type="range" min="-128" max="127" defaultValue={rudderValue} onChange={rudderUpdate}/>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyPress={handleKeyPress}
+                  autoFocus
+                />
+              ) : (
+                <p onClick={handleTextClick}>{`Rudder: ${rudderValue}`}</p>
+              )}
+              <input
+                type="range" min="-128" max="127" value={rudderValue} onChange={rudderUpdate}
+              />
             </div>
             <div className="mx-auto justify-content-center">
               <p>{`Sail: ${sailValue}`}</p>
