@@ -5,6 +5,7 @@ import {
   useState,
 } from "react";
 import { Box } from "@chakra-ui/react";
+import { MAP_SIZE } from "./constants";
 
 interface InteractiveSVGContainerProps {
   width: number;
@@ -67,16 +68,22 @@ export const InteractiveSVGContainer = ({
 
   // Handle zoom movement
   const handleMouseWheel: WheelEventHandler<SVGSVGElement> = (event) => {
-    const newScale = scale * (1 + event.deltaY * 0.001);
+    const newScale = scale * (1 - event.deltaY * 0.001);
     setScale(newScale);
   };
 
   return (
-    <Box width={width} height={height} bg="gray.50" border="2px solid" borderColor="gray.400">
+    <Box
+      width={width}
+      height={height}
+      bg="gray.50"
+      border="2px solid"
+      borderColor="gray.400"
+    >
       <svg
         width="100%"
         height="100%"
-        viewBox="0 0 100 100"
+        viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`}
         xmlns="http://www.w3.org/2000/svg"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -88,8 +95,15 @@ export const InteractiveSVGContainer = ({
         <g
           transform={`translate(${translationX}, ${translationY}) scale(${scale}) rotate(${rotation})`}
         >
-          <circle cx={50} cy={50} r={1} fill="red" /> {/* Debug arbitrary point */}
-          <circle cx={0} cy={0} r={1} fill="blue" /> {/* Debug origin */}
+          {/* Debug arbitrary point */}
+          <circle
+            cx={MAP_SIZE / 2}
+            cy={MAP_SIZE / 2}
+            r={MAP_SIZE / 100}
+            fill="green"
+          />
+          {/* Debug origin */}
+          <circle cx={0} cy={0} r={MAP_SIZE / 100} fill="blue" />
           {children}
         </g>
       </svg>

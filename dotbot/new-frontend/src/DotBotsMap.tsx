@@ -36,10 +36,10 @@ const DotBotsPosition = ({
         <circle
           cx={point.x}
           cy={point.y}
-          r="4"
+          r="0.008"
           fill="none"
           stroke={color}
-          strokeWidth="2"
+          strokeWidth="0.004"
           opacity={opacity}
         />
       ) : (
@@ -50,13 +50,13 @@ const DotBotsPosition = ({
             x2={point.x}
             y2={point.y}
             stroke={color}
-            strokeWidth="2"
+            strokeWidth="0.004"
             opacity={opacity}
           />
           <circle
             cx={point.x}
             cy={point.y}
-            r="2"
+            r="0.004"
             fill={color}
             opacity={opacity}
           />
@@ -72,6 +72,7 @@ interface DotBotsMapPointProps {
   updateActive: (address: DotBotAddressModel) => void; // Function to update the active DotBot
   mapSize: number;
   showHistory: boolean;
+  historySize: number;
 }
 
 const DotBotsMapPoint = ({
@@ -80,6 +81,7 @@ const DotBotsMapPoint = ({
   updateActive,
   mapSize,
   showHistory,
+  historySize,
 }: DotBotsMapPointProps) => {
   const [hovered, setHovered] = useState<boolean>(false);
 
@@ -95,9 +97,11 @@ const DotBotsMapPoint = ({
   const posX: number = dotBot.lh2_position.x;
   const posY: number = dotBot.lh2_position.y;
   const rotation = dotBot.direction ? dotBot.direction : 0;
-  const radius = dotBot.address === active.address || hovered ? 0.03 : 0.02;
-  const directionShift = dotBot.address === active.address || hovered ? 0.02 : 0.01;
-  const directionSize = dotBot.address === active.address || hovered ? 0.08 : 0.05;
+  const radius = dotBot.address === active.address || hovered ? 0.016 : 0.01;
+  const directionShift =
+    dotBot.address === active.address || hovered ? 0.004 : 0.002;
+  const directionSize =
+    dotBot.address === active.address || hovered ? 0.016 : 0.01;
   const opacity = `${dotBot.status === DotBotStatus.ALIVE ? "80%" : "20%"}`;
   const waypointOpacity = `${dotBot.status === DotBotStatus.ALIVE ? "50%" : "10%"}`;
 
@@ -114,19 +118,16 @@ const DotBotsMapPoint = ({
 
   // Render waypoints, if any
   const waypoints =
-    dotBot.waypoints.length > 0 &&
-    typeof dotBot.waypoints[0] === "object" &&
-    "x" in dotBot.waypoints[0] &&
-    "y" in dotBot.waypoints[0] &&
+    dotBot.waypoints &&
     dotBot.waypoints.map((point, index) =>
       index === 0 ? (
         <circle
           cx={point.x}
           cy={point.y}
-          r="4"
+          r="0.008"
           fill="none"
           stroke={rgbColor}
-          strokeWidth="2"
+          strokeWidth="0.004"
           opacity={waypointOpacity}
         />
       ) : (
@@ -145,15 +146,15 @@ const DotBotsMapPoint = ({
             x2={point.x}
             y2={point.y}
             stroke={rgbColor}
-            strokeWidth="2"
-            strokeDasharray="2"
+            strokeWidth="0.004"
+            strokeDasharray="0.004"
             opacity={waypointOpacity}
           />
           <rect
             x={point.x}
             y={point.y}
-            width="4"
-            height="4"
+            width="0.008"
+            height="0.008"
             fill={rgbColor}
             opacity={waypointOpacity}
           />
@@ -164,14 +165,14 @@ const DotBotsMapPoint = ({
   // Stitch everything together: the waypoints, position history
   // and finally the DotBot circle.
   return (
-    // We wrap everything in a group (<g>) to 
+    // We wrap everything in a group (<g>) to
     // scale [0,1] -> [0,mapSize]
     <g transform={`scale(${mapSize})`}>
       {waypoints}
       {showHistory &&
         dotBot.position_history.length > 0 &&
         dotBot.position_history
-          .slice()
+          .slice(-historySize)
           .map((point, index) => (
             <DotBotsPosition
               key={`position-${index}`}
@@ -179,13 +180,13 @@ const DotBotsMapPoint = ({
               point={point}
               color={rgbColor}
               opacity={opacity}
-              history={dotBot.position_history.slice()}
+              history={dotBot.position_history.slice(-historySize)}
             />
           ))}
       <g
         transform={`rotate(${rotation} ${posX} ${posY})`}
         stroke={`${dotBot.address === active.address ? "black" : "none"}`}
-        strokeWidth="0.005"
+        strokeWidth="0.002"
       >
         <circle
           cx={posX}
@@ -209,7 +210,7 @@ const DotBotsMapPoint = ({
         </circle>
         {dotBot.direction && (
           <polygon
-            points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`}
+            points={`${posX - radius + 0.004},${posY + radius + directionShift} ${posX + radius - 0.004},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`}
             fill={rgbColor}
             opacity={opacity}
           />
@@ -226,6 +227,7 @@ interface DotBotsMapProps {
   active: DotBotAddressModel;
   updateActive: (address: DotBotAddressModel) => void;
   showHistory: boolean;
+  historySize: number;
 }
 
 export const DotBotsMap = ({
@@ -235,6 +237,7 @@ export const DotBotsMap = ({
   active,
   updateActive,
   showHistory,
+  historySize,
 }: DotBotsMapProps) => {
   const [calibrationState, setCalibrationState] = useState("unknown");
   const [pointsChecked, setPointsChecked] = useState([
@@ -313,6 +316,7 @@ export const DotBotsMap = ({
               mapSize={mapSize}
               active={active}
               showHistory={showHistory}
+              historySize={historySize}
               updateActive={updateActive}
             />
           ))}
