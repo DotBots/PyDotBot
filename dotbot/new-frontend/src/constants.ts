@@ -1,3 +1,4 @@
+export const MAP_SIZE = 500;
 export const MAX_WAYPOINTS = 16;
 export const MAX_POSITION_HISTORY = 100;
 export const LH2_DISTANCE_THRESHOLD = 0.01;
