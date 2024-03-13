@@ -46,15 +46,32 @@ export const SailBotMarker = (props) => {
     opacity: `${props.sailbot.status === 0 ? "100%" : "40%"}`,
   };
 
-  // const rotation = (props.sailbot.direction) ? props.sailbot.direction - 180 : 180;
+  function mainsheet2sail_angle(sail_in_length_deg, app_wind_angle_deg) {
+    let sail_out_deg;
+    let sail_in_length_rad = sail_in_length_deg * (Math.PI / 180);
+    let app_wind_angle_rad = app_wind_angle_deg * (Math.PI / 180);
+
+    // tight
+    if (Math.cos(app_wind_angle_rad) + Math.cos(sail_in_length_rad) > 0) {
+      let sign = Math.sign(Math.sin(app_wind_angle_rad));
+      sail_out_deg = Math.abs(sail_in_length_deg) * sign;
+    }
+    // not tight
+    else {
+      sail_out_deg = 180 - app_wind_angle_deg;
+    }
+
+    return sail_out_deg;
+  }
+
   const rotation = props.sailbot.direction
-  // props.sailbot.wind_angle ranges from 0 to 359
   const wind_angle = props.sailbot.wind_angle;
 
   const rudder_angle = props.sailbot.rudder_angle
-  const sail_angle = props.sailbot.sail_angle
+  const sail_angle = mainsheet2sail_angle(props.sailbot.sail_angle, wind_angle)
 
   // console.log("wind: " + wind_angle + ", heading: " + rotation, "(r,s): (" + rudder_angle + ',' + sail_angle + ')')
+
 
   const svgIcon = L.divIcon({
     html: `
