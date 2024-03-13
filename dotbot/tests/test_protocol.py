@@ -8,6 +8,7 @@ from dotbot.protocol import (
     ControlMode,
     ControlModeType,
     DotBotData,
+    EdhocMessage,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -224,13 +225,29 @@ from dotbot.protocol import (
             id="SailBotData",
         ),
         pytest.param(
+            b"\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x34\x12\x00\x08\x00\x00\x00\x00\x0b\x05",
+            ProtocolPayload(
+                ProtocolHeader(
+                    0x1122221111111111,
+                    0x1212121212121212,
+                    0x1234,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
+                ),
+                PayloadType.EDHOC_MESSAGE,
+                EdhocMessage(value=b"\x05"),  # dummy value
+            ),
+            id="EdhocMessage",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\xff",
             ValueError("255 is not a valid PayloadType"),
             id="invalid payload",
         ),
         pytest.param(
-            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0b",
-            ProtocolPayloadParserException("Unsupported payload type '11'"),
+            b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\x0c",
+            ProtocolPayloadParserException("Unsupported payload type '12'"),
             id="unsupported payload type",
         ),
         pytest.param(
