@@ -607,11 +607,15 @@ class Controller:
         if response.status_code == 200:
             self.logger.info("Got voucher", voucher=response.content)
             ead_2 = edhoc_ead_authenticator.prepare_ead_2(response.content)
+        # if True:
             c_r = random.randint(0, 23) # already cbor-encoded as single-byte integer
             message_2 = edhoc_responder.prepare_message_2(
                 lakers.CredentialTransfer.ByValue, c_r, ead_2
+                # lakers.CredentialTransfer.ByReference, c_r, None
+                # lakers.CredentialTransfer.ByValue, c_r, None
             )
             self.pending_edhoc_sessions[dotbot.address] = PendingEdhocSession(dotbot, edhoc_responder, edhoc_ead_authenticator, loc_w, c_r)
+            # self.pending_edhoc_sessions[dotbot.address] = PendingEdhocSession(dotbot, edhoc_responder, None, "http://localhost:18000", c_r)
 
             header = ProtocolHeader(
                 destination=int(dotbot.address, 16),
@@ -627,7 +631,7 @@ class Controller:
                     EdhocMessage(value=message_2),
                 )
             )
-            self.logger.debug("Sent EDHOC message 2", message_2=message_2)
+            self.logger.debug("Sent EDHOC message 2", message_2=message_2.hex(' ').upper())
         else:
             self.logger.error(
                 "Error requesting voucher", status_code=response.status_code
@@ -669,14 +673,16 @@ class Controller:
             edhoc_responder = lakers.EdhocResponder(V, CRED_V)
             try:
                 message_1 = payload.values.value
-                logger.debug("Will process EDHOC message", message_1=message_1)
+                logger.debug("Will process EDHOC message", message_1=message_1.hex(' ').upper())
                 ead_1 = edhoc_responder.process_message_1(message_1)
             except Exception as e:
                 logger.error("Error processing message 1", error=e)
                 return
             if ead_1 and ead_1.label() == 1:
+            # if True:
                 asyncio.create_task(
                     self.request_voucher_for_dotbot(dotbot, edhoc_responder, ead_1, message_1)
+                    # self.request_voucher_for_dotbot(dotbot, edhoc_responder, None, message_1)
                 )
                 return
             else:
@@ -687,11 +693,11 @@ class Controller:
             and source in self.pending_edhoc_sessions
             and payload.payload_type == PayloadType.EDHOC_MESSAGE
         ):
-            logger.info("Potential EDHOC message 3 from pending dotbot")
+            logger.info("Potential EDHOC message 3")
             try:
                 assert payload.values.value[0] == self.pending_edhoc_sessions[source].c_r
                 message_3 = payload.values.value[1:]
-                logger.debug("Will process EDHOC message", message_3=message_3)
+                logger.debug("Will process EDHOC message", message_3=message_3.hex(' ').upper())
                 edhoc_responder = self.pending_edhoc_sessions[source].responder
                 id_cred_i, _ead_3 = edhoc_responder.parse_message_3(message_3)
                 try:
@@ -703,8 +709,9 @@ class Controller:
                     logger.error("Error fetching credential", error=e)
                     self.pending_edhoc_sessions.pop(dotbot.address)
                     return
-                _r_prk_out = edhoc_responder.verify_message_3(cred_i)
+                r_prk_out = edhoc_responder.verify_message_3(cred_i)
                 logger.info("EDHOC handshake worked")
+                logger.debug("Derived prk_out", prk_out=r_prk_out.hex(' ').upper())
             except Exception as e:
                 logger.error("Error processing message 3", error=e)
                 self.pending_edhoc_sessions.pop(dotbot.address)

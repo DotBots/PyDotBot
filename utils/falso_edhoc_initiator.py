@@ -98,6 +98,7 @@ class EdhocBot:
                 message_2 = self.fb.parse_serial_input(message_2)
                 break
         c_r, id_cred_r, ead_2 = self.initiator.parse_message_2(message_2)
+        print("Parsed msg2: ", c_r, id_cred_r, ead_2)
         valid_cred_r = lakers.credential_check_or_fetch(id_cred_r, None)
         assert self.device.process_ead_2(ead_2, valid_cred_r)
         print("Authz voucher is valid!")
@@ -124,7 +125,7 @@ G_W = bytes.fromhex("FFA4F102134029B3B156890B88C9D9619501196574174DCB68A07DB0588
 LOC_W = "http://localhost:18000"
 
 edhoc_bots = []
-for i in range(1, 5):
+for i in range(1, 2):
     with open(f"/home/gfedrech/.dotbots-deployment1/dotbot{i}-priv-bytes", "rb") as f:
         priv = f.read()
     with open(
