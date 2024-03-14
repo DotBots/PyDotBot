@@ -54,7 +54,7 @@ export const SailBotMarker = (props) => {
     // tight
     if (Math.cos(app_wind_angle_rad) + Math.cos(sail_in_length_rad) > 0) {
       let sign = Math.sign(Math.sin(app_wind_angle_rad));
-      sail_out_deg = Math.abs(sail_in_length_deg) * sign;
+      sail_out_deg = sail_in_length_deg * sign;
     }
     // not tight
     else {

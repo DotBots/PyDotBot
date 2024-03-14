@@ -15,7 +15,7 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-delta_t = 0.1  # second
+delta_t = 0.01  # second
 max_rudder_angle = (-math.pi/6, math.pi/6)
 max_sail_angle   = (0, math.pi/2)
 
@@ -82,6 +82,9 @@ class SailBotSim:
         # get apparent wind speed and angle, f(v,heading,true_wind)
         self.true2apparent_wind()
 
+        # map mainsheet length to actual sail angle
+        sail_in_rad = self.mainsheet2sail_angle(sail_length_in_rad, self.app_wind_angle)
+
         # rudder and sail forces
         g_r = p5 * self.v**2 * math.sin(rudder_in_rad)
         g_s = p4 * self.app_wind_speed * math.sin(sail_in_rad - self.app_wind_angle)
@@ -122,18 +125,19 @@ class SailBotSim:
             sail_out_rad = - math.copysign(sail_in_length_rad, math.sin(app_wind_angle))
         # not tight
         else:
-            sail_out_rad = math.pi - app_wind_angle
+            sail_out_rad = math.pi + app_wind_angle
 
+        sail_out_rad = (sail_out_rad + math.pi) % (2 * math.pi) - math.pi
         return sail_out_rad
 
     def update(self):
         if self.controller == "MANUAL":
             # convert to radians
             rudder_in_rad = self.map_slider(self.rudder_slider, max_rudder_angle[0], max_rudder_angle[1])
-            sail_in_length_rad = self.map_slider(self.sail_slider, max_sail_angle[0], max_sail_angle[1])
+            sail_length_in_rad = self.map_slider(self.sail_slider, max_sail_angle[0], max_sail_angle[1])
 
-            # self.state_space_model(rudder_in_rad, sail_in_length_rad)
-            self.debug_mode(rudder_in_rad, sail_in_length_rad)
+            self.state_space_model(rudder_in_rad, sail_length_in_rad)
+            # self.debug_mode(rudder_in_rad, sail_length_in_rad)
             
         return self.encode_serial_output()
 
