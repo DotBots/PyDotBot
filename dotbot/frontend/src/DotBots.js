@@ -153,7 +153,7 @@ const SailBotItem = (props) => {
   const [active, setActive] = useState(true);
   const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState('0'); // Used for editing the value as a string
+  const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
 
   const applyColor = async () => {
     await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
@@ -162,32 +162,30 @@ const SailBotItem = (props) => {
 
   const handleTextClick = () => {
     setIsEditing(true);
-    setEditValue(rudderValue.toString()); // Set the current rudder value for editing
+    setEditValue(rudderValue.toString());
   };
 
   const clampValue = (value) => {
     const num = parseInt(value, 10);
-    if (isNaN(num)) return 0; // Return 0 if not a number
+    if (isNaN(num)) return 0;
     return Math.min(Math.max(num, -128), 127);
   };
 
   const handleInputChange = (event) => {
-    setEditValue(event.target.value); // Directly set editValue allowing negative and positive numbers
+    setEditValue(event.target.value);
   };
 
   const handleInputConfirm = () => {
-    const newValue = clampValue(editValue); // Clamp the value when confirming.
-    console.log("New value to set for rudder:", newValue); // Debug: Log the clamped newValue
-    rudderUpdate(newValue); // Update using the clamped value.
-    setIsEditing(false); // Exit editing mode.
+    const newValue = clampValue(editValue);
+    rudderUpdate(newValue);
+    setIsEditing(false);
   };
 
-  // Apply the new value when the input loses focus or "Enter" is pressed
   const handleInputBlur = () => handleInputConfirm();
   const handleKeyPress = (event) => {
     if (event.key === 'Enter') {
-      event.preventDefault(); // Prevent form submission or other default actions
-      handleInputConfirm(); // Confirm the input, which includes calling rudderUpdate
+      event.preventDefault();
+      handleInputConfirm();
     }
   };
 

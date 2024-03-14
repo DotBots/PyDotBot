@@ -50,14 +50,17 @@ export const SailBotMarker = (props) => {
     let sail_out_deg;
     let sail_in_length_rad = sail_in_length_deg * (Math.PI / 180);
     let app_wind_angle_rad = app_wind_angle_deg * (Math.PI / 180);
+    // The coordinate system used here is different than the one from the simulator.
+    // Sail angle is computed again here, because from a real boat we can only 
+    // receive the opening of the mainsheet, and not the actual angle
 
-    // tight
     if (Math.cos(app_wind_angle_rad) + Math.cos(sail_in_length_rad) > 0) {
+      // sail is tight
       let sign = Math.sign(Math.sin(app_wind_angle_rad));
       sail_out_deg = sail_in_length_deg * sign;
     }
-    // not tight
     else {
+      // sail is loose
       sail_out_deg = 180 - app_wind_angle_deg;
     }
 
@@ -69,9 +72,6 @@ export const SailBotMarker = (props) => {
 
   const rudder_angle = props.sailbot.rudder_angle
   const sail_angle = mainsheet2sail_angle(props.sailbot.sail_angle, wind_angle)
-
-  // console.log("wind: " + wind_angle + ", heading: " + rotation, "(r,s): (" + rudder_angle + ',' + sail_angle + ')')
-
 
   const svgIcon = L.divIcon({
     html: `

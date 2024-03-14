@@ -47,7 +47,6 @@ class SailBotSim:
         self.rudder_slider = 0    # rudder slider
         self.sail_slider   = 0    # sail slider
 
-
         self.controller = "MANUAL"
 
     @property
@@ -96,16 +95,15 @@ class SailBotSim:
         v_dot = (g_s * math.sin(sail_in_rad) - g_r * p11 * math.sin(rudder_in_rad) - p2 * self.v**2) / p9
         w_dot = (g_s * (p6 - p7 * math.cos(sail_in_rad)) - g_r * p8 * math.cos(rudder_in_rad) - p3 * self.w * self.v) / p10 
 
-        # Update state-space variables and apparent wind angle
+        # update state-space variables and apparent wind angle using Euler's method
         self.x += x_dot * delta_t
         self.y += y_dot * delta_t
         self.direction += direction_dot * delta_t
         self.v += v_dot * delta_t
         self.w += w_dot * delta_t
 
-        # Get latitude and longitude from cartesian coordinates
+        # get latitude and longitude from cartesian coordinates
         self.latitude, self.longitude  = self.cartesian2geographical(self.x, self.y)
-
 
     def true2apparent_wind(self):
         Wc_aw = (self.true_wind_speed * math.cos(self.true_wind_angle - self.direction) - self.v,
@@ -118,13 +116,12 @@ class SailBotSim:
         slider_min, slider_max = -128, 128
         return target_min + (target_max - target_min) * (value - slider_min) / (slider_max - slider_min)
 
-
     def mainsheet2sail_angle(self, sail_in_length_rad, app_wind_angle):
-        # tight
         if (math.cos(app_wind_angle) + math.cos(sail_in_length_rad) > 0):
+            # sail is tight
             sail_out_rad = - math.copysign(sail_in_length_rad, math.sin(app_wind_angle))
-        # not tight
         else:
+            # sail is loose
             sail_out_rad = math.pi + app_wind_angle
 
         sail_out_rad = (sail_out_rad + math.pi) % (2 * math.pi) - math.pi
@@ -186,22 +183,21 @@ class SailBotSim:
         return x, y
 
 
+# bidirectional serial interface to control simulated robots
 class SailBotSimSerialInterface(threading.Thread):
-    """Bidirectional serial interface to control simulated robots"""
-
     def __init__(self, callback: Callable):
         self.sailbots = [
             SailBotSim("1234567890123456"),
         ]
 
         self.callback = callback
-        super().__init__(daemon=True) # Automatically close when the main program exits
+        super().__init__(daemon=True) # automatically close when the main program exits
         self.start()
         self._logger = LOGGER.bind(context=__name__)
-        self._logger.info("SailBot Simulation Started")
+        self._logger.info("SailBot simulation started")
 
     def run(self):
-        """Listen continuously at each byte received on the fake serial interface."""
+        # listen continuously at each byte received on the fake serial interface
         for sailbot in self.sailbots:
             for byte in sailbot.advertise():
                 self.callback(byte.to_bytes(length=1, byteorder="little"))
@@ -218,6 +214,6 @@ class SailBotSimSerialInterface(threading.Thread):
                 next_time = current_time + delta_t
 
     def write(self, bytes_):
-        """Write bytes on the fake serial. It is an identical interface to the real gateway."""
+        # write bytes on the fake serial, similar to the real gateway
         for sailbot in self.sailbots:
             sailbot.decode_serial_input(bytes_)
