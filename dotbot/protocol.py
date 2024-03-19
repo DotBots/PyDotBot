@@ -14,17 +14,17 @@ PROTOCOL_VERSION = 8
 class PayloadType(Enum):
     """Types of DotBot payload types."""
 
-    CMD_MOVE_RAW    = 0
-    CMD_RGB_LED     = 1
-    LH2_RAW_DATA    = 2
-    LH2_LOCATION    = 3
-    ADVERTISEMENT   = 4
-    GPS_POSITION    = 5
-    DOTBOT_DATA     = 6
-    CONTROL_MODE    = 7
-    LH2_WAYPOINTS   = 8
-    GPS_WAYPOINTS   = 9
-    SAILBOT_DATA    = 10
+    CMD_MOVE_RAW = 0
+    CMD_RGB_LED = 1
+    LH2_RAW_DATA = 2
+    LH2_LOCATION = 3
+    ADVERTISEMENT = 4
+    GPS_POSITION = 5
+    DOTBOT_DATA = 6
+    CONTROL_MODE = 7
+    LH2_WAYPOINTS = 8
+    GPS_WAYPOINTS = 9
+    SAILBOT_DATA = 10
     INVALID_PAYLOAD = 11  # Increase each time a new payload type is added
 
 
@@ -271,12 +271,12 @@ class SailBotData(ProtocolData):
 
     # Initialized as 0xFFFF because then at controller .py: -500 <= payload.values.direction <= 500
     direction: int = 0xFFFF
-    latitude:  int = 0
+    latitude: int = 0
     longitude: int = 0
-    wind_angle: int = 0xFFFF    # uint angles from 0 to 359
+    wind_angle: int = 0xFFFF  # uint angles from 0 to 359
     rudder_angle: int = 0
     sail_angle: int = 0
-    
+
     @property
     def fields(self) -> List[ProtocolField]:
         return [
@@ -284,20 +284,23 @@ class SailBotData(ProtocolData):
             ProtocolField(self.latitude, name="latitude", length=4, signed=True),
             ProtocolField(self.longitude, name="longitude", length=4, signed=True),
             ProtocolField(self.wind_angle, name="wind_angle", length=2, signed=False),
-            ProtocolField(self.rudder_angle, name="rudder_angle", length=1, signed=True),
+            ProtocolField(
+                self.rudder_angle, name="rudder_angle", length=1, signed=True
+            ),
             ProtocolField(self.sail_angle, name="sail_angle", length=1, signed=True),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return SailBotData(
-            direction = int.from_bytes(bytes_[0:2], "little", signed=False),
-            latitude = int.from_bytes(bytes_[2:6], "little", signed=True),
-            longitude = int.from_bytes(bytes_[6:10], "little", signed=True),
-            wind_angle = int.from_bytes(bytes_[10:12], "little", signed=False),
-            rudder_angle = int.from_bytes(bytes_[12:13], "little", signed=True),
-            sail_angle = int.from_bytes(bytes_[13:14], "little", signed=True),
+            direction=int.from_bytes(bytes_[0:2], "little", signed=False),
+            latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
+            longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
+            wind_angle=int.from_bytes(bytes_[10:12], "little", signed=False),
+            rudder_angle=int.from_bytes(bytes_[12:13], "little", signed=True),
+            sail_angle=int.from_bytes(bytes_[13:14], "little", signed=True),
         )
+
 
 @dataclass
 class Advertisement(ProtocolData):
