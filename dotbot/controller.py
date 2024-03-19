@@ -302,9 +302,11 @@ class Controller:
             logger = logger.bind(direction=dotbot.direction)
 
         if payload.payload_type in [PayloadType.SAILBOT_DATA]:
-            logger = logger.bind(wind_angle=dotbot.wind_angle)
-            logger = logger.bind(rudder_angle=dotbot.rudder_angle)
-            logger = logger.bind(sail_angle=dotbot.sail_angle)
+            logger = logger.bind(
+                wind_angle=dotbot.wind_angle,
+                rudder_angle=dotbot.rudder_angle,
+                sail_angle=dotbot.sail_angle,
+            )
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
