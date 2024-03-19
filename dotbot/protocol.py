@@ -269,7 +269,6 @@ class GPSPosition(ProtocolData):
 class SailBotData(ProtocolData):
     """Dataclass that holds SailBot data from SailBot application."""
 
-    # Initialized as 0xFFFF because then at controller .py: -500 <= payload.values.direction <= 500
     direction: int = 0xFFFF
     latitude: int = 0
     longitude: int = 0
