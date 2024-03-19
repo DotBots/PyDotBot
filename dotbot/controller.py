@@ -96,30 +96,30 @@ class Controller:
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
         # self.dotbots: Dict[str, DotBotModel] = {
-            # "0000000000000001": DotBotModel(
-            #     address="0000000000000001",
-            #     last_seen=time.time(),
-            #     lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
-            #     rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-            # ),
-            # "0000000000000002": DotBotModel(
-            #     address="0000000000000002",
-            #     last_seen=time.time(),
-            #     lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
-            #     rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
-            # ),
-            # "0000000000000003": DotBotModel(
-            #     address="0000000000000003",
-            #     last_seen=time.time(),
-            # ),
-            # "0000000000000004": DotBotModel(
-            #     address="0000000000000004",
-            #     application=ApplicationType.SailBot,
-            #     last_seen=time.time(),
-            #     wind_angle=135,
-            #     rotation=49,
-            #     gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
-            # ),
+        #     "0000000000000001": DotBotModel(
+        #         address="0000000000000001",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+        #     ),
+        #     "0000000000000002": DotBotModel(
+        #         address="0000000000000002",
+        #         last_seen=time.time(),
+        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
+        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
+        #     ),
+        #     "0000000000000003": DotBotModel(
+        #         address="0000000000000003",
+        #         last_seen=time.time(),
+        #     ),
+        #     "0000000000000004": DotBotModel(
+        #         address="0000000000000004",
+        #         application=ApplicationType.SailBot,
+        #         last_seen=time.time(),
+        #         wind_angle=135,
+        #         rotation=49,
+        #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
+        #     ),
         # }
         self.header = ProtocolHeader(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
@@ -150,24 +150,25 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
+        async def _wait_for_handshake(queue):
+            """Waits for handshake reply and checks it."""
+            try:
+                byte = await queue.get()
+            except asyncio.exceptions.CancelledError as exc:
+                raise SerialInterfaceException("Handshake timeout") from exc
+            if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
+                raise SerialInterfaceException("Handshake failed")
+
         if self.settings.port == "sailbot-simulator":
             self.serial = SailBotSimSerialInterface(on_byte_received)
         else:
-            async def _wait_for_handshake(queue):
-                """Waits for handshake reply and checks it."""
-                try:
-                    byte = await queue.get()
-                except asyncio.exceptions.CancelledError as exc:
-                    raise SerialInterfaceException("Handshake timeout") from exc
-                if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
-                    raise SerialInterfaceException("Handshake failed")
-
             self.serial = SerialInterface(
                 self.settings.port, self.settings.baudrate, on_byte_received
             )
-
             self.serial.write(
-                int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
+                int(PROTOCOL_VERSION).to_bytes(
+                    length=1, byteorder="little", signed=False
+                )
             )
             if self.settings.handshake is True:
                 await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
@@ -365,7 +366,7 @@ class Controller:
                 wind_angle=dotbot.wind_angle,
                 rudder_angle=dotbot.rudder_angle,
                 sail_angle=dotbot.sail_angle,
-                )
+            )
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
