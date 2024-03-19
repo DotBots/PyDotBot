@@ -15,7 +15,9 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-delta_t = 0.01  # second
+sim_delta_t = 1  # second
+control_delta_t = 2 # second
+
 max_rudder_angle = (-math.pi / 6, math.pi / 6)
 max_sail_angle = (0, math.pi / 2)
 
@@ -48,7 +50,14 @@ class SailBotSim:
         self.rudder_slider = 0  # rudder slider
         self.sail_slider = 0  # sail slider
 
-        self.controller = "MANUAL"
+        self.controller = "AUTOMATIC"
+
+        # autonomous mode initialisations
+        self.waypoint_threshold = 0
+        self.num_waypoints = 0
+        self.waypoints_x = []
+        self.waypoints_y = []
+        self.waypoint_index = 0
 
     @property
     def header(self):
@@ -60,7 +69,7 @@ class SailBotSim:
             version=PROTOCOL_VERSION,
         )
 
-    def debug_mode(self, rudder_in_rad, sail_length_in_rad):
+    def debug_mode(self):
         # mode for testing GUI, inputs and outputs
         # self.direction = (self.direction + math.pi / 36) % (math.pi * 2)
         self.app_wind_angle = (self.app_wind_angle - math.pi / 36) % (math.pi * 2)
@@ -109,11 +118,11 @@ class SailBotSim:
         ) / p10
 
         # update state-space variables and apparent wind angle using Euler's method
-        self.x += x_dot * delta_t
-        self.y += y_dot * delta_t
-        self.direction += direction_dot * delta_t
-        self.v += v_dot * delta_t
-        self.w += w_dot * delta_t
+        self.x += x_dot * sim_delta_t
+        self.y += y_dot * sim_delta_t
+        self.direction += direction_dot * sim_delta_t
+        self.v += v_dot * sim_delta_t
+        self.w += w_dot * sim_delta_t
 
         # get latitude and longitude from cartesian coordinates
         self.latitude, self.longitude = self.cartesian2geographical(self.x, self.y)
@@ -146,7 +155,7 @@ class SailBotSim:
         return sail_out_rad
 
     def update(self):
-        if self.controller == "MANUAL":
+        if self.controller == "AUTOMATIC":
             # convert to radians
             rudder_in_rad = self.map_slider(
                 self.rudder_slider, max_rudder_angle[0], max_rudder_angle[1]
@@ -155,17 +164,20 @@ class SailBotSim:
                 self.sail_slider, max_sail_angle[0], max_sail_angle[1]
             )
 
-            self.state_space_model(rudder_in_rad, sail_length_in_rad)
-            # self.debug_mode(rudder_in_rad, sail_length_in_rad)
+        # self.state_space_model(rudder_in_rad, sail_length_in_rad)
+        self.debug_mode()
 
         return self.encode_serial_output()
+
+
+    def control_loop_update(self):
+        return
 
     def decode_serial_input(self, frame):
         payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(payload.header.destination)[2:]:
-            if payload.payload_type == PayloadType.CMD_MOVE_RAW:
-                self.controller = "MANUAL"
+            if payload.payload_type == PayloadType.CMD_MOVE_RAW and self.controller == "MANUAL":
                 self.rudder_slider = (
                     payload.values.left_x - 256
                     if payload.values.left_x > 127
@@ -176,6 +188,28 @@ class SailBotSim:
                     if payload.values.right_y > 127
                     else payload.values.right_y
                 )
+
+            elif payload.payload_type == PayloadType.GPS_WAYPOINTS and self.controller == "AUTOMATIC":
+                decoded_frame = hdlc_decode(frame)
+
+                self.num_waypoints = decoded_frame[25]
+                self.waypoint_threshold = decoded_frame[26]
+
+                for i in range(self.num_waypoints):
+                    self.waypoints_x.append(
+                        int.from_bytes(
+                            decoded_frame[27 + 12 * i : 30 + 12 * i], byteorder="little"
+                        )
+                    )
+                    self.waypoints_y.append(
+                        int.from_bytes(
+                            decoded_frame[31 + 12 * i : 34 + 12 * i], byteorder="little"
+                        )
+                    )
+                print(f'num: {self.num_waypoints}\nwaypoints: {self.waypoint_threshold}')
+                print(f'self.waypoints_x: {self.waypoints_x}')
+                print(f'self.waypoints_y: {self.waypoints_y}')
+
 
     def encode_serial_output(self):
         payload = ProtocolPayload(
@@ -255,16 +289,28 @@ class SailBotSimSerialInterface(threading.Thread):
             for byte in sailbot.advertise():
                 self.callback(byte.to_bytes(length=1, byteorder="little"))
 
-        next_time = time.time() + delta_t
+        next_sim_time = time.time() + sim_delta_t
+        next_control_time = time.time() + control_delta_t
+
 
         while True:
-            current_time = time.time()  # simulate microcontroller clock interruptions
-            if current_time >= next_time:
+            current_time = time.time()
+            # update simulation every sim_delta_t seconds
+            if current_time >= next_sim_time:
                 for sailbot in self.sailbots:
                     for byte in sailbot.update():
                         self.callback(byte.to_bytes(length=1, byteorder="little"))
 
-                next_time = current_time + delta_t
+                next_sim_time = current_time + sim_delta_t
+
+            # update control inputs every control_delta_t seconds
+            if current_time >= next_control_time:
+                for sailbot in self.sailbots:
+                    if sailbot.controller == "AUTOMATIC":
+                        sailbot.control_loop_update()
+
+                next_control_time = current_time + control_delta_t
+
 
     def write(self, bytes_):
         # write bytes on the fake serial, similar to the real gateway
