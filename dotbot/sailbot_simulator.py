@@ -42,7 +42,7 @@ class SailBotSim:
         self.app_wind_speed = 0.0  # [m/s]
 
         self.direction = math.pi / 2  # [rad]
-        self.x, self.y = self.geographical2cartesian(self.latitude, self.longitude)
+        (self.x, self.y) = self.geographical2cartesian(self.latitude, self.longitude)
         self.v = 0.0  # speed [m/s]
         self.w = 0.0  # angular velocity [rad/s]
 
@@ -50,13 +50,13 @@ class SailBotSim:
         self.rudder_slider = 0  # rudder slider
         self.sail_slider = 0  # sail slider
 
-        self.controller = "AUTOMATIC"
+        self.operation_mode = "AUTOMATIC"
 
         # autonomous mode initialisations
         self.waypoint_threshold = 0
         self.num_waypoints = 0
         self.waypoints = []
-        self.waypoint_index = 0
+        self.next_waypoint = 0
 
     @property
     def header(self):
@@ -71,7 +71,7 @@ class SailBotSim:
     def debug_mode(self):
         # mode for testing GUI, inputs and outputs
         self.direction = (self.direction + math.pi / 18) % (math.pi * 2)
-        self.app_wind_angle = (self.app_wind_angle - math.pi / 18) % (math.pi * 2)
+        self.app_wind_angle = (self.app_wind_angle - math.pi / 28) % (math.pi * 2)
 
     def state_space_model(self, rudder_in_rad, sail_length_in_rad):
         # define model parameters
@@ -124,7 +124,7 @@ class SailBotSim:
         self.w += w_dot * sim_delta_t
 
         # get latitude and longitude from cartesian coordinates
-        self.latitude, self.longitude = self.cartesian2geographical(self.x, self.y)
+        (self.latitude, self.longitude) = self.cartesian2geographical(self.x, self.y)
 
     def true2apparent_wind(self):
         Wc_aw = (
@@ -153,30 +153,81 @@ class SailBotSim:
         sail_out_rad = (sail_out_rad + math.pi) % (2 * math.pi) - math.pi
         return sail_out_rad
 
-    def update(self):
-        if self.controller == "AUTOMATIC":
-            # convert to radians
-            rudder_in_rad = self.map_slider(
-                self.rudder_slider, max_rudder_angle[0], max_rudder_angle[1]
-            )
-            sail_length_in_rad = self.map_slider(
-                self.sail_slider, max_sail_angle[0], max_sail_angle[1]
-            )
+    def simulation_update(self):
+        # update state-space model every sim_delta_t seconds
+        # convert to radians
+        rudder_in_rad = self.map_slider(
+            self.rudder_slider, max_rudder_angle[0], max_rudder_angle[1]
+        )
+        sail_length_in_rad = self.map_slider(
+            self.sail_slider, max_sail_angle[0], max_sail_angle[1]
+        )
 
         # self.state_space_model(rudder_in_rad, sail_length_in_rad)
         self.debug_mode()
 
         return self.encode_serial_output()
 
-
     def control_loop_update(self):
+        print(self.next_waypoint)
+        print(self.waypoint_threshold)
+        print(self.waypoints)
+
+        # update control inputs if in automatic mode
+        if self.next_waypoint >= len(self.waypoints):
+            print('Finished!')
+            # self.operation_mode = "MANUAL"
+            return
+
+        # convert current position and next waypoint to cartesian
+        current_xy = self.geographical2cartesian(self.latitude, self.longitude)
+        next_geo = self.waypoints[self.next_waypoint]
+        next_xy = self.geographical2cartesian(next_geo[0], next_geo[1])
+
+        # check if current position is within the threshold
+        distance2target = math.sqrt((next_xy[0] - current_xy[0]) ** 2 + (next_xy[1] - current_xy[1]) ** 2)
+        if distance2target < self.waypoint_threshold:
+            self.next_waypoint += 1
+            return
+
+        # compute angle between current position and target
+        angle2target = math.atan2(next_xy[1] - current_xy[1], next_xy[0] - current_xy[0])
+        angle2target %= (2 * math.pi)
+        true_wind = self.true_wind_angle % (2 * math.pi)
+
+        # check if to get there, we have to sail against the wind
+        in_irons = 0.8 # radians
+        abs_diff_wind2angle = abs(angle2target - true_wind)
+        abs_diff_wind2angle = min(abs_diff_wind2angle, 2 * math.pi - abs_diff_wind2angle)
+
+        if abs_diff_wind2angle < in_irons:
+            # if in irons to get there, redefine target to the closest
+            # angle, without sailing in irons
+            abs_angle_left = (true_wind + in_irons - angle2target) % (2 * math.pi)
+            abs_angle_right = (angle2target + in_irons - true_wind) % (2 * math.pi)
+            abs_angle_left = min(abs_angle_left, 2 * math.pi - abs_angle_left)
+            abs_angle_right = min(abs_angle_right, 2 * math.pi - abs_angle_right)
+
+            if abs_angle_left < abs_angle_right:
+                angle2target += abs_angle_left
+            else:
+                angle2target -= abs_angle_right
+
+        # calculate error between angle2target and current heading
+        error_heading2target = angle2target - self.direction
+        error_heading2target = (error_heading2target + math.pi) % (2 * math.pi) - math.pi
+
+        # map error to rudder angle
+
+        self.rudder_slider = -128
+        self.sail_slider = 0
         return
 
     def decode_serial_input(self, frame):
         payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(payload.header.destination)[2:]:
-            if payload.payload_type == PayloadType.CMD_MOVE_RAW and self.controller == "MANUAL":
+            if payload.payload_type == PayloadType.CMD_MOVE_RAW and self.operation_mode == "MANUAL":
                 self.rudder_slider = (
                     payload.values.left_x - 256
                     if payload.values.left_x > 127
@@ -188,7 +239,7 @@ class SailBotSim:
                     else payload.values.right_y
                 )
 
-            elif payload.payload_type == PayloadType.GPS_WAYPOINTS and self.controller == "AUTOMATIC":
+            elif payload.payload_type == PayloadType.GPS_WAYPOINTS and self.operation_mode == "AUTOMATIC":
                 payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
@@ -257,7 +308,7 @@ class SailBotSim:
             (latitude - self.origin_coord_lat) * self.earth_radius_km * math.pi
         ) / 0.180
 
-        return x, y
+        return (x, y)
 
 
 # bidirectional serial interface to control simulated robots
@@ -288,7 +339,7 @@ class SailBotSimSerialInterface(threading.Thread):
             # update simulation every sim_delta_t seconds
             if current_time >= next_sim_time:
                 for sailbot in self.sailbots:
-                    for byte in sailbot.update():
+                    for byte in sailbot.simulation_update():
                         self.callback(byte.to_bytes(length=1, byteorder="little"))
 
                 next_sim_time = current_time + sim_delta_t
@@ -296,7 +347,7 @@ class SailBotSimSerialInterface(threading.Thread):
             # update control inputs every control_delta_t seconds
             if current_time >= next_control_time:
                 for sailbot in self.sailbots:
-                    if sailbot.controller == "AUTOMATIC":
+                    if sailbot.operation_mode == "AUTOMATIC":
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + control_delta_t
