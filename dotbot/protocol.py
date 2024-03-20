@@ -365,8 +365,18 @@ class GPSWaypoints(ProtocolData):
         return _fields
 
     @staticmethod
-    def from_bytes(_) -> ProtocolData:
-        return GPSWaypoints(threshold=0, waypoints=[])
+    def from_bytes(bytes_) -> ProtocolData:
+        waypoints_count = int(bytes_[0])
+        threshold = int(bytes_[1])
+        waypoints = []
+        for idx in range(2 * waypoints_count):
+            waypoints.append(
+                        float(int.from_bytes(
+                            bytes_[2 + 4 * idx : 6 + 4 * idx], byteorder="little"
+                        ) / 1E6)
+                    )
+        waypoints = [(waypoints[i], waypoints[i+1]) for i in range(0, 2 * waypoints_count, 2)]
+        return GPSWaypoints(threshold=threshold, waypoints=waypoints)
 
 
 @dataclass
@@ -424,7 +434,7 @@ class ProtocolPayload:
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
-            values = GPSWaypoints.from_bytes(None)
+            values = GPSWaypoints.from_bytes(bytes_[25:])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type.value}'"

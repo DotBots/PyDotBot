@@ -55,8 +55,7 @@ class SailBotSim:
         # autonomous mode initialisations
         self.waypoint_threshold = 0
         self.num_waypoints = 0
-        self.waypoints_x = []
-        self.waypoints_y = []
+        self.waypoints = []
         self.waypoint_index = 0
 
     @property
@@ -190,25 +189,16 @@ class SailBotSim:
                 )
 
             elif payload.payload_type == PayloadType.GPS_WAYPOINTS and self.controller == "AUTOMATIC":
-                decoded_frame = hdlc_decode(frame)
+                payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
+                self.waypoint_threshold = payload.values.threshold
+                self.waypoints = payload.values.waypoints
+                self.num_waypoints = len(self.waypoints)
 
-                self.num_waypoints = decoded_frame[25]
-                self.waypoint_threshold = decoded_frame[26]
+                # self.latitude = 48.832313
+                # self.longitude = 2.412689
 
-                for i in range(self.num_waypoints):
-                    self.waypoints_x.append(
-                        int.from_bytes(
-                            decoded_frame[27 + 12 * i : 30 + 12 * i], byteorder="little"
-                        )
-                    )
-                    self.waypoints_y.append(
-                        int.from_bytes(
-                            decoded_frame[31 + 12 * i : 34 + 12 * i], byteorder="little"
-                        )
-                    )
-                print(f'num: {self.num_waypoints}\nwaypoints: {self.waypoint_threshold}')
-                print(f'self.waypoints_x: {self.waypoints_x}')
-                print(f'self.waypoints_y: {self.waypoints_y}')
+                print(f'num: {self.num_waypoints}\nthreshold: {self.waypoint_threshold}')
+                print(f'waypoints: {self.waypoints}')
 
 
     def encode_serial_output(self):
