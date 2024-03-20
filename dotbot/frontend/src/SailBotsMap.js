@@ -76,26 +76,28 @@ export const SailBotMarker = (props) => {
   const svgIcon = L.divIcon({
     html: `
       <svg
-        width="100"
-        height="100"
-        viewBox="-15 -15 75 75"
+        width="200"
+        height="200"
+        viewBox="0 0 200 200"
         version="1.1"
         preserveAspectRatio="none"
         xmlns="http://www.w3.org/2000/svg"
       >
       <g>
-        <g transform="scale(0.7) rotate(${rotation + 180} 20 25)">
-          <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
-          <g transform=" translate(20,-7) rotate(${-rudder_angle} 0 10)" >
-            <line x1="0" y1="10" x2="0" y2="0" stroke="red" stroke-width="2" opacity="80% "/>
-          </g>
-          <g transform=" translate(20,8) rotate(${-sail_angle} 0 15)">
-            <line x1="0" y1="15" x2="0" y2="0" stroke="red" stroke-width="2.4" opacity="80%"/>
-          </g>
-          <g transform=" translate(20,3) rotate(${wind_angle + 180} 0 20)">
-            <line x1="0" y1="20" x2="0" y2="0" stroke="rgb(255, 255, 0)" stroke-width="2.4" opacity="100% "/>
-            <line x1="-0.5" y1="0" x2="4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
-            <line x1="0.5" y1="0" x2="-4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
+        <g transform="translate(8,6) scale(1.2)">
+          <g transform="scale(0.7) rotate(${rotation + 180} 20 25)">
+            <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
+            <g transform=" translate(20,-7) rotate(${-rudder_angle} 0 10)" >
+              <line x1="0" y1="10" x2="0" y2="0" stroke="red" stroke-width="2" opacity="80% "/>
+            </g>
+            <g transform=" translate(20,8) rotate(${-sail_angle} 0 15)">
+              <line x1="0" y1="15" x2="0" y2="0" stroke="red" stroke-width="2.4" opacity="80%"/>
+            </g>
+            <g transform=" translate(20,3) rotate(${wind_angle + 180} 0 20)">
+              <line x1="0" y1="20" x2="0" y2="0" stroke="rgb(255, 255, 0)" stroke-width="2.4" opacity="100% "/>
+              <line x1="-0.5" y1="0" x2="4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
+              <line x1="0.5" y1="0" x2="-4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
+            </g>
           </g>
         </g>
       </g>

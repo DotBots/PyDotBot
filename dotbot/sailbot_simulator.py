@@ -70,8 +70,8 @@ class SailBotSim:
 
     def debug_mode(self):
         # mode for testing GUI, inputs and outputs
-        # self.direction = (self.direction + math.pi / 36) % (math.pi * 2)
-        self.app_wind_angle = (self.app_wind_angle - math.pi / 36) % (math.pi * 2)
+        self.direction = (self.direction + math.pi / 18) % (math.pi * 2)
+        self.app_wind_angle = (self.app_wind_angle - math.pi / 18) % (math.pi * 2)
 
     def state_space_model(self, rudder_in_rad, sail_length_in_rad):
         # define model parameters
