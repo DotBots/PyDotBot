@@ -202,7 +202,7 @@ class SailBotSim:
 
         # check if to get there, we have to sail against the wind
         in_irons = 0.8 # radians
-        abs_diff_wind2angle = abs(angle2target - true_wind)
+        abs_diff_wind2angle = abs(angle2target - true_wind + math.pi)
         abs_diff_wind2angle = min(abs_diff_wind2angle, 2 * math.pi - abs_diff_wind2angle)
 
         if abs_diff_wind2angle < in_irons:
@@ -229,7 +229,12 @@ class SailBotSim:
         self.rudder_slider = int(clip(error_heading2target * Kp, -128, 127))
 
         # linear map apparent wind angle to sail opening
-        self.sail_slider = 0
+        app_wind_angle = (self.app_wind_angle + math.pi) % (2 * math.pi) - math.pi
+        sail_length = (math.pi - abs(app_wind_angle)) / 2
+        self.sail_slider = int(clip(sail_length * 512/math.pi - 128,  -128, 127))
+
+        print(f'rudder slider: {self.rudder_slider}')
+        print(f'sail slider: {self.sail_slider}')
 
         return
 
