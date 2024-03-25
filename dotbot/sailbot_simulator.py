@@ -202,10 +202,20 @@ class SailBotSim:
 
         # check if to get there, we have to sail against the wind
         in_irons = 0.8 # radians
-        abs_diff_wind2angle = abs(angle2target - true_wind + math.pi)
-        abs_diff_wind2angle = min(abs_diff_wind2angle, 2 * math.pi - abs_diff_wind2angle)
 
-        if abs_diff_wind2angle < in_irons:
+        upper_bound_irons = (true_wind + math.pi + in_irons) % ( 2 * math.pi)
+        lower_bound_irons = (true_wind + math.pi - in_irons) % ( 2 * math.pi)
+
+        detected_irons = False
+
+        if lower_bound_irons > upper_bound_irons:
+            if angle2target < upper_bound_irons or angle2target > lower_bound_irons:
+                detected_irons = True
+        else:
+            if angle2target < upper_bound_irons and angle2target > lower_bound_irons:
+                detected_irons = True
+
+        if detected_irons:
             print("In irons!")
             return
             # if in irons to get there, redefine target to the closest
