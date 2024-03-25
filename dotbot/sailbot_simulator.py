@@ -2,6 +2,7 @@ import threading
 import time
 from typing import Callable
 import math
+from numpy import clip
 from dotbot import GATEWAY_ADDRESS_DEFAULT, SWARM_ID_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
@@ -15,8 +16,8 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-sim_delta_t = 1  # second
-control_delta_t = 2 # second
+sim_delta_t = 0.01 # second
+control_delta_t = 1 # second
 
 max_rudder_angle = (-math.pi / 6, math.pi / 6)
 max_sail_angle = (0, math.pi / 2)
@@ -163,19 +164,23 @@ class SailBotSim:
             self.sail_slider, max_sail_angle[0], max_sail_angle[1]
         )
 
-        # self.state_space_model(rudder_in_rad, sail_length_in_rad)
-        self.debug_mode()
+        self.state_space_model(rudder_in_rad, sail_length_in_rad)
+        # self.debug_mode()
 
         return self.encode_serial_output()
 
     def control_loop_update(self):
-        print(self.next_waypoint)
-        print(self.waypoint_threshold)
-        print(self.waypoints)
+        if not self.waypoints:
+            return
+        print(f'next waypoint: {self.next_waypoint}')
+        print(f'waypoint threshold: {self.waypoint_threshold}')
+        print(f'waypoint list: {self.waypoints}')
 
         # update control inputs if in automatic mode
         if self.next_waypoint >= len(self.waypoints):
             print('Finished!')
+            self.waypoints = []
+            self.next_waypoint = 0
             # self.operation_mode = "MANUAL"
             return
 
@@ -201,26 +206,31 @@ class SailBotSim:
         abs_diff_wind2angle = min(abs_diff_wind2angle, 2 * math.pi - abs_diff_wind2angle)
 
         if abs_diff_wind2angle < in_irons:
+            print("In irons!")
+            return
             # if in irons to get there, redefine target to the closest
             # angle, without sailing in irons
-            abs_angle_left = (true_wind + in_irons - angle2target) % (2 * math.pi)
-            abs_angle_right = (angle2target + in_irons - true_wind) % (2 * math.pi)
-            abs_angle_left = min(abs_angle_left, 2 * math.pi - abs_angle_left)
-            abs_angle_right = min(abs_angle_right, 2 * math.pi - abs_angle_right)
+            # abs_angle_left = (true_wind + in_irons - angle2target) % (2 * math.pi)
+            # abs_angle_right = (angle2target + in_irons - true_wind) % (2 * math.pi)
+            # abs_angle_left = min(abs_angle_left, 2 * math.pi - abs_angle_left)
+            # abs_angle_right = min(abs_angle_right, 2 * math.pi - abs_angle_right)
 
-            if abs_angle_left < abs_angle_right:
-                angle2target += abs_angle_left
-            else:
-                angle2target -= abs_angle_right
+            # if abs_angle_left < abs_angle_right:
+            #     angle2target += abs_angle_left
+            # else:
+            #     angle2target -= abs_angle_right
 
         # calculate error between angle2target and current heading
         error_heading2target = angle2target - self.direction
         error_heading2target = (error_heading2target + math.pi) % (2 * math.pi) - math.pi
 
-        # map error to rudder angle
+        # map error to rudder angle (proportional controller)
+        Kp = -256 / math.pi # control proportional constant
+        self.rudder_slider = int(clip(error_heading2target * Kp, -128, 127))
 
-        self.rudder_slider = -128
+        # linear map apparent wind angle to sail opening
         self.sail_slider = 0
+
         return
 
     def decode_serial_input(self, frame):
@@ -244,12 +254,6 @@ class SailBotSim:
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
                 self.num_waypoints = len(self.waypoints)
-
-                # self.latitude = 48.832313
-                # self.longitude = 2.412689
-
-                print(f'num: {self.num_waypoints}\nthreshold: {self.waypoint_threshold}')
-                print(f'waypoints: {self.waypoints}')
 
 
     def encode_serial_output(self):
