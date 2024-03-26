@@ -250,7 +250,7 @@ class SailBotSim:
 
         # linear map apparent wind angle to sail opening
         app_wind_angle = (self.app_wind_angle + math.pi) % (2 * math.pi) - math.pi
-        sail_length = (math.pi - abs(app_wind_angle)) / 2
+        sail_length = ((max_sail_angle[0] - max_sail_angle[1])/math.pi) * abs(app_wind_angle) + max_sail_angle[1]
         self.sail_slider = int(clip(sail_length * 512/math.pi - 128,  -128, 127))
 
         print(f'rudder slider: {self.rudder_slider}')
