@@ -224,13 +224,13 @@ class SailBotSim:
                 self.zigzag_flag = True
 
                 # initialise zig zag parameters
-                self.zigzag_width = 10 # meters
+                self.zigzag_width = 15 # meters
                 self.zigzag_dir = False # where to start zig-zagging (can be improved by choosing the shortest path)
                 self.line2target = self.lineClass(current_xy, angle2target)
 
             # already zig-zagging!
             if self.line2target.distance2point(current_xy) > self.zigzag_width:
-                self.zigzag_dir = not self.line2target.line_side(current_xy)
+                self.zigzag_dir = self.line2target.line_side(current_xy)
 
             # redefine reference heading
             angle2target = upper_bound_irons if self.zigzag_dir else lower_bound_irons
@@ -255,6 +255,7 @@ class SailBotSim:
 
         print(f'rudder slider: {self.rudder_slider}')
         print(f'sail slider: {self.sail_slider}')
+        print(f'zig-zagging: {self.zigzag_flag}')
 
         return
 
