@@ -58,6 +58,7 @@ class SailBotSim:
         self.num_waypoints = 0
         self.waypoints = []
         self.next_waypoint = 0
+        self.zigzag_flag = False
 
     @property
     def header(self):
@@ -181,6 +182,7 @@ class SailBotSim:
             print('Finished!')
             self.waypoints = []
             self.next_waypoint = 0
+            self.zigzag_flag = False
             # self.operation_mode = "MANUAL"
             return
 
@@ -193,6 +195,7 @@ class SailBotSim:
         distance2target = math.sqrt((next_xy[0] - current_xy[0]) ** 2 + (next_xy[1] - current_xy[1]) ** 2)
         if distance2target < self.waypoint_threshold:
             self.next_waypoint += 1
+            self.zigzag_flag = False
             return
 
         # compute angle between current position and target
@@ -201,10 +204,10 @@ class SailBotSim:
         true_wind = self.true_wind_angle % (2 * math.pi)
 
         # check if to get there, we have to sail against the wind
-        in_irons = 0.8 # radians
+        in_irons_angle = 0.8 # radians
 
-        upper_bound_irons = (true_wind + math.pi + in_irons) % ( 2 * math.pi)
-        lower_bound_irons = (true_wind + math.pi - in_irons) % ( 2 * math.pi)
+        upper_bound_irons = (true_wind + math.pi + in_irons_angle) % ( 2 * math.pi)
+        lower_bound_irons = (true_wind + math.pi - in_irons_angle) % ( 2 * math.pi)
 
         detected_irons = False
 
@@ -216,19 +219,26 @@ class SailBotSim:
                 detected_irons = True
 
         if detected_irons:
-            print("In irons!")
-            return
-            # if in irons to get there, redefine target to the closest
-            # angle, without sailing in irons
-            # abs_angle_left = (true_wind + in_irons - angle2target) % (2 * math.pi)
-            # abs_angle_right = (angle2target + in_irons - true_wind) % (2 * math.pi)
-            # abs_angle_left = min(abs_angle_left, 2 * math.pi - abs_angle_left)
-            # abs_angle_right = min(abs_angle_right, 2 * math.pi - abs_angle_right)
+            if self.zigzag_flag == False:
+                print("In irons! Starting zig-zag routine")
+                self.zigzag_flag = True
 
-            # if abs_angle_left < abs_angle_right:
-            #     angle2target += abs_angle_left
-            # else:
-            #     angle2target -= abs_angle_right
+                # initialise zig zag parameters
+                self.zigzag_width = 10 # meters
+                self.zigzag_dir = False # where to start zig-zagging (can be improved by choosing the shortest path)
+                self.line2target = self.lineClass(current_xy, angle2target)
+
+            # already zig-zagging!
+            if self.line2target.distance2point(current_xy) > self.zigzag_width:
+                self.zigzag_dir = not self.line2target.line_side(current_xy)
+
+            # redefine reference heading
+            angle2target = upper_bound_irons if self.zigzag_dir else lower_bound_irons
+
+        else:
+            # return to normal mode
+            self.zigzag_flag = False
+
 
         # calculate error between angle2target and current heading
         error_heading2target = angle2target - self.direction
@@ -247,6 +257,26 @@ class SailBotSim:
         print(f'sail slider: {self.sail_slider}')
 
         return
+
+    # zig-zag routine helper class
+    class lineClass:
+        def __init__(self, point, angle_radians):
+            x, y = point
+            # calculate coefficients for Ax + By + C = 0
+            self.A = -math.tan(angle_radians)
+            self.B = 1
+            self.C = (math.tan(angle_radians) * x) - y
+
+        def distance2point(self, point):
+            x0, y0 = point
+            # return the distance from the point to the line
+            return abs((self.A * x0) + (self.B * y0) + self.C) / math.sqrt(self.A**2 + self.B**2)
+
+        def line_side(self, point):
+            # am I on the left or the right?
+            x0, y0 = point
+            d = ((self.A * x0) + (self.B * y0) + self.C)
+            return d >= 0
 
     def decode_serial_input(self, frame):
         payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
