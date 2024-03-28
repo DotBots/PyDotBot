@@ -51,7 +51,7 @@ class SailBotSim:
         self.rudder_slider = 0  # rudder slider
         self.sail_slider = 0  # sail slider
 
-        self.operation_mode = "AUTOMATIC"
+        self.operation_mode = "MANUAL"
 
         # autonomous mode initialisations
         self.waypoint_threshold = 0
@@ -183,7 +183,7 @@ class SailBotSim:
             self.waypoints = []
             self.next_waypoint = 0
             self.zigzag_flag = False
-            # self.operation_mode = "MANUAL"
+            self.operation_mode = "MANUAL"
             return
 
         # convert current position and next waypoint to cartesian
@@ -283,7 +283,7 @@ class SailBotSim:
         payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(payload.header.destination)[2:]:
-            if payload.payload_type == PayloadType.CMD_MOVE_RAW and self.operation_mode == "MANUAL":
+            if payload.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.rudder_slider = (
                     payload.values.left_x - 256
                     if payload.values.left_x > 127
@@ -295,7 +295,8 @@ class SailBotSim:
                     else payload.values.right_y
                 )
 
-            elif payload.payload_type == PayloadType.GPS_WAYPOINTS and self.operation_mode == "AUTOMATIC":
+            if payload.payload_type == PayloadType.GPS_WAYPOINTS:
+                self.operation_mode = "AUTOMATIC"
                 payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
