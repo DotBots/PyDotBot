@@ -99,6 +99,9 @@ class DotBotNotificationUpdate(BaseModel):
 
     address: str
     direction: Optional[int]
+    wind_angle: Optional[int]
+    rudder_angle: Optional[int]
+    sail_angle: Optional[int]
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
 
@@ -120,6 +123,9 @@ class DotBotModel(BaseModel):
     mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
     direction: Optional[int] = None
+    wind_angle: Optional[int] = None
+    rudder_angle: Optional[int] = None
+    sail_angle: Optional[int] = None
     move_raw: Optional[DotBotMoveRawCommandModel] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
     lh2_position: Optional[DotBotLH2Position] = None

@@ -46,22 +46,62 @@ export const SailBotMarker = (props) => {
     opacity: `${props.sailbot.status === 0 ? "100%" : "40%"}`,
   };
 
-  const rotation = (props.sailbot.direction) ? props.sailbot.direction - 180 : 180;
+  function mainsheet2sail_angle(sail_in_length_deg, app_wind_angle_deg) {
+    let sail_out_deg;
+    let sail_in_length_rad = sail_in_length_deg * (Math.PI / 180);
+    let app_wind_angle_rad = app_wind_angle_deg * (Math.PI / 180);
+    // The coordinate system used here is different than the one from the simulator.
+    // Sail angle is computed again here, because from a real boat we can only
+    // receive the opening of the mainsheet, and not the actual angle
+
+    if (Math.cos(app_wind_angle_rad) + Math.cos(sail_in_length_rad) > 0) {
+      // sail is tight
+      let sign = Math.sign(Math.sin(app_wind_angle_rad));
+      sail_out_deg = sail_in_length_deg * sign;
+    }
+    else {
+      // sail is loose
+      sail_out_deg = 180 - app_wind_angle_deg;
+    }
+
+    return sail_out_deg;
+  }
+
+  const rotation = props.sailbot.direction
+  const wind_angle = props.sailbot.wind_angle;
+
+  const rudder_angle = props.sailbot.rudder_angle
+  const sail_angle = mainsheet2sail_angle(props.sailbot.sail_angle, wind_angle)
 
   const svgIcon = L.divIcon({
     html: `
       <svg
-        width="50"
-        height="50"
-        viewBox="-15 -15 75 75"
+        width="200"
+        height="200"
+        viewBox="0 0 200 200"
         version="1.1"
         preserveAspectRatio="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-      <g transform="rotate(${rotation} 25 25)">
-        <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
-        <path d="M 20 30 C 30 30 40 30 40 20" stroke="blue" strokeWidth="2" opacity="80%" fill="none" />
+      <g>
+        <g transform="translate(8,6) scale(1.2)">
+          <g transform="scale(0.7) rotate(${rotation + 180} 20 25)">
+            <path d="M 10 10 C 10 20 10 40 20 50 C 30 40 30 20 30 10 C 30 0 10 0 10 10" stroke="${boatStroke}" strokeWidth="1" opacity="80%" fill="${rgbColor}" />
+            <g transform=" translate(20,-7) rotate(${-rudder_angle} 0 10)" >
+              <line x1="0" y1="10" x2="0" y2="0" stroke="red" stroke-width="2" opacity="80% "/>
+            </g>
+            <g transform=" translate(20,8) rotate(${-sail_angle} 0 15)">
+              <line x1="0" y1="15" x2="0" y2="0" stroke="red" stroke-width="2.4" opacity="80%"/>
+            </g>
+            <g transform=" translate(20,3) rotate(${wind_angle + 180} 0 20)">
+              <line x1="0" y1="20" x2="0" y2="0" stroke="rgb(255, 255, 0)" stroke-width="2.4" opacity="100% "/>
+              <line x1="-0.5" y1="0" x2="4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
+              <line x1="0.5" y1="0" x2="-4" y2="5" stroke="rgb(255, 255, 0)" stroke-width="2.2" opacity="100%"/>
+            </g>
+          </g>
+        </g>
       </g>
+
       </svg>`,
     className: "",
     iconSize: [30, 50],
@@ -86,7 +126,9 @@ export const SailBotMarker = (props) => {
       <Polyline pathOptions={positionsOptions} positions={props.sailbot.position_history.map(position => Object.values(position))} />
     )}
     <Marker key={props.sailbot.address} icon={svgIcon} position={[props.sailbot.gps_position.latitude, props.sailbot.gps_position.longitude]} opacity={`${props.sailbot.status === 0 ? "1" : "0.4"}`}>
-      <Popup>{`SailBot@${props.sailbot.address}`}</Popup>
+      <Popup>
+        {`SailBot@${props.sailbot.address}`}
+      </Popup>
     </Marker>
     </>
   );

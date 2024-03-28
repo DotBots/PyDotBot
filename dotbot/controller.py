@@ -40,6 +40,7 @@ from dotbot.protocol import (
     ProtocolPayload,
     ProtocolPayloadParserException,
 )
+from dotbot.sailbot_simulator import SailBotSimSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
@@ -115,6 +116,8 @@ class Controller:
         #         address="0000000000000004",
         #         application=ApplicationType.SailBot,
         #         last_seen=time.time(),
+        #         wind_angle=135,
+        #         rotation=49,
         #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
         #     ),
         # }
@@ -156,16 +159,20 @@ class Controller:
             if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
                 raise SerialInterfaceException("Handshake failed")
 
-        self.serial = SerialInterface(
-            self.settings.port, self.settings.baudrate, on_byte_received
-        )
-
-        self.serial.write(
-            int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
-        )
-        if self.settings.handshake is True:
-            await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
-            self.logger.info("Serial handshake success")
+        if self.settings.port == "sailbot-simulator":
+            self.serial = SailBotSimSerialInterface(on_byte_received)
+        else:
+            self.serial = SerialInterface(
+                self.settings.port, self.settings.baudrate, on_byte_received
+            )
+            self.serial.write(
+                int(PROTOCOL_VERSION).to_bytes(
+                    length=1, byteorder="little", signed=False
+                )
+            )
+            if self.settings.handshake is True:
+                await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
+                self.logger.info("Serial handshake success")
 
         while 1:
             byte = await queue.get()
@@ -273,6 +280,9 @@ class Controller:
             dotbot.mode = self.dotbots[source].mode
             dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
+            dotbot.wind_angle = self.dotbots[source].wind_angle
+            dotbot.rudder_angle = self.dotbots[source].rudder_angle
+            dotbot.sail_angle = self.dotbots[source].sail_angle
             dotbot.rgb_led = self.dotbots[source].rgb_led
             dotbot.lh2_position = self.dotbots[source].lh2_position
             dotbot.gps_position = self.dotbots[source].gps_position
@@ -290,6 +300,13 @@ class Controller:
         ):
             dotbot.direction = payload.values.direction
             logger = logger.bind(direction=dotbot.direction)
+
+        if payload.payload_type in [PayloadType.SAILBOT_DATA]:
+            logger = logger.bind(
+                wind_angle=dotbot.wind_angle,
+                rudder_angle=dotbot.rudder_angle,
+                sail_angle=dotbot.sail_angle,
+            )
 
         dotbot.lh2_position = self._compute_lh2_position(payload)
         if (
@@ -340,7 +357,18 @@ class Controller:
                 longitude=float(payload.values.longitude) / 1e6,
             )
             dotbot.gps_position = new_position
-            logger.info("gps", lat=new_position.latitude, long=new_position.longitude)
+            # Read wind sensor measurements
+            dotbot.wind_angle = payload.values.wind_angle
+            dotbot.rudder_angle = payload.values.rudder_angle
+            dotbot.sail_angle = payload.values.sail_angle
+            logger.info(
+                "gps",
+                lat=new_position.latitude,
+                long=new_position.longitude,
+                wind_angle=dotbot.wind_angle,
+                rudder_angle=dotbot.rudder_angle,
+                sail_angle=dotbot.sail_angle,
+            )
             if (
                 not dotbot.position_history
                 or gps_distance(dotbot.position_history[-1], new_position)
@@ -357,6 +385,9 @@ class Controller:
                 data=DotBotNotificationUpdate(
                     address=dotbot.address,
                     direction=dotbot.direction,
+                    wind_angle=dotbot.wind_angle,
+                    rudder_angle=dotbot.rudder_angle,
+                    sail_angle=dotbot.sail_angle,
                     lh2_position=dotbot.lh2_position,
                     gps_position=dotbot.gps_position,
                 ),
