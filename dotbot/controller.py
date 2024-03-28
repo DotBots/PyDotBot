@@ -16,7 +16,6 @@ from fastapi import WebSocket
 from haversine import Unit, haversine
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
-from dotbot.sailbot_simulator import SailBotSimSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -41,6 +40,7 @@ from dotbot.protocol import (
     ProtocolPayload,
     ProtocolPayloadParserException,
 )
+from dotbot.sailbot_simulator import SailBotSimSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 

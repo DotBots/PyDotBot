@@ -51,7 +51,7 @@ export const SailBotMarker = (props) => {
     let sail_in_length_rad = sail_in_length_deg * (Math.PI / 180);
     let app_wind_angle_rad = app_wind_angle_deg * (Math.PI / 180);
     // The coordinate system used here is different than the one from the simulator.
-    // Sail angle is computed again here, because from a real boat we can only 
+    // Sail angle is computed again here, because from a real boat we can only
     // receive the opening of the mainsheet, and not the actual angle
 
     if (Math.cos(app_wind_angle_rad) + Math.cos(sail_in_length_rad) > 0) {
@@ -101,7 +101,7 @@ export const SailBotMarker = (props) => {
           </g>
         </g>
       </g>
-      
+
       </svg>`,
     className: "",
     iconSize: [30, 50],

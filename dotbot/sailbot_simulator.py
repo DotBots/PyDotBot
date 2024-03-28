@@ -1,8 +1,10 @@
+import math
 import threading
 import time
 from typing import Callable
-import math
+
 from numpy import clip
+
 from dotbot import GATEWAY_ADDRESS_DEFAULT, SWARM_ID_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
@@ -10,14 +12,14 @@ from dotbot.protocol import (
     PROTOCOL_VERSION,
     Advertisement,
     ApplicationType,
-    SailBotData,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
+    SailBotData,
 )
 
-sim_delta_t = 0.01 # second
-control_delta_t = 1 # second
+sim_delta_t = 0.01  # second
+control_delta_t = 1  # second
 
 max_rudder_angle = (-math.pi / 6, math.pi / 6)
 max_sail_angle = (0, math.pi / 2)
@@ -173,13 +175,13 @@ class SailBotSim:
     def control_loop_update(self):
         if not self.waypoints:
             return
-        print(f'next waypoint: {self.next_waypoint}')
-        print(f'waypoint threshold: {self.waypoint_threshold}')
-        print(f'waypoint list: {self.waypoints}')
+        print(f"next waypoint: {self.next_waypoint}")
+        print(f"waypoint threshold: {self.waypoint_threshold}")
+        print(f"waypoint list: {self.waypoints}")
 
         # update control inputs if in automatic mode
         if self.next_waypoint >= len(self.waypoints):
-            print('Finished!')
+            print("Finished!")
             self.waypoints = []
             self.next_waypoint = 0
             self.zigzag_flag = False
@@ -192,22 +194,26 @@ class SailBotSim:
         next_xy = self.geographical2cartesian(next_geo[0], next_geo[1])
 
         # check if current position is within the threshold
-        distance2target = math.sqrt((next_xy[0] - current_xy[0]) ** 2 + (next_xy[1] - current_xy[1]) ** 2)
+        distance2target = math.sqrt(
+            (next_xy[0] - current_xy[0]) ** 2 + (next_xy[1] - current_xy[1]) ** 2
+        )
         if distance2target < self.waypoint_threshold:
             self.next_waypoint += 1
             self.zigzag_flag = False
             return
 
         # compute angle between current position and target
-        angle2target = math.atan2(next_xy[1] - current_xy[1], next_xy[0] - current_xy[0])
-        angle2target %= (2 * math.pi)
+        angle2target = math.atan2(
+            next_xy[1] - current_xy[1], next_xy[0] - current_xy[0]
+        )
+        angle2target %= 2 * math.pi
         true_wind = self.true_wind_angle % (2 * math.pi)
 
         # check if to get there, we have to sail against the wind
-        in_irons_angle = 0.8 # radians
+        in_irons_angle = 0.8  # radians
 
-        upper_bound_irons = (true_wind + math.pi + in_irons_angle) % ( 2 * math.pi)
-        lower_bound_irons = (true_wind + math.pi - in_irons_angle) % ( 2 * math.pi)
+        upper_bound_irons = (true_wind + math.pi + in_irons_angle) % (2 * math.pi)
+        lower_bound_irons = (true_wind + math.pi - in_irons_angle) % (2 * math.pi)
 
         detected_irons = False
 
@@ -219,13 +225,13 @@ class SailBotSim:
                 detected_irons = True
 
         if detected_irons:
-            if self.zigzag_flag == False:
+            if self.zigzag_flag is False:
                 print("In irons! Starting zig-zag routine")
                 self.zigzag_flag = True
 
                 # initialise zig zag parameters
-                self.zigzag_width = 15 # meters
-                self.zigzag_dir = False # where to start zig-zagging (can be improved by choosing the shortest path)
+                self.zigzag_width = 15  # meters
+                self.zigzag_dir = False  # where to start zig-zagging (can be improved by choosing the shortest path)
                 self.line2target = self.lineClass(current_xy, angle2target)
 
             # already zig-zagging!
@@ -239,23 +245,26 @@ class SailBotSim:
             # return to normal mode
             self.zigzag_flag = False
 
-
         # calculate error between angle2target and current heading
         error_heading2target = angle2target - self.direction
-        error_heading2target = (error_heading2target + math.pi) % (2 * math.pi) - math.pi
+        error_heading2target = (error_heading2target + math.pi) % (
+            2 * math.pi
+        ) - math.pi
 
         # map error to rudder angle (proportional controller)
-        Kp = -256 / math.pi # control proportional constant
+        Kp = -256 / math.pi  # control proportional constant
         self.rudder_slider = int(clip(error_heading2target * Kp, -128, 127))
 
         # linear map apparent wind angle to sail opening
         app_wind_angle = (self.app_wind_angle + math.pi) % (2 * math.pi) - math.pi
-        sail_length = ((max_sail_angle[0] - max_sail_angle[1])/math.pi) * abs(app_wind_angle) + max_sail_angle[1]
-        self.sail_slider = int(clip(sail_length * 512/math.pi - 128,  -128, 127))
+        sail_length = ((max_sail_angle[0] - max_sail_angle[1]) / math.pi) * abs(
+            app_wind_angle
+        ) + max_sail_angle[1]
+        self.sail_slider = int(clip(sail_length * 512 / math.pi - 128, -128, 127))
 
-        print(f'rudder slider: {self.rudder_slider}')
-        print(f'sail slider: {self.sail_slider}')
-        print(f'zig-zagging: {self.zigzag_flag}')
+        print(f"rudder slider: {self.rudder_slider}")
+        print(f"sail slider: {self.sail_slider}")
+        print(f"zig-zagging: {self.zigzag_flag}")
 
         return
 
@@ -271,12 +280,14 @@ class SailBotSim:
         def distance2point(self, point):
             x0, y0 = point
             # return the distance from the point to the line
-            return abs((self.A * x0) + (self.B * y0) + self.C) / math.sqrt(self.A**2 + self.B**2)
+            return abs((self.A * x0) + (self.B * y0) + self.C) / math.sqrt(
+                self.A**2 + self.B**2
+            )
 
         def line_side(self, point):
             # am I on the left or the right?
             x0, y0 = point
-            d = ((self.A * x0) + (self.B * y0) + self.C)
+            d = (self.A * x0) + (self.B * y0) + self.C
             return d >= 0
 
     def decode_serial_input(self, frame):
@@ -301,7 +312,6 @@ class SailBotSim:
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
                 self.num_waypoints = len(self.waypoints)
-
 
     def encode_serial_output(self):
         payload = ProtocolPayload(
@@ -384,7 +394,6 @@ class SailBotSimSerialInterface(threading.Thread):
         next_sim_time = time.time() + sim_delta_t
         next_control_time = time.time() + control_delta_t
 
-
         while True:
             current_time = time.time()
             # update simulation every sim_delta_t seconds
@@ -402,7 +411,6 @@ class SailBotSimSerialInterface(threading.Thread):
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + control_delta_t
-
 
     def write(self, bytes_):
         # write bytes on the fake serial, similar to the real gateway

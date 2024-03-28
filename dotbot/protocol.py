@@ -371,11 +371,16 @@ class GPSWaypoints(ProtocolData):
         waypoints = []
         for idx in range(2 * waypoints_count):
             waypoints.append(
-                        float(int.from_bytes(
-                            bytes_[2 + 4 * idx : 6 + 4 * idx], byteorder="little"
-                        ) / 1E6)
+                float(
+                    int.from_bytes(
+                        bytes_[2 + 4 * idx : 6 + 4 * idx], byteorder="little"
                     )
-        waypoints = [(waypoints[i], waypoints[i+1]) for i in range(0, 2 * waypoints_count, 2)]
+                    / 1e6
+                )
+            )
+        waypoints = [
+            (waypoints[i], waypoints[i + 1]) for i in range(0, 2 * waypoints_count, 2)
+        ]
         return GPSWaypoints(threshold=threshold, waypoints=waypoints)
 
 
