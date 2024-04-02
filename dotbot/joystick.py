@@ -1,4 +1,5 @@
 """Module implementing a joystick Dotbot controller."""
+
 # pylint: disable=attribute-defined-outside-init
 
 import asyncio

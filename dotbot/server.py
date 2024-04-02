@@ -1,4 +1,5 @@
 """Module for the web server application."""
+
 import os
 from binascii import hexlify
 from typing import List

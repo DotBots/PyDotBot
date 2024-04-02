@@ -1,4 +1,5 @@
 """Pydantic models used by the controller and server application."""
+
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum

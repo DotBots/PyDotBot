@@ -282,11 +282,9 @@ class SailBotData(ProtocolData):
             ProtocolField(self.direction, name="dir.", length=2, signed=False),
             ProtocolField(self.latitude, name="latitude", length=4, signed=True),
             ProtocolField(self.longitude, name="longitude", length=4, signed=True),
-            ProtocolField(self.wind_angle, name="wind_angle", length=2, signed=False),
-            ProtocolField(
-                self.rudder_angle, name="rudder_angle", length=1, signed=True
-            ),
-            ProtocolField(self.sail_angle, name="sail_angle", length=1, signed=True),
+            ProtocolField(self.wind_angle, name="wind ang", length=2, signed=False),
+            ProtocolField(self.rudder_angle, name="rud.", length=1, signed=True),
+            ProtocolField(self.sail_angle, name="sail.", length=1, signed=True),
         ]
 
     @staticmethod
