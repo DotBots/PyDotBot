@@ -601,21 +601,17 @@ class Controller:
         self.logger.info(
             "Requesting voucher",
             url=voucher_request_url,
-            voucher_request=voucher_request,
+            voucher_request=voucher_request.hex(' ').upper(),
         )
         response = requests.post(voucher_request_url, data=voucher_request)
         if response.status_code == 200:
-            self.logger.info("Got voucher", voucher=response.content)
+            self.logger.info("Got an ok voucher response", voucher_response=response.content.hex(' ').upper())
             ead_2 = edhoc_ead_authenticator.prepare_ead_2(response.content)
-        # if True:
             c_r = random.randint(0, 23) # already cbor-encoded as single-byte integer
             message_2 = edhoc_responder.prepare_message_2(
                 lakers.CredentialTransfer.ByValue, c_r, ead_2
-                # lakers.CredentialTransfer.ByReference, c_r, None
-                # lakers.CredentialTransfer.ByValue, c_r, None
             )
             self.pending_edhoc_sessions[dotbot.address] = PendingEdhocSession(dotbot, edhoc_responder, edhoc_ead_authenticator, loc_w, c_r)
-            # self.pending_edhoc_sessions[dotbot.address] = PendingEdhocSession(dotbot, edhoc_responder, None, "http://localhost:18000", c_r)
 
             header = ProtocolHeader(
                 destination=int(dotbot.address, 16),
@@ -678,11 +674,9 @@ class Controller:
             except Exception as e:
                 logger.error("Error processing message 1", error=e)
                 return
-            if ead_1 and ead_1.label() == 1:
-            # if True:
+            if ead_1 and ead_1.label() == lakers.consts.EAD_AUTHZ_LABEL:
                 asyncio.create_task(
                     self.request_voucher_for_dotbot(dotbot, edhoc_responder, ead_1, message_1)
-                    # self.request_voucher_for_dotbot(dotbot, edhoc_responder, None, message_1)
                 )
                 return
             else:
@@ -695,6 +689,7 @@ class Controller:
         ):
             logger.info("Potential EDHOC message 3")
             try:
+                # check connection identifier
                 assert payload.values.value[0] == self.pending_edhoc_sessions[source].c_r
                 message_3 = payload.values.value[1:]
                 logger.debug("Will process EDHOC message", message_3=message_3.hex(' ').upper())
@@ -707,17 +702,17 @@ class Controller:
                         cred_i = fetch_credential_remotely(self.pending_edhoc_sessions[source].loc_w, id_cred_i)
                 except Exception as e:
                     logger.error("Error fetching credential", error=e)
-                    self.pending_edhoc_sessions.pop(dotbot.address)
+                    self.pending_edhoc_sessions.pop(source)
                     return
                 r_prk_out = edhoc_responder.verify_message_3(cred_i)
                 logger.info("EDHOC handshake worked")
                 logger.debug("Derived prk_out", prk_out=r_prk_out.hex(' ').upper())
             except Exception as e:
                 logger.error("Error processing message 3", error=e)
-                self.pending_edhoc_sessions.pop(dotbot.address)
+                self.pending_edhoc_sessions.pop(source)
                 return
             logger.info("New dotbot")
-            # NOTE: could save self.pending_edhoc_sessions[source].responder state for future use, e.g. for OSCORE keys
+            # NOTE: could save self.pending_edhoc_sessions[source].responder state for future use, e.g. to derive OSCORE keys
             self.pending_edhoc_sessions.pop(source)
             notification_cmd = DotBotNotificationCommand.RELOAD
         elif source in self.dotbots:
