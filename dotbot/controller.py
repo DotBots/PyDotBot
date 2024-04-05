@@ -661,7 +661,7 @@ class Controller:
         notification_cmd = DotBotNotificationCommand.NONE
 
         if (
-            source not in self.dotbots
+            (source not in self.dotbots or self.dotbots[source].status in [DotBotStatus.LOST, DotBotStatus.DEAD])
             and source not in self.pending_edhoc_sessions
             and payload.payload_type == PayloadType.EDHOC_MESSAGE
         ):
@@ -683,7 +683,7 @@ class Controller:
                 logger.error("EDHOC message 1 should contain a valid EAD_1")
                 return
         elif (
-            source not in self.dotbots
+            (source not in self.dotbots or self.dotbots[source].status in [DotBotStatus.LOST, DotBotStatus.DEAD])
             and source in self.pending_edhoc_sessions
             and payload.payload_type == PayloadType.EDHOC_MESSAGE
         ):
