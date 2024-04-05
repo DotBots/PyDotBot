@@ -9,6 +9,7 @@ from dotbot.models import DotBotModel
 logger = LOGGER.bind(context=__name__)
 CRED_REQUEST_PATH = ".well-known/lake-authz/cred-request"
 
+
 def fetch_credential_remotely(loc_w: str, id_cred_i: bytes) -> bytes:
     url = f"{loc_w}/{CRED_REQUEST_PATH}"
     kid = id_cred_i[0]
@@ -21,7 +22,7 @@ def fetch_credential_remotely(loc_w: str, id_cred_i: bytes) -> bytes:
 
 
 @dataclass
-class PendingEdhocSession():
+class PendingEdhocSession:
     dotbot: DotBotModel
     responder: EdhocResponder
     authz_authenticator: AuthzAutenticator
