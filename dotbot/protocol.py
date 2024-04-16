@@ -267,26 +267,35 @@ class GPSPosition(ProtocolData):
 
 @dataclass
 class SailBotData(ProtocolData):
-    """Dataclass that holds direction and GPS data and heading from SailBot application."""
+    """Dataclass that holds SailBot data from SailBot application."""
 
     direction: int = 0xFFFF
     latitude: int = 0
     longitude: int = 0
+    wind_angle: int = 0xFFFF  # uint angles from 0 to 359
+    rudder_angle: int = 0
+    sail_angle: int = 0
 
     @property
     def fields(self) -> List[ProtocolField]:
         return [
-            ProtocolField(self.direction, name="dir.", length=2),
+            ProtocolField(self.direction, name="dir.", length=2, signed=False),
             ProtocolField(self.latitude, name="latitude", length=4, signed=True),
             ProtocolField(self.longitude, name="longitude", length=4, signed=True),
+            ProtocolField(self.wind_angle, name="wind ang", length=2, signed=False),
+            ProtocolField(self.rudder_angle, name="rud.", length=1, signed=True),
+            ProtocolField(self.sail_angle, name="sail.", length=1, signed=True),
         ]
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
         return SailBotData(
-            direction=int.from_bytes(bytes_[0:2], "little"),
+            direction=int.from_bytes(bytes_[0:2], "little", signed=False),
             latitude=int.from_bytes(bytes_[2:6], "little", signed=True),
             longitude=int.from_bytes(bytes_[6:10], "little", signed=True),
+            wind_angle=int.from_bytes(bytes_[10:12], "little", signed=False),
+            rudder_angle=int.from_bytes(bytes_[12:13], "little", signed=True),
+            sail_angle=int.from_bytes(bytes_[13:14], "little", signed=True),
         )
 
 
@@ -354,8 +363,23 @@ class GPSWaypoints(ProtocolData):
         return _fields
 
     @staticmethod
-    def from_bytes(_) -> ProtocolData:
-        return GPSWaypoints(threshold=0, waypoints=[])
+    def from_bytes(bytes_) -> ProtocolData:
+        waypoints_count = int(bytes_[0])
+        threshold = int(bytes_[1])
+        waypoints = []
+        for idx in range(2 * waypoints_count):
+            waypoints.append(
+                float(
+                    int.from_bytes(
+                        bytes_[2 + 4 * idx : 6 + 4 * idx], byteorder="little"
+                    )
+                    / 1e6
+                )
+            )
+        waypoints = [
+            (waypoints[i], waypoints[i + 1]) for i in range(0, 2 * waypoints_count, 2)
+        ]
+        return GPSWaypoints(threshold=threshold, waypoints=waypoints)
 
 
 @dataclass
@@ -407,13 +431,13 @@ class ProtocolPayload:
         elif payload_type == PayloadType.DOTBOT_DATA:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
-            values = SailBotData.from_bytes(bytes_[25:35])
+            values = SailBotData.from_bytes(bytes_[25:39])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
             values = LH2Waypoints.from_bytes(None)
         elif payload_type == PayloadType.GPS_WAYPOINTS:
-            values = GPSWaypoints.from_bytes(None)
+            values = GPSWaypoints.from_bytes(bytes_[25:])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type.value}'"

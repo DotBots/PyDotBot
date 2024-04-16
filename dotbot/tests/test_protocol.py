@@ -202,13 +202,16 @@ from dotbot.protocol import (
                     0,
                 ),
                 PayloadType.GPS_WAYPOINTS,
-                GPSWaypoints(threshold=0, waypoints=[]),
+                GPSWaypoints(
+                    threshold=10,
+                    waypoints=[(48.856614, 2.352221), (48.856614, 2.352221)],
+                ),
             ),
             id="GPSWaypoints",
         ),
         pytest.param(
             b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x0a"
-            b"-\x00&~\xe9\x02]\xe4#\x00",
+            b"-\x00&~\xe9\x02]\xe4#\x00\xb4\x00\x1e\x14",
             ProtocolPayload(
                 ProtocolHeader(
                     0x1122334455667788,
@@ -219,7 +222,14 @@ from dotbot.protocol import (
                     0,
                 ),
                 PayloadType.SAILBOT_DATA,
-                SailBotData(direction=45, latitude=48856614, longitude=2352221),
+                SailBotData(
+                    direction=45,
+                    latitude=48856614,
+                    longitude=2352221,
+                    wind_angle=180,
+                    rudder_angle=30,
+                    sail_angle=20,
+                ),
             ),
             id="SailBotData",
         ),
@@ -416,11 +426,16 @@ def test_protocol_parser(payload, expected):
                 ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
                 PayloadType.SAILBOT_DATA,
                 SailBotData(
-                    direction=45, latitude=48856614, longitude=2352221
+                    direction=45,
+                    latitude=48856614,
+                    longitude=2352221,
+                    wind_angle=180,
+                    rudder_angle=30,
+                    sail_angle=20,
                 ),  # Paris coordinates
             ),
             b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x0a"
-            b"-\x00&~\xe9\x02]\xe4#\x00",
+            b"-\x00&~\xe9\x02]\xe4#\x00\xb4\x00\x1e\x14",
             id="SailBotData",
         ),
     ],
@@ -638,12 +653,12 @@ def test_payload(payload, expected):
             (
                 "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
                 " SAILBOT_DATA    | dst                              | src                              | swarm id | app. | ver. | msg id           | type |\n"
-                " (35 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x0a |\n"
+                " (39 Bytes)      | 0x1122334455667788               | 0x1222122212221221               | 0x2442   | 0x00 | 0x01 | 0x00000000       | 0x0a |\n"
                 "                 +----------------------------------+----------------------------------+----------+------+------+------------------+------+\n"
-                "                 +----------+------------------+------------------+\n"
-                "                 | dir.     | latitude         | longitude        |\n"
-                "                 | 0x002d   | 0x02e97e26       | 0x0023e45d       |\n"
-                "                 +----------+------------------+------------------+\n"
+                "                 +----------+------------------+------------------+----------+------+------+\n"
+                "                 | dir.     | latitude         | longitude        | wind ang | rud. | sail.|\n"
+                "                 | 0x002d   | 0x02e97e26       | 0x0023e45d       | 0xffff   | 0x00 | 0x00 |\n"
+                "                 +----------+------------------+------------------+----------+------+------+\n"
                 "\n"
             ),
             id="SailBotData",

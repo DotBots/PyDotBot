@@ -148,27 +148,64 @@ const DotBotAccordionItem = (props) => {
 }
 
 const SailBotItem = (props) => {
-
-  const [ rudderValue, setRudderValue ] = useState(0);
-  const [ sailValue, setSailValue ] = useState(0);
-  const [ active, setActive ] = useState(true);
-  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
+  const [rudderValue, setRudderValue] = useState(0);
+  const [sailValue, setSailValue] = useState(0);
+  const [active, setActive] = useState(true);
+  const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
 
   const applyColor = async () => {
     await apiUpdateRgbLed(props.dotbot.address, props.dotbot.application, color.r, color.g, color.b);
     await props.refresh();
   }
 
-  const rudderUpdate = async (event) => {
-    const newRudderValue = parseInt(event.target.value);
+  const handleTextClick = () => {
+    setIsEditing(true);
+    setEditValue(rudderValue.toString());
+  };
+
+  const clampValue = (value) => {
+    const num = parseInt(value, 10);
+    if (isNaN(num)) return 0;
+    return Math.min(Math.max(num, -128), 127);
+  };
+
+  const handleInputChange = (event) => {
+    setEditValue(event.target.value);
+  };
+
+  const handleInputConfirm = () => {
+    const newValue = clampValue(editValue);
+    rudderUpdate(newValue);
+    setIsEditing(false);
+  };
+
+  const handleInputBlur = () => handleInputConfirm();
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleInputConfirm();
+    }
+  };
+
+  const rudderUpdate = (input) => {
+    let newRudderValue;
+    if (typeof input === 'object' && input.target) {
+      newRudderValue = parseInt(input.target.value, 10);
+    } else if (typeof input === 'number') {
+      newRudderValue = input;
+    } else {
+      return;
+    }
     setRudderValue(newRudderValue);
-    setActive(newRudderValue !== 0);
+    setActive(newRudderValue !== undefined && newRudderValue !== null);
   };
 
   const sailUpdate = async (event) => {
     const newSailValue = parseInt(event.target.value);
     setSailValue(newSailValue);
-    setActive(newSailValue !== 0);
+    setActive(newSailValue !== undefined && newSailValue !== null);
   };
 
   const thresholdUpdate = async (event) => {
@@ -208,8 +245,21 @@ const SailBotItem = (props) => {
         <div className="accordion-body">
           <div className="d-flex">
             <div className="mx-auto justify-content-center">
-              <p>{`Rudder: ${rudderValue}`}</p>
-              <input type="range" min="-128" max="127" defaultValue={rudderValue} onChange={rudderUpdate}/>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyPress={handleKeyPress}
+                  autoFocus
+                />
+              ) : (
+                <p onClick={handleTextClick}>{`Rudder: ${rudderValue}`}</p>
+              )}
+              <input
+                type="range" min="-128" max="127" value={rudderValue} onChange={rudderUpdate}
+              />
             </div>
             <div className="mx-auto justify-content-center">
               <p>{`Sail: ${sailValue}`}</p>
@@ -401,6 +451,15 @@ const DotBots = () => {
         if (dotbots[idx].address === message.data.address) {
           if (message.data.direction !== undefined && message.data.direction !== null) {
             dotbotsTmp[idx].direction = message.data.direction;
+          }
+          if (message.data.wind_angle !== undefined && message.data.wind_angle !== null) {
+            dotbotsTmp[idx].wind_angle = message.data.wind_angle;
+          }
+          if (message.data.rudder_angle !== undefined && message.data.rudder_angle !== null) {
+            dotbotsTmp[idx].rudder_angle = message.data.rudder_angle;
+          }
+          if (message.data.sail_angle !== undefined && message.data.sail_angle !== null) {
+            dotbotsTmp[idx].sail_angle = message.data.sail_angle;
           }
           if (message.data.lh2_position !== undefined && message.data.lh2_position !== null) {
             const newPosition = {

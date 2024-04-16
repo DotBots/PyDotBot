@@ -1,4 +1,5 @@
 """Hacth custom hook module."""
+
 # pylint: disable=import-error,too-few-public-methods,wrong-import-position
 
 import os
