@@ -27,14 +27,14 @@ jobs:
             python-version: "3.11"
             node-version: "18"
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Set up nodejs ${{ matrix.node-version }}
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
     - name: Install dependencies
@@ -48,7 +48,7 @@ jobs:
       if: >-
         matrix.python-version == 3.12 &&
         matrix.node-version == 20
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         verbose: true
 
@@ -57,9 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install tox
@@ -71,9 +71,9 @@ jobs:
     name: check frontend
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up nodejs
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: "20"
     - run: npm install
@@ -86,7 +86,7 @@ jobs:
     - run: npm run build
       working-directory: ./dotbot/frontend
     - name: Upload frontend build
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: frontend
         path: ./dotbot/frontend/build
@@ -102,9 +102,9 @@ jobs:
           - ubuntu-latest
           - macos-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.12"
     - name: Install dependencies
@@ -112,7 +112,7 @@ jobs:
         python -m pip install --upgrade --requirement tests_requirements.txt
         python -m pip install --upgrade --requirement build_requirements.txt
     - name: Set up nodejs
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: "20"
     - name: Build package
@@ -121,7 +121,7 @@ jobs:
       run: twine check dist/*
     - name: Upload source package as artifact
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sdist
         path: ./dist/*.tar.gz
@@ -139,14 +139,14 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.12"
     - name: Install build dependencies
       run: python -m pip install --upgrade --requirement build_requirements.txt
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: frontend
         path: ./dotbot/frontend/build
@@ -156,7 +156,7 @@ jobs:
         CIBW_SKIP: "cp36-* cp37-* pp*"
         CIBW_BUILD_FRONTEND: "build"
     - name: Upload wheels as artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wheels
         path: ./dist/*.whl
@@ -167,14 +167,14 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Download sdist
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: sdist
         path: ./dist
     - name: Download wheels
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: wheels
         path: ./dist
