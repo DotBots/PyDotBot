@@ -22,7 +22,5 @@ const router = createBrowserRouter([
 
 const root = ReactDOM.createRoot(document.getElementById('dotbots'));
 root.render(
-  <React.StrictMode>
-    <RouterProvider router={router} />
-  </React.StrictMode>
+  <RouterProvider router={router} />
 );

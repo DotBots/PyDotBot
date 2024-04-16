@@ -1,6 +1,6 @@
 import './PinForm.css';
 
-const PinForm = ({ pinUpdate, ready }) => {
+const PinForm = ({ pinUpdate }) => {
 
   const onInputPinChange = (event) => {
     if (event.target.value.length === parseInt(process.env.REACT_APP_PIN_CODE_LENGTH)) {
@@ -10,7 +10,6 @@ const PinForm = ({ pinUpdate, ready }) => {
 
   return (
     <>
-    {ready && (
     <div className="container">
       <form id="pin-code-input">
         <p>Enter pin code:</p>
@@ -19,7 +18,6 @@ const PinForm = ({ pinUpdate, ready }) => {
         </p>
       </form>
     </div>
-    )}
     </>
   );
 };
