@@ -1,5 +1,6 @@
 """Test module for controller base class."""
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import List
@@ -85,6 +86,21 @@ async def test_controller_dont_send(_, __, serial_write):
     # DotBot is not in the controller known dotbot, so the payload won't be sent
     controller.send_payload(payload)
     assert serial_write.call_count == 0
+
+
+def test_controller_saibot_simulator():
+    """Check controller called for sailbot simulator."""
+
+    async def start_simulator():
+        settings = ControllerSettings("sailbot-simulator", "115200", "0", "456", "78")
+        controller = Controller(settings)
+        try:
+            await asyncio.wait_for(controller.run(), timeout=0.5)
+        except asyncio.TimeoutError:
+            pass
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_simulator())
 
 
 @pytest.mark.parametrize(
