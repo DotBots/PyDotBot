@@ -44,10 +44,10 @@ const App = () => {
         let dotbotsTmp = dotbots.slice();
         for (let idx = 0; idx < dotbots.length; idx++) {
           if (dotbots[idx].address === payload.data.address) {
-            if (payload.data.direction) {
+            if (payload.data.direction !== undefined && payload.data.direction !== null) {
               dotbotsTmp[idx].direction = payload.data.direction;
             }
-            if (payload.data.lh2_position) {
+            if (payload.data.lh2_position !== undefined && payload.data.lh2_position !== null) {
               const newPosition = {
                 x: payload.data.lh2_position.x,
                 y: payload.data.lh2_position.y
@@ -57,12 +57,12 @@ const App = () => {
               }
               dotbotsTmp[idx].lh2_position = newPosition;
             }
-            if (payload.data.gps_position) {
+            if (payload.data.gps_position !== undefined && payload.data.gps_position !== null) {
               const newPosition = {
                 latitude: payload.data.gps_position.latitude,
                 longitude: payload.data.gps_position.longitude
               };
-              if (dotbotsTmp[idx].gps_position && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
+              if (dotbotsTmp[idx].gps_position !== undefined && dotbotsTmp[idx].gps_position !== null && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
                 dotbotsTmp[idx].position_history.push(newPosition);
               }
               dotbotsTmp[idx].gps_position = newPosition;

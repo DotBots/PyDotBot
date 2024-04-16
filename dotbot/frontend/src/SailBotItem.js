@@ -6,25 +6,63 @@ import { ApplicationType, dotbotStatuses, dotbotBadgeStatuses } from "./utils/co
 
 export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints, clearWaypoints, updateWaypointThreshold, clearPositionsHistory}) => {
 
-  const [ rudderValue, setRudderValue ] = useState(0);
-  const [ sailValue, setSailValue ] = useState(0);
-  const [ active, setActive ] = useState(true);
-  const [ color, setColor ] = useState({ r: 0, g: 0, b: 0 });
+  const [rudderValue, setRudderValue] = useState(0);
+  const [sailValue, setSailValue] = useState(0);
+  const [active, setActive] = useState(true);
+  const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
 
   const applyColor = async () => {
     await publishCommand(dotbot.address, dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
   }
 
+  const handleTextClick = () => {
+    setIsEditing(true);
+    setEditValue(rudderValue.toString());
+  };
+
+  const clampValue = (value) => {
+    const num = parseInt(value, 10);
+    if (isNaN(num)) return 0;
+    return Math.min(Math.max(num, -128), 127);
+  };
+
+  const handleInputChange = (event) => {
+    setEditValue(event.target.value);
+  };
+
+  const handleInputConfirm = () => {
+    const newValue = clampValue(editValue);
+    rudderUpdate(newValue);
+    setIsEditing(false);
+  };
+
+  const handleInputBlur = () => handleInputConfirm();
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleInputConfirm();
+    }
+  };
+
   const rudderUpdate = async (event) => {
-    const newRudderValue = parseInt(event.target.value);
+    let newRudderValue;
+    if (typeof event === 'object' && event.target) {
+      newRudderValue = parseInt(event.target.value, 10);
+    } else if (typeof event === 'number') {
+      newRudderValue = event;
+    } else {
+      return;
+    }
     setRudderValue(newRudderValue);
-    setActive(newRudderValue !== 0);
+    setActive(newRudderValue !== undefined && newRudderValue !== null);
   };
 
   const sailUpdate = async (event) => {
     const newSailValue = parseInt(event.target.value);
     setSailValue(newSailValue);
-    setActive(newSailValue !== 0);
+    setActive(newSailValue !== undefined && newSailValue !== null);
   };
 
   const thresholdUpdate = async (event) => {
@@ -64,8 +102,21 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
         <div className="accordion-body">
           <div className="d-flex">
             <div className="mx-auto justify-content-center">
-              <p>{`Rudder: ${rudderValue}`}</p>
-              <input type="range" min="-128" max="127" defaultValue={rudderValue} onChange={rudderUpdate}/>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyPress={handleKeyPress}
+                  autoFocus
+                />
+              ) : (
+                <p onClick={handleTextClick}>{`Rudder: ${rudderValue}`}</p>
+              )}
+              <input
+                type="range" min="-128" max="127" value={rudderValue} onChange={rudderUpdate}
+              />
             </div>
             <div className="mx-auto justify-content-center">
               <p>{`Sail: ${sailValue}`}</p>
