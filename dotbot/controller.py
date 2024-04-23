@@ -54,7 +54,7 @@ from dotbot.protocol import (
     ProtocolPayload,
     ProtocolPayloadParserException,
 )
-from dotbot.sailbot_simulator import SailBotSimSerialInterface
+from dotbot.sailbot_simulator import SailbotSimulatorSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
@@ -423,7 +423,7 @@ class Controller:
                 raise SerialInterfaceException("Handshake failed")
 
         if self.settings.port == "sailbot-simulator":
-            self.serial = SailBotSimSerialInterface(on_byte_received)
+            self.serial = SailbotSimulatorSerialInterface(on_byte_received)
         else:
             self.serial = SerialInterface(
                 self.settings.port, self.settings.baudrate, on_byte_received
