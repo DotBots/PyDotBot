@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ApplicationType, inactiveAddress } from "./utils/constants";
 
 import logger from './utils/logger';
-const log = logger.child({module: 'dotbot-item'});
+const log = logger.child({module: 'dotbot-map'});
 
 const referencePoints = [
   {x: -0.1, y: 0.1},
@@ -181,9 +181,9 @@ export const DotBotsMap = (props) => {
     log.info(`Calibrate clicked ${props.calibrationState}`)
     if (["unknown", "done"].includes(props.calibrationState)) {
       setPointsChecked([false, false, false, false]);
-      props.setCalibrationState("running");
+      props.updateCalibrationState("running");
     } else if (props.calibrationState === "ready") {
-      props.setCalibrationState("done");
+      props.updateCalibrationState("done");
       await props.publish(startCalibrationTopic, "");
     }
   };
@@ -206,9 +206,13 @@ export const DotBotsMap = (props) => {
 
   useEffect(() => {
     if (pointsChecked.every(v => v === true)) {
-      props.setCalibrationState("ready");
+      props.updateCalibrationState("ready");
     }
-  }, [pointsChecked, props]);
+
+    if (["unknown", "done"].includes(props.calibrationState)) {
+      setPointsChecked([false, false, false, false]);
+    }
+  }, [pointsChecked, setPointsChecked, props]);
 
   let calibrationButtonLabel = "Start calibration";
   let calibrationButtonClass = "btn-primary";

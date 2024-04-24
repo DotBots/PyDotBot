@@ -28,6 +28,13 @@ const App = () => {
     setSearchParams: setSearchParams,
   });
 
+  const updateCalibrationState = useCallback((state) => {
+    setCalibrationState(state);
+    if (state === "done") {
+      setTimeout(sendRequest, 250, ({request: RequestType.LH2CalibrationState, reply: `${clientId}`}));
+    }
+  }, [setCalibrationState, sendRequest, clientId]);
+
   const handleMessage = useCallback(() => {
     log.info(`Handle received message: ${JSON.stringify(message)}`);
     let payload = message.payload;
@@ -107,7 +114,7 @@ const App = () => {
           publishCommand={publishCommand}
           publish={publish}
           calibrationState={calibrationState}
-          setCalibrationState={setCalibrationState}
+          updateCalibrationState={updateCalibrationState}
         />
       </div>
       : <PinForm pinUpdate={setPin} />
