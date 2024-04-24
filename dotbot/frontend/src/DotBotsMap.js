@@ -167,8 +167,8 @@ export const DotBotsMap = (props) => {
   const [ displayGrid, setDisplayGrid ] = useState(true);
   const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
 
-  const addCalibrationPointTopic = "lh2/calibration/add";
-  const startCalibrationTopic = "lh2/calibration/start";
+  const addCalibrationPointTopic = "lh2/add";
+  const startCalibrationTopic = "lh2/start";
 
   const pointClicked = async (index) => {
     let pointsCheckedTmp = pointsChecked.slice();
