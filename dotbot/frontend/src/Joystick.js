@@ -5,8 +5,6 @@ import useInterval from "use-interval";
 import { useSpring, animated } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 
-import { apiUpdateMoveRaw } from "./rest";
-
 
 const speedOffset = 30;
 
@@ -26,7 +24,7 @@ export const Joystick = (props) => {
     set({ x: active ? mx : 0, y: active ? my : 0, immediate: active });
 
     if (!active) {
-      await apiUpdateMoveRaw(props.address, props.application, 0, 0, 0, 0).catch(error => console.log(error));
+      await props.publishCommand(props.address, props.application, "move_raw", { left_x: 0, left_y: 0, right_x: 0, right_y: 0 });
     }
   })
 
@@ -65,12 +63,12 @@ export const Joystick = (props) => {
       rightSpeed = -128;
     }
 
-    return { left: leftSpeed, right: rightSpeed };
+    return { left: parseInt(leftSpeed), right: parseInt(rightSpeed) };
   };
 
   useInterval(async () => {
     const speeds = moveToSpeeds();
-    await apiUpdateMoveRaw(props.address, props.application, 0, speeds.left, 0, speeds.right).catch(error => console.log(error));
+    await props.publishCommand(props.address, props.application, "move_raw", { left_x: 0, left_y: speeds.left, right_x: 0, right_y: speeds.right });
   }, state.active ? 100 : null);
 
   return (

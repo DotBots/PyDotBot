@@ -13,6 +13,9 @@ include = [
     "dotbot/lib/*",
     "*.py"
 ]
+exclude = [
+    "dotbot/frontend/node_modules",
+]
 
 [tool.hatch.build.targets.sdist.hooks.custom]
 path = "utils/hooks/sdist.py"
@@ -30,15 +33,14 @@ authors = [
 dependencies = [
     "click          == 8.1.7",
     "fastapi        == 0.109.0",
-    "fastapi-mqtt   == 2.1.0",
     "haversine      == 2.8.0",
     "httpx          == 0.26.0",
     "numpy          == 1.26.3",
     "opencv-python  == 4.9.0.80",
-    "pydantic-settings == 2.1.0",
     "pygame         == 2.5.2",
-    "pyserial       == 3.5",
     "pynput         == 1.7.6",
+    "pyserial       == 3.5",
+    "qrkey          == 0.4.3",
     "structlog      == 24.1.0",
     "uvicorn        == 0.25.0",
     "websockets     == 12.0",

@@ -14,6 +14,9 @@ import uvicorn
 import websockets
 from fastapi import WebSocket
 from haversine import Unit, haversine
+from pydantic import ValidationError
+from pydantic.tools import parse_obj_as
+from qrkey import QrkeyController, SubscriptionModel
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
@@ -21,20 +24,31 @@ from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
+    DotBotCalibrationIndexModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
+    DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
     DotBotQueryModel,
+    DotBotReplyModel,
+    DotBotRequestModel,
+    DotBotRequestType,
+    DotBotRgbLedCommandModel,
     DotBotStatus,
+    DotBotWaypoints,
 )
-from dotbot.mqtt import mqtt
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
+    CommandMoveRaw,
+    CommandRgbLed,
+    GPSPosition,
+    GPSWaypoints,
     LH2Location,
+    LH2Waypoints,
     PayloadType,
     ProtocolHeader,
     ProtocolPayload,
@@ -74,7 +88,6 @@ class ControllerSettings:
     swarm_id: str
     webbrowser: bool = False
     handshake: bool = False
-    use_mqtt: bool = False
     verbose: bool = False
 
 
@@ -121,6 +134,7 @@ class Controller:
         #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
         #     ),
         # }
+        self.logger = LOGGER.bind(context=__name__)
         self.header = ProtocolHeader(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
@@ -135,11 +149,260 @@ class Controller:
         self.lh2_manager = LighthouseManager()
         self.api = api
         api.controller = self
-        self.mqtt = mqtt
-        mqtt.controller = self
-        if settings.use_mqtt is True:
-            self.mqtt.init_app(api)
-        self.logger = LOGGER.bind(context=__name__)
+        self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
+        self.subscriptions = [
+            SubscriptionModel(
+                topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
+            ),
+            SubscriptionModel(
+                topic="/command/+/+/+/rgb_led", callback=self.on_command_rgb_led
+            ),
+            SubscriptionModel(
+                topic="/command/+/+/+/waypoints", callback=self.on_command_waypoints
+            ),
+            SubscriptionModel(
+                topic="/command/+/+/+/clear_position_history",
+                callback=self.on_command_clear_position_history,
+            ),
+            SubscriptionModel(topic="/lh2/add", callback=self.on_lh2_add),
+            SubscriptionModel(topic="/lh2/start", callback=self.on_lh2_start),
+        ]
+
+    def on_command_move_raw(self, topic, payload):
+        """Called when a move raw command is received."""
+        logger = self.logger.bind(command="move_raw", topic=topic)
+        topic_split = topic.split("/")[2:]
+        if len(topic_split) != 4 or topic_split[-1] != "move_raw":
+            logger.warning("Invalid move_raw command topic")
+            return
+        swarm_id, address, application, _ = topic_split
+        try:
+            command = DotBotMoveRawCommandModel(**payload)
+        except ValidationError as exc:
+            self.logger.warning(f"Invalid move raw command: {exc.errors()}")
+            return
+        logger.bind(
+            address=address,
+            application=ApplicationType(int(application)).name,
+            **command.model_dump(),
+        )
+        if address not in self.dotbots:
+            logger.warning("DotBot not found")
+            return
+        logger.info("Sending command")
+        header = ProtocolHeader(
+            destination=int(address, 16),
+            source=int(self.settings.gw_address, 16),
+            swarm_id=int(swarm_id, 16),
+            application=ApplicationType(int(application)),
+            version=PROTOCOL_VERSION,
+        )
+        payload = ProtocolPayload(
+            header,
+            PayloadType.CMD_MOVE_RAW,
+            CommandMoveRaw(
+                left_x=command.left_x,
+                left_y=command.left_y,
+                right_x=command.right_x,
+                right_y=command.right_y,
+            ),
+        )
+        self.send_payload(payload)
+        self.dotbots[address].move_raw = command
+
+    def on_command_rgb_led(self, topic, payload):
+        """Called when an rgb led command is received."""
+        logger = self.logger.bind(command="rgb_led", topic=topic)
+        topic_split = topic.split("/")[2:]
+        if len(topic_split) != 4 or topic_split[-1] != "rgb_led":
+            logger.warning("Invalid rgb_led command topic")
+            return
+        swarm_id, address, application, _ = topic_split
+        try:
+            command = DotBotRgbLedCommandModel(**payload)
+        except ValidationError as exc:
+            LOGGER.warning(f"Invalid rgb led command: {exc.errors()}")
+            return
+        logger = logger.bind(
+            address=address,
+            application=ApplicationType(int(application)).name,
+            **command.model_dump(),
+        )
+        if address not in self.dotbots:
+            logger.warning("DotBot not found")
+            return
+        logger.info("Sending command")
+        header = ProtocolHeader(
+            destination=int(address, 16),
+            source=int(self.settings.gw_address, 16),
+            swarm_id=int(swarm_id, 16),
+            application=ApplicationType(int(application)),
+            version=PROTOCOL_VERSION,
+        )
+        payload = ProtocolPayload(
+            header,
+            PayloadType.CMD_RGB_LED,
+            CommandRgbLed(command.red, command.green, command.blue),
+        )
+        self.send_payload(payload)
+        self.dotbots[address].rgb_led = command
+
+    def on_command_waypoints(self, topic, payload):
+        """Called when a list of waypoints is received."""
+        logger = self.logger.bind(command="waypoints", topic=topic)
+        topic_split = topic.split("/")[2:]
+        if len(topic_split) != 4 or topic_split[-1] != "waypoints":
+            logger.warning("Invalid waypoints command topic")
+            return
+        swarm_id, address, application, _ = topic_split
+        command = parse_obj_as(DotBotWaypoints, payload)
+        logger = logger.bind(
+            address=address,
+            application=ApplicationType(int(application)).name,
+            threshold=command.threshold,
+            length=len(command.waypoints),
+        )
+        if address not in self.dotbots:
+            logger.warning("DotBot not found")
+            return
+        logger.info("Sending command")
+        header = ProtocolHeader(
+            destination=int(address, 16),
+            source=int(self.settings.gw_address, 16),
+            swarm_id=int(swarm_id, 16),
+            application=ApplicationType(int(application)),
+            version=PROTOCOL_VERSION,
+        )
+        waypoints_list = command.waypoints
+        if ApplicationType(int(application)) == ApplicationType.SailBot:
+            if self.dotbots[address].gps_position is not None:
+                waypoints_list = [
+                    self.dotbots[address].gps_position
+                ] + command.waypoints
+            payload = ProtocolPayload(
+                header,
+                PayloadType.GPS_WAYPOINTS,
+                GPSWaypoints(
+                    threshold=command.threshold,
+                    waypoints=[
+                        GPSPosition(
+                            latitude=int(waypoint.latitude * 1e6),
+                            longitude=int(waypoint.longitude * 1e6),
+                        )
+                        for waypoint in command.waypoints
+                    ],
+                ),
+            )
+        else:  # DotBot application
+            if self.dotbots[address].lh2_position is not None:
+                waypoints_list = [
+                    self.dotbots[address].lh2_position
+                ] + command.waypoints
+            payload = ProtocolPayload(
+                header,
+                PayloadType.LH2_WAYPOINTS,
+                LH2Waypoints(
+                    threshold=command.threshold,
+                    waypoints=[
+                        LH2Location(
+                            pos_x=int(waypoint.x * 1e6),
+                            pos_y=int(waypoint.y * 1e6),
+                            pos_z=int(waypoint.z * 1e6),
+                        )
+                        for waypoint in command.waypoints
+                    ],
+                ),
+            )
+        self.send_payload(payload)
+        self.dotbots[address].waypoints = waypoints_list
+        self.dotbots[address].waypoints_threshold = command.threshold
+        self.qrkey.publish(
+            "/notify",
+            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
+                exclude_none=True
+            ),
+        )
+
+    def on_command_clear_position_history(self, topic, _):
+        """Called when a clear position history command is received."""
+        logger = self.logger.bind(command="clear_position_history", topic=topic)
+        topic_split = topic.split("/")[2:]
+        if len(topic_split) != 4 or topic_split[-1] != "clear_position_history":
+            logger.warning("Invalid clear_position_history command topic")
+            return
+        _, address, application, _ = topic_split
+        logger = logger.bind(
+            address=address,
+            application=ApplicationType(int(application)).name,
+        )
+        if address not in self.dotbots:
+            logger.warning("DotBot not found")
+            return
+        logger.info("Sending command")
+        self.dotbots[address].position_history = []
+        self.qrkey.publish(
+            "/notify",
+            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
+                exclude_none=True
+            ),
+        )
+
+    def on_lh2_add(self, topic, payload):
+        """Called when an lh2 calibration point is added."""
+        logger = self.logger.bind(lh2="add", topic=topic)
+        topic_split = topic.split("/")[1:]
+        if len(topic_split) != 2 or topic_split[-1] != "add":
+            logger.warning("Invalid lh2 add topic")
+            return
+        try:
+            payload = DotBotCalibrationIndexModel(**payload)
+        except ValidationError as exc:
+            self.logger.warning(f"Invalid calibration index payload: {exc.errors()}")
+            return
+        logger = self.logger.bind(**payload.model_dump())
+        logger.info("Add calibration point")
+        self.lh2_manager.add_calibration_point(payload.index)
+
+    def on_lh2_start(self, topic, _):
+        """Called to start the lh2 calibration."""
+        logger = self.logger.bind(lh2="start", topic=topic)
+        topic_split = topic.split("/")[1:]
+        if len(topic_split) != 2 or topic_split[-1] != "start":
+            logger.warning("Invalid lh2 start topic")
+            return
+        logger.info("Start calibration")
+        self.lh2_manager.compute_calibration()
+
+    def on_request(self, payload):
+        logger = LOGGER.bind(topic="/request")
+        logger.info("Request received")
+        try:
+            request = DotBotRequestModel(**payload)
+        except ValidationError as exc:
+            logger.warning(f"Invalid request: {exc.errors()}")
+            return
+
+        reply_topic = f"/reply/{request.reply}"
+        if request.request == DotBotRequestType.DOTBOTS:
+            logger.info("Publish dotbots")
+            data = [
+                dotbot.model_dump(exclude_none=True)
+                for dotbot in self.get_dotbots(DotBotQueryModel())
+            ]
+            message = DotBotReplyModel(
+                request=DotBotRequestType.DOTBOTS,
+                data=data,
+            ).model_dump(exclude_none=True)
+            self.qrkey.publish(reply_topic, message)
+        elif request.request == DotBotRequestType.LH2_CALIBRATION_STATE:
+            logger.info("Publish LH2 state")
+            message = DotBotReplyModel(
+                request=DotBotRequestType.LH2_CALIBRATION_STATE,
+                data=self.lh2_manager.state_model.model_dump(),
+            ).model_dump(exclude_none=True)
+            self.qrkey.publish(reply_topic, message)
+        else:
+            logger.warning("Unsupported request command")
 
     async def _start_serial(self):
         """Starts the serial listener thread in a coroutine."""
@@ -189,7 +452,7 @@ class Controller:
                 writer.close()
                 break
         if self.settings.webbrowser is True:
-            url = "http://localhost:8000/dotbots"
+            url = f"http://localhost:8000/PyDotBot?pin={self.qrkey.pin_code}"
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 
@@ -414,16 +677,12 @@ class Controller:
         await asyncio.gather(
             *[
                 self._ws_send_safe(
-                    websocket, json.dumps(notification.dict(exclude_none=True))
+                    websocket, json.dumps(notification.model_dump(exclude_none=True))
                 )
                 for websocket in self.websockets
             ]
         )
-        if self.mqtt.client.is_connected is True:
-            self.mqtt.publish(
-                f"/dotbots/{self.settings.swarm_id}/notifications",
-                json.dumps(notification.dict(exclude_none=True)),
-            )
+        self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
@@ -456,25 +715,10 @@ class Controller:
                 continue
             if query.status is not None and dotbot.status != query.status:
                 continue
-            _dotbot = DotBotModel(**dotbot.dict())
+            _dotbot = DotBotModel(**dotbot.model_dump())
             _dotbot.position_history = _dotbot.position_history[: query.max_positions]
             dotbots.append(_dotbot)
         return sorted(dotbots, key=lambda dotbot: dotbot.address)
-
-    async def _publish_dotbots(self):
-        while 1:
-            if self.mqtt.client.is_connected is False:
-                await asyncio.sleep(1)
-                continue
-            self.logger.debug("Publish dotbots to MQTT")
-            self.mqtt.publish(
-                f"/dotbots/{self.settings.swarm_id}",
-                [
-                    dotbot.dict(exclude_none=True)
-                    for dotbot in self.get_dotbots(DotBotQueryModel())
-                ],
-            )
-            await asyncio.sleep(1)
 
     async def web(self):
         """Starts the web server application."""
@@ -496,11 +740,11 @@ class Controller:
         tasks = []
         try:
             tasks = [
+                asyncio.create_task(self.qrkey.start(subscriptions=self.subscriptions)),
                 asyncio.create_task(self.web()),
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
                 asyncio.create_task(self._dotbots_status_refresh()),
-                asyncio.create_task(self._publish_dotbots()),
             ]
             await asyncio.gather(*tasks)
         except (

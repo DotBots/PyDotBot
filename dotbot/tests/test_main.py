@@ -29,8 +29,6 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --handshake                     Perform a basic handshake with the gateway
                                   board on startup
-  --use-mqtt                      Connect to the MQTT broker configured in the
-                                  .env file
   --help                          Show this message and exit.
 """
 
@@ -43,9 +41,10 @@ def test_main_help():
 
 
 @patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.controller.QrkeyController")
 @patch("dotbot.version")
 @patch("dotbot.controller.Controller.run")
-def test_main(run, version, _):
+def test_main(run, version, _, __):
     version.return_value = "test"
     runner = CliRunner()
     result = runner.invoke(main)
@@ -60,8 +59,9 @@ def test_main(run, version, _):
 
 
 @patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot.controller.QrkeyController")
 @patch("dotbot.controller.Controller.run")
-def test_main_interrupts(run, _):
+def test_main_interrupts(run, _, __):
     runner = CliRunner()
     run.side_effect = KeyboardInterrupt
     result = runner.invoke(main)

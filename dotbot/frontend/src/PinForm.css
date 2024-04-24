@@ -1,0 +1,24 @@
+#pin-code-input {
+  height: 80vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  font-size: 1.2rem;
+  font-family: system-ui;
+}
+
+/* Safari */
+:-webkit-full-screen {
+  background-color: white;
+}
+
+/* IE11 syntax */
+:-ms-fullscreen {
+  background-color: white;
+}
+
+/* Standard syntax */
+:fullscreen {
+  background-color: white;
+}

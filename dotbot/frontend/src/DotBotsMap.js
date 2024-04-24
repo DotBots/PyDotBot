@@ -1,11 +1,9 @@
 import React from "react";
-import { useCallback, useEffect, useState } from "react";
-import { ApplicationType } from "./constants";
+import { useEffect, useState } from "react";
+import { ApplicationType, inactiveAddress } from "./utils/constants";
 
-import {
-    apiFetchLH2CalibrationState, apiApplyLH2Calibration,
-    apiAddLH2CalibrationPoint, inactiveAddress
-} from "./rest";
+import logger from './utils/logger';
+const log = logger.child({module: 'dotbot-map'});
 
 const referencePoints = [
   {x: -0.1, y: 0.1},
@@ -167,31 +165,26 @@ const DotBotsMapPoint = (props) => {
 export const DotBotsMap = (props) => {
 
   const [ displayGrid, setDisplayGrid ] = useState(true);
-  const [ calibrationFetched, setCalibrationFetched ] = useState(false);
-  const [ calibrationState, setCalibrationState ] = useState("unknown");
   const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
 
-  const fetchCalibrationState = useCallback(async () => {
-    const state = await apiFetchLH2CalibrationState().catch((error) => console.error(error));
-    setCalibrationState(state.state);
-    setCalibrationFetched(true);
-  }, [setCalibrationFetched, setCalibrationState]
-  );
+  const addCalibrationPointTopic = "lh2/add";
+  const startCalibrationTopic = "lh2/start";
 
-  const pointClicked = (index) => {
+  const pointClicked = async (index) => {
     let pointsCheckedTmp = pointsChecked.slice();
     pointsCheckedTmp[index] = true;
     setPointsChecked(pointsCheckedTmp);
-    apiAddLH2CalibrationPoint(index);
+    await props.publish(addCalibrationPointTopic, { index: index });
   };
 
-  const calibrateClicked = () => {
-    if (["unknown", "done"].includes(calibrationState)) {
+  const calibrateClicked = async () => {
+    log.info(`Calibrate clicked ${props.calibrationState}`)
+    if (["unknown", "done"].includes(props.calibrationState)) {
       setPointsChecked([false, false, false, false]);
-      setCalibrationState("running");
-    } else if (calibrationState === "ready") {
-      setCalibrationState("done");
-      apiApplyLH2Calibration();
+      props.updateCalibrationState("running");
+    } else if (props.calibrationState === "ready") {
+      props.updateCalibrationState("done");
+      await props.publish(startCalibrationTopic, "");
     }
   };
 
@@ -212,23 +205,24 @@ export const DotBotsMap = (props) => {
   };
 
   useEffect(() => {
-    if (!calibrationFetched) {
-      fetchCalibrationState();
-    }
     if (pointsChecked.every(v => v === true)) {
-      setCalibrationState("ready");
+      props.updateCalibrationState("ready");
     }
-  }, [calibrationFetched, fetchCalibrationState, pointsChecked, setCalibrationState]);
+
+    if (["unknown", "done"].includes(props.calibrationState)) {
+      setPointsChecked([false, false, false, false]);
+    }
+  }, [pointsChecked, setPointsChecked, props]);
 
   let calibrationButtonLabel = "Start calibration";
   let calibrationButtonClass = "btn-primary";
-  if (calibrationState === "running") {
+  if (props.calibrationState === "running") {
     calibrationButtonLabel = <><span className="spinner-border spinner-border-sm text-light me-2 mt-1" role="status"></span>Calibration in progress...</>;
     calibrationButtonClass = "btn-secondary disabled";
-  } else if (calibrationState === "ready") {
+  } else if (props.calibrationState === "ready") {
     calibrationButtonLabel = "Apply calibration";
     calibrationButtonClass = "btn-success";
-  } else if (calibrationState === "done") {
+  } else if (props.calibrationState === "done") {
     calibrationButtonLabel = "Update calibration";
   }
 
@@ -261,7 +255,7 @@ export const DotBotsMap = (props) => {
                   .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} {...props} />)
               }
               {
-                ["running", "ready"].includes(calibrationState) && (
+                ["running", "ready"].includes(props.calibrationState) && (
                   <>
                   {referencePoints.map((point, index) => (
                     <rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} style={{ cursor: "pointer" }} onClick={() => pointClicked(index)}><title>{index + 1}</title></rect>
@@ -295,7 +289,7 @@ export const DotBotsMap = (props) => {
           <div className="d-flex">
             <button className={`btn btn-sm ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
           </div>
-          {calibrationState === "running" && (
+          {props.calibrationState === "running" && (
           <div className="d-flex">
             <p style={{ width: calibrationTextWidth }}>
               Place a DotBot on the marks on the ground and once done, click the corresponding rectangle on the grid. Repeat the operation for each marks.

@@ -1,7 +1,6 @@
 """Module for the web server application."""
 
 import os
-from binascii import hexlify
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -10,9 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
 from dotbot.models import (
-    DotBotAddressModel,
     DotBotCalibrationStateModel,
-    DotBotControlModeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -26,7 +23,6 @@ from dotbot.protocol import (
     ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
-    ControlMode,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -36,7 +32,9 @@ from dotbot.protocol import (
     ProtocolPayload,
 )
 
-STATIC_FILES_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
+PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
+    "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"
+)
 
 
 api = FastAPI(
@@ -54,34 +52,6 @@ api.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-api.mount(
-    "/dotbots", StaticFiles(directory=STATIC_FILES_DIR, html=True), name="dotbots"
-)
-
-
-@api.get(
-    path="/controller/dotbot_address",
-    response_model=DotBotAddressModel,
-    summary="Return the controller active dotbot address",
-    tags=["controller"],
-)
-async def controller_dotbot_address():
-    """Returns the active dotbot address."""
-    return DotBotAddressModel(
-        address=hexlify(
-            int(api.controller.header.destination).to_bytes(8, "big")
-        ).decode()
-    )
-
-
-@api.put(
-    path="/controller/dotbot_address",
-    summary="Sets the controller active dotbot address",
-    tags=["controller"],
-)
-async def controller_dotbot_address_update(data: DotBotAddressModel):
-    """Updates the active dotbot address."""
-    api.controller.header.destination = int(data.address, 16)
 
 
 @api.put(
@@ -140,32 +110,6 @@ async def dotbots_rgb_led(
     )
     api.controller.send_payload(payload)
     api.controller.dotbots[address].rgb_led = command
-
-
-@api.put(
-    path="/controller/dotbots/{address}/{application}/mode",
-    summary="Set the dotbot control mode",
-    tags=["dotbots"],
-)
-async def dotbots_mode(address: str, application: int, data: DotBotControlModeModel):
-    """Set the control mode of a DotBot."""
-    if address not in api.controller.dotbots:
-        raise HTTPException(status_code=404, detail="No matching dotbot found")
-
-    header = ProtocolHeader(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType(application),
-        version=PROTOCOL_VERSION,
-    )
-    payload = ProtocolPayload(
-        header,
-        PayloadType.CONTROL_MODE,
-        ControlMode(data.mode),
-    )
-    api.controller.send_payload(payload)
-    api.controller.dotbots[address].mode = data.mode
 
 
 @api.put(
@@ -320,3 +264,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in api.controller.websockets:
             api.controller.websockets.remove(websocket)
+
+
+# Mount static files after all routes are defined
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
+api.mount("/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot")

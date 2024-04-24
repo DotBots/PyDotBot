@@ -3,7 +3,7 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -22,6 +22,18 @@ class DotBotCalibrationStateModel(BaseModel):
     """Model that holds the controller LH2 calibration state."""
 
     state: str
+
+
+class DotBotCalibrationIndexModel(BaseModel):
+    """Model that holds the controller LH2 calibration index."""
+
+    index: int
+
+
+class MqttPinCodeModel(BaseModel):
+    """Pin code used to derive crypto keys for MQTT."""
+
+    pin: int
 
 
 class DotBotMoveRawCommandModel(BaseModel):
@@ -93,6 +105,7 @@ class DotBotNotificationCommand(IntEnum):
     NONE: int = 0
     RELOAD: int = 1
     UPDATE: int = 2
+    PIN_CODE_UPDATE: int = 3
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -112,6 +125,28 @@ class DotBotNotificationModel(BaseModel):
 
     cmd: DotBotNotificationCommand
     data: Optional[DotBotNotificationUpdate] = None
+    pin_code: Optional[int] = None
+
+
+class DotBotRequestType(IntEnum):
+    """Request received from MQTT client."""
+
+    DOTBOTS: int = 0
+    LH2_CALIBRATION_STATE: int = 1
+
+
+class DotBotRequestModel(BaseModel):
+    """Model class used to handle controller request."""
+
+    request: DotBotRequestType
+    reply: str
+
+
+class DotBotReplyModel(BaseModel):
+    """Model class used to handle controller replies."""
+
+    request: DotBotRequestType
+    data: Any
 
 
 class DotBotModel(BaseModel):

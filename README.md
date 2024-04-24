@@ -51,8 +51,6 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --handshake                     Perform a basic handshake with the gateway
                                   board on startup
-  --use-mqtt                      Connect to the MQTT broker configured in the
-                                  .env file
   --help                          Show this message and exit.
 ```
 
@@ -62,7 +60,7 @@ example, on Windows, you'll need to check which COM port is connected to the
 gateway and add `--port COM3` if it's COM3.
 
 Using the `--webbrowser` option, a tab will automatically open at
-[http://localhost:8000/dotbots](http://localhost:8000/dotbots). The page maintains
+[http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot). The page maintains
 a list of available DotBots, allows to set which one is active and controllable
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
