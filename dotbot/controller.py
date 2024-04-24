@@ -340,6 +340,12 @@ class Controller:
             return
         logger.info("Sending command")
         self.dotbots[address].position_history = []
+        self.qrkey.publish(
+            "/notify",
+            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
+                exclude_none=True
+            ),
+        )
 
     def on_lh2_add(self, topic, payload):
         """Called when an lh2 calibration point is added."""

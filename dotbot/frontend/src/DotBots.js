@@ -112,7 +112,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
     for (let idx = 0; idx < dotbots.length; idx++) {
       if (dotbots[idx].address === address) {
         dotbotsTmp[idx].position_history = [];
-        await publishCommand(address, dotbots[idx].application, "clear_history", "");
+        await publishCommand(address, dotbots[idx].application, "clear_position_history", "");
         updateDotbots(dotbotsTmp);
         return;
       }
