@@ -77,12 +77,12 @@ Welcome to the DotBots controller (version: 0.17).
 2024-01-11T13:42:02.740025Z [info     ] Starting web server            [pydotbot] context=dotbot.controller
 2024-01-11T13:42:02.752914Z [info     ] Serial port thread started     [pydotbot] context=dotbot.serial_interface
 2024-01-11T13:42:02.949352Z [info     ] Connected                      [pydotbot] context=dotbot.mqtt flags=0 rc=0 receive_maximum=[10] topic_alias_maximum=[5]
-2024-01-11T13:42:03.128297Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/0000/+/+/move_raw [pydotbot] context=dotbot.mqtt qos=(0,)
-2024-01-11T13:42:03.128606Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/0000/+/+/rgb_led [pydotbot] context=dotbot.mqtt qos=(0,)
-2024-01-11T13:42:03.128790Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/0000/+/+/waypoints [pydotbot] context=dotbot.mqtt qos=(0,)
-2024-01-11T13:42:03.128940Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/0000/+/+/clear_history [pydotbot] context=dotbot.mqtt qos=(0,)
-2024-01-11T13:42:03.129056Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/lh2/calibration/add [pydotbot] context=dotbot.mqtt qos=(0,)
-2024-01-11T13:42:03.129159Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/lh2/calibration/start [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.128297Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/command/0000/+/+/move_raw [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.128606Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/command/0000/+/+/rgb_led [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.128790Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/command/0000/+/+/waypoints [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.128940Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/command/0000/+/+/clear_position_history [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.129056Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/lh2/add [pydotbot] context=dotbot.mqtt qos=(0,)
+2024-01-11T13:42:03.129159Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/lh2/start [pydotbot] context=dotbot.mqtt qos=(0,)
 2024-01-11T13:42:03.129280Z [info     ] Subscribed to /dotbots/2SzQsZWfOV8OXrWQtEEdIA==/request [pydotbot] context=dotbot.mqtt qos=(0,)
 ```
 
@@ -191,7 +191,7 @@ protected = {'alg': 'dir', 'enc': 'A256GCM'}
 rgb_led_payload = jwe.encrypt_compact(protected, rgb_led, key)
 print(f"RGB LED Payload: {rgb_led_payload}")
 
-client.publish(f"/dotbots/{topic}/0000/{dotbot_addr}/0/rgb_led", rgb_led_payload)
+client.publish(f"/dotbots/{topic}/command/0000/{dotbot_addr}/0/rgb_led", rgb_led_payload)
 ```
 
 And the RGB LED should turn red.
@@ -205,7 +205,7 @@ command:
 move = json.dumps({"left_x": 0, "left_y": 80, "right_x": 0, "right_y": 80})
 move_payload = jwe.encrypt_compact(protected, move, key)
 print(f"Move Payload: {move_payload}")
-client.publish(f"/dotbots/{topic}/0000/{dotbot_addr}/0/move_raw", move_payload, qos=1)
+client.publish(f"/dotbots/{topic}/command/0000/{dotbot_addr}/0/move_raw", move_payload, qos=1)
 ```
 
 And the DotBot should move forward during 200ms!
