@@ -158,7 +158,7 @@ jobs:
     - name: Upload wheels as artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: wheels
+        name: wheels-${{ matrix.os }}
         path: ./dist/*.whl
 
   release:
@@ -173,10 +173,20 @@ jobs:
       with:
         name: sdist
         path: ./dist
-    - name: Download wheels
+    - name: Download ubuntu wheels
       uses: actions/download-artifact@v4
       with:
-        name: wheels
+        name: wheels-ubuntu-latest
+        path: ./dist
+    - name: Download mac-os wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: wheels-macos-latest
+        path: ./dist
+    - name: Download ubuntu wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: wheels-windows-latest
         path: ./dist
     - name: Check dist/ content
       run: ls -lR ./dist
