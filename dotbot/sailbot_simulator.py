@@ -444,6 +444,7 @@ class SailbotSimulatorSerialInterface(threading.Thread):
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + CONTROL_DELTA_T
+            time.sleep(0.05)
 
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""
