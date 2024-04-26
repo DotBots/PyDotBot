@@ -119,7 +119,6 @@ class SailBotSimulator:
 
         # autonomous mode initialisations
         self.waypoint_threshold = 0
-        self.num_waypoints = 0
         self.waypoints = []
         self.next_waypoint = 0
         self.zigzag_flag = False
@@ -359,11 +358,11 @@ class SailBotSimulator:
                 )
 
             if payload.payload_type == PayloadType.GPS_WAYPOINTS:
-                self.operation_mode = SailBotSimulatorMode.AUTOMATIC
-                payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
+                self.operation_mode = SailBotSimulatorMode.MANUAL
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
-                self.num_waypoints = len(self.waypoints)
+                if self.waypoints:
+                    self.operation_mode = SailBotSimulatorMode.AUTOMATIC
 
     def encode_serial_output(self):
         """Encode the sailbot data to be sent to the gateway."""
