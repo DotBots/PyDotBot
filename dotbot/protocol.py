@@ -25,7 +25,7 @@ class PayloadType(Enum):
     LH2_WAYPOINTS = 8
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
-    FAUXBOT_DATA = 11
+    DOTBOT_SIMULATOR_DATA = 11
     INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
 
 
@@ -301,7 +301,7 @@ class SailBotData(ProtocolData):
 
 
 @dataclass
-class FauxBotData(ProtocolData):
+class DotBotSimulatorData(ProtocolData):
     """Dataclass that holds direction and GPS data and heading from SailBot application."""
 
     theta: int = 0xFFFF
@@ -318,7 +318,7 @@ class FauxBotData(ProtocolData):
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
-        return FauxBotData(
+        return DotBotSimulatorData(
             theta=int.from_bytes(bytes_[0:2], "little"),
             pos_x=int.from_bytes(bytes_[2:6], "little"),
             pos_y=int.from_bytes(bytes_[6:10], "little"),
@@ -370,8 +370,24 @@ class LH2Waypoints(ProtocolData):
         return _fields
 
     @staticmethod
-    def from_bytes(_) -> ProtocolData:
-        return LH2Waypoints(threshold=0, waypoints=[])
+    def from_bytes(bytes_) -> ProtocolData:
+        waypoints_count = int(bytes_[0])
+        threshold = int(bytes_[1])
+        waypoints_bytes = bytes_[2:]
+        waypoints = []
+        for idx in range(waypoints_count):
+            for i in range(3):
+                waypoints.append(
+                    int.from_bytes(
+                        waypoints_bytes[12 * idx + i * 4 : 12 * idx + (i + 1) * 4],
+                        byteorder="little",
+                    )
+                )
+        waypoints = [
+            (waypoints[i], waypoints[i + 1], waypoints[i + 2])
+            for i in range(0, 3 * waypoints_count, 3)
+        ]
+        return LH2Waypoints(threshold=threshold, waypoints=waypoints)
 
 
 @dataclass
@@ -392,12 +408,13 @@ class GPSWaypoints(ProtocolData):
     def from_bytes(bytes_) -> ProtocolData:
         waypoints_count = int(bytes_[0])
         threshold = int(bytes_[1])
+        waypoints_bytes = bytes_[2:]
         waypoints = []
         for idx in range(2 * waypoints_count):
             waypoints.append(
                 float(
                     int.from_bytes(
-                        bytes_[2 + 4 * idx : 6 + 4 * idx], byteorder="little"
+                        waypoints_bytes[4 * idx : 4 * (idx + 1)], byteorder="little"
                     )
                     / 1e6
                 )
@@ -458,12 +475,12 @@ class ProtocolPayload:
             values = DotBotData.from_bytes(bytes_[25:47])
         elif payload_type == PayloadType.SAILBOT_DATA:
             values = SailBotData.from_bytes(bytes_[25:39])
-        elif payload_type == PayloadType.FAUXBOT_DATA:
-            values = FauxBotData.from_bytes(bytes_[25:35])
+        elif payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
+            values = DotBotSimulatorData.from_bytes(bytes_[25:35])
         elif payload_type == PayloadType.CONTROL_MODE:
             values = ControlMode.from_bytes(bytes_[25:26])
         elif payload_type == PayloadType.LH2_WAYPOINTS:
-            values = LH2Waypoints.from_bytes(None)
+            values = LH2Waypoints.from_bytes(bytes_[25:])
         elif payload_type == PayloadType.GPS_WAYPOINTS:
             values = GPSWaypoints.from_bytes(bytes_[25:])
         else:

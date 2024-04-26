@@ -55,7 +55,7 @@ def geographical2cartesian(latitude, longitude):
     return (x, y)
 
 
-class SailbotSimulatorMode(Enum):
+class SailBotSimulatorMode(Enum):
     """Operation mode of the sailbot simulator."""
 
     MANUAL = "MANUAL"
@@ -70,7 +70,7 @@ class Point:
     y: float
 
 
-class SailbotSimulatorLineClass:
+class SailBotSimulatorLineClass:
     """Simulator zig-zag routine helper class."""
 
     def __init__(self, point: Point, angle_radians):
@@ -91,7 +91,7 @@ class SailbotSimulatorLineClass:
         return d >= 0
 
 
-class SailbotSimulator:
+class SailBotSimulator:
     """Simulator class for the sailbot."""
 
     def __init__(self, address):
@@ -115,7 +115,7 @@ class SailbotSimulator:
         self.rudder_slider = 0  # rudder slider
         self.sail_slider = 0  # sail slider
 
-        self.operation_mode: SailbotSimulatorMode = SailbotSimulatorMode.MANUAL
+        self.operation_mode: SailBotSimulatorMode = SailBotSimulatorMode.MANUAL
 
         # autonomous mode initialisations
         self.waypoint_threshold = 0
@@ -251,7 +251,7 @@ class SailbotSimulator:
             self.waypoints = []
             self.next_waypoint = 0
             self.zigzag_flag = False
-            self.operation_mode = SailbotSimulatorMode.MANUAL
+            self.operation_mode = SailBotSimulatorMode.MANUAL
             return
 
         # convert current position and next waypoint to cartesian
@@ -296,7 +296,7 @@ class SailbotSimulator:
                 # initialise zig zag parameters
                 self.zigzag_width = 15  # meters
                 self.zigzag_dir = False  # where to start zig-zagging (can be improved by choosing the shortest path)
-                self.line2target = SailbotSimulatorLineClass(
+                self.line2target = SailBotSimulatorLineClass(
                     Point(current_x, current_y), angle2target
                 )
 
@@ -359,7 +359,7 @@ class SailbotSimulator:
                 )
 
             if payload.payload_type == PayloadType.GPS_WAYPOINTS:
-                self.operation_mode = SailbotSimulatorMode.AUTOMATIC
+                self.operation_mode = SailBotSimulatorMode.AUTOMATIC
                 payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
@@ -404,12 +404,12 @@ class SailbotSimulator:
         return hdlc_encode(payload.to_bytes())
 
 
-class SailbotSimulatorSerialInterface(threading.Thread):
+class SailBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots."""
 
     def __init__(self, callback: Callable):
         self.sailbots = [
-            SailbotSimulator("1234567890123456"),
+            SailBotSimulator("1234567890123456"),
         ]
 
         self.callback = callback
@@ -440,7 +440,7 @@ class SailbotSimulatorSerialInterface(threading.Thread):
             # update control inputs every CONTROL_DELTA_T seconds
             if current_time >= next_control_time:
                 for sailbot in self.sailbots:
-                    if sailbot.operation_mode == SailbotSimulatorMode.AUTOMATIC:
+                    if sailbot.operation_mode == SailBotSimulatorMode.AUTOMATIC:
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + CONTROL_DELTA_T

@@ -185,7 +185,10 @@ from dotbot.protocol import (
                     0,
                 ),
                 PayloadType.LH2_WAYPOINTS,
-                LH2Waypoints(threshold=0, waypoints=[]),
+                LH2Waypoints(
+                    threshold=10,
+                    waypoints=[(1000, 1000, 2), (1000, 1000, 2)],
+                ),
             ),
             id="LH2Waypoints",
         ),

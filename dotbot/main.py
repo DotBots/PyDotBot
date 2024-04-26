@@ -10,6 +10,7 @@ import click
 import serial
 
 from dotbot import (
+    CONTROLLER_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
@@ -58,6 +59,13 @@ from dotbot.logger import setup_logging
     help=f"Swarm ID in hex. Defaults to {SWARM_ID_DEFAULT:>0{4}}",
 )
 @click.option(
+    "-c",
+    "--controller-port",
+    type=int,
+    default=CONTROLLER_PORT_DEFAULT,
+    help=f"Controller port. Defaults to '{CONTROLLER_PORT_DEFAULT}'",
+)
+@click.option(
     "-w",
     "--webbrowser",
     is_flag=True,
@@ -95,6 +103,7 @@ def main(
     dotbot_address,
     gw_address,
     swarm_id,
+    controller_port,
     webbrowser,
     verbose,
     log_level,
@@ -109,14 +118,15 @@ def main(
     try:
         controller = Controller(
             ControllerSettings(
-                port,
-                baudrate,
-                dotbot_address,
-                gw_address,
-                swarm_id,
-                webbrowser,
-                handshake,
-                verbose,
+                port=port,
+                baudrate=baudrate,
+                dotbot_address=dotbot_address,
+                gw_address=gw_address,
+                swarm_id=swarm_id,
+                controller_port=controller_port,
+                webbrowser=webbrowser,
+                handshake=handshake,
+                verbose=verbose,
             ),
         )
         asyncio.run(controller.run())

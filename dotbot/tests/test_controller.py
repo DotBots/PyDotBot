@@ -92,7 +92,27 @@ def test_controller_saibot_simulator():
     """Check controller called for sailbot simulator."""
 
     async def start_simulator():
-        settings = ControllerSettings("sailbot-simulator", "115200", "0", "456", "78")
+        settings = ControllerSettings(
+            "sailbot-simulator", "115200", "0", "456", "78", 8000
+        )
+        controller = Controller(settings)
+        try:
+            await asyncio.wait_for(controller.run(), timeout=0.5)
+        except asyncio.TimeoutError:
+            pass
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_simulator())
+
+
+@patch("dotbot.controller.QrkeyController.start")
+def test_controller_dotbot_simulator(_):
+    """Check controller called for dotbot simulator."""
+
+    async def start_simulator():
+        settings = ControllerSettings(
+            "dotbot-simulator", "115200", "0", "456", "78", 8001
+        )
         controller = Controller(settings)
         try:
             await asyncio.wait_for(controller.run(), timeout=0.5)
