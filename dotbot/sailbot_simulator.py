@@ -425,16 +425,22 @@ class SailBotSimulatorSerialInterface(threading.Thread):
 
         next_sim_time = time.time() + SIM_DELTA_T
         next_control_time = time.time() + CONTROL_DELTA_T
-
+        updates = [bytearray()] * len(self.sailbots)
+        updates_interval = 0
         while True:
             current_time = time.time()
             # update simulation every SIM_DELTA_T seconds
             if current_time >= next_sim_time:
-                for sailbot in self.sailbots:
-                    for byte in sailbot.simulation_update():
-                        self.callback(byte.to_bytes(length=1, byteorder="little"))
-
+                for idx, sailbot in enumerate(self.sailbots):
+                    updates[idx] = sailbot.simulation_update()
                 next_sim_time = current_time + SIM_DELTA_T
+            if updates_interval >= 10:
+                for update in updates:
+                    for byte in update:
+                        self.callback(byte.to_bytes(length=1, byteorder="little"))
+                        time.sleep(0.001)
+                updates_interval = 0
+            updates_interval += 1
 
             # update control inputs every CONTROL_DELTA_T seconds
             if current_time >= next_control_time:
@@ -443,7 +449,7 @@ class SailBotSimulatorSerialInterface(threading.Thread):
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + CONTROL_DELTA_T
-            time.sleep(0.05)
+            time.sleep(0.02)
 
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""
