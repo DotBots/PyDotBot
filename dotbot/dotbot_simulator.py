@@ -20,7 +20,7 @@ from dotbot.protocol import (
 
 R = 1
 L = 2
-SIMULATOR_STEP_DELTA_T = 0.01
+SIMULATOR_STEP_DELTA_T = 0.005
 
 
 def diff_drive_bot(x_pos_old, y_pos_old, theta_old, v_right, v_left):
@@ -209,21 +209,20 @@ class DotBotSimulatorSerialInterface(threading.Thread):
         for dotbot in self.dotbots:
             for byte in dotbot.advertise():
                 self.callback(byte.to_bytes(length=1, byteorder="little"))
-                time.sleep(0.001)
+        time.sleep(0.5)
 
         while 1:
             for idx, dotbot in enumerate(self.dotbots):
                 for byte in dotbot.update():
                     self.callback(byte.to_bytes(length=1, byteorder="little"))
-                    time.sleep(0.001)
-
+                    time.sleep(0.005)
                 advertising_intervals[idx] += 1
-                if advertising_intervals[idx] == 400:
+                if advertising_intervals[idx] == 100:
                     for byte in dotbot.advertise():
                         self.callback(byte.to_bytes(length=1, byteorder="little"))
-                        time.sleep(0.001)
+                        time.sleep(0.005)
                     advertising_intervals[idx] = 0
-            time.sleep(0.01)
+            time.sleep(0.02)
 
     def write(self, bytes_):
         """Write bytes on the fake serial."""
