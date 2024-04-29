@@ -18,7 +18,12 @@ from pydantic import ValidationError
 from pydantic.tools import parse_obj_as
 from qrkey import QrkeyController, SubscriptionModel
 
-from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
+from dotbot import (
+    CONTROLLER_PORT_DEFAULT,
+    DOTBOT_ADDRESS_DEFAULT,
+    GATEWAY_ADDRESS_DEFAULT,
+)
+from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
@@ -54,7 +59,7 @@ from dotbot.protocol import (
     ProtocolPayload,
     ProtocolPayloadParserException,
 )
-from dotbot.sailbot_simulator import SailbotSimulatorSerialInterface
+from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 from dotbot.server import api
 
@@ -86,6 +91,7 @@ class ControllerSettings:
     dotbot_address: str
     gw_address: str
     swarm_id: str
+    controller_port: int = CONTROLLER_PORT_DEFAULT
     webbrowser: bool = False
     handshake: bool = False
     verbose: bool = False
@@ -423,7 +429,9 @@ class Controller:
                 raise SerialInterfaceException("Handshake failed")
 
         if self.settings.port == "sailbot-simulator":
-            self.serial = SailbotSimulatorSerialInterface(on_byte_received)
+            self.serial = SailBotSimulatorSerialInterface(on_byte_received)
+        elif self.settings.port == "dotbot-simulator":
+            self.serial = DotBotSimulatorSerialInterface(on_byte_received)
         else:
             self.serial = SerialInterface(
                 self.settings.port, self.settings.baudrate, on_byte_received
@@ -445,14 +453,16 @@ class Controller:
         """Wait until the server is ready before opening a web browser."""
         while 1:
             try:
-                _, writer = await asyncio.open_connection("127.0.0.1", 8000)
+                _, writer = await asyncio.open_connection(
+                    "127.0.0.1", self.settings.controller_port
+                )
             except ConnectionRefusedError:
                 await asyncio.sleep(0.1)
             else:
                 writer.close()
                 break
         if self.settings.webbrowser is True:
-            url = f"http://localhost:8000/PyDotBot?pin={self.qrkey.pin_code}"
+            url = f"http://localhost:{self.settings.controller_port}/PyDotBot?pin={self.qrkey.pin_code}"
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 
@@ -614,6 +624,17 @@ class Controller:
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
+        if payload.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
+            dotbot.direction = payload.values.theta
+            new_position = DotBotLH2Position(
+                x=payload.values.pos_x / 1e6,
+                y=payload.values.pos_y / 1e6,
+                z=0,
+            )
+            dotbot.lh2_position = new_position
+            dotbot.position_history.append(new_position)
+            notification_cmd = DotBotNotificationCommand.UPDATE
+
         if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
                 latitude=float(payload.values.latitude) / 1e6,
@@ -723,7 +744,9 @@ class Controller:
     async def web(self):
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
-        config = uvicorn.Config(api, port=8000, log_level="critical")
+        config = uvicorn.Config(
+            api, port=self.settings.controller_port, log_level="critical"
+        )
         server = uvicorn.Server(config)
 
         try:

@@ -21,6 +21,7 @@ Options:
   -g, --gw-address TEXT           Gateway address in hex. Defaults to
                                   0000000000000000
   -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
+  -c, --controller-port INTEGER   Controller port. Defaults to '8000'
   -w, --webbrowser                Open a web browser automatically
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)

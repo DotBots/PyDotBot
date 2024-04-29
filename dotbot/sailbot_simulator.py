@@ -55,7 +55,7 @@ def geographical2cartesian(latitude, longitude):
     return (x, y)
 
 
-class SailbotSimulatorMode(Enum):
+class SailBotSimulatorMode(Enum):
     """Operation mode of the sailbot simulator."""
 
     MANUAL = "MANUAL"
@@ -70,7 +70,7 @@ class Point:
     y: float
 
 
-class SailbotSimulatorLineClass:
+class SailBotSimulatorLineClass:
     """Simulator zig-zag routine helper class."""
 
     def __init__(self, point: Point, angle_radians):
@@ -91,7 +91,7 @@ class SailbotSimulatorLineClass:
         return d >= 0
 
 
-class SailbotSimulator:
+class SailBotSimulator:
     """Simulator class for the sailbot."""
 
     def __init__(self, address):
@@ -115,11 +115,10 @@ class SailbotSimulator:
         self.rudder_slider = 0  # rudder slider
         self.sail_slider = 0  # sail slider
 
-        self.operation_mode: SailbotSimulatorMode = SailbotSimulatorMode.MANUAL
+        self.operation_mode: SailBotSimulatorMode = SailBotSimulatorMode.MANUAL
 
         # autonomous mode initialisations
         self.waypoint_threshold = 0
-        self.num_waypoints = 0
         self.waypoints = []
         self.next_waypoint = 0
         self.zigzag_flag = False
@@ -251,7 +250,7 @@ class SailbotSimulator:
             self.waypoints = []
             self.next_waypoint = 0
             self.zigzag_flag = False
-            self.operation_mode = SailbotSimulatorMode.MANUAL
+            self.operation_mode = SailBotSimulatorMode.MANUAL
             return
 
         # convert current position and next waypoint to cartesian
@@ -296,7 +295,7 @@ class SailbotSimulator:
                 # initialise zig zag parameters
                 self.zigzag_width = 15  # meters
                 self.zigzag_dir = False  # where to start zig-zagging (can be improved by choosing the shortest path)
-                self.line2target = SailbotSimulatorLineClass(
+                self.line2target = SailBotSimulatorLineClass(
                     Point(current_x, current_y), angle2target
                 )
 
@@ -359,11 +358,11 @@ class SailbotSimulator:
                 )
 
             if payload.payload_type == PayloadType.GPS_WAYPOINTS:
-                self.operation_mode = SailbotSimulatorMode.AUTOMATIC
-                payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
+                self.operation_mode = SailBotSimulatorMode.MANUAL
                 self.waypoint_threshold = payload.values.threshold
                 self.waypoints = payload.values.waypoints
-                self.num_waypoints = len(self.waypoints)
+                if self.waypoints:
+                    self.operation_mode = SailBotSimulatorMode.AUTOMATIC
 
     def encode_serial_output(self):
         """Encode the sailbot data to be sent to the gateway."""
@@ -404,12 +403,12 @@ class SailbotSimulator:
         return hdlc_encode(payload.to_bytes())
 
 
-class SailbotSimulatorSerialInterface(threading.Thread):
+class SailBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots."""
 
     def __init__(self, callback: Callable):
         self.sailbots = [
-            SailbotSimulator("1234567890123456"),
+            SailBotSimulator("1234567890123456"),
         ]
 
         self.callback = callback
@@ -426,25 +425,31 @@ class SailbotSimulatorSerialInterface(threading.Thread):
 
         next_sim_time = time.time() + SIM_DELTA_T
         next_control_time = time.time() + CONTROL_DELTA_T
-
+        updates = [bytearray()] * len(self.sailbots)
+        updates_interval = 0
         while True:
             current_time = time.time()
             # update simulation every SIM_DELTA_T seconds
             if current_time >= next_sim_time:
-                for sailbot in self.sailbots:
-                    for byte in sailbot.simulation_update():
-                        self.callback(byte.to_bytes(length=1, byteorder="little"))
-
+                for idx, sailbot in enumerate(self.sailbots):
+                    updates[idx] = sailbot.simulation_update()
                 next_sim_time = current_time + SIM_DELTA_T
+            if updates_interval >= 10:
+                for update in updates:
+                    for byte in update:
+                        self.callback(byte.to_bytes(length=1, byteorder="little"))
+                        time.sleep(0.001)
+                updates_interval = 0
+            updates_interval += 1
 
             # update control inputs every CONTROL_DELTA_T seconds
             if current_time >= next_control_time:
                 for sailbot in self.sailbots:
-                    if sailbot.operation_mode == SailbotSimulatorMode.AUTOMATIC:
+                    if sailbot.operation_mode == SailBotSimulatorMode.AUTOMATIC:
                         sailbot.control_loop_update()
 
                 next_control_time = current_time + CONTROL_DELTA_T
-            time.sleep(0.05)
+            time.sleep(0.02)
 
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""

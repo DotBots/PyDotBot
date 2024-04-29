@@ -67,10 +67,10 @@ export const SailBotMarker = (props) => {
     return sail_out_deg;
   }
 
-  const rotation = props.sailbot.direction
-  const wind_angle = props.sailbot.wind_angle;
+  const rotation = parseInt(props.sailbot.direction);
+  const wind_angle = parseInt(props.sailbot.wind_angle);
 
-  const rudder_angle = props.sailbot.rudder_angle
+  const rudder_angle = parseInt(props.sailbot.rudder_angle)
   const sail_angle = mainsheet2sail_angle(props.sailbot.sail_angle, wind_angle)
 
   const svgIcon = L.divIcon({
