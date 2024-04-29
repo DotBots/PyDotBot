@@ -89,8 +89,8 @@ const App = () => {
   useEffect(() => {
     if (clientId) {
       // Ask for the list of dotbots and the LH2 calibration state at startup
-      sendRequest({request: RequestType.DotBots, reply: `${clientId}`});
-      setTimeout(sendRequest, 250, ({request: RequestType.LH2CalibrationState, reply: `${clientId}`}));
+      setTimeout(sendRequest, 100, ({request: RequestType.DotBots, reply: `${clientId}`}));
+      setTimeout(sendRequest, 300, ({request: RequestType.LH2CalibrationState, reply: `${clientId}`}));
     }
   }, [sendRequest, clientId]
   );
