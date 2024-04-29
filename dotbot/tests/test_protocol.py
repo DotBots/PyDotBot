@@ -8,6 +8,7 @@ from dotbot.protocol import (
     ControlMode,
     ControlModeType,
     DotBotData,
+    DotBotSimulatorData,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -237,6 +238,29 @@ from dotbot.protocol import (
             id="SailBotData",
         ),
         pytest.param(
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x08\x00\x00\x00\x00\x0b"
+            b"\x2d\x00"
+            b"\x50\xc3\x00\x00"
+            b"\xa8\x61\x00\x00",
+            ProtocolPayload(
+                ProtocolHeader(
+                    0x1122334455667788,
+                    0x1222122212221221,
+                    0x1442,
+                    0,
+                    PROTOCOL_VERSION,
+                    0,
+                ),
+                PayloadType.DOTBOT_SIMULATOR_DATA,
+                DotBotSimulatorData(
+                    theta=45,
+                    pos_x=50000,
+                    pos_y=25000,
+                ),
+            ),
+            id="DotBotSimulatorData",
+        ),
+        pytest.param(
             b"\x11\x22\x22\x11\x11\x11\x11\x11\x12\x12\x12\x12\x12\x12\x12\x12\x00\x00\x00\x08\x00\x00\x00\x00\xff",
             ValueError("255 is not a valid PayloadType"),
             id="invalid payload",
@@ -443,6 +467,22 @@ def test_protocol_parser(payload, expected):
             b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x0a"
             b"-\x00&~\xe9\x02]\xe4#\x00\xb4\x00\x1e\x14",
             id="SailBotData",
+        ),
+        pytest.param(
+            ProtocolPayload(
+                ProtocolHeader(0x1122334455667788, 0x1222122212221221, 0x1442, 0, 1, 0),
+                PayloadType.DOTBOT_SIMULATOR_DATA,
+                DotBotSimulatorData(
+                    theta=45,
+                    pos_x=50000,
+                    pos_y=25000,
+                ),
+            ),
+            b"\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x42\x14\x00\x01\x00\x00\x00\x00\x0b"
+            b"\x2d\x00"
+            b"\x50\xc3\x00\x00"
+            b"\xa8\x61\x00\x00",
+            id="DotBotSimulatorData",
         ),
     ],
 )
