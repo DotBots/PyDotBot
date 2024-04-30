@@ -6,6 +6,7 @@ import { DotBotItem } from "./DotBotItem";
 import { DotBotsMap } from "./DotBotsMap";
 import { SailBotItem } from "./SailBotItem";
 import { SailBotsMap } from "./SailBotsMap";
+import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
@@ -304,7 +305,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
                       key={dotbot.address}
                       dotbot={dotbot}
                       updateActive={updateActive}
-		      publishCommand={publishCommand}
+                      publishCommand={publishCommand}
                     />
                   )
                 }

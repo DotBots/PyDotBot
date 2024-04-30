@@ -26,7 +26,7 @@ class PayloadType(Enum):
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
     DOTBOT_SIMULATOR_DATA = 11
-    XGO_ACTION = 12
+    CMD_XGO_ACTION = 12
     INVALID_PAYLOAD = 13  # Increase each time a new payload type is added
 
 
