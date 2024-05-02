@@ -293,7 +293,6 @@ class Controller:
             CommandXgoAction(command.action),
         )
         self.send_payload(payload)
-        self.dotbots[address].rgb_led = command
 
     def on_command_waypoints(self, topic, payload):
         """Called when a list of waypoints is received."""
