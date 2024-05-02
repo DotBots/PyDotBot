@@ -6,6 +6,7 @@ import { DotBotItem } from "./DotBotItem";
 import { DotBotsMap } from "./DotBotsMap";
 import { SailBotItem } from "./SailBotItem";
 import { SailBotsMap } from "./SailBotsMap";
+import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
@@ -286,6 +287,30 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish, calibrationS
               mapClicked={mapClicked}
               mapSize={650}
             />
+          </div>
+        </div>
+      </div>
+      }
+      {dotbots.filter(dotbot => dotbot.application === ApplicationType.XGO).length > 0 &&
+      <div className="row">
+        <div className="col">
+          <div className="card m-1">
+            <div className="card-header">Available XGO</div>
+            <div className="card-body p-1">
+              <div className="accordion" id="accordion-xgo">
+                {dotbots
+                  .filter(dotbot => dotbot.application === ApplicationType.XGO)
+                  .map(dotbot =>
+                    <XGOItem
+                      key={dotbot.address}
+                      dotbot={dotbot}
+                      updateActive={updateActive}
+                      publishCommand={publishCommand}
+                    />
+                  )
+                }
+              </div>
+            </div>
           </div>
         </div>
       </div>

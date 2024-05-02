@@ -53,6 +53,12 @@ class DotBotRgbLedCommandModel(BaseModel):
     blue: int
 
 
+class DotBotXGOActionCommandModel(BaseModel):
+    """Model class that defines an XGO action command."""
+
+    action: int
+
+
 class DotBotLH2Position(BaseModel):
     """Position of a DotBot."""
 

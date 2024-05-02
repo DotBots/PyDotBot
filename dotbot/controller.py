@@ -44,12 +44,14 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotStatus,
     DotBotWaypoints,
+    DotBotXGOActionCommandModel,
 )
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
     CommandMoveRaw,
     CommandRgbLed,
+    CommandXgoAction,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -164,6 +166,9 @@ class Controller:
                 topic="/command/+/+/+/rgb_led", callback=self.on_command_rgb_led
             ),
             SubscriptionModel(
+                topic="/command/+/+/+/xgo_action", callback=self.on_command_xgo_action
+            ),
+            SubscriptionModel(
                 topic="/command/+/+/+/waypoints", callback=self.on_command_waypoints
             ),
             SubscriptionModel(
@@ -252,6 +257,42 @@ class Controller:
         )
         self.send_payload(payload)
         self.dotbots[address].rgb_led = command
+
+    def on_command_xgo_action(self, topic, payload):
+        """Called when an rgb led command is received."""
+        logger = self.logger.bind(command="xgo_action", topic=topic)
+        topic_split = topic.split("/")[2:]
+        if len(topic_split) != 4 or topic_split[-1] != "xgo_action":
+            logger.warning("Invalid xgo_action command topic")
+            return
+        swarm_id, address, application, _ = topic_split
+        try:
+            command = DotBotXGOActionCommandModel(**payload)
+        except ValidationError as exc:
+            LOGGER.warning(f"Invalid rgb led command: {exc.errors()}")
+            return
+        logger = logger.bind(
+            address=address,
+            application=ApplicationType(int(application)).name,
+            **command.model_dump(),
+        )
+        if address not in self.dotbots:
+            logger.warning("DotBot not found")
+            return
+        logger.info("Sending command")
+        header = ProtocolHeader(
+            destination=int(address, 16),
+            source=int(self.settings.gw_address, 16),
+            swarm_id=int(swarm_id, 16),
+            application=ApplicationType(int(application)),
+            version=PROTOCOL_VERSION,
+        )
+        payload = ProtocolPayload(
+            header,
+            PayloadType.CMD_XGO_ACTION,
+            CommandXgoAction(command.action),
+        )
+        self.send_payload(payload)
 
     def on_command_waypoints(self, topic, payload):
         """Called when a list of waypoints is received."""
