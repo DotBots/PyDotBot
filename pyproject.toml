@@ -29,6 +29,10 @@ version = "0.19.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
+    { name="Filip Maksimovic", email="filip.maksimovic@inria.fr" },
+    { name="Said Alvarado-Marin", email="said-alexander.alvarado-marin@inria.fr" },
+    { name="Mališa Vučinić", email="malisa.vucinic@inria.fr" },
+    { name="Diego Badillo", email="diego.badillo@sansano.usm.cl" },
 ]
 dependencies = [
     "click          == 8.1.7",
