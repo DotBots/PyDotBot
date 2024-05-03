@@ -1,3 +1,11 @@
+# SPDX-FileCopyrightText: 2023-present Inria
+# SPDX-FileCopyrightText: 2023-present Filip Maksimovic <filip.maksimovic@inria.fr>
+# SPDX-FileCopyrightText: 2024-present Alexandre Abadie <alexandre.abadie@inria.fr>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Dotbot simulator for the DotBot project."""
+
 import threading
 import time
 from dataclasses import dataclass

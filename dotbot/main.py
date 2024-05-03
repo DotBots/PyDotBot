@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2022-present Inria
+# SPDX-FileCopyrightText: 2022-present Alexandre Abadie <alexandre.abadie@inria.fr>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 #!/usr/bin/env python3
 
 """Main module of the Dotbot controller command line tool."""

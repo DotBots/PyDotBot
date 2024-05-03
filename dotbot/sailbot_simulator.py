@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2024-present Inria
+# SPDX-FileCopyrightText: 2024-present Diego Badillo <diego.badillo@sansano.usm.cl>
+# SPDX-FileCopyrightText: 2024-present Mališa Vučinić <malisa.vucinic@inria.fr>
+# SPDX-FileCopyrightText: 2024-present Alexandre Abadie <alexandre.abadie@inria.fr>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Sailbot simulator for the DotBot project."""
 
 import math

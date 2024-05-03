@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2023-present Inria
+# SPDX-FileCopyrightText: 2023-present Alexandre Abadie <alexandre.abadie@inria.fr>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Python script used to analyze delays between LH2 packets received by the controller, sorted by DotBot."""
 
 # pylint: disable=import-error,invalid-name,unspecified-encoding

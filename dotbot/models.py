@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2022-present Inria
+# SPDX-FileCopyrightText: 2022-present Alexandre Abadie <alexandre.abadie@inria.fr>
+# SPDX-FileCopyrightText: 2023-present Filip Maksimovic <filip.maksimovic@inria.fr>
+# SPDX-FileCopyrightText: 2024-present Diego Badillo <diego.badillo@sansano.usm.cl>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Pydantic models used by the controller and server application."""
 
 # pylint: disable=too-few-public-methods,no-name-in-module
