@@ -24,7 +24,8 @@
     "react-scripts": "5.0.1",
     "react-use-websocket": "^4.2.0",
     "sass": "^1.54.5",
-    "use-interval": "^1.4.0"
+    "use-interval": "^1.4.0",
+    "vm-browserify": "^1.1.2"
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
