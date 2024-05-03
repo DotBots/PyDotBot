@@ -1,3 +1,10 @@
+// SPDX-FileCopyrightText: 2022-present Inria
+// SPDX-FileCopyrightText: 2022-present Filip Maksimovic <filip.maksimovic@inria.fr>
+// SPDX-FileCopyrightText: 2022-present Alexandre Abadie <alexandre.abadie@inria.fr>
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
+
 #include <stdint.h>
 
 static const uint32_t _polynomials[4] = {
