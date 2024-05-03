@@ -17,7 +17,7 @@ const App = () => {
   const [dotbots, setDotbots] = useState([]);
   const [calibrationState, setCalibrationState] = useState("unknown");
 
-  const [clientId, pin, setPin, publish, publishCommand, sendRequest] = useQrKey({
+  const [ready, clientId, pin, setPin, publish, publishCommand, sendRequest] = useQrKey({
     brokerHost: process.env.REACT_APP_MQTT_BROKER_HOST,
     brokerPort: process.env.REACT_APP_MQTT_BROKER_PORT,
     brokerUsername: process.env.REACT_APP_MQTT_BROKER_USERNAME,
@@ -104,6 +104,8 @@ const App = () => {
   }, [message, setMessage, handleMessage]
   );
 
+  console.log(ready, pin);
+
   return (
     <>
     {pin ?
@@ -117,7 +119,10 @@ const App = () => {
           updateCalibrationState={updateCalibrationState}
         />
       </div>
-      : <PinForm pinUpdate={setPin} />
+    :
+    <>
+    {ready && <PinForm pinUpdate={setPin} />}
+    </>
     }
     </>
   );
