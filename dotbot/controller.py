@@ -523,8 +523,8 @@ class Controller:
     async def _dotbots_status_refresh(self):
         """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            needs_refresh = False
-            for dotbot in self.dotbots.values():
+            needs_refresh = [False] * len(self.dotbots)
+            for idx, dotbot in enumerate(self.dotbots.values()):
                 previous_status = dotbot.status
                 if dotbot.last_seen + DEAD_DELAY < time.time():
                     dotbot.status = DotBotStatus.DEAD
@@ -536,14 +536,15 @@ class Controller:
                     source=dotbot.address,
                     application=dotbot.application.name,
                 )
-                needs_refresh = previous_status != dotbot.status
-                if needs_refresh:
-                    logger.info(
-                        "Dotbot status changed",
-                        previous_status=previous_status.name,
-                        status=dotbot.status.name,
-                    )
-            if needs_refresh is True:
+                if len(needs_refresh) > idx:
+                    needs_refresh[idx] = bool(previous_status != dotbot.status)
+                    if needs_refresh[idx]:
+                        logger.info(
+                            "Dotbot status changed",
+                            previous_status=previous_status.name,
+                            status=dotbot.status.name,
+                        )
+            if any(needs_refresh) is True:
                 await self.notify_clients(
                     DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
                 )
