@@ -207,12 +207,16 @@ export const DotBotsMap = (props) => {
   useEffect(() => {
     if (pointsChecked.every(v => v === true)) {
       props.updateCalibrationState("ready");
+      return;
     }
 
-    if (["unknown", "done"].includes(props.calibrationState)) {
+    if (["unknown", "done"].includes(props.calibrationState) && pointsChecked.every(v => v === true)) {
       setPointsChecked([false, false, false, false]);
     }
-  }, [pointsChecked, setPointsChecked, props]);
+  }, [
+    pointsChecked, setPointsChecked,
+    props
+  ]);
 
   let calibrationButtonLabel = "Start calibration";
   let calibrationButtonClass = "btn-primary";
