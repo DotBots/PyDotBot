@@ -101,10 +101,8 @@ const App = () => {
       return;
     }
     handleMessage(message.topic, message.payload);
-  }, [message, setMessage, handleMessage]
+  }, [message, handleMessage]
   );
-
-  console.log(ready, pin);
 
   return (
     <>
