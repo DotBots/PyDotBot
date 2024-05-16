@@ -264,6 +264,12 @@ class Controller:
         )
         self.send_payload(payload)
         self.dotbots[address].rgb_led = command
+        self.qrkey.publish(
+            "/notify",
+            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
+                exclude_none=True
+            ),
+        )
 
     def on_command_xgo_action(self, topic, payload):
         """Called when an rgb led command is received."""
