@@ -44,7 +44,7 @@ dependencies = [
     "pygame         == 2.5.2",
     "pynput         == 1.7.6",
     "pyserial       == 3.5",
-    "qrkey          == 0.5.4",
+    "qrkey          == 0.5.5",
     "structlog      == 24.1.0",
     "uvicorn        == 0.25.0",
     "websockets     == 12.0",
