@@ -33,7 +33,8 @@ class PayloadType(Enum):
     GPS_WAYPOINTS = 9
     SAILBOT_DATA = 10
     CMD_XGO_ACTION = 11
-    INVALID_PAYLOAD = 12  # Increase each time a new payload type is added
+    LH2_PROCESSED_DATA = 12
+    INVALID_PAYLOAD = 13  # Increase each time a new payload type is added
     DOTBOT_SIMULATOR_DATA = 250
 
 
@@ -199,6 +200,30 @@ class Lh2RawLocation(ProtocolData):
             int.from_bytes(bytes_[0:8], "little"),
             int.from_bytes(bytes_[8:9], "little"),
             int.from_bytes(bytes_[9:10], "little", signed=True),
+        )
+    
+@dataclass
+class Lh2ProcessedLocation(ProtocolData):
+    """Dataclass that holds LH2 processed location data."""
+
+    polynomial_index: int = 0x00
+    lfsr_index: int = 0x00000000
+    timestamp_us: int = 0x00000000
+
+    @property
+    def fields(self) -> List[ProtocolField]:
+        return [
+            ProtocolField(self.polynomial_index, name="poly", length=1),
+            ProtocolField(self.lfsr_index, name="lfsr_index", length=4),
+            ProtocolField(self.timestamp_us, name="timestamp_us", length=4),
+        ]
+
+    @staticmethod
+    def from_bytes(bytes_) -> ProtocolData:
+        return Lh2RawLocation(
+            int.from_bytes(bytes_[0:1], "little"),
+            int.from_bytes(bytes_[1:5], "little"),
+            int.from_bytes(bytes_[5:9], "little"),
         )
 
 
@@ -510,6 +535,8 @@ class ProtocolPayload:
             values = LH2Waypoints.from_bytes(bytes_[25:])
         elif payload_type == PayloadType.GPS_WAYPOINTS:
             values = GPSWaypoints.from_bytes(bytes_[25:])
+        elif payload_type == PayloadType.LH2_PROCESSED_DATA:
+            values = Lh2ProcessedLocation.from_bytes(bytes_[25:34])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type.value}'"
