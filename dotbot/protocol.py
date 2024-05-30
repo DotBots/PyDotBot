@@ -45,6 +45,7 @@ class ApplicationType(IntEnum):
     SailBot = 1  # pylint: disable=invalid-name
     Freebot = 2  # pylint: disable=invalid-name
     XGO = 3
+    LH2_mini_mote = 4
 
 
 class ControlModeType(IntEnum):
@@ -220,7 +221,7 @@ class Lh2ProcessedLocation(ProtocolData):
 
     @staticmethod
     def from_bytes(bytes_) -> ProtocolData:
-        return Lh2RawLocation(
+        return Lh2ProcessedLocation(
             int.from_bytes(bytes_[0:1], "little"),
             int.from_bytes(bytes_[1:5], "little"),
             int.from_bytes(bytes_[5:9], "little"),
