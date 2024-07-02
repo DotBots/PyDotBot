@@ -26,8 +26,8 @@ def get_default_port():
         ports = [port for port in ports if "J-Link" == port.product]
     if not ports:
         return "/dev/ttyACM0"
-    # return last JLink port
-    return ports[-1].device
+    # return first JLink port available
+    return ports[0].device
 
 
 class SerialInterfaceException(Exception):
