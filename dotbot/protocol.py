@@ -15,7 +15,7 @@ from enum import Enum, IntEnum
 from itertools import chain
 from typing import List
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 
 
 class PayloadType(Enum):
