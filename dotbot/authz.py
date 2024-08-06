@@ -12,8 +12,6 @@ CRED_REQUEST_PATH = ".well-known/lake-authz/cred-request"
 
 def fetch_credential_remotely(loc_w: str, id_cred_i: bytes) -> bytes:
     url = f"{loc_w}/{CRED_REQUEST_PATH}"
-    kid = id_cred_i[0]
-    id_cred_i = bytes.fromhex(f"a10441{format(kid, '02x')}")
     res = requests.post(url, data=id_cred_i)
     if res.status_code == 200:
         return res.content

@@ -532,6 +532,8 @@ class ProtocolPayload:
             values = LH2Waypoints.from_bytes(bytes_[25:])
         elif payload_type == PayloadType.GPS_WAYPOINTS:
             values = GPSWaypoints.from_bytes(bytes_[25:])
+        elif payload_type == PayloadType.EDHOC_MESSAGE:
+            values = EdhocMessage.from_bytes(bytes_[25:])
         else:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type.value}'"

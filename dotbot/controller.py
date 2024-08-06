@@ -62,6 +62,7 @@ from dotbot.protocol import (
     CommandMoveRaw,
     CommandRgbLed,
     CommandXgoAction,
+    EdhocMessage,
     GPSPosition,
     GPSWaypoints,
     LH2Location,
@@ -90,9 +91,6 @@ DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
-CRED_I = bytes.fromhex(
-    "A2027734322D35302D33312D46462D45462D33372D33322D333908A101A5010202412B2001215820AC75E9ECE3E50BFC8ED60399889522405C47BF16DF96660A41298CB4307F7EB62258206E5DE611388A4B8A8211334AC7D37ECB52A387D257E6DB3C2A93DF21FF3AFFC8"
-)
 V = bytes.fromhex("72cc4761dbd4c78f758931aa589d348d1ef874a7e303ede2f140dcf3e6aa4aac")
 CRED_V = bytes.fromhex(
     "a2026b6578616d706c652e65647508a101a501020241322001215820bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f02258204519e257236b2a0ce2023f0931f1f386ca7afda64fcde0108c224c51eabf6072"
@@ -197,6 +195,7 @@ class Controller:
             SubscriptionModel(topic="/lh2/add", callback=self.on_lh2_add),
             SubscriptionModel(topic="/lh2/start", callback=self.on_lh2_start),
         ]
+        self.pending_edhoc_sessions: Dict[str, PendingEdhocSession] = {}
 
     def on_command_move_raw(self, topic, payload):
         """Called when a move raw command is received."""
@@ -614,7 +613,7 @@ class Controller:
             ead_2 = edhoc_ead_authenticator.prepare_ead_2(response.content)
             c_r = random.randint(0, 23)  # already cbor-encoded as single-byte integer
             message_2 = edhoc_responder.prepare_message_2(
-                lakers.CredentialTransfer.ByValue, c_r, ead_2
+                lakers.CredentialTransfer.ByValue, [c_r], ead_2
             )
             self.pending_edhoc_sessions[dotbot.address] = PendingEdhocSession(
                 dotbot, edhoc_responder, edhoc_ead_authenticator, loc_w, c_r
@@ -684,7 +683,7 @@ class Controller:
                 logger.debug(
                     "Will process EDHOC message", message_1=message_1.hex(" ").upper()
                 )
-                ead_1 = edhoc_responder.process_message_1(message_1)
+                _c_i, ead_1 = edhoc_responder.process_message_1(message_1)
             except Exception as e:
                 logger.error("Error processing message 1", error=e)
                 return
@@ -719,8 +718,8 @@ class Controller:
                 edhoc_responder = self.pending_edhoc_sessions[source].responder
                 id_cred_i, _ead_3 = edhoc_responder.parse_message_3(message_3)
                 try:
-                    if len(id_cred_i) > 1:
-                        cred_i = id_cred_i
+                    if id_cred_i[1] == 14: # kccs, indicates a raw public key credential sent by value
+                        cred_i = id_cred_i[2:]
                     else:
                         cred_i = fetch_credential_remotely(
                             self.pending_edhoc_sessions[source].loc_w, id_cred_i
