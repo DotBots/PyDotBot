@@ -86,7 +86,7 @@ from dotbot.authz import fetch_credential_remotely, PendingEdhocSession
 
 
 CONTROLLERS = {}
-LOST_DELAY = 5  # seconds
+LOST_DELAY = 1  # seconds
 DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
@@ -174,7 +174,7 @@ class Controller:
         self.lh2_manager = LighthouseManager()
         self.api = api
         api.controller = self
-        self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
+        # self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
         self.subscriptions = [
             SubscriptionModel(
                 topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
@@ -636,6 +636,9 @@ class Controller:
             self.logger.debug(
                 "Sent EDHOC message 2", message_2=message_2.hex(" ").upper()
             )
+            self.logger.debug(
+                "edhoc_message", source=dotbot.address, message_idx=2, message_value=message_2.hex(" ").upper(), ead_value=ead_2.value().hex(" ").upper()
+            )
         else:
             self.logger.error(
                 "Error requesting voucher", status_code=response.status_code
@@ -677,6 +680,7 @@ class Controller:
             and payload.payload_type == PayloadType.EDHOC_MESSAGE
         ):
             logger.info("New potential dotbot")
+            # input("go start and debug the network core!!!")
             edhoc_responder = lakers.EdhocResponder(V, CRED_V)
             try:
                 message_1 = payload.values.value
@@ -684,6 +688,9 @@ class Controller:
                     "Will process EDHOC message", message_1=message_1.hex(" ").upper()
                 )
                 _c_i, ead_1 = edhoc_responder.process_message_1(message_1)
+                logger.debug(
+                    "edhoc_message", message_idx=1, message_value=message_1.hex(" ").upper(), ead_value=ead_1.value().hex(" ").upper()
+                )
             except Exception as e:
                 logger.error("Error processing message 1", error=e)
                 return
@@ -717,6 +724,9 @@ class Controller:
                 )
                 edhoc_responder = self.pending_edhoc_sessions[source].responder
                 id_cred_i, _ead_3 = edhoc_responder.parse_message_3(message_3)
+                logger.debug(
+                    "edhoc_message", message_idx=3, message_value=message_3.hex(" ").upper()
+                )
                 try:
                     if id_cred_i[1] == 14: # kccs, indicates a raw public key credential sent by value
                         cred_i = id_cred_i[2:]
@@ -727,6 +737,7 @@ class Controller:
                 except Exception as e:
                     logger.error("Error fetching credential", error=e)
                     self.pending_edhoc_sessions.pop(source)
+                    dotbot.status = DotBotStatus.DEAD
                     return
                 r_prk_out = edhoc_responder.verify_message_3(cred_i)
                 logger.info("EDHOC handshake worked")
@@ -734,11 +745,13 @@ class Controller:
             except Exception as e:
                 logger.error("Error processing message 3", error=e)
                 self.pending_edhoc_sessions.pop(source)
+                dotbot.status = DotBotStatus.DEAD
                 return
             logger.info("New dotbot")
             # NOTE: could save self.pending_edhoc_sessions[source].responder state for future use, e.g. to derive OSCORE keys
             self.pending_edhoc_sessions.pop(source)
-            notification_cmd = DotBotNotificationCommand.RELOAD
+            dotbot.status = DotBotStatus.DEAD
+            # notification_cmd = DotBotNotificationCommand.RELOAD
         elif source in self.dotbots:
             dotbot.mode = self.dotbots[source].mode
             dotbot.status = self.dotbots[source].status
@@ -894,7 +907,7 @@ class Controller:
                 for websocket in self.websockets
             ]
         )
-        self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
+        # self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
     def send_payload(self, payload: ProtocolPayload):
         """Sends a command in an HDLC frame over serial."""
@@ -975,7 +988,7 @@ class Controller:
         tasks = []
         try:
             tasks = [
-                asyncio.create_task(self.qrkey.start(subscriptions=self.subscriptions)),
+                # asyncio.create_task(self.qrkey.start(subscriptions=self.subscriptions)),
                 asyncio.create_task(self.web()),
                 asyncio.create_task(self._open_webbrowser()),
                 asyncio.create_task(self._start_serial()),
