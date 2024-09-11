@@ -684,7 +684,7 @@ class Controller:
                 "lh2-processed",
                 poly=payload.values.polynomial_index,
                 lfsr_index=payload.values.lfsr_index,
-                db_time=payload.values.timestamp_us
+                db_time=payload.values.timestamp_us,
             )
 
         if payload.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
