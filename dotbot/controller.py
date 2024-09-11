@@ -647,7 +647,7 @@ class Controller:
                 y=dotbot.lh2_position.y,
                 z=dotbot.lh2_position.z,
             )
-            logger.info("lh2", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)
+            logger.info("lh2-raw", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)
             if (
                 not dotbot.position_history
                 or lh2_distance(dotbot.position_history[-1], new_position)
@@ -678,6 +678,14 @@ class Controller:
             )
         elif payload.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
+
+        if payload.payload_type == PayloadType.LH2_PROCESSED_DATA:
+            logger.info(
+                "lh2-processed",
+                poly=payload.values.polynomial_index,
+                lfsr_index=payload.values.lfsr_index,
+                db_time=payload.values.timestamp_us,
+            )
 
         if payload.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
             dotbot.direction = payload.values.theta
