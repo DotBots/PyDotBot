@@ -203,6 +203,7 @@ class Lh2RawLocation(ProtocolData):
             int.from_bytes(bytes_[9:10], "little", signed=True),
         )
 
+
 @dataclass
 class Lh2ProcessedLocation(ProtocolData):
     """Dataclass that holds LH2 processed location data."""

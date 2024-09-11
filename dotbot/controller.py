@@ -680,7 +680,12 @@ class Controller:
             logger.warning("lh2: invalid position")
 
         if payload.payload_type == PayloadType.LH2_PROCESSED_DATA:
-            logger.info("lh2-processed", poly=payload.values.polynomial_index, lfsr_index=payload.values.lfsr_index, db_time=payload.values.timestamp_us)
+            logger.info(
+                "lh2-processed",
+                poly=payload.values.polynomial_index,
+                lfsr_index=payload.values.lfsr_index,
+                db_time=payload.values.timestamp_us
+            )
 
         if payload.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
             dotbot.direction = payload.values.theta
