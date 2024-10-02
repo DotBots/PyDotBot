@@ -49,11 +49,13 @@ class SerialInterface(threading.Thread):
         """Listen continuously at each byte received on serial."""
         try:
             while 1:
-                byte = self.serial.read(1)
+                try:
+                    byte = self.serial.read(1)
+                except (TypeError, serial.serialutil.SerialException):
+                    byte = None
                 if byte is None:
-                    msg = "Serial port disconnected"
-                    self._logger.warning(msg)
-                    raise SerialInterfaceException(msg)
+                    self._logger.info("Serial port disconnected")
+                    break
                 self.callback(byte)
         except serial.serialutil.PortNotOpenError as exc:
             self._logger.error(f"{exc}")
@@ -61,6 +63,10 @@ class SerialInterface(threading.Thread):
         except serial.serialutil.SerialException as exc:
             self._logger.error(f"{exc}")
             raise SerialInterfaceException(f"{exc}") from exc
+
+    def stop(self):
+        self.serial.close()
+        self.join()
 
     def write(self, bytes_):
         """Write bytes on serial."""
