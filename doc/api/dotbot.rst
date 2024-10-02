@@ -13,6 +13,7 @@ Submodules
    :maxdepth: 4
 
    dotbot.controller
+   dotbot.dotbot_simulator
    dotbot.hdlc
    dotbot.joystick
    dotbot.keyboard
@@ -22,5 +23,6 @@ Submodules
    dotbot.models
    dotbot.protocol
    dotbot.rest
+   dotbot.sailbot_simulator
    dotbot.serial_interface
    dotbot.server
