@@ -36,18 +36,18 @@ authors = [
 ]
 dependencies = [
     "click          == 8.1.7",
-    "fastapi        == 0.109.0",
+    "fastapi        == 0.115.0",
     "haversine      == 2.8.0",
-    "httpx          == 0.26.0",
-    "numpy          == 1.26.3",
-    "opencv-python  == 4.9.0.80",
+    "httpx          == 0.27.2",
+    "numpy          == 2.1.1",
+    "opencv-python  == 4.10.0.84",
     "pygame         == 2.5.2",
     "pynput         == 1.7.6",
     "pyserial       == 3.5",
-    "qrkey          == 0.5.5",
-    "structlog      == 24.1.0",
-    "uvicorn        == 0.25.0",
-    "websockets     == 12.0",
+    "qrkey          == 0.6.0",
+    "structlog      == 24.4.0",
+    "uvicorn        == 0.31.0",
+    "websockets     == 13.1",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
