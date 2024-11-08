@@ -520,7 +520,7 @@ class Controller:
                 f"http://localhost:{self.settings.controller_port}/PyDotBot?"
                 f"pin={self.qrkey.pin_code}&"
                 f"mqtt_host={qrkey_settings.mqtt_host}&"
-                f"mqtt_port={qrkey_settings.mqtt_port}&"
+                f"mqtt_port={qrkey_settings.mqtt_ws_port}&"
                 f"mqtt_version={qrkey_settings.mqtt_version}&"
                 f"mqtt_use_ssl={qrkey_settings.mqtt_use_ssl}"
             )
