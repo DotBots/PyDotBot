@@ -689,7 +689,7 @@ class Controller:
                 )
                 _c_i, ead_1 = edhoc_responder.process_message_1(message_1)
                 logger.debug(
-                    "edhoc_message", message_idx=1, message_value=message_1.hex(" ").upper(), ead_value=ead_1.value().hex(" ").upper()
+                    "edhoc_message", message_idx=1, message_value=message_1.hex(" ").upper(), ead_value=(ead_1.value().hex(" ").upper() if ead_1 else None)
                 )
             except Exception as e:
                 logger.error("Error processing message 1", error=e)
