@@ -6,7 +6,7 @@ import { gps_distance_threshold, lh2_distance_threshold, NotificationType, Reque
 import { gps_distance, lh2_distance } from "./utils/helpers";
 
 import DotBots from './DotBots';
-import PinForm from './PinForm';
+import QrKeyForm from './QrKeyForm';
 
 import logger from './utils/logger';
 const log = logger.child({module: 'app'});
@@ -17,11 +17,7 @@ const App = () => {
   const [dotbots, setDotbots] = useState([]);
   const [calibrationState, setCalibrationState] = useState("unknown");
 
-  const [ready, clientId, pin, setPin, publish, publishCommand, sendRequest] = useQrKey({
-    brokerHost: process.env.REACT_APP_MQTT_BROKER_HOST,
-    brokerPort: process.env.REACT_APP_MQTT_BROKER_PORT,
-    brokerUsername: process.env.REACT_APP_MQTT_BROKER_USERNAME,
-    brokerPassword: process.env.REACT_APP_MQTT_BROKER_PASSWORD,
+  const [ready, clientId, mqttData, setMqttData, publish, publishCommand, sendRequest] = useQrKey({
     rootTopic: process.env.REACT_APP_ROOT_TOPIC,
     setQrKeyMessage: setMessage,
     searchParams: searchParams,
@@ -106,7 +102,7 @@ const App = () => {
 
   return (
     <>
-    {pin ?
+    {mqttData ?
       <div id="dotbots">
         <DotBots
           dotbots={dotbots}
@@ -119,7 +115,7 @@ const App = () => {
       </div>
     :
     <>
-    {ready && <PinForm pinUpdate={setPin} />}
+    {ready && <QrKeyForm mqttDataUpdate={setMqttData} />}
     </>
     }
     </>
