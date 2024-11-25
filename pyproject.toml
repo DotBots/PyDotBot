@@ -44,9 +44,9 @@ dependencies = [
     "pygame         == 2.5.2",
     "pynput         == 1.7.6",
     "pyserial       == 3.5",
-    "qrkey          == 0.6.0",
+    "qrkey          == 0.9.0",
     "structlog      == 24.4.0",
-    "uvicorn        == 0.31.0",
+    "uvicorn        == 0.32.0",
     "websockets     == 13.1",
 ]
 description = "Package to easily control your DotBots and SailBots."
