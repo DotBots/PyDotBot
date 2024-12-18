@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/PyDotBot/static/css/main.31dc0b2a.css",
-    "main.js": "/PyDotBot/static/js/main.22322bba.js",
+    "main.css": "/PyDotBot/static/css/main.bc44462f.css",
+    "main.js": "/PyDotBot/static/js/main.996606fc.js",
     "static/media/bootstrap-icons.woff?": "/PyDotBot/static/media/bootstrap-icons.39795c0b4513de014cf8.woff",
     "static/media/bootstrap-icons.woff2?": "/PyDotBot/static/media/bootstrap-icons.b7bcc075b395c14ce8c2.woff2",
     "index.html": "/PyDotBot/index.html",
-    "main.31dc0b2a.css.map": "/PyDotBot/static/css/main.31dc0b2a.css.map",
-    "main.22322bba.js.map": "/PyDotBot/static/js/main.22322bba.js.map"
+    "main.bc44462f.css.map": "/PyDotBot/static/css/main.bc44462f.css.map",
+    "main.996606fc.js.map": "/PyDotBot/static/js/main.996606fc.js.map"
   },
   "entrypoints": [
-    "static/css/main.31dc0b2a.css",
-    "static/js/main.22322bba.js"
+    "static/css/main.bc44462f.css",
+    "static/js/main.996606fc.js"
   ]
 }
