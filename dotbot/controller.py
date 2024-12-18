@@ -515,20 +515,20 @@ class Controller:
             else:
                 writer.close()
                 break
+        url = (
+            f"http://localhost:{self.settings.controller_port}/PyDotBot?"
+            f"pin={self.qrkey.pin_code}&"
+            f"mqtt_host={qrkey_settings.mqtt_host}&"
+            f"mqtt_port={qrkey_settings.mqtt_ws_port}&"
+            f"mqtt_version={qrkey_settings.mqtt_version}&"
+            f"mqtt_use_ssl={qrkey_settings.mqtt_use_ssl}"
+        )
+        if qrkey_settings.mqtt_username is not None:
+            url += f"&mqtt_username={qrkey_settings.mqtt_username}"
+        if qrkey_settings.mqtt_password is not None:
+            url += f"&mqtt_password={qrkey_settings.mqtt_password}"
+        self.logger.debug("Using frontend URL", url=url)
         if self.settings.webbrowser is True:
-            url = (
-                f"http://localhost:{self.settings.controller_port}/PyDotBot?"
-                f"pin={self.qrkey.pin_code}&"
-                f"mqtt_host={qrkey_settings.mqtt_host}&"
-                f"mqtt_port={qrkey_settings.mqtt_ws_port}&"
-                f"mqtt_version={qrkey_settings.mqtt_version}&"
-                f"mqtt_use_ssl={qrkey_settings.mqtt_use_ssl}"
-            )
-            if qrkey_settings.mqtt_username is not None:
-                url += f"&mqtt_username={qrkey_settings.mqtt_username}"
-            if qrkey_settings.mqtt_password is not None:
-                url += f"&mqtt_password={qrkey_settings.mqtt_password}"
-
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 
