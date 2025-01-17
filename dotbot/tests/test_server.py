@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from dotbot.models import (
     DotBotCalibrationStateModel,
@@ -28,7 +28,7 @@ from dotbot.protocol import (
 )
 from dotbot.server import api
 
-client = AsyncClient(app=api, base_url="http://testserver")
+client = AsyncClient(transport=ASGITransport(app=api), base_url="http://testserver")
 
 
 @pytest.fixture(autouse=True)

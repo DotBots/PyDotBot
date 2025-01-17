@@ -21,5 +21,7 @@ class CustomBuildHook(BuildHookInterface):
 
     def initialize(self, _, __):
         """Will be called before creating the source archive."""
+        if os.getenv("SKIP_SDIST_HOOK") is not None:
+            return
         build_frontend(self.root)
         build_lh2(self.root)
