@@ -18,12 +18,13 @@ from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
     PROTOCOL_VERSION,
-    Advertisement,
     ApplicationType,
-    DotBotSimulatorData,
+    Header,
+    PacketType,
+    PayloadAdvertisement,
+    PayloadDotBotSimulatorData,
+    PayloadFrame,
     PayloadType,
-    ProtocolHeader,
-    ProtocolPayload,
 )
 
 R = 1
@@ -80,12 +81,11 @@ class DotBotSimulator:
 
     @property
     def header(self):
-        return ProtocolHeader(
+        return Header(
+            version=PROTOCOL_VERSION,
+            type_=PacketType.DATA.value,
             destination=int(GATEWAY_ADDRESS_DEFAULT, 16),
             source=int(self.address, 16),
-            swarm_id=int(SWARM_ID_DEFAULT, 16),
-            application=ApplicationType.DotBot,
-            version=PROTOCOL_VERSION,
         )
 
     def update(self):
@@ -153,47 +153,45 @@ class DotBotSimulator:
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
-        payload = ProtocolPayload(
+        payload = PayloadFrame(
             self.header,
-            PayloadType.ADVERTISEMENT,
-            Advertisement(),
+            PayloadAdvertisement(application=ApplicationType.DotBot),
         )
         return hdlc_encode(payload.to_bytes())
 
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
-        payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
+        frame = PayloadFrame().from_bytes(hdlc_decode(frame))
 
-        if self.address == hex(payload.header.destination)[2:]:
-            if payload.payload_type == PayloadType.CMD_MOVE_RAW:
+        if self.address == hex(frame.header.destination)[2:]:
+            if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-                self.v_left = payload.values.left_y
-                self.v_right = payload.values.right_y
+                self.v_left = frame.payload.left_y
+                self.v_right = frame.payload.right_y
 
                 if self.v_left > 127:
                     self.v_left = self.v_left - 256
                 if self.v_right > 127:
                     self.v_right = self.v_right - 256
 
-            elif payload.payload_type == PayloadType.LH2_WAYPOINTS:
+            elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-                self.waypoint_threshold = payload.values.threshold * 1000
-                self.waypoints = payload.values.waypoints
+                self.waypoint_threshold = frame.payload.threshold * 1000
+                self.waypoints = frame.payload.waypoints
                 if self.waypoints:
                     self.controller_mode = DotBotSimulatorMode.AUTOMATIC
 
     def encode_serial_output(self):
         """Encode the dotbot data to be sent to the gateway."""
-        payload = ProtocolPayload(
+        frame = PayloadFrame(
             self.header,
-            PayloadType.DOTBOT_SIMULATOR_DATA,
-            DotBotSimulatorData(
-                int(self.theta * 180 / pi + 90),
-                int(self.pos_x),
-                int(self.pos_y),
+            PayloadDotBotSimulatorData(
+                theta=int(self.theta * 180 / pi + 90),
+                pos_x=int(self.pos_x),
+                pos_y=int(self.pos_y),
             ),
         )
-        return hdlc_encode(payload.to_bytes())
+        return hdlc_encode(frame.to_bytes())
 
 
 class DotBotSimulatorSerialInterface(threading.Thread):

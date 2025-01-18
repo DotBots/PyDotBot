@@ -26,15 +26,16 @@ from dotbot.models import (
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
-    CommandMoveRaw,
-    CommandRgbLed,
-    GPSPosition,
-    GPSWaypoints,
-    LH2Location,
-    LH2Waypoints,
+    Header,
+    PacketType,
+    PayloadCommandMoveRaw,
+    PayloadCommandRgbLed,
+    PayloadFrame,
+    PayloadGPSPosition,
+    PayloadGPSWaypoints,
+    PayloadLH2Location,
+    PayloadLH2Waypoints,
     PayloadType,
-    ProtocolHeader,
-    ProtocolPayload,
 )
 
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
@@ -71,21 +72,20 @@ async def dotbots_move_raw(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = ProtocolHeader(
+    header = Header(
+        version=PROTOCOL_VERSION,
+        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType(application),
-        version=PROTOCOL_VERSION,
     )
-    payload = ProtocolPayload(
-        header,
-        PayloadType.CMD_MOVE_RAW,
-        CommandMoveRaw(
-            command.left_x, command.left_y, command.right_x, command.right_y
-        ),
+    payload = PayloadCommandMoveRaw(
+        left_x=command.left_x,
+        left_y=command.left_y,
+        right_x=command.right_x,
+        right_y=command.right_y,
     )
-    api.controller.send_payload(payload)
+    frame = PayloadFrame(header=header, payload=payload)
+    api.controller.send_payload(frame)
     api.controller.dotbots[address].move_raw = command
 
 
@@ -101,19 +101,17 @@ async def dotbots_rgb_led(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = ProtocolHeader(
+    header = Header(
+        version=PROTOCOL_VERSION,
+        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType(application),
-        version=PROTOCOL_VERSION,
     )
-    payload = ProtocolPayload(
-        header,
-        PayloadType.CMD_RGB_LED,
-        CommandRgbLed(command.red, command.green, command.blue),
+    payload = PayloadCommandRgbLed(
+        red=command.red, green=command.green, blue=command.blue
     )
-    api.controller.send_payload(payload)
+    frame = PayloadFrame(header=header, payload=payload)
+    api.controller.send_payload(frame)
     api.controller.dotbots[address].rgb_led = command
 
 
@@ -131,56 +129,50 @@ async def dotbots_waypoints(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = ProtocolHeader(
+    header = Header(
+        version=PROTOCOL_VERSION,
+        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType(application),
-        version=PROTOCOL_VERSION,
     )
     waypoints_list = waypoints.waypoints
-    if ApplicationType(application) == ApplicationType.SailBot:
+    if application == ApplicationType.SailBot.value:
         if api.controller.dotbots[address].gps_position is not None:
             waypoints_list = [
                 api.controller.dotbots[address].gps_position
             ] + waypoints.waypoints
-        payload = ProtocolPayload(
-            header,
-            PayloadType.GPS_WAYPOINTS,
-            GPSWaypoints(
-                threshold=waypoints.threshold,
-                waypoints=[
-                    GPSPosition(
-                        latitude=int(waypoint.latitude * 1e6),
-                        longitude=int(waypoint.longitude * 1e6),
-                    )
-                    for waypoint in waypoints.waypoints
-                ],
-            ),
+        payload = PayloadGPSWaypoints(
+            threshold=waypoints.threshold,
+            count=len(waypoints.waypoints),
+            waypoints=[
+                PayloadGPSPosition(
+                    latitude=int(waypoint.latitude * 1e6),
+                    longitude=int(waypoint.longitude * 1e6),
+                )
+                for waypoint in waypoints.waypoints
+            ],
         )
     else:  # DotBot application
         if api.controller.dotbots[address].lh2_position is not None:
             waypoints_list = [
                 api.controller.dotbots[address].lh2_position
             ] + waypoints.waypoints
-        payload = ProtocolPayload(
-            header,
-            PayloadType.LH2_WAYPOINTS,
-            LH2Waypoints(
-                threshold=waypoints.threshold,
-                waypoints=[
-                    LH2Location(
-                        pos_x=int(waypoint.x * 1e6),
-                        pos_y=int(waypoint.y * 1e6),
-                        pos_z=int(waypoint.z * 1e6),
-                    )
-                    for waypoint in waypoints.waypoints
-                ],
-            ),
+        payload = PayloadLH2Waypoints(
+            threshold=waypoints.threshold,
+            count=len(waypoints.waypoints),
+            waypoints=[
+                PayloadLH2Location(
+                    pos_x=int(waypoint.x * 1e6),
+                    pos_y=int(waypoint.y * 1e6),
+                    pos_z=int(waypoint.z * 1e6),
+                )
+                for waypoint in waypoints.waypoints
+            ],
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    api.controller.send_payload(payload)
+    frame = PayloadFrame(header, payload=payload)
+    api.controller.send_payload(frame)
     await api.controller.notify_clients(
         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
     )

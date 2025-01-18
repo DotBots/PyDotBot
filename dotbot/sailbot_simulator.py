@@ -21,12 +21,13 @@ from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
     PROTOCOL_VERSION,
-    Advertisement,
     ApplicationType,
+    Header,
+    PacketType,
+    PayloadAdvertisement,
+    PayloadFrame,
+    PayloadSailBotData,
     PayloadType,
-    ProtocolHeader,
-    ProtocolPayload,
-    SailBotData,
 )
 
 SIM_DELTA_T = 0.01  # second
@@ -134,12 +135,11 @@ class SailBotSimulator:
 
     @property
     def header(self):
-        return ProtocolHeader(
+        return Header(
+            version=PROTOCOL_VERSION,
+            type_=PacketType.DATA.value,
             destination=int(GATEWAY_ADDRESS_DEFAULT, 16),
             source=int(self.address, 16),
-            swarm_id=int(SWARM_ID_DEFAULT, 16),
-            application=ApplicationType.SailBot,
-            version=PROTOCOL_VERSION,
         )
 
     def _update_state_space_model(self, rudder_in_rad, sail_length_in_rad):
@@ -349,65 +349,61 @@ class SailBotSimulator:
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
 
-        payload = ProtocolPayload.from_bytes(hdlc_decode(frame))
+        frame = PayloadFrame.from_bytes(hdlc_decode(frame))
 
-        if self.address == hex(payload.header.destination)[2:]:
-            if payload.payload_type == PayloadType.CMD_MOVE_RAW:
+        if self.address == hex(frame.header.destination)[2:]:
+            if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.rudder_slider = (
-                    payload.values.left_x - 256
-                    if payload.values.left_x > 127
-                    else payload.values.left_x
+                    frame.payload.left_x - 256
+                    if frame.payload.left_x > 127
+                    else frame.payload.left_x
                 )
                 self.sail_slider = (
-                    payload.values.right_y - 256
-                    if payload.values.right_y > 127
-                    else payload.values.right_y
+                    frame.payload.right_y - 256
+                    if frame.payload.right_y > 127
+                    else frame.payload.right_y
                 )
 
-            if payload.payload_type == PayloadType.GPS_WAYPOINTS:
+            if frame.payload_type == PayloadType.GPS_WAYPOINTS:
                 self.operation_mode = SailBotSimulatorMode.MANUAL
-                self.waypoint_threshold = payload.values.threshold
-                self.waypoints = payload.values.waypoints
+                self.waypoint_threshold = frame.payload.threshold
+                self.waypoints = frame.payload.waypoints
                 if self.waypoints:
                     self.operation_mode = SailBotSimulatorMode.AUTOMATIC
 
     def encode_serial_output(self):
         """Encode the sailbot data to be sent to the gateway."""
 
-        payload = ProtocolPayload(
-            self.header,
-            PayloadType.SAILBOT_DATA,
-            SailBotData(
-                (90 - int(math.degrees(self.direction))) % 360,
-                int(self.latitude * 1e6),
-                int(self.longitude * 1e6),
-                (-int(math.degrees(self.app_wind_angle))) % 360,
-                int(
-                    math.degrees(
-                        self._map_slider(
-                            self.rudder_slider, RUDDER_ANGLE_MAX[0], RUDDER_ANGLE_MAX[1]
-                        )
+        payload = PayloadSailBotData(
+            direction=(90 - int(math.degrees(self.direction))) % 360,
+            latitude=int(self.latitude * 1e6),
+            longitude=int(self.longitude * 1e6),
+            wind_angle=(-int(math.degrees(self.app_wind_angle))) % 360,
+            rudder_angle=int(
+                math.degrees(
+                    self._map_slider(
+                        self.rudder_slider, RUDDER_ANGLE_MAX[0], RUDDER_ANGLE_MAX[1]
                     )
-                ),
-                int(
-                    math.degrees(
-                        self._map_slider(
-                            self.sail_slider, SAIL_ANGLE_MAX[0], SAIL_ANGLE_MAX[1]
-                        )
+                )
+            ),
+            sail_angle=int(
+                math.degrees(
+                    self._map_slider(
+                        self.sail_slider, SAIL_ANGLE_MAX[0], SAIL_ANGLE_MAX[1]
                     )
-                ),
+                )
             ),
         )
-        return hdlc_encode(payload.to_bytes())
+        frame = PayloadFrame(header=self.header, payload=payload)
+        return hdlc_encode(frame.to_bytes())
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
-        payload = ProtocolPayload(
-            self.header,
-            PayloadType.ADVERTISEMENT,
-            Advertisement(),
+        frame = PayloadFrame(
+            header=self.header,
+            payload=PayloadAdvertisement(application=ApplicationType.SailBot),
         )
-        return hdlc_encode(payload.to_bytes())
+        return hdlc_encode(frame.to_bytes())
 
 
 class SailBotSimulatorSerialInterface(threading.Thread):
