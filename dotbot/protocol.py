@@ -100,7 +100,7 @@ class Packet(ABC):
             raise ValueError("metadata must be defined first")
         metadata = fields[0].default_factory()
         for idx, field in enumerate(fields[1:]):
-            if metadata[idx].type_ == list:
+            if metadata[idx].type_ is list:
                 element_class = typing.get_args(field.type)[0]
                 field_attribute = getattr(self, field.name)
                 # subclass element is a list and previous attribute is called
@@ -473,12 +473,12 @@ class PayloadFrame:
         payload_separators = [
             "-" * (4 * field.length + 2)
             for field in self.payload.metadata
-            if field.type_ != list
+            if field.type_ is not list
         ]
         payload_separators += [
             "-" * (4 * field_metadata.length + 2)
             for metadata in self.payload.metadata
-            if metadata.type_ == list
+            if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
@@ -488,12 +488,12 @@ class PayloadFrame:
         payload_names = [
             f" {field.disp:<{4 * field.length + 1}}"
             for field in self.payload.metadata
-            if field.type_ != list
+            if field.type_ is not list
         ]
         payload_names += [
             f" {field_metadata.disp:<{4 * field_metadata.length + 1}}"
             for metadata in self.payload.metadata
-            if metadata.type_ == list
+            if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
@@ -507,12 +507,12 @@ class PayloadFrame:
         payload_values = [
             f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{4 * self.payload.metadata[idx].length - 1}}"
             for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ != list
+            if self.payload.metadata[idx].type_ is not list
         ]
         payload_values += [
             f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{4 *field_metadata.length - 1}}"
             for metadata in self.payload.metadata
-            if metadata.type_ == list
+            if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
@@ -524,7 +524,7 @@ class PayloadFrame:
         num_bytes += sum(
             field_metadata.length
             for metadata in self.payload.metadata
-            if metadata.type_ == list
+            if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         )
