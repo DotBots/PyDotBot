@@ -16,7 +16,7 @@ from typing import Callable
 
 from numpy import clip
 
-from dotbot import GATEWAY_ADDRESS_DEFAULT, SWARM_ID_DEFAULT
+from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (

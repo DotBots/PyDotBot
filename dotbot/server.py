@@ -35,7 +35,6 @@ from dotbot.protocol import (
     PayloadGPSWaypoints,
     PayloadLH2Location,
     PayloadLH2Waypoints,
-    PayloadType,
 )
 
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(

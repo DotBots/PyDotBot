@@ -9,11 +9,10 @@
 
 import dataclasses
 import typing
-from abc import ABC, abstractmethod
+from abc import ABC
 from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from itertools import chain
 from typing import List
 
 PROTOCOL_VERSION = 9

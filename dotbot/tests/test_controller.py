@@ -1,10 +1,7 @@
 """Test module for controller base class."""
 
 import asyncio
-import dataclasses
 import time
-from dataclasses import dataclass
-from typing import List
 from unittest.mock import patch
 
 import pytest
@@ -17,12 +14,9 @@ from dotbot.protocol import (
     PROTOCOL_VERSION,
     ControlModeType,
     Header,
-    Packet,
-    PacketFieldMetadata,
     PacketType,
     PayloadControlMode,
     PayloadFrame,
-    PayloadType,
 )
 
 

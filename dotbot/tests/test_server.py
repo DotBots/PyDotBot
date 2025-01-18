@@ -25,7 +25,6 @@ from dotbot.protocol import (
     PayloadGPSWaypoints,
     PayloadLH2Location,
     PayloadLH2Waypoints,
-    PayloadType,
 )
 from dotbot.server import api
 
