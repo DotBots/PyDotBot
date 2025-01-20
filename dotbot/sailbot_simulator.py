@@ -263,7 +263,9 @@ class SailBotSimulator:
         # convert current position and next waypoint to cartesian
         current_x, current_y = geographical2cartesian(self.latitude, self.longitude)
         next_geo = self.waypoints[self.next_waypoint]
-        next_x, next_y = geographical2cartesian(next_geo[0], next_geo[1])
+        next_x, next_y = geographical2cartesian(
+            next_geo.latitude / 1e6, next_geo.longitude / 1e6
+        )
 
         # check if current position is within the threshold
         distance2target = math.sqrt(
@@ -349,7 +351,7 @@ class SailBotSimulator:
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
 
-        frame = PayloadFrame.from_bytes(hdlc_decode(frame))
+        frame = PayloadFrame().from_bytes(hdlc_decode(frame))
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
