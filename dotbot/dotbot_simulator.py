@@ -99,8 +99,8 @@ class DotBotSimulator:
                 pos_x_old, pos_y_old, theta_old, self.v_right, self.v_left
             )
         elif self.controller_mode == DotBotSimulatorMode.AUTOMATIC:
-            delta_x = self.pos_x - self.waypoints[self.waypoint_index][0]
-            delta_y = self.pos_y - self.waypoints[self.waypoint_index][1]
+            delta_x = self.pos_x - self.waypoints[self.waypoint_index].pos_x
+            delta_y = self.pos_y - self.waypoints[self.waypoint_index].pos_y
             distance_to_target = sqrt(delta_x**2 + delta_y**2)
 
             # check if we are close enough to the "next" waypoint
