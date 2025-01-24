@@ -20,12 +20,10 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
+    Frame,
     Header,
-    PacketType,
     PayloadAdvertisement,
-    PayloadFrame,
     PayloadSailBotData,
     PayloadType,
 )
@@ -136,8 +134,6 @@ class SailBotSimulator:
     @property
     def header(self):
         return Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(GATEWAY_ADDRESS_DEFAULT, 16),
             source=int(self.address, 16),
         )
@@ -351,7 +347,7 @@ class SailBotSimulator:
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
 
-        frame = PayloadFrame().from_bytes(hdlc_decode(frame))
+        frame = Frame().from_bytes(hdlc_decode(frame))
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
@@ -396,12 +392,12 @@ class SailBotSimulator:
                 )
             ),
         )
-        frame = PayloadFrame(header=self.header, payload=payload)
+        frame = Frame(header=self.header, payload=payload)
         return hdlc_encode(frame.to_bytes())
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
-        frame = PayloadFrame(
+        frame = Frame(
             header=self.header,
             payload=PayloadAdvertisement(application=ApplicationType.SailBot),
         )

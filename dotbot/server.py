@@ -24,13 +24,11 @@ from dotbot.models import (
     DotBotWaypoints,
 )
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
+    Frame,
     Header,
-    PacketType,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
-    PayloadFrame,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
     PayloadLH2Location,
@@ -72,8 +70,6 @@ async def dotbots_move_raw(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
@@ -83,7 +79,7 @@ async def dotbots_move_raw(
         right_x=command.right_x,
         right_y=command.right_y,
     )
-    frame = PayloadFrame(header=header, payload=payload)
+    frame = Frame(header=header, payload=payload)
     api.controller.send_payload(frame)
     api.controller.dotbots[address].move_raw = command
 
@@ -101,15 +97,13 @@ async def dotbots_rgb_led(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
     payload = PayloadCommandRgbLed(
         red=command.red, green=command.green, blue=command.blue
     )
-    frame = PayloadFrame(header=header, payload=payload)
+    frame = Frame(header=header, payload=payload)
     api.controller.send_payload(frame)
     api.controller.dotbots[address].rgb_led = command
 
@@ -129,8 +123,6 @@ async def dotbots_waypoints(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
@@ -170,7 +162,7 @@ async def dotbots_waypoints(
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    frame = PayloadFrame(header, payload=payload)
+    frame = Frame(header, payload=payload)
     api.controller.send_payload(frame)
     await api.controller.notify_clients(
         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)

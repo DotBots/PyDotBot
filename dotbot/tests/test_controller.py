@@ -10,14 +10,7 @@ import serial
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
-from dotbot.protocol import (
-    PROTOCOL_VERSION,
-    ControlModeType,
-    Header,
-    PacketType,
-    PayloadControlMode,
-    PayloadFrame,
-)
+from dotbot.protocol import ControlModeType, Frame, Header, PayloadControlMode
 
 
 @pytest.mark.asyncio
@@ -36,10 +29,8 @@ async def test_controller(_, __, serial_write, capsys):
         }
     )
     controller.serial = serial.Serial(settings.port, settings.baudrate)
-    frame = PayloadFrame(
+    frame = Frame(
         header=Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=0,
             source=0,
         ),
@@ -62,10 +53,8 @@ async def test_controller_dont_send(_, __, serial_write):
     dotbot = DotBotModel(address="0000000000000000", last_seen=time.time())
     controller.dotbots.update({dotbot.address: dotbot})
     controller.serial = serial.Serial(settings.port, settings.baudrate)
-    frame = PayloadFrame(
+    frame = Frame(
         header=Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=1,
             source=0,
         ),

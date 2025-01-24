@@ -17,13 +17,11 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
+    Frame,
     Header,
-    PacketType,
     PayloadAdvertisement,
     PayloadDotBotSimulatorData,
-    PayloadFrame,
     PayloadType,
 )
 
@@ -82,8 +80,6 @@ class DotBotSimulator:
     @property
     def header(self):
         return Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(GATEWAY_ADDRESS_DEFAULT, 16),
             source=int(self.address, 16),
         )
@@ -153,7 +149,7 @@ class DotBotSimulator:
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
-        payload = PayloadFrame(
+        payload = Frame(
             self.header,
             PayloadAdvertisement(application=ApplicationType.DotBot),
         )
@@ -161,7 +157,7 @@ class DotBotSimulator:
 
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
-        frame = PayloadFrame().from_bytes(hdlc_decode(frame))
+        frame = Frame().from_bytes(hdlc_decode(frame))
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
@@ -183,7 +179,7 @@ class DotBotSimulator:
 
     def encode_serial_output(self):
         """Encode the dotbot data to be sent to the gateway."""
-        frame = PayloadFrame(
+        frame = Frame(
             self.header,
             PayloadDotBotSimulatorData(
                 theta=int(self.theta * 180 / pi + 90),

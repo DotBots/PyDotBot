@@ -14,13 +14,11 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
 )
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
+    Frame,
     Header,
-    PacketType,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
-    PayloadFrame,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
     PayloadLH2Location,
@@ -91,13 +89,11 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
     payload = PayloadCommandMoveRaw(**command.model_dump())
-    expected_frame = PayloadFrame(header=header, payload=payload)
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/0/move_raw",
         json=command.model_dump(),
@@ -146,13 +142,11 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
     payload = PayloadCommandRgbLed(**command.model_dump())
-    expected_frame = PayloadFrame(header=header, payload=payload)
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.model_dump(),
@@ -275,8 +269,6 @@ async def test_set_dotbots_waypoints(
     api.controller.dotbots = dotbots
     address = "4242"
     header = Header(
-        version=PROTOCOL_VERSION,
-        type_=PacketType.DATA.value,
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
     )
@@ -309,7 +301,7 @@ async def test_set_dotbots_waypoints(
         else:
             expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
-    expected_frame = PayloadFrame(header=header, payload=payload)
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,

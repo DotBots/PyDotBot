@@ -7,6 +7,7 @@ from dotbot.protocol import (
     PAYLOAD_PARSERS,
     ApplicationType,
     ControlModeType,
+    Frame,
     Header,
     Packet,
     PacketFieldMetadata,
@@ -17,7 +18,6 @@ from dotbot.protocol import (
     PayloadControlMode,
     PayloadDotBotData,
     PayloadDotBotSimulatorData,
-    PayloadFrame,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
     PayloadLH2Location,
@@ -260,7 +260,7 @@ def test_parse_header(bytes_, expected):
     ],
 )
 def test_frame_parser(bytes_, header, payload_type, payload):
-    frame = PayloadFrame().from_bytes(bytes_)
+    frame = Frame().from_bytes(bytes_)
     assert frame.header == header
     assert frame.payload_type == payload_type
     assert frame.payload == payload
@@ -270,7 +270,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
     "payload,expected",
     [
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -285,7 +285,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadMoveRaw1",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -298,7 +298,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadMoveRaw2",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -311,7 +311,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadMoveRaw3",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -324,7 +324,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadRGBLed1",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -337,7 +337,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadRGBLed2",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -362,7 +362,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadLH2RawData",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -376,7 +376,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadLH2Location",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -389,7 +389,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadAdvertisement",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -405,7 +405,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadGPSPosition",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -432,7 +432,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadDotBotData",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -445,7 +445,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadControlMode",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -467,7 +467,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadLH2Waypoints",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -488,7 +488,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadGPSWaypoints",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -509,7 +509,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             id="PayloadSailBotData",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -539,7 +539,7 @@ def test_payload_to_bytes(payload, expected):
     "payload,string",
     [
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -558,7 +558,7 @@ def test_payload_to_bytes(payload, expected):
             id="MoveRaw",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -577,7 +577,7 @@ def test_payload_to_bytes(payload, expected):
             id="RGBLed",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -610,7 +610,7 @@ def test_payload_to_bytes(payload, expected):
             id="LH2RawData",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -633,7 +633,7 @@ def test_payload_to_bytes(payload, expected):
             id="LH2Location",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -652,7 +652,7 @@ def test_payload_to_bytes(payload, expected):
             id="Advertisement",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -677,7 +677,7 @@ def test_payload_to_bytes(payload, expected):
             id="GPSPosition",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -711,7 +711,7 @@ def test_payload_to_bytes(payload, expected):
             id="DotBotData",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -730,7 +730,7 @@ def test_payload_to_bytes(payload, expected):
             id="ControlMode",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -760,7 +760,7 @@ def test_payload_to_bytes(payload, expected):
             id="LH2Waypoints",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -790,7 +790,7 @@ def test_payload_to_bytes(payload, expected):
             id="GPSWaypoints",
         ),
         pytest.param(
-            PayloadFrame(
+            Frame(
                 Header(
                     version=4,
                     type_=2,
@@ -882,7 +882,7 @@ def test_register_parser():
 
 def test_parse_non_registered_payload():
     with pytest.raises(ProtocolPayloadParserException) as excinfo:
-        PayloadFrame().from_bytes(
+        Frame().from_bytes(
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\xfd\x01"
         )
     assert str(excinfo.value).startswith("Unsupported payload type")
@@ -895,7 +895,7 @@ def test_parse_non_registered_payload():
         )
         field: int = 0
 
-    frame = PayloadFrame(header=Header(), payload=PayloadNotRegisteredTest())
+    frame = Frame(header=Header(), payload=PayloadNotRegisteredTest())
     with pytest.raises(ValueError) as excinfo:
         frame.payload_type
     assert str(excinfo.value).startswith("Unsupported payload class")

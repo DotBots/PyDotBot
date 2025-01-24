@@ -56,12 +56,11 @@ from dotbot.models import (
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
+    Frame,
     Header,
-    PacketType,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadCommandXgoAction,
-    PayloadFrame,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
     PayloadLH2Location,
@@ -152,8 +151,6 @@ class Controller:
         # }
         self.logger = LOGGER.bind(context=__name__)
         self.header = Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
         )
@@ -209,8 +206,6 @@ class Controller:
             return
         logger.info("Sending command")
         header = Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
         )
@@ -220,7 +215,7 @@ class Controller:
             right_x=command.right_x,
             right_y=command.right_y,
         )
-        frame = PayloadFrame(header=header, payload=payload)
+        frame = Frame(header=header, payload=payload)
         self.send_payload(frame)
         self.dotbots[address].move_raw = command
 
@@ -247,15 +242,13 @@ class Controller:
             return
         logger.info("Sending command")
         header = Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
         )
         payload = PayloadCommandRgbLed(
             red=command.red, green=command.green, blue=command.blue
         )
-        frame = PayloadFrame(header=header, payload=payload)
+        frame = Frame(header=header, payload=payload)
         self.send_payload(frame)
         self.dotbots[address].rgb_led = command
         self.qrkey.publish(
@@ -288,13 +281,11 @@ class Controller:
             return
         logger.info("Sending command")
         header = Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
         )
         payload = PayloadCommandXgoAction(action=command.action)
-        frame = PayloadFrame(header=header, payload=payload)
+        frame = Frame(header=header, payload=payload)
         self.send_payload(frame)
 
     def on_command_waypoints(self, topic, payload):
@@ -317,8 +308,6 @@ class Controller:
             return
         logger.info("Sending command")
         header = Header(
-            version=PROTOCOL_VERSION,
-            type_=PacketType.DATA.value,
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
         )
@@ -356,7 +345,7 @@ class Controller:
                     for waypoint in command.waypoints
                 ],
             )
-        frame = PayloadFrame(header=header, payload=payload)
+        frame = Frame(header=header, payload=payload)
         self.send_payload(frame)
         self.dotbots[address].waypoints = waypoints_list
         self.dotbots[address].waypoints_threshold = command.threshold
@@ -546,7 +535,7 @@ class Controller:
                 )
             await asyncio.sleep(1)
 
-    def _compute_lh2_position(self, frame: PayloadFrame) -> Optional[DotBotLH2Position]:
+    def _compute_lh2_position(self, frame: Frame) -> Optional[DotBotLH2Position]:
         if frame.payload_type not in (
             PayloadType.LH2_RAW_DATA,
             PayloadType.DOTBOT_DATA,
@@ -564,7 +553,7 @@ class Controller:
             payload = self.hdlc_handler.payload
             if payload:
                 try:
-                    frame = PayloadFrame().from_bytes(payload)
+                    frame = Frame().from_bytes(payload)
                 except ProtocolPayloadParserException:
                     self.logger.warning("Cannot parse frame")
                     if self.settings.verbose is True:
@@ -573,7 +562,7 @@ class Controller:
                 self.handle_received_frame(frame)
 
     def handle_received_frame(
-        self, frame: PayloadFrame
+        self, frame: Frame
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
         # Controller is not interested by command messages received
@@ -665,8 +654,6 @@ class Controller:
                 dotbot.position_history.pop(0)
             # Send the computed position back to the dotbot
             header = Header(
-                version=PROTOCOL_VERSION,
-                type_=PacketType.DATA.value,
                 destination=int(source, 16),
                 source=int(self.settings.gw_address, 16),
             )
@@ -675,7 +662,7 @@ class Controller:
                 pos_y=int(dotbot.lh2_position.y * 1e6),
                 pos_z=int(dotbot.lh2_position.z * 1e6),
             )
-            self.send_payload(PayloadFrame(header=header, payload=payload))
+            self.send_payload(Frame(header=header, payload=payload))
         elif frame.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
@@ -768,7 +755,7 @@ class Controller:
         )
         self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
-    def send_payload(self, frame: PayloadFrame):
+    def send_payload(self, frame: Frame):
         """Sends a command in an HDLC frame over serial."""
         destination = hexlify(int(frame.header.destination).to_bytes(8, "big")).decode()
         if destination not in self.dotbots:

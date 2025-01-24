@@ -82,6 +82,10 @@ class PacketFieldMetadata:
     signed: bool = False
     type_: typing.Any = int
 
+    def __post_init__(self):
+        if not self.disp:
+            self.disp = self.name
+
 
 @dataclass
 class Packet(ABC):
@@ -158,7 +162,7 @@ class Header(Packet):
         ]
     )
     version: int = PROTOCOL_VERSION
-    type_: int = PacketType.BEACON.value
+    type_: int = PacketType.DATA.value
     destination: int = 0xFFFFFFFFFFFFFFFF
     source: int = 0x0000000000000000
 
@@ -201,9 +205,9 @@ class PayloadCommandRgbLed(Packet):
 
     metadata: list[PacketFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="red", disp="red"),
-            PacketFieldMetadata(name="green", disp="green"),
-            PacketFieldMetadata(name="blue", disp="blue"),
+            PacketFieldMetadata(name="red"),
+            PacketFieldMetadata(name="green"),
+            PacketFieldMetadata(name="blue"),
         ]
     )
 
@@ -218,7 +222,7 @@ class PayloadCommandXgoAction(Packet):
 
     metadata: list[PacketFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="action", disp="action"),
+            PacketFieldMetadata(name="action"),
         ]
     )
     action: int = 0
@@ -230,7 +234,7 @@ class PayloadLh2RawLocation(Packet):
 
     metadata: list[PacketFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="bits", disp="bits", length=8),
+            PacketFieldMetadata(name="bits", length=8),
             PacketFieldMetadata(name="polynomial_index", disp="poly", length=1),
             PacketFieldMetadata(name="offset", disp="off.", length=1, signed=True),
         ]
@@ -265,8 +269,8 @@ class PayloadLh2ProcessedLocation(Packet):
     metadata: list[PacketFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PacketFieldMetadata(name="polynomial_index", disp="poly"),
-            PacketFieldMetadata(name="lfsr_index", disp="lfsr_index", length=4),
-            PacketFieldMetadata(name="timestamp_us", disp="off.", length=4),
+            PacketFieldMetadata(name="lfsr_index", length=4),
+            PacketFieldMetadata(name="timestamp_us", length=4),
         ]
     )
 
@@ -357,9 +361,9 @@ class PayloadDotBotSimulatorData(Packet):
 
     metadata: list[PacketFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="theta", disp="theta", length=2),
-            PacketFieldMetadata(name="pos_x", disp="pos_x", length=4),
-            PacketFieldMetadata(name="pos_y", disp="pos_y", length=4),
+            PacketFieldMetadata(name="theta", length=2),
+            PacketFieldMetadata(name="pos_x", length=4),
+            PacketFieldMetadata(name="pos_y", length=4),
         ]
     )
 
@@ -437,7 +441,7 @@ def register_parser(payload_type: PayloadType, parser):
 
 
 @dataclass
-class PayloadFrame:
+class Frame:
     """Data class that holds a payload packet."""
 
     header: Header = None
