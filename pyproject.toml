@@ -67,7 +67,7 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/PyDotBot/issues"
 
 [project.scripts]
-dotbot-controller = "dotbot.main:main"
+dotbot-controller = "dotbot.controller_app:main"
 dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
 

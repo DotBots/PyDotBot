@@ -6,7 +6,7 @@ from unittest.mock import patch
 import serial
 from click.testing import CliRunner
 
-from dotbot.main import main
+from dotbot.controller_app import main
 from dotbot.serial_interface import get_default_port
 
 MAIN_HELP_EXPECTED = f"""Usage: main [OPTIONS]

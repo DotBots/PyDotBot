@@ -19,7 +19,7 @@ Submodules
    dotbot.keyboard
    dotbot.lighthouse2
    dotbot.logger
-   dotbot.main
+   dotbot.controller_app
    dotbot.models
    dotbot.protocol
    dotbot.rest
