@@ -26,7 +26,7 @@ Options:
 """
 
 
-def test_keyboard_main_help():
+def test_joystick_main_help():
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
