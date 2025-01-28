@@ -30,6 +30,8 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --handshake                     Perform a basic handshake with the gateway
                                   board on startup
+  --edge                          Connect to the edge gateway via MQTT instead
+                                  of local serial connection
   --help                          Show this message and exit.
 """
 

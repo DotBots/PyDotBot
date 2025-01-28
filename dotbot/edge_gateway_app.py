@@ -1,5 +1,5 @@
-# SPDX-FileCopyrightText: 2022-present Inria
-# SPDX-FileCopyrightText: 2022-present Alexandre Abadie <alexandre.abadie@inria.fr>
+# SPDX-FileCopyrightText: 2025-present Inria
+# SPDX-FileCopyrightText: 2025-present Alexandre Abadie <alexandre.abadie@inria.fr>
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -15,15 +15,13 @@ import click
 import serial
 
 from dotbot import (
-    CONTROLLER_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
-    SWARM_ID_DEFAULT,
     pydotbot_version,
 )
-from dotbot.controller import Controller, ControllerSettings
+from dotbot.edge_gateway import EdgeGateway, EdgeGatewaySettings
 from dotbot.logger import setup_logging
 
 
@@ -57,27 +55,6 @@ from dotbot.logger import setup_logging
     help=f"Gateway address in hex. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
-    "-s",
-    "--swarm-id",
-    type=str,
-    default=SWARM_ID_DEFAULT,
-    help=f"Swarm ID in hex. Defaults to {SWARM_ID_DEFAULT:>0{4}}",
-)
-@click.option(
-    "-c",
-    "--controller-port",
-    type=int,
-    default=CONTROLLER_PORT_DEFAULT,
-    help=f"Controller port. Defaults to '{CONTROLLER_PORT_DEFAULT}'",
-)
-@click.option(
-    "-w",
-    "--webbrowser",
-    is_flag=True,
-    default=False,
-    help="Open a web browser automatically",
-)
-@click.option(
     "-v",
     "--verbose",
     is_flag=True,
@@ -102,43 +79,31 @@ from dotbot.logger import setup_logging
     default=False,
     help="Perform a basic handshake with the gateway board on startup",
 )
-@click.option(
-    "--edge",
-    is_flag=True,
-    default=False,
-    help="Connect to the edge gateway via MQTT instead of local serial connection",
-)
 def main(
     port,
     baudrate,
     dotbot_address,
     gw_address,
-    swarm_id,
-    controller_port,
-    webbrowser,
     verbose,
     log_level,
     log_output,
     handshake,
-    edge,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
-    """DotBotController, universal SailBot and DotBot controller."""
+    """DotBots Edge Gateway entry point."""
     # welcome sentence
-    print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
+    print(
+        f"Starting the DotBots Edge Gateway controller (version: {pydotbot_version()})."
+    )
 
     setup_logging(log_output, log_level, ["console", "file"])
     try:
-        controller = Controller(
-            ControllerSettings(
+        controller = EdgeGateway(
+            EdgeGatewaySettings(
                 port=port,
                 baudrate=baudrate,
                 dotbot_address=dotbot_address,
                 gw_address=gw_address,
-                swarm_id=swarm_id,
-                controller_port=controller_port,
-                webbrowser=webbrowser,
                 handshake=handshake,
-                edge=edge,
                 verbose=verbose,
             ),
         )

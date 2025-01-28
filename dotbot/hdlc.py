@@ -9,10 +9,10 @@ from enum import Enum
 
 from dotbot.logger import LOGGER
 
-HDLC_FLAG = b"\x7E"
-HDLC_FLAG_ESCAPED = b"\x5E"
-HDLC_ESCAPE = b"\x7D"
-HDLC_ESCAPE_ESCAPED = b"\x5D"
+HDLC_FLAG = b"\x7e"
+HDLC_FLAG_ESCAPED = b"\x5e"
+HDLC_ESCAPE = b"\x7d"
+HDLC_ESCAPE_ESCAPED = b"\x5d"
 HDLC_FCS_INIT = 0xFFFF
 HDLC_FCS_OK = 0xF0B8
 

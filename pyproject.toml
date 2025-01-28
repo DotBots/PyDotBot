@@ -48,6 +48,7 @@ dependencies = [
     "structlog      == 24.4.0",
     "uvicorn        == 0.32.0",
     "websockets     == 13.1",
+    "gmqtt          >= 0.7.0",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
@@ -68,6 +69,7 @@ classifiers = [
 
 [project.scripts]
 dotbot-controller = "dotbot.controller_app:main"
+dotbot-edge-gateway = "dotbot.edge_gateway_app:main"
 dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
 
