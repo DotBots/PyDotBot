@@ -189,8 +189,9 @@ export const DotBotsMap = (props) => {
   };
 
   const mapClicked = (event) => {
-    const { farthestViewportElement: svgRoot } = event.target;
-    const dim = svgRoot.getBoundingClientRect();
+    // const { farthestViewportElement: svgRoot } = event.target;
+    // const dim = svgRoot.getBoundingClientRect();
+    const dim = event.target.getBoundingClientRect();
     const x = event.clientX - dim.left;
     const y = event.clientY - dim.top;
     props.mapClicked(x / props.mapSize, y / props.mapSize);

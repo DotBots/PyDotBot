@@ -23,7 +23,7 @@ import numpy as np
 
 from dotbot.logger import LOGGER
 from dotbot.models import DotBotCalibrationStateModel, DotBotLH2Position
-from dotbot.protocol import Lh2RawData
+from dotbot.protocol import PayloadLh2RawData
 
 if sys.platform == "win32":
     LIB_EXT = "dll"
@@ -43,7 +43,7 @@ REFERENCE_POINTS_DEFAULT = [
 CALIBRATION_DIR = Path.home() / ".pydotbot"
 
 
-def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
+def _lh2_raw_data_to_counts(raw_data: PayloadLh2RawData, func: callable) -> List[int]:
     counts = [0] * 2
     pos_A = 0
     pos_B = 0
@@ -64,7 +64,7 @@ def _lh2_raw_data_to_counts(raw_data: Lh2RawData, func: callable) -> List[int]:
     return counts
 
 
-def lh2_raw_data_to_counts(raw_data: Lh2RawData) -> List[int]:
+def lh2_raw_data_to_counts(raw_data: PayloadLh2RawData) -> List[int]:
     """Convert bits sequence to an array of counts."""
     return _lh2_raw_data_to_counts(raw_data, LH2_LIB.reverse_count_p)
 
@@ -256,7 +256,9 @@ class LighthouseManager:
         self.state = LighthouseManagerState.Calibrated
         self.logger.info("Calibration done", data=self.calibration_data)
 
-    def compute_position(self, raw_data: Lh2RawData) -> Optional[DotBotLH2Position]:
+    def compute_position(
+        self, raw_data: PayloadLh2RawData
+    ) -> Optional[DotBotLH2Position]:
         """Compute the position coordinates from LH2 raw data and available calibration."""
         if self.state != LighthouseManagerState.Calibrated:
             return None

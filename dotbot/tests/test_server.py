@@ -14,17 +14,15 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
 )
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
-    CommandMoveRaw,
-    CommandRgbLed,
-    GPSPosition,
-    GPSWaypoints,
-    LH2Location,
-    LH2Waypoints,
-    PayloadType,
-    ProtocolHeader,
-    ProtocolPayload,
+    Frame,
+    Header,
+    PayloadCommandMoveRaw,
+    PayloadCommandRgbLed,
+    PayloadGPSPosition,
+    PayloadGPSWaypoints,
+    PayloadLH2Location,
+    PayloadLH2Waypoints,
 )
 from dotbot.server import api
 
@@ -90,25 +88,19 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
-    header = ProtocolHeader(
+    header = Header(
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
-        version=PROTOCOL_VERSION,
     )
-    expected_payload = ProtocolPayload(
-        header,
-        PayloadType.CMD_MOVE_RAW,
-        CommandMoveRaw(42, 0, 42, 0),
-    )
+    payload = PayloadCommandMoveRaw(**command.model_dump())
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/0/move_raw",
         json=command.model_dump(),
     )
     assert response.status_code == code
     if found is True:
-        api.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_frame)
     else:
         api.controller.send_payload.assert_not_called()
 
@@ -149,18 +141,12 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
-    header = ProtocolHeader(
+    header = Header(
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=ApplicationType.DotBot,
-        version=PROTOCOL_VERSION,
     )
-    expected_payload = ProtocolPayload(
-        header,
-        PayloadType.CMD_RGB_LED,
-        CommandRgbLed(42, 0, 42),
-    )
+    payload = PayloadCommandRgbLed(**command.model_dump())
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.model_dump(),
@@ -168,7 +154,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     assert response.status_code == code
 
     if found:
-        api.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_frame)
     else:
         api.controller.send_payload.assert_not_called()
 
@@ -282,20 +268,15 @@ async def test_set_dotbots_waypoints(
 ):
     api.controller.dotbots = dotbots
     address = "4242"
-    header = ProtocolHeader(
+    header = Header(
         destination=int(address, 16),
         source=int(api.controller.settings.gw_address, 16),
-        swarm_id=int(api.controller.settings.swarm_id, 16),
-        application=application,
-        version=PROTOCOL_VERSION,
     )
     if application == ApplicationType.SailBot:
-        expected_payload = ProtocolPayload(
-            header,
-            PayloadType.GPS_WAYPOINTS,
-            GPSWaypoints(
-                threshold=10, waypoints=[GPSPosition(latitude=500000, longitude=100000)]
-            ),
+        payload = PayloadGPSWaypoints(
+            threshold=10,
+            count=1,
+            waypoints=[PayloadGPSPosition(latitude=500000, longitude=100000)],
         )
         expected_threshold = 10
         if has_position is True:
@@ -306,10 +287,10 @@ async def test_set_dotbots_waypoints(
         else:
             expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
     else:  # DotBot application
-        expected_payload = ProtocolPayload(
-            header,
-            PayloadType.LH2_WAYPOINTS,
-            LH2Waypoints(threshold=10, waypoints=[LH2Location(500000, 100000, 0)]),
+        payload = PayloadLH2Waypoints(
+            threshold=10,
+            count=1,
+            waypoints=[PayloadLH2Location(pos_x=500000, pos_y=100000, pos_z=0)],
         )
         expected_threshold = 10
         if has_position is True:
@@ -320,6 +301,7 @@ async def test_set_dotbots_waypoints(
         else:
             expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
+    expected_frame = Frame(header=header, payload=payload)
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,
@@ -327,7 +309,7 @@ async def test_set_dotbots_waypoints(
     assert response.status_code == code
 
     if found:
-        api.controller.send_payload.assert_called_with(expected_payload)
+        api.controller.send_payload.assert_called_with(expected_frame)
         assert api.controller.dotbots[address].waypoints == expected_waypoints
         assert api.controller.dotbots[address].waypoints_threshold == expected_threshold
     else:

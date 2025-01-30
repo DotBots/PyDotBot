@@ -72,9 +72,9 @@ dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
 
 [tool.ruff]
-select = ["E", "F"]
+lint.select = ["E", "F"]
 line-length = 88
-ignore = ["E501"]
+lint.ignore = ["E501"]
 
 [tool.isort]
 multi_line_output = 3  # Use Vertical Hanging Indent

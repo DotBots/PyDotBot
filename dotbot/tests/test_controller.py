@@ -2,8 +2,6 @@
 
 import asyncio
 import time
-from dataclasses import dataclass
-from typing import List
 from unittest.mock import patch
 
 import pytest
@@ -12,30 +10,7 @@ import serial
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
-from dotbot.protocol import (
-    PayloadType,
-    ProtocolData,
-    ProtocolField,
-    ProtocolHeader,
-    ProtocolPayload,
-)
-
-
-@dataclass
-class ProtocolDataTest(ProtocolData):
-    test: int = 0x1234
-
-    @property
-    def fields(self) -> List[ProtocolField]:
-        """Returns the list of fields in this data."""
-        return [
-            ProtocolField(ProtocolDataTest.test, "test", 2),
-        ]
-
-    @staticmethod
-    def from_bytes(bytes_: bytes) -> ProtocolData:
-        """Returns a ProtocolData instance from a bytearray."""
-        return ProtocolDataTest(bytes_[0:2])
+from dotbot.protocol import ControlModeType, Frame, Header, PayloadControlMode
 
 
 @pytest.mark.asyncio
@@ -54,16 +29,16 @@ async def test_controller(_, __, serial_write, capsys):
         }
     )
     controller.serial = serial.Serial(settings.port, settings.baudrate)
-    payload = ProtocolPayload(
-        ProtocolHeader(0, 0, 0, 0, 0),
-        PayloadType.CMD_MOVE_RAW,
-        ProtocolDataTest(),
+    frame = Frame(
+        header=Header(
+            destination=0,
+            source=0,
+        ),
+        payload=PayloadControlMode(mode=ControlModeType.AUTO),
     )
-    # smoke test for the from_bytes static method of ProtocolDataTest
-    assert len(ProtocolDataTest.from_bytes(bytearray([1, 2])).fields) == 1
-    controller.send_payload(payload)
+    controller.send_payload(frame)
     assert serial_write.call_count == 1
-    payload_expected = hdlc_encode(payload.to_bytes())
+    payload_expected = hdlc_encode(frame.to_bytes())
     assert serial_write.call_args_list[0].args[0] == payload_expected
 
 
@@ -78,13 +53,15 @@ async def test_controller_dont_send(_, __, serial_write):
     dotbot = DotBotModel(address="0000000000000000", last_seen=time.time())
     controller.dotbots.update({dotbot.address: dotbot})
     controller.serial = serial.Serial(settings.port, settings.baudrate)
-    payload = ProtocolPayload(
-        ProtocolHeader(123, 0, 0, 0, 0),
-        PayloadType.CMD_MOVE_RAW,
-        ProtocolDataTest(),
+    frame = Frame(
+        header=Header(
+            destination=1,
+            source=0,
+        ),
+        payload=PayloadControlMode(mode=ControlModeType.AUTO),
     )
     # DotBot is not in the controller known dotbot, so the payload won't be sent
-    controller.send_payload(payload)
+    controller.send_payload(frame)
     assert serial_write.call_count == 0
 
 

@@ -56,16 +56,16 @@ from dotbot.models import (
 from dotbot.protocol import (
     PROTOCOL_VERSION,
     ApplicationType,
-    CommandMoveRaw,
-    CommandRgbLed,
-    CommandXgoAction,
-    GPSPosition,
-    GPSWaypoints,
-    LH2Location,
-    LH2Waypoints,
+    Frame,
+    Header,
+    PayloadCommandMoveRaw,
+    PayloadCommandRgbLed,
+    PayloadCommandXgoAction,
+    PayloadGPSPosition,
+    PayloadGPSWaypoints,
+    PayloadLH2Location,
+    PayloadLH2Waypoints,
     PayloadType,
-    ProtocolHeader,
-    ProtocolPayload,
     ProtocolPayloadParserException,
 )
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
@@ -150,12 +150,9 @@ class Controller:
         #     ),
         # }
         self.logger = LOGGER.bind(context=__name__)
-        self.header = ProtocolHeader(
+        self.header = Header(
             destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
             source=int(settings.gw_address, 16),
-            swarm_id=int(settings.swarm_id, 16),
-            application=ApplicationType.DotBot,
-            version=PROTOCOL_VERSION,
         )
         self.settings = settings
         self.hdlc_handler = HDLCHandler()
@@ -208,24 +205,18 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = ProtocolHeader(
+        header = Header(
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
-            swarm_id=int(swarm_id, 16),
-            application=ApplicationType(int(application)),
-            version=PROTOCOL_VERSION,
         )
-        payload = ProtocolPayload(
-            header,
-            PayloadType.CMD_MOVE_RAW,
-            CommandMoveRaw(
-                left_x=command.left_x,
-                left_y=command.left_y,
-                right_x=command.right_x,
-                right_y=command.right_y,
-            ),
+        payload = PayloadCommandMoveRaw(
+            left_x=command.left_x,
+            left_y=command.left_y,
+            right_x=command.right_x,
+            right_y=command.right_y,
         )
-        self.send_payload(payload)
+        frame = Frame(header=header, payload=payload)
+        self.send_payload(frame)
         self.dotbots[address].move_raw = command
 
     def on_command_rgb_led(self, topic, payload):
@@ -250,19 +241,15 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = ProtocolHeader(
+        header = Header(
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
-            swarm_id=int(swarm_id, 16),
-            application=ApplicationType(int(application)),
-            version=PROTOCOL_VERSION,
         )
-        payload = ProtocolPayload(
-            header,
-            PayloadType.CMD_RGB_LED,
-            CommandRgbLed(command.red, command.green, command.blue),
+        payload = PayloadCommandRgbLed(
+            red=command.red, green=command.green, blue=command.blue
         )
-        self.send_payload(payload)
+        frame = Frame(header=header, payload=payload)
+        self.send_payload(frame)
         self.dotbots[address].rgb_led = command
         self.qrkey.publish(
             "/notify",
@@ -293,19 +280,13 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = ProtocolHeader(
+        header = Header(
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
-            swarm_id=int(swarm_id, 16),
-            application=ApplicationType(int(application)),
-            version=PROTOCOL_VERSION,
         )
-        payload = ProtocolPayload(
-            header,
-            PayloadType.CMD_XGO_ACTION,
-            CommandXgoAction(command.action),
-        )
-        self.send_payload(payload)
+        payload = PayloadCommandXgoAction(action=command.action)
+        frame = Frame(header=header, payload=payload)
+        self.send_payload(frame)
 
     def on_command_waypoints(self, topic, payload):
         """Called when a list of waypoints is received."""
@@ -326,12 +307,9 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = ProtocolHeader(
+        header = Header(
             destination=int(address, 16),
             source=int(self.settings.gw_address, 16),
-            swarm_id=int(swarm_id, 16),
-            application=ApplicationType(int(application)),
-            version=PROTOCOL_VERSION,
         )
         waypoints_list = command.waypoints
         if ApplicationType(int(application)) == ApplicationType.SailBot:
@@ -339,41 +317,36 @@ class Controller:
                 waypoints_list = [
                     self.dotbots[address].gps_position
                 ] + command.waypoints
-            payload = ProtocolPayload(
-                header,
-                PayloadType.GPS_WAYPOINTS,
-                GPSWaypoints(
-                    threshold=command.threshold,
-                    waypoints=[
-                        GPSPosition(
-                            latitude=int(waypoint.latitude * 1e6),
-                            longitude=int(waypoint.longitude * 1e6),
-                        )
-                        for waypoint in command.waypoints
-                    ],
-                ),
+            payload = PayloadGPSWaypoints(
+                threshold=command.threshold,
+                count=len(command.waypoints),
+                waypoints=[
+                    PayloadGPSPosition(
+                        latitude=int(waypoint.latitude * 1e6),
+                        longitude=int(waypoint.longitude * 1e6),
+                    )
+                    for waypoint in command.waypoints
+                ],
             )
         else:  # DotBot application
             if self.dotbots[address].lh2_position is not None:
                 waypoints_list = [
                     self.dotbots[address].lh2_position
                 ] + command.waypoints
-            payload = ProtocolPayload(
-                header,
-                PayloadType.LH2_WAYPOINTS,
-                LH2Waypoints(
-                    threshold=command.threshold,
-                    waypoints=[
-                        LH2Location(
-                            pos_x=int(waypoint.x * 1e6),
-                            pos_y=int(waypoint.y * 1e6),
-                            pos_z=int(waypoint.z * 1e6),
-                        )
-                        for waypoint in command.waypoints
-                    ],
-                ),
+            payload = PayloadLH2Waypoints(
+                threshold=command.threshold,
+                count=len(command.waypoints),
+                waypoints=[
+                    PayloadLH2Location(
+                        pos_x=int(waypoint.x * 1e6),
+                        pos_y=int(waypoint.y * 1e6),
+                        pos_z=int(waypoint.z * 1e6),
+                    )
+                    for waypoint in command.waypoints
+                ],
             )
-        self.send_payload(payload)
+        frame = Frame(header=header, payload=payload)
+        self.send_payload(frame)
         self.dotbots[address].waypoints = waypoints_list
         self.dotbots[address].waypoints_threshold = command.threshold
         self.qrkey.publish(
@@ -562,18 +535,16 @@ class Controller:
                 )
             await asyncio.sleep(1)
 
-    def _compute_lh2_position(
-        self, payload: ProtocolPayload
-    ) -> Optional[DotBotLH2Position]:
-        if payload.payload_type not in (
+    def _compute_lh2_position(self, frame: Frame) -> Optional[DotBotLH2Position]:
+        if frame.payload_type not in (
             PayloadType.LH2_RAW_DATA,
             PayloadType.DOTBOT_DATA,
         ):
             return None
-        self.lh2_manager.last_raw_data = payload.values
+        self.lh2_manager.last_raw_data = frame.payload
         if self.lh2_manager.state != LighthouseManagerState.Calibrated:
             return None
-        return self.lh2_manager.compute_position(payload.values)
+        return self.lh2_manager.compute_position(frame.payload)
 
     def handle_byte(self, byte):
         """Called on each byte received over UART."""
@@ -582,41 +553,47 @@ class Controller:
             payload = self.hdlc_handler.payload
             if payload:
                 try:
-                    payload = ProtocolPayload.from_bytes(payload)
+                    frame = Frame().from_bytes(payload)
                 except ProtocolPayloadParserException:
-                    self.logger.warning("Cannot parse payload")
+                    self.logger.warning("Cannot parse frame")
                     if self.settings.verbose is True:
-                        print(payload)
+                        print(frame)
                     return
-                self.handle_received_payload(payload)
+                self.handle_received_frame(frame)
 
-    def handle_received_payload(
-        self, payload: ProtocolPayload
+    def handle_received_frame(
+        self, frame: Frame
     ):  # pylint:disable=too-many-branches,too-many-statements
-        """Handle a received payload."""
+        """Handle a received frame."""
         # Controller is not interested by command messages received
-        if payload.payload_type in [
+        if frame.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
         ]:
             return
-        source = hexlify(int(payload.header.source).to_bytes(8, "big")).decode()
+        source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
         logger = self.logger.bind(
             source=source,
-            payload_type=payload.payload_type.name,
-            application=payload.header.application.name,
-            msg_id=payload.header.msg_id,
+            payload_type=frame.payload_type.name,
         )
         if source == GATEWAY_ADDRESS_DEFAULT:
             logger.warning("Invalid source in payload")
             return
         dotbot = DotBotModel(
             address=source,
-            application=payload.header.application,
             last_seen=time.time(),
         )
         notification_cmd = DotBotNotificationCommand.NONE
+
+        if (
+            source not in self.dotbots
+            and frame.payload_type != PayloadType.ADVERTISEMENT
+        ):
+            logger.info("Ignoring non advertised dotbot")
+            return
+
         if source in self.dotbots:
+            dotbot.application = self.dotbots[source].application
             dotbot.mode = self.dotbots[source].mode
             dotbot.status = self.dotbots[source].status
             dotbot.direction = self.dotbots[source].direction
@@ -634,21 +611,27 @@ class Controller:
             logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
 
+        if frame.payload_type == PayloadType.ADVERTISEMENT:
+            logger = logger.bind(
+                application=ApplicationType(frame.payload.application).name
+            )
+            dotbot.application = ApplicationType(frame.payload.application)
+
         if (
-            payload.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
-            and -500 <= payload.values.direction <= 500
+            frame.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
+            and -500 <= frame.payload.direction <= 500
         ):
-            dotbot.direction = payload.values.direction
+            dotbot.direction = frame.payload.direction
             logger = logger.bind(direction=dotbot.direction)
 
-        if payload.payload_type in [PayloadType.SAILBOT_DATA]:
+        if frame.payload_type in [PayloadType.SAILBOT_DATA]:
             logger = logger.bind(
                 wind_angle=dotbot.wind_angle,
                 rudder_angle=dotbot.rudder_angle,
                 sail_angle=dotbot.sail_angle,
             )
 
-        dotbot.lh2_position = self._compute_lh2_position(payload)
+        dotbot.lh2_position = self._compute_lh2_position(frame)
         if (
             dotbot.lh2_position is not None
             and 0 <= dotbot.lh2_position.x <= 1
@@ -670,56 +653,48 @@ class Controller:
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
             # Send the computed position back to the dotbot
-            header = ProtocolHeader(
+            header = Header(
                 destination=int(source, 16),
                 source=int(self.settings.gw_address, 16),
-                swarm_id=int(self.settings.swarm_id, 16),
-                application=dotbot.application,
-                version=PROTOCOL_VERSION,
             )
-            self.send_payload(
-                ProtocolPayload(
-                    header,
-                    PayloadType.LH2_LOCATION,
-                    LH2Location(
-                        int(dotbot.lh2_position.x * 1e6),
-                        int(dotbot.lh2_position.y * 1e6),
-                        int(dotbot.lh2_position.z * 1e6),
-                    ),
-                )
+            payload = PayloadLH2Location(
+                pos_x=int(dotbot.lh2_position.x * 1e6),
+                pos_y=int(dotbot.lh2_position.y * 1e6),
+                pos_z=int(dotbot.lh2_position.z * 1e6),
             )
-        elif payload.payload_type == PayloadType.DOTBOT_DATA:
+            self.send_payload(Frame(header=header, payload=payload))
+        elif frame.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
-        if payload.payload_type == PayloadType.LH2_PROCESSED_DATA:
+        if frame.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(
                 "lh2-processed",
-                poly=payload.values.polynomial_index,
-                lfsr_index=payload.values.lfsr_index,
-                db_time=payload.values.timestamp_us,
+                poly=frame.payload.polynomial_index,
+                lfsr_index=frame.payload.lfsr_index,
+                db_time=frame.payload.timestamp_us,
             )
 
-        if payload.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
-            dotbot.direction = payload.values.theta
+        if frame.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
+            dotbot.direction = frame.payload.theta
             new_position = DotBotLH2Position(
-                x=payload.values.pos_x / 1e6,
-                y=payload.values.pos_y / 1e6,
+                x=frame.payload.pos_x / 1e6,
+                y=frame.payload.pos_y / 1e6,
                 z=0,
             )
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
 
-        if payload.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
+        if frame.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
             new_position = DotBotGPSPosition(
-                latitude=float(payload.values.latitude) / 1e6,
-                longitude=float(payload.values.longitude) / 1e6,
+                latitude=float(frame.payload.latitude) / 1e6,
+                longitude=float(frame.payload.longitude) / 1e6,
             )
             dotbot.gps_position = new_position
             # Read wind sensor measurements
-            dotbot.wind_angle = payload.values.wind_angle
-            dotbot.rudder_angle = payload.values.rudder_angle
-            dotbot.sail_angle = payload.values.sail_angle
+            dotbot.wind_angle = frame.payload.wind_angle
+            dotbot.rudder_angle = frame.payload.rudder_angle
+            dotbot.sail_angle = frame.payload.sail_angle
             logger.info(
                 "gps",
                 lat=new_position.latitude,
@@ -755,7 +730,7 @@ class Controller:
             notification = DotBotNotificationModel(cmd=notification_cmd.value)
 
         if self.settings.verbose is True:
-            print(payload)
+            print(frame)
         self.dotbots.update({dotbot.address: dotbot})
         if notification_cmd != DotBotNotificationCommand.NONE:
             asyncio.create_task(self.notify_clients(notification))
@@ -780,22 +755,18 @@ class Controller:
         )
         self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
-    def send_payload(self, payload: ProtocolPayload):
+    def send_payload(self, frame: Frame):
         """Sends a command in an HDLC frame over serial."""
-        destination = hexlify(
-            int(payload.header.destination).to_bytes(8, "big")
-        ).decode()
+        destination = hexlify(int(frame.header.destination).to_bytes(8, "big")).decode()
         if destination not in self.dotbots:
             return
-        # make sure the application in the payload matches the bot application
-        payload.header.application = self.dotbots[destination].application
         if self.serial is not None:
-            self.serial.write(hdlc_encode(payload.to_bytes()))
+            self.serial.write(hdlc_encode(frame.to_bytes()))
             self.logger.debug(
                 "Payload sent",
-                application=payload.header.application.name,
+                application=self.dotbots[destination].application.name,
                 destination=destination,
-                payload_type=payload.payload_type.name,
+                payload_type=frame.payload_type.name,
             )
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
