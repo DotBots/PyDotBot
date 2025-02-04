@@ -12,33 +12,31 @@ import typing
 from abc import ABC
 from binascii import hexlify
 from dataclasses import dataclass
-from enum import Enum, IntEnum
+from enum import IntEnum
 from typing import List
 
 PROTOCOL_VERSION = 9
+PAYLOAD_RESERVED_THRESHOLD = 0x80
 
 
-class PayloadType(Enum):
+class PayloadType(IntEnum):
     """Types of DotBot payload types."""
 
-    CMD_MOVE_RAW = 0
-    CMD_RGB_LED = 1
-    LH2_RAW_LOCATION = 2
-    LH2_LOCATION = 3
-    ADVERTISEMENT = 4
-    GPS_POSITION = 5
-    DOTBOT_DATA = 6
-    CONTROL_MODE = 7
-    LH2_WAYPOINTS = 8
-    GPS_WAYPOINTS = 9
-    SAILBOT_DATA = 10
-    CMD_XGO_ACTION = 11
-    LH2_PROCESSED_DATA = 12
-    LH2_RAW_DATA = 13
-    INVALID_PAYLOAD = 14  # Increase each time a new payload type is added
-    DOTBOT_SIMULATOR_DATA = 250
-    TEST_NOT_REGISTERED = 253
-    TEST = 254
+    CMD_MOVE_RAW = 0x00
+    CMD_RGB_LED = 0x01
+    LH2_RAW_LOCATION = 0x02
+    LH2_LOCATION = 0x03
+    ADVERTISEMENT = 0x04
+    GPS_POSITION = 0x05
+    DOTBOT_DATA = 0x06
+    CONTROL_MODE = 0x07
+    LH2_WAYPOINTS = 0x08
+    GPS_WAYPOINTS = 0x09
+    SAILBOT_DATA = 0x0A
+    CMD_XGO_ACTION = 0x0B
+    LH2_PROCESSED_DATA = 0x0C
+    LH2_RAW_DATA = 0x0D
+    DOTBOT_SIMULATOR_DATA = 0xFA
 
 
 class ApplicationType(IntEnum):
@@ -62,7 +60,7 @@ class ProtocolPayloadParserException(Exception):
     """Exception raised on invalid or unsupported payload."""
 
 
-class PacketType(Enum):
+class PacketType(IntEnum):
     """Types of MAC layer packet."""
 
     BEACON = 1
@@ -162,7 +160,7 @@ class Header(Packet):
         ]
     )
     version: int = PROTOCOL_VERSION
-    type_: int = PacketType.DATA.value
+    type_: int = PacketType.DATA
     destination: int = 0xFFFFFFFFFFFFFFFF
     source: int = 0x0000000000000000
 
@@ -417,7 +415,7 @@ class PayloadGPSWaypoints(Packet):
     waypoints: list[PayloadGPSPosition] = dataclasses.field(default_factory=lambda: [])
 
 
-PAYLOAD_PARSERS: dict[PayloadType, Packet] = {
+PAYLOAD_PARSERS: dict[int, Packet] = {
     PayloadType.ADVERTISEMENT: PayloadAdvertisement,
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
@@ -436,7 +434,12 @@ PAYLOAD_PARSERS: dict[PayloadType, Packet] = {
 }
 
 
-def register_parser(payload_type: PayloadType, parser):
+def register_parser(payload_type: int, parser: Packet):
+    """Register a new payload parser."""
+    if payload_type in PAYLOAD_PARSERS:
+        raise ValueError(f"Payload type '0x{payload_type:02X}' already registered")
+    if payload_type < PAYLOAD_RESERVED_THRESHOLD:
+        raise ValueError(f"Payload type '0x{payload_type:02X}' is reserved")
     PAYLOAD_PARSERS[payload_type] = parser
 
 
@@ -448,7 +451,7 @@ class Frame:
     payload: Packet = None
 
     @property
-    def payload_type(self) -> PayloadType:
+    def payload_type(self) -> int:
         for payload_type, cls_ in PAYLOAD_PARSERS.items():
             if cls_ == self.payload.__class__:
                 return payload_type
@@ -456,7 +459,7 @@ class Frame:
 
     def from_bytes(self, bytes_):
         self.header = Header().from_bytes(bytes_[0:18])
-        payload_type = PayloadType(int.from_bytes(bytes_[18:19], "little"))
+        payload_type = int.from_bytes(bytes_[18:19], "little")
         if payload_type not in PAYLOAD_PARSERS:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type}'"
@@ -467,7 +470,7 @@ class Frame:
     def to_bytes(self, byteorder="little") -> bytes:
         header_bytes = self.header.to_bytes(byteorder)
         payload_bytes = self.payload.to_bytes(byteorder)
-        return header_bytes + int.to_bytes(self.payload_type.value) + payload_bytes
+        return header_bytes + int.to_bytes(self.payload_type) + payload_bytes
 
     def __repr__(self):
         header_separators = [
@@ -505,9 +508,7 @@ class Frame:
             f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{4 * self.header.metadata[idx].length - 1}}"
             for idx, field in enumerate(dataclasses.fields(self.header)[1:])
         ]
-        type_value = [
-            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'big')).decode():<3}"
-        ]
+        type_value = [f" 0x{hexlify(self.payload_type.to_bytes(1, 'big')).decode():<3}"]
         payload_values = [
             f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{4 * self.payload.metadata[idx].length - 1}}"
             for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
