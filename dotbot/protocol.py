@@ -114,6 +114,15 @@ class Packet(ABC):
                         raise ValueError("Not enough bytes to parse")
                     field_attribute.append(element.from_bytes(bytes_))
                     bytes_ = bytes_[element.size :]
+            elif metadata[idx].type_ in [bytes, bytearray]:
+                # subclass element is bytes and previous attribute is called
+                # "count" and should have already been retrieved from the byte
+                # stream
+                length = metadata[idx].length
+                if hasattr(self, "count"):
+                    length = self.count
+                setattr(self, field.name, bytes_[0:length])
+                bytes_ = bytes_[length:]
             else:
                 length = metadata[idx].length
                 if len(bytes_) < length:
@@ -138,6 +147,8 @@ class Packet(ABC):
             if isinstance(value, list):
                 for element in value:
                     buffer += element.to_bytes()
+            elif isinstance(value, (bytes, bytearray)):
+                buffer += value
             else:
                 buffer += int(value).to_bytes(
                     length=metadata[idx].length,

@@ -31,6 +31,34 @@ from dotbot.protocol import (
 )
 
 
+@dataclass
+class PayloadWithBytesTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PacketFieldMetadata(name="count", disp="len."),
+            PacketFieldMetadata(name="data", type_=bytes, length=0),
+        ]
+    )
+    count: int = 0
+    data: bytes = b""
+
+
+@dataclass
+class PayloadWithBytesFixedLengthTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PacketFieldMetadata(name="data", type_=bytes, length=8),
+        ]
+    )
+    data: bytes = b""
+
+
+register_parser(0x81, PayloadWithBytesTest)
+register_parser(0x82, PayloadWithBytesFixedLengthTest)
+
+
 @pytest.mark.parametrize(
     "bytes_,expected",
     [
@@ -256,6 +284,25 @@ def test_parse_header(bytes_, expected):
                 ],
             ),
             id="PayloadGPSWaypoints",
+        ),
+        pytest.param(
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x81"  # payload type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            Header(),
+            0x81,
+            PayloadWithBytesTest(count=8, data=b"abcdefgh"),
+            id="PayloadWithBytesTest",
+        ),
+        pytest.param(
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x82"  # payload type
+            b"abcdefgh",  # data
+            Header(),
+            0x82,
+            PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
+            id="PayloadWithBytesFixedLengthTest",
         ),
     ],
 )
@@ -527,6 +574,26 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             b"\x50\xc3\x00\x00"
             b"\xa8\x61\x00\x00",
             id="PayloadDotBotSimulatorData",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(), payload=PayloadWithBytesTest(count=8, data=b"abcdefgh")
+            ),
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x81"  # payload type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            id="PayloadWithBytesTest",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
+            ),
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x82"  # payload type
+            b"abcdefgh",  # data
+            id="PayloadWithBytesFixedLengthTest",
         ),
     ],
 )
