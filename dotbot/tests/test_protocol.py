@@ -31,6 +31,34 @@ from dotbot.protocol import (
 )
 
 
+@dataclass
+class PayloadWithBytesTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PacketFieldMetadata(name="count", disp="len."),
+            PacketFieldMetadata(name="data", type_=bytes, length=0),
+        ]
+    )
+    count: int = 0
+    data: bytes = b""
+
+
+@dataclass
+class PayloadWithBytesFixedLengthTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PacketFieldMetadata(name="data", type_=bytes, length=8),
+        ]
+    )
+    data: bytes = b""
+
+
+register_parser(0x81, PayloadWithBytesTest)
+register_parser(0x82, PayloadWithBytesFixedLengthTest)
+
+
 @pytest.mark.parametrize(
     "bytes_,expected",
     [
@@ -256,6 +284,25 @@ def test_parse_header(bytes_, expected):
                 ],
             ),
             id="PayloadGPSWaypoints",
+        ),
+        pytest.param(
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x81"  # payload type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            Header(),
+            0x81,
+            PayloadWithBytesTest(count=8, data=b"abcdefgh"),
+            id="PayloadWithBytesTest",
+        ),
+        pytest.param(
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x82"  # payload type
+            b"abcdefgh",  # data
+            Header(),
+            0x82,
+            PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
+            id="PayloadWithBytesFixedLengthTest",
         ),
     ],
 )
@@ -528,6 +575,26 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             b"\xa8\x61\x00\x00",
             id="PayloadDotBotSimulatorData",
         ),
+        pytest.param(
+            Frame(
+                header=Header(), payload=PayloadWithBytesTest(count=8, data=b"abcdefgh")
+            ),
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x81"  # payload type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            id="PayloadWithBytesTest",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
+            ),
+            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x82"  # payload type
+            b"abcdefgh",  # data
+            id="PayloadWithBytesFixedLengthTest",
+        ),
     ],
 )
 def test_payload_to_bytes(payload, expected):
@@ -549,10 +616,10 @@ def test_payload_to_bytes(payload, expected):
                 PayloadCommandMoveRaw(left_x=0, left_y=66, right_x=0, right_y=66),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+------+------+------+------+\n"
-                " CMD_MOVE_RAW    | ver. | type | dst                              | src                              | type | lx   | ly   | rx   | ry   |\n"
-                " (23 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x00 | 0x00 | 0x42 | 0x00 | 0x42 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+------+------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+------+------+\n"
+                " CMD_MOVE_RAW    | ver. | type | dst                | src                | type | lx   | ly   | rx   | ry   |\n"
+                " (23 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x00 | 0x00 | 0x42 | 0x00 | 0x42 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+------+------+\n"
                 "\n"
             ),
             id="MoveRaw",
@@ -568,10 +635,10 @@ def test_payload_to_bytes(payload, expected):
                 PayloadCommandRgbLed(red=0, green=0, blue=0),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+------+------+------+\n"
-                " CMD_RGB_LED     | ver. | type | dst                              | src                              | type | red  | green| blue |\n"
-                " (22 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x01 | 0x00 | 0x00 | 0x00 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+------+\n"
+                " CMD_RGB_LED     | ver. | type | dst                | src                | type | red  | green| blue |\n"
+                " (22 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x01 | 0x00 | 0x00 | 0x00 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+------+\n"
                 "\n"
             ),
             id="RGBLed",
@@ -597,14 +664,14 @@ def test_payload_to_bytes(payload, expected):
                 ),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " LH2_RAW_DATA    | ver. | type | dst                              | src                              | type |\n"
-                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x0d |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +------+----------------------------------+------+------+----------------------------------+------+------+\n"
-                "                 | len  | bits                             | poly | off. | bits                             | poly | off. |\n"
-                "                 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 |\n"
-                "                 +------+----------------------------------+------+------+----------------------------------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " LH2_RAW_DATA    | ver. | type | dst                | src                | type |\n"
+                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x0d |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------+--------------------+------+------+--------------------+------+------+\n"
+                "                 | len  | bits               | poly | off. | bits               | poly | off. |\n"
+                "                 | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 |\n"
+                "                 +------+--------------------+------+------+--------------------+------+------+\n"
                 "\n"
             ),
             id="LH2RawData",
@@ -620,14 +687,14 @@ def test_payload_to_bytes(payload, expected):
                 PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " LH2_LOCATION    | ver. | type | dst                              | src                              | type |\n"
-                " (31 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x03 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +------------------+------------------+------------------+\n"
-                "                 | x                | y                | z                |\n"
-                "                 | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
-                "                 +------------------+------------------+------------------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " LH2_LOCATION    | ver. | type | dst                | src                | type |\n"
+                " (31 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x03 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------------+------------+------------+\n"
+                "                 | x          | y          | z          |\n"
+                "                 | 0x000003e8 | 0x000003e8 | 0x00000002 |\n"
+                "                 +------------+------------+------------+\n"
                 "\n"
             ),
             id="LH2Location",
@@ -643,10 +710,10 @@ def test_payload_to_bytes(payload, expected):
                 PayloadAdvertisement(application=ApplicationType.SailBot),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+------+\n"
-                " ADVERTISEMENT   | ver. | type | dst                              | src                              | type | app  |\n"
-                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x04 | 0x01 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
+                " ADVERTISEMENT   | ver. | type | dst                | src                | type | app  |\n"
+                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x04 | 0x01 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
                 "\n"
             ),
             id="Advertisement",
@@ -664,14 +731,14 @@ def test_payload_to_bytes(payload, expected):
                 ),  # Paris coordinates
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " GPS_POSITION    | ver. | type | dst                              | src                              | type |\n"
-                " (27 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x05 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +------------------+------------------+\n"
-                "                 | lat.             | long.            |\n"
-                "                 | 0x02e97e26       | 0x0023e45d       |\n"
-                "                 +------------------+------------------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " GPS_POSITION    | ver. | type | dst                | src                | type |\n"
+                " (27 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x05 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------------+------------+\n"
+                "                 | lat.       | long.      |\n"
+                "                 | 0x02e97e26 | 0x0023e45d |\n"
+                "                 +------------+------------+\n"
                 "\n"
             ),
             id="GPSPosition",
@@ -698,14 +765,14 @@ def test_payload_to_bytes(payload, expected):
                 ),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " DOTBOT_DATA     | ver. | type | dst                              | src                              | type |\n"
-                " (42 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x06 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +----------+------+----------------------------------+------+------+----------------------------------+------+------+\n"
-                "                 | dir.     | len  | bits                             | poly | off. | bits                             | poly | off. |\n"
-                "                 | 0x002d   | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 | 0x123456789abcdef1               | 0x01 | 0x02 |\n"
-                "                 +----------+------+----------------------------------+------+------+----------------------------------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " DOTBOT_DATA     | ver. | type | dst                | src                | type |\n"
+                " (42 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x06 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +--------+------+--------------------+------+------+--------------------+------+------+\n"
+                "                 | dir.   | len  | bits               | poly | off. | bits               | poly | off. |\n"
+                "                 | 0x002d | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 |\n"
+                "                 +--------+------+--------------------+------+------+--------------------+------+------+\n"
                 "\n"
             ),
             id="DotBotData",
@@ -721,10 +788,10 @@ def test_payload_to_bytes(payload, expected):
                 PayloadControlMode(mode=1),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+------+\n"
-                " CONTROL_MODE    | ver. | type | dst                              | src                              | type | mode |\n"
-                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x07 | 0x01 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
+                " CONTROL_MODE    | ver. | type | dst                | src                | type | mode |\n"
+                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x07 | 0x01 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
                 "\n"
             ),
             id="ControlMode",
@@ -747,14 +814,14 @@ def test_payload_to_bytes(payload, expected):
                 ),
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " LH2_WAYPOINTS   | ver. | type | dst                              | src                              | type |\n"
-                " (45 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x08 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
-                "                 | thr. | len. | x                | y                | z                | x                | y                | z                |\n"
-                "                 | 0x0a | 0x02 | 0x000003e8       | 0x000003e8       | 0x00000002       | 0x000003e8       | 0x000003e8       | 0x00000002       |\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+------------------+------------------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " LH2_WAYPOINTS   | ver. | type | dst                | src                | type |\n"
+                " (45 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x08 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------+------+------------+------------+------------+------------+------------+------------+\n"
+                "                 | thr. | len. | x          | y          | z          | x          | y          | z          |\n"
+                "                 | 0x0a | 0x02 | 0x000003e8 | 0x000003e8 | 0x00000002 | 0x000003e8 | 0x000003e8 | 0x00000002 |\n"
+                "                 +------+------+------------+------------+------------+------------+------------+------------+\n"
                 "\n"
             ),
             id="LH2Waypoints",
@@ -777,14 +844,14 @@ def test_payload_to_bytes(payload, expected):
                 ),  # Paris coordinates x 2
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " GPS_WAYPOINTS   | ver. | type | dst                              | src                              | type |\n"
-                " (37 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x09 |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+\n"
-                "                 | thr. | len. | lat.             | long.            | lat.             | long.            |\n"
-                "                 | 0x0a | 0x02 | 0x02e97e26       | 0x0023e45d       | 0x02e97e26       | 0x0023e45d       |\n"
-                "                 +------+------+------------------+------------------+------------------+------------------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " GPS_WAYPOINTS   | ver. | type | dst                | src                | type |\n"
+                " (37 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x09 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------+------+------------+------------+------------+------------+\n"
+                "                 | thr. | len. | lat.       | long.      | lat.       | long.      |\n"
+                "                 | 0x0a | 0x02 | 0x02e97e26 | 0x0023e45d | 0x02e97e26 | 0x0023e45d |\n"
+                "                 +------+------+------------+------------+------------+------------+\n"
                 "\n"
             ),
             id="GPSWaypoints",
@@ -802,17 +869,53 @@ def test_payload_to_bytes(payload, expected):
                 ),  # Paris coordinates
             ),
             (
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                " SAILBOT_DATA    | ver. | type | dst                              | src                              | type |\n"
-                " (33 Bytes)      | 0x04 | 0x02 | 0x1122334455667788               | 0x1222122212221221               | 0x0a |\n"
-                "                 +------+------+----------------------------------+----------------------------------+------+\n"
-                "                 +----------+------------------+------------------+----------+------+------+\n"
-                "                 | dir.     | lat.             | long.            | wind ang | rud. | sail.|\n"
-                "                 | 0x002d   | 0x02e97e26       | 0x0023e45d       | 0xffff   | 0x00 | 0x00 |\n"
-                "                 +----------+------------------+------------------+----------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " SAILBOT_DATA    | ver. | type | dst                | src                | type |\n"
+                " (33 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x0a |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +--------+------------+------------+--------+------+------+\n"
+                "                 | dir.   | lat.       | long.      | wind   | rud. | sail.|\n"
+                "                 | 0x002d | 0x02e97e26 | 0x0023e45d | 0xffff | 0x00 | 0x00 |\n"
+                "                 +--------+------------+------------+--------+------+------+\n"
                 "\n"
             ),
             id="SailBotData",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadWithBytesTest(count=8, data=b"abcdefgh"),
+            ),
+            (
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
+                " (28 Bytes)      | 0x09 | 0x05 | 0xffffffffffffffff | 0x0000000000000000 | 0x81 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------+--------------------+\n"
+                "                 | len. | data               |\n"
+                "                 | 0x08 | 0x6162636465666768 |\n"
+                "                 +------+--------------------+\n"
+                "\n"
+            ),
+            id="PayloadWithBytesTest",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
+            ),
+            (
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
+                " (27 Bytes)      | 0x09 | 0x05 | 0xffffffffffffffff | 0x0000000000000000 | 0x82 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +--------------------+\n"
+                "                 | data               |\n"
+                "                 | 0x6162636465666768 |\n"
+                "                 +--------------------+\n"
+                "\n"
+            ),
+            id="PayloadWithBytesFixedLengthTest",
         ),
     ],
 )
@@ -866,18 +969,38 @@ def test_from_bytes_empty(packet, bytes_):
     assert str(excinfo.value) == "Not enough bytes to parse"
 
 
+@dataclass
+class PayloadTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
+    )
+    field: int = 0
+
+
+@pytest.mark.parametrize(
+    "payload_type,value_str",
+    [
+        (0x01, "0x01"),
+        (0x0A, "0x0A"),
+        (0xFA, "0xFA"),
+    ],
+)
+def test_register_already_registered(payload_type, value_str):
+    with pytest.raises(ValueError) as excinfo:
+        register_parser(payload_type, PayloadTest)
+    assert str(excinfo.value) == f"Payload type '{value_str}' already registered"
+
+
+def test_register_reserved():
+    with pytest.raises(ValueError) as excinfo:
+        register_parser(0x7A, PayloadTest)
+    assert str(excinfo.value) == "Payload type '0x7A' is reserved"
+
+
 def test_register_parser():
-
-    @dataclass
-    class PayloadTest(Packet):
-
-        metadata: list[PacketFieldMetadata] = dataclasses.field(
-            default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
-        )
-        field: int = 0
-
-    register_parser(PayloadType.TEST, PayloadTest)
-    assert PAYLOAD_PARSERS[PayloadType.TEST] == PayloadTest
+    register_parser(0xFE, PayloadTest)
+    assert PAYLOAD_PARSERS[0xFE] == PayloadTest
 
 
 def test_parse_non_registered_payload():

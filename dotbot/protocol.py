@@ -12,33 +12,31 @@ import typing
 from abc import ABC
 from binascii import hexlify
 from dataclasses import dataclass
-from enum import Enum, IntEnum
+from enum import IntEnum
 from typing import List
 
 PROTOCOL_VERSION = 9
+PAYLOAD_RESERVED_THRESHOLD = 0x80
 
 
-class PayloadType(Enum):
+class PayloadType(IntEnum):
     """Types of DotBot payload types."""
 
-    CMD_MOVE_RAW = 0
-    CMD_RGB_LED = 1
-    LH2_RAW_LOCATION = 2
-    LH2_LOCATION = 3
-    ADVERTISEMENT = 4
-    GPS_POSITION = 5
-    DOTBOT_DATA = 6
-    CONTROL_MODE = 7
-    LH2_WAYPOINTS = 8
-    GPS_WAYPOINTS = 9
-    SAILBOT_DATA = 10
-    CMD_XGO_ACTION = 11
-    LH2_PROCESSED_DATA = 12
-    LH2_RAW_DATA = 13
-    INVALID_PAYLOAD = 14  # Increase each time a new payload type is added
-    DOTBOT_SIMULATOR_DATA = 250
-    TEST_NOT_REGISTERED = 253
-    TEST = 254
+    CMD_MOVE_RAW = 0x00
+    CMD_RGB_LED = 0x01
+    LH2_RAW_LOCATION = 0x02
+    LH2_LOCATION = 0x03
+    ADVERTISEMENT = 0x04
+    GPS_POSITION = 0x05
+    DOTBOT_DATA = 0x06
+    CONTROL_MODE = 0x07
+    LH2_WAYPOINTS = 0x08
+    GPS_WAYPOINTS = 0x09
+    SAILBOT_DATA = 0x0A
+    CMD_XGO_ACTION = 0x0B
+    LH2_PROCESSED_DATA = 0x0C
+    LH2_RAW_DATA = 0x0D
+    DOTBOT_SIMULATOR_DATA = 0xFA
 
 
 class ApplicationType(IntEnum):
@@ -62,7 +60,7 @@ class ProtocolPayloadParserException(Exception):
     """Exception raised on invalid or unsupported payload."""
 
 
-class PacketType(Enum):
+class PacketType(IntEnum):
     """Types of MAC layer packet."""
 
     BEACON = 1
@@ -116,6 +114,15 @@ class Packet(ABC):
                         raise ValueError("Not enough bytes to parse")
                     field_attribute.append(element.from_bytes(bytes_))
                     bytes_ = bytes_[element.size :]
+            elif metadata[idx].type_ in [bytes, bytearray]:
+                # subclass element is bytes and previous attribute is called
+                # "count" and should have already been retrieved from the byte
+                # stream
+                length = metadata[idx].length
+                if hasattr(self, "count"):
+                    length = self.count
+                setattr(self, field.name, bytes_[0:length])
+                bytes_ = bytes_[length:]
             else:
                 length = metadata[idx].length
                 if len(bytes_) < length:
@@ -140,6 +147,8 @@ class Packet(ABC):
             if isinstance(value, list):
                 for element in value:
                     buffer += element.to_bytes()
+            elif isinstance(value, (bytes, bytearray)):
+                buffer += value
             else:
                 buffer += int(value).to_bytes(
                     length=metadata[idx].length,
@@ -162,7 +171,7 @@ class Header(Packet):
         ]
     )
     version: int = PROTOCOL_VERSION
-    type_: int = PacketType.DATA.value
+    type_: int = PacketType.DATA
     destination: int = 0xFFFFFFFFFFFFFFFF
     source: int = 0x0000000000000000
 
@@ -339,9 +348,7 @@ class PayloadSailBotData(Packet):
             PacketFieldMetadata(name="direction", disp="dir.", length=2, signed=False),
             PacketFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
             PacketFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
-            PacketFieldMetadata(
-                name="wind_angle", disp="wind ang", length=2, signed=False
-            ),
+            PacketFieldMetadata(name="wind_angle", disp="wind", length=2, signed=False),
             PacketFieldMetadata(name="rudder_angle", disp="rud.", signed=True),
             PacketFieldMetadata(name="sail_angle", disp="sail.", signed=True),
         ]
@@ -417,7 +424,7 @@ class PayloadGPSWaypoints(Packet):
     waypoints: list[PayloadGPSPosition] = dataclasses.field(default_factory=lambda: [])
 
 
-PAYLOAD_PARSERS: dict[PayloadType, Packet] = {
+PAYLOAD_PARSERS: dict[int, Packet] = {
     PayloadType.ADVERTISEMENT: PayloadAdvertisement,
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
@@ -436,7 +443,12 @@ PAYLOAD_PARSERS: dict[PayloadType, Packet] = {
 }
 
 
-def register_parser(payload_type: PayloadType, parser):
+def register_parser(payload_type: int, parser: Packet):
+    """Register a new payload parser."""
+    if payload_type in PAYLOAD_PARSERS:
+        raise ValueError(f"Payload type '0x{payload_type:02X}' already registered")
+    if payload_type < PAYLOAD_RESERVED_THRESHOLD:
+        raise ValueError(f"Payload type '0x{payload_type:02X}' is reserved")
     PAYLOAD_PARSERS[payload_type] = parser
 
 
@@ -448,7 +460,7 @@ class Frame:
     payload: Packet = None
 
     @property
-    def payload_type(self) -> PayloadType:
+    def payload_type(self) -> int:
         for payload_type, cls_ in PAYLOAD_PARSERS.items():
             if cls_ == self.payload.__class__:
                 return payload_type
@@ -456,7 +468,7 @@ class Frame:
 
     def from_bytes(self, bytes_):
         self.header = Header().from_bytes(bytes_[0:18])
-        payload_type = PayloadType(int.from_bytes(bytes_[18:19], "little"))
+        payload_type = int.from_bytes(bytes_[18:19], "little")
         if payload_type not in PAYLOAD_PARSERS:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '{payload_type}'"
@@ -467,58 +479,78 @@ class Frame:
     def to_bytes(self, byteorder="little") -> bytes:
         header_bytes = self.header.to_bytes(byteorder)
         payload_bytes = self.payload.to_bytes(byteorder)
-        return header_bytes + int.to_bytes(self.payload_type.value) + payload_bytes
+        return header_bytes + int.to_bytes(self.payload_type) + payload_bytes
 
     def __repr__(self):
         header_separators = [
-            "-" * (4 * field.length + 2) for field in self.header.metadata
+            "-" * (2 * field.length + 4) for field in self.header.metadata
         ]
         type_separators = ["-" * 6]
         payload_separators = [
-            "-" * (4 * field.length + 2)
+            "-" * (2 * field.length + 4)
             for field in self.payload.metadata
-            if field.type_ is not list
+            if field.type_ is int
         ]
         payload_separators += [
-            "-" * (4 * field_metadata.length + 2)
+            "-" * (2 * field_metadata.length + 4)
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
+        payload_separators += [
+            "-" * (2 * len(getattr(self.payload, field.name)) + 4)
+            for field in self.payload.metadata
+            if field.type_ is bytes
+        ]
         header_names = [
-            f" {field.disp:<{4 * field.length + 1}}" for field in self.header.metadata
+            f" {field.disp:<{2 * field.length + 3}}" for field in self.header.metadata
         ]
         payload_names = [
-            f" {field.disp:<{4 * field.length + 1}}"
+            f" {field.disp:<{2 * field.length + 3}}"
             for field in self.payload.metadata
-            if field.type_ is not list
+            if field.type_ in (int, bytes) and field.length > 0
         ]
         payload_names += [
-            f" {field_metadata.disp:<{4 * field_metadata.length + 1}}"
+            f" {field.disp:<{2 * len(getattr(self.payload, field.name)) + 3}}"
+            for field in self.payload.metadata
+            if field.type_ is bytes and field.length == 0
+        ]
+        payload_names += [
+            f" {field_metadata.disp:<{2 * field_metadata.length + 3}}"
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
         header_values = [
-            f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{4 * self.header.metadata[idx].length - 1}}"
+            f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{2 * self.header.metadata[idx].length + 1}}"
             for idx, field in enumerate(dataclasses.fields(self.header)[1:])
         ]
-        type_value = [
-            f" 0x{hexlify(int(PayloadType(self.payload_type).value).to_bytes(1, 'big')).decode():<3}"
-        ]
+        type_value = [f" 0x{hexlify(self.payload_type.to_bytes(1, 'big')).decode():<3}"]
         payload_values = [
-            f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{4 * self.payload.metadata[idx].length - 1}}"
+            f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
             for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ is not list
+            if self.payload.metadata[idx].type_ is int
         ]
         payload_values += [
-            f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{4 *field_metadata.length - 1}}"
+            f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{2 *field_metadata.length + 1}}"
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
+        ]
+        payload_values += [
+            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.count + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
+            if self.payload.metadata[idx].type_ is bytes
+            and hasattr(self.payload, "count")
+        ]
+        payload_values += [
+            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
+            if self.payload.metadata[idx].type_ is bytes
+            and not hasattr(self.payload, "count")
         ]
         num_bytes = (
             sum(field.length for field in self.header.metadata)
@@ -532,7 +564,16 @@ class Frame:
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         )
+        num_bytes += sum(
+            len(getattr(self.payload, field.name))
+            for field in self.payload.metadata
+            if field.type_ is bytes and field.length == 0
+        )
 
+        if self.payload_type not in [*PayloadType]:
+            payload_type_str = "CUSTOM_DATA"
+        else:
+            payload_type_str = PayloadType(self.payload_type).name
         if num_bytes > 24:
             # put values on a separate row
             separators = header_separators + type_separators
@@ -540,7 +581,7 @@ class Frame:
             values = header_values + type_value
             return (
                 f" {' ' * 16}+{'+'.join(separators)}+\n"
-                f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
+                f" {payload_type_str:<16}|{'|'.join(names)}|\n"
                 f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
                 f" {' ' * 16}+{'+'.join(separators)}+\n"
                 f" {' ' * 16}+{'+'.join(payload_separators)}+\n"
@@ -555,7 +596,7 @@ class Frame:
         values = header_values + type_value + payload_values
         return (
             f" {' ' * 16}+{'+'.join(separators)}+\n"
-            f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
+            f" {payload_type_str:<16}|{'|'.join(names)}|\n"
             f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
             f" {' ' * 16}+{'+'.join(separators)}+\n"
         )
