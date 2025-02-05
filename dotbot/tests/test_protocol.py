@@ -933,6 +933,15 @@ def test_from_bytes_empty(packet, bytes_):
     assert str(excinfo.value) == "Not enough bytes to parse"
 
 
+@dataclass
+class PayloadTest(Packet):
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
+    )
+    field: int = 0
+
+
 @pytest.mark.parametrize(
     "payload_type,value_str",
     [
@@ -942,45 +951,18 @@ def test_from_bytes_empty(packet, bytes_):
     ],
 )
 def test_register_already_registered(payload_type, value_str):
-
-    @dataclass
-    class PayloadTest(Packet):
-
-        metadata: list[PacketFieldMetadata] = dataclasses.field(
-            default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
-        )
-        field: int = 0
-
     with pytest.raises(ValueError) as excinfo:
         register_parser(payload_type, PayloadTest)
     assert str(excinfo.value) == f"Payload type '{value_str}' already registered"
 
 
 def test_register_reserved():
-
-    @dataclass
-    class PayloadTest(Packet):
-
-        metadata: list[PacketFieldMetadata] = dataclasses.field(
-            default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
-        )
-        field: int = 0
-
     with pytest.raises(ValueError) as excinfo:
         register_parser(0x7A, PayloadTest)
     assert str(excinfo.value) == "Payload type '0x7A' is reserved"
 
 
 def test_register_parser():
-
-    @dataclass
-    class PayloadTest(Packet):
-
-        metadata: list[PacketFieldMetadata] = dataclasses.field(
-            default_factory=lambda: [PacketFieldMetadata(name="field", type_=int)]
-        )
-        field: int = 0
-
     register_parser(0xFE, PayloadTest)
     assert PAYLOAD_PARSERS[0xFE] == PayloadTest
 
