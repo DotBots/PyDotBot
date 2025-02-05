@@ -348,9 +348,7 @@ class PayloadSailBotData(Packet):
             PacketFieldMetadata(name="direction", disp="dir.", length=2, signed=False),
             PacketFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
             PacketFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
-            PacketFieldMetadata(
-                name="wind_angle", disp="wind ang", length=2, signed=False
-            ),
+            PacketFieldMetadata(name="wind_angle", disp="wind", length=2, signed=False),
             PacketFieldMetadata(name="rudder_angle", disp="rud.", signed=True),
             PacketFieldMetadata(name="sail_angle", disp="sail.", signed=True),
         ]
@@ -485,52 +483,74 @@ class Frame:
 
     def __repr__(self):
         header_separators = [
-            "-" * (4 * field.length + 2) for field in self.header.metadata
+            "-" * (2 * field.length + 4) for field in self.header.metadata
         ]
         type_separators = ["-" * 6]
         payload_separators = [
-            "-" * (4 * field.length + 2)
+            "-" * (2 * field.length + 4)
             for field in self.payload.metadata
-            if field.type_ is not list
+            if field.type_ is int
         ]
         payload_separators += [
-            "-" * (4 * field_metadata.length + 2)
+            "-" * (2 * field_metadata.length + 4)
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
+        payload_separators += [
+            "-" * (2 * len(getattr(self.payload, field.name)) + 4)
+            for field in self.payload.metadata
+            if field.type_ is bytes
+        ]
         header_names = [
-            f" {field.disp:<{4 * field.length + 1}}" for field in self.header.metadata
+            f" {field.disp:<{2 * field.length + 3}}" for field in self.header.metadata
         ]
         payload_names = [
-            f" {field.disp:<{4 * field.length + 1}}"
+            f" {field.disp:<{2 * field.length + 3}}"
             for field in self.payload.metadata
-            if field.type_ is not list
+            if field.type_ in (int, bytes) and field.length > 0
         ]
         payload_names += [
-            f" {field_metadata.disp:<{4 * field_metadata.length + 1}}"
+            f" {field.disp:<{2 * len(getattr(self.payload, field.name)) + 3}}"
+            for field in self.payload.metadata
+            if field.type_ is bytes and field.length == 0
+        ]
+        payload_names += [
+            f" {field_metadata.disp:<{2 * field_metadata.length + 3}}"
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         ]
         header_values = [
-            f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{4 * self.header.metadata[idx].length - 1}}"
+            f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{2 * self.header.metadata[idx].length + 1}}"
             for idx, field in enumerate(dataclasses.fields(self.header)[1:])
         ]
         type_value = [f" 0x{hexlify(self.payload_type.to_bytes(1, 'big')).decode():<3}"]
         payload_values = [
-            f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{4 * self.payload.metadata[idx].length - 1}}"
+            f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
             for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ is not list
+            if self.payload.metadata[idx].type_ is int
         ]
         payload_values += [
-            f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{4 *field_metadata.length - 1}}"
+            f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{2 *field_metadata.length + 1}}"
             for metadata in self.payload.metadata
             if metadata.type_ is list
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
+        ]
+        payload_values += [
+            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.count + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
+            if self.payload.metadata[idx].type_ is bytes
+            and hasattr(self.payload, "count")
+        ]
+        payload_values += [
+            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
+            if self.payload.metadata[idx].type_ is bytes
+            and not hasattr(self.payload, "count")
         ]
         num_bytes = (
             sum(field.length for field in self.header.metadata)
@@ -544,7 +564,16 @@ class Frame:
             for field in getattr(self.payload, metadata.name)
             for field_metadata in field.metadata
         )
+        num_bytes += sum(
+            len(getattr(self.payload, field.name))
+            for field in self.payload.metadata
+            if field.type_ is bytes and field.length == 0
+        )
 
+        if self.payload_type not in [*PayloadType]:
+            payload_type_str = "CUSTOM_DATA"
+        else:
+            payload_type_str = PayloadType(self.payload_type).name
         if num_bytes > 24:
             # put values on a separate row
             separators = header_separators + type_separators
@@ -552,7 +581,7 @@ class Frame:
             values = header_values + type_value
             return (
                 f" {' ' * 16}+{'+'.join(separators)}+\n"
-                f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
+                f" {payload_type_str:<16}|{'|'.join(names)}|\n"
                 f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
                 f" {' ' * 16}+{'+'.join(separators)}+\n"
                 f" {' ' * 16}+{'+'.join(payload_separators)}+\n"
@@ -567,7 +596,7 @@ class Frame:
         values = header_values + type_value + payload_values
         return (
             f" {' ' * 16}+{'+'.join(separators)}+\n"
-            f" {PayloadType(self.payload_type).name:<16}|{'|'.join(names)}|\n"
+            f" {payload_type_str:<16}|{'|'.join(names)}|\n"
             f" {f'({num_bytes} Bytes)':<16}|{'|'.join(values)}|\n"
             f" {' ' * 16}+{'+'.join(separators)}+\n"
         )
