@@ -8,9 +8,11 @@
 """Interface of the Dotbot controller."""
 
 import asyncio
+import base64
 import json
 import math
 import time
+import uuid
 import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
@@ -20,6 +22,7 @@ import serial
 import uvicorn
 import websockets
 from fastapi import WebSocket
+from gmqtt import Client as MQTTClient
 from haversine import Unit, haversine
 from pydantic import ValidationError
 from pydantic.tools import parse_obj_as
@@ -103,6 +106,7 @@ class ControllerSettings:
     controller_port: int = CONTROLLER_PORT_DEFAULT
     webbrowser: bool = False
     handshake: bool = False
+    edge: bool = False
     verbose: bool = False
 
 
@@ -161,7 +165,8 @@ class Controller:
         self.lh2_manager = LighthouseManager()
         self.api = api
         api.controller = self
-        self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
+        self.mqtt_client = None
+        self.qrkey = None
         self.subscriptions = [
             SubscriptionModel(
                 topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
@@ -760,7 +765,12 @@ class Controller:
         destination = hexlify(int(frame.header.destination).to_bytes(8, "big")).decode()
         if destination not in self.dotbots:
             return
-        if self.serial is not None:
+        if self.mqtt_client is not None and self.settings.edge is True:
+            self.mqtt_client.publish(
+                "/pydotbot/controller_to_edge",
+                base64.b64encode(frame.to_bytes()),
+            )
+        elif self.serial is not None:
             self.serial.write(hdlc_encode(frame.to_bytes()))
             self.logger.debug(
                 "Payload sent",
@@ -804,17 +814,90 @@ class Controller:
             logger.info("Stopping web server")
             raise SystemExit()
 
+    async def _connect_to_mqtt_broker(self):
+        """Connect to the MQTT broker."""
+        self.logger.info("Connecting to MQTT broker")
+        self.mqtt_client: MQTTClient = MQTTClient(f"qrkey-{uuid.uuid4().hex}")
+        self.mqtt_client.set_config(qrkey_settings.model_dump(exclude_none=True))
+        self.mqtt_client.on_connect = self.on_connect
+        self.mqtt_client.on_message = self.on_message
+        self.mqtt_client.on_disconnect = self.on_disconnect
+        self.mqtt_client.on_subscribe = self.on_subscribe
+        await self.mqtt_client.connect(
+            host=qrkey_settings.mqtt_host,
+            port=qrkey_settings.mqtt_port,
+            ssl=qrkey_settings.mqtt_use_ssl,
+            keepalive=qrkey_settings.mqtt_keepalive,
+            version=qrkey_settings.mqtt_version,
+        )
+
+    def on_connect(self, _, flags, rc, properties):
+        logger = self.logger.bind(
+            context=__name__,
+            rc=rc,
+            flags=flags,
+            **properties,
+        )
+        logger.info("Controller connected to broker")
+        self.mqtt_client.subscribe("/pydotbot/edge_to_controller")
+
+    def on_message(self, _, topic, payload, qos, properties):
+        """Called when a message is received from the controller."""
+        logger = self.logger.bind(
+            topic=topic,
+            qos=qos,
+            **properties,
+        )
+        logger.info("MQTT edge message received")
+        self.handle_received_frame(Frame().from_bytes(base64.b64decode(payload)))
+
+    def on_disconnect(self, _, packet, exc=None):
+        logger = self.logger.bind(packet=packet, exc=exc)
+        logger.info("Disconnected")
+
+    def on_subscribe(self, client, mid, qos, properties):
+        logger = self.logger.bind(qos=qos, **properties)
+        topic = (
+            client.get_subscriptions_by_mid(mid)[0].topic
+            if client.get_subscriptions_by_mid(mid)
+            else None
+        )
+        logger.info(f"Subscribed to {topic}")
+
+    def publish(self, message: bytes):
+        if self.mqtt_client and self.mqtt_client.is_connected is False:
+            return
+        self.mqtt_client.publish(
+            "/pydotbot/edge_to_controller", base64.b64encode(message).decode()
+        )
+
     async def run(self):
         """Launch the controller."""
         tasks = []
+        self.qrkey = QrkeyController(self.on_request, LOGGER, root_topic="/pydotbot")
         try:
             tasks = [
-                asyncio.create_task(self.qrkey.start(subscriptions=self.subscriptions)),
-                asyncio.create_task(self.web()),
-                asyncio.create_task(self._open_webbrowser()),
-                asyncio.create_task(self._start_serial()),
-                asyncio.create_task(self._dotbots_status_refresh()),
+                asyncio.create_task(
+                    name="QrKey controller",
+                    coro=self.qrkey.start(subscriptions=self.subscriptions),
+                ),
+                asyncio.create_task(name="Web server", coro=self.web()),
+                asyncio.create_task(name="Web browser", coro=self._open_webbrowser()),
+                asyncio.create_task(
+                    name="Dotbots status refresh", coro=self._dotbots_status_refresh()
+                ),
             ]
+            if self.settings.edge is True:
+                tasks.append(
+                    asyncio.create_task(
+                        name="MQTT broker connection",
+                        coro=self._connect_to_mqtt_broker(),
+                    )
+                )
+            else:
+                tasks.append(
+                    asyncio.create_task(name="Serial port", coro=self._start_serial())
+                )
             await asyncio.gather(*tasks)
         except (
             SerialInterfaceException,
@@ -822,7 +905,10 @@ class Controller:
         ) as exc:
             self.logger.error(f"Error: {exc}")
         except SystemExit:
-            self.logger.info("Stopping controller")
+            pass
         finally:
+            self.logger.info("Stopping controller")
             for task in tasks:
+                self.logger.info(f"Cancelling task '{task.get_name()}'")
                 task.cancel()
+            self.logger.info("Controller stopped")
