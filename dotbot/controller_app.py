@@ -102,6 +102,12 @@ from dotbot.logger import setup_logging
     default=False,
     help="Perform a basic handshake with the gateway board on startup",
 )
+@click.option(
+    "--edge",
+    is_flag=True,
+    default=False,
+    help="Connect to the edge gateway via MQTT instead of local serial connection",
+)
 def main(
     port,
     baudrate,
@@ -114,6 +120,7 @@ def main(
     log_level,
     log_output,
     handshake,
+    edge,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -131,6 +138,7 @@ def main(
                 controller_port=controller_port,
                 webbrowser=webbrowser,
                 handshake=handshake,
+                edge=edge,
                 verbose=verbose,
             ),
         )
