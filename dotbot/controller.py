@@ -849,7 +849,10 @@ class Controller:
             **properties,
         )
         logger.info("MQTT edge message received")
-        self.handle_received_frame(Frame().from_bytes(base64.b64decode(payload)))
+        try:
+            self.handle_received_frame(Frame().from_bytes(base64.b64decode(payload)))
+        except ProtocolPayloadParserException as exc:
+            logger.warning(f"Cannot parse frame: {exc}")
 
     def on_disconnect(self, _, packet, exc=None):
         logger = self.logger.bind(packet=packet, exc=exc)
