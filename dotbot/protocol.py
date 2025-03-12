@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List
 
-PROTOCOL_VERSION = 9
+PROTOCOL_VERSION = 1
 PAYLOAD_RESERVED_THRESHOLD = 0x80
 
 
@@ -36,6 +36,7 @@ class PayloadType(IntEnum):
     CMD_XGO_ACTION = 0x0B
     LH2_PROCESSED_DATA = 0x0C
     LH2_RAW_DATA = 0x0D
+    RAW_DATA = 0x10
     DOTBOT_SIMULATOR_DATA = 0xFA
 
 
@@ -65,9 +66,9 @@ class PacketType(IntEnum):
 
     BEACON = 1
     JOIN_REQUEST = 2
-    JOIN_RESPONSE = 3
-    LEAVE = 4
-    DATA = 5
+    JOIN_RESPONSE = 4
+    KEEP_ALIVE = 8
+    DATA = 16
 
 
 @dataclass
@@ -424,6 +425,21 @@ class PayloadGPSWaypoints(Packet):
     waypoints: list[PayloadGPSPosition] = dataclasses.field(default_factory=lambda: [])
 
 
+@dataclass
+class PayloadRawData(Packet):
+    """Dataclass that holds raw bytes data."""
+
+    metadata: list[PacketFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PacketFieldMetadata(name="count", disp="len."),
+            PacketFieldMetadata(name="data", type_=bytes, length=0),
+        ]
+    )
+
+    count: int = 0
+    data: bytes = dataclasses.field(default_factory=lambda: bytearray)
+
+
 PAYLOAD_PARSERS: dict[int, Packet] = {
     PayloadType.ADVERTISEMENT: PayloadAdvertisement,
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
@@ -440,6 +456,7 @@ PAYLOAD_PARSERS: dict[int, Packet] = {
     PayloadType.CONTROL_MODE: PayloadControlMode,
     PayloadType.LH2_WAYPOINTS: PayloadLH2Waypoints,
     PayloadType.GPS_WAYPOINTS: PayloadGPSWaypoints,
+    PayloadType.RAW_DATA: PayloadRawData,
 }
 
 
