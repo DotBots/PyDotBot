@@ -468,14 +468,8 @@ class Controller:
             self.serial = SerialInterface(
                 self.settings.port, self.settings.baudrate, on_byte_received
             )
-            self.serial.write(
-                int(PROTOCOL_VERSION).to_bytes(
-                    length=1, byteorder="little", signed=False
-                )
-            )
-            if self.settings.handshake is True:
-                await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
-                self.logger.info("Serial handshake success")
+            await asyncio.sleep(1)
+            self.serial.write(hdlc_encode(b"\x01\xff"))
 
         while 1:
             byte = await queue.get()
@@ -911,6 +905,7 @@ class Controller:
             pass
         finally:
             self.logger.info("Stopping controller")
+            self.serial.write(hdlc_encode(b"\x01\xfe"))
             for task in tasks:
                 self.logger.info(f"Cancelling task '{task.get_name()}'")
                 task.cancel()
