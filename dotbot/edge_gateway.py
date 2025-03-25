@@ -21,13 +21,7 @@ from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.models import DotBotModel
-from dotbot.protocol import (
-    PROTOCOL_VERSION,
-    Frame,
-    Header,
-    PacketType,
-    ProtocolPayloadParserException,
-)
+from dotbot.protocol import Frame, Header, PacketType, ProtocolPayloadParserException
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
 LOST_DELAY = 5  # seconds

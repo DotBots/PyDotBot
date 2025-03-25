@@ -157,7 +157,10 @@ class DotBotSimulator:
 
     def decode_serial_input(self, frame):
         """Decode the serial input received from the gateway."""
-        frame = Frame().from_bytes(hdlc_decode(frame))
+        bytes_ = hdlc_decode(frame)
+        if bytes_[1] in [0xFF, 0xFE]:
+            return
+        frame = Frame().from_bytes(bytes_)
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
