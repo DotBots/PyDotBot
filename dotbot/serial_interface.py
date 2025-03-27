@@ -58,9 +58,7 @@ class SerialInterface(threading.Thread):
                 if byte is None:
                     self._logger.info("Serial port disconnected")
                     break
-                self.lock.acquire()
                 self.callback(byte)
-                self.lock.release()
         except serial.serialutil.PortNotOpenError as exc:
             self._logger.error(f"{exc}")
             raise SerialInterfaceException(f"{exc}") from exc
@@ -75,13 +73,10 @@ class SerialInterface(threading.Thread):
     def write(self, bytes_):
         """Write bytes on serial."""
         # Send 64 bytes at a time
-        self.lock.acquire()
-        self.serial.flush()
         pos = 0
         while (pos % PAYLOAD_CHUNK_SIZE) == 0 and pos < len(bytes_):
             self.serial.write(bytes_[pos : pos + PAYLOAD_CHUNK_SIZE])
             self.serial.flush()
             pos += PAYLOAD_CHUNK_SIZE
             time.sleep(PAYLOAD_CHUNK_DELAY)
-        self.serial.flush()
-        self.lock.release()
+        # self.serial.flush()
