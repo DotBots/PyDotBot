@@ -61,7 +61,7 @@ class EdgeGateway:
             **properties,
         )
         logger.info("Edge Gateway connected to broker")
-        self.mqtt_client.subscribe("/pydotbot/controller_to_edge", qos=1)
+        self.mqtt_client.subscribe("/pydotbot/controller_to_edge")
 
     def on_message(self, _, topic, payload, qos, properties):
         """Called when a message is received from the controller."""
@@ -137,7 +137,6 @@ class EdgeGateway:
                 self.mqtt_client.publish(
                     "/pydotbot/edge_to_controller",
                     base64.b64encode(payload).decode(),
-                    qos=1,
                 )
 
     def send_frame(self, frame: Frame):
