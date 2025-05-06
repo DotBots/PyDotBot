@@ -21,13 +21,7 @@ from dotbot import DOTBOT_ADDRESS_DEFAULT, GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.models import DotBotModel
-from dotbot.protocol import (
-    PROTOCOL_VERSION,
-    Frame,
-    Header,
-    PacketType,
-    ProtocolPayloadParserException,
-)
+from dotbot.protocol import Frame, Header, PacketType, ProtocolPayloadParserException
 from dotbot.serial_interface import SerialInterface, SerialInterfaceException
 
 LOST_DELAY = 5  # seconds
@@ -41,7 +35,6 @@ class EdgeGatewaySettings:
     baudrate: int
     dotbot_address: str
     gw_address: str
-    handshake: bool = False
     verbose: bool = False
 
 
@@ -99,25 +92,11 @@ class EdgeGateway:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        async def _wait_for_handshake(queue):
-            """Waits for handshake reply and checks it."""
-            try:
-                byte = await queue.get()
-            except asyncio.exceptions.CancelledError as exc:
-                raise SerialInterfaceException("Handshake timeout") from exc
-            if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
-                raise SerialInterfaceException("Handshake failed")
-
         self.serial = SerialInterface(
             self.settings.port, self.settings.baudrate, on_byte_received
         )
-        self.serial.write(
-            int(PROTOCOL_VERSION).to_bytes(length=1, byteorder="little", signed=False)
-        )
-        if self.settings.handshake is True:
-            await asyncio.wait_for(_wait_for_handshake(queue), timeout=0.2)
-            self.logger.info("Serial handshake success")
-
+        await asyncio.sleep(1)
+        self.serial.write(hdlc_encode(b"\x01\xff"))
         while 1:
             byte = await queue.get()
             self.handle_byte(byte)
@@ -228,6 +207,7 @@ class EdgeGateway:
             pass
         finally:
             self.logger.info("Stopping edge gateway")
+            self.serial.write(hdlc_encode(b"\x01\xfe"))
             for task in tasks:
                 self.logger.info(f"Cancelling task '{task.get_name()}'")
                 task.cancel()

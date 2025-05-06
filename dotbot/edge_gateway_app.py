@@ -73,12 +73,6 @@ from dotbot.logger import setup_logging
     default=os.path.join(os.getcwd(), "pydotbot.log"),
     help="Filename where logs are redirected",
 )
-@click.option(
-    "--handshake",
-    is_flag=True,
-    default=False,
-    help="Perform a basic handshake with the gateway board on startup",
-)
 def main(
     port,
     baudrate,
@@ -87,7 +81,6 @@ def main(
     verbose,
     log_level,
     log_output,
-    handshake,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBots Edge Gateway entry point."""
     # welcome sentence
@@ -103,7 +96,6 @@ def main(
                 baudrate=baudrate,
                 dotbot_address=dotbot_address,
                 gw_address=gw_address,
-                handshake=handshake,
                 verbose=verbose,
             ),
         )

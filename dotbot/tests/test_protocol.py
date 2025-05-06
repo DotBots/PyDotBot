@@ -24,6 +24,7 @@ from dotbot.protocol import (
     PayloadLh2RawData,
     PayloadLh2RawLocation,
     PayloadLH2Waypoints,
+    PayloadRawData,
     PayloadSailBotData,
     PayloadType,
     ProtocolPayloadParserException,
@@ -286,7 +287,7 @@ def test_parse_header(bytes_, expected):
             id="PayloadGPSWaypoints",
         ),
         pytest.param(
-            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
             b"\x81"  # payload type
             b"\x08"  # count
             b"abcdefgh",  # data
@@ -296,13 +297,23 @@ def test_parse_header(bytes_, expected):
             id="PayloadWithBytesTest",
         ),
         pytest.param(
-            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
             b"\x82"  # payload type
             b"abcdefgh",  # data
             Header(),
             0x82,
             PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
             id="PayloadWithBytesFixedLengthTest",
+        ),
+        pytest.param(
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x10"  # Raw data type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            Header(),
+            0x10,
+            PayloadRawData(count=8, data=b"abcdefgh"),
+            id="PayloadRawDataTest",
         ),
     ],
 )
@@ -579,7 +590,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             Frame(
                 header=Header(), payload=PayloadWithBytesTest(count=8, data=b"abcdefgh")
             ),
-            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
             b"\x81"  # payload type
             b"\x08"  # count
             b"abcdefgh",  # data
@@ -590,10 +601,21 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                 header=Header(),
                 payload=PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
             ),
-            b"\x09\x05\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
             b"\x82"  # payload type
             b"abcdefgh",  # data
             id="PayloadWithBytesFixedLengthTest",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadRawData(count=8, data=b"abcdefgh"),
+            ),
+            b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
+            b"\x10"  # Raw data type
+            b"\x08"  # count
+            b"abcdefgh",  # data
+            id="PayloadRawDataTest",
         ),
     ],
 )
@@ -889,7 +911,7 @@ def test_payload_to_bytes(payload, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
-                " (28 Bytes)      | 0x09 | 0x05 | 0xffffffffffffffff | 0x0000000000000000 | 0x81 |\n"
+                " (28 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0x81 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +------+--------------------+\n"
                 "                 | len. | data               |\n"
@@ -907,7 +929,7 @@ def test_payload_to_bytes(payload, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
-                " (27 Bytes)      | 0x09 | 0x05 | 0xffffffffffffffff | 0x0000000000000000 | 0x82 |\n"
+                " (27 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0x82 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +--------------------+\n"
                 "                 | data               |\n"
@@ -916,6 +938,24 @@ def test_payload_to_bytes(payload, expected):
                 "\n"
             ),
             id="PayloadWithBytesFixedLengthTest",
+        ),
+        pytest.param(
+            Frame(
+                header=Header(),
+                payload=PayloadRawData(count=8, data=b"abcdefgh"),
+            ),
+            (
+                "                 +------+------+--------------------+--------------------+------+\n"
+                " RAW_DATA        | ver. | type | dst                | src                | type |\n"
+                " (28 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0x10 |\n"
+                "                 +------+------+--------------------+--------------------+------+\n"
+                "                 +------+--------------------+\n"
+                "                 | len. | data               |\n"
+                "                 | 0x08 | 0x6162636465666768 |\n"
+                "                 +------+--------------------+\n"
+                "\n"
+            ),
+            id="PayloadRawDataTest",
         ),
     ],
 )

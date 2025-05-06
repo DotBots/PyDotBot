@@ -38,15 +38,17 @@ class SerialInterface(threading.Thread):
     """Bidirectional serial interface."""
 
     def __init__(self, port: str, baudrate: int, callback: Callable):
+        self.lock = threading.Lock()
         self.callback = callback
         self.serial = serial.Serial(port, baudrate)
         super().__init__(daemon=True)
-        self.start()
         self._logger = LOGGER.bind(context=__name__)
+        self.start()
         self._logger.info("Serial port thread started")
 
     def run(self):
         """Listen continuously at each byte received on serial."""
+        self.serial.flush()
         try:
             while 1:
                 try:
@@ -77,3 +79,4 @@ class SerialInterface(threading.Thread):
             self.serial.flush()
             pos += PAYLOAD_CHUNK_SIZE
             time.sleep(PAYLOAD_CHUNK_DELAY)
+        # self.serial.flush()
