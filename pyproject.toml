@@ -41,7 +41,7 @@ dependencies = [
     "httpx          == 0.27.2",
     "numpy          == 2.1.1",
     "opencv-python  == 4.10.0.84",
-    "pygame         == 2.5.2",
+    "pygame         == 2.6.1",
     "pynput         == 1.7.6",
     "pyserial       == 3.5",
     "qrkey          == 0.9.1",
