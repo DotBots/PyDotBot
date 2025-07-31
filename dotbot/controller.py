@@ -535,7 +535,7 @@ class Controller:
             await asyncio.sleep(1)
 
     def _compute_lh2_position(self, frame: Frame) -> Optional[DotBotLH2Position]:
-        if frame.payload_type not in (
+        if frame.packet.payload_type not in (
             PayloadType.LH2_RAW_DATA,
             PayloadType.DOTBOT_DATA,
         ):
@@ -565,7 +565,7 @@ class Controller:
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
         # Controller is not interested by command messages received
-        if frame.payload_type in [
+        if frame.packet.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
         ]:
@@ -573,7 +573,7 @@ class Controller:
         source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
         logger = self.logger.bind(
             source=source,
-            payload_type=frame.payload_type.name,
+            payload_type=PayloadType(frame.packet.payload_type).name,
         )
         if source == GATEWAY_ADDRESS_DEFAULT:
             logger.warning("Invalid source in payload")
@@ -586,7 +586,7 @@ class Controller:
 
         if (
             source not in self.dotbots
-            and frame.payload_type != PayloadType.ADVERTISEMENT
+            and frame.packet.payload_type != PayloadType.ADVERTISEMENT
         ):
             logger.info("Ignoring non advertised dotbot")
             return
@@ -610,20 +610,21 @@ class Controller:
             logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
 
-        if frame.payload_type == PayloadType.ADVERTISEMENT:
+        if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
-                application=ApplicationType(frame.payload.application).name
+                application=ApplicationType(frame.packet.payload.application).name
             )
-            dotbot.application = ApplicationType(frame.payload.application)
+            dotbot.application = ApplicationType(frame.packet.payload.application)
 
         if (
-            frame.payload_type in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
-            and -500 <= frame.payload.direction <= 500
+            frame.packet.payload_type
+            in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
+            and -500 <= frame.packet.payload.direction <= 500
         ):
-            dotbot.direction = frame.payload.direction
+            dotbot.direction = frame.packet.payload.direction
             logger = logger.bind(direction=dotbot.direction)
 
-        if frame.payload_type in [PayloadType.SAILBOT_DATA]:
+        if frame.packet.payload_type in [PayloadType.SAILBOT_DATA]:
             logger = logger.bind(
                 wind_angle=dotbot.wind_angle,
                 rudder_angle=dotbot.rudder_angle,
@@ -662,38 +663,41 @@ class Controller:
                 pos_z=int(dotbot.lh2_position.z * 1e6),
             )
             self.send_payload(Frame(header=header, payload=payload))
-        elif frame.payload_type == PayloadType.DOTBOT_DATA:
+        elif frame.packet.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
-        if frame.payload_type == PayloadType.LH2_PROCESSED_DATA:
+        if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(
                 "lh2-processed",
-                poly=frame.payload.polynomial_index,
-                lfsr_index=frame.payload.lfsr_index,
-                db_time=frame.payload.timestamp_us,
+                poly=frame.packet.payload.polynomial_index,
+                lfsr_index=frame.packet.payload.lfsr_index,
+                db_time=frame.packet.payload.timestamp_us,
             )
 
-        if frame.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
-            dotbot.direction = frame.payload.theta
+        if frame.packet.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
+            dotbot.direction = frame.packet.payload.theta
             new_position = DotBotLH2Position(
-                x=frame.payload.pos_x / 1e6,
-                y=frame.payload.pos_y / 1e6,
+                x=frame.packet.payload.pos_x / 1e6,
+                y=frame.packet.payload.pos_y / 1e6,
                 z=0,
             )
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
 
-        if frame.payload_type in [PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA]:
+        if frame.packet.payload_type in [
+            PayloadType.GPS_POSITION,
+            PayloadType.SAILBOT_DATA,
+        ]:
             new_position = DotBotGPSPosition(
-                latitude=float(frame.payload.latitude) / 1e6,
-                longitude=float(frame.payload.longitude) / 1e6,
+                latitude=float(frame.packet.payload.latitude) / 1e6,
+                longitude=float(frame.packet.payload.longitude) / 1e6,
             )
             dotbot.gps_position = new_position
             # Read wind sensor measurements
-            dotbot.wind_angle = frame.payload.wind_angle
-            dotbot.rudder_angle = frame.payload.rudder_angle
-            dotbot.sail_angle = frame.payload.sail_angle
+            dotbot.wind_angle = frame.packet.payload.wind_angle
+            dotbot.rudder_angle = frame.packet.payload.rudder_angle
+            dotbot.sail_angle = frame.packet.payload.sail_angle
             logger.info(
                 "gps",
                 lat=new_position.latitude,
@@ -770,7 +774,7 @@ class Controller:
                 "Payload sent",
                 application=self.dotbots[destination].application.name,
                 destination=destination,
-                payload_type=frame.payload_type.name,
+                payload_type=frame.packet.payload_type.name,
             )
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:

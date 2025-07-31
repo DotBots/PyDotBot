@@ -10,7 +10,7 @@ import serial
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
-from dotbot.protocol import ControlModeType, Frame, Header, PayloadControlMode
+from dotbot.protocol import ControlModeType, Frame, Header, Packet, PayloadControlMode
 
 
 @pytest.mark.asyncio
@@ -34,7 +34,7 @@ async def test_controller(_, __, serial_write, capsys):
             destination=0,
             source=0,
         ),
-        payload=PayloadControlMode(mode=ControlModeType.AUTO),
+        packet=Packet().from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
     )
     controller.send_payload(frame)
     assert serial_write.call_count == 1
@@ -58,7 +58,7 @@ async def test_controller_dont_send(_, __, serial_write):
             destination=1,
             source=0,
         ),
-        payload=PayloadControlMode(mode=ControlModeType.AUTO),
+        packet=Packet().from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
     )
     # DotBot is not in the controller known dotbot, so the payload won't be sent
     controller.send_payload(frame)

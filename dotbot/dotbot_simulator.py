@@ -20,6 +20,7 @@ from dotbot.protocol import (
     ApplicationType,
     Frame,
     Header,
+    Packet,
     PayloadAdvertisement,
     PayloadDotBotSimulatorData,
     PayloadType,
@@ -150,8 +151,10 @@ class DotBotSimulator:
     def advertise(self):
         """Send an adertisement message to the gateway."""
         payload = Frame(
-            self.header,
-            PayloadAdvertisement(application=ApplicationType.DotBot),
+            header=self.header,
+            packet=Packet.from_payload(
+                PayloadAdvertisement(application=ApplicationType.DotBot)
+            ),
         )
         return hdlc_encode(payload.to_bytes())
 
@@ -182,13 +185,14 @@ class DotBotSimulator:
 
     def encode_serial_output(self):
         """Encode the dotbot data to be sent to the gateway."""
+        payload = PayloadDotBotSimulatorData(
+            theta=int(self.theta * 180 / pi + 90),
+            pos_x=int(self.pos_x),
+            pos_y=int(self.pos_y),
+        )
         frame = Frame(
-            self.header,
-            PayloadDotBotSimulatorData(
-                theta=int(self.theta * 180 / pi + 90),
-                pos_x=int(self.pos_x),
-                pos_y=int(self.pos_y),
-            ),
+            header=self.header,
+            packet=Packet().from_payload(payload),
         )
         return hdlc_encode(frame.to_bytes())
 
