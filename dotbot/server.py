@@ -27,6 +27,7 @@ from dotbot.protocol import (
     ApplicationType,
     Frame,
     Header,
+    Packet,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadGPSPosition,
@@ -79,7 +80,7 @@ async def dotbots_move_raw(
         right_x=command.right_x,
         right_y=command.right_y,
     )
-    frame = Frame(header=header, payload=payload)
+    frame = Frame(header=header, packet=Packet().from_payload(payload))
     api.controller.send_payload(frame)
     api.controller.dotbots[address].move_raw = command
 
@@ -103,7 +104,7 @@ async def dotbots_rgb_led(
     payload = PayloadCommandRgbLed(
         red=command.red, green=command.green, blue=command.blue
     )
-    frame = Frame(header=header, payload=payload)
+    frame = Frame(header=header, packet=Packet().from_payload(payload))
     api.controller.send_payload(frame)
     api.controller.dotbots[address].rgb_led = command
 
@@ -162,7 +163,7 @@ async def dotbots_waypoints(
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    frame = Frame(header, payload=payload)
+    frame = Frame(header, packet=Packet().from_payload(payload))
     api.controller.send_payload(frame)
     await api.controller.notify_clients(
         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)

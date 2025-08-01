@@ -72,7 +72,7 @@ class PacketType(IntEnum):
 
 
 @dataclass
-class PacketFieldMetadata:
+class PayloadFieldMetadata:
     """Data class that describes a packet field metadata."""
 
     name: str = ""
@@ -87,7 +87,7 @@ class PacketFieldMetadata:
 
 
 @dataclass
-class Packet(ABC):
+class Payload(ABC):
     """Base class for packet classes."""
 
     @property
@@ -160,15 +160,15 @@ class Packet(ABC):
 
 
 @dataclass
-class Header(Packet):
+class Header(Payload):
     """Dataclass that holds MAC header fields."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="version", disp="ver.", length=1),
-            PacketFieldMetadata(name="type_", disp="type", length=1),
-            PacketFieldMetadata(name="destination", disp="dst", length=8),
-            PacketFieldMetadata(name="source", disp="src", length=8),
+            PayloadFieldMetadata(name="version", disp="ver.", length=1),
+            PayloadFieldMetadata(name="type_", disp="type", length=1),
+            PayloadFieldMetadata(name="destination", disp="dst", length=8),
+            PayloadFieldMetadata(name="source", disp="src", length=8),
         ]
     )
     version: int = PROTOCOL_VERSION
@@ -178,12 +178,12 @@ class Header(Packet):
 
 
 @dataclass
-class PayloadAdvertisement(Packet):
+class PayloadAdvertisement(Payload):
     """Dataclass that holds an advertisement (emtpy)."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="application", disp="app"),
+            PayloadFieldMetadata(name="application", disp="app"),
         ]
     )
 
@@ -191,15 +191,15 @@ class PayloadAdvertisement(Packet):
 
 
 @dataclass
-class PayloadCommandMoveRaw(Packet):
+class PayloadCommandMoveRaw(Payload):
     """Dataclass that holds move raw command data fields."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="lelf_x", disp="lx", signed=True),
-            PacketFieldMetadata(name="lelf_y", disp="ly", signed=True),
-            PacketFieldMetadata(name="right_y", disp="rx", signed=True),
-            PacketFieldMetadata(name="right_y", disp="ry", signed=True),
+            PayloadFieldMetadata(name="lelf_x", disp="lx", signed=True),
+            PayloadFieldMetadata(name="lelf_y", disp="ly", signed=True),
+            PayloadFieldMetadata(name="right_y", disp="rx", signed=True),
+            PayloadFieldMetadata(name="right_y", disp="ry", signed=True),
         ]
     )
 
@@ -210,14 +210,14 @@ class PayloadCommandMoveRaw(Packet):
 
 
 @dataclass
-class PayloadCommandRgbLed(Packet):
+class PayloadCommandRgbLed(Payload):
     """Dataclass that holds a complete rgb led command fields."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="red"),
-            PacketFieldMetadata(name="green"),
-            PacketFieldMetadata(name="blue"),
+            PayloadFieldMetadata(name="red"),
+            PayloadFieldMetadata(name="green"),
+            PayloadFieldMetadata(name="blue"),
         ]
     )
 
@@ -227,26 +227,26 @@ class PayloadCommandRgbLed(Packet):
 
 
 @dataclass
-class PayloadCommandXgoAction(Packet):
+class PayloadCommandXgoAction(Payload):
     """Dataclass that holds an XGO action."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="action"),
+            PayloadFieldMetadata(name="action"),
         ]
     )
     action: int = 0
 
 
 @dataclass
-class PayloadLh2RawLocation(Packet):
+class PayloadLh2RawLocation(Payload):
     """Dataclass that holds LH2 raw location data."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="bits", length=8),
-            PacketFieldMetadata(name="polynomial_index", disp="poly", length=1),
-            PacketFieldMetadata(name="offset", disp="off.", length=1, signed=True),
+            PayloadFieldMetadata(name="bits", length=8),
+            PayloadFieldMetadata(name="polynomial_index", disp="poly", length=1),
+            PayloadFieldMetadata(name="offset", disp="off.", length=1, signed=True),
         ]
     )
 
@@ -256,13 +256,13 @@ class PayloadLh2RawLocation(Packet):
 
 
 @dataclass
-class PayloadLh2RawData(Packet):
+class PayloadLh2RawData(Payload):
     """Dataclass that holds LH2 raw data."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="count", disp="len"),
-            PacketFieldMetadata(name="locations", type_=list, length=0),
+            PayloadFieldMetadata(name="count", disp="len"),
+            PayloadFieldMetadata(name="locations", type_=list, length=0),
         ]
     )
 
@@ -273,14 +273,14 @@ class PayloadLh2RawData(Packet):
 
 
 @dataclass
-class PayloadLh2ProcessedLocation(Packet):
+class PayloadLh2ProcessedLocation(Payload):
     """Dataclass that holds LH2 processed location data."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="polynomial_index", disp="poly"),
-            PacketFieldMetadata(name="lfsr_index", length=4),
-            PacketFieldMetadata(name="timestamp_us", length=4),
+            PayloadFieldMetadata(name="polynomial_index", disp="poly"),
+            PayloadFieldMetadata(name="lfsr_index", length=4),
+            PayloadFieldMetadata(name="timestamp_us", length=4),
         ]
     )
 
@@ -290,14 +290,14 @@ class PayloadLh2ProcessedLocation(Packet):
 
 
 @dataclass
-class PayloadLH2Location(Packet):
+class PayloadLH2Location(Payload):
     """Dataclass that holds LH2 computed location data."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="pos_x", disp="x", length=4),
-            PacketFieldMetadata(name="pos_y", disp="y", length=4),
-            PacketFieldMetadata(name="pos_z", disp="z", length=4),
+            PayloadFieldMetadata(name="pos_x", disp="x", length=4),
+            PayloadFieldMetadata(name="pos_y", disp="y", length=4),
+            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
         ]
     )
 
@@ -307,14 +307,14 @@ class PayloadLH2Location(Packet):
 
 
 @dataclass
-class PayloadDotBotData(Packet):
+class PayloadDotBotData(Payload):
     """Dataclass that holds direction and LH2 raw data from DotBot application."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
-            PacketFieldMetadata(name="count", disp="len"),
-            PacketFieldMetadata(name="locations", type_=list, length=0),
+            PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
+            PayloadFieldMetadata(name="count", disp="len"),
+            PayloadFieldMetadata(name="locations", type_=list, length=0),
         ]
     )
 
@@ -326,13 +326,13 @@ class PayloadDotBotData(Packet):
 
 
 @dataclass
-class PayloadGPSPosition(Packet):
+class PayloadGPSPosition(Payload):
     """Dataclass that holds GPS positions."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
-            PacketFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
+            PayloadFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
+            PayloadFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
         ]
     )
 
@@ -341,17 +341,19 @@ class PayloadGPSPosition(Packet):
 
 
 @dataclass
-class PayloadSailBotData(Packet):
+class PayloadSailBotData(Payload):
     """Dataclass that holds SailBot data from SailBot application."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="direction", disp="dir.", length=2, signed=False),
-            PacketFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
-            PacketFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
-            PacketFieldMetadata(name="wind_angle", disp="wind", length=2, signed=False),
-            PacketFieldMetadata(name="rudder_angle", disp="rud.", signed=True),
-            PacketFieldMetadata(name="sail_angle", disp="sail.", signed=True),
+            PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=False),
+            PayloadFieldMetadata(name="latitude", disp="lat.", length=4, signed=True),
+            PayloadFieldMetadata(name="longitude", disp="long.", length=4, signed=True),
+            PayloadFieldMetadata(
+                name="wind_angle", disp="wind", length=2, signed=False
+            ),
+            PayloadFieldMetadata(name="rudder_angle", disp="rud.", signed=True),
+            PayloadFieldMetadata(name="sail_angle", disp="sail.", signed=True),
         ]
     )
 
@@ -364,14 +366,14 @@ class PayloadSailBotData(Packet):
 
 
 @dataclass
-class PayloadDotBotSimulatorData(Packet):
+class PayloadDotBotSimulatorData(Payload):
     """Dataclass that holds direction and GPS data and heading from SailBot application."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="theta", length=2),
-            PacketFieldMetadata(name="pos_x", length=4),
-            PacketFieldMetadata(name="pos_y", length=4),
+            PayloadFieldMetadata(name="theta", length=2),
+            PayloadFieldMetadata(name="pos_x", length=4),
+            PayloadFieldMetadata(name="pos_y", length=4),
         ]
     )
 
@@ -381,25 +383,25 @@ class PayloadDotBotSimulatorData(Packet):
 
 
 @dataclass
-class PayloadControlMode(Packet):
+class PayloadControlMode(Payload):
     """Dataclass that holds a control mode message."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
-        default_factory=lambda: [PacketFieldMetadata(name="mode", disp="mode")]
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [PayloadFieldMetadata(name="mode", disp="mode")]
     )
 
     mode: ControlModeType = ControlModeType.MANUAL
 
 
 @dataclass
-class PayloadLH2Waypoints(Packet):
+class PayloadLH2Waypoints(Payload):
     """Dataclass that holds a list of LH2 waypoints."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="threshold", disp="thr."),
-            PacketFieldMetadata(name="count", disp="len."),
-            PacketFieldMetadata(name="waypoints", type_=list, length=0),
+            PayloadFieldMetadata(name="threshold", disp="thr."),
+            PayloadFieldMetadata(name="count", disp="len."),
+            PayloadFieldMetadata(name="waypoints", type_=list, length=0),
         ]
     )
 
@@ -409,14 +411,14 @@ class PayloadLH2Waypoints(Packet):
 
 
 @dataclass
-class PayloadGPSWaypoints(Packet):
+class PayloadGPSWaypoints(Payload):
     """Dataclass that holds a list of GPS waypoints."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="threshold", disp="thr."),
-            PacketFieldMetadata(name="count", disp="len."),
-            PacketFieldMetadata(name="waypoints", type_=list, length=0),
+            PayloadFieldMetadata(name="threshold", disp="thr."),
+            PayloadFieldMetadata(name="count", disp="len."),
+            PayloadFieldMetadata(name="waypoints", type_=list, length=0),
         ]
     )
 
@@ -426,13 +428,13 @@ class PayloadGPSWaypoints(Packet):
 
 
 @dataclass
-class PayloadRawData(Packet):
+class PayloadRawData(Payload):
     """Dataclass that holds raw bytes data."""
 
-    metadata: list[PacketFieldMetadata] = dataclasses.field(
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PacketFieldMetadata(name="count", disp="len."),
-            PacketFieldMetadata(name="data", type_=bytes, length=0),
+            PayloadFieldMetadata(name="count", disp="len."),
+            PayloadFieldMetadata(name="data", type_=bytes, length=0),
         ]
     )
 
@@ -440,7 +442,7 @@ class PayloadRawData(Packet):
     data: bytes = dataclasses.field(default_factory=lambda: bytearray)
 
 
-PAYLOAD_PARSERS: dict[int, Packet] = {
+PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.ADVERTISEMENT: PayloadAdvertisement,
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
@@ -460,7 +462,7 @@ PAYLOAD_PARSERS: dict[int, Packet] = {
 }
 
 
-def register_parser(payload_type: int, parser: Packet):
+def register_parser(payload_type: int, parser: Payload):
     """Register a new payload parser."""
     if payload_type in PAYLOAD_PARSERS:
         raise ValueError(f"Payload type '0x{payload_type:02X}' already registered")
@@ -470,33 +472,62 @@ def register_parser(payload_type: int, parser: Packet):
 
 
 @dataclass
+class Packet:
+    """Dataclass that holds a payload."""
+
+    payload_type: int = 0
+    payload: Payload = None
+
+    def from_payload(self, payload: Payload):
+        """Initialize the payload from a packet."""
+        self.payload = payload
+        self.payload_type = None
+        for payload_type, cls_ in PAYLOAD_PARSERS.items():
+            if cls_ == self.payload.__class__:
+                self.payload_type = payload_type
+                break
+        if self.payload_type is None:
+            raise ValueError(f"Unsupported payload class '{self.payload.__class__}'")
+        return self
+
+    def from_bytes(self, bytes_):
+        payload_type = int.from_bytes(bytes_[0:1], "little")
+        if payload_type not in PAYLOAD_PARSERS:
+            raise ProtocolPayloadParserException(
+                f"Unsupported payload type '0x{payload_type:02X}'"
+            )
+        self.payload_type = payload_type
+        self.payload = PAYLOAD_PARSERS[self.payload_type]().from_bytes(bytes_[1:])
+        return self
+
+    def to_bytes(self, byteorder="little") -> bytes:
+        bytes_ = bytearray()
+        bytes_ += int.to_bytes(self.payload_type, 1, byteorder)
+        if self.payload is not None:
+            bytes_ += self.payload.to_bytes(byteorder)
+        return bytes_
+
+
+@dataclass
 class Frame:
     """Data class that holds a payload packet."""
 
     header: Header = None
-    payload: Packet = None
+    packet: Packet = None
 
     @property
     def payload_type(self) -> int:
-        for payload_type, cls_ in PAYLOAD_PARSERS.items():
-            if cls_ == self.payload.__class__:
-                return payload_type
-        raise ValueError(f"Unsupported payload class '{self.payload.__class__}'")
+        return self.packet.payload_type
 
     def from_bytes(self, bytes_):
         self.header = Header().from_bytes(bytes_[0:18])
-        payload_type = int.from_bytes(bytes_[18:19], "little")
-        if payload_type not in PAYLOAD_PARSERS:
-            raise ProtocolPayloadParserException(
-                f"Unsupported payload type '{payload_type}'"
-            )
-        self.payload = PAYLOAD_PARSERS[payload_type]().from_bytes(bytes_[19:])
+        self.packet = Packet().from_bytes(bytes_[18:])
         return self
 
     def to_bytes(self, byteorder="little") -> bytes:
         header_bytes = self.header.to_bytes(byteorder)
-        payload_bytes = self.payload.to_bytes(byteorder)
-        return header_bytes + int.to_bytes(self.payload_type) + payload_bytes
+        packet_bytes = self.packet.to_bytes(byteorder)
+        return header_bytes + packet_bytes
 
     def __repr__(self):
         header_separators = [
@@ -505,19 +536,19 @@ class Frame:
         type_separators = ["-" * 6]
         payload_separators = [
             "-" * (2 * field.length + 4)
-            for field in self.payload.metadata
+            for field in self.packet.payload.metadata
             if field.type_ is int
         ]
         payload_separators += [
             "-" * (2 * field_metadata.length + 4)
-            for metadata in self.payload.metadata
+            for metadata in self.packet.payload.metadata
             if metadata.type_ is list
-            for field in getattr(self.payload, metadata.name)
+            for field in getattr(self.packet.payload, metadata.name)
             for field_metadata in field.metadata
         ]
         payload_separators += [
-            "-" * (2 * len(getattr(self.payload, field.name)) + 4)
-            for field in self.payload.metadata
+            "-" * (2 * len(getattr(self.packet.payload, field.name)) + 4)
+            for field in self.packet.payload.metadata
             if field.type_ is bytes
         ]
         header_names = [
@@ -525,72 +556,74 @@ class Frame:
         ]
         payload_names = [
             f" {field.disp:<{2 * field.length + 3}}"
-            for field in self.payload.metadata
+            for field in self.packet.payload.metadata
             if field.type_ in (int, bytes) and field.length > 0
         ]
         payload_names += [
-            f" {field.disp:<{2 * len(getattr(self.payload, field.name)) + 3}}"
-            for field in self.payload.metadata
+            f" {field.disp:<{2 * len(getattr(self.packet.payload, field.name)) + 3}}"
+            for field in self.packet.payload.metadata
             if field.type_ is bytes and field.length == 0
         ]
         payload_names += [
             f" {field_metadata.disp:<{2 * field_metadata.length + 3}}"
-            for metadata in self.payload.metadata
+            for metadata in self.packet.payload.metadata
             if metadata.type_ is list
-            for field in getattr(self.payload, metadata.name)
+            for field in getattr(self.packet.payload, metadata.name)
             for field_metadata in field.metadata
         ]
         header_values = [
             f" 0x{hexlify(int(getattr(self.header, field.name)).to_bytes(self.header.metadata[idx].length, 'big', signed=self.header.metadata[idx].signed)).decode():<{2 * self.header.metadata[idx].length + 1}}"
             for idx, field in enumerate(dataclasses.fields(self.header)[1:])
         ]
-        type_value = [f" 0x{hexlify(self.payload_type.to_bytes(1, 'big')).decode():<3}"]
+        type_value = [
+            f" 0x{hexlify(self.packet.payload_type.to_bytes(1, 'big')).decode():<3}"
+        ]
         payload_values = [
-            f" 0x{hexlify(int(getattr(self.payload, field.name)).to_bytes(self.payload.metadata[idx].length, 'big', signed=self.payload.metadata[idx].signed)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
-            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ is int
+            f" 0x{hexlify(int(getattr(self.packet.payload, field.name)).to_bytes(self.packet.payload.metadata[idx].length, 'big', signed=self.packet.payload.metadata[idx].signed)).decode():<{2 * self.packet.payload.metadata[idx].length + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.packet.payload)[1:])
+            if self.packet.payload.metadata[idx].type_ is int
         ]
         payload_values += [
             f" 0x{hexlify(int(getattr(field, field_metadata.name)).to_bytes(field_metadata.length, 'big', signed=field_metadata.signed)).decode():<{2 *field_metadata.length + 1}}"
-            for metadata in self.payload.metadata
+            for metadata in self.packet.payload.metadata
             if metadata.type_ is list
-            for field in getattr(self.payload, metadata.name)
+            for field in getattr(self.packet.payload, metadata.name)
             for field_metadata in field.metadata
         ]
         payload_values += [
-            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.count + 1}}"
-            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ is bytes
-            and hasattr(self.payload, "count")
+            f" 0x{hexlify(getattr(self.packet.payload, field.name)).decode():<{2 * self.packet.payload.count + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.packet.payload)[1:])
+            if self.packet.payload.metadata[idx].type_ is bytes
+            and hasattr(self.packet.payload, "count")
         ]
         payload_values += [
-            f" 0x{hexlify(getattr(self.payload, field.name)).decode():<{2 * self.payload.metadata[idx].length + 1}}"
-            for idx, field in enumerate(dataclasses.fields(self.payload)[1:])
-            if self.payload.metadata[idx].type_ is bytes
-            and not hasattr(self.payload, "count")
+            f" 0x{hexlify(getattr(self.packet.payload, field.name)).decode():<{2 * self.packet.payload.metadata[idx].length + 1}}"
+            for idx, field in enumerate(dataclasses.fields(self.packet.payload)[1:])
+            if self.packet.payload.metadata[idx].type_ is bytes
+            and not hasattr(self.packet.payload, "count")
         ]
         num_bytes = (
             sum(field.length for field in self.header.metadata)
             + 1
-            + sum(field.length for field in self.payload.metadata)
+            + sum(field.length for field in self.packet.payload.metadata)
         )
         num_bytes += sum(
             field_metadata.length
-            for metadata in self.payload.metadata
+            for metadata in self.packet.payload.metadata
             if metadata.type_ is list
-            for field in getattr(self.payload, metadata.name)
+            for field in getattr(self.packet.payload, metadata.name)
             for field_metadata in field.metadata
         )
         num_bytes += sum(
-            len(getattr(self.payload, field.name))
-            for field in self.payload.metadata
+            len(getattr(self.packet.payload, field.name))
+            for field in self.packet.payload.metadata
             if field.type_ is bytes and field.length == 0
         )
 
-        if self.payload_type not in [*PayloadType]:
+        if self.packet.payload_type not in [*PayloadType]:
             payload_type_str = "CUSTOM_DATA"
         else:
-            payload_type_str = PayloadType(self.payload_type).name
+            payload_type_str = PayloadType(self.packet.payload_type).name
         if num_bytes > 24:
             # put values on a separate row
             separators = header_separators + type_separators

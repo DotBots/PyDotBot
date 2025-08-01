@@ -23,6 +23,7 @@ from dotbot.protocol import (
     ApplicationType,
     Frame,
     Header,
+    Packet,
     PayloadAdvertisement,
     PayloadSailBotData,
     PayloadType,
@@ -395,14 +396,16 @@ class SailBotSimulator:
                 )
             ),
         )
-        frame = Frame(header=self.header, payload=payload)
+        frame = Frame(header=self.header, packet=Packet().from_payload(payload))
         return hdlc_encode(frame.to_bytes())
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
         frame = Frame(
             header=self.header,
-            payload=PayloadAdvertisement(application=ApplicationType.SailBot),
+            packet=Packet().from_payload(
+                PayloadAdvertisement(application=ApplicationType.SailBot)
+            ),
         )
         return hdlc_encode(frame.to_bytes())
 
