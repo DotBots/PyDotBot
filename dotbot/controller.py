@@ -552,7 +552,7 @@ class Controller:
             payload = self.hdlc_handler.payload
             if payload:
                 try:
-                    frame = Frame().from_bytes(payload)
+                    frame = Frame.from_bytes(payload)
                 except ProtocolPayloadParserException:
                     self.logger.warning("Cannot parse frame")
                     if self.settings.verbose is True:

@@ -319,7 +319,7 @@ def test_parse_header(bytes_, expected):
     ],
 )
 def test_frame_parser(bytes_, header, payload_type, payload):
-    frame = Frame().from_bytes(bytes_)
+    frame = Frame.from_bytes(bytes_)
     assert frame.header == header
     assert frame.packet.payload_type == payload_type
     assert frame.packet.payload == payload
@@ -336,7 +336,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                packet=Packet().from_payload(
+                packet=Packet.from_payload(
                     PayloadCommandMoveRaw(left_x=0, left_y=66, right_x=0, right_y=66)
                 ),
             ),
@@ -351,7 +351,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadCommandMoveRaw(left_x=0, left_y=0, right_x=0, right_y=0)
                 ),
             ),
@@ -366,7 +366,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadCommandMoveRaw(
                         left_x=-10, left_y=-10, right_x=-10, right_y=-10
                     )
@@ -383,7 +383,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(PayloadCommandRgbLed(red=0, green=0, blue=0)),
+                Packet.from_payload(PayloadCommandRgbLed(red=0, green=0, blue=0)),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x01\x00\x00\x00",
             id="PayloadRGBLed1",
@@ -396,9 +396,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
-                    PayloadCommandRgbLed(red=255, green=255, blue=255)
-                ),
+                Packet.from_payload(PayloadCommandRgbLed(red=255, green=255, blue=255)),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x01\xff\xff\xff",
             id="PayloadRGBLed2",
@@ -411,7 +409,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLh2RawData(
                         count=2,
                         locations=[
@@ -442,7 +440,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2)
                 ),
             ),
@@ -458,7 +456,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadAdvertisement(application=ApplicationType.SailBot)
                 ),
             ),
@@ -473,7 +471,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadGPSPosition(latitude=48856614, longitude=2352221)
                 ),  # Paris coordinates
             ),
@@ -489,7 +487,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadDotBotData(
                         direction=45,
                         count=2,
@@ -522,7 +520,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
+                Packet.from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x07\x01",
             id="PayloadControlMode",
@@ -535,7 +533,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLH2Waypoints(
                         threshold=10,
                         count=2,
@@ -559,7 +557,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadGPSWaypoints(
                         threshold=10,
                         count=2,
@@ -582,7 +580,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadSailBotData(
                         direction=45,
                         latitude=48856614,
@@ -605,7 +603,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadDotBotSimulatorData(
                         theta=45,
                         pos_x=50000,
@@ -622,7 +620,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(
+                packet=Packet.from_payload(
                     PayloadWithBytesTest(count=8, data=b"abcdefgh")
                 ),
             ),
@@ -635,7 +633,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(
+                packet=Packet.from_payload(
                     PayloadWithBytesFixedLengthTest(data=b"abcdefgh")
                 ),
             ),
@@ -647,7 +645,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(PayloadRawData(count=8, data=b"abcdefgh")),
+                packet=Packet.from_payload(PayloadRawData(count=8, data=b"abcdefgh")),
             ),
             b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
             b"\x10"  # Raw data type
@@ -673,7 +671,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadCommandMoveRaw(left_x=0, left_y=66, right_x=0, right_y=66)
                 ),
             ),
@@ -694,7 +692,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(PayloadCommandRgbLed(red=0, green=0, blue=0)),
+                Packet.from_payload(PayloadCommandRgbLed(red=0, green=0, blue=0)),
             ),
             (
                 "                 +------+------+--------------------+--------------------+------+------+------+------+\n"
@@ -713,7 +711,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLh2RawData(
                         count=2,
                         locations=[
@@ -752,7 +750,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2)
                 ),
             ),
@@ -777,7 +775,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadAdvertisement(application=ApplicationType.SailBot)
                 ),
             ),
@@ -798,7 +796,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadGPSPosition(latitude=48856614, longitude=2352221)
                 ),  # Paris coordinates
             ),
@@ -823,7 +821,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadDotBotData(
                         direction=45,
                         count=2,
@@ -863,7 +861,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(PayloadControlMode(mode=1)),
+                Packet.from_payload(PayloadControlMode(mode=1)),
             ),
             (
                 "                 +------+------+--------------------+--------------------+------+------+\n"
@@ -882,7 +880,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadLH2Waypoints(
                         threshold=10,
                         count=2,
@@ -914,7 +912,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadGPSWaypoints(
                         threshold=10,
                         count=2,
@@ -946,7 +944,7 @@ def test_payload_to_bytes(payload, expected):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
-                Packet().from_payload(
+                Packet.from_payload(
                     PayloadSailBotData(
                         direction=45, latitude=48856614, longitude=2352221
                     )
@@ -968,7 +966,7 @@ def test_payload_to_bytes(payload, expected):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(
+                packet=Packet.from_payload(
                     PayloadWithBytesTest(count=8, data=b"abcdefgh")
                 ),
             ),
@@ -988,7 +986,7 @@ def test_payload_to_bytes(payload, expected):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(
+                packet=Packet.from_payload(
                     PayloadWithBytesFixedLengthTest(data=b"abcdefgh")
                 ),
             ),
@@ -1008,7 +1006,7 @@ def test_payload_to_bytes(payload, expected):
         pytest.param(
             Frame(
                 header=Header(),
-                packet=Packet().from_payload(PayloadRawData(count=8, data=b"abcdefgh")),
+                packet=Packet.from_payload(PayloadRawData(count=8, data=b"abcdefgh")),
             ),
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
@@ -1111,7 +1109,7 @@ def test_register_parser():
 
 def test_parse_non_registered_payload():
     with pytest.raises(ProtocolPayloadParserException) as excinfo:
-        Frame().from_bytes(
+        Frame.from_bytes(
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\xfd\x01"
         )
     assert str(excinfo.value).startswith("Unsupported payload type")
@@ -1125,5 +1123,5 @@ def test_parse_non_registered_payload():
         field: int = 0
 
     with pytest.raises(ValueError) as excinfo:
-        Frame(header=Header(), packet=Packet().from_payload(PayloadNotRegisteredTest()))
+        Frame(header=Header(), packet=Packet.from_payload(PayloadNotRegisteredTest()))
     assert str(excinfo.value).startswith("Unsupported payload class")

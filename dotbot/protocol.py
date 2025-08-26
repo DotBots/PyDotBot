@@ -478,27 +478,27 @@ class Packet:
     payload_type: int = 0
     payload: Payload = None
 
-    def from_payload(self, payload: Payload):
+    @classmethod
+    def from_payload(cls, payload: Payload):
         """Initialize the payload from a packet."""
-        self.payload = payload
-        self.payload_type = None
-        for payload_type, cls_ in PAYLOAD_PARSERS.items():
-            if cls_ == self.payload.__class__:
-                self.payload_type = payload_type
+        payload_type = None
+        for type_, cls_ in PAYLOAD_PARSERS.items():
+            if cls_ == payload.__class__:
+                payload_type = type_
                 break
-        if self.payload_type is None:
-            raise ValueError(f"Unsupported payload class '{self.payload.__class__}'")
-        return self
+        if payload_type is None:
+            raise ValueError(f"Unsupported payload class '{payload.__class__}'")
+        return cls(payload_type=payload_type, payload=payload)
 
-    def from_bytes(self, bytes_):
+    @classmethod
+    def from_bytes(cls, bytes_):
         payload_type = int.from_bytes(bytes_[0:1], "little")
         if payload_type not in PAYLOAD_PARSERS:
             raise ProtocolPayloadParserException(
                 f"Unsupported payload type '0x{payload_type:02X}'"
             )
-        self.payload_type = payload_type
-        self.payload = PAYLOAD_PARSERS[self.payload_type]().from_bytes(bytes_[1:])
-        return self
+        payload = PAYLOAD_PARSERS[payload_type]().from_bytes(bytes_[1:])
+        return cls(payload_type=payload_type, payload=payload)
 
     def to_bytes(self, byteorder="little") -> bytes:
         bytes_ = bytearray()
@@ -519,10 +519,11 @@ class Frame:
     def payload_type(self) -> int:
         return self.packet.payload_type
 
-    def from_bytes(self, bytes_):
-        self.header = Header().from_bytes(bytes_[0:18])
-        self.packet = Packet().from_bytes(bytes_[18:])
-        return self
+    @classmethod
+    def from_bytes(cls, bytes_):
+        header = Header().from_bytes(bytes_[0:18])
+        packet = Packet().from_bytes(bytes_[18:])
+        return cls(header=header, packet=packet)
 
     def to_bytes(self, byteorder="little") -> bytes:
         header_bytes = self.header.to_bytes(byteorder)

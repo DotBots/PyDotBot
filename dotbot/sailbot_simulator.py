@@ -350,8 +350,8 @@ class SailBotSimulator:
         bytes_ = hdlc_decode(frame)
         if bytes_[1] in [0xFF, 0xFE]:
             return
-        frame = Frame().from_bytes(bytes_)
-        frame = Frame().from_bytes(hdlc_decode(frame))
+        frame = Frame.from_bytes(bytes_)
+        frame = Frame.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
