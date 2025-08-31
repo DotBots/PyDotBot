@@ -14,8 +14,8 @@ import sys
 import click
 
 from dotbot import (
-    CONTROLLER_HOSTNAME_DEFAULT,
-    CONTROLLER_PORT_DEFAULT,
+    CONTROLLER_HTTP_HOSTNAME_DEFAULT,
+    CONTROLLER_HTTP_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     pydotbot_version,
 )
@@ -138,15 +138,15 @@ class JoystickController:
     "-h",
     "--hostname",
     type=str,
-    default=CONTROLLER_HOSTNAME_DEFAULT,
+    default=CONTROLLER_HTTP_HOSTNAME_DEFAULT,
     help="Hostname of the controller. Defaults to 'localhost'",
 )
 @click.option(
     "-p",
     "--port",
     type=int,
-    default=CONTROLLER_PORT_DEFAULT,
-    help=f"HTTP port. Defaults to '{CONTROLLER_PORT_DEFAULT}'",
+    default=CONTROLLER_HTTP_PORT_DEFAULT,
+    help=f"HTTP port. Defaults to '{CONTROLLER_HTTP_PORT_DEFAULT}'",
 )
 @click.option(
     "-s",

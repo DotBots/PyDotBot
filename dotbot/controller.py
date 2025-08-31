@@ -8,11 +8,9 @@
 """Interface of the Dotbot controller."""
 
 import asyncio
-import base64
 import json
 import math
 import time
-import uuid
 import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
@@ -22,16 +20,21 @@ import serial
 import uvicorn
 import websockets
 from fastapi import WebSocket
-from gmqtt import Client as MQTTClient
 from haversine import Unit, haversine
 from pydantic import ValidationError
 from pydantic.tools import parse_obj_as
 from qrkey import QrkeyController, SubscriptionModel, qrkey_settings
 
 from dotbot import (
-    CONTROLLER_PORT_DEFAULT,
+    CONTROLLER_ADAPTER_DEFAULT,
+    CONTROLLER_HTTP_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
+    MQTT_HOST_DEFAULT,
+    MQTT_PORT_DEFAULT,
+    NETWORK_ID_DEFAULT,
+    SERIAL_BAUDRATE_DEFAULT,
+    SERIAL_PORT_DEFAULT,
 )
 from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
 from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
@@ -57,7 +60,6 @@ from dotbot.models import (
     DotBotXGOActionCommandModel,
 )
 from dotbot.protocol import (
-    PROTOCOL_VERSION,
     ApplicationType,
     Frame,
     Header,
@@ -98,15 +100,17 @@ class ControllerException(Exception):
 class ControllerSettings:
     """Data class that holds controller settings."""
 
-    port: str
-    baudrate: int
-    dotbot_address: str
-    gw_address: str
-    swarm_id: str
-    controller_port: int = CONTROLLER_PORT_DEFAULT
+    adapter: str = CONTROLLER_ADAPTER_DEFAULT
+    port: str = SERIAL_PORT_DEFAULT
+    baudrate: int = SERIAL_BAUDRATE_DEFAULT
+    mqtt_host: str = MQTT_HOST_DEFAULT
+    mqtt_port: int = MQTT_PORT_DEFAULT
+    mqtt_use_tls: bool = False
+    dotbot_address: str = DOTBOT_ADDRESS_DEFAULT
+    gw_address: str = GATEWAY_ADDRESS_DEFAULT
+    network_id: str = NETWORK_ID_DEFAULT
+    controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     webbrowser: bool = False
-    handshake: bool = False
-    edge: bool = False
     verbose: bool = False
 
 
@@ -195,7 +199,7 @@ class Controller:
         if len(topic_split) != 4 or topic_split[-1] != "move_raw":
             logger.warning("Invalid move_raw command topic")
             return
-        swarm_id, address, application, _ = topic_split
+        _, address, application, _ = topic_split
         try:
             command = DotBotMoveRawCommandModel(**payload)
         except ValidationError as exc:
@@ -231,7 +235,7 @@ class Controller:
         if len(topic_split) != 4 or topic_split[-1] != "rgb_led":
             logger.warning("Invalid rgb_led command topic")
             return
-        swarm_id, address, application, _ = topic_split
+        _, address, application, _ = topic_split
         try:
             command = DotBotRgbLedCommandModel(**payload)
         except ValidationError as exc:
@@ -270,7 +274,7 @@ class Controller:
         if len(topic_split) != 4 or topic_split[-1] != "xgo_action":
             logger.warning("Invalid xgo_action command topic")
             return
-        swarm_id, address, application, _ = topic_split
+        _, address, application, _ = topic_split
         try:
             command = DotBotXGOActionCommandModel(**payload)
         except ValidationError as exc:
@@ -300,7 +304,7 @@ class Controller:
         if len(topic_split) != 4 or topic_split[-1] != "waypoints":
             logger.warning("Invalid waypoints command topic")
             return
-        swarm_id, address, application, _ = topic_split
+        _, address, application, _ = topic_split
         command = parse_obj_as(DotBotWaypoints, payload)
         logger = logger.bind(
             address=address,
@@ -451,15 +455,6 @@ class Controller:
             """Callback called on byte received."""
             event_loop.call_soon_threadsafe(queue.put_nowait, byte)
 
-        async def _wait_for_handshake(queue):
-            """Waits for handshake reply and checks it."""
-            try:
-                byte = await queue.get()
-            except asyncio.exceptions.CancelledError as exc:
-                raise SerialInterfaceException("Handshake timeout") from exc
-            if int.from_bytes(byte, byteorder="little") != PROTOCOL_VERSION:
-                raise SerialInterfaceException("Handshake failed")
-
         if self.settings.port == "sailbot-simulator":
             self.serial = SailBotSimulatorSerialInterface(on_byte_received)
         elif self.settings.port == "dotbot-simulator":
@@ -469,7 +464,6 @@ class Controller:
                 self.settings.port, self.settings.baudrate, on_byte_received
             )
             await asyncio.sleep(1)
-            self.serial.write(hdlc_encode(b"\x01\xff"))
 
         while 1:
             byte = await queue.get()
@@ -480,7 +474,7 @@ class Controller:
         while 1:
             try:
                 _, writer = await asyncio.open_connection(
-                    "127.0.0.1", self.settings.controller_port
+                    "127.0.0.1", self.settings.controller_http_port
                 )
             except ConnectionRefusedError:
                 await asyncio.sleep(0.1)
@@ -488,7 +482,7 @@ class Controller:
                 writer.close()
                 break
         url = (
-            f"http://localhost:{self.settings.controller_port}/PyDotBot?"
+            f"http://localhost:{self.settings.controller_http_port}/PyDotBot?"
             f"pin={self.qrkey.pin_code}&"
             f"mqtt_host={qrkey_settings.mqtt_host}&"
             f"mqtt_port={qrkey_settings.mqtt_ws_port}&"
@@ -763,12 +757,7 @@ class Controller:
         destination = hexlify(int(frame.header.destination).to_bytes(8, "big")).decode()
         if destination not in self.dotbots:
             return
-        if self.mqtt_client is not None and self.settings.edge is True:
-            self.mqtt_client.publish(
-                "/pydotbot/controller_to_edge",
-                base64.b64encode(frame.to_bytes()),
-            )
-        elif self.serial is not None:
+        if self.serial is not None:
             self.serial.write(hdlc_encode(frame.to_bytes()))
             self.logger.debug(
                 "Payload sent",
@@ -799,7 +788,7 @@ class Controller:
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
         config = uvicorn.Config(
-            api, port=self.settings.controller_port, log_level="critical"
+            api, port=self.settings.controller_http_port, log_level="critical"
         )
         server = uvicorn.Server(config)
 
@@ -811,66 +800,6 @@ class Controller:
         else:
             logger.info("Stopping web server")
             raise SystemExit()
-
-    async def _connect_to_mqtt_broker(self):
-        """Connect to the MQTT broker."""
-        self.logger.info("Connecting to MQTT broker")
-        self.mqtt_client: MQTTClient = MQTTClient(f"qrkey-{uuid.uuid4().hex}")
-        self.mqtt_client.set_config(qrkey_settings.model_dump(exclude_none=True))
-        self.mqtt_client.on_connect = self.on_connect
-        self.mqtt_client.on_message = self.on_message
-        self.mqtt_client.on_disconnect = self.on_disconnect
-        self.mqtt_client.on_subscribe = self.on_subscribe
-        await self.mqtt_client.connect(
-            host=qrkey_settings.mqtt_host,
-            port=qrkey_settings.mqtt_port,
-            ssl=qrkey_settings.mqtt_use_ssl,
-            keepalive=qrkey_settings.mqtt_keepalive,
-            version=qrkey_settings.mqtt_version,
-        )
-
-    def on_connect(self, _, flags, rc, properties):
-        logger = self.logger.bind(
-            context=__name__,
-            rc=rc,
-            flags=flags,
-            **properties,
-        )
-        logger.info("Controller connected to broker")
-        self.mqtt_client.subscribe("/pydotbot/edge_to_controller")
-
-    def on_message(self, _, topic, payload, qos, properties):
-        """Called when a message is received from the controller."""
-        logger = self.logger.bind(
-            topic=topic,
-            qos=qos,
-            **properties,
-        )
-        logger.info("MQTT edge message received")
-        try:
-            self.handle_received_frame(Frame().from_bytes(base64.b64decode(payload)))
-        except ProtocolPayloadParserException as exc:
-            logger.warning(f"Cannot parse frame: {exc}")
-
-    def on_disconnect(self, _, packet, exc=None):
-        logger = self.logger.bind(packet=packet, exc=exc)
-        logger.info("Disconnected")
-
-    def on_subscribe(self, client, mid, qos, properties):
-        logger = self.logger.bind(qos=qos, **properties)
-        topic = (
-            client.get_subscriptions_by_mid(mid)[0].topic
-            if client.get_subscriptions_by_mid(mid)
-            else None
-        )
-        logger.info(f"Subscribed to {topic}")
-
-    def publish(self, message: bytes):
-        if self.mqtt_client and self.mqtt_client.is_connected is False:
-            return
-        self.mqtt_client.publish(
-            "/pydotbot/edge_to_controller", base64.b64encode(message).decode()
-        )
 
     async def run(self):
         """Launch the controller."""
@@ -888,17 +817,9 @@ class Controller:
                     name="Dotbots status refresh", coro=self._dotbots_status_refresh()
                 ),
             ]
-            if self.settings.edge is True:
-                tasks.append(
-                    asyncio.create_task(
-                        name="MQTT broker connection",
-                        coro=self._connect_to_mqtt_broker(),
-                    )
-                )
-            else:
-                tasks.append(
-                    asyncio.create_task(name="Serial port", coro=self._start_serial())
-                )
+            tasks.append(
+                asyncio.create_task(name="Serial port", coro=self._start_serial())
+            )
             await asyncio.gather(*tasks)
         except (
             SerialInterfaceException,
@@ -909,7 +830,6 @@ class Controller:
             pass
         finally:
             self.logger.info("Stopping controller")
-            self.serial.write(hdlc_encode(b"\x01\xfe"))
             for task in tasks:
                 self.logger.info(f"Cancelling task '{task.get_name()}'")
                 task.cancel()

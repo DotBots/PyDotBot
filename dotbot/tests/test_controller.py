@@ -19,7 +19,13 @@ from dotbot.protocol import ControlModeType, Frame, Header, Packet, PayloadContr
 @patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        dotbot_address="456",
+        gw_address="78",
+    )
     controller = Controller(settings)
     controller.dotbots.update(
         {
@@ -48,7 +54,13 @@ async def test_controller(_, __, serial_write, capsys):
 @patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        dotbot_address="456",
+        gw_address="78",
+    )
     controller = Controller(settings)
     dotbot = DotBotModel(address="0000000000000000", last_seen=time.time())
     controller.dotbots.update({dotbot.address: dotbot})
@@ -70,7 +82,12 @@ def test_controller_saibot_simulator():
 
     async def start_simulator():
         settings = ControllerSettings(
-            "sailbot-simulator", "115200", "0", "456", "78", 8000
+            port="sailbot-simulator",
+            baudrate=115200,
+            network_id="0",
+            dotbot_address="456",
+            gw_address="78",
+            controller_http_port=8000,
         )
         controller = Controller(settings)
         try:
@@ -88,7 +105,13 @@ def test_controller_dotbot_simulator(_):
 
     async def start_simulator():
         settings = ControllerSettings(
-            "dotbot-simulator", "115200", "0", "456", "78", 8001
+            adapter="serial",
+            port="dotbot-simulator",
+            baudrate=115200,
+            network_id="0",
+            dotbot_address="456",
+            gw_address="78",
+            controller_http_port=8001,
         )
         controller = Controller(settings)
         try:
