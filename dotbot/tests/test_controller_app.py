@@ -1,8 +1,10 @@
 """Test module for the main function."""
 
+import sys
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import patch
 
+import pytest
 import serial
 from click.testing import CliRunner
 
@@ -43,6 +45,7 @@ Options:
 """
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Serial port is different")
 def test_main_help():
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
