@@ -25,6 +25,7 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build"]
 nitpick_ignore_regex = [
     ("py:class", r"abc.*"),
+    ("py:class", r"callable.*"),
     ("py:class", r"enum.*"),
     ("py:class", r"numpy.*"),
     ("py:class", r"pydantic.*"),
