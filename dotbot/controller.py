@@ -36,8 +36,7 @@ from dotbot import (
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
 )
-from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
-from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbot.adapter import GatewayAdapterBase, SerialAdapter
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
 from dotbot.models import (
@@ -62,7 +61,7 @@ from dotbot.models import (
 from dotbot.protocol import (
     ApplicationType,
     Frame,
-    Header,
+    Payload,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadCommandXgoAction,
@@ -71,10 +70,8 @@ from dotbot.protocol import (
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
-    ProtocolPayloadParserException,
 )
-from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
-from dotbot.serial_interface import SerialInterface, SerialInterfaceException
+from dotbot.serial_interface import SerialInterfaceException
 from dotbot.server import api
 
 # from dotbot.models import (
@@ -158,18 +155,12 @@ class Controller:
         #     ),
         # }
         self.logger = LOGGER.bind(context=__name__)
-        self.header = Header(
-            destination=int(DOTBOT_ADDRESS_DEFAULT, 16),
-            source=int(settings.gw_address, 16),
-        )
         self.settings = settings
-        self.hdlc_handler = HDLCHandler()
-        self.serial = None
+        self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
         self.api = api
         api.controller = self
-        self.mqtt_client = None
         self.qrkey = None
         self.subscriptions = [
             SubscriptionModel(
@@ -214,18 +205,13 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = Header(
-            destination=int(address, 16),
-            source=int(self.settings.gw_address, 16),
-        )
         payload = PayloadCommandMoveRaw(
             left_x=command.left_x,
             left_y=command.left_y,
             right_x=command.right_x,
             right_y=command.right_y,
         )
-        frame = Frame(header=header, payload=payload)
-        self.send_payload(frame)
+        self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].move_raw = command
 
     def on_command_rgb_led(self, topic, payload):
@@ -250,15 +236,10 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = Header(
-            destination=int(address, 16),
-            source=int(self.settings.gw_address, 16),
-        )
         payload = PayloadCommandRgbLed(
             red=command.red, green=command.green, blue=command.blue
         )
-        frame = Frame(header=header, payload=payload)
-        self.send_payload(frame)
+        self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].rgb_led = command
         self.qrkey.publish(
             "/notify",
@@ -289,13 +270,8 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = Header(
-            destination=int(address, 16),
-            source=int(self.settings.gw_address, 16),
-        )
         payload = PayloadCommandXgoAction(action=command.action)
-        frame = Frame(header=header, payload=payload)
-        self.send_payload(frame)
+        self.send_payload(int(address, 16), payload=payload)
 
     def on_command_waypoints(self, topic, payload):
         """Called when a list of waypoints is received."""
@@ -316,10 +292,6 @@ class Controller:
             logger.warning("DotBot not found")
             return
         logger.info("Sending command")
-        header = Header(
-            destination=int(address, 16),
-            source=int(self.settings.gw_address, 16),
-        )
         waypoints_list = command.waypoints
         if ApplicationType(int(application)) == ApplicationType.SailBot:
             if self.dotbots[address].gps_position is not None:
@@ -354,8 +326,7 @@ class Controller:
                     for waypoint in command.waypoints
                 ],
             )
-        frame = Frame(header=header, payload=payload)
-        self.send_payload(frame)
+        self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].waypoints = waypoints_list
         self.dotbots[address].waypoints_threshold = command.threshold
         self.qrkey.publish(
@@ -446,29 +417,6 @@ class Controller:
         else:
             logger.warning("Unsupported request command")
 
-    async def _start_serial(self):
-        """Starts the serial listener thread in a coroutine."""
-        queue = asyncio.Queue()
-        event_loop = asyncio.get_event_loop()
-
-        def on_byte_received(byte):
-            """Callback called on byte received."""
-            event_loop.call_soon_threadsafe(queue.put_nowait, byte)
-
-        if self.settings.port == "sailbot-simulator":
-            self.serial = SailBotSimulatorSerialInterface(on_byte_received)
-        elif self.settings.port == "dotbot-simulator":
-            self.serial = DotBotSimulatorSerialInterface(on_byte_received)
-        else:
-            self.serial = SerialInterface(
-                self.settings.port, self.settings.baudrate, on_byte_received
-            )
-            await asyncio.sleep(1)
-
-        while 1:
-            byte = await queue.get()
-            self.handle_byte(byte)
-
     async def _open_webbrowser(self):
         """Wait until the server is ready before opening a web browser."""
         while 1:
@@ -538,21 +486,6 @@ class Controller:
         if self.lh2_manager.state != LighthouseManagerState.Calibrated:
             return None
         return self.lh2_manager.compute_position(frame.payload)
-
-    def handle_byte(self, byte):
-        """Called on each byte received over UART."""
-        self.hdlc_handler.handle_byte(byte)
-        if self.hdlc_handler.state == HDLCState.READY:
-            payload = self.hdlc_handler.payload
-            if payload:
-                try:
-                    frame = Frame.from_bytes(payload)
-                except ProtocolPayloadParserException:
-                    self.logger.warning("Cannot parse frame")
-                    if self.settings.verbose is True:
-                        print(frame)
-                    return
-                self.handle_received_frame(frame)
 
     def handle_received_frame(
         self, frame: Frame
@@ -647,16 +580,12 @@ class Controller:
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
             # Send the computed position back to the dotbot
-            header = Header(
-                destination=int(source, 16),
-                source=int(self.settings.gw_address, 16),
-            )
             payload = PayloadLH2Location(
                 pos_x=int(dotbot.lh2_position.x * 1e6),
                 pos_y=int(dotbot.lh2_position.y * 1e6),
                 pos_z=int(dotbot.lh2_position.z * 1e6),
             )
-            self.send_payload(Frame(header=header, payload=payload))
+            self.send_payload(int(source, 16), payload=payload)
         elif frame.packet.payload_type == PayloadType.DOTBOT_DATA:
             logger.warning("lh2: invalid position")
 
@@ -752,19 +681,20 @@ class Controller:
         )
         self.qrkey.publish("/notify", notification.model_dump(exclude_none=True))
 
-    def send_payload(self, frame: Frame):
+    def send_payload(self, destination: int, payload: Payload):
         """Sends a command in an HDLC frame over serial."""
-        destination = hexlify(int(frame.header.destination).to_bytes(8, "big")).decode()
+        if self.adapter is None:
+            return
+        destination = hexlify(destination.to_bytes(8, "big")).decode()
         if destination not in self.dotbots:
             return
-        if self.serial is not None:
-            self.serial.write(hdlc_encode(frame.to_bytes()))
-            self.logger.debug(
-                "Payload sent",
-                application=self.dotbots[destination].application.name,
-                destination=destination,
-                payload_type=frame.packet.payload_type.name,
-            )
+        self.adapter.send_payload(destination, payload=payload)
+        self.logger.debug(
+            "Payload sent",
+            application=self.dotbots[destination].application.name,
+            destination=destination,
+            payload=payload,
+        )
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
         """Returns the list of dotbots matching the query."""
@@ -801,6 +731,11 @@ class Controller:
             logger.info("Stopping web server")
             raise SystemExit()
 
+    async def _start_adapter(self):
+        """Starts the communication adapter."""
+        adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
+        await adapter.start(self.handle_received_frame)
+
     async def run(self):
         """Launch the controller."""
         tasks = []
@@ -816,10 +751,10 @@ class Controller:
                 asyncio.create_task(
                     name="Dotbots status refresh", coro=self._dotbots_status_refresh()
                 ),
+                asyncio.create_task(
+                    name="Start communication adapter", coro=self._start_adapter()
+                ),
             ]
-            tasks.append(
-                asyncio.create_task(name="Serial port", coro=self._start_serial())
-            )
             await asyncio.gather(*tasks)
         except (
             SerialInterfaceException,
