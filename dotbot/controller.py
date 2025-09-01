@@ -36,7 +36,12 @@ from dotbot import (
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
 )
-from dotbot.adapter import GatewayAdapterBase, SerialAdapter
+from dotbot.adapter import (
+    GatewayAdapterBase,
+    MarilibCloudAdapter,
+    MarilibEdgeAdapter,
+    SerialAdapter,
+)
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
 from dotbot.models import (
@@ -733,7 +738,17 @@ class Controller:
 
     async def _start_adapter(self):
         """Starts the communication adapter."""
-        adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
+        if self.settings.adapter == "edge":
+            adapter = MarilibEdgeAdapter(self.settings.port, self.settings.baudrate)
+        elif self.settings.adapter == "cloud":
+            adapter = MarilibCloudAdapter(
+                host=self.settings.cloud_host,
+                port=self.settings.cloud_port,
+                use_tls=self.settings.cloud_use_tls,
+                network_id=self.settings.cloud_network_id,
+            )
+        else:
+            adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
         await adapter.start(self.handle_received_frame)
 
     async def run(self):
