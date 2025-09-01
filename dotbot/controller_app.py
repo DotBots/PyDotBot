@@ -15,12 +15,15 @@ import click
 import serial
 
 from dotbot import (
-    CONTROLLER_PORT_DEFAULT,
+    CONTROLLER_ADAPTER_DEFAULT,
+    CONTROLLER_HTTP_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
+    MQTT_HOST_DEFAULT,
+    MQTT_PORT_DEFAULT,
+    NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
-    SWARM_ID_DEFAULT,
     pydotbot_version,
 )
 from dotbot.controller import Controller, ControllerSettings
@@ -29,18 +32,45 @@ from dotbot.logger import setup_logging
 
 @click.command()
 @click.option(
+    "-a",
+    "--adapter",
+    type=click.Choice(["serial", "edge", "cloud"]),
+    default=CONTROLLER_ADAPTER_DEFAULT,
+    help=f"Controller interface adapter. Defaults to {CONTROLLER_ADAPTER_DEFAULT}",
+)
+@click.option(
     "-p",
     "--port",
     type=str,
     default=SERIAL_PORT_DEFAULT,
-    help=f"Virtual com port. Defaults to '{SERIAL_PORT_DEFAULT}'",
+    help=f"Serial port used by 'serial' and 'edge' adapters. Defaults to '{SERIAL_PORT_DEFAULT}'",
 )
 @click.option(
     "-b",
     "--baudrate",
     type=int,
     default=SERIAL_BAUDRATE_DEFAULT,
-    help=f"Serial baudrate. Defaults to {SERIAL_BAUDRATE_DEFAULT}",
+    help=f"Serial baudrate used by 'serial' and 'edge' adapters. Defaults to {SERIAL_BAUDRATE_DEFAULT}",
+)
+@click.option(
+    "-H",
+    "--mqtt-host",
+    type=str,
+    default=MQTT_HOST_DEFAULT,
+    help=f"MQTT host used by cloud adapter. Default: {MQTT_HOST_DEFAULT}.",
+)
+@click.option(
+    "-P",
+    "--mqtt-port",
+    type=int,
+    default=MQTT_PORT_DEFAULT,
+    help=f"MQTT port used by cloud adapter. Default: {MQTT_PORT_DEFAULT}.",
+)
+@click.option(
+    "-T",
+    "--mqtt-use_tls",
+    is_flag=True,
+    help="Use TLS with MQTT (for cloud adapter).",
 )
 @click.option(
     "-d",
@@ -58,17 +88,17 @@ from dotbot.logger import setup_logging
 )
 @click.option(
     "-s",
-    "--swarm-id",
+    "--network-id",
     type=str,
-    default=SWARM_ID_DEFAULT,
-    help=f"Swarm ID in hex. Defaults to {SWARM_ID_DEFAULT:>0{4}}",
+    default=NETWORK_ID_DEFAULT,
+    help=f"Network ID in hex. Defaults to {NETWORK_ID_DEFAULT:>0{4}}",
 )
 @click.option(
     "-c",
-    "--controller-port",
+    "--controller-http-port",
     type=int,
-    default=CONTROLLER_PORT_DEFAULT,
-    help=f"Controller port. Defaults to '{CONTROLLER_PORT_DEFAULT}'",
+    default=CONTROLLER_HTTP_PORT_DEFAULT,
+    help=f"Controller HTTP port of the REST API. Defaults to '{CONTROLLER_HTTP_PORT_DEFAULT}'",
 )
 @click.option(
     "-w",
@@ -96,31 +126,21 @@ from dotbot.logger import setup_logging
     default=os.path.join(os.getcwd(), "pydotbot.log"),
     help="Filename where logs are redirected",
 )
-@click.option(
-    "--handshake",
-    is_flag=True,
-    default=False,
-    help="Perform a basic handshake with the gateway board on startup",
-)
-@click.option(
-    "--edge",
-    is_flag=True,
-    default=False,
-    help="Connect to the edge gateway via MQTT instead of local serial connection",
-)
 def main(
+    adapter,
     port,
     baudrate,
+    mqtt_host,
+    mqtt_port,
+    mqtt_use_tls,
     dotbot_address,
     gw_address,
-    swarm_id,
-    controller_port,
+    network_id,
+    controller_http_port,
     webbrowser,
     verbose,
     log_level,
     log_output,
-    handshake,
-    edge,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -130,15 +150,17 @@ def main(
     try:
         controller = Controller(
             ControllerSettings(
+                adapter=adapter,
                 port=port,
                 baudrate=baudrate,
+                mqtt_host=mqtt_host,
+                mqtt_port=mqtt_port,
+                mqtt_use_tls=mqtt_use_tls,
                 dotbot_address=dotbot_address,
                 gw_address=gw_address,
-                swarm_id=swarm_id,
-                controller_port=controller_port,
+                network_id=network_id,
+                controller_http_port=controller_http_port,
                 webbrowser=webbrowser,
-                handshake=handshake,
-                edge=edge,
                 verbose=verbose,
             ),
         )

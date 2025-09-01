@@ -5,12 +5,13 @@ import time
 from unittest.mock import patch
 
 import pytest
-import serial
 
+from dotbot.adapter import SerialAdapter
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
 from dotbot.protocol import ControlModeType, Frame, Header, Packet, PayloadControlMode
+from dotbot.serial_interface import SerialInterface
 
 
 @pytest.mark.asyncio
@@ -19,7 +20,13 @@ from dotbot.protocol import ControlModeType, Frame, Header, Packet, PayloadContr
 @patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        dotbot_address="456",
+        gw_address="78",
+    )
     controller = Controller(settings)
     controller.dotbots.update(
         {
@@ -28,7 +35,10 @@ async def test_controller(_, __, serial_write, capsys):
             )
         }
     )
-    controller.serial = serial.Serial(settings.port, settings.baudrate)
+    controller.adapter = SerialAdapter(settings.port, settings.baudrate)
+    controller.adapter.serial = SerialInterface(
+        settings.port, settings.baudrate, lambda: None
+    )
     frame = Frame(
         header=Header(
             destination=0,
@@ -36,7 +46,7 @@ async def test_controller(_, __, serial_write, capsys):
         ),
         packet=Packet().from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
     )
-    controller.send_payload(frame)
+    controller.send_payload(0, PayloadControlMode(mode=ControlModeType.AUTO))
     assert serial_write.call_count == 1
     payload_expected = hdlc_encode(frame.to_bytes())
     assert serial_write.call_args_list[0].args[0] == payload_expected
@@ -48,20 +58,22 @@ async def test_controller(_, __, serial_write, capsys):
 @patch("dotbot.serial_interface.serial.Serial.flush")
 async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
-    settings = ControllerSettings("/dev/null", "115200", "0", "456", "78")
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        dotbot_address="456",
+        gw_address="78",
+    )
     controller = Controller(settings)
     dotbot = DotBotModel(address="0000000000000000", last_seen=time.time())
     controller.dotbots.update({dotbot.address: dotbot})
-    controller.serial = serial.Serial(settings.port, settings.baudrate)
-    frame = Frame(
-        header=Header(
-            destination=1,
-            source=0,
-        ),
-        packet=Packet().from_payload(PayloadControlMode(mode=ControlModeType.AUTO)),
+    controller.adapter = SerialAdapter(settings.port, settings.baudrate)
+    controller.adapter.serial = SerialInterface(
+        settings.port, settings.baudrate, lambda: None
     )
     # DotBot is not in the controller known dotbot, so the payload won't be sent
-    controller.send_payload(frame)
+    controller.send_payload(1, PayloadControlMode(mode=ControlModeType.AUTO))
     assert serial_write.call_count == 0
 
 
@@ -70,7 +82,12 @@ def test_controller_saibot_simulator():
 
     async def start_simulator():
         settings = ControllerSettings(
-            "sailbot-simulator", "115200", "0", "456", "78", 8000
+            port="sailbot-simulator",
+            baudrate=115200,
+            network_id="0",
+            dotbot_address="456",
+            gw_address="78",
+            controller_http_port=8000,
         )
         controller = Controller(settings)
         try:
@@ -88,7 +105,13 @@ def test_controller_dotbot_simulator(_):
 
     async def start_simulator():
         settings = ControllerSettings(
-            "dotbot-simulator", "115200", "0", "456", "78", 8001
+            adapter="serial",
+            port="dotbot-simulator",
+            baudrate=115200,
+            network_id="0",
+            dotbot_address="456",
+            gw_address="78",
+            controller_http_port=8001,
         )
         controller = Controller(settings)
         try:

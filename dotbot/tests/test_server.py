@@ -44,7 +44,7 @@ def controller():
     api.controller.send_payload = MagicMock()
     api.controller.settings = MagicMock()
     api.controller.settings.gw_address = "0000"
-    api.controller.settings.swarm_id = "0000"
+    api.controller.settings.network_id = "0000"
 
 
 @pytest.mark.asyncio

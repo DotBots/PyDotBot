@@ -17,6 +17,9 @@ exclude = [
     "dotbot/frontend/node_modules",
 ]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.sdist.hooks.custom]
 path = "utils/hooks/sdist.py"
 
@@ -49,6 +52,7 @@ dependencies = [
     "uvicorn        == 0.32.0",
     "websockets     == 13.1",
     "gmqtt          >= 0.7.0",
+    "marilib@git+https://github.com/DotBots/marilib",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"

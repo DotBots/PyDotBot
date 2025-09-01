@@ -12,11 +12,10 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   dotbot.adapter
    dotbot.controller
    dotbot.controller_app
    dotbot.dotbot_simulator
-   dotbot.edge_gateway
-   dotbot.edge_gateway_app
    dotbot.hdlc
    dotbot.joystick
    dotbot.keyboard
