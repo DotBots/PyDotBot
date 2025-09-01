@@ -742,10 +742,10 @@ class Controller:
             adapter = MarilibEdgeAdapter(self.settings.port, self.settings.baudrate)
         elif self.settings.adapter == "cloud":
             adapter = MarilibCloudAdapter(
-                host=self.settings.cloud_host,
-                port=self.settings.cloud_port,
-                use_tls=self.settings.cloud_use_tls,
-                network_id=self.settings.cloud_network_id,
+                host=self.settings.mqtt_host,
+                port=self.settings.mqtt_port,
+                use_tls=self.settings.mqtt_use_tls,
+                network_id=int(self.settings.network_id, 16),
             )
         else:
             adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
