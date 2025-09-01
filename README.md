@@ -36,21 +36,32 @@ Usage: dotbot-controller [OPTIONS]
   DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -p, --port TEXT                 Virtual com port. Defaults to '/dev/ttyACM0'
-  -b, --baudrate INTEGER          Serial baudrate. Defaults to 1000000
+  -a, --adapter [serial|edge|cloud]
+                                  Controller interface adapter. Defaults to
+                                  serial
+  -p, --port TEXT                 Serial port used by 'serial' and 'edge'
+                                  adapters. Defaults to '/dev/ttyACM0'
+  -b, --baudrate INTEGER          Serial baudrate used by 'serial' and 'edge'
+                                  adapters. Defaults to 1000000
+  -H, --mqtt-host TEXT            MQTT host used by cloud adapter. Default:
+                                  localhost.
+  -P, --mqtt-port INTEGER         MQTT port used by cloud adapter. Default:
+                                  1883.
+  -T, --mqtt-use_tls              Use TLS with MQTT (for cloud adapter).
   -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
                                   Defaults to FFFFFFFFFFFFFFFF
   -g, --gw-address TEXT           Gateway address in hex. Defaults to
                                   0000000000000000
-  -s, --swarm-id TEXT             Swarm ID in hex. Defaults to 0000
+  -s, --network-id TEXT           Network ID in hex. Defaults to 0000
+  -c, --controller-http-port INTEGER
+                                  Controller HTTP port of the REST API.
+                                  Defaults to '8000'
   -w, --webbrowser                Open a web browser automatically
   -v, --verbose                   Run in verbose mode (all payloads received
                                   are printed in terminal)
   --log-level [debug|info|warning|error]
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
-  --handshake                     Perform a basic handshake with the gateway
-                                  board on startup
   --help                          Show this message and exit.
 ```
 
