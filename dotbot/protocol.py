@@ -37,6 +37,7 @@ class PayloadType(IntEnum):
     LH2_PROCESSED_DATA = 0x0C
     LH2_RAW_DATA = 0x0D
     RAW_DATA = 0x10
+    LH2_CALIBRATION_HOMOGRAPHY = 0x11
     DOTBOT_SIMULATOR_DATA = 0xFA
 
 
@@ -304,6 +305,32 @@ class PayloadLH2Location(Payload):
     pos_x: int = 0
     pos_y: int = 0
     pos_z: int = 0
+
+@dataclass
+class PayloadLh2CalibrationHomography(Payload):
+    """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="index", disp="idx"),
+            PayloadFieldMetadata(name="homography_matrix", disp="mat.", type_=bytes, length=4*9),
+        ]
+    )
+
+    index: int = 0xFFFF
+    homography_matrix: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="h11", disp="h11", length = 4),
+            PayloadFieldMetadata(name="h12", disp="h12", length = 4),
+            PayloadFieldMetadata(name="h13", disp="h13", length = 4),
+            PayloadFieldMetadata(name="h21", disp="h21", length = 4),
+            PayloadFieldMetadata(name="h22", disp="h22", length = 4),
+            PayloadFieldMetadata(name="h23", disp="h23", length = 4),
+            PayloadFieldMetadata(name="h31", disp="h31", length = 4),
+            PayloadFieldMetadata(name="h32", disp="h32", length = 4),
+            PayloadFieldMetadata(name="h33", disp="h33", length = 4)
+        ]
+    )
 
 
 @dataclass
