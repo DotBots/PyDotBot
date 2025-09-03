@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 import serial
 import uvicorn
 import websockets
+import numpy as np
 from fastapi import WebSocket
 from haversine import Unit, haversine
 from pydantic import ValidationError
@@ -43,6 +44,7 @@ from dotbot.adapter import (
     SerialAdapter,
 )
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
+from dotbot.lighthouse2 import CalibrationData
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
@@ -75,6 +77,7 @@ from dotbot.protocol import (
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
+    PayloadLh2CalibrationHomography,
 )
 from dotbot.serial_interface import SerialInterfaceException
 from dotbot.server import api
@@ -164,9 +167,12 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
+        self.lh2_calibration_data = CalibrationData(zeta=0.0, random_rodriguez=np.eye(3), normal = np.zeros(3), m = np.eye(3))
+
         self.api = api
         api.controller = self
         self.qrkey = None
+
         self.subscriptions = [
             SubscriptionModel(
                 topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
@@ -398,6 +404,16 @@ class Controller:
             return
         logger.info("Start calibration")
         self.lh2_manager.compute_calibration()
+
+        index_bytes = (0).to_bytes(4, "little", signed = False)
+        matrix_bytes = [int(n).to_bytes(4, "little", signed=True) for n in self.lh2_calibration_data.m.ravel()]
+
+        logger.info("finish calibration - send to gateway")
+        payload = PayloadLh2CalibrationHomography(
+            index = index_bytes,
+            homography_matrix = matrix_bytes,
+        )
+
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
