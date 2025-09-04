@@ -19,7 +19,8 @@ application.
 
 ## Installation
 
-Run `pip install pydotbot`
+Run `pip install pydotbot`  
+Run `npm install && npm run build` inside the `dotbot/frontend/` directory.
 
 ## Setup
 
@@ -75,6 +76,10 @@ Using the `--webbrowser` option, a tab will automatically open at
 a list of available DotBots, allows to set which one is active and controllable
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
+
+**Firefox users:**  
+If the webapp is not working, press `Ctrl + L`, type `about:config`, 
+and set `network.http.http2.websockets` to `false`.
 
 ### Lighthouse positioning
 
