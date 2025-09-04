@@ -28,7 +28,7 @@ path = "utils/hooks/wheel.py"
 
 [project]
 name = "pydotbot"
-version = "0.23.0"
+version = "0.24.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },

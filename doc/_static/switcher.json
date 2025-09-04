@@ -4,10 +4,15 @@
       "url": "https://pydotbot.readthedocs.io/en/latest/"
     },
     {
-      "name": "0.23.0",
+      "name": "0.24.0",
       "version": "stable",
       "url": "https://pydotbot.readthedocs.io/en/stable/",
       "preferred": true
+    },
+    {
+      "name": "0.23.0",
+      "version": "0.23.0",
+      "url": "https://pydotbot.readthedocs.io/en/0.23.0/"
     },
     {
       "name": "0.22.0",
