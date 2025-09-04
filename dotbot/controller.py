@@ -560,6 +560,7 @@ class Controller:
 
             # Send calibration to new dotbot if the localization system is calibrated
             if frame.packet.payload_type == PayloadType.ADVERTISEMENT and self.lh2_manager.state == LighthouseManagerState.Calibrated:
+                self.dotbots.update({dotbot.address: dotbot})
                 # Check if robot has lighthouse calibration
                 matrix_bytes = bytearray()
                 for bytes_block in [int(n * 1e6).to_bytes(4, "little", signed=True) for n in self.lh2_manager.calibration_data.m.ravel()]:
@@ -569,6 +570,7 @@ class Controller:
                  index=0,
                     homography_matrix=matrix_bytes,
                 )
+                self.logger.info("Send calibration data", source=source, payload=payload)
                 self.send_payload(int(source, 16), payload=payload)
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
