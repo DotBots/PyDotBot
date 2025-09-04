@@ -79,10 +79,10 @@ class SerialAdapter(GatewayAdapterBase):
             self.serial = SerialInterface(self.port, self.baudrate, _byte_received)
             await asyncio.sleep(1)
 
+        LOGGER.info("Connected to gateway over serial")
         while 1:
             byte = await queue.get()
             self.on_byte_received(byte)
-        LOGGER.info("Connected to gateway over serial")
 
     def close(self):
         LOGGER.info("Disconnect from gateway...")

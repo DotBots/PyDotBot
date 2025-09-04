@@ -209,12 +209,14 @@ class Controller:
         if address not in self.dotbots:
             logger.warning("DotBot not found")
             return
-        logger.info("Sending command")
         payload = PayloadCommandMoveRaw(
             left_x=command.left_x,
             left_y=command.left_y,
             right_x=command.right_x,
             right_y=command.right_y,
+        )
+        logger.info(
+            "Sending MQTT command", address=address, command=payload.__class__.__name__
         )
         self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].move_raw = command
@@ -240,9 +242,11 @@ class Controller:
         if address not in self.dotbots:
             logger.warning("DotBot not found")
             return
-        logger.info("Sending command")
         payload = PayloadCommandRgbLed(
             red=command.red, green=command.green, blue=command.blue
+        )
+        logger.info(
+            "Sending MQTT command", address=address, command=payload.__class__.__name__
         )
         self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].rgb_led = command
@@ -274,8 +278,10 @@ class Controller:
         if address not in self.dotbots:
             logger.warning("DotBot not found")
             return
-        logger.info("Sending command")
         payload = PayloadCommandXgoAction(action=command.action)
+        logger.info(
+            "Sending MQTT command", address=address, command=payload.__class__.__name__
+        )
         self.send_payload(int(address, 16), payload=payload)
 
     def on_command_waypoints(self, topic, payload):
@@ -296,7 +302,6 @@ class Controller:
         if address not in self.dotbots:
             logger.warning("DotBot not found")
             return
-        logger.info("Sending command")
         waypoints_list = command.waypoints
         if ApplicationType(int(application)) == ApplicationType.SailBot:
             if self.dotbots[address].gps_position is not None:
@@ -331,6 +336,9 @@ class Controller:
                     for waypoint in command.waypoints
                 ],
             )
+        logger.info(
+            "Sending MQTT command", address=address, command=payload.__class__.__name__
+        )
         self.send_payload(int(address, 16), payload=payload)
         self.dotbots[address].waypoints = waypoints_list
         self.dotbots[address].waypoints_threshold = command.threshold
@@ -356,7 +364,7 @@ class Controller:
         if address not in self.dotbots:
             logger.warning("DotBot not found")
             return
-        logger.info("Sending command")
+        logger.info("Notify clear command", address=address)
         self.dotbots[address].position_history = []
         self.qrkey.publish(
             "/notify",
@@ -393,7 +401,7 @@ class Controller:
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
-        logger.info("Request received")
+        logger.info("Request received", **payload)
         try:
             request = DotBotRequestModel(**payload)
         except ValidationError as exc:
@@ -689,15 +697,16 @@ class Controller:
     def send_payload(self, destination: int, payload: Payload):
         """Sends a command in an HDLC frame over serial."""
         if self.adapter is None:
+            self.logger.warning("Adapter not started")
             return
-        destination = hexlify(destination.to_bytes(8, "big")).decode()
-        if destination not in self.dotbots:
+        dest_str = hexlify(destination.to_bytes(8, "big")).decode()
+        if dest_str not in self.dotbots:
             return
         self.adapter.send_payload(destination, payload=payload)
         self.logger.debug(
             "Payload sent",
-            application=self.dotbots[destination].application.name,
-            destination=destination,
+            application=self.dotbots[dest_str].application.name,
+            destination=dest_str,
             payload=payload,
         )
 
@@ -739,17 +748,22 @@ class Controller:
     async def _start_adapter(self):
         """Starts the communication adapter."""
         if self.settings.adapter == "edge":
-            adapter = MarilibEdgeAdapter(self.settings.port, self.settings.baudrate)
+            self.adapter = MarilibEdgeAdapter(
+                self.settings.port, self.settings.baudrate
+            )
         elif self.settings.adapter == "cloud":
-            adapter = MarilibCloudAdapter(
+            self.adapter = MarilibCloudAdapter(
                 host=self.settings.mqtt_host,
                 port=self.settings.mqtt_port,
                 use_tls=self.settings.mqtt_use_tls,
                 network_id=int(self.settings.network_id, 16),
             )
         else:
-            adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
-        await adapter.start(self.handle_received_frame)
+            self.adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
+        self.logger.info(
+            "Starting communication adapter", adapter=self.settings.adapter
+        )
+        await self.adapter.start(self.handle_received_frame)
 
     async def run(self):
         """Launch the controller."""
