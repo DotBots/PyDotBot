@@ -475,6 +475,7 @@ PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.LH2_WAYPOINTS: PayloadLH2Waypoints,
     PayloadType.GPS_WAYPOINTS: PayloadGPSWaypoints,
     PayloadType.RAW_DATA: PayloadRawData,
+    PayloadType.LH2_CALIBRATION_HOMOGRAPHY: PayloadLh2CalibrationHomography,
 }
 
 
