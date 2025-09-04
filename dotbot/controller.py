@@ -406,7 +406,7 @@ class Controller:
         self.lh2_manager.compute_calibration()
 
         index_bytes = (0).to_bytes(4, "little", signed = False)
-        matrix_bytes = [int(n).to_bytes(4, "little", signed=True) for n in self.lh2_calibration_data.m.ravel()]
+        matrix_bytes = [int(n*1e6).to_bytes(4, "little", signed=True) for n in self.lh2_calibration_data.m.ravel()]
 
         logger.info("finish calibration - send to gateway")
         payload = PayloadLh2CalibrationHomography(
@@ -565,6 +565,15 @@ class Controller:
             # reload if a new dotbot comes in
             logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
+            payload = PayloadCommandRgbLed(red=0, green=255, blue=0)
+            self.send_payload(int(source, 16), payload=payload)
+
+
+
+
+
+
+
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
