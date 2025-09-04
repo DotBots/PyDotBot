@@ -116,17 +116,18 @@ class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
     def __init__(self):
+        self.logger = LOGGER.bind(context=__name__)
         self.state = LighthouseManagerState.NotCalibrated
         self.reference_points = REFERENCE_POINTS_DEFAULT
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
+        print(self.calibration_data.m.dtype)
         self.calibration_points = np.zeros(
             (2, len(self.reference_points), 2), dtype=np.float64
         )
         self.calibration_points_available = [False] * len(self.reference_points)
         self.last_raw_data = None
-        self.logger = LOGGER.bind(context=__name__)
         self.logger.info("Lighthouse initialized")
 
     @property
@@ -142,9 +143,14 @@ class LighthouseManager:
 
     def _load_calibration(self) -> Optional[CalibrationData]:
         if not os.path.exists(self.calibration_output_path):
+            self.logger.info("No calibration file found")
             return None
         with open(self.calibration_output_path, "rb") as calibration_file:
             calibration = pickle.load(calibration_file)
+        # for compatibility with existing calibration data type, cast
+        # homography matrix to float32
+        calibration.m = calibration.m.astype(np.float32)
+        self.logger.info("Lighthouse calibration loaded")
         self.state = LighthouseManagerState.Calibrated
         return calibration
 

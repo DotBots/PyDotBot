@@ -167,7 +167,6 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
-        self.lh2_calibration_data = CalibrationData(zeta=0.0, random_rodriguez=np.eye(3), normal = np.zeros(3), m = np.eye(3))
 
         self.api = api
         api.controller = self
@@ -404,16 +403,7 @@ class Controller:
             return
         logger.info("Start calibration")
         self.lh2_manager.compute_calibration()
-
-        index_bytes = (0).to_bytes(4, "little", signed = False)
-        matrix_bytes = [int(n*1e6).to_bytes(4, "little", signed=True) for n in self.lh2_calibration_data.m.ravel()]
-
-        logger.info("finish calibration - send to gateway")
-        payload = PayloadLh2CalibrationHomography(
-            index = index_bytes,
-            homography_matrix = matrix_bytes,
-        )
-
+        logger.info("Calibration complete")
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
@@ -568,12 +558,18 @@ class Controller:
             payload = PayloadCommandRgbLed(red=0, green=255, blue=0)
             self.send_payload(int(source, 16), payload=payload)
 
-
-
-
-
-
-
+            # Send calibration to new dotbot if the localization system is calibrated
+            if frame.packet.payload_type == PayloadType.ADVERTISEMENT and self.lh2_manager.state == LighthouseManagerState.Calibrated:
+                # Check if robot has lighthouse calibration
+                matrix_bytes = bytearray()
+                for bytes_block in [int(n * 1e6).to_bytes(4, "little", signed=True) for n in self.lh2_manager.calibration_data.m.ravel()]:
+                    matrix_bytes += bytes_block
+                # Prepare homography matrix and send it to the robot
+                payload = PayloadLh2CalibrationHomography(
+                 index=0,
+                    homography_matrix=matrix_bytes,
+                )
+                self.send_payload(int(source, 16), payload=payload)
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
