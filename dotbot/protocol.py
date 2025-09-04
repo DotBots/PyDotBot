@@ -306,6 +306,7 @@ class PayloadLH2Location(Payload):
     pos_y: int = 0
     pos_z: int = 0
 
+
 @dataclass
 class PayloadLh2CalibrationHomography(Payload):
     """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
@@ -313,12 +314,12 @@ class PayloadLh2CalibrationHomography(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="index", disp="idx"),
-            PayloadFieldMetadata(name="homography_matrix", disp="mat.", type_=bytes, length=4*9),
+            PayloadFieldMetadata(name="homography_matrix", disp="mat.", type_=bytes, length=36),
         ]
     )
 
-    index: bytes = field(default_factory = lambda: (0).to_bytes(4, "little", signed = False))
-    homography_matrix: list[bytes] = field(default_factory=lambda: [ (0).to_bytes(4, "little", signed=True) for _ in range(9) ] )
+    index: int = 0
+    homography_matrix: bytes = field(default_factory=lambda: bytearray)
 
 
 @dataclass
