@@ -495,10 +495,10 @@ class Controller:
             PayloadType.DOTBOT_DATA,
         ):
             return None
-        self.lh2_manager.last_raw_data = frame.payload
+        self.lh2_manager.last_raw_data = frame.packet.payload
         if self.lh2_manager.state != LighthouseManagerState.Calibrated:
             return None
-        return self.lh2_manager.compute_position(frame.payload)
+        return self.lh2_manager.compute_position(frame.packet.payload)
 
     def handle_received_frame(
         self, frame: Frame
