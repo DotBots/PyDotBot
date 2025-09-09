@@ -53,9 +53,9 @@ class SerialAdapter(GatewayAdapterBase):
         if self.hdlc_handler.state == HDLCState.READY:            
             try:
                 data = self.hdlc_handler.payload
-                #print(data, len(data))
                 try:
                     frame = Frame.from_bytes(data)
+                    #print(frame)
                 except (ValueError, ProtocolPayloadParserException) as exc:
                     LOGGER.error(f"Error parsing frame: {exc}")
                     return

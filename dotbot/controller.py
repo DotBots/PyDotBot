@@ -607,14 +607,17 @@ class Controller:
             )
 
         if frame.packet.payload_type in [PayloadType.LH2_LOCATION]:
+            print("x pos: ", frame.packet.payload.pos_x)
+            print("y pos: ", frame.packet.payload.pos_y)
             new_position = DotBotLH2Position(
                 x=frame.packet.payload.pos_x / 1e6,
                 y=frame.packet.payload.pos_y / 1e6,
-                z=0,
+                z=0.0,
             )
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
+            print(f"dotbot.position_history: {len(dotbot.position_history)}")
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
 
