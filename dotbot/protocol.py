@@ -11,7 +11,7 @@ import dataclasses
 import typing
 from abc import ABC
 from binascii import hexlify
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import List
 
@@ -321,7 +321,7 @@ class PayloadLh2CalibrationHomography(Payload):
     )
 
     index: int = 0
-    homography_matrix: bytes = field(default_factory=lambda: bytearray)
+    homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
 
 
 @dataclass
