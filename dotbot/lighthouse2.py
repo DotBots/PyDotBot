@@ -301,7 +301,7 @@ class LighthouseManager:
 
         reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new[0].T)
         return DotBotLH2Position(
-            x = reprojected_points[0], y = reprojected_points[1], z=0.0
+            x = reprojected_points[0]/reprojected_points[2], y = reprojected_points[1]/reprojected_points[2], z=0.0
         )
 
 
