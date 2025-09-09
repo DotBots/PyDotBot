@@ -314,7 +314,9 @@ class PayloadLh2CalibrationHomography(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="index", disp="idx"),
-            PayloadFieldMetadata(name="homography_matrix", disp="mat.", type_=bytes, length=36),
+            PayloadFieldMetadata(
+                name="homography_matrix", disp="mat.", type_=bytes, length=36
+            ),
         ]
     )
 
