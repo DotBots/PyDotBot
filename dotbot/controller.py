@@ -19,7 +19,6 @@ from typing import Dict, List, Optional
 import serial
 import uvicorn
 import websockets
-import numpy as np
 from fastapi import WebSocket
 from haversine import Unit, haversine
 from pydantic import ValidationError
@@ -44,7 +43,6 @@ from dotbot.adapter import (
     SerialAdapter,
 )
 from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
-from dotbot.lighthouse2 import CalibrationData
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
@@ -74,10 +72,10 @@ from dotbot.protocol import (
     PayloadCommandXgoAction,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
+    PayloadLh2CalibrationHomography,
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
-    PayloadLh2CalibrationHomography,
 )
 from dotbot.serial_interface import SerialInterfaceException
 from dotbot.server import api
@@ -559,18 +557,26 @@ class Controller:
             self.send_payload(int(source, 16), payload=payload)
 
             # Send calibration to new dotbot if the localization system is calibrated
-            if frame.packet.payload_type == PayloadType.ADVERTISEMENT and self.lh2_manager.state == LighthouseManagerState.Calibrated:
+            if (
+                frame.packet.payload_type == PayloadType.ADVERTISEMENT
+                and self.lh2_manager.state == LighthouseManagerState.Calibrated
+            ):
                 self.dotbots.update({dotbot.address: dotbot})
                 # Check if robot has lighthouse calibration
                 matrix_bytes = bytearray()
-                for bytes_block in [int(n * 1e6).to_bytes(4, "little", signed=True) for n in self.lh2_manager.calibration_data.m.ravel()]:
+                for bytes_block in [
+                    int(n * 1e6).to_bytes(4, "little", signed=True)
+                    for n in self.lh2_manager.calibration_data.m.ravel()
+                ]:
                     matrix_bytes += bytes_block
                 # Prepare homography matrix and send it to the robot
                 payload = PayloadLh2CalibrationHomography(
-                 index=0,
+                    index=0,
                     homography_matrix=matrix_bytes,
                 )
-                self.logger.info("Send calibration data", source=source, payload=payload)
+                self.logger.info(
+                    "Send calibration data", source=source, payload=payload
+                )
                 self.send_payload(int(source, 16), payload=payload)
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
