@@ -122,7 +122,7 @@ class LighthouseManager:
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
-        print(self.calibration_data.m.dtype)
+        # print(self.calibration_data.m.dtype)
         self.calibration_points = np.zeros(
             (2, len(self.reference_points), 2), dtype=np.float64
         )
