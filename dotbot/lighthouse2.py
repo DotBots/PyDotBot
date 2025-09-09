@@ -250,16 +250,18 @@ class LighthouseManager:
         final_points = scales_matrix * pts_cam_new.T
         final_points = final_points.T
 
-        M, _ = cv2.findHomography(
-            final_points.dot(random_rodriguez.T)[:, 0:2],
-            np.array([self.reference_points], dtype=np.float64) + 0.5,
-            cv2.RANSAC,
-            5.0,
-        )
+        #M, _ = cv2.findHomography(
+        #    final_points.dot(random_rodriguez.T)[:, 0:2],
+        #    np.array([self.reference_points], dtype=np.float64) + 0.5,
+        #    cv2.RANSAC,
+        #    5.0,
+        #)
+        temporary_numpy_trash_heap = np.array([self.reference_points], dtype=np.float64) + 0.5
+        temporary_numpy_trash_heap_pt2 = temporary_numpy_trash_heap.squeeze()
 
         M,_ = cv2.findHomography(
-            camera_points,
-            np.array([self.reference_points], dtype=np.float64) + 0.5,
+            camera_points_arr[0],
+            temporary_numpy_trash_heap_pt2,
             method = cv2.RANSAC,
             ransacReprojThreshold=0.001
         )
@@ -297,9 +299,9 @@ class LighthouseManager:
 
         pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
 
-        reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new)
+        reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new[0].T)
         return DotBotLH2Position(
-            x = reprojected_points[0][0], y = 1 - reprojected_points[0][1], z=0.0
+            x = reprojected_points[0], y = reprojected_points[1], z=0.0
         )
 
 
