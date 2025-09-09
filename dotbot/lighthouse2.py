@@ -122,7 +122,6 @@ class LighthouseManager:
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
         self.calibration_data = self._load_calibration()
-        # print(self.calibration_data.m.dtype)
         self.calibration_points = np.zeros(
             (2, len(self.reference_points), 2), dtype=np.float64
         )
@@ -152,6 +151,9 @@ class LighthouseManager:
         calibration.m = calibration.m.astype(np.float32)
         self.logger.info("Lighthouse calibration loaded")
         self.state = LighthouseManagerState.Calibrated
+
+        print(calibration.m)
+
         return calibration
 
     def add_calibration_point(self, index):
@@ -184,6 +186,7 @@ class LighthouseManager:
             self.state = LighthouseManagerState.CalibrationInProgress
         if all(self.calibration_points_available) is True:
             self.state = LighthouseManagerState.Ready
+            print(self.calibration_points)
         self.logger.info("Calibration point added", index=index, state=self.state)
 
     def compute_calibration(self):  # pylint: disable=too-many-locals
@@ -254,6 +257,13 @@ class LighthouseManager:
             5.0,
         )
 
+        M,_ = cv2.findHomography(
+            camera_points,
+            np.array([self.reference_points], dtype=np.float64) + 0.5,
+            method = cv2.RANSAC,
+            ransacReprojThreshold=0.001
+        )
+
         self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
 
         with open(self.calibration_output_path, "wb") as output_file:
@@ -286,6 +296,13 @@ class LighthouseManager:
         )
 
         pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
+
+        reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new)
+        return DotBotLH2Position(
+            x = reprojected_points[0][0], y = 1 - reprojected_points[0][1], z=0.0
+        )
+
+
         scales = (1 / self.calibration_data.zeta) / np.matmul(
             self.calibration_data.normal, pts_cam_new.T
         )
@@ -295,9 +312,14 @@ class LighthouseManager:
         corners_planar = final_points.dot(self.calibration_data.random_rodriguez.T)[
             :, 0:2
         ][1].reshape(1, 1, 2)
+
+
         pts_meter_corners = cv2.perspectiveTransform(
             corners_planar, self.calibration_data.m
         ).reshape(-1, 2)
+
+
+
         return DotBotLH2Position(
             x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
         )
