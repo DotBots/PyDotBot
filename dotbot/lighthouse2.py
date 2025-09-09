@@ -152,8 +152,6 @@ class LighthouseManager:
         self.logger.info("Lighthouse calibration loaded")
         self.state = LighthouseManagerState.Calibrated
 
-        print(calibration.m)
-
         return calibration
 
     def add_calibration_point(self, index):
@@ -186,7 +184,6 @@ class LighthouseManager:
             self.state = LighthouseManagerState.CalibrationInProgress
         if all(self.calibration_points_available) is True:
             self.state = LighthouseManagerState.Ready
-            print(self.calibration_points)
         self.logger.info("Calibration point added", index=index, state=self.state)
 
     def compute_calibration(self):  # pylint: disable=too-many-locals
@@ -298,8 +295,8 @@ class LighthouseManager:
         )
 
         pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
-
         reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new[0].T)
+
         return DotBotLH2Position(
             x = reprojected_points[0]/reprojected_points[2], y = 1 - reprojected_points[1]/reprojected_points[2], z=0.0
         )

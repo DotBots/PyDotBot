@@ -509,12 +509,18 @@ class Controller:
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
         # Controller is not interested by command messages received
+        
+        print("payload type: ", frame.packet.payload_type)
+        
         if frame.packet.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
         ]:
             return
         source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
+
+        print("source: ", source)
+
         logger = self.logger.bind(
             source=source,
             payload_type=PayloadType(frame.packet.payload_type).name,
@@ -599,6 +605,18 @@ class Controller:
                 rudder_angle=dotbot.rudder_angle,
                 sail_angle=dotbot.sail_angle,
             )
+
+        if frame.packet.payload_type in [PayloadType.LH2_LOCATION]:
+            new_position = DotBotLH2Position(
+                x=frame.packet.payload.pos_x / 1e6,
+                y=frame.packet.payload.pos_y / 1e6,
+                z=0,
+            )
+            dotbot.lh2_position = new_position
+            dotbot.position_history.append(new_position)
+            notification_cmd = DotBotNotificationCommand.UPDATE
+            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
+                dotbot.position_history.pop(0)
 
         dotbot.lh2_position = self._compute_lh2_position(frame)
         if (
