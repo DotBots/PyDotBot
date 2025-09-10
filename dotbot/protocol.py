@@ -13,7 +13,6 @@ from abc import ABC
 from binascii import hexlify
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List
 
 PROTOCOL_VERSION = 1
 PAYLOAD_RESERVED_THRESHOLD = 0x80
@@ -184,10 +183,12 @@ class PayloadAdvertisement(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="application", disp="app"),
+            PayloadFieldMetadata(name="calibrated", disp="cal."),
         ]
     )
 
     application: ApplicationType = ApplicationType.DotBot
+    calibrated: bool = False
 
 
 @dataclass
@@ -330,16 +331,16 @@ class PayloadDotBotData(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
-            PayloadFieldMetadata(name="count", disp="len"),
-            PayloadFieldMetadata(name="locations", type_=list, length=0),
+            PayloadFieldMetadata(name="pos_x", disp="x", length=4),
+            PayloadFieldMetadata(name="pos_y", disp="y", length=4),
+            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
         ]
     )
 
     direction: int = 0xFFFF
-    count: int = 0
-    locations: List[PayloadLh2RawLocation] = dataclasses.field(
-        default_factory=lambda: []
-    )
+    pos_x: int = 0
+    pos_y: int = 0
+    pos_z: int = 0
 
 
 @dataclass

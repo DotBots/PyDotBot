@@ -562,11 +562,20 @@ class Controller:
             payload = PayloadCommandRgbLed(red=0, green=255, blue=0)
             self.send_payload(int(source, 16), payload=payload)
 
-            # Send calibration to new dotbot if the localization system is calibrated
+        if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
+            logger = logger.bind(
+                application=ApplicationType(frame.packet.payload.application).name,
+                calibrated=bool(frame.packet.payload.calibrated),
+            )
+            dotbot.application = ApplicationType(frame.packet.payload.application)
+            dotbot.calibrated = bool(frame.packet.payload.calibrated)
+            logger.info("Advertisement received")
+            # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             if (
-                frame.packet.payload_type == PayloadType.ADVERTISEMENT
+                dotbot.calibrated is False
                 and self.lh2_manager.state == LighthouseManagerState.Calibrated
             ):
+                # Send calibration to new dotbot if the localization system is calibrated
                 self.dotbots.update({dotbot.address: dotbot})
                 # Check if robot has lighthouse calibration
                 matrix_bytes = bytearray()
@@ -585,12 +594,6 @@ class Controller:
                 )
                 self.send_payload(int(source, 16), payload=payload)
 
-        if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
-            logger = logger.bind(
-                application=ApplicationType(frame.packet.payload.application).name
-            )
-            dotbot.application = ApplicationType(frame.packet.payload.application)
-
         if (
             frame.packet.payload_type
             in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
@@ -606,7 +609,7 @@ class Controller:
                 sail_angle=dotbot.sail_angle,
             )
 
-        if frame.packet.payload_type == PayloadType.LH2_LOCATION:
+        if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
             print("x pos: ", frame.packet.payload.pos_x)
             print("y pos: ", frame.packet.payload.pos_y)
             new_position = DotBotLH2Position(
@@ -614,6 +617,7 @@ class Controller:
                 y=frame.packet.payload.pos_y / 1e6,
                 z=0.0,
             )
+            dotbot.direction = frame.packet.payload.direction
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
@@ -623,9 +627,6 @@ class Controller:
 
         if frame.packet.payload_type == PayloadType.LH2_RAW_DATA:
             self.lh2_manager.last_raw_data = frame.packet.payload
-
-        if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
-            logger.error("Unsupported DOTBOT_DATA payload type")
 
         if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(
