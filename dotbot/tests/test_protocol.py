@@ -132,22 +132,7 @@ def test_parse_header(bytes_, expected):
             id="PayloadCommandXgoAction",
         ),
         pytest.param(
-            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x02"
-            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
-            Header(
-                version=4,
-                type_=2,
-                destination=0x1122221111111111,
-                source=0x1212121212121212,
-            ),
-            PayloadType.LH2_RAW_LOCATION,
-            PayloadLh2RawLocation(
-                bits=0xF1DEBC9A78563412, polynomial_index=0x01, offset=0x02
-            ),
-            id="PayloadLH2RawLocation",
-        ),
-        pytest.param(
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x0d"
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x02"
             b"\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x02\x04",
@@ -427,7 +412,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     )
                 ),
             ),
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x0d\x02"
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x02\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
             id="PayloadLH2RawData",
@@ -732,7 +717,7 @@ def test_payload_to_bytes(payload, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " LH2_RAW_DATA    | ver. | type | dst                | src                | type |\n"
-                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x0d |\n"
+                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x02 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +------+--------------------+------+------+--------------------+------+------+\n"
                 "                 | len  | bits               | poly | off. | bits               | poly | off. |\n"

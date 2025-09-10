@@ -24,7 +24,7 @@ class PayloadType(IntEnum):
 
     CMD_MOVE_RAW = 0x00
     CMD_RGB_LED = 0x01
-    LH2_RAW_LOCATION = 0x02
+    LH2_RAW_DATA = 0x02
     LH2_LOCATION = 0x03
     ADVERTISEMENT = 0x04
     GPS_POSITION = 0x05
@@ -35,7 +35,6 @@ class PayloadType(IntEnum):
     SAILBOT_DATA = 0x0A
     CMD_XGO_ACTION = 0x0B
     LH2_PROCESSED_DATA = 0x0C
-    LH2_RAW_DATA = 0x0D
     LH2_CALIBRATION_HOMOGRAPHY = 0x0E
     RAW_DATA = 0x10
     DOTBOT_SIMULATOR_DATA = 0xFA
@@ -465,7 +464,6 @@ PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
     PayloadType.CMD_XGO_ACTION: PayloadCommandXgoAction,
-    PayloadType.LH2_RAW_LOCATION: PayloadLh2RawLocation,
     PayloadType.LH2_PROCESSED_DATA: PayloadLh2ProcessedLocation,
     PayloadType.LH2_RAW_DATA: PayloadLh2RawData,
     PayloadType.LH2_LOCATION: PayloadLH2Location,

@@ -509,9 +509,9 @@ class Controller:
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
         # Controller is not interested by command messages received
-        
+
         print("payload type: ", frame.packet.payload_type)
-        
+
         if frame.packet.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
@@ -606,7 +606,7 @@ class Controller:
                 sail_angle=dotbot.sail_angle,
             )
 
-        if frame.packet.payload_type in [PayloadType.LH2_LOCATION]:
+        if frame.packet.payload_type == PayloadType.LH2_LOCATION:
             print("x pos: ", frame.packet.payload.pos_x)
             print("y pos: ", frame.packet.payload.pos_y)
             new_position = DotBotLH2Position(
@@ -621,36 +621,11 @@ class Controller:
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
 
-        dotbot.lh2_position = self._compute_lh2_position(frame)
-        if (
-            dotbot.lh2_position is not None
-            and 0 <= dotbot.lh2_position.x <= 1
-            and 0 <= dotbot.lh2_position.y <= 1
-        ):
-            new_position = DotBotLH2Position(
-                x=dotbot.lh2_position.x,
-                y=dotbot.lh2_position.y,
-                z=dotbot.lh2_position.z,
-            )
-            logger.info("lh2-raw", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)
-            if (
-                not dotbot.position_history
-                or lh2_distance(dotbot.position_history[-1], new_position)
-                >= LH2_POSITION_DISTANCE_THRESHOLD
-            ):
-                dotbot.position_history.append(new_position)
-                notification_cmd = DotBotNotificationCommand.UPDATE
-            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                dotbot.position_history.pop(0)
-            # Send the computed position back to the dotbot
-            payload = PayloadLH2Location(
-                pos_x=int(dotbot.lh2_position.x * 1e6),
-                pos_y=int(dotbot.lh2_position.y * 1e6),
-                pos_z=int(dotbot.lh2_position.z * 1e6),
-            )
-            self.send_payload(int(source, 16), payload=payload)
-        elif frame.packet.payload_type == PayloadType.DOTBOT_DATA:
-            logger.warning("lh2: invalid position")
+        if frame.packet.payload_type == PayloadType.LH2_RAW_DATA:
+            self.lh2_manager.last_raw_data = frame.packet.payload
+
+        if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
+            logger.error("Unsupported DOTBOT_DATA payload type")
 
         if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(
