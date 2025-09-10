@@ -180,6 +180,7 @@ class LighthouseManager:
             dtype=np.float64,
         )
 
+        self.last_raw_data = None
         if all(self.calibration_points_available) is False:
             self.state = LighthouseManagerState.CalibrationInProgress
         if all(self.calibration_points_available) is True:
