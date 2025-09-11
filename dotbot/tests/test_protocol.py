@@ -84,7 +84,7 @@ def test_parse_header(bytes_, expected):
     "bytes_,header,payload_type,payload",
     [
         pytest.param(
-            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x04\x01",
+            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x04\x01\x01",
             Header(
                 version=4,
                 type_=2,
@@ -92,7 +92,7 @@ def test_parse_header(bytes_, expected):
                 source=0x1212121212121212,
             ),
             PayloadType.ADVERTISEMENT,
-            PayloadAdvertisement(application=ApplicationType.SailBot),
+            PayloadAdvertisement(application=ApplicationType.SailBot, calibrated=True),
             id="PayloadAdvertisement",
         ),
         pytest.param(
@@ -132,22 +132,7 @@ def test_parse_header(bytes_, expected):
             id="PayloadCommandXgoAction",
         ),
         pytest.param(
-            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x02"
-            b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02",
-            Header(
-                version=4,
-                type_=2,
-                destination=0x1122221111111111,
-                source=0x1212121212121212,
-            ),
-            PayloadType.LH2_RAW_LOCATION,
-            PayloadLh2RawLocation(
-                bits=0xF1DEBC9A78563412, polynomial_index=0x01, offset=0x02
-            ),
-            id="PayloadLH2RawLocation",
-        ),
-        pytest.param(
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x0d"
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x02"
             b"\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x01\x02"
             b"\x12\x34\x56\x78\x9a\xbc\xde\xf1\x02\x04",
@@ -427,7 +412,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     )
                 ),
             ),
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x0d\x02"
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x02\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02"
             b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
             id="PayloadLH2RawData",
@@ -457,10 +442,12 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadAdvertisement(application=ApplicationType.SailBot)
+                    PayloadAdvertisement(
+                        application=ApplicationType.SailBot, calibrated=False
+                    )
                 ),
             ),
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x04\x01",
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x04\x01\x00",
             id="PayloadAdvertisement",
         ),
         pytest.param(
@@ -488,28 +475,12 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadDotBotData(
-                        direction=45,
-                        count=2,
-                        locations=[
-                            PayloadLh2RawLocation(
-                                bits=0x123456789ABCDEF1,
-                                polynomial_index=0x01,
-                                offset=0x02,
-                            ),
-                            PayloadLh2RawLocation(
-                                bits=0x123456789ABCDEF1,
-                                polynomial_index=0x01,
-                                offset=0x02,
-                            ),
-                        ],
-                    )
+                    PayloadDotBotData(direction=45, pos_x=1000, pos_y=1000, pos_z=2)
                 ),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x06"
-            b"-\x00\x02"
-            b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02"
-            b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
+            b"-\x00"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
             id="PayloadDotBotData",
         ),
         pytest.param(
@@ -732,7 +703,7 @@ def test_payload_to_bytes(payload, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " LH2_RAW_DATA    | ver. | type | dst                | src                | type |\n"
-                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x0d |\n"
+                " (40 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x02 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +------+--------------------+------+------+--------------------+------+------+\n"
                 "                 | len  | bits               | poly | off. | bits               | poly | off. |\n"
@@ -776,14 +747,16 @@ def test_payload_to_bytes(payload, expected):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadAdvertisement(application=ApplicationType.SailBot)
+                    PayloadAdvertisement(
+                        application=ApplicationType.SailBot, calibrated=False
+                    )
                 ),
             ),
             (
-                "                 +------+------+--------------------+--------------------+------+------+\n"
-                " ADVERTISEMENT   | ver. | type | dst                | src                | type | app  |\n"
-                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x04 | 0x01 |\n"
-                "                 +------+------+--------------------+--------------------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+\n"
+                " ADVERTISEMENT   | ver. | type | dst                | src                | type | app  | cal. |\n"
+                " (21 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x04 | 0x01 | 0x00 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+------+\n"
                 "\n"
             ),
             id="Advertisement",
@@ -822,33 +795,18 @@ def test_payload_to_bytes(payload, expected):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadDotBotData(
-                        direction=45,
-                        count=2,
-                        locations=[
-                            PayloadLh2RawLocation(
-                                bits=0x123456789ABCDEF1,
-                                polynomial_index=0x01,
-                                offset=0x02,
-                            ),
-                            PayloadLh2RawLocation(
-                                bits=0x123456789ABCDEF1,
-                                polynomial_index=0x01,
-                                offset=0x02,
-                            ),
-                        ],
-                    )
+                    PayloadDotBotData(direction=45, pos_x=1000, pos_y=1000, pos_z=2)
                 ),
             ),
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " DOTBOT_DATA     | ver. | type | dst                | src                | type |\n"
-                " (42 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x06 |\n"
+                " (33 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x06 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
-                "                 +--------+------+--------------------+------+------+--------------------+------+------+\n"
-                "                 | dir.   | len  | bits               | poly | off. | bits               | poly | off. |\n"
-                "                 | 0x002d | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 | 0x123456789abcdef1 | 0x01 | 0x02 |\n"
-                "                 +--------+------+--------------------+------+------+--------------------+------+------+\n"
+                "                 +--------+------------+------------+------------+\n"
+                "                 | dir.   | x          | y          | z          |\n"
+                "                 | 0x002d | 0x000003e8 | 0x000003e8 | 0x00000002 |\n"
+                "                 +--------+------------+------------+------------+\n"
                 "\n"
             ),
             id="DotBotData",
@@ -1045,25 +1003,14 @@ def test_parse_missing_metadata():
     "payload,bytes_",
     [
         pytest.param(
-            PayloadAdvertisement(application=ApplicationType.DotBot),
+            PayloadAdvertisement(application=ApplicationType.DotBot, calibrated=False),
             b"",
             id="PayloadAdvertisement",
         ),
         pytest.param(
-            PayloadDotBotData(
-                direction=45,
-                count=2,
-                locations=[
-                    PayloadLh2RawLocation(
-                        bits=0x123456789ABCDEF1, polynomial_index=0x01, offset=0x02
-                    ),
-                    PayloadLh2RawLocation(
-                        bits=0x123456789ABCDEF1, polynomial_index=0x01, offset=0x02
-                    ),
-                ],
-            ),
+            PayloadDotBotData(direction=45, pos_x=1000, pos_y=1000, pos_z=2),
             b"-\x00\x02" b"\xf1\xde\xbc\x9a\x78\x56\x34\x12\x01\x02",
-            id="PayloadLh2RawLocation",
+            id="PayloadDotBotData",
         ),
     ],
 )

@@ -182,3 +182,4 @@ class DotBotModel(BaseModel):
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 40
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    calibrated: bool = False

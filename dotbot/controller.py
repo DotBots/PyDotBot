@@ -72,6 +72,7 @@ from dotbot.protocol import (
     PayloadCommandXgoAction,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
+    PayloadLh2CalibrationHomography,
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
@@ -164,9 +165,11 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.lh2_manager = LighthouseManager()
+
         self.api = api
         api.controller = self
         self.qrkey = None
+
         self.subscriptions = [
             SubscriptionModel(
                 topic="/command/+/+/+/move_raw", callback=self.on_command_move_raw
@@ -398,6 +401,7 @@ class Controller:
             return
         logger.info("Start calibration")
         self.lh2_manager.compute_calibration()
+        logger.info("Calibration complete")
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
@@ -552,9 +556,34 @@ class Controller:
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
-                application=ApplicationType(frame.packet.payload.application).name
+                application=ApplicationType(frame.packet.payload.application).name,
+                calibrated=bool(frame.packet.payload.calibrated),
             )
             dotbot.application = ApplicationType(frame.packet.payload.application)
+            dotbot.calibrated = bool(frame.packet.payload.calibrated)
+            self.dotbots.update({dotbot.address: dotbot})
+            logger.debug("Advertisement received")
+            # Send calibration to dotbot if it's not calibrated and the localization system has calibration
+            if (
+                dotbot.calibrated is False
+                and self.lh2_manager.state == LighthouseManagerState.Calibrated
+            ):
+                # Send calibration to new dotbot if the localization system is calibrated
+                # Check if robot has lighthouse calibration
+                matrix_bytes = bytearray()
+                for bytes_block in [
+                    int(n * 1e6).to_bytes(4, "little", signed=True)
+                    for n in self.lh2_manager.calibration_data.m.ravel()
+                ]:
+                    matrix_bytes += bytes_block
+                # Prepare homography matrix and send it to the robot
+                payload = PayloadLh2CalibrationHomography(
+                    index=0,
+                    homography_matrix=matrix_bytes,
+                )
+                self.logger.info("Send calibration data", payload=payload)
+                self.dotbots.update({dotbot.address: dotbot})
+                self.send_payload(int(source, 16), payload=payload)
 
         if (
             frame.packet.payload_type
@@ -571,36 +600,40 @@ class Controller:
                 sail_angle=dotbot.sail_angle,
             )
 
-        dotbot.lh2_position = self._compute_lh2_position(frame)
-        if (
-            dotbot.lh2_position is not None
-            and 0 <= dotbot.lh2_position.x <= 1
-            and 0 <= dotbot.lh2_position.y <= 1
-        ):
+        if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
             new_position = DotBotLH2Position(
-                x=dotbot.lh2_position.x,
-                y=dotbot.lh2_position.y,
-                z=dotbot.lh2_position.z,
+                x=frame.packet.payload.pos_x / 1e6,
+                y=frame.packet.payload.pos_y / 1e6,
+                z=0.0,
             )
-            logger.info("lh2-raw", x=dotbot.lh2_position.x, y=dotbot.lh2_position.y)
-            if (
-                not dotbot.position_history
-                or lh2_distance(dotbot.position_history[-1], new_position)
-                >= LH2_POSITION_DISTANCE_THRESHOLD
-            ):
-                dotbot.position_history.append(new_position)
-                notification_cmd = DotBotNotificationCommand.UPDATE
+            dotbot.direction = frame.packet.payload.direction
+            dotbot.lh2_position = new_position
+            dotbot.position_history.append(new_position)
+            notification_cmd = DotBotNotificationCommand.UPDATE
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
-            # Send the computed position back to the dotbot
-            payload = PayloadLH2Location(
-                pos_x=int(dotbot.lh2_position.x * 1e6),
-                pos_y=int(dotbot.lh2_position.y * 1e6),
-                pos_z=int(dotbot.lh2_position.z * 1e6),
+            self.logger.info(
+                "Received DotBot Data",
+                direction=dotbot.direction,
+                X=new_position.x,
+                Y=new_position.y,
             )
-            self.send_payload(int(source, 16), payload=payload)
-        elif frame.packet.payload_type == PayloadType.DOTBOT_DATA:
-            logger.warning("lh2: invalid position")
+
+        if frame.packet.payload_type == PayloadType.LH2_RAW_DATA:
+            self.lh2_manager.last_raw_data = frame.packet.payload
+            self.logger.debug(
+                "Received LH2 Raw Data",
+                location_1_bits=self.lh2_manager.last_raw_data.locations[0].bits,
+                location_1_index=self.lh2_manager.last_raw_data.locations[
+                    0
+                ].polynomial_index,
+                location_1_offset=self.lh2_manager.last_raw_data.locations[0].offset,
+                location_2_bits=self.lh2_manager.last_raw_data.locations[1].bits,
+                location_2_index=self.lh2_manager.last_raw_data.locations[
+                    1
+                ].polynomial_index,
+                location_2_offset=self.lh2_manager.last_raw_data.locations[1].offset,
+            )
 
         if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(

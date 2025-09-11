@@ -13,7 +13,6 @@ from abc import ABC
 from binascii import hexlify
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List
 
 PROTOCOL_VERSION = 1
 PAYLOAD_RESERVED_THRESHOLD = 0x80
@@ -24,7 +23,7 @@ class PayloadType(IntEnum):
 
     CMD_MOVE_RAW = 0x00
     CMD_RGB_LED = 0x01
-    LH2_RAW_LOCATION = 0x02
+    LH2_RAW_DATA = 0x02
     LH2_LOCATION = 0x03
     ADVERTISEMENT = 0x04
     GPS_POSITION = 0x05
@@ -35,7 +34,7 @@ class PayloadType(IntEnum):
     SAILBOT_DATA = 0x0A
     CMD_XGO_ACTION = 0x0B
     LH2_PROCESSED_DATA = 0x0C
-    LH2_RAW_DATA = 0x0D
+    LH2_CALIBRATION_HOMOGRAPHY = 0x0E
     RAW_DATA = 0x10
     DOTBOT_SIMULATOR_DATA = 0xFA
 
@@ -184,10 +183,12 @@ class PayloadAdvertisement(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="application", disp="app"),
+            PayloadFieldMetadata(name="calibrated", disp="cal."),
         ]
     )
 
     application: ApplicationType = ApplicationType.DotBot
+    calibrated: bool = False
 
 
 @dataclass
@@ -307,22 +308,39 @@ class PayloadLH2Location(Payload):
 
 
 @dataclass
+class PayloadLh2CalibrationHomography(Payload):
+    """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="index", disp="idx"),
+            PayloadFieldMetadata(
+                name="homography_matrix", disp="mat.", type_=bytes, length=36
+            ),
+        ]
+    )
+
+    index: int = 0
+    homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
+
+
+@dataclass
 class PayloadDotBotData(Payload):
     """Dataclass that holds direction and LH2 raw data from DotBot application."""
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
-            PayloadFieldMetadata(name="count", disp="len"),
-            PayloadFieldMetadata(name="locations", type_=list, length=0),
+            PayloadFieldMetadata(name="pos_x", disp="x", length=4),
+            PayloadFieldMetadata(name="pos_y", disp="y", length=4),
+            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
         ]
     )
 
     direction: int = 0xFFFF
-    count: int = 0
-    locations: List[PayloadLh2RawLocation] = dataclasses.field(
-        default_factory=lambda: []
-    )
+    pos_x: int = 0
+    pos_y: int = 0
+    pos_z: int = 0
 
 
 @dataclass
@@ -447,7 +465,6 @@ PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.CMD_MOVE_RAW: PayloadCommandMoveRaw,
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
     PayloadType.CMD_XGO_ACTION: PayloadCommandXgoAction,
-    PayloadType.LH2_RAW_LOCATION: PayloadLh2RawLocation,
     PayloadType.LH2_PROCESSED_DATA: PayloadLh2ProcessedLocation,
     PayloadType.LH2_RAW_DATA: PayloadLh2RawData,
     PayloadType.LH2_LOCATION: PayloadLH2Location,
@@ -459,6 +476,7 @@ PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.LH2_WAYPOINTS: PayloadLH2Waypoints,
     PayloadType.GPS_WAYPOINTS: PayloadGPSWaypoints,
     PayloadType.RAW_DATA: PayloadRawData,
+    PayloadType.LH2_CALIBRATION_HOMOGRAPHY: PayloadLh2CalibrationHomography,
 }
 
 

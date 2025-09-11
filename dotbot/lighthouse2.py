@@ -116,6 +116,7 @@ class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
     def __init__(self):
+        self.logger = LOGGER.bind(context=__name__)
         self.state = LighthouseManagerState.NotCalibrated
         self.reference_points = REFERENCE_POINTS_DEFAULT
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
@@ -126,7 +127,6 @@ class LighthouseManager:
         )
         self.calibration_points_available = [False] * len(self.reference_points)
         self.last_raw_data = None
-        self.logger = LOGGER.bind(context=__name__)
         self.logger.info("Lighthouse initialized")
 
     @property
@@ -142,10 +142,16 @@ class LighthouseManager:
 
     def _load_calibration(self) -> Optional[CalibrationData]:
         if not os.path.exists(self.calibration_output_path):
+            self.logger.info("No calibration file found")
             return None
         with open(self.calibration_output_path, "rb") as calibration_file:
             calibration = pickle.load(calibration_file)
+        # for compatibility with existing calibration data type, cast
+        # homography matrix to float32
+        calibration.m = calibration.m.astype(np.float32)
+        self.logger.info("Lighthouse calibration loaded")
         self.state = LighthouseManagerState.Calibrated
+
         return calibration
 
     def add_calibration_point(self, index):
@@ -174,6 +180,7 @@ class LighthouseManager:
             dtype=np.float64,
         )
 
+        self.last_raw_data: PayloadLh2RawData = None
         if all(self.calibration_points_available) is False:
             self.state = LighthouseManagerState.CalibrationInProgress
         if all(self.calibration_points_available) is True:
@@ -241,11 +248,16 @@ class LighthouseManager:
         final_points = scales_matrix * pts_cam_new.T
         final_points = final_points.T
 
+        temporary_numpy_trash_heap = (
+            np.array([self.reference_points], dtype=np.float64) + 0.5
+        )
+        temporary_numpy_trash_heap_pt2 = temporary_numpy_trash_heap.squeeze()
+
         M, _ = cv2.findHomography(
-            final_points.dot(random_rodriguez.T)[:, 0:2],
-            np.array([self.reference_points], dtype=np.float64) + 0.5,
-            cv2.RANSAC,
-            5.0,
+            camera_points_arr[0],
+            temporary_numpy_trash_heap_pt2,
+            method=cv2.RANSAC,
+            ransacReprojThreshold=0.001,
         )
 
         self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
@@ -280,18 +292,10 @@ class LighthouseManager:
         )
 
         pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
-        scales = (1 / self.calibration_data.zeta) / np.matmul(
-            self.calibration_data.normal, pts_cam_new.T
-        )
-        scales_matrix = np.vstack((scales, scales, scales))
-        final_points = scales_matrix * pts_cam_new.T
-        final_points = final_points.T
-        corners_planar = final_points.dot(self.calibration_data.random_rodriguez.T)[
-            :, 0:2
-        ][1].reshape(1, 1, 2)
-        pts_meter_corners = cv2.perspectiveTransform(
-            corners_planar, self.calibration_data.m
-        ).reshape(-1, 2)
+        reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new[0].T)
+
         return DotBotLH2Position(
-            x=pts_meter_corners[0][0], y=1 - pts_meter_corners[0][1], z=0.0
+            x=reprojected_points[0] / reprojected_points[2],
+            y=1 - reprojected_points[1] / reprojected_points[2],
+            z=0.0,
         )
