@@ -22,8 +22,8 @@ import cv2
 import numpy as np
 
 from dotbot.logger import LOGGER
-from dotbot.models import DotBotCalibrationStateModel, DotBotLH2Position
-from dotbot.protocol import PayloadLh2RawData
+from dotbot.models import DotBotCalibrationStateModel
+from dotbot.protocol import PayloadLh2CalibrationHomography, PayloadLh2RawData
 
 if sys.platform == "win32":
     LIB_EXT = "dll"
@@ -112,6 +112,23 @@ class LighthouseManagerState(Enum):
     Calibrated = 3
 
 
+CALIBRATION_HEADER_HEADER = """// Auto-generated file, do not edit!
+#ifndef __LH2_CALIBRATION_H
+#define __LH2_CALIBRATION_H
+
+#include "localization.h"
+
+#define LH2_CALIBRATION_IS_VALID    (1)
+
+static const int32_t lh2_calibration_matrix[3][3] = {
+"""
+
+CALIBRATION_HEADER_FOOTER = """};
+
+#endif // __LH2_CALIBRATION_H
+"""
+
+
 class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
@@ -121,7 +138,7 @@ class LighthouseManager:
         self.reference_points = REFERENCE_POINTS_DEFAULT
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
         self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
-        self.calibration_data = self._load_calibration()
+        self.calibration: PayloadLh2CalibrationHomography = self._load_calibration()
         self.calibration_points = np.zeros(
             (2, len(self.reference_points), 2), dtype=np.float64
         )
@@ -140,18 +157,14 @@ class LighthouseManager:
             return DotBotCalibrationStateModel(state="done")
         return DotBotCalibrationStateModel(state="unknown")
 
-    def _load_calibration(self) -> Optional[CalibrationData]:
+    def _load_calibration(self) -> Optional[PayloadLh2CalibrationHomography]:
         if not os.path.exists(self.calibration_output_path):
             self.logger.info("No calibration file found")
             return None
         with open(self.calibration_output_path, "rb") as calibration_file:
             calibration = pickle.load(calibration_file)
-        # for compatibility with existing calibration data type, cast
-        # homography matrix to float32
-        calibration.m = calibration.m.astype(np.float32)
         self.logger.info("Lighthouse calibration loaded")
         self.state = LighthouseManagerState.Calibrated
-
         return calibration
 
     def add_calibration_point(self, index):
@@ -260,42 +273,38 @@ class LighthouseManager:
             ransacReprojThreshold=0.001,
         )
 
-        self.calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
+        calibration_data = CalibrationData(zeta, random_rodriguez, n, M)
+        matrix_bytes = bytearray()
+        for bytes_block in [
+            int(n * 1e6).to_bytes(4, "little", signed=True)
+            for n in calibration_data.m.ravel()
+        ]:
+            matrix_bytes += bytes_block
 
+        # Prepare homography matrix and send it to the robot
+        self.calibration = PayloadLh2CalibrationHomography(
+            index=0,
+            homography_matrix=matrix_bytes,
+        )
+
+        # Store calibration data as pickle for later reload
         with open(self.calibration_output_path, "wb") as output_file:
-            pickle.dump(self.calibration_data, output_file)
+            pickle.dump(self.calibration, output_file)
+
+        # Store homography matrix as C header to use in SwarmIT bootloader
+        header_path = CALIBRATION_DIR / "lh2_calibration.h"
+        with open(header_path, "w") as header_file:
+            header_file.write(CALIBRATION_HEADER_HEADER)
+            for i in range(3):
+                header_file.write("    {")
+                for j in range(3):
+                    header_file.write(
+                        f"{int(self.calibration.homography_matrix[i][j] * 1e6):d}"
+                    )
+                    if j < 2:
+                        header_file.write(", ")
+                header_file.write("},\n")
+            header_file.write(CALIBRATION_HEADER_FOOTER)
 
         self.state = LighthouseManagerState.Calibrated
-        self.logger.info("Calibration done", data=self.calibration_data)
-
-    def compute_position(
-        self, raw_data: PayloadLh2RawData
-    ) -> Optional[DotBotLH2Position]:
-        """Compute the position coordinates from LH2 raw data and available calibration."""
-        if self.state != LighthouseManagerState.Calibrated:
-            return None
-
-        if any(raw_data.locations[index].bits == 0 for index in range(2)):
-            return None
-
-        counts = lh2_raw_data_to_counts(raw_data)
-        camera_points = np.asarray(
-            [
-                calculate_camera_point(
-                    counts[0], counts[1], raw_data.locations[0].polynomial_index
-                ),
-                calculate_camera_point(
-                    counts[0], counts[1], raw_data.locations[1].polynomial_index
-                ),
-            ],
-            dtype=np.float64,
-        )
-
-        pts_cam_new = np.hstack((camera_points, np.ones((len(camera_points), 1))))
-        reprojected_points = np.matmul(self.calibration_data.m, pts_cam_new[0].T)
-
-        return DotBotLH2Position(
-            x=reprojected_points[0] / reprojected_points[2],
-            y=1 - reprojected_points[1] / reprojected_points[2],
-            z=0.0,
-        )
+        self.logger.info("Calibration done", data=self.calibration)
