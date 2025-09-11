@@ -509,18 +509,12 @@ class Controller:
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
         # Controller is not interested by command messages received
-
-        print("payload type: ", frame.packet.payload_type)
-
         if frame.packet.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
         ]:
             return
         source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
-
-        print("source: ", source)
-
         logger = self.logger.bind(
             source=source,
             payload_type=PayloadType(frame.packet.payload_type).name,
@@ -559,8 +553,6 @@ class Controller:
             # reload if a new dotbot comes in
             logger.info("New dotbot")
             notification_cmd = DotBotNotificationCommand.RELOAD
-            payload = PayloadCommandRgbLed(red=0, green=255, blue=0)
-            self.send_payload(int(source, 16), payload=payload)
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
@@ -569,14 +561,14 @@ class Controller:
             )
             dotbot.application = ApplicationType(frame.packet.payload.application)
             dotbot.calibrated = bool(frame.packet.payload.calibrated)
-            logger.info("Advertisement received")
+            self.dotbots.update({dotbot.address: dotbot})
+            logger.debug("Advertisement received")
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             if (
                 dotbot.calibrated is False
                 and self.lh2_manager.state == LighthouseManagerState.Calibrated
             ):
                 # Send calibration to new dotbot if the localization system is calibrated
-                self.dotbots.update({dotbot.address: dotbot})
                 # Check if robot has lighthouse calibration
                 matrix_bytes = bytearray()
                 for bytes_block in [
@@ -589,9 +581,8 @@ class Controller:
                     index=0,
                     homography_matrix=matrix_bytes,
                 )
-                self.logger.info(
-                    "Send calibration data", source=source, payload=payload
-                )
+                self.logger.info("Send calibration data", payload=payload)
+                self.dotbots.update({dotbot.address: dotbot})
                 self.send_payload(int(source, 16), payload=payload)
 
         if (
@@ -610,8 +601,6 @@ class Controller:
             )
 
         if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
-            print("x pos: ", frame.packet.payload.pos_x)
-            print("y pos: ", frame.packet.payload.pos_y)
             new_position = DotBotLH2Position(
                 x=frame.packet.payload.pos_x / 1e6,
                 y=frame.packet.payload.pos_y / 1e6,
@@ -621,12 +610,30 @@ class Controller:
             dotbot.lh2_position = new_position
             dotbot.position_history.append(new_position)
             notification_cmd = DotBotNotificationCommand.UPDATE
-            print(f"dotbot.position_history: {len(dotbot.position_history)}")
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
+            self.logger.info(
+                "Received DotBot Data",
+                direction=dotbot.direction,
+                X=new_position.x,
+                Y=new_position.y,
+            )
 
         if frame.packet.payload_type == PayloadType.LH2_RAW_DATA:
             self.lh2_manager.last_raw_data = frame.packet.payload
+            self.logger.debug(
+                "Received LH2 Raw Data",
+                location_1_bits=self.lh2_manager.last_raw_data.locations[0].bits,
+                location_1_index=self.lh2_manager.last_raw_data.locations[
+                    0
+                ].polynomial_index,
+                location_1_offset=self.lh2_manager.last_raw_data.locations[0].offset,
+                location_2_bits=self.lh2_manager.last_raw_data.locations[1].bits,
+                location_2_index=self.lh2_manager.last_raw_data.locations[
+                    1
+                ].polynomial_index,
+                location_2_offset=self.lh2_manager.last_raw_data.locations[1].offset,
+            )
 
         if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
             logger.info(
