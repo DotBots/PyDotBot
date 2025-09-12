@@ -112,23 +112,6 @@ class LighthouseManagerState(Enum):
     Calibrated = 3
 
 
-CALIBRATION_HEADER_HEADER = """// Auto-generated file, do not edit!
-#ifndef __LH2_CALIBRATION_H
-#define __LH2_CALIBRATION_H
-
-#include "localization.h"
-
-#define LH2_CALIBRATION_IS_VALID    (1)
-
-static const int32_t lh2_calibration_matrix[3][3] = {
-"""
-
-CALIBRATION_HEADER_FOOTER = """};
-
-#endif // __LH2_CALIBRATION_H
-"""
-
-
 class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
@@ -290,21 +273,6 @@ class LighthouseManager:
         # Store calibration data as pickle for later reload
         with open(self.calibration_output_path, "wb") as output_file:
             pickle.dump(self.calibration, output_file)
-
-        # Store homography matrix as C header to use in SwarmIT bootloader
-        header_path = CALIBRATION_DIR / "lh2_calibration.h"
-        with open(header_path, "w") as header_file:
-            header_file.write(CALIBRATION_HEADER_HEADER)
-            for i in range(3):
-                header_file.write("    {")
-                for j in range(3):
-                    header_file.write(
-                        f"{int(self.calibration.homography_matrix[i][j] * 1e6):d}"
-                    )
-                    if j < 2:
-                        header_file.write(", ")
-                header_file.write("},\n")
-            header_file.write(CALIBRATION_HEADER_FOOTER)
 
         self.state = LighthouseManagerState.Calibrated
         self.logger.info("Calibration done", data=self.calibration)
