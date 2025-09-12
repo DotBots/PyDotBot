@@ -14,7 +14,7 @@ import time
 import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import serial
 import uvicorn
@@ -72,7 +72,6 @@ from dotbot.protocol import (
     PayloadCommandXgoAction,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
-    PayloadLh2CalibrationHomography,
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
@@ -493,17 +492,6 @@ class Controller:
                 )
             await asyncio.sleep(1)
 
-    def _compute_lh2_position(self, frame: Frame) -> Optional[DotBotLH2Position]:
-        if frame.packet.payload_type not in (
-            PayloadType.LH2_RAW_DATA,
-            PayloadType.DOTBOT_DATA,
-        ):
-            return None
-        self.lh2_manager.last_raw_data = frame.packet.payload
-        if self.lh2_manager.state != LighthouseManagerState.Calibrated:
-            return None
-        return self.lh2_manager.compute_position(frame.packet.payload)
-
     def handle_received_frame(
         self, frame: Frame
     ):  # pylint:disable=too-many-branches,too-many-statements
@@ -569,21 +557,11 @@ class Controller:
                 and self.lh2_manager.state == LighthouseManagerState.Calibrated
             ):
                 # Send calibration to new dotbot if the localization system is calibrated
-                # Check if robot has lighthouse calibration
-                matrix_bytes = bytearray()
-                for bytes_block in [
-                    int(n * 1e6).to_bytes(4, "little", signed=True)
-                    for n in self.lh2_manager.calibration_data.m.ravel()
-                ]:
-                    matrix_bytes += bytes_block
-                # Prepare homography matrix and send it to the robot
-                payload = PayloadLh2CalibrationHomography(
-                    index=0,
-                    homography_matrix=matrix_bytes,
+                self.logger.info(
+                    "Send calibration data", payload=self.lh2_manager.calibration
                 )
-                self.logger.info("Send calibration data", payload=payload)
                 self.dotbots.update({dotbot.address: dotbot})
-                self.send_payload(int(source, 16), payload=payload)
+                self.send_payload(int(source, 16), payload=self.lh2_manager.calibration)
 
         if (
             frame.packet.payload_type
