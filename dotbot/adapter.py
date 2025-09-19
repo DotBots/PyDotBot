@@ -56,7 +56,7 @@ class SerialAdapter(GatewayAdapterBase):
                 try:
                     frame = Frame.from_bytes(data)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing frame: {exc}")
+                    LOGGER.debug(f"Error parsing frame: {exc}")
                     return
             except Exception as _:
                 return
