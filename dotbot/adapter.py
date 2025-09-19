@@ -111,14 +111,14 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug("Node joined", event_data)
+                LOGGER.debug(f"Node joined: {event_data.address:016x}")
             elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug("Node left", event_data)
+                LOGGER.debug(f"Node left: {event_data.address:016x}")
             elif event == EdgeEvent.NODE_DATA:
                 try:
                     packet = Packet.from_bytes(event_data.payload)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing packet: {exc}")
+                    LOGGER.debug(f"Error parsing packet: {exc}")
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
@@ -168,14 +168,14 @@ class MarilibCloudAdapter(GatewayAdapterBase):
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug("Node joined:", event_data)
+                LOGGER.debug(f"Node joined: {event_data.address:016x}")
             elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug("Node left:", event_data)
+                LOGGER.debug(f"Node left: {event_data.address:016x}")
             elif event == EdgeEvent.NODE_DATA:
                 try:
                     packet = Packet.from_bytes(event_data.payload)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing packet: {exc}")
+                    LOGGER.debug(f"Error parsing packet: {exc}")
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
