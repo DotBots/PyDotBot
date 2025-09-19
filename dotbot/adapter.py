@@ -56,7 +56,7 @@ class SerialAdapter(GatewayAdapterBase):
                 try:
                     frame = Frame.from_bytes(data)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing frame: {exc}")
+                    LOGGER.debug(f"Error parsing frame: {exc}")
                     return
             except Exception as _:
                 return
@@ -118,7 +118,7 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
                 try:
                     packet = Packet.from_bytes(event_data.payload)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing packet: {exc}")
+                    LOGGER.debug(f"Error parsing packet: {exc}")
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
@@ -175,7 +175,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                 try:
                     packet = Packet.from_bytes(event_data.payload)
                 except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.error(f"Error parsing packet: {exc}")
+                    LOGGER.debug(f"Error parsing packet: {exc}")
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
