@@ -17,3 +17,4 @@ node_modules/
 !*/**/.env.test
 venv
 .venv311
+.venv
