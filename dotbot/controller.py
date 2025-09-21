@@ -24,7 +24,6 @@ import websockets
 from dotbot_utils.protocol import Frame, Payload
 from dotbot_utils.serial_interface import SerialInterfaceException
 from fastapi import WebSocket
-from haversine import Unit, haversine
 from pydantic import ValidationError
 from pydantic.tools import parse_obj_as
 from qrkey import QrkeyController, SubscriptionModel, qrkey_settings
@@ -135,9 +134,19 @@ def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
 
 def gps_distance(last: DotBotGPSPosition, new: DotBotGPSPosition) -> float:
     """Helper function that computes the distance between 2 GPS positions in m."""
-    return haversine(
-        (last.latitude, last.longitude), (new.latitude, new.longitude), unit=Unit.METERS
-    )
+    # Simple haversine formula implementation
+    lat1, lon1 = math.radians(last.latitude), math.radians(last.longitude)
+    lat2, lon2 = math.radians(new.latitude), math.radians(new.longitude)
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+
+    # Earth's radius in meters
+    earth_radius = 6371000
+    return earth_radius * c
 
 
 class Controller:
