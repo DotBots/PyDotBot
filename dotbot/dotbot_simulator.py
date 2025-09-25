@@ -168,8 +168,8 @@ class DotBotSimulator:
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-                self.v_left = frame.payload.left_y
-                self.v_right = frame.payload.right_y
+                self.v_left = frame.packet.payload.left_y
+                self.v_right = frame.packet.payload.right_y
 
                 if self.v_left > 127:
                     self.v_left = self.v_left - 256
@@ -178,8 +178,8 @@ class DotBotSimulator:
 
             elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-                self.waypoint_threshold = frame.payload.threshold * 1000
-                self.waypoints = frame.payload.waypoints
+                self.waypoint_threshold = frame.packet.payload.threshold * 1000
+                self.waypoints = frame.packet.payload.waypoints
                 if self.waypoints:
                     self.controller_mode = DotBotSimulatorMode.AUTOMATIC
 

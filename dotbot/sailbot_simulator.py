@@ -356,20 +356,20 @@ class SailBotSimulator:
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.rudder_slider = (
-                    frame.payload.left_x - 256
-                    if frame.payload.left_x > 127
-                    else frame.payload.left_x
+                    frame.packet.payload.left_x - 256
+                    if frame.packet.payload.left_x > 127
+                    else frame.packet.payload.left_x
                 )
                 self.sail_slider = (
-                    frame.payload.right_y - 256
-                    if frame.payload.right_y > 127
-                    else frame.payload.right_y
+                    frame.packet.payload.right_y - 256
+                    if frame.packet.payload.right_y > 127
+                    else frame.packet.payload.right_y
                 )
 
             if frame.payload_type == PayloadType.GPS_WAYPOINTS:
                 self.operation_mode = SailBotSimulatorMode.MANUAL
-                self.waypoint_threshold = frame.payload.threshold
-                self.waypoints = frame.payload.waypoints
+                self.waypoint_threshold = frame.packet.payload.threshold
+                self.waypoints = frame.packet.payload.waypoints
                 if self.waypoints:
                     self.operation_mode = SailBotSimulatorMode.AUTOMATIC
 
