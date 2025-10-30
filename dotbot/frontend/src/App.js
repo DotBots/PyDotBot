@@ -15,7 +15,6 @@ const App = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [message, setMessage] = useState(null);
   const [dotbots, setDotbots] = useState([]);
-  const [calibrationState, setCalibrationState] = useState("unknown");
 
   const [ready, clientId, mqttData, setMqttData, publish, publishCommand, sendRequest] = useQrKey({
     rootTopic: process.env.REACT_APP_ROOT_TOPIC,
@@ -24,13 +23,6 @@ const App = () => {
     setSearchParams: setSearchParams,
   });
 
-  const updateCalibrationState = useCallback((state) => {
-    setCalibrationState(state);
-    if (state === "done") {
-      setTimeout(sendRequest, 250, ({request: RequestType.LH2CalibrationState, reply: `${clientId}`}));
-    }
-  }, [setCalibrationState, sendRequest, clientId]);
-
   const handleMessage = useCallback(() => {
     log.info(`Handle received message: ${JSON.stringify(message)}`);
     let payload = message.payload;
@@ -38,8 +30,6 @@ const App = () => {
       // Received the list of dotbots
       if (payload.request === RequestType.DotBots) {
         setDotbots(payload.data);
-      } else if (payload.request === RequestType.LH2CalibrationState) {
-        setCalibrationState(payload.data.state);
       }
     } else if (message.topic === `/notify`) {
       // Process notifications
@@ -79,14 +69,13 @@ const App = () => {
       }
     }
     setMessage(null);
-  },[clientId, dotbots, setDotbots, setCalibrationState, sendRequest, message, setMessage]
+  },[clientId, dotbots, setDotbots, sendRequest, message, setMessage]
   );
 
   useEffect(() => {
     if (clientId) {
-      // Ask for the list of dotbots and the LH2 calibration state at startup
+      // Ask for the list of dotbots at startup
       setTimeout(sendRequest, 100, ({request: RequestType.DotBots, reply: `${clientId}`}));
-      setTimeout(sendRequest, 300, ({request: RequestType.LH2CalibrationState, reply: `${clientId}`}));
     }
   }, [sendRequest, clientId]
   );
@@ -109,8 +98,6 @@ const App = () => {
           updateDotbots={setDotbots}
           publishCommand={publishCommand}
           publish={publish}
-          calibrationState={calibrationState}
-          updateCalibrationState={updateCalibrationState}
         />
       </div>
     :

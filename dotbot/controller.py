@@ -10,10 +10,12 @@
 import asyncio
 import json
 import math
+import os
 import time
 import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List
 
 import serial
@@ -42,11 +44,9 @@ from dotbot.adapter import (
     MarilibEdgeAdapter,
     SerialAdapter,
 )
-from dotbot.lighthouse2 import LighthouseManager, LighthouseManagerState
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
-    DotBotCalibrationIndexModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -72,6 +72,7 @@ from dotbot.protocol import (
     PayloadCommandXgoAction,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
+    PayloadLh2CalibrationHomography,
     PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
@@ -92,6 +93,18 @@ LOST_DELAY = 5  # seconds
 DEAD_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
+CALIBRATION_PATH = Path.home() / ".dotbot" / "calibration.out"
+
+
+def load_calibration() -> PayloadLh2CalibrationHomography:
+    if not os.path.exists(CALIBRATION_PATH):
+        return None
+    with open(CALIBRATION_PATH, "rb") as calibration_file:
+        index = int.from_bytes(calibration_file.read(4), "little", signed=False)
+        homography_matrix = calibration_file.read(36)
+    return PayloadLh2CalibrationHomography(
+        index=index, homography_matrix=homography_matrix
+    )
 
 
 class ControllerException(Exception):
@@ -163,8 +176,7 @@ class Controller:
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
-        self.lh2_manager = LighthouseManager()
-
+        self.lh2_calibration = load_calibration()
         self.api = api
         api.controller = self
         self.qrkey = None
@@ -186,8 +198,6 @@ class Controller:
                 topic="/command/+/+/+/clear_position_history",
                 callback=self.on_command_clear_position_history,
             ),
-            SubscriptionModel(topic="/lh2/add", callback=self.on_lh2_add),
-            SubscriptionModel(topic="/lh2/start", callback=self.on_lh2_start),
         ]
 
     def on_command_move_raw(self, topic, payload):
@@ -375,33 +385,6 @@ class Controller:
             ),
         )
 
-    def on_lh2_add(self, topic, payload):
-        """Called when an lh2 calibration point is added."""
-        logger = self.logger.bind(lh2="add", topic=topic)
-        topic_split = topic.split("/")[1:]
-        if len(topic_split) != 2 or topic_split[-1] != "add":
-            logger.warning("Invalid lh2 add topic")
-            return
-        try:
-            payload = DotBotCalibrationIndexModel(**payload)
-        except ValidationError as exc:
-            self.logger.warning(f"Invalid calibration index payload: {exc.errors()}")
-            return
-        logger = self.logger.bind(**payload.model_dump())
-        logger.info("Add calibration point")
-        self.lh2_manager.add_calibration_point(payload.index)
-
-    def on_lh2_start(self, topic, _):
-        """Called to start the lh2 calibration."""
-        logger = self.logger.bind(lh2="start", topic=topic)
-        topic_split = topic.split("/")[1:]
-        if len(topic_split) != 2 or topic_split[-1] != "start":
-            logger.warning("Invalid lh2 start topic")
-            return
-        logger.info("Start calibration")
-        self.lh2_manager.compute_calibration()
-        logger.info("Calibration complete")
-
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
         logger.info("Request received", **payload)
@@ -421,13 +404,6 @@ class Controller:
             message = DotBotReplyModel(
                 request=DotBotRequestType.DOTBOTS,
                 data=data,
-            ).model_dump(exclude_none=True)
-            self.qrkey.publish(reply_topic, message)
-        elif request.request == DotBotRequestType.LH2_CALIBRATION_STATE:
-            logger.info("Publish LH2 state")
-            message = DotBotReplyModel(
-                request=DotBotRequestType.LH2_CALIBRATION_STATE,
-                data=self.lh2_manager.state_model.model_dump(),
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
         else:
@@ -552,16 +528,11 @@ class Controller:
             self.dotbots.update({dotbot.address: dotbot})
             logger.debug("Advertisement received")
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
-            if (
-                dotbot.calibrated is False
-                and self.lh2_manager.state == LighthouseManagerState.Calibrated
-            ):
+            if dotbot.calibrated is False and self.lh2_calibration is not None:
                 # Send calibration to new dotbot if the localization system is calibrated
-                self.logger.info(
-                    "Send calibration data", payload=self.lh2_manager.calibration
-                )
+                self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 self.dotbots.update({dotbot.address: dotbot})
-                self.send_payload(int(source, 16), payload=self.lh2_manager.calibration)
+                self.send_payload(int(source, 16), payload=self.lh2_calibration)
 
         if (
             frame.packet.payload_type
@@ -595,30 +566,6 @@ class Controller:
                 direction=dotbot.direction,
                 X=new_position.x,
                 Y=new_position.y,
-            )
-
-        if frame.packet.payload_type == PayloadType.LH2_RAW_DATA:
-            self.lh2_manager.last_raw_data = frame.packet.payload
-            self.logger.debug(
-                "Received LH2 Raw Data",
-                location_1_bits=self.lh2_manager.last_raw_data.locations[0].bits,
-                location_1_index=self.lh2_manager.last_raw_data.locations[
-                    0
-                ].polynomial_index,
-                location_1_offset=self.lh2_manager.last_raw_data.locations[0].offset,
-                location_2_bits=self.lh2_manager.last_raw_data.locations[1].bits,
-                location_2_index=self.lh2_manager.last_raw_data.locations[
-                    1
-                ].polynomial_index,
-                location_2_offset=self.lh2_manager.last_raw_data.locations[1].offset,
-            )
-
-        if frame.packet.payload_type == PayloadType.LH2_PROCESSED_DATA:
-            logger.info(
-                "lh2-processed",
-                poly=frame.packet.payload.polynomial_index,
-                lfsr_index=frame.packet.payload.lfsr_index,
-                db_time=frame.packet.payload.timestamp_us,
             )
 
         if frame.packet.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:

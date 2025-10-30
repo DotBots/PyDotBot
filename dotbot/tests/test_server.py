@@ -1,12 +1,11 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.models import (
-    DotBotCalibrationStateModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -38,8 +37,6 @@ def controller():
     api.controller.header.destination = MagicMock()
     api.controller.dotbots = MagicMock()
     api.controller.get_dotbots = MagicMock()
-    api.controller.lh2_manager = MagicMock()
-    api.controller.lh2_manager.state_model = DotBotCalibrationStateModel(state="test")
     api.controller.notify_clients = AsyncMock()
     api.controller.send_payload = MagicMock()
     api.controller.settings = MagicMock()
@@ -552,31 +549,6 @@ async def test_clear_dotbot_position_history(dotbots, address, code, found):
     assert response.status_code == code
     if found is True:
         assert api.controller.dotbots[address].position_history == []
-
-
-@pytest.mark.asyncio
-async def test_lh2_calibration():
-    response = await client.get("/controller/lh2/calibration")
-    assert response.json() == DotBotCalibrationStateModel(state="test").model_dump()
-    assert response.status_code == 200
-
-    with patch(
-        "dotbot.server.api.controller.lh2_manager.add_calibration_point"
-    ) as point:
-        response = await client.post(
-            "/controller/lh2/calibration/2",
-        )
-        assert response.status_code == 200
-        point.assert_called_with(2)
-
-    with patch(
-        "dotbot.server.api.controller.lh2_manager.compute_calibration"
-    ) as calibration:
-        response = await client.put(
-            "/controller/lh2/calibration",
-        )
-        assert response.status_code == 200
-        calibration.assert_called_once()
 
 
 @pytest.mark.asyncio

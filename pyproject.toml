@@ -1,16 +1,12 @@
 [build-system]
 requires = [
     "hatchling>=1.4.1",
-    "cibuildwheel",
-    "cmake",
-    "ninja",
 ]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
     "dotbot/frontend/*",
-    "dotbot/lib/*",
     "*.py"
 ]
 exclude = [
@@ -22,9 +18,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist.hooks.custom]
 path = "utils/hooks/sdist.py"
-
-[tool.hatch.build.targets.wheel.hooks.custom]
-path = "utils/hooks/wheel.py"
 
 [project]
 name = "pydotbot"
@@ -43,7 +36,6 @@ dependencies = [
     "haversine      >= 2.8.0",
     "httpx          >= 0.27.2",
     "numpy          >= 2.1.1",
-    "opencv-python  >= 4.12.0.88",
     "pygame         >= 2.6.1",
     "pynput         >= 1.7.6",
     "pyserial       >= 3.5",
@@ -76,7 +68,6 @@ dotbot-controller = "dotbot.controller_app:main"
 dotbot-edge-gateway = "dotbot.edge_gateway_app:main"
 dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
-dotbot-calibration-exporter = "dotbot.calibration_exporter:main"
 
 [tool.ruff]
 lint.select = ["E", "F"]
