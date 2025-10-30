@@ -2,8 +2,6 @@ import React from "react";
 import { useState } from "react";
 import { ApplicationType, inactiveAddress } from "./utils/constants";
 
-import logger from './utils/logger';
-const log = logger.child({module: 'dotbot-map'});
 
 const DotBotsWaypoint = (props) => {
   return (
