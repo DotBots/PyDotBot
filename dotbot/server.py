@@ -14,7 +14,6 @@ from fastapi.staticfiles import StaticFiles
 
 from dotbot import pydotbot_version
 from dotbot.models import (
-    DotBotCalibrationStateModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -208,38 +207,6 @@ async def dotbot(address: str, query: DotBotQueryModel = Depends()):
 async def dotbots(query: DotBotQueryModel = Depends()):
     """Dotbots HTTP GET handler."""
     return api.controller.get_dotbots(query)
-
-
-@api.post(
-    path="/controller/lh2/calibration/{point_idx}",
-    summary="Trigger the acquisition of one LH2 point",
-    tags=["dotbots"],
-)
-async def controller_add_lh2_calibration_point(point_idx: int):
-    """LH2 calibration, add single calibration point."""
-    api.controller.lh2_manager.add_calibration_point(point_idx)
-
-
-@api.put(
-    path="/controller/lh2/calibration",
-    summary="Trigger a computation of the LH2 calibration",
-    tags=["dotbots"],
-)
-async def controller_apply_lh2_calibration():
-    """Apply LH2 calibration."""
-    api.controller.lh2_manager.compute_calibration()
-
-
-@api.get(
-    path="/controller/lh2/calibration",
-    response_model=DotBotCalibrationStateModel,
-    response_model_exclude_none=True,
-    summary="Return the LH2 calibration state",
-    tags=["dotbots"],
-)
-async def controller_get_lh2_calibration():
-    """LH2 calibration GET handler."""
-    return api.controller.lh2_manager.state_model
 
 
 @api.websocket("/controller/ws/status")

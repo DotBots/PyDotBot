@@ -1,16 +1,7 @@
 import React from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApplicationType, inactiveAddress } from "./utils/constants";
 
-import logger from './utils/logger';
-const log = logger.child({module: 'dotbot-map'});
-
-const referencePoints = [
-  {x: -0.1, y: 0.1},
-  {x: 0.1, y: 0.1},
-  {x: -0.1, y: -0.1},
-  {x: 0.1, y: -0.1},
-]
 
 const DotBotsWaypoint = (props) => {
   return (
@@ -165,28 +156,6 @@ const DotBotsMapPoint = (props) => {
 export const DotBotsMap = (props) => {
 
   const [ displayGrid, setDisplayGrid ] = useState(true);
-  const [ pointsChecked, setPointsChecked ] = useState([false, false, false, false]);
-
-  const addCalibrationPointTopic = "lh2/add";
-  const startCalibrationTopic = "lh2/start";
-
-  const pointClicked = async (index) => {
-    let pointsCheckedTmp = pointsChecked.slice();
-    pointsCheckedTmp[index] = true;
-    setPointsChecked(pointsCheckedTmp);
-    await props.publish(addCalibrationPointTopic, { index: index });
-  };
-
-  const calibrateClicked = async () => {
-    log.info(`Calibrate clicked ${props.calibrationState}`)
-    if (["unknown", "done"].includes(props.calibrationState)) {
-      setPointsChecked([false, false, false, false]);
-      props.updateCalibrationState("running");
-    } else if (props.calibrationState === "ready") {
-      props.updateCalibrationState("done");
-      await props.publish(startCalibrationTopic, "");
-    }
-  };
 
   const mapClicked = (event) => {
     // const { farthestViewportElement: svgRoot } = event.target;
@@ -197,43 +166,12 @@ export const DotBotsMap = (props) => {
     props.mapClicked(x / props.mapSize, y / props.mapSize);
   };
 
-  const coordinateToPixel = (coordinate) => {
-    return mapSize * (coordinate + 0.5) - 5;
-  };
-
   const updateDisplayGrid = (event) => {
     setDisplayGrid(event.target.checked);
   };
 
-  useEffect(() => {
-    if (pointsChecked.every(v => v === true)) {
-      props.updateCalibrationState("ready");
-      return;
-    }
-
-    if (["unknown", "done"].includes(props.calibrationState) && pointsChecked.every(v => v === true)) {
-      setPointsChecked([false, false, false, false]);
-    }
-  }, [
-    pointsChecked, setPointsChecked,
-    props
-  ]);
-
-  let calibrationButtonLabel = "Start calibration";
-  let calibrationButtonClass = "btn-primary";
-  if (props.calibrationState === "running") {
-    calibrationButtonLabel = <><span className="spinner-border spinner-border-sm text-light me-2 mt-1" role="status"></span>Calibration in progress...</>;
-    calibrationButtonClass = "btn-secondary disabled";
-  } else if (props.calibrationState === "ready") {
-    calibrationButtonLabel = "Apply calibration";
-    calibrationButtonClass = "btn-success";
-  } else if (props.calibrationState === "done") {
-    calibrationButtonLabel = "Update calibration";
-  }
-
   const mapSize = props.mapSize;
   const gridSize = `${mapSize + 1}px`;
-  const calibrationTextWidth = `${mapSize}px`;
 
   return (
     <div className={`${props.dotbots && props.dotbots.length > 0 ? "visible" : "invisible"}`}>
@@ -259,15 +197,6 @@ export const DotBotsMap = (props) => {
                   .filter(dotbot => dotbot.lh2_position)
                   .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} {...props} />)
               }
-              {
-                ["running", "ready"].includes(props.calibrationState) && (
-                  <>
-                  {referencePoints.map((point, index) => (
-                    <rect key={index} x={coordinateToPixel(point.x)} y={coordinateToPixel(point.y * -1)} width="10" height="10" fill={pointsChecked[index] ? "green" : "grey"} style={{ cursor: "pointer" }} onClick={() => pointClicked(index)}><title>{index + 1}</title></rect>
-                  ))}
-                  </>
-                )
-              }
             </svg>
           </div>
         </div>
@@ -291,17 +220,6 @@ export const DotBotsMap = (props) => {
             <label htmlFor="dotbotHistorySize">Position history size:</label>
             <input className="form-control my-1 mr-sm-2" type="number" id="dotbotHistorySize" min="10" max="1000" value={props.historySize} onChange={event => props.setHistorySize(event.target.value)}/>
           </form>
-          <div className="d-flex">
-            <button className={`btn btn-sm ${calibrationButtonClass}`} onClick={calibrateClicked}>{calibrationButtonLabel}</button>
-          </div>
-          {props.calibrationState === "running" && (
-          <div className="d-flex">
-            <p style={{ width: calibrationTextWidth }}>
-              Place a DotBot on the marks on the ground and once done, click the corresponding rectangle on the grid. Repeat the operation for each marks.
-              Once all rectangles are green, click "Apply calibration".
-            </p>
-          </div>
-          )}
         </div>
       </div>
     </div>

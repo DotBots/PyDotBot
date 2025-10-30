@@ -80,16 +80,6 @@ RGB LED.
 If the webapp is not working, press `Ctrl + L`, type `about:config`,
 and set `network.http.http2.websockets` to `false`.
 
-### Lighthouse positioning
-
-The DotBots firmware comes with a cheap indoor positioning system based on
-[Valve Lighthouse 2](https://www.valvesoftware.com/en/index/base-stations).
-
-To get the positioning to work and the DotBots to be tracked in real-time the
-system must be first calibrated by clicking the "Start calibration" or
-"Update calibration" button below the grid map and then by following the
-instructions there.
-
 ## Tests
 
 To run the tests, install [tox](https://pypi.org/project/tox/) and use it:

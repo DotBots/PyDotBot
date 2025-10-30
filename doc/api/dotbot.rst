@@ -19,7 +19,6 @@ Submodules
    dotbot.hdlc
    dotbot.joystick
    dotbot.keyboard
-   dotbot.lighthouse2
    dotbot.logger
    dotbot.models
    dotbot.protocol

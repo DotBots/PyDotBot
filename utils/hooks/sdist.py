@@ -13,7 +13,7 @@ import sys
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 sys.path.append(os.path.dirname(__file__))
-from pydotbot_utils import build_frontend, build_lh2  # noqa: E402
+from pydotbot_utils import build_frontend  # noqa: E402
 
 
 class CustomBuildHook(BuildHookInterface):
@@ -24,4 +24,3 @@ class CustomBuildHook(BuildHookInterface):
         if os.getenv("SKIP_SDIST_HOOK") is not None:
             return
         build_frontend(self.root)
-        build_lh2(self.root)

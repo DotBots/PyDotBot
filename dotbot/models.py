@@ -25,18 +25,6 @@ class DotBotAddressModel(BaseModel):
     address: str
 
 
-class DotBotCalibrationStateModel(BaseModel):
-    """Model that holds the controller LH2 calibration state."""
-
-    state: str
-
-
-class DotBotCalibrationIndexModel(BaseModel):
-    """Model that holds the controller LH2 calibration index."""
-
-    index: int
-
-
 class MqttPinCodeModel(BaseModel):
     """Pin code used to derive crypto keys for MQTT."""
 
@@ -145,7 +133,6 @@ class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
     DOTBOTS: int = 0
-    LH2_CALIBRATION_STATE: int = 1
 
 
 class DotBotRequestModel(BaseModel):
