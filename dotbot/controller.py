@@ -748,6 +748,7 @@ class Controller:
         except SystemExit:
             pass
         finally:
+            self.adapter.close()
             self.logger.info("Stopping controller")
             for task in tasks:
                 self.logger.info(f"Cancelling task '{task.get_name()}'")

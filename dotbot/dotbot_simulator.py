@@ -57,10 +57,11 @@ class Waypoint:
     y: int
 
 
-class DotBotSimulator:
+class DotBotSimulator(threading.Thread):
     """Simulator class for the dotbot."""
 
     def __init__(self, address):
+        super().__init__(daemon=True)
         self.address = address
         self.pos_x = 0.5 * 1e6
         self.pos_y = 0.5 * 1e6
@@ -75,6 +76,8 @@ class DotBotSimulator:
 
         self.controller_mode: DotBotSimulatorMode = DotBotSimulatorMode.MANUAL
         self.logger = LOGGER.bind(context=__name__, address=self.address)
+        self.running = True
+        self.start()
 
     @property
     def header(self):
@@ -143,6 +146,9 @@ class DotBotSimulator:
             self.pos_x, self.pos_y, self.theta = diff_drive_bot(
                 self.pos_x, self.pos_y, self.theta, self.v_right, self.v_left
             )
+        self.logger.debug(
+            "DotBot simulator update", x=self.pos_x, y=self.pos_y, theta=self.theta
+        )
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
@@ -152,8 +158,8 @@ class DotBotSimulator:
                 PayloadDotBotAdvertisement(
                     calibrated=True,
                     direction=int(self.theta * 180 / pi + 90),
-                    pos_x=int(self.pos_x),
-                    pos_y=int(self.pos_y),
+                    pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
+                    pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
                     pos_z=0,
                     battery=3000,
                 )
@@ -186,39 +192,52 @@ class DotBotSimulator:
                 if self.waypoints:
                     self.controller_mode = DotBotSimulatorMode.AUTOMATIC
 
+    def stop(self):
+        self.logger.info("Stopping DotBot simulator...")
+        self.running = False
+        self.join()
+
+    def run(self):
+        """Update the state of the dotbot simulator."""
+        while self.running is True:
+            self.update()
+            time.sleep(0.1)
+
 
 class DotBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
 
     def __init__(self, callback: Callable):
+        self.callback = callback
+        self.running = True
+        super().__init__(daemon=True)
         self.dotbots = [
             DotBotSimulator("1234567890123456"),
             DotBotSimulator("4987654321098765"),
         ]
-
-        self.callback = callback
-        super().__init__(daemon=True)
         self.start()
         self.logger = LOGGER.bind(context=__name__)
         self.logger.info("DotBot Simulation Started")
 
     def run(self):
         """Listen continuously at each byte received on the fake serial interface."""
-        advertising_intervals = [0] * len(self.dotbots)
         for dotbot in self.dotbots:
             for byte in dotbot.advertise():
                 self.callback(byte.to_bytes(length=1, byteorder="little"))
-        time.sleep(0.5)
+        time.sleep(0.1)
 
-        while 1:
-            for idx, dotbot in enumerate(self.dotbots):
-                dotbot.update()
-                time.sleep(0.1 / len(self.dotbots))
-                advertising_intervals[idx] += 1
-                if advertising_intervals[idx] == 2:
-                    for byte in dotbot.advertise():
-                        self.callback(byte.to_bytes(length=1, byteorder="little"))
-                    advertising_intervals[idx] = 0
+        while self.running:
+            for dotbot in self.dotbots:
+                for byte in dotbot.advertise():
+                    self.callback(byte.to_bytes(length=1, byteorder="little"))
+            time.sleep(0.5)
+
+    def stop(self):
+        self.logger.info("Stopping DotBot Simulation...")
+        self.running = False
+        for dotbot in self.dotbots:
+            dotbot.stop()
+        self.join()
 
     def flush(self):
         """Flush fake serial output."""
