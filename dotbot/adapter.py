@@ -94,7 +94,7 @@ class SerialAdapter(GatewayAdapterBase):
             packet=Packet.from_payload(payload),
         )
         self.serial.write(hdlc_encode(frame.to_bytes()))
-        self.serial.serial.flush()
+        self.serial.flush()
 
 
 class MarilibEdgeAdapter(GatewayAdapterBase):

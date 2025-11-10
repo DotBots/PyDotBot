@@ -458,6 +458,10 @@ class SailBotSimulatorSerialInterface(threading.Thread):
                 next_control_time = current_time + CONTROL_DELTA_T
             time.sleep(0.02)
 
+    def flush(self):
+        """Flush fake serial output."""
+        pass
+
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""
         for sailbot in self.sailbots:

@@ -70,6 +70,10 @@ class SerialInterface(threading.Thread):
         self.serial.close()
         self.join()
 
+    def flush(self):
+        """Flush serial output."""
+        self.serial.flush()
+
     def write(self, bytes_):
         """Write bytes on serial."""
         # Send 64 bytes at a time
