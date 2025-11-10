@@ -23,11 +23,9 @@ class PayloadType(IntEnum):
 
     CMD_MOVE_RAW = 0x00
     CMD_RGB_LED = 0x01
-    LH2_RAW_DATA = 0x02
-    LH2_LOCATION = 0x03
     ADVERTISEMENT = 0x04
     GPS_POSITION = 0x05
-    DOTBOT_DATA = 0x06
+    DOTBOT_ADVERTISEMENT = 0x06
     CONTROL_MODE = 0x07
     LH2_WAYPOINTS = 0x08
     GPS_WAYPOINTS = 0x09
@@ -192,6 +190,29 @@ class PayloadAdvertisement(Payload):
 
 
 @dataclass
+class PayloadDotBotAdvertisement(Payload):
+    """Dataclass that holds a dotbot advertisement packet."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="calibrated", disp="cal."),
+            PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
+            PayloadFieldMetadata(name="pos_x", disp="x", length=4),
+            PayloadFieldMetadata(name="pos_y", disp="y", length=4),
+            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
+            PayloadFieldMetadata(name="battery", disp="bat.", length=2),
+        ]
+    )
+
+    calibrated: bool = False
+    direction: int = 0xFFFF
+    pos_x: int = 0xFFFFFFFF
+    pos_y: int = 0xFFFFFFFF
+    pos_z: int = 0xFFFFFFFF
+    battery: int = 0
+
+
+@dataclass
 class PayloadCommandMoveRaw(Payload):
     """Dataclass that holds move raw command data fields."""
 
@@ -237,40 +258,6 @@ class PayloadCommandXgoAction(Payload):
         ]
     )
     action: int = 0
-
-
-@dataclass
-class PayloadLh2RawLocation(Payload):
-    """Dataclass that holds LH2 raw location data."""
-
-    metadata: list[PayloadFieldMetadata] = dataclasses.field(
-        default_factory=lambda: [
-            PayloadFieldMetadata(name="bits", length=8),
-            PayloadFieldMetadata(name="polynomial_index", disp="poly", length=1),
-            PayloadFieldMetadata(name="offset", disp="off.", length=1, signed=True),
-        ]
-    )
-
-    bits: int = 0x0000000000000000
-    polynomial_index: int = 0x00
-    offset: int = 0x00
-
-
-@dataclass
-class PayloadLh2RawData(Payload):
-    """Dataclass that holds LH2 raw data."""
-
-    metadata: list[PayloadFieldMetadata] = dataclasses.field(
-        default_factory=lambda: [
-            PayloadFieldMetadata(name="count", disp="len"),
-            PayloadFieldMetadata(name="locations", type_=list, length=0),
-        ]
-    )
-
-    count: int = 0
-    locations: list[PayloadLh2RawLocation] = dataclasses.field(
-        default_factory=lambda: []
-    )
 
 
 @dataclass
@@ -322,25 +309,6 @@ class PayloadLh2CalibrationHomography(Payload):
 
     index: int = 0
     homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
-
-
-@dataclass
-class PayloadDotBotData(Payload):
-    """Dataclass that holds direction and LH2 raw data from DotBot application."""
-
-    metadata: list[PayloadFieldMetadata] = dataclasses.field(
-        default_factory=lambda: [
-            PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
-            PayloadFieldMetadata(name="pos_x", disp="x", length=4),
-            PayloadFieldMetadata(name="pos_y", disp="y", length=4),
-            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
-        ]
-    )
-
-    direction: int = 0xFFFF
-    pos_x: int = 0
-    pos_y: int = 0
-    pos_z: int = 0
 
 
 @dataclass
@@ -466,9 +434,7 @@ PAYLOAD_PARSERS: dict[int, Payload] = {
     PayloadType.CMD_RGB_LED: PayloadCommandRgbLed,
     PayloadType.CMD_XGO_ACTION: PayloadCommandXgoAction,
     PayloadType.LH2_PROCESSED_DATA: PayloadLh2ProcessedLocation,
-    PayloadType.LH2_RAW_DATA: PayloadLh2RawData,
-    PayloadType.LH2_LOCATION: PayloadLH2Location,
-    PayloadType.DOTBOT_DATA: PayloadDotBotData,
+    PayloadType.DOTBOT_ADVERTISEMENT: PayloadDotBotAdvertisement,
     PayloadType.GPS_POSITION: PayloadGPSPosition,
     PayloadType.SAILBOT_DATA: PayloadSailBotData,
     PayloadType.DOTBOT_SIMULATOR_DATA: PayloadDotBotSimulatorData,

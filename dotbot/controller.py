@@ -492,10 +492,10 @@ class Controller:
         )
         notification_cmd = DotBotNotificationCommand.NONE
 
-        if (
-            source not in self.dotbots
-            and frame.packet.payload_type != PayloadType.ADVERTISEMENT
-        ):
+        if source not in self.dotbots and frame.packet.payload_type not in [
+            PayloadType.ADVERTISEMENT,
+            PayloadType.DOTBOT_ADVERTISEMENT,
+        ]:
             logger.info("Ignoring non advertised dotbot")
             return
 
@@ -513,30 +513,56 @@ class Controller:
             dotbot.waypoints = self.dotbots[source].waypoints
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
             dotbot.position_history = self.dotbots[source].position_history
+            dotbot.battery = self.dotbots[source].battery
+            dotbot.calibrated = self.dotbots[source].calibrated
         else:
             # reload if a new dotbot comes in
-            logger.info("New dotbot")
+            logger.info("New robot")
             notification_cmd = DotBotNotificationCommand.RELOAD
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
                 application=ApplicationType(frame.packet.payload.application).name,
-                calibrated=bool(frame.packet.payload.calibrated),
             )
             dotbot.application = ApplicationType(frame.packet.payload.application)
-            dotbot.calibrated = bool(frame.packet.payload.calibrated)
             self.dotbots.update({dotbot.address: dotbot})
             logger.debug("Advertisement received")
+
+        if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
+            logger = logger.bind(application=ApplicationType.DotBot.name)
+            dotbot.calibrated = bool(frame.packet.payload.calibrated)
+            logger.info("Advertisement received", calibrated=bool(dotbot.calibrated))
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             if dotbot.calibrated is False and self.lh2_calibration is not None:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 self.dotbots.update({dotbot.address: dotbot})
                 self.send_payload(int(source, 16), payload=self.lh2_calibration)
+            elif dotbot.calibrated is True:
+                if frame.packet.payload.direction != 0xFFFF:
+                    dotbot.direction = frame.packet.payload.direction
+                new_position = DotBotLH2Position(
+                    x=frame.packet.payload.pos_x / 1e6,
+                    y=frame.packet.payload.pos_y / 1e6,
+                    z=0.0,
+                )
+                if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
+                    dotbot.lh2_position = new_position
+                    dotbot.position_history.append(new_position)
+                    if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
+                        dotbot.position_history.pop(0)
+                dotbot.battery = frame.packet.payload.battery / 1000.0  # mV to V
+                notification_cmd = DotBotNotificationCommand.UPDATE
+                self.logger.debug(
+                    "Advertisement Data",
+                    direction=dotbot.direction,
+                    X=new_position.x,
+                    Y=new_position.y,
+                    battery=dotbot.battery,
+                )
 
         if (
-            frame.packet.payload_type
-            in [PayloadType.DOTBOT_DATA, PayloadType.SAILBOT_DATA]
+            frame.packet.payload_type == PayloadType.SAILBOT_DATA
             and -500 <= frame.packet.payload.direction <= 500
         ):
             dotbot.direction = frame.packet.payload.direction
@@ -548,36 +574,6 @@ class Controller:
                 rudder_angle=dotbot.rudder_angle,
                 sail_angle=dotbot.sail_angle,
             )
-
-        if frame.packet.payload_type == PayloadType.DOTBOT_DATA:
-            new_position = DotBotLH2Position(
-                x=frame.packet.payload.pos_x / 1e6,
-                y=frame.packet.payload.pos_y / 1e6,
-                z=0.0,
-            )
-            dotbot.direction = frame.packet.payload.direction
-            dotbot.lh2_position = new_position
-            dotbot.position_history.append(new_position)
-            notification_cmd = DotBotNotificationCommand.UPDATE
-            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                dotbot.position_history.pop(0)
-            self.logger.info(
-                "Received DotBot Data",
-                direction=dotbot.direction,
-                X=new_position.x,
-                Y=new_position.y,
-            )
-
-        if frame.packet.payload_type == PayloadType.DOTBOT_SIMULATOR_DATA:
-            dotbot.direction = frame.packet.payload.theta
-            new_position = DotBotLH2Position(
-                x=frame.packet.payload.pos_x / 1e6,
-                y=frame.packet.payload.pos_y / 1e6,
-                z=0,
-            )
-            dotbot.lh2_position = new_position
-            dotbot.position_history.append(new_position)
-            notification_cmd = DotBotNotificationCommand.UPDATE
 
         if frame.packet.payload_type in [
             PayloadType.GPS_POSITION,
@@ -621,6 +617,7 @@ class Controller:
                     sail_angle=dotbot.sail_angle,
                     lh2_position=dotbot.lh2_position,
                     gps_position=dotbot.gps_position,
+                    battery=dotbot.battery,
                 ),
             )
         else:

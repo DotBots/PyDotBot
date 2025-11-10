@@ -17,12 +17,10 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
-    ApplicationType,
     Frame,
     Header,
     Packet,
-    PayloadAdvertisement,
-    PayloadDotBotSimulatorData,
+    PayloadDotBotAdvertisement,
     PayloadType,
 )
 
@@ -146,14 +144,19 @@ class DotBotSimulator:
                 self.pos_x, self.pos_y, self.theta, self.v_right, self.v_left
             )
 
-        return self.encode_serial_output()
-
     def advertise(self):
         """Send an adertisement message to the gateway."""
         payload = Frame(
             header=self.header,
             packet=Packet.from_payload(
-                PayloadAdvertisement(application=ApplicationType.DotBot)
+                PayloadDotBotAdvertisement(
+                    calibrated=True,
+                    direction=int(self.theta * 180 / pi + 90),
+                    pos_x=int(self.pos_x),
+                    pos_y=int(self.pos_y),
+                    pos_z=0,
+                    battery=3000,
+                )
             ),
         )
         return hdlc_encode(payload.to_bytes())
@@ -183,19 +186,6 @@ class DotBotSimulator:
                 if self.waypoints:
                     self.controller_mode = DotBotSimulatorMode.AUTOMATIC
 
-    def encode_serial_output(self):
-        """Encode the dotbot data to be sent to the gateway."""
-        payload = PayloadDotBotSimulatorData(
-            theta=int(self.theta * 180 / pi + 90),
-            pos_x=int(self.pos_x),
-            pos_y=int(self.pos_y),
-        )
-        frame = Frame(
-            header=self.header,
-            packet=Packet.from_payload(payload),
-        )
-        return hdlc_encode(frame.to_bytes())
-
 
 class DotBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
@@ -222,16 +212,17 @@ class DotBotSimulatorSerialInterface(threading.Thread):
 
         while 1:
             for idx, dotbot in enumerate(self.dotbots):
-                for byte in dotbot.update():
-                    self.callback(byte.to_bytes(length=1, byteorder="little"))
-                    time.sleep(0.005)
+                dotbot.update()
+                time.sleep(0.1 / len(self.dotbots))
                 advertising_intervals[idx] += 1
-                if advertising_intervals[idx] == 100:
+                if advertising_intervals[idx] == 2:
                     for byte in dotbot.advertise():
                         self.callback(byte.to_bytes(length=1, byteorder="little"))
-                        time.sleep(0.005)
                     advertising_intervals[idx] = 0
-            time.sleep(0.02)
+
+    def flush(self):
+        """Flush fake serial output."""
+        pass
 
     def write(self, bytes_):
         """Write bytes on the fake serial."""
