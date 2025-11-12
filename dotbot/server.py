@@ -8,6 +8,7 @@
 import os
 from typing import List
 
+from dotbot_utils.protocol import Frame, Header, Packet
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,9 +25,6 @@ from dotbot.models import (
 )
 from dotbot.protocol import (
     ApplicationType,
-    Frame,
-    Header,
-    Packet,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadGPSPosition,

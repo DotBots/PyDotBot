@@ -2,15 +2,19 @@ import dataclasses
 from dataclasses import dataclass
 
 import pytest
-
-from dotbot.protocol import (
+from dotbot_utils.protocol import (
     PAYLOAD_PARSERS,
-    ApplicationType,
-    ControlModeType,
     Frame,
     Header,
     Packet,
     Payload,
+    ProtocolPayloadParserException,
+    register_parser,
+)
+
+from dotbot.protocol import (
+    ApplicationType,
+    ControlModeType,
     PayloadAdvertisement,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
@@ -25,8 +29,6 @@ from dotbot.protocol import (
     PayloadRawData,
     PayloadSailBotData,
     PayloadType,
-    ProtocolPayloadParserException,
-    register_parser,
 )
 
 
@@ -842,12 +844,6 @@ def test_register_already_registered(payload_type, value_str):
     with pytest.raises(ValueError) as excinfo:
         register_parser(payload_type, PayloadTest)
     assert str(excinfo.value) == f"Payload type '{value_str}' already registered"
-
-
-def test_register_reserved():
-    with pytest.raises(ValueError) as excinfo:
-        register_parser(0x7A, PayloadTest)
-    assert str(excinfo.value) == "Payload type '0x7A' is reserved"
 
 
 def test_register_parser():

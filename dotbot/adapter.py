@@ -3,6 +3,15 @@
 import asyncio
 from abc import ABC, abstractmethod
 
+from dotbot_utils.hdlc import HDLCHandler, HDLCState, hdlc_encode
+from dotbot_utils.protocol import (
+    Frame,
+    Header,
+    Packet,
+    Payload,
+    ProtocolPayloadParserException,
+)
+from dotbot_utils.serial_interface import SerialInterface
 from marilib.communication_adapter import MQTTAdapter as MarilibMQTTAdapter
 from marilib.communication_adapter import SerialAdapter as MarilibSerialAdapter
 from marilib.mari_protocol import Frame as MariFrame
@@ -11,17 +20,8 @@ from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
 from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
-from dotbot.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot.logger import LOGGER
-from dotbot.protocol import (
-    Frame,
-    Header,
-    Packet,
-    Payload,
-    ProtocolPayloadParserException,
-)
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
-from dotbot.serial_interface import SerialInterface
 
 
 class GatewayAdapterBase(ABC):

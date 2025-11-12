@@ -13,16 +13,12 @@ from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
 from typing import Callable
 
+from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
+from dotbot_utils.protocol import Frame, Header, Packet
+
 from dotbot import GATEWAY_ADDRESS_DEFAULT
-from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
-from dotbot.protocol import (
-    Frame,
-    Header,
-    Packet,
-    PayloadDotBotAdvertisement,
-    PayloadType,
-)
+from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
 R = 1
 L = 2

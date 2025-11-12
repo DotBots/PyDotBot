@@ -5,29 +5,16 @@
 
 """Dotbot controller serial interface."""
 
-import sys
 import threading
 import time
 from typing import Callable
 
 import serial
-from serial.tools import list_ports
 
 from dotbot.logger import LOGGER
 
 PAYLOAD_CHUNK_SIZE = 64
 PAYLOAD_CHUNK_DELAY = 0.002  # 2 ms
-
-
-def get_default_port():
-    """Return default serial port."""
-    ports = [port for port in list_ports.comports()]
-    if sys.platform != "win32":
-        ports = sorted([port for port in ports if "J-Link" == port.product])
-    if not ports:
-        return "/dev/ttyACM0"
-    # return first JLink port available
-    return ports[0].device
 
 
 class SerialInterfaceException(Exception):

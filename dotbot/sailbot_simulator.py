@@ -14,16 +14,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
+from dotbot_utils.protocol import Frame, Header, Packet
 from numpy import clip
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
-from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
     ApplicationType,
-    Frame,
-    Header,
-    Packet,
     PayloadAdvertisement,
     PayloadSailBotData,
     PayloadType,

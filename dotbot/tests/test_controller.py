@@ -5,12 +5,13 @@ import time
 from unittest.mock import patch
 
 import pytest
+from dotbot_utils.protocol import Frame, Header, Packet
 
 from dotbot.adapter import SerialAdapter
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
-from dotbot.protocol import ControlModeType, Frame, Header, Packet, PayloadControlMode
+from dotbot.protocol import ControlModeType, PayloadControlMode
 from dotbot.serial_interface import SerialInterface
 
 

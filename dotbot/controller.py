@@ -21,6 +21,8 @@ from typing import Dict, List
 import serial
 import uvicorn
 import websockets
+from dotbot_utils.protocol import Frame, Payload
+from dotbot_utils.serial_interface import SerialInterfaceException
 from fastapi import WebSocket
 from haversine import Unit, haversine
 from pydantic import ValidationError
@@ -65,8 +67,6 @@ from dotbot.models import (
 )
 from dotbot.protocol import (
     ApplicationType,
-    Frame,
-    Payload,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadCommandXgoAction,
@@ -77,7 +77,6 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadType,
 )
-from dotbot.serial_interface import SerialInterfaceException
 from dotbot.server import api
 
 # from dotbot.models import (
