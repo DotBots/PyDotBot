@@ -16,7 +16,6 @@ Submodules
    dotbot.controller
    dotbot.controller_app
    dotbot.dotbot_simulator
-   dotbot.hdlc
    dotbot.joystick
    dotbot.keyboard
    dotbot.logger
@@ -24,5 +23,4 @@ Submodules
    dotbot.protocol
    dotbot.rest
    dotbot.sailbot_simulator
-   dotbot.serial_interface
    dotbot.server
