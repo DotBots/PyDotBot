@@ -272,7 +272,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
 
 
 @pytest.mark.parametrize(
-    "payload,expected",
+    "frame,expected",
     [
         pytest.param(
             Frame(
@@ -523,8 +523,8 @@ def test_frame_parser(bytes_, header, payload_type, payload):
         ),
     ],
 )
-def test_payload_to_bytes(payload, expected):
-    result = payload.to_bytes()
+def test_payload_to_bytes(frame, expected):
+    result = frame.to_bytes()
     assert result == expected, f"{result} != {expected}"
 
 

@@ -13,9 +13,6 @@ from enum import IntEnum
 
 from dotbot_utils.protocol import Payload, PayloadFieldMetadata, register_parser
 
-PROTOCOL_VERSION = 1
-PAYLOAD_RESERVED_THRESHOLD = 0x80
-
 
 class PayloadType(IntEnum):
     """Types of DotBot payload types."""

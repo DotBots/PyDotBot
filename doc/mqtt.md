@@ -126,7 +126,7 @@ previous script with the following content):
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from dotbot.protocol import PROTOCOL_VERSION
+from dotbot_utils.protocol import PROTOCOL_VERSION
 
 version = PROTOCOL_VERSION
 
