@@ -53,7 +53,7 @@ def test_main_help():
     assert result.output == MAIN_HELP_EXPECTED
 
 
-@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
 @patch("dotbot.controller.QrkeyController")
 @patch("dotbot.version")
 @patch("dotbot.controller.Controller.run")
@@ -71,7 +71,7 @@ def test_main(run, version, _, __):
     assert "Welcome to the DotBots controller (version: unknown)." in result.output
 
 
-@patch("dotbot.serial_interface.serial.Serial.open")
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
 @patch("dotbot.controller.QrkeyController")
 @patch("dotbot.controller.Controller.run")
 def test_main_interrupts(run, _, __):

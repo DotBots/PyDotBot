@@ -5,20 +5,20 @@ import time
 from unittest.mock import patch
 
 import pytest
+from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
+from dotbot_utils.serial_interface import SerialInterface
 
 from dotbot.adapter import SerialAdapter
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
-from dotbot.hdlc import hdlc_encode
 from dotbot.models import DotBotGPSPosition, DotBotLH2Position, DotBotModel
 from dotbot.protocol import ControlModeType, PayloadControlMode
-from dotbot.serial_interface import SerialInterface
 
 
 @pytest.mark.asyncio
-@patch("dotbot.serial_interface.serial.Serial.write")
-@patch("dotbot.serial_interface.serial.Serial.open")
-@patch("dotbot.serial_interface.serial.Serial.flush")
+@patch("dotbot_utils.serial_interface.serial.Serial.write")
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
+@patch("dotbot_utils.serial_interface.serial.Serial.flush")
 async def test_controller(_, __, serial_write, capsys):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings(
@@ -54,9 +54,9 @@ async def test_controller(_, __, serial_write, capsys):
 
 
 @pytest.mark.asyncio
-@patch("dotbot.serial_interface.serial.Serial.write")
-@patch("dotbot.serial_interface.serial.Serial.open")
-@patch("dotbot.serial_interface.serial.Serial.flush")
+@patch("dotbot_utils.serial_interface.serial.Serial.write")
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
+@patch("dotbot_utils.serial_interface.serial.Serial.flush")
 async def test_controller_dont_send(_, __, serial_write):
     """Check controller subclass instanciation and write to serial."""
     settings = ControllerSettings(
