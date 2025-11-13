@@ -14,16 +14,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
+from dotbot_utils.protocol import Frame, Header, Packet
 from numpy import clip
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
-from dotbot.hdlc import hdlc_decode, hdlc_encode
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
     ApplicationType,
-    Frame,
-    Header,
-    Packet,
     PayloadAdvertisement,
     PayloadSailBotData,
     PayloadType,
@@ -414,6 +412,7 @@ class SailBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots."""
 
     def __init__(self, callback: Callable):
+        self.running = True
         self.sailbots = [
             SailBotSimulator("1234567890123456"),
         ]
@@ -434,7 +433,7 @@ class SailBotSimulatorSerialInterface(threading.Thread):
         next_control_time = time.time() + CONTROL_DELTA_T
         updates = [bytearray()] * len(self.sailbots)
         updates_interval = 0
-        while True:
+        while self.running:
             current_time = time.time()
             # update simulation every SIM_DELTA_T seconds
             if current_time >= next_sim_time:
@@ -457,6 +456,15 @@ class SailBotSimulatorSerialInterface(threading.Thread):
 
                 next_control_time = current_time + CONTROL_DELTA_T
             time.sleep(0.02)
+
+    def stop(self):
+        self.logger.info("Stopping Sailbot Simulation...")
+        self.running = False
+        self.join()
+
+    def flush(self):
+        """Flush fake serial output."""
+        pass
 
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""

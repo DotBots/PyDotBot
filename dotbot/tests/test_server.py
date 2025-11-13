@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from dotbot_utils.protocol import Frame, Header, Packet
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -14,9 +15,6 @@ from dotbot.models import (
 )
 from dotbot.protocol import (
     ApplicationType,
-    Frame,
-    Header,
-    Packet,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadGPSPosition,

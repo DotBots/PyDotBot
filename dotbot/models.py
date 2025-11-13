@@ -119,6 +119,7 @@ class DotBotNotificationUpdate(BaseModel):
     sail_angle: Optional[int]
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
+    battery: Optional[float] = None
 
 
 class DotBotNotificationModel(BaseModel):
@@ -170,3 +171,4 @@ class DotBotModel(BaseModel):
     waypoints_threshold: int = 40
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: bool = False
+    battery: float = 0.0  # Voltage in Volts

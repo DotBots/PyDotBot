@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from dotbot.serial_interface import get_default_port
+from dotbot_utils.serial_interface import get_default_port
 
 SERIAL_PORT_DEFAULT = get_default_port()
 SERIAL_BAUDRATE_DEFAULT = 1000000
