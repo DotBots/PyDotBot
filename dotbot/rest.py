@@ -47,7 +47,7 @@ class RestClient:
                     return [
                         dotbot
                         for dotbot in response.json()
-                        if dotbot["status"] == DotBotStatus.ALIVE.value
+                        if dotbot["status"] == DotBotStatus.ACTIVE.value
                     ]
         return []
 

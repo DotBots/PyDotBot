@@ -71,18 +71,18 @@ class JoystickController:
         self._logger.info("Controller initialized", num_axes=num_axes)
 
     @property
-    def active_dotbot(self):
-        _active_dotbot = self.dotbot_address
-        if _active_dotbot == DOTBOT_ADDRESS_DEFAULT:
+    def selected_dotbot(self):
+        _selected_dotbot = self.dotbot_address
+        if _selected_dotbot == DOTBOT_ADDRESS_DEFAULT:
             if self.dotbots and self.dotbots[0]["status"] == 0:
-                _active_dotbot = self.dotbots[0]["address"]
+                _selected_dotbot = self.dotbots[0]["address"]
             else:
                 self._logger.info("No active DotBot")
                 return
-        elif _active_dotbot not in [dotbot["address"] for dotbot in self.dotbots]:
+        elif _selected_dotbot not in [dotbot["address"] for dotbot in self.dotbots]:
             self._logger.info("Active DotBot not available")
             return
-        return _active_dotbot
+        return _selected_dotbot
 
     def pos_from_joystick(self):
         """Fetch positions of the joystick."""
@@ -113,7 +113,7 @@ class JoystickController:
             if positions != NULL_POSITION or self.previous_positions != NULL_POSITION:
                 self._logger.info("refresh positions", positions=positions)
                 await self.api.send_move_raw_command(
-                    self.active_dotbot,
+                    self.selected_dotbot,
                     self.application,
                     DotBotMoveRawCommandModel(
                         left_x=int(positions[0]),

@@ -85,9 +85,9 @@ class DotBotWaypoints(BaseModel):
 class DotBotStatus(IntEnum):
     """Status of a DotBot."""
 
-    ALIVE: int = 0
-    LOST: int = 1
-    DEAD: int = 2
+    ACTIVE: int = 0
+    INACTIVE: int = 1
+    LOST: int = 2
 
 
 class DotBotQueryModel(BaseModel):
@@ -156,7 +156,7 @@ class DotBotModel(BaseModel):
     address: str
     application: ApplicationType = ApplicationType.DotBot
     swarm: str = "0000"
-    status: DotBotStatus = DotBotStatus.ALIVE
+    status: DotBotStatus = DotBotStatus.ACTIVE
     mode: ControlModeType = ControlModeType.MANUAL
     last_seen: float
     direction: Optional[int] = None

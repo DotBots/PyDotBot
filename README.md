@@ -72,7 +72,7 @@ gateway and add `--port COM3` if it's COM3.
 
 Using the `--webbrowser` option, a tab will automatically open at
 [http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot). The page maintains
-a list of available DotBots, allows to set which one is active and controllable
+a list of available DotBots, allows to set which one is selected and controllable
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
 

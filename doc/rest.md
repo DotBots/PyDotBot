@@ -69,9 +69,9 @@ If a DotBot is connected, this script should give an output similar to:
 This is a list of all DotBots connected to the `dotbot-controller`. In the
 example above, there is only one DotBot connected.
 The 8-byte `address` uniquely identifies a DotBot in the controller. The
-`status` indicates whether the DotBot is `Alive` (value=0, the DotBot has been
-seen within the last 5 seconds), `Lost` (value=1, the DotBot hasn't been seen
-within the last 5 sec) or `Dead` (value=2, the DotBot hasn't been seen for more
+`status` indicates whether the DotBot is `Active` (value=0, the DotBot has been
+seen within the last 5 seconds), `Inactive` (value=1, the DotBot hasn't been seen
+within the last 5 sec) or `Lost` (value=2, the DotBot hasn't been seen for more
 than 60 sec).
 
 If the DotBot `address` is already known by the controller, e.g. it identifies

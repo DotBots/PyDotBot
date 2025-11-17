@@ -63,7 +63,7 @@ Welcome to the DotBots controller (version: 0.xx).
 2. Select it by clicking on the DotBot item:
 
 ```{image} _static/images/pydotbot-ui-activate.png
-:alt: Single DotBot item not active
+:alt: Single DotBot item not selected
 :class: bg-primary
 :width: 400px
 :align: center
@@ -73,7 +73,7 @@ Welcome to the DotBots controller (version: 0.xx).
   visible:
 
 ```{image} _static/images/pydotbot-ui-active.png
-:alt: Single active DotBot item, with widgets
+:alt: Single selected DotBot item, with widgets
 :class: bg-primary
 :width: 400px
 :align: center
