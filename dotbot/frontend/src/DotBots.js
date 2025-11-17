@@ -159,6 +159,8 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
     applyWaypoints, clearWaypoints, activeDotbot
   ]);
 
+  let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated);
+
   return (
     <>
     <nav className="navbar navbar-dark navbar-expand-lg bg-dark">
@@ -181,7 +183,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
       <>
       {dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).length > 0 &&
       <div className="row">
-        <div className="col col-xxl-6">
+        <div className={`col ${needDotBotMap ? "col-xxl-6" : ""}`}>
           <div className="card m-1">
             <div className="card-header">Available DotBots</div>
             <div className="card-body p-1">
@@ -205,6 +207,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
             </div>
           </div>
         </div>
+        {needDotBotMap &&
         <div className="col col-xxl-6">
           <div className="d-block d-md-none m-1">
             <DotBotsMap
@@ -235,6 +238,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
             />
           </div>
         </div>
+        }
       </div>
       }
       {dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot).length > 0 &&
