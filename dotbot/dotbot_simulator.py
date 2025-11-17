@@ -69,7 +69,7 @@ class Waypoint:
 class DotBotSimulator(threading.Thread):
     """Simulator class for the dotbot."""
 
-    def __init__(self, address):
+    def __init__(self, address, calibrated: bool = True):
         super().__init__(daemon=True)
         self.address = address
         self.pos_x = 0.5 * 1e6
@@ -80,6 +80,7 @@ class DotBotSimulator(threading.Thread):
         self.v_left = 0
         self.v_right = 0
 
+        self.calibrated = calibrated
         self.waypoint_threshold = 0
         self.waypoints = []
         self.waypoint_index = 0
@@ -168,7 +169,7 @@ class DotBotSimulator(threading.Thread):
             header=self.header,
             packet=Packet.from_payload(
                 PayloadDotBotAdvertisement(
-                    calibrated=True,
+                    calibrated=self.calibrated,
                     direction=int(self.theta * 180 / pi + 90),
                     pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                     pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
