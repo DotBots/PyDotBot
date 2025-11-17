@@ -198,6 +198,8 @@ class DotBotSimulator(threading.Thread):
                     self.v_right = self.v_right - 256
 
             elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
+                self.v_left = 0
+                self.v_right = 0
                 self.controller_mode = DotBotSimulatorMode.MANUAL
                 self.waypoint_threshold = frame.packet.payload.threshold * 1000
                 self.waypoints = frame.packet.payload.waypoints
