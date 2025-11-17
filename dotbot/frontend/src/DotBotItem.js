@@ -63,7 +63,7 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
     <div className="accordion-item">
       <h2 className="accordion-header" id={`heading-${dotbot.address}`}>
         <button className="accordion-button collapsed" onClick={() => updateActive(dotbot.address)} type="button" data-bs-toggle="collapse" data-bs-target={`#collapse-${dotbot.address}`} aria-controls={`collapse-${dotbot.address}`}>
-          <div className="d-flex" style={{ width: '100%' }}>
+          <div className="d-flex flex-wrap" style={{ width: '100%' }}>
             <div className="me-2">
               <svg style={{ height: '12px', width: '12px'}}>
                 <circle cx={5} cy={5} r={5} fill={rgbColor} opacity={`${dotbot.status === 0 ? "100%" : "30%"}`} />
@@ -71,11 +71,9 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
             </div>
             <div className="me-auto">{dotbot.address}</div>
             <div className="me-2">
-              <div className={`badge text-bg-${batteryBadgeClass} ${batteryTextColorClass} border-0`}>
+              <div className={`badge text-bg-${batteryBadgeClass} ${batteryTextColorClass} border-0 me-1`}>
                 <i class={`bi ${batteryIcon}`}></i>&nbsp;{`${parseFloat(dotbot.battery).toFixed(1)}V`}
               </div>
-            </div>
-            <div className="me-2">
               <div className={`badge text-bg-${dotbotBadgeStatuses[dotbot.status]} text-light border-0`}>
                 {dotbotStatuses[dotbot.status]}
               </div>
@@ -85,7 +83,7 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
       </h2>
       <div id={`collapse-${dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${dotbot.address}`} data-bs-parent="#accordion-dotbots">
         <div className="accordion-body">
-          <div className="d-flex">
+          <div className="d-flex flex-wrap">
             <div className={`mx-auto justify-content-center ${!expanded && "invisible"}`}>
               <Joystick address={dotbot.address} application={dotbot.application} publishCommand={publishCommand} />
             </div>
