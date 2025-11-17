@@ -141,7 +141,10 @@ def gps_distance(last: DotBotGPSPosition, new: DotBotGPSPosition) -> float:
     dlat = lat2 - lat1
     dlon = lon2 - lon1
 
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     c = 2 * math.asin(math.sqrt(a))
 
     # Earth's radius in meters

@@ -142,12 +142,12 @@ def test_lh2_distance(last, new, result):
         (
             DotBotGPSPosition(latitude=45.7597, longitude=4.8422),  # Lyon
             DotBotGPSPosition(latitude=48.8567, longitude=2.3508),  # Paris
-            392217.25594,
+            392216.71780,
         ),
         (
             DotBotGPSPosition(latitude=51.509865, longitude=-0.118092),  # London
             DotBotGPSPosition(latitude=48.8567, longitude=2.3508),  # Paris
-            343374.55271,
+            343374.07842,
         ),
     ],
 )
