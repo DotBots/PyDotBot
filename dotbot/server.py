@@ -8,7 +8,6 @@
 import os
 from typing import List
 
-from dotbot_utils.protocol import Frame, Header, Packet
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -67,18 +66,13 @@ async def dotbots_move_raw(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     payload = PayloadCommandMoveRaw(
         left_x=command.left_x,
         left_y=command.left_y,
         right_x=command.right_x,
         right_y=command.right_y,
     )
-    frame = Frame(header=header, packet=Packet().from_payload(payload))
-    api.controller.send_payload(frame)
+    api.controller.send_payload(int(address, 16), payload)
     api.controller.dotbots[address].move_raw = command
 
 
@@ -94,15 +88,10 @@ async def dotbots_rgb_led(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     payload = PayloadCommandRgbLed(
         red=command.red, green=command.green, blue=command.blue
     )
-    frame = Frame(header=header, packet=Packet().from_payload(payload))
-    api.controller.send_payload(frame)
+    api.controller.send_payload(int(address, 16), payload)
     api.controller.dotbots[address].rgb_led = command
 
 
@@ -120,10 +109,6 @@ async def dotbots_waypoints(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     waypoints_list = waypoints.waypoints
     if application == ApplicationType.SailBot.value:
         if api.controller.dotbots[address].gps_position is not None:
@@ -160,8 +145,7 @@ async def dotbots_waypoints(
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    frame = Frame(header, packet=Packet().from_payload(payload))
-    api.controller.send_payload(frame)
+    api.controller.send_payload(int(address, 16), payload)
     await api.controller.notify_clients(
         DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
     )
