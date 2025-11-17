@@ -241,7 +241,10 @@ class DotBotSimulatorSerialInterface(threading.Thread):
             for dotbot in self.dotbots:
                 for byte in dotbot.advertise():
                     self.callback(byte.to_bytes(length=1, byteorder="little"))
-            time.sleep(0.5)
+                    time.sleep(0.000001)
+            time.sleep(
+                0.5 - PayloadDotBotAdvertisement().size * len(self.dotbots) * 0.000001
+            )
 
     def stop(self):
         self.logger.info("Stopping DotBot Simulation...")
