@@ -532,6 +532,7 @@ class Controller:
             dotbot.calibrated = bool(frame.packet.payload.calibrated)
             logger.info("Advertisement received", calibrated=bool(dotbot.calibrated))
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
+            need_update = False
             if dotbot.calibrated is False and self.lh2_calibration is not None:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
@@ -550,15 +551,21 @@ class Controller:
                     dotbot.position_history.append(new_position)
                     if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                         dotbot.position_history.pop(0)
+                need_update = True
+
+            if dotbot.battery != frame.packet.payload.battery / 1000.0:
                 dotbot.battery = frame.packet.payload.battery / 1000.0  # mV to V
+                need_update = True
+
+            self.logger.debug(
+                "Advertisement Data",
+                direction=frame.packet.payload.direction,
+                X=frame.packet.payload.pos_x,
+                Y=frame.packet.payload.pos_x,
+                battery=frame.packet.payload.battery,
+            )
+            if need_update is True:
                 notification_cmd = DotBotNotificationCommand.UPDATE
-                self.logger.debug(
-                    "Advertisement Data",
-                    direction=dotbot.direction,
-                    X=new_position.x,
-                    Y=new_position.y,
-                    battery=dotbot.battery,
-                )
 
         if (
             frame.packet.payload_type == PayloadType.SAILBOT_DATA
