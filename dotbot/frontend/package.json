@@ -8,7 +8,7 @@
     "@use-gesture/react": "^10.2.22",
     "axios": "^0.27.2",
     "bootstrap": "^5.2.0",
-    "bootstrap-icons": "^1.9.1",
+    "bootstrap-icons": "^1.13.1",
     "futoin-hkdf": "^1.5.3",
     "geodist": "^0.2.1",
     "jose": "^5.2.0",

@@ -88,8 +88,8 @@ from dotbot.server import api
 
 
 CONTROLLERS = {}
-LOST_DELAY = 5  # seconds
-DEAD_DELAY = 60  # seconds
+INACTIVE_DELAY = 5  # seconds
+LOST_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 0.01
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 CALIBRATION_PATH = Path.home() / ".dotbot" / "calibration.out"
@@ -443,12 +443,12 @@ class Controller:
             needs_refresh = [False] * len(self.dotbots)
             for idx, dotbot in enumerate(self.dotbots.values()):
                 previous_status = dotbot.status
-                if dotbot.last_seen + DEAD_DELAY < time.time():
-                    dotbot.status = DotBotStatus.DEAD
-                elif dotbot.last_seen + LOST_DELAY < time.time():
+                if dotbot.last_seen + LOST_DELAY < time.time():
                     dotbot.status = DotBotStatus.LOST
+                elif dotbot.last_seen + INACTIVE_DELAY < time.time():
+                    dotbot.status = DotBotStatus.INACTIVE
                 else:
-                    dotbot.status = DotBotStatus.ALIVE
+                    dotbot.status = DotBotStatus.ACTIVE
                 logger = self.logger.bind(
                     source=dotbot.address,
                     application=dotbot.application.name,

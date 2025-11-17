@@ -102,7 +102,7 @@ if not dotbots:
 dotbot = dotbots[0]
 
 if dotbot["status"] != 0:
-    print("DotBot is not alive!, exiting")
+    print("DotBot is not active!, exiting")
     sys.exit(0)
 
 dotbot_addr = dotbot["address"]

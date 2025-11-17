@@ -60,6 +60,9 @@ const App = () => {
               }
               dotbotsTmp[idx].gps_position = newPosition;
             }
+            if (payload.data.battery !== undefined) {
+              dotbotsTmp[idx].battery = payload.data.battery ;
+            }
             setDotbots(dotbotsTmp);
           }
         }
