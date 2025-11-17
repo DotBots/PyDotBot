@@ -22,7 +22,20 @@ from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
 R = 1
 L = 2
-SIMULATOR_STEP_DELTA_T = 0.005
+SIMULATOR_STEP_DELTA_T = 0.002
+
+INITIAL_BATTERY_VOLTAGE = 3000  # mV
+MAX_BATTERY_DURATION = 300  # 5 minutes
+
+
+def battery_discharge_model(time_elapsed_s: float) -> int:
+    """Simple battery discharge model."""
+    t = min(time_elapsed_s / MAX_BATTERY_DURATION, 1.0)
+    nonlinear_t = t**1.3
+    voltage = int(INITIAL_BATTERY_VOLTAGE * (1 - nonlinear_t))
+    if voltage < 0:
+        voltage = 0
+    return voltage
 
 
 def diff_drive_bot(x_pos_old, y_pos_old, theta_old, v_right, v_left):
@@ -62,6 +75,7 @@ class DotBotSimulator(threading.Thread):
         self.pos_x = 0.5 * 1e6
         self.pos_y = 0.5 * 1e6
         self.theta = 0
+        self.time_elapsed_s = 0
 
         self.v_left = 0
         self.v_right = 0
@@ -82,7 +96,7 @@ class DotBotSimulator(threading.Thread):
             source=int(self.address, 16),
         )
 
-    def update(self):
+    def update(self, dt: float):
         """State space model update."""
         pos_x_old = self.pos_x
         pos_y_old = self.pos_y
@@ -145,6 +159,8 @@ class DotBotSimulator(threading.Thread):
         self.logger.debug(
             "DotBot simulator update", x=self.pos_x, y=self.pos_y, theta=self.theta
         )
+        self.time_elapsed_s += dt
+        time.sleep(dt)
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
@@ -157,7 +173,7 @@ class DotBotSimulator(threading.Thread):
                     pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                     pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
                     pos_z=0,
-                    battery=3000,
+                    battery=battery_discharge_model(self.time_elapsed_s),
                 )
             ),
         )
@@ -196,8 +212,7 @@ class DotBotSimulator(threading.Thread):
     def run(self):
         """Update the state of the dotbot simulator."""
         while self.running is True:
-            self.update()
-            time.sleep(0.1)
+            self.update(0.1)
 
 
 class DotBotSimulatorSerialInterface(threading.Thread):

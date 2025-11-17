@@ -42,6 +42,23 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
     })
   }, [dotbot.address, dotbot.rgb_led, setColor, setExpanded]);
 
+  let batteryLevel = parseFloat(dotbot.battery);
+  let batteryIcon = "bi-battery-full";
+  let batteryBadgeClass = "success";
+  let batteryTextColorClass = "text-light";
+  if (batteryLevel < 2) {
+    batteryIcon = "bi-battery";
+    batteryBadgeClass = "danger";
+    batteryTextColorClass = "text-warning";
+  } else if (batteryLevel < 2.25) {
+    batteryIcon = "bi-battery-low";
+    batteryBadgeClass = "warning";
+    batteryTextColorClass = "text-danger";
+  } else if (batteryLevel < 2.75) {
+    batteryIcon = "bi-battery-half";
+    batteryBadgeClass = "primary";
+  }
+
   return (
     <div className="accordion-item">
       <h2 className="accordion-header" id={`heading-${dotbot.address}`}>
@@ -53,6 +70,11 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
               </svg>
             </div>
             <div className="me-auto">{dotbot.address}</div>
+            <div className="me-2">
+              <div className={`badge text-bg-${batteryBadgeClass} ${batteryTextColorClass} border-0`}>
+                <i class={`bi ${batteryIcon}`}></i>&nbsp;{`${parseFloat(dotbot.battery).toFixed(1)}V`}
+              </div>
+            </div>
             <div className="me-2">
               <div className={`badge text-bg-${dotbotBadgeStatuses[dotbot.status]} text-light border-0`}>
                 {dotbotStatuses[dotbot.status]}
