@@ -37,7 +37,7 @@ dependencies = [
     "httpx          >= 0.27.2",
     "numpy          >= 2.1.1",
     "pygame         >= 2.6.1",
-    "pynput         >= 1.7.6",
+    "pynput         >= 1.8.1",
     "pyserial       >= 3.5",
     "qrkey          == 0.9.1",
     "structlog      >= 24.4.0",

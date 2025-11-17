@@ -2,7 +2,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from dotbot_utils.protocol import Frame, Header, Packet
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -84,19 +83,14 @@ async def test_set_dotbots_move_raw(dotbots, code, found):
     api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotMoveRawCommandModel(left_x=42, left_y=0, right_x=42, right_y=0)
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     payload = PayloadCommandMoveRaw(**command.model_dump())
-    expected_frame = Frame(header=header, packet=Packet().from_payload(payload))
     response = await client.put(
         f"/controller/dotbots/{address}/0/move_raw",
         json=command.model_dump(),
     )
     assert response.status_code == code
     if found is True:
-        api.controller.send_payload.assert_called_with(expected_frame)
+        api.controller.send_payload.assert_called_with(int(address, 16), payload)
     else:
         api.controller.send_payload.assert_not_called()
 
@@ -137,12 +131,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     api.controller.dotbots = dotbots
     address = "4242"
     command = DotBotRgbLedCommandModel(red=42, green=0, blue=42)
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     payload = PayloadCommandRgbLed(**command.model_dump())
-    expected_frame = Frame(header=header, packet=Packet().from_payload(payload))
     response = await client.put(
         f"/controller/dotbots/{address}/0/rgb_led",
         json=command.model_dump(),
@@ -150,7 +139,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
     assert response.status_code == code
 
     if found:
-        api.controller.send_payload.assert_called_with(expected_frame)
+        api.controller.send_payload.assert_called_with(int(address, 16), payload)
     else:
         api.controller.send_payload.assert_not_called()
 
@@ -264,10 +253,6 @@ async def test_set_dotbots_waypoints(
 ):
     api.controller.dotbots = dotbots
     address = "4242"
-    header = Header(
-        destination=int(address, 16),
-        source=int(api.controller.settings.gw_address, 16),
-    )
     if application == ApplicationType.SailBot:
         payload = PayloadGPSWaypoints(
             threshold=10,
@@ -297,7 +282,6 @@ async def test_set_dotbots_waypoints(
         else:
             expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
 
-    expected_frame = Frame(header=header, packet=Packet().from_payload(payload))
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
         json=message,
@@ -305,7 +289,7 @@ async def test_set_dotbots_waypoints(
     assert response.status_code == code
 
     if found:
-        api.controller.send_payload.assert_called_with(expected_frame)
+        api.controller.send_payload.assert_called_with(int(address, 16), payload)
         assert api.controller.dotbots[address].waypoints == expected_waypoints
         assert api.controller.dotbots[address].waypoints_threshold == expected_threshold
     else:
