@@ -7,7 +7,7 @@
 
 import httpx
 
-from dotbot.logger import LOGGER
+from dotbot.logger import LOGGER, setup_logging
 from dotbot.models import DotBotStatus
 from dotbot.protocol import ApplicationType
 
@@ -19,6 +19,7 @@ class RestClient:
         self.hostname = hostname
         self.port = port
         self.https = https
+        setup_logging(None, "info", ["console"])
         self._logger = LOGGER.bind(context=__name__)
 
     @property
