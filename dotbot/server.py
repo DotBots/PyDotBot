@@ -8,11 +8,15 @@
 import os
 from typing import List
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
+from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -37,6 +41,33 @@ PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
 )
 
 
+class ReverseProxyMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(self, request, call_next):
+        if request.url.path.startswith("/pin"):
+            headers = {k: v for k, v in request.headers.items()}
+            url = f"http://localhost:8080{request.url.path}"
+
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(
+                        url,
+                        headers=headers,
+                    )
+                except httpx.ConnectError as exc:
+                    LOGGER.warning(exc)
+                    return Response(status_code=502, content=b"Proxy connection failed")
+
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    headers=response.headers,
+                )
+
+        response = await call_next(request)
+        return response
+
+
 api = FastAPI(
     debug=0,
     title="DotBot controller API",
@@ -52,6 +83,7 @@ api.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+api.add_middleware(ReverseProxyMiddleware)
 
 
 @api.put(
