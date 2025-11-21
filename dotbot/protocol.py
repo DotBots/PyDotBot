@@ -57,12 +57,10 @@ class PayloadAdvertisement(Payload):
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="application", disp="app"),
-            PayloadFieldMetadata(name="calibrated", disp="cal."),
         ]
     )
 
     application: ApplicationType = ApplicationType.DotBot
-    calibrated: bool = False
 
 
 @dataclass
