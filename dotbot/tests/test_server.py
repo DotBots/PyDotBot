@@ -1,6 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
@@ -541,6 +542,62 @@ async def test_ws_client():
         websocket.close()
         await asyncio.sleep(0.1)
         assert len(api.controller.websockets) == 0
+
+
+@pytest.mark.asyncio
+async def test_reverse_proxy_middleware_redirects_to_upstream(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://localhost:8080/pin/test")
+
+        return httpx.Response(
+            status_code=200,
+            content=b"proxied-content",
+            headers={"X-Upstream": "mock"},
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+
+    client = TestClient(api)
+    response = client.get("/pin/test")
+
+    assert response.status_code == 200
+    assert response.content == b"proxied-content"
+    assert response.headers["X-Upstream"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_reverse_proxy_middleware_connect_error(monkeypatch):
+
+    async def mock_send_failed(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    transport = httpx.MockTransport(mock_send_failed)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+
+    client = TestClient(api)
+    response = client.get("/pin/fail")
+
+    assert response.status_code == 502
+    assert b"Proxy connection failed" in response.content
 
 
 # @pytest.mark.asyncio

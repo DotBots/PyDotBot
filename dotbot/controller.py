@@ -705,7 +705,10 @@ class Controller:
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
         config = uvicorn.Config(
-            api, port=self.settings.controller_http_port, log_level="critical"
+            api,
+            host="0.0.0.0",
+            port=self.settings.controller_http_port,
+            log_level="critical",
         )
         server = uvicorn.Server(config)
 
