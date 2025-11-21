@@ -83,7 +83,7 @@ def test_parse_header(bytes_, expected):
     "bytes_,header,payload_type,payload",
     [
         pytest.param(
-            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x04\x01\x01",
+            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x04\x01",
             Header(
                 version=4,
                 type_=2,
@@ -91,7 +91,7 @@ def test_parse_header(bytes_, expected):
                 source=0x1212121212121212,
             ),
             PayloadType.ADVERTISEMENT,
-            PayloadAdvertisement(application=ApplicationType.SailBot, calibrated=True),
+            PayloadAdvertisement(application=ApplicationType.SailBot),
             id="PayloadAdvertisement",
         ),
         pytest.param(
@@ -356,12 +356,10 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadAdvertisement(
-                        application=ApplicationType.SailBot, calibrated=False
-                    )
+                    PayloadAdvertisement(application=ApplicationType.SailBot)
                 ),
             ),
-            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x04\x01\x00",
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x04\x01",
             id="PayloadAdvertisement",
         ),
         pytest.param(
@@ -580,16 +578,14 @@ def test_payload_to_bytes(frame, expected):
                     source=0x1222122212221221,
                 ),
                 Packet.from_payload(
-                    PayloadAdvertisement(
-                        application=ApplicationType.SailBot, calibrated=False
-                    )
+                    PayloadAdvertisement(application=ApplicationType.SailBot)
                 ),
             ),
             (
-                "                 +------+------+--------------------+--------------------+------+------+------+\n"
-                " ADVERTISEMENT   | ver. | type | dst                | src                | type | app  | cal. |\n"
-                " (21 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x04 | 0x01 | 0x00 |\n"
-                "                 +------+------+--------------------+--------------------+------+------+------+\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
+                " ADVERTISEMENT   | ver. | type | dst                | src                | type | app  |\n"
+                " (20 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x04 | 0x01 |\n"
+                "                 +------+------+--------------------+--------------------+------+------+\n"
                 "\n"
             ),
             id="Advertisement",
@@ -811,7 +807,7 @@ def test_parse_missing_metadata():
     "payload,bytes_",
     [
         pytest.param(
-            PayloadAdvertisement(application=ApplicationType.DotBot, calibrated=False),
+            PayloadAdvertisement(application=ApplicationType.DotBot),
             b"",
             id="PayloadAdvertisement",
         ),
