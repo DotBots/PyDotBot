@@ -11,6 +11,7 @@ include = [
 ]
 exclude = [
     "dotbot/frontend/node_modules",
+    "utils/"
 ]
 
 [tool.hatch.metadata]
