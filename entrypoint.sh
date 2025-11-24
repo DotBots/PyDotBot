@@ -1,0 +1,24 @@
+#!bin/bash
+
+set -e
+
+: ${CLOUD_MQTT_HOST:=argus.paris.inria.fr}
+: ${CLOUD_MQTT_PORT:=8883}
+: ${CLOUD_NETWORK_ID:=1200}
+: ${MQTT_HOST:=argus.paris.inria.fr}
+: ${MQTT_PORT:=8883}
+: ${MQTT_WS_PORT:=8884}
+: ${MQTT_USE_SSL:=true}
+: ${PIN_CODE_REFRESH_INTERVAL:=3600}
+: ${FRONTEND_BASE_URL:=https://dotbots.github.io/PyDotBot}
+
+cat <<EOF > .env
+MQTT_HOST=${MQTT_HOST}
+MQTT_PORT=${MQTT_PORT}
+MQTT_WS_PORT=${MQTT_WS_PORT}
+MQTT_USE_SSL=${MQTT_USE_SSL}
+PIN_CODE_REFRESH_INTERVAL=${PIN_CODE_REFRESH_INTERVAL}
+FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
+EOF
+
+exec dotbot-controller -a cloud --network-id ${CLOUD_NETWORK_ID} -H "${CLOUD_MQTT_HOST}" -P "${CLOUD_MQTT_PORT}"
