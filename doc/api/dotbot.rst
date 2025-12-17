@@ -20,7 +20,9 @@ Submodules
    dotbot.keyboard
    dotbot.logger
    dotbot.models
+   dotbot.orca
    dotbot.protocol
    dotbot.rest
    dotbot.sailbot_simulator
    dotbot.server
+   dotbot.vec2
