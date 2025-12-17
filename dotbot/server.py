@@ -5,11 +5,19 @@
 
 """Module for the web server application."""
 
+import asyncio
+import math
 import os
-from typing import List
+from typing import Dict, List
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -18,14 +26,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    DotBotLH2Position,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
+    DotBotStatus,
     DotBotWaypoints,
 )
+from dotbot.orca import Agent, OrcaParams, compute_orca_velocity_for_agent
 from dotbot.protocol import (
     ApplicationType,
     PayloadCommandMoveRaw,
@@ -35,10 +46,13 @@ from dotbot.protocol import (
     PayloadLH2Location,
     PayloadLH2Waypoints,
 )
+from dotbot.vec2 import Vec2
 
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
     "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"
 )
+
+THRESHOLD = 30  # acceptable distance from the waypoint
 
 
 class ReverseProxyMiddleware(BaseHTTPMiddleware):
@@ -234,6 +248,266 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in api.controller.websockets:
             api.controller.websockets.remove(websocket)
+
+
+async def compute_orca_velocity(
+    agent: Agent,
+    neighbors: List[Agent],
+    params: OrcaParams,
+) -> Vec2:
+    return compute_orca_velocity_for_agent(agent, neighbors, params)
+
+
+@api.post(
+    path="/controller/dotbots/run_algorithm",
+)
+async def run_algorithm(
+    params: OrcaParams,
+) -> Vec2:
+    query = DotBotQueryModel(
+        application=ApplicationType.DotBot, status=DotBotStatus.ACTIVE
+    )
+    dotbots: List[DotBotModel] = api.controller.get_dotbots(query)
+
+    # Cosmetic: all bots are red
+    for dotbot in dotbots:
+        await dotbots_rgb_led(
+            dotbot.address,
+            dotbot.application,
+            DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+        )
+
+    # Phase 1: initial queue
+    sorted_bots = order_bots(dotbots)
+    goals = assign_queue_goals(sorted_bots)
+
+    await send_to_goal(query, goals, params)
+
+    # Phase 2: charging loop
+    remaining = sorted_bots.copy()
+    while remaining:
+        dotbots = api.controller.get_dotbots(query)
+        total_count = len(dotbots)
+        dotbots = [b for b in dotbots if b.address in {r.address for r in remaining}]
+        remaining = order_bots(dotbots)
+
+        # Assign charging + shift goals
+        goals = assign_charge_goals(remaining)
+        await send_to_goal(query, goals, params)
+
+        # Head just finished charging
+        head = remaining[0]
+
+        dt = 0.1
+        # Cosmetic: wait for charging...
+        colors = [
+            (255, 255, 0),  # yellow
+            (0, 255, 0),  # green
+        ]
+        await asyncio.sleep(20 * dt)
+
+        for r, g, b in colors:
+            await dotbots_rgb_led(
+                head.address,
+                head.application,
+                DotBotRgbLedCommandModel(red=r, green=g, blue=b),
+            )
+            await asyncio.sleep(20 * dt)
+
+        # Just back a bit
+        for _ in range(25):
+            await dotbots_move_raw(
+                head.address,
+                head.application,
+                DotBotMoveRawCommandModel(
+                    left_x=0, right_x=0, left_y=-90, right_y=-100
+                ),
+            )
+            await asyncio.sleep(dt)
+
+        PARK_X = 0.8
+        PARK_Y = 0.2
+        PARK_SPACING = 0.15
+
+        parked_count = total_count - len(remaining)
+
+        # Send head to parking
+        await send_to_goal(
+            query,
+            {head.address: {"x": PARK_X, "y": PARK_Y + parked_count * PARK_SPACING}},
+            params,
+        )
+
+        # Remove head from queue
+        remaining = remaining[1:]
+
+    return Vec2(x=0, y=0)
+
+
+async def send_to_goal(
+    query: DotBotQueryModel, goals: Dict[str, dict], params: OrcaParams
+) -> None:
+    dt = 0.20
+    bot_radius = 0.02
+    #  Queue
+    while True:
+        dotbots: List[DotBotModel] = api.controller.get_dotbots(query)
+        agents: List[Agent] = []
+
+        for bot in dotbots:
+            agents.append(
+                Agent(
+                    id=bot.address,
+                    position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
+                    velocity=Vec2(x=0, y=0),
+                    radius=bot_radius,
+                    direction=bot.direction,
+                    max_speed=1.0,  # Must match the maxSpeed used in preferred_vel calculation
+                    preferred_velocity=preferred_vel(
+                        dotbot=bot, goal=goals.get(bot.address)
+                    ),
+                )
+            )
+
+        queue_ready = all(
+            a.preferred_velocity.x == 0 and a.preferred_velocity.y == 0 for a in agents
+        )
+        if queue_ready:
+            break
+        for agent in agents:
+            neighbors = [neighbor for neighbor in agents if neighbor.id != agent.id]
+
+            orca_vel = await compute_orca_velocity(
+                agent, neighbors=neighbors, params=params
+            )
+            STEP_SCALE = 0.1
+            step = Vec2(x=orca_vel.x * STEP_SCALE, y=orca_vel.y * STEP_SCALE)
+
+            # ---- CLAMP STEP TO GOAL DISTANCE ----
+            goal = goals.get(agent.id)
+            if goal is not None:
+                dx = goal["x"] - agent.position.x
+                dy = goal["y"] - agent.position.y
+                dist_to_goal = math.hypot(dx, dy)
+
+                step_len = math.hypot(step.x, step.y)
+                if step_len > dist_to_goal and step_len > 0:
+                    scale = dist_to_goal / step_len
+                    step = Vec2(x=step.x * scale, y=step.y * scale)
+            # ------------------------------------
+
+            waypoints = DotBotWaypoints(
+                threshold=THRESHOLD,
+                waypoints=[
+                    DotBotLH2Position(
+                        x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
+                    )
+                ],
+            )
+            # POST waypoint
+            await dotbots_waypoints(
+                address=agent.id, application=0, waypoints=waypoints
+            )
+        await asyncio.sleep(dt)
+    return None
+
+
+def order_bots(dotbots: List[DotBotModel]) -> List[DotBotModel]:
+    BASE_X, BASE_Y = 0.2, 0.8
+
+    def key(bot):
+        dx = bot.lh2_position.x - BASE_X
+        dy = bot.lh2_position.y - BASE_Y
+        return dx * dx + dy * dy
+
+    return sorted(dotbots, key=key)
+
+
+def assign_queue_goals(
+    ordered: List[DotBotModel],
+    base_x=0.35,
+    base_y=0.8,
+    spacing=0.2,
+) -> Dict[str, dict]:
+    goals = {}
+    for i, bot in enumerate(ordered):
+        goals[bot.address] = {
+            "x": base_x + i * spacing,
+            "y": base_y,
+        }
+    return goals
+
+
+def assign_charge_goals(
+    ordered: List[DotBotModel],
+    base_x=0.35,
+    base_y=0.8,
+    spacing=0.2,
+) -> Dict[str, dict]:
+    goals = {}
+    # Send the first one to the charger
+    head = ordered[0]
+    goals[head.address] = {
+        "x": 0.2,
+        "y": 0.2,
+    }
+
+    # Remaining bots shift left in the queue
+    for i, bot in enumerate(ordered[1:]):
+        goals[bot.address] = {
+            "x": base_x + i * spacing,
+            "y": base_y,
+        }
+    return goals
+
+
+def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
+    if goal is None:
+        return Vec2(x=0, y=0)
+
+    dx = goal["x"] - dotbot.lh2_position.x
+    dy = goal["y"] - dotbot.lh2_position.y
+    dist = math.sqrt(dx * dx + dy * dy)
+
+    dist1000 = dist * 1000
+    # If close to goal, stop
+    if dist1000 < THRESHOLD:
+        return Vec2(x=0, y=0)
+    max_speed = 0.75
+    # max_speed = 0.75 if dist1000 >= THRESHOLD else 0.75 * (dist / 0.1)
+
+    # Right-hand rule bias
+    bias_angle = 0.0
+    # Bot can only walk on a cone [-60, 60] in front of himself
+    max_deviation = math.radians(60)
+
+    # Convert bot direction into radians
+    direction = direction_to_rad(dotbot.direction)
+
+    # Angle to goal
+    angle_to_goal = math.atan2(dy, dx) + bias_angle
+
+    delta = angle_to_goal - direction
+    # Wrap to [-π, +π]
+    delta = math.atan2(math.sin(delta), math.cos(delta))
+
+    # Clamp delta to [-MAX, +MAX]
+    if delta > max_deviation:
+        delta = max_deviation
+    if delta < -max_deviation:
+        delta = -max_deviation
+
+    # Final allowed direction
+    final_angle = direction + delta
+    result = Vec2(
+        x=math.cos(final_angle) * max_speed, y=math.sin(final_angle) * max_speed
+    )
+    return result
+
+
+def direction_to_rad(direction: float) -> float:
+    rad = (direction + 90) * math.pi / 180.0
+    return math.atan2(math.sin(rad), math.cos(rad))  # normalize to [-π, π]
 
 
 # Mount static files after all routes are defined

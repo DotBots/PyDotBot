@@ -72,7 +72,7 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
             <div className="me-auto">{dotbot.address}</div>
             <div className="me-2">
               <div className={`badge text-bg-${batteryBadgeClass} ${batteryTextColorClass} border-0 me-1`}>
-                <i class={`bi ${batteryIcon}`}></i>&nbsp;{`${parseFloat(dotbot.battery).toFixed(1)}V`}
+                <i className={`bi ${batteryIcon}`}></i>&nbsp;{`${parseFloat(dotbot.battery).toFixed(1)}V`}
               </div>
               <div className={`badge text-bg-${dotbotBadgeStatuses[dotbot.status]} text-light border-0`}>
                 {dotbotStatuses[dotbot.status]}

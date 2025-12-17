@@ -1,0 +1,24 @@
+[[dotbots]]
+address = "BADCAFE111111111" # DotBot unique address
+calibrated = true # optional, defaults to true
+pos_x = 200_000 # [0, 1_000_000]
+pos_y = 200_000 # [0, 1_000_000]
+theta = 0.0 # [0.0, 2pi]
+
+[[dotbots]]
+address = "DEADBEEF22222222"
+pos_x = 200_000
+pos_y = 100_000
+theta = 1.57
+
+[[dotbots]]
+address = "B0B0F00D33333333"
+pos_x = 1_000_000
+pos_y = 1_000_000
+theta = 1.57
+
+[[dotbots]]
+address = "BADC0DE444444444"
+pos_x = 500_000
+pos_y = 500_000
+theta = 3.14

@@ -1,5 +1,5 @@
 import React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 
 import { useKeyPress } from "./hooks/keyPress";
 import { DotBotItem } from "./DotBotItem";
@@ -15,6 +15,47 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
   const [ showSailBotHistory, setShowSailBotHistory ] = useState(true);
+  const dotbotsRef = useRef(dotbots);
+  useEffect(() => {
+    dotbotsRef.current = dotbots;
+  }, [dotbots]);
+
+  const runAlgorithm = useCallback(async () => {
+    const currentDotbots = dotbotsRef.current;
+
+    const botRadius = 0.02;
+
+    // Create all agents list
+    const agents = [];
+    for (const bot of currentDotbots) {
+      agents.push({
+        id: bot.address,
+        position: { x: bot.lh2_position.x, y: bot.lh2_position.y },
+        velocity: { x: 0, y: 0 },
+        radius: botRadius,
+        direction: bot.direction,
+        max_speed: 1.0,
+        preferred_velocity: { x: 0, y: 0 }, // calculated on backend
+      });
+    }
+
+    const orca_params = { time_horizon: 0.2 };
+
+    // Compute ORCA velocity toward the goal
+    // FIXME: This shouldn't be hardcoded
+    let baseUrl = "http://localhost:8000";
+
+    let orcaVel = await fetch(`${baseUrl}/controller/dotbots/run_algorithm`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(orca_params),
+    });
+    if (!orcaVel.ok) {
+      throw new Error(`PUT failed ${orcaVel.status}: ${await orcaVel.text()}`);
+    }
+  }, []);
 
   const control = useKeyPress("Control");
   const enter = useKeyPress("Enter")
@@ -317,6 +358,15 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
       }
       </>
       )}
+      <div className="d-flex justify-content-start my-2">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => runAlgorithm()}
+        >
+          Run test
+        </button>
+      </div>
     </div>
     </>
   );

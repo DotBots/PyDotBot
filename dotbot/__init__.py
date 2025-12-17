@@ -15,6 +15,7 @@ CONTROLLER_HTTP_PORT_DEFAULT = "8000"
 CONTROLLER_ADAPTER_DEFAULT = "serial"
 MQTT_HOST_DEFAULT = "localhost"
 MQTT_PORT_DEFAULT = 1883
+SIMULATOR_INIT_STATE_PATH_DEFAULT = "simulator_init_state.toml"
 
 
 def pydotbot_version() -> str:

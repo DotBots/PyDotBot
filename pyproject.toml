@@ -46,6 +46,7 @@ dependencies = [
     "gmqtt          >= 0.7.0",
     "marilib-pkg    >= 0.8.0",
     "pydotbot-utils >= 0.3.0",
+    "toml           >= 0.10.2",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
