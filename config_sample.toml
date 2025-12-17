@@ -20,3 +20,7 @@ webbrowser = true
 verbose = false
 log_level = "info"
 log_output = "pydotbot.log"
+
+
+# --- Simulator ---
+simulator_init_state_path = "simulator_init_state2.toml"

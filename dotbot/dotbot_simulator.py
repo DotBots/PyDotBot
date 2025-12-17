@@ -235,11 +235,11 @@ class DotBotSimulator(threading.Thread):
 class DotBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, callback: Callable):
+    def __init__(self, callback: Callable, simulator_init_state_path: str):
         self.callback = callback
         self.running = True
         super().__init__(daemon=True)
-        init_state = InitStateToml(**toml.load("dotbots.toml"))
+        init_state = InitStateToml(**toml.load(simulator_init_state_path))
         self.dotbots = [
             DotBotSimulator(
                 dotbot=dotbot,

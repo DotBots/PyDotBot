@@ -38,6 +38,7 @@ from dotbot import (
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
+    SIMULATOR_INIT_STATE_PATH_DEFAULT,
 )
 from dotbot.adapter import (
     GatewayAdapterBase,
@@ -125,6 +126,7 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     webbrowser: bool = False
     verbose: bool = False
+    simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -735,7 +737,11 @@ class Controller:
                 network_id=int(self.settings.network_id, 16),
             )
         else:
-            self.adapter = SerialAdapter(self.settings.port, self.settings.baudrate)
+            self.adapter = SerialAdapter(
+                self.settings.port,
+                self.settings.baudrate,
+                self.settings.simulator_init_state_path,
+            )
         self.logger.info(
             "Starting communication adapter", adapter=self.settings.adapter
         )

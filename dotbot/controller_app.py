@@ -26,6 +26,7 @@ from dotbot import (
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
+    SIMULATOR_INIT_STATE_PATH_DEFAULT,
     pydotbot_version,
 )
 from dotbot.controller import Controller, ControllerSettings
@@ -47,6 +48,7 @@ class Config(BaseModel):
     verbose: bool = False
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
+    simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
 
 
 @click.command()
@@ -202,6 +204,7 @@ def main(
                 controller_http_port=final_config.controller_http_port,
                 webbrowser=final_config.webbrowser,
                 verbose=final_config.verbose,
+                simulator_init_state_path=final_config.simulator_init_state_path,
             ),
         )
         asyncio.run(controller.run())
