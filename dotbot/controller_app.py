@@ -135,7 +135,6 @@ class Config(BaseModel):
     help="Filename where logs are redirected",
 )
 @click.option(
-    "-c",
     "--config-path",
     type=click.Path(exists=True, dir_okay=False),
     help="Path to a .toml configuration file.",
