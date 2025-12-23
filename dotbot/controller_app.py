@@ -8,13 +8,11 @@
 """Main module of the Dotbot controller command line tool."""
 
 import asyncio
-import os
 import sys
 
 import click
 import serial
 import toml
-from pydantic import BaseModel
 
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
