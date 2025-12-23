@@ -126,6 +126,8 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     webbrowser: bool = False
     verbose: bool = False
+    log_level: str = "info"
+    log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
 
 

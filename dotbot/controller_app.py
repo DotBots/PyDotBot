@@ -26,30 +26,10 @@ from dotbot import (
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
-    SIMULATOR_INIT_STATE_PATH_DEFAULT,
     pydotbot_version,
 )
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
-
-
-class Config(BaseModel):
-    adapter: str = CONTROLLER_ADAPTER_DEFAULT
-    serial_port: str = SERIAL_PORT_DEFAULT
-    baudrate: int = SERIAL_BAUDRATE_DEFAULT
-    mqtt_host: str = MQTT_HOST_DEFAULT
-    mqtt_port: int = MQTT_PORT_DEFAULT
-    mqtt_use_tls: int = False
-    dotbot_address: str = DOTBOT_ADDRESS_DEFAULT
-    gateway_address: str = GATEWAY_ADDRESS_DEFAULT
-    network_id: str = NETWORK_ID_DEFAULT
-    controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
-    webbrowser: bool = False
-    verbose: bool = False
-    log_level: str = "info"
-    log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
-    simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
-
 
 @click.command()
 @click.option(
@@ -163,13 +143,13 @@ def main(
     # The priority order is CLI > ConfigFile (optional) > Defaults
     cli_args = {
         "adapter": adapter,
-        "serial_port": port,
+        "port": port,
         "baudrate": baudrate,
         "mqtt_host": mqtt_host,
         "mqtt_port": mqtt_port,
         "mqtt_use_tls": mqtt_use_tls,
         "dotbot_address": dotbot_address,
-        "gateway_address": gw_address,
+        "gw_address": gw_address,
         "network_id": network_id,
         "controller_http_port": controller_http_port,
         "webbrowser": webbrowser,
@@ -185,27 +165,11 @@ def main(
 
     data.update({k: v for k, v in cli_args.items() if v not in (None, False)})
 
-    final_config = Config(**data)
+    controller_settings = ControllerSettings(**data)
 
-    setup_logging(final_config.log_output, final_config.log_level, ["console", "file"])
+    setup_logging(controller_settings.log_output, controller_settings.log_level, ["console", "file"])
     try:
-        controller = Controller(
-            ControllerSettings(
-                adapter=final_config.adapter,
-                port=final_config.serial_port,
-                baudrate=final_config.baudrate,
-                mqtt_host=final_config.mqtt_host,
-                mqtt_port=final_config.mqtt_port,
-                mqtt_use_tls=final_config.mqtt_use_tls,
-                dotbot_address=final_config.dotbot_address,
-                gw_address=final_config.gateway_address,
-                network_id=final_config.network_id,
-                controller_http_port=final_config.controller_http_port,
-                webbrowser=final_config.webbrowser,
-                verbose=final_config.verbose,
-                simulator_init_state_path=final_config.simulator_init_state_path,
-            ),
-        )
+        controller = Controller(controller_settings)
         asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
