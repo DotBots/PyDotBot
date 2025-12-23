@@ -77,6 +77,22 @@ a list of available DotBots, allows to set which one is selected and controllabl
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
 
+### Configuration File Support
+
+`dotbot-controller` supports loading settings from a `.toml` configuration file.
+
+Use `--config-path` to specify the file:
+
+```bash
+# Use settings from the config file
+dotbot-controller --config-path config_sample.toml
+# Use config file but override port and adapter (simulator example)
+dotbot-controller --config-path config_sample.toml -p dotbot-simulator -a serial
+```
+
+Values defined in the config file behave exactly like CLI options.
+If both are provided, CLI flags override config values.
+
 **Firefox users:**
 If the webapp is not working, press `Ctrl + L`, type `about:config`,
 and set `network.http.http2.websockets` to `false`.

@@ -3,6 +3,7 @@ baudrate = 1000000
 # # --- Network / addressing ---
 # dotbot_address = "FFFFFFFFFFFFFFFF"
 # gateway_address = "0000000000000000"
+adapter = "cloud"
 network_id = "A000"
 
 # # --- Controller HTTP interface ---

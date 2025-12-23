@@ -1,3 +1,6 @@
+# This file is used to create and configure simulated DotBot instances for the simulator.
+# It is only used when the flag `-p dotbot-simulator` is set, otherwise it is ignored.
+
 [[dotbots]]
 address = "BADCAFE111111111" # DotBot unique address
 calibrated = true # optional, defaults to true
