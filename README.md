@@ -77,10 +77,6 @@ a list of available DotBots, allows to set which one is selected and controllabl
 and provide a virtual joystick to control it or change the color of the on-board
 RGB LED.
 
-### Configuration File Support
-
-`dotbot-controller` supports loading settings from a `.toml` configuration file.
-
 Use `--config-path` to specify the file:
 
 ```bash
