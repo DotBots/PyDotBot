@@ -31,6 +31,7 @@ from dotbot import (
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
 
+
 @click.command()
 @click.option(
     "-a",
@@ -167,7 +168,11 @@ def main(
 
     controller_settings = ControllerSettings(**data)
 
-    setup_logging(controller_settings.log_output, controller_settings.log_level, ["console", "file"])
+    setup_logging(
+        controller_settings.log_output,
+        controller_settings.log_level,
+        ["console", "file"],
+    )
     try:
         controller = Controller(controller_settings)
         asyncio.run(controller.run())
