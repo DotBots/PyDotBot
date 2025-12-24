@@ -19,6 +19,7 @@ from marilib.marilib_cloud import MarilibCloud
 from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
+from dotbot import SIMULATOR_INIT_STATE_PATH_DEFAULT
 from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
 from dotbot.logger import LOGGER
 from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
@@ -43,9 +44,15 @@ class GatewayAdapterBase(ABC):
 class SerialAdapter(GatewayAdapterBase):
     """Class used to interface with the serial port."""
 
-    def __init__(self, port: str, baudrate: int):
+    def __init__(
+        self,
+        port: str,
+        baudrate: int,
+        simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT,
+    ):
         self.port = port
         self.baudrate = baudrate
+        self.simulator_init_state_path = simulator_init_state_path
         self.hdlc_handler = HDLCHandler()
 
     def on_byte_received(self, byte: bytes):
@@ -74,7 +81,9 @@ class SerialAdapter(GatewayAdapterBase):
         if self.port == "sailbot-simulator":
             self.serial = SailBotSimulatorSerialInterface(_byte_received)
         elif self.port == "dotbot-simulator":
-            self.serial = DotBotSimulatorSerialInterface(_byte_received)
+            self.serial = DotBotSimulatorSerialInterface(
+                _byte_received, self.simulator_init_state_path
+            )
         else:
             self.serial = SerialInterface(self.port, self.baudrate, _byte_received)
             await asyncio.sleep(1)

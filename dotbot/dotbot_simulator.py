@@ -11,10 +11,12 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
-from typing import Callable
+from typing import Callable, List
 
+import toml
 from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
+from pydantic import BaseModel
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.logger import LOGGER
@@ -66,21 +68,33 @@ class Waypoint:
     y: int
 
 
+class SimulatedDotBot(BaseModel):
+    address: str
+    calibrated: bool = True
+    pos_x: int
+    pos_y: int
+    theta: float
+
+
+class InitStateToml(BaseModel):
+    dotbots: List[SimulatedDotBot]
+
+
 class DotBotSimulator(threading.Thread):
     """Simulator class for the dotbot."""
 
-    def __init__(self, address, calibrated: bool = True):
+    def __init__(self, dotbot: SimulatedDotBot):
         super().__init__(daemon=True)
-        self.address = address
-        self.pos_x = 0.5 * 1e6
-        self.pos_y = 0.5 * 1e6
-        self.theta = 0
+        self.address = dotbot.address.lower()
+        self.pos_x = dotbot.pos_x
+        self.pos_y = dotbot.pos_y
+        self.theta = dotbot.theta
         self.time_elapsed_s = 0
 
         self.v_left = 0
         self.v_right = 0
 
-        self.calibrated = calibrated
+        self.calibrated = dotbot.calibrated
         self.waypoint_threshold = 0
         self.waypoints = []
         self.waypoint_index = 0
@@ -221,14 +235,18 @@ class DotBotSimulator(threading.Thread):
 class DotBotSimulatorSerialInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, callback: Callable):
+    def __init__(self, callback: Callable, simulator_init_state_path: str):
         self.callback = callback
         self.running = True
         super().__init__(daemon=True)
+        init_state = InitStateToml(**toml.load(simulator_init_state_path))
         self.dotbots = [
-            DotBotSimulator("1234567890123456"),
-            DotBotSimulator("4987654321098765"),
+            DotBotSimulator(
+                dotbot=dotbot,
+            )
+            for dotbot in init_state.dotbots
         ]
+
         self.start()
         self.logger = LOGGER.bind(context=__name__)
         self.logger.info("DotBot Simulation Started")

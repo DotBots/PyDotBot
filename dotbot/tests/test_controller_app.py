@@ -41,6 +41,7 @@ Options:
   --log-level [debug|info|warning|error]
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
+  --config-path FILE              Path to a .toml configuration file.
   --help                          Show this message and exit.
 """
 

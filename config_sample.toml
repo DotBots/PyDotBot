@@ -1,0 +1,27 @@
+baudrate = 1000000
+
+# # --- Network / addressing ---
+# dotbot_address = "FFFFFFFFFFFFFFFF"
+# gw_address = "0000000000000000"
+adapter = "cloud"
+network_id = "A000"
+# port = "dotbot-simulator"
+
+# # --- Controller HTTP interface ---
+# controller_http_protocol = "http"
+# controller_http_hostname = "localhost"
+# controller_http_port = 8000
+
+# --- MQTT configuration ---
+mqtt_host = "localhost"
+mqtt_port = 1883
+mqtt_use_tls = false
+
+# --- Runtime behavior ---
+webbrowser = true
+verbose = false
+log_level = "info"
+log_output = "pydotbot.log"
+
+# --- Simulator ---
+simulator_init_state_path = "simulator_init_state.toml"
