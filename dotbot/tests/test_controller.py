@@ -83,8 +83,7 @@ def test_controller_saibot_simulator():
 
     async def start_simulator():
         settings = ControllerSettings(
-            port="sailbot-simulator",
-            baudrate=115200,
+            adapter="sailbot-simulator",
             network_id="0",
             dotbot_address="456",
             gw_address="78",
@@ -106,9 +105,7 @@ def test_controller_dotbot_simulator(_):
 
     async def start_simulator():
         settings = ControllerSettings(
-            adapter="serial",
-            port="dotbot-simulator",
-            baudrate=115200,
+            adapter="dotbot-simulator",
             network_id="0",
             dotbot_address="456",
             gw_address="78",
