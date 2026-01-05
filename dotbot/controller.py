@@ -41,9 +41,11 @@ from dotbot import (
     SIMULATOR_INIT_STATE_PATH_DEFAULT,
 )
 from dotbot.adapter import (
+    DotBotSimulatorAdapter,
     GatewayAdapterBase,
     MarilibCloudAdapter,
     MarilibEdgeAdapter,
+    SailBotSimulatorAdapter,
     SerialAdapter,
 )
 from dotbot.logger import LOGGER
@@ -738,11 +740,16 @@ class Controller:
                 use_tls=self.settings.mqtt_use_tls,
                 network_id=int(self.settings.network_id, 16),
             )
+        elif self.settings.adapter == "dotbot-simulator":
+            self.adapter = DotBotSimulatorAdapter(
+                self.settings.simulator_init_state_path,
+            )
+        elif self.settings.adapter == "sailbot-simulator":
+            self.adapter = SailBotSimulatorAdapter()
         else:
             self.adapter = SerialAdapter(
                 self.settings.port,
                 self.settings.baudrate,
-                self.settings.simulator_init_state_path,
             )
         self.logger.info(
             "Starting communication adapter", adapter=self.settings.adapter

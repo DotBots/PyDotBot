@@ -15,7 +15,7 @@ MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
   DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -a, --adapter [serial|edge|cloud]
+  -a, --adapter [serial|edge|cloud|dotbot-simulator|sailbot-simulator]
                                   Controller interface adapter. Defaults to
                                   serial
   -p, --port TEXT                 Serial port used by 'serial' and 'edge'

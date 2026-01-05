@@ -34,7 +34,9 @@ from dotbot.logger import setup_logging
 @click.option(
     "-a",
     "--adapter",
-    type=click.Choice(["serial", "edge", "cloud"]),
+    type=click.Choice(
+        ["serial", "edge", "cloud", "dotbot-simulator", "sailbot-simulator"]
+    ),
     help=f"Controller interface adapter. Defaults to {CONTROLLER_ADAPTER_DEFAULT}",
 )
 @click.option(
