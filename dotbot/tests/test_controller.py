@@ -78,7 +78,7 @@ async def test_controller_dont_send(_, __, serial_write):
     assert serial_write.call_count == 0
 
 
-def test_controller_saibot_simulator():
+def test_controller_sailbot_simulator():
     """Check controller called for sailbot simulator."""
 
     async def start_simulator():

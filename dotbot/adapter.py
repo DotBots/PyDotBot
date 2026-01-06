@@ -20,9 +20,9 @@ from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
 from dotbot import SIMULATOR_INIT_STATE_PATH_DEFAULT
-from dotbot.dotbot_simulator import DotBotSimulatorSerialInterface
+from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
 from dotbot.logger import LOGGER
-from dotbot.sailbot_simulator import SailBotSimulatorSerialInterface
+from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
 
 
 class GatewayAdapterBase(ABC):
@@ -214,38 +214,21 @@ class SimulatorAdapterBase(GatewayAdapterBase):
     def create_simulator(self, _byte_received: callable):
         """Create the simulator instance."""
 
-    def __init__(self):
-        self.hdlc_handler = HDLCHandler()
-
-    def on_byte_received(self, byte: bytes):
-        self.hdlc_handler.handle_byte(byte)
-        if self.hdlc_handler.state == HDLCState.READY:
-            try:
-                data = self.hdlc_handler.payload
-                try:
-                    frame = Frame.from_bytes(data)
-                except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.debug(f"Error parsing frame: {exc}")
-                    return
-            except Exception as _:
-                return
-            self.on_frame_received(frame)
-
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
         queue = asyncio.Queue()
         event_loop = asyncio.get_event_loop()
 
-        def _byte_received(byte):
+        def _frame_received(frame):
             """Callback called on byte received."""
-            event_loop.call_soon_threadsafe(queue.put_nowait, byte)
+            event_loop.call_soon_threadsafe(queue.put_nowait, frame)
 
-        self.simulator = self.create_simulator(_byte_received)
+        self.simulator = self.create_simulator(_frame_received)
 
         LOGGER.info("Connected to simulator")
         while 1:
-            byte = await queue.get()
-            self.on_byte_received(byte)
+            frame = await queue.get()
+            self.on_frame_received(frame)
 
     def close(self):
         LOGGER.info("Disconnect from simulator...")
@@ -256,8 +239,7 @@ class SimulatorAdapterBase(GatewayAdapterBase):
             header=Header(destination=destination),
             packet=Packet.from_payload(payload),
         )
-        self.simulator.write(hdlc_encode(frame.to_bytes()))
-        self.simulator.flush()
+        self.simulator.write(frame.to_bytes())
 
 
 class DotBotSimulatorAdapter(SimulatorAdapterBase):
@@ -267,20 +249,16 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         self,
         simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT,
     ):
-        super().__init__()
         self.simulator_init_state_path = simulator_init_state_path
 
-    def create_simulator(self, _byte_received: callable):
-        return DotBotSimulatorSerialInterface(
-            _byte_received, self.simulator_init_state_path
+    def create_simulator(self, on_frame_received: callable):
+        return DotBotSimulatorCommunicationInterface(
+            on_frame_received, self.simulator_init_state_path
         )
 
 
 class SailBotSimulatorAdapter(SimulatorAdapterBase):
     """Class used to interface with the sailbot simulator."""
 
-    def __init__(self):
-        super().__init__()
-
-    def create_simulator(self, _byte_received: callable):
-        return SailBotSimulatorSerialInterface(_byte_received)
+    def create_simulator(self, on_frame_received: callable):
+        return SailBotSimulatorCommunicationInterface(on_frame_received)
