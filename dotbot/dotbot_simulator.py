@@ -14,7 +14,6 @@ from math import atan2, cos, pi, sin, sqrt
 from typing import Callable, List
 
 import toml
-from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
 from pydantic import BaseModel
 
@@ -192,11 +191,10 @@ class DotBotSimulator(threading.Thread):
                 )
             ),
         )
-        return hdlc_encode(payload.to_bytes())
+        return payload
 
-    def decode_serial_input(self, frame):
+    def decode_serial_input(self, bytes_):
         """Decode the serial input received from the gateway."""
-        bytes_ = hdlc_decode(frame)
         if bytes_[1] in [0xFF, 0xFE]:
             return
         frame = Frame.from_bytes(bytes_)
@@ -232,11 +230,11 @@ class DotBotSimulator(threading.Thread):
             self.update(0.1)
 
 
-class DotBotSimulatorSerialInterface(threading.Thread):
+class DotBotSimulatorCommunicationInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, callback: Callable, simulator_init_state_path: str):
-        self.callback = callback
+    def __init__(self, on_frame_received: Callable, simulator_init_state_path: str):
+        self.on_frame_received = on_frame_received
         self.running = True
         super().__init__(daemon=True)
         init_state = InitStateToml(**toml.load(simulator_init_state_path))
@@ -254,15 +252,12 @@ class DotBotSimulatorSerialInterface(threading.Thread):
     def run(self):
         """Listen continuously at each byte received on the fake serial interface."""
         for dotbot in self.dotbots:
-            for byte in dotbot.advertise():
-                self.callback(byte.to_bytes(length=1, byteorder="little"))
+            self.on_frame_received(dotbot.advertise())
         time.sleep(0.1)
 
         while self.running:
             for dotbot in self.dotbots:
-                for byte in dotbot.advertise():
-                    self.callback(byte.to_bytes(length=1, byteorder="little"))
-                    time.sleep(0.000001)
+                self.on_frame_received(dotbot.advertise())
             time.sleep(
                 0.5 - PayloadDotBotAdvertisement().size * len(self.dotbots) * 0.000001
             )

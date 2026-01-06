@@ -121,7 +121,7 @@ async def test_marilib_cloud_adapter(_):
 
 
 @pytest.mark.asyncio
-@patch("dotbot.adapter.DotBotSimulatorSerialInterface")
+@patch("dotbot.adapter.DotBotSimulatorCommunicationInterface")
 async def test_dotbot_simulator_adapter(_):
     adapter = DotBotSimulatorAdapter()
     frames = []
@@ -132,10 +132,9 @@ async def test_dotbot_simulator_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    async def feed_bytes(queue):
-        for b in hdlc_encode(frame.to_bytes()):
-            await queue.put(b.to_bytes(1, "little"))
-            await asyncio.sleep(0.05)
+    async def feed_frame(queue):
+        await queue.put(frame.to_bytes())
+        await asyncio.sleep(0.05)
 
     mock_queue = asyncio.Queue()
     with patch("asyncio.Queue", return_value=mock_queue):
@@ -144,20 +143,19 @@ async def test_dotbot_simulator_adapter(_):
             await adapter.start(on_frame_received)
 
         asyncio.create_task(name="test_serial_adapter_start", coro=start_task())
-        await feed_bytes(mock_queue)
+        await feed_frame(mock_queue)
 
         await asyncio.sleep(0.1)
-        assert frames == [frame]
+        assert frames == [frame.to_bytes()]
 
         adapter.send_payload(frame.header.destination, payload)
-        adapter.simulator.write.assert_called_once_with(hdlc_encode(frame.to_bytes()))
-        adapter.simulator.flush.assert_called_once()
+        adapter.simulator.write.assert_called_once_with(frame.to_bytes())
         adapter.close()
         adapter.simulator.stop.assert_called_once()
 
 
 @pytest.mark.asyncio
-@patch("dotbot.adapter.SailBotSimulatorSerialInterface")
+@patch("dotbot.adapter.SailBotSimulatorCommunicationInterface")
 async def test_sailbot_simulator_adapter(_):
     adapter = SailBotSimulatorAdapter()
     frames = []
@@ -168,10 +166,9 @@ async def test_sailbot_simulator_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    async def feed_bytes(queue):
-        for b in hdlc_encode(frame.to_bytes()):
-            await queue.put(b.to_bytes(1, "little"))
-            await asyncio.sleep(0.05)
+    async def feed_frame(queue):
+        await queue.put(frame.to_bytes())
+        await asyncio.sleep(0.05)
 
     mock_queue = asyncio.Queue()
     with patch("asyncio.Queue", return_value=mock_queue):
@@ -180,13 +177,12 @@ async def test_sailbot_simulator_adapter(_):
             await adapter.start(on_frame_received)
 
         asyncio.create_task(name="test_serial_adapter_start", coro=start_task())
-        await feed_bytes(mock_queue)
+        await feed_frame(mock_queue)
 
         await asyncio.sleep(0.1)
-        assert frames == [frame]
+        assert frames == [frame.to_bytes()]
 
         adapter.send_payload(frame.header.destination, payload)
-        adapter.simulator.write.assert_called_once_with(hdlc_encode(frame.to_bytes()))
-        adapter.simulator.flush.assert_called_once()
+        adapter.simulator.write.assert_called_once_with(frame.to_bytes())
         adapter.close()
         adapter.simulator.stop.assert_called_once()

@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
-from dotbot_utils.hdlc import hdlc_decode, hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
 from numpy import clip
 
@@ -343,13 +342,11 @@ class SailBotSimulator:
         )
         logger.debug("Loop end")
 
-    def decode_serial_input(self, frame):
+    def decode_serial_input(self, bytes_):
         """Decode the serial input received from the gateway."""
-        bytes_ = hdlc_decode(frame)
         if bytes_[1] in [0xFF, 0xFE]:
             return
         frame = Frame.from_bytes(bytes_)
-        frame = Frame.from_bytes(hdlc_decode(frame))
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
@@ -394,8 +391,7 @@ class SailBotSimulator:
                 )
             ),
         )
-        frame = Frame(header=self.header, packet=Packet().from_payload(payload))
-        return hdlc_encode(frame.to_bytes())
+        return Frame(header=self.header, packet=Packet().from_payload(payload))
 
     def advertise(self):
         """Send an adertisement message to the gateway."""
@@ -405,19 +401,19 @@ class SailBotSimulator:
                 PayloadAdvertisement(application=ApplicationType.SailBot)
             ),
         )
-        return hdlc_encode(frame.to_bytes())
+        return frame
 
 
-class SailBotSimulatorSerialInterface(threading.Thread):
+class SailBotSimulatorCommunicationInterface(threading.Thread):
     """Bidirectional serial interface to control simulated robots."""
 
-    def __init__(self, callback: Callable):
+    def __init__(self, on_frame_received: Callable):
+        self.on_frame_received = on_frame_received
         self.running = True
         self.sailbots = [
             SailBotSimulator("1234567890123456"),
         ]
 
-        self.callback = callback
         super().__init__(daemon=True)  # automatically close when the main program exits
         self.start()
         self.logger = LOGGER.bind(context=__name__)
@@ -426,8 +422,7 @@ class SailBotSimulatorSerialInterface(threading.Thread):
     def run(self):
         """Listen continuously at each byte received on the fake serial interface."""
         for sailbot in self.sailbots:
-            for byte in sailbot.advertise():
-                self.callback(byte.to_bytes(length=1, byteorder="little"))
+            self.on_frame_received(sailbot.advertise())
 
         next_sim_time = time.time() + SIM_DELTA_T
         next_control_time = time.time() + CONTROL_DELTA_T
@@ -442,9 +437,7 @@ class SailBotSimulatorSerialInterface(threading.Thread):
                 next_sim_time = current_time + SIM_DELTA_T
             if updates_interval >= 10:
                 for update in updates:
-                    for byte in update:
-                        self.callback(byte.to_bytes(length=1, byteorder="little"))
-                        time.sleep(0.001)
+                    self.on_frame_received(update)
                 updates_interval = 0
             updates_interval += 1
 
@@ -461,10 +454,6 @@ class SailBotSimulatorSerialInterface(threading.Thread):
         self.logger.info("Stopping Sailbot Simulation...")
         self.running = False
         self.join()
-
-    def flush(self):
-        """Flush fake serial output."""
-        pass
 
     def write(self, bytes_):
         """Write bytes on the fake serial, similar to the real gateway."""
