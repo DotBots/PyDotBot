@@ -78,6 +78,7 @@ async def test_controller_dont_send(_, __, serial_write):
     assert serial_write.call_count == 0
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_controller_sailbot_simulator():
     """Check controller called for sailbot simulator."""
 
@@ -99,6 +100,7 @@ def test_controller_sailbot_simulator():
     loop.run_until_complete(start_simulator())
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 @patch("dotbot.controller.QrkeyController.start")
 def test_controller_dotbot_simulator(_):
     """Check controller called for dotbot simulator."""
