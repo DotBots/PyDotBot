@@ -6,11 +6,12 @@
 """Module containing client code to interact with the controller REST API."""
 
 from contextlib import asynccontextmanager
+from typing import List
 
 import httpx
 
 from dotbot.logger import LOGGER, setup_logging
-from dotbot.models import DotBotStatus
+from dotbot.models import DotBotModel, DotBotStatus
 from dotbot.protocol import ApplicationType
 
 
@@ -42,7 +43,7 @@ class RestClient:
     async def close(self):
         await self._client.aclose()
 
-    async def fetch_active_dotbots(self):
+    async def fetch_active_dotbots(self) -> List[DotBotModel]:
         """Fetch active DotBots."""
         try:
             response = await self._client.get(
@@ -60,7 +61,7 @@ class RestClient:
                 )
             else:
                 return [
-                    dotbot
+                    DotBotModel(**dotbot)
                     for dotbot in response.json()
                     if dotbot["status"] == DotBotStatus.ACTIVE.value
                 ]
@@ -94,3 +95,7 @@ class RestClient:
     async def send_rgb_led_command(self, address, command):
         """Send an RGB LED command to a DotBot."""
         await self._send_command(address, ApplicationType.SailBot, "rgb_led", command)
+
+    async def send_waypoint_command(self, address, application, command):
+        """Send an waypoint command to a DotBot."""
+        await self._send_command(address, application, "waypoints", command)

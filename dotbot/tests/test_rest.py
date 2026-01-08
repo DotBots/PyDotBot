@@ -3,7 +3,11 @@ from unittest import mock
 import httpx
 import pytest
 
-from dotbot.models import DotBotMoveRawCommandModel, DotBotRgbLedCommandModel
+from dotbot.models import (
+    DotBotModel,
+    DotBotMoveRawCommandModel,
+    DotBotRgbLedCommandModel,
+)
 from dotbot.protocol import ApplicationType
 from dotbot.rest import rest_client
 
@@ -16,13 +20,17 @@ from dotbot.rest import rest_client
         pytest.param(httpx.ConnectError, [], id="http error"),
         pytest.param(httpx.Response(403), [], id="http code error"),
         pytest.param(
-            httpx.Response(200, json=[{"address": "test", "status": 1}]),
+            httpx.Response(
+                200, json=[{"address": "test", "status": 1, "last_seen": 0}]
+            ),
             [],
             id="none active",
         ),
         pytest.param(
-            httpx.Response(200, json=[{"address": "test", "status": 0}]),
-            [{"address": "test", "status": 0}],
+            httpx.Response(
+                200, json=[{"address": "test", "status": 0, "last_seen": 0}]
+            ),
+            [DotBotModel(**{"address": "test", "status": 0, "last_seen": 0})],
             id="found",
         ),
     ],
