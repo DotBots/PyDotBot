@@ -6,8 +6,10 @@
 
 """Dotbot simulator for the DotBot project."""
 
+import random
 import threading
 import time
+from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
@@ -39,19 +41,6 @@ def battery_discharge_model(time_elapsed_s: float) -> int:
     return voltage
 
 
-def diff_drive_bot(x_pos_old, y_pos_old, theta_old, v_right, v_left):
-    """Execute state space model of a rigid differential drive robot."""
-    x_dot = R / 2 * (v_right + v_left) * cos(theta_old - pi) * 50000
-    y_dot = R / 2 * (v_right + v_left) * sin(theta_old - pi) * 50000
-    theta_dot = R / L * (-v_right + v_left)
-
-    x_pos = x_pos_old + x_dot * SIMULATOR_STEP_DELTA_T
-    y_pos = y_pos_old + y_dot * SIMULATOR_STEP_DELTA_T
-    theta = (theta_old + theta_dot * SIMULATOR_STEP_DELTA_T) % (2 * pi)
-
-    return x_pos, y_pos, theta
-
-
 class DotBotSimulatorMode(Enum):
     """Operation mode of the dotbot simulator."""
 
@@ -67,33 +56,42 @@ class Waypoint:
     y: int
 
 
-class SimulatedDotBot(BaseModel):
+class SimulatedDotBotSettings(BaseModel):
     address: str
-    calibrated: bool = True
     pos_x: int
     pos_y: int
     theta: float
+    calibrated: bool = True
+    motor_left_error: float = 0.5
+    motor_right_error: float = 0
+
+
+class SimulatedNetworkSettings(BaseModel):
+    pdr: int = 100
 
 
 class InitStateToml(BaseModel):
-    dotbots: List[SimulatedDotBot]
+    dotbots: List[SimulatedDotBotSettings]
+    network: SimulatedNetworkSettings = SimulatedNetworkSettings()
 
 
 class DotBotSimulator(threading.Thread):
     """Simulator class for the dotbot."""
 
-    def __init__(self, dotbot: SimulatedDotBot):
+    def __init__(self, settings: SimulatedDotBotSettings):
         super().__init__(daemon=True)
-        self.address = dotbot.address.lower()
-        self.pos_x = dotbot.pos_x
-        self.pos_y = dotbot.pos_y
-        self.theta = dotbot.theta
+        self.address = settings.address.lower()
+        self.pos_x = settings.pos_x
+        self.pos_y = settings.pos_y
+        self.theta = settings.theta
+        self.motor_left_error = settings.motor_left_error
+        self.motor_right_error = settings.motor_right_error
         self.time_elapsed_s = 0
 
         self.v_left = 0
         self.v_right = 0
 
-        self.calibrated = dotbot.calibrated
+        self.calibrated = settings.calibrated
         self.waypoint_threshold = 0
         self.waypoints = []
         self.waypoint_index = 0
@@ -110,6 +108,20 @@ class DotBotSimulator(threading.Thread):
             source=int(self.address, 16),
         )
 
+    def _diff_drive_bot(self, x_pos_old, y_pos_old, theta_old, v_right, v_left):
+        """Execute state space model of a rigid differential drive robot."""
+        v_right_real = v_right * (1 - self.motor_right_error)
+        v_left_real = v_left * (1 - self.motor_left_error)
+        x_dot = R / 2 * (v_right_real + v_left_real) * cos(theta_old - pi) * 50000
+        y_dot = R / 2 * (v_right_real + v_left_real) * sin(theta_old - pi) * 50000
+        theta_dot = R / L * (-v_right_real + v_left_real)
+
+        x_pos = x_pos_old + x_dot * SIMULATOR_STEP_DELTA_T
+        y_pos = y_pos_old + y_dot * SIMULATOR_STEP_DELTA_T
+        theta = (theta_old + theta_dot * SIMULATOR_STEP_DELTA_T) % (2 * pi)
+
+        return x_pos, y_pos, theta
+
     def update(self, dt: float):
         """State space model update."""
         pos_x_old = self.pos_x
@@ -117,7 +129,7 @@ class DotBotSimulator(threading.Thread):
         theta_old = self.theta
 
         if self.controller_mode == DotBotSimulatorMode.MANUAL:
-            self.pos_x, self.pos_y, self.theta = diff_drive_bot(
+            self.pos_x, self.pos_y, self.theta = self._diff_drive_bot(
                 pos_x_old, pos_y_old, theta_old, self.v_right, self.v_left
             )
         elif self.controller_mode == DotBotSimulatorMode.AUTOMATIC:
@@ -167,7 +179,7 @@ class DotBotSimulator(threading.Thread):
                 if self.v_right < 0:
                     self.v_right = 0
 
-            self.pos_x, self.pos_y, self.theta = diff_drive_bot(
+            self.pos_x, self.pos_y, self.theta = self._diff_drive_bot(
                 self.pos_x, self.pos_y, self.theta, self.v_right, self.v_left
             )
         self.logger.debug(
@@ -177,7 +189,7 @@ class DotBotSimulator(threading.Thread):
         time.sleep(dt)
 
     def advertise(self):
-        """Send an adertisement message to the gateway."""
+        """Send an advertisement message to the gateway."""
         payload = Frame(
             header=self.header,
             packet=Packet.from_payload(
@@ -193,11 +205,8 @@ class DotBotSimulator(threading.Thread):
         )
         return payload
 
-    def decode_serial_input(self, bytes_):
+    def handle_frame(self, frame: Frame):
         """Decode the serial input received from the gateway."""
-        if bytes_[1] in [0xFF, 0xFE]:
-            return
-        frame = Frame.from_bytes(bytes_)
 
         if self.address == hex(frame.header.destination)[2:]:
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
@@ -238,11 +247,12 @@ class DotBotSimulatorCommunicationInterface(threading.Thread):
         self.running = True
         super().__init__(daemon=True)
         init_state = InitStateToml(**toml.load(simulator_init_state_path))
+        self.network_pdr = init_state.network.pdr
         self.dotbots = [
             DotBotSimulator(
-                dotbot=dotbot,
+                settings=dotbot_settings,
             )
-            for dotbot in init_state.dotbots
+            for dotbot_settings in init_state.dotbots
         ]
 
         self.start()
@@ -257,7 +267,7 @@ class DotBotSimulatorCommunicationInterface(threading.Thread):
 
         while self.running:
             for dotbot in self.dotbots:
-                self.on_frame_received(dotbot.advertise())
+                self.handle_dotbot_frame(dotbot.advertise())
             time.sleep(
                 0.5 - PayloadDotBotAdvertisement().size * len(self.dotbots) * 0.000001
             )
@@ -273,7 +283,24 @@ class DotBotSimulatorCommunicationInterface(threading.Thread):
         """Flush fake serial output."""
         pass
 
+    def _packet_delivered(self):
+        return random.randint(0, 100) < self.network_pdr
+
+    def handle_dotbot_frame(self, frame):
+        """Send bytes to the fake serial, similar to the real gateway."""
+        if self._packet_delivered() is False:
+            self.logger.info(
+                f"Packet from DotBot {hexlify(int(frame.header.source).to_bytes(8, 'big')).decode()} lost in simulation"
+            )
+            return
+        self.on_frame_received(frame)
+
     def write(self, bytes_):
         """Write bytes on the fake serial."""
         for dotbot in self.dotbots:
-            dotbot.decode_serial_input(bytes_)
+            if self._packet_delivered() is False:
+                self.logger.info(
+                    f"Packet to DotBot {dotbot.address} lost in simulation"
+                )
+                continue
+            dotbot.handle_frame(Frame.from_bytes(bytes_))
