@@ -177,7 +177,7 @@ class DotBotSimulator(threading.Thread):
         time.sleep(dt)
 
     def advertise(self):
-        """Send an adertisement message to the gateway."""
+        """Send an advertisement message to the gateway."""
         payload = Frame(
             header=self.header,
             packet=Packet.from_payload(

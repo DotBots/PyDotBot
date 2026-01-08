@@ -394,7 +394,7 @@ class SailBotSimulator:
         return Frame(header=self.header, packet=Packet().from_payload(payload))
 
     def advertise(self):
-        """Send an adertisement message to the gateway."""
+        """Send an advertisement message to the gateway."""
         frame = Frame(
             header=self.header,
             packet=Packet().from_payload(
