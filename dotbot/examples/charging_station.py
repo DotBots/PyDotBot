@@ -51,23 +51,31 @@ async def run_charging_station(
             command=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
         )
 
-        # await set_dotbot_rgb_led(
-        #     client,
-        #     address=dotbot.address,
-        #     application=dotbot.application,
-        #     red=255,
-        #     green=0,
-        #     blue=0,
-        # )
-
     # Phase 1: initial queue
-    sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
-    goals = assign_queue_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
-
-    await send_to_goal(client, goals, params)
+    await queue_robots(client, dotbots, params)
 
     # Phase 2: charging loop
-    remaining = sorted_bots
+    await charge_robots(client, params)
+
+    return None
+
+
+async def queue_robots(
+    client: RestClient,
+    dotbots: List[DotBotModel],
+    params: OrcaParams,
+) -> None:
+    sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
+    goals = assign_queue_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
+    await send_to_goal(client, goals, params)
+
+
+async def charge_robots(
+    client: RestClient,
+    params: OrcaParams,
+) -> None:
+    dotbots = await client.fetch_active_dotbots()
+    remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
     total_count = len(dotbots)
     # The head of the remaining should park
     # Except on the first loop, where it should just queue.
@@ -84,6 +92,7 @@ async def run_charging_station(
         goals = assign_charge_goals(
             remaining, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING
         )
+
         if park_dotbot is not None:
             goals[park_dotbot.address] = {
                 "x": PARK_X,
@@ -121,14 +130,12 @@ async def run_charging_station(
         # Remove head from queue
         remaining = remaining[1:]
 
-    return None
 
-
-async def disengage_from_charger(client: RestClient, head: DotBotModel):
+async def disengage_from_charger(client: RestClient, dotbot: DotBotModel):
     for _ in range(25):
         await client.send_move_raw_command(
-            address=head.address,
-            application=head.application,
+            address=dotbot.address,
+            application=dotbot.application,
             command=DotBotMoveRawCommandModel(
                 left_x=0, left_y=-100, right_x=0, right_y=-100
             ),
@@ -141,7 +148,6 @@ async def send_to_goal(
     goals: Dict[str, dict],
     params: OrcaParams,
 ) -> None:
-    #  Queue
     while True:
         dotbots = await client.fetch_active_dotbots()
         agents: List[Agent] = []
