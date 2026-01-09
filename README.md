@@ -83,7 +83,7 @@ Use `--config-path` to specify the file:
 # Use settings from the config file
 dotbot-controller --config-path config_sample.toml
 # Use config file but override port and adapter (simulator example)
-dotbot-controller --config-path config_sample.toml -p dotbot-simulator -a serial
+dotbot-controller --config-path config_sample.toml -p dotbot-simulator -a dotbot-simulator
 ```
 
 Values defined in the config file behave exactly like CLI options.
