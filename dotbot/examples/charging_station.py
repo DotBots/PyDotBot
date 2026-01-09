@@ -38,7 +38,7 @@ QUEUE_SPACING = (
 PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
 
 
-async def run_charging_station_poc(
+async def run_charging_station(
     params: OrcaParams,
     client: RestClient,
 ) -> None:
@@ -319,7 +319,7 @@ async def main() -> None:
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
     client = RestClient(url, port, use_https)
 
-    await run_charging_station_poc(params, client)
+    await run_charging_station(params, client)
 
 
 if __name__ == "__main__":

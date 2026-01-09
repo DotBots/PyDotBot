@@ -24,13 +24,5 @@ dotbot-controller \
 For example, if you want to run the charging station proof-of-concept
 
 ```bash
-python3 dotbot/examples/charging_station_poc.py
-```
-
-## 3. API boundary
-
-All communication with the simulator/controller happens through:
-
-```
-dotbot/examples/api.py
+python3 dotbot/examples/charging_station.py
 ```

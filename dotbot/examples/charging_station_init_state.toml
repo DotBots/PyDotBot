@@ -29,20 +29,17 @@ pos_x = 10_000
 pos_y = 870_000
 theta = 3.14
 
-
 [[dotbots]]
 address = "6666666666666666"
 pos_x = 280_000
 pos_y = 880_000
 theta = 3.14
 
-
 [[dotbots]]
 address = "7777777777777777"
 pos_x = 120_000
 pos_y = 90_000
 theta = 3.14
-
 
 [[dotbots]]
 address = "8888888888888888"
