@@ -12,6 +12,8 @@ from enum import Enum
 
 import click
 
+from dotbot.rest import rest_client
+
 try:
     from pynput import keyboard
 except ImportError:
@@ -30,7 +32,6 @@ from dotbot import (
 from dotbot.logger import LOGGER, setup_logging
 from dotbot.models import DotBotMoveRawCommandModel, DotBotRgbLedCommandModel
 from dotbot.protocol import ApplicationType
-from dotbot.rest import RestClient
 
 DOTBOT_APPLICATION_DEFAULT = "dotbot"
 APPLICATION_TYPE_MAP = {
@@ -111,9 +112,9 @@ class KeyboardEvent:
 class KeyboardController:
     """Dotbot controller for a keyboard interface."""
 
-    def __init__(self, hostname, port, https, dotbot_address, application):
+    def __init__(self, rest_client, dotbot_address, application):
         """Initializes the keyboard controller."""
-        self.api = RestClient(hostname, port, https)
+        self.api = rest_client
         self.dotbots = []
         self.dotbot_address = dotbot_address
         self.application = APPLICATION_TYPE_MAP[application]
@@ -290,19 +291,22 @@ class KeyboardController:
 )
 def main(hostname, port, https, dotbot_address, application, log_level):
     """DotBot keyboard controller."""
+    asyncio.run(cli(hostname, port, https, dotbot_address, application, log_level))
+
+
+async def cli(hostname, port, https, dotbot_address, application, log_level):
     print(f"Welcome to the DotBots keyboard interface (version: {pydotbot_version()}).")
     setup_logging(None, log_level, ["console"])
-    keyboard_controller = KeyboardController(
-        hostname,
-        port,
-        https,
-        dotbot_address,
-        application,
-    )
-    try:
-        asyncio.run(keyboard_controller.start())
-    except (SystemExit, KeyboardInterrupt):
-        sys.exit(0)
+    async with rest_client(hostname, port, https) as client:
+        keyboard_controller = KeyboardController(
+            client,
+            dotbot_address,
+            application,
+        )
+        try:
+            await keyboard_controller.start()
+        except (SystemExit, KeyboardInterrupt):
+            sys.exit(0)
 
 
 if __name__ == "__main__":

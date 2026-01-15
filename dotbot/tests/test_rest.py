@@ -5,7 +5,7 @@ import pytest
 
 from dotbot.models import DotBotMoveRawCommandModel, DotBotRgbLedCommandModel
 from dotbot.protocol import ApplicationType
-from dotbot.rest import RestClient
+from dotbot.rest import rest_client
 
 
 @pytest.mark.asyncio
@@ -33,10 +33,10 @@ async def test_fetch_active_dotbots(get, response, expected):
         get.side_effect = response("error")
     else:
         get.return_value = response
-    client = RestClient("localhost", 1234, False)
-    result = await client.fetch_active_dotbots()
-    get.assert_called_once()
-    assert result == expected
+    async with rest_client("localhost", 1234, False) as client:
+        result = await client.fetch_active_dotbots()
+        get.assert_called_once()
+        assert result == expected
 
 
 @pytest.mark.asyncio
@@ -75,9 +75,9 @@ async def test_send_move_raw_command(put, response, application, command):
         put.side_effect = response("error")
     else:
         put.return_value = response
-    client = RestClient("localhost", 1234, False)
-    await client.send_move_raw_command("test", application, command)
-    put.assert_called_once()
+    async with rest_client("localhost", 1234, False) as client:
+        await client.send_move_raw_command("test", application, command)
+        put.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -107,6 +107,6 @@ async def test_send_rgb_led_command(put, response, command):
         put.side_effect = response("error")
     else:
         put.return_value = response
-    client = RestClient("localhost", 1234, False)
-    await client.send_rgb_led_command("test", command)
-    put.assert_called_once()
+    async with rest_client("localhost", 1234, False) as client:
+        await client.send_rgb_led_command("test", command)
+        put.assert_called_once()
