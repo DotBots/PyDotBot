@@ -22,7 +22,7 @@ from dotbot import (
 from dotbot.logger import LOGGER, setup_logging
 from dotbot.models import DotBotMoveRawCommandModel
 from dotbot.protocol import ApplicationType
-from dotbot.rest import RestClient
+from dotbot.rest import rest_client
 
 # Pygame support prompt is annoying, it can be hidden using an environment variable
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -43,11 +43,9 @@ APPLICATION_TYPE_MAP = {
 class JoystickController:
     """A Dotbot controller for a joystick interface."""
 
-    def __init__(
-        self, joystick_index, hostname, port, https, dotbot_address, application
-    ):
+    def __init__(self, joystick_index, client, dotbot_address, application):
         """Initialize the joystick controller."""
-        self.api = RestClient(hostname, port, https)
+        self.api = rest_client
         self.dotbots = []
         self.dotbot_address = dotbot_address
         self.application = APPLICATION_TYPE_MAP[application]
@@ -177,20 +175,25 @@ class JoystickController:
 )
 def main(joystick, hostname, port, https, dotbot_address, application, log_level):
     """DotBot joystick controller."""
+    asyncio.run(
+        cli(joystick, hostname, port, https, dotbot_address, application, log_level)
+    )
+
+
+async def cli(joystick, hostname, port, https, dotbot_address, application, log_level):
     print(f"Welcome to the DotBots joystick interface (version: {pydotbot_version()}).")
     setup_logging(None, log_level, ["console"])
-    joystick_controller = JoystickController(
-        joystick,
-        hostname,
-        port,
-        https,
-        dotbot_address,
-        application,
-    )
-    try:
-        asyncio.run(joystick_controller.start())
-    except (SystemExit, KeyboardInterrupt):
-        sys.exit(0)
+    async with rest_client(hostname, port, https) as client:
+        joystick_controller = JoystickController(
+            joystick,
+            client,
+            dotbot_address,
+            application,
+        )
+        try:
+            await joystick_controller.start()
+        except (SystemExit, KeyboardInterrupt):
+            sys.exit(0)
 
 
 if __name__ == "__main__":
