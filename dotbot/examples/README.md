@@ -15,7 +15,6 @@ First, start the DotBot controller in **simulator mode** with the correct config
 ```bash
 dotbot-controller \
   --config-path config_sample.toml \
-  -p dotbot-simulator \
   -a dotbot-simulator
 ```
 

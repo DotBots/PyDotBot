@@ -38,28 +38,6 @@ QUEUE_SPACING = (
 PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
 
 
-async def run_charging_station(
-    params: OrcaParams,
-    client: RestClient,
-) -> None:
-    dotbots = await client.fetch_active_dotbots()
-
-    # Cosmetic: all bots are red
-    for dotbot in dotbots:
-        await client.send_rgb_led_command(
-            address=dotbot.address,
-            command=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-        )
-
-    # Phase 1: initial queue
-    await queue_robots(client, dotbots, params)
-
-    # Phase 2: charging loop
-    await charge_robots(client, params)
-
-    return None
-
-
 async def queue_robots(
     client: RestClient,
     dotbots: List[DotBotModel],
@@ -325,7 +303,22 @@ async def main() -> None:
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
     client = RestClient(url, port, use_https)
 
-    await run_charging_station(params, client)
+    dotbots = await client.fetch_active_dotbots()
+
+    # Cosmetic: all bots are red
+    for dotbot in dotbots:
+        await client.send_rgb_led_command(
+            address=dotbot.address,
+            command=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+        )
+
+    # Phase 1: initial queue
+    await queue_robots(client, dotbots, params)
+
+    # Phase 2: charging loop
+    await charge_robots(client, params)
+
+    return None
 
 
 if __name__ == "__main__":
