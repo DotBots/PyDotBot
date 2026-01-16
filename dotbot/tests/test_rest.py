@@ -3,7 +3,13 @@ from unittest import mock
 import httpx
 import pytest
 
-from dotbot.models import DotBotMoveRawCommandModel, DotBotRgbLedCommandModel
+from dotbot.models import (
+    DotBotLH2Position,
+    DotBotModel,
+    DotBotMoveRawCommandModel,
+    DotBotRgbLedCommandModel,
+    DotBotWaypoints,
+)
 from dotbot.protocol import ApplicationType
 from dotbot.rest import rest_client
 
@@ -16,13 +22,17 @@ from dotbot.rest import rest_client
         pytest.param(httpx.ConnectError, [], id="http error"),
         pytest.param(httpx.Response(403), [], id="http code error"),
         pytest.param(
-            httpx.Response(200, json=[{"address": "test", "status": 1}]),
+            httpx.Response(
+                200, json=[{"address": "test", "status": 1, "last_seen": 0}]
+            ),
             [],
             id="none active",
         ),
         pytest.param(
-            httpx.Response(200, json=[{"address": "test", "status": 0}]),
-            [{"address": "test", "status": 0}],
+            httpx.Response(
+                200, json=[{"address": "test", "status": 0, "last_seen": 0}]
+            ),
+            [DotBotModel(**{"address": "test", "status": 0, "last_seen": 0})],
             id="found",
         ),
     ],
@@ -109,4 +119,48 @@ async def test_send_rgb_led_command(put, response, command):
         put.return_value = response
     async with rest_client("localhost", 1234, False) as client:
         await client.send_rgb_led_command("test", command)
+        put.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response,application,command",
+    [
+        pytest.param(
+            httpx.Response(200),
+            ApplicationType.DotBot,
+            DotBotWaypoints(
+                threshold=40,
+                waypoints=[DotBotLH2Position(x=0, y=0, z=0)],
+            ),
+            id="ok",
+        ),
+        pytest.param(
+            httpx.ConnectError,
+            ApplicationType.DotBot,
+            DotBotWaypoints(
+                threshold=40,
+                waypoints=[DotBotLH2Position(x=0, y=0, z=0)],
+            ),
+            id="http error",
+        ),
+        pytest.param(
+            httpx.Response(403),
+            ApplicationType.DotBot,
+            DotBotWaypoints(
+                threshold=40,
+                waypoints=[DotBotLH2Position(x=0, y=0, z=0)],
+            ),
+            id="invalid http code",
+        ),
+    ],
+)
+@mock.patch("httpx.AsyncClient.put")
+async def test_send_waypoint_command(put, application, response, command):
+    if response == httpx.ConnectError:
+        put.side_effect = response("error")
+    else:
+        put.return_value = response
+    async with rest_client("localhost", 1234, False) as client:
+        await client.send_waypoint_command("test", application, command)
         put.assert_called_once()
