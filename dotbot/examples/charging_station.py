@@ -24,7 +24,7 @@ DT = 0.05  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
 BOT_RADIUS = 0.03  # Physical radius of a DotBot (unit), used for collision avoidance
-MAX_SPEED = 0.75  # Maximum allowed linear speed of a bot
+MAX_SPEED = 0.075  # Maximum allowed linear speed of a bot
 
 (QUEUE_HEAD_X, QUEUE_HEAD_Y) = (
     0.1,
@@ -137,7 +137,6 @@ async def send_to_goal(
                     position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
                     velocity=Vec2(x=0, y=0),
                     radius=BOT_RADIUS,
-                    direction=bot.direction,
                     max_speed=MAX_SPEED,
                     preferred_velocity=preferred_vel(
                         dotbot=bot, goal=goals.get(bot.address)
@@ -156,8 +155,7 @@ async def send_to_goal(
             orca_vel = await compute_orca_velocity(
                 agent, neighbors=neighbors, params=params
             )
-            STEP_SCALE = 0.1
-            step = Vec2(x=orca_vel.x * STEP_SCALE, y=orca_vel.y * STEP_SCALE)
+            step = Vec2(x=orca_vel.x, y=orca_vel.y)
 
             # ---- CLAMP STEP TO GOAL DISTANCE ----
             goal = goals.get(agent.id)
@@ -297,7 +295,7 @@ async def compute_orca_velocity(
 
 
 async def main() -> None:
-    params = OrcaParams(time_horizon=DT)
+    params = OrcaParams(time_horizon=5 * DT, time_step=DT)
     url = os.getenv("DOTBOT_CONTROLLER_URL", "localhost")
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
