@@ -24,6 +24,7 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotStatus,
     DotBotWaypoints,
+    WSMessage,
 )
 from dotbot.protocol import ApplicationType
 
@@ -130,6 +131,56 @@ class FakeRestClient:
         self.rgb_commands.append((address, command))
 
 
+class FakeDotBotWsClient:
+    """
+    Fake WebSocket client for testing control logic.
+
+    - Accepts typed WSMessage objects
+    - Dispatches to FakeRestClient logic
+    - Records all WS messages for assertions
+    """
+
+    def __init__(self, rest_client: FakeRestClient):
+        self.rest = rest_client
+        self.sent_messages: list[WSMessage] = []
+        self.connected = False
+
+    async def connect(self):
+        self.connected = True
+
+    async def close(self):
+        self.connected = False
+
+    async def send(self, msg: WSMessage):
+        if not self.connected:
+            raise RuntimeError("FakeDotBotWsClient is not connected")
+
+        self.sent_messages.append(msg)
+
+        if msg.cmd == "rgb_led":
+            await self.rest.send_rgb_led_command(
+                address=msg.address,
+                command=msg.data,
+            )
+
+        elif msg.cmd == "move_raw":
+            await self.rest.send_move_raw_command(
+                address=msg.address,
+                application=msg.application,
+                command=msg.data,
+            )
+
+        elif msg.cmd == "waypoints":
+            await self.rest.send_waypoint_command(
+                address=msg.address,
+                application=msg.application,
+                command=msg.data,
+            )
+
+        else:
+            raise ValueError(f"Unknown WS command: {msg.cmd}")
+
+
 def fake_bot(address: str, x: float, y: float) -> DotBotModel:
     return DotBotModel(
         address=address,
@@ -151,9 +202,11 @@ async def test_queue_robots_converges_to_queue_positions(_):
     ]
 
     client = FakeRestClient(bots)
+    ws = FakeDotBotWsClient(client)
+    await ws.connect()
     params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
-    await queue_robots(client, bots, params)
+    await queue_robots(client, ws, bots, params)
 
     # Bots should be ordered A, B, C along the queue
     expected = {
@@ -184,9 +237,11 @@ async def test_charge_robots_moves_all_bots_to_parking(_):
     ]
 
     client = FakeRestClient(bots)
+    ws = FakeDotBotWsClient(client)
+    await ws.connect()
     params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
-    await charge_robots(client, params)
+    await charge_robots(client, ws, params)
 
     # --- Assertions: all bots parked ---
     # Bots should be ordered A, B, C along the park slots

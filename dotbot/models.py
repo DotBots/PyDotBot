@@ -10,7 +10,7 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum
-from typing import Any, List, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -172,3 +172,31 @@ class DotBotModel(BaseModel):
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: bool = False
     battery: float = 0.0  # Voltage in Volts
+
+
+class WSBase(BaseModel):
+    cmd: str
+    address: str
+    application: ApplicationType
+
+
+class WSRgbLed(WSBase):
+    cmd: Literal["rgb_led"]
+    data: DotBotRgbLedCommandModel
+
+
+class WSMoveRaw(WSBase):
+    cmd: Literal["move_raw"]
+    data: DotBotMoveRawCommandModel
+
+
+class WSWaypoints(WSBase):
+    cmd: Literal["waypoints"]
+    data: DotBotWaypoints
+
+
+WSMessage = Union[
+    WSRgbLed,
+    WSMoveRaw,
+    WSWaypoints,
+]

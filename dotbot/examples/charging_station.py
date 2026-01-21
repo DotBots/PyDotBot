@@ -15,9 +15,12 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
+    WSRgbLed,
+    WSWaypoints,
 )
 from dotbot.protocol import ApplicationType
-from dotbot.rest import RestClient
+from dotbot.rest import RestClient, rest_client
+from dotbot.websocket import DotBotWsClient
 
 THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
 DT = 0.05  # Control loop period (seconds)
@@ -40,16 +43,18 @@ PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
 
 async def queue_robots(
     client: RestClient,
+    ws: DotBotWsClient,
     dotbots: List[DotBotModel],
     params: OrcaParams,
 ) -> None:
     sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
     goals = assign_queue_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
-    await send_to_goal(client, goals, params)
+    await send_to_goal(client, ws, goals, params)
 
 
 async def charge_robots(
     client: RestClient,
+    ws: DotBotWsClient,
     params: OrcaParams,
 ) -> None:
     dotbots = await client.fetch_active_dotbots()
@@ -76,7 +81,7 @@ async def charge_robots(
                 "x": PARK_X,
                 "y": PARK_Y + parked_count * PARK_SPACING,
             }
-        await send_to_goal(client, goals, params)
+        await send_to_goal(client, ws, goals, params)
 
         if len(remaining) == 0:
             break
@@ -123,6 +128,7 @@ async def disengage_from_charger(client: RestClient, dotbot: DotBotModel):
 
 async def send_to_goal(
     client: RestClient,
+    ws: DotBotWsClient,
     goals: Dict[str, dict],
     params: OrcaParams,
 ) -> None:
@@ -178,11 +184,15 @@ async def send_to_goal(
                     )
                 ],
             )
-            await client.send_waypoint_command(
-                address=agent.id,
-                application=ApplicationType.DotBot,
-                command=waypoints,
+            await ws.send(
+                WSWaypoints(
+                    cmd="waypoints",
+                    address=agent.id,
+                    application=ApplicationType.DotBot,
+                    data=waypoints,
+                )
             )
+
         await asyncio.sleep(DT)
     return None
 
@@ -299,22 +309,34 @@ async def main() -> None:
     url = os.getenv("DOTBOT_CONTROLLER_URL", "localhost")
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
-    client = RestClient(url, port, use_https)
+    async with rest_client(url, port, use_https) as client:
+        dotbots = await client.fetch_active_dotbots()
 
-    dotbots = await client.fetch_active_dotbots()
+        ws = DotBotWsClient(url, port)
+        await ws.connect()
+        try:
+            # Cosmetic: all bots are red
+            for dotbot in dotbots:
+                await ws.send(
+                    WSRgbLed(
+                        cmd="rgb_led",
+                        address=dotbot.address,
+                        application=ApplicationType.DotBot,
+                        data=DotBotRgbLedCommandModel(
+                            red=255,
+                            green=0,
+                            blue=0,
+                        ),
+                    )
+                )
 
-    # Cosmetic: all bots are red
-    for dotbot in dotbots:
-        await client.send_rgb_led_command(
-            address=dotbot.address,
-            command=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-        )
+            # Phase 1: initial queue
+            await queue_robots(client, ws, dotbots, params)
 
-    # Phase 1: initial queue
-    await queue_robots(client, dotbots, params)
-
-    # Phase 2: charging loop
-    await charge_robots(client, params)
+            # Phase 2: charging loop
+            await charge_robots(client, ws, params)
+        finally:
+            await ws.close()
 
     return None
 
