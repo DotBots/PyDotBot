@@ -151,7 +151,7 @@ async def test_queue_robots_converges_to_queue_positions(_):
     ]
 
     client = FakeRestClient(bots)
-    params = OrcaParams(time_horizon=DT)
+    params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
     await queue_robots(client, bots, params)
 
@@ -184,7 +184,7 @@ async def test_charge_robots_moves_all_bots_to_parking(_):
     ]
 
     client = FakeRestClient(bots)
-    params = OrcaParams(time_horizon=DT)
+    params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
     await charge_robots(client, params)
 
