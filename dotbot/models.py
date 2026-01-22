@@ -170,7 +170,7 @@ class DotBotModel(BaseModel):
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 40
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
-    calibrated: bool = False
+    calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 0.0  # Voltage in Volts
 
 

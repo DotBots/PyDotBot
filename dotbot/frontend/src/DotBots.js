@@ -159,7 +159,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
     applyWaypoints, clearWaypoints, activeDotbot
   ]);
 
-  let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated);
+  let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated > 0x00);
 
   return (
     <>

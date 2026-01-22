@@ -78,7 +78,7 @@ class PayloadDotBotAdvertisement(Payload):
         ]
     )
 
-    calibrated: bool = False
+    calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     direction: int = 0xFFFF
     pos_x: int = 0xFFFFFFFF
     pos_y: int = 0xFFFFFFFF

@@ -23,8 +23,9 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
-R = 1
-L = 2
+R = 5
+L = 7.5
+MOTOR_SPEED = 60
 SIMULATOR_STEP_DELTA_T = 0.002
 
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
@@ -61,8 +62,8 @@ class SimulatedDotBotSettings(BaseModel):
     pos_x: int
     pos_y: int
     theta: float
-    calibrated: bool = True
-    motor_left_error: float = 0.5
+    calibrated: int = 0x01
+    motor_left_error: float = 0
     motor_right_error: float = 0
 
 
@@ -112,9 +113,13 @@ class DotBotSimulator(threading.Thread):
         """Execute state space model of a rigid differential drive robot."""
         v_right_real = v_right * (1 - self.motor_right_error)
         v_left_real = v_left * (1 - self.motor_left_error)
-        x_dot = R / 2 * (v_right_real + v_left_real) * cos(theta_old - pi) * 50000
-        y_dot = R / 2 * (v_right_real + v_left_real) * sin(theta_old - pi) * 50000
-        theta_dot = R / L * (-v_right_real + v_left_real)
+        x_dot = (
+            (R / 2) * ((v_left_real + v_right_real) / L) * cos(theta_old - pi) * 50000
+        )
+        y_dot = (
+            (R / 2) * ((v_left_real + v_right_real) / L) * sin(theta_old - pi) * 50000
+        )
+        theta_dot = R / L * (v_left_real - v_right_real)
 
         x_pos = x_pos_old + x_dot * SIMULATOR_STEP_DELTA_T
         y_pos = y_pos_old + y_dot * SIMULATOR_STEP_DELTA_T
@@ -166,9 +171,9 @@ class DotBotSimulator(threading.Thread):
                     error_angle=error_angle,
                 )
 
-                angular_speed = error_angle * 200
-                self.v_left = 100 + angular_speed
-                self.v_right = 100 - angular_speed
+                angular_speed = error_angle * MOTOR_SPEED
+                self.v_left = MOTOR_SPEED + angular_speed
+                self.v_right = MOTOR_SPEED - angular_speed
 
                 if self.v_left > 100:
                     self.v_left = 100

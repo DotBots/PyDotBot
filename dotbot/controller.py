@@ -8,6 +8,7 @@
 """Interface of the Dotbot controller."""
 
 import asyncio
+import dataclasses
 import json
 import math
 import os
@@ -97,15 +98,26 @@ GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 CALIBRATION_PATH = Path.home() / ".dotbot" / "calibration.out"
 
 
-def load_calibration() -> PayloadLh2CalibrationHomography:
+@dataclass
+class CalibrationHomography:
+    """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
+
+    homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
+
+
+def load_calibration() -> list[CalibrationHomography]:
     if not os.path.exists(CALIBRATION_PATH):
-        return None
+        return []
     with open(CALIBRATION_PATH, "rb") as calibration_file:
-        index = int.from_bytes(calibration_file.read(4), "little", signed=False)
-        homography_matrix = calibration_file.read(36)
-    return PayloadLh2CalibrationHomography(
-        index=index, homography_matrix=homography_matrix
-    )
+        homographies: list[CalibrationHomography] = []
+        homographies_num = int.from_bytes(
+            calibration_file.read(1), "little", signed=False
+        )
+        for _ in range(homographies_num):
+            homographies.append(
+                CalibrationHomography(homography_matrix=calibration_file.read(36))
+            )
+    return homographies
 
 
 class ControllerException(Exception):
@@ -193,7 +205,7 @@ class Controller:
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
-        self.lh2_calibration = load_calibration()
+        self.lh2_calibration: list[CalibrationHomography] = load_calibration()
         self.api = api
         api.controller = self
         self.qrkey = None
@@ -547,16 +559,32 @@ class Controller:
 
         if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
             logger = logger.bind(application=ApplicationType.DotBot.name)
-            dotbot.calibrated = bool(frame.packet.payload.calibrated)
-            logger.info("Advertisement received", calibrated=bool(dotbot.calibrated))
+            dotbot.calibrated = int(frame.packet.payload.calibrated)
+            logger.info("Advertisement received", calibrated=hex(dotbot.calibrated))
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             need_update = False
-            if dotbot.calibrated is False and self.lh2_calibration is not None:
+            is_fully_calibrated = all(
+                [
+                    dotbot.calibrated >> index & 0x01
+                    for index in range(len(self.lh2_calibration))
+                ]
+            )
+            if is_fully_calibrated is False and self.lh2_calibration:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 self.dotbots.update({dotbot.address: dotbot})
-                self.send_payload(int(source, 16), payload=self.lh2_calibration)
-            elif dotbot.calibrated is True:
+                for index, homography in enumerate(self.lh2_calibration):
+                    self.logger.info(
+                        "Sending calibration homography",
+                        index=index,
+                        matrix=homography.homography_matrix,
+                    )
+                    payload = PayloadLh2CalibrationHomography(
+                        index=index,
+                        homography_matrix=homography.homography_matrix,
+                    )
+                    self.send_payload(int(source, 16), payload=payload)
+            elif is_fully_calibrated is True:
                 if frame.packet.payload.direction != 0xFFFF:
                     dotbot.direction = frame.packet.payload.direction
                 new_position = DotBotLH2Position(
