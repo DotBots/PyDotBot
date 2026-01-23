@@ -738,3 +738,37 @@ def test_ws_dotbots_commands(
             )
     else:
         api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
+def test_ws_invalid_message_validation_error():
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            swarm="0000",
+            last_seen=123.4,
+        )
+    }
+
+    invalid_message = {
+        # cmd doesn't match with data
+        "cmd": "waypoints",
+        "address": "4242",
+        "data": {
+            "red": 255,
+            "green": 0,
+            "blue": 0,
+        },
+    }
+
+    with TestClient(api).websocket_connect("/controller/ws/dotbots") as ws:
+        ws.send_json(invalid_message)
+
+        response = ws.receive_json()
+
+    assert response["error"] == "invalid_message"
+    assert "details" in response
+    assert isinstance(response["details"], list)
+
+    api.controller.send_payload.assert_not_called()
