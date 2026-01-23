@@ -34,6 +34,7 @@ from dotbot import (
     CONTROLLER_HTTP_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
+    MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
     NETWORK_ID_DEFAULT,
@@ -54,6 +55,7 @@ from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotGPSPosition,
     DotBotLH2Position,
+    DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -93,7 +95,7 @@ from dotbot.server import api
 CONTROLLERS = {}
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
-LH2_POSITION_DISTANCE_THRESHOLD = 0.01
+LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 CALIBRATION_PATH = Path.home() / ".dotbot" / "calibration.out"
 
@@ -138,6 +140,7 @@ class ControllerSettings:
     gw_address: str = GATEWAY_ADDRESS_DEFAULT
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
+    map_size: str = MAP_SIZE_DEFAULT
     webbrowser: bool = False
     verbose: bool = False
     log_level: str = "info"
@@ -207,6 +210,10 @@ class Controller:
         self.websockets = []
         self.lh2_calibration: list[CalibrationHomography] = load_calibration()
         self.api = api
+        self.map_size = DotBotMapSizeModel(
+            width=int(settings.map_size.split("x")[0]),
+            height=int(settings.map_size.split("x")[1]),
+        )
         api.controller = self
         self.qrkey = None
 
@@ -370,9 +377,9 @@ class Controller:
                 count=len(command.waypoints),
                 waypoints=[
                     PayloadLH2Location(
-                        pos_x=int(waypoint.x * 1e6),
-                        pos_y=int(waypoint.y * 1e6),
-                        pos_z=int(waypoint.z * 1e6),
+                        pos_x=int(waypoint.x),
+                        pos_y=int(waypoint.y),
+                        pos_z=int(waypoint.z),
                     )
                     for waypoint in command.waypoints
                 ],
@@ -432,6 +439,14 @@ class Controller:
             ]
             message = DotBotReplyModel(
                 request=DotBotRequestType.DOTBOTS,
+                data=data,
+            ).model_dump(exclude_none=True)
+            self.qrkey.publish(reply_topic, message)
+        elif request.request == DotBotRequestType.MAP_SIZE:
+            logger.info("Publish map size")
+            data = self.map_size.model_dump(exclude_none=True)
+            message = DotBotReplyModel(
+                request=DotBotRequestType.MAP_SIZE,
                 data=data,
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
@@ -588,8 +603,8 @@ class Controller:
                 if frame.packet.payload.direction != 0xFFFF:
                     dotbot.direction = frame.packet.payload.direction
                 new_position = DotBotLH2Position(
-                    x=frame.packet.payload.pos_x / 1e6,
-                    y=frame.packet.payload.pos_y / 1e6,
+                    x=frame.packet.payload.pos_x,
+                    y=frame.packet.payload.pos_y,
                     z=0.0,
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:

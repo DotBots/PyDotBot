@@ -82,6 +82,13 @@ class DotBotWaypoints(BaseModel):
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]]
 
 
+class DotBotMapSizeModel(BaseModel):
+    """Map size model."""
+
+    width: int  # in mm unit
+    height: int  # in mm unit
+
+
 class DotBotStatus(IntEnum):
     """Status of a DotBot."""
 
@@ -134,6 +141,7 @@ class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
     DOTBOTS: int = 0
+    MAP_SIZE: int = 1
 
 
 class DotBotRequestModel(BaseModel):
@@ -168,7 +176,7 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
-    waypoints_threshold: int = 40
+    waypoints_threshold: int = 50  # in mm
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 0.0  # Voltage in Volts

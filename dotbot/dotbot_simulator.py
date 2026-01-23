@@ -23,10 +23,10 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
-R = 5
-L = 7.5
-MOTOR_SPEED = 60
-SIMULATOR_STEP_DELTA_T = 0.002
+R = 50
+L = 75
+MOTOR_SPEED = 70
+SIMULATOR_STEP_DELTA_T = 0.002  # 2 ms
 
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 300  # 5 minutes
@@ -113,12 +113,8 @@ class DotBotSimulator(threading.Thread):
         """Execute state space model of a rigid differential drive robot."""
         v_right_real = v_right * (1 - self.motor_right_error)
         v_left_real = v_left * (1 - self.motor_left_error)
-        x_dot = (
-            (R / 2) * ((v_left_real + v_right_real) / L) * cos(theta_old - pi) * 50000
-        )
-        y_dot = (
-            (R / 2) * ((v_left_real + v_right_real) / L) * sin(theta_old - pi) * 50000
-        )
+        x_dot = (R / 2) * ((v_left_real + v_right_real) / L) * cos(theta_old - pi) * 100
+        y_dot = (R / 2) * ((v_left_real + v_right_real) / L) * sin(theta_old - pi) * 100
         theta_dot = R / L * (v_left_real - v_right_real)
 
         x_pos = x_pos_old + x_dot * SIMULATOR_STEP_DELTA_T
@@ -228,7 +224,7 @@ class DotBotSimulator(threading.Thread):
                 self.v_left = 0
                 self.v_right = 0
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-                self.waypoint_threshold = frame.packet.payload.threshold * 1000
+                self.waypoint_threshold = frame.packet.payload.threshold
                 self.waypoints = frame.packet.payload.waypoints
                 if self.waypoints:
                     self.controller_mode = DotBotSimulatorMode.AUTOMATIC

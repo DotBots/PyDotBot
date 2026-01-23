@@ -22,7 +22,7 @@ from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
-THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
+THRESHOLD = 100  # Acceptable distance error to consider a waypoint reached
 DT = 0.05  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
@@ -257,9 +257,8 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
     dy = goal["y"] - dotbot.lh2_position.y
     dist = math.sqrt(dx * dx + dy * dy)
 
-    dist1000 = dist * 1000
     # If close to goal, stop
-    if dist1000 < THRESHOLD:
+    if dist < THRESHOLD:
         return Vec2(x=0, y=0)
 
     # Right-hand rule bias
