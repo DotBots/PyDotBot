@@ -19,5 +19,8 @@ module.exports = function override(config) {
             Buffer: ['buffer', 'Buffer']
         })
     ])
+    config.watchOptions = {
+        ignored: /node_modules/,
+    };
     return config;
 }

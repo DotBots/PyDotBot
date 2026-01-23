@@ -8,8 +8,8 @@ const DotBotsWaypoint = (props) => {
     <>
       {(props.index === 0) ? (
         <circle
-          cx={props.point.x * props.mapSize}
-          cy={props.point.y * props.mapSize}
+          cx={props.point.x * props.mapSize / props.areaSize.width}
+          cy={props.point.y * props.mapSize / props.areaSize.height}
           r="4"
           fill="none"
           stroke={props.color}
@@ -19,23 +19,23 @@ const DotBotsWaypoint = (props) => {
       ) : (
         <>
           <circle
-            cx={props.point.x * props.mapSize}
-            cy={props.point.y * props.mapSize}
-            r={props.threshold * props.mapSize}
+            cx={props.point.x * props.mapSize / props.areaSize.width}
+            cy={props.point.y * props.mapSize / props.areaSize.height}
+            r={props.threshold * props.mapSize / props.areaSize.width}
             fill={props.color}
             stroke="none"
             opacity="10%"
           />
           <line
-            x1={props.waypoints[props.index - 1].x * props.mapSize}
-            y1={props.waypoints[props.index - 1].y * props.mapSize}
-            x2={props.point.x * props.mapSize}
-            y2={props.point.y * props.mapSize}
+            x1={props.waypoints[props.index - 1].x * props.mapSize / props.areaSize.width}
+            y1={props.waypoints[props.index - 1].y * props.mapSize / props.areaSize.height}
+            x2={props.point.x * props.mapSize / props.areaSize.width}
+            y2={props.point.y * props.mapSize / props.areaSize.height}
             stroke={props.color} strokeWidth="2" strokeDasharray="2" opacity={props.opacity}
           />
           <rect
-            x={props.point.x * props.mapSize - 2}
-            y={props.point.y * props.mapSize - 2}
+            x={props.point.x * props.mapSize / props.areaSize.width - 2}
+            y={props.point.y * props.mapSize / props.areaSize.height - 2}
             width="4" height="4" fill={props.color} opacity={props.opacity}
           />
         </>
@@ -49,8 +49,8 @@ const DotBotsPosition = (props) => {
     <>
       {(props.index === 0) ? (
         <circle
-          cx={props.point.x * props.mapSize}
-          cy={props.point.y * props.mapSize}
+          cx={props.point.x * props.mapSize / props.areaSize.width}
+          cy={props.point.y * props.mapSize / props.areaSize.height}
           r="4"
           fill="none"
           stroke={props.color}
@@ -60,16 +60,16 @@ const DotBotsPosition = (props) => {
       ) : (
         <>
           <line
-            x1={props.history[props.index - 1].x * props.mapSize}
-            y1={props.history[props.index - 1].y * props.mapSize}
-            x2={props.point.x * props.mapSize}
-            y2={props.point.y * props.mapSize}
+            x1={props.history[props.index - 1].x * props.mapSize / props.areaSize.width}
+            y1={props.history[props.index - 1].y * props.mapSize / props.areaSize.height}
+            x2={props.point.x * props.mapSize / props.areaSize.width}
+            y2={props.point.y * props.mapSize / props.areaSize.height}
             stroke={props.color} strokeWidth="2"
             opacity={props.opacity}
           />
           <circle
-            cx={props.point.x * props.mapSize}
-            cy={props.point.y * props.mapSize}
+            cx={props.point.x * props.mapSize / props.areaSize.width}
+            cy={props.point.y * props.mapSize / props.areaSize.height}
             r="2"
             fill={props.color}
             opacity={props.opacity}
@@ -88,8 +88,9 @@ const DotBotsMapPoint = (props) => {
     rgbColor = `rgb(${props.dotbot.rgb_led.red}, ${props.dotbot.rgb_led.green}, ${props.dotbot.rgb_led.blue})`
   }
 
-  const posX = props.mapSize * parseFloat(props.dotbot.lh2_position.x);
-  const posY = props.mapSize * parseFloat(props.dotbot.lh2_position.y);
+  const posX = props.mapSize * parseInt(props.dotbot.lh2_position.x) / props.areaSize.width;
+  const posY = props.mapSize * parseInt(props.dotbot.lh2_position.y) / props.areaSize.height;
+
   const rotation = (props.dotbot.direction) ? props.dotbot.direction : 0;
   const radius = (props.dotbot.address === props.active || hovered) ? 8: 5;
   const directionShift = (props.dotbot.address === props.active || hovered) ? 2: 1;
@@ -120,7 +121,7 @@ const DotBotsMapPoint = (props) => {
           color={rgbColor}
           opacity={waypointOpacity}
           waypoints={props.dotbot.waypoints}
-          threshold={props.dotbot.waypoints_threshold / 1000}
+          threshold={props.dotbot.waypoints_threshold}
           {...props}
           />
       ))
@@ -163,7 +164,7 @@ export const DotBotsMap = (props) => {
     const dim = event.target.getBoundingClientRect();
     const x = event.clientX - dim.left;
     const y = event.clientY - dim.top;
-    props.mapClicked(x / props.mapSize, y / props.mapSize);
+    props.mapClicked(x * props.areaSize.width / props.mapSize, y * props.areaSize.height / props.mapSize);
   };
 
   const updateDisplayGrid = (event) => {
@@ -171,22 +172,23 @@ export const DotBotsMap = (props) => {
   };
 
   const mapSize = props.mapSize;
-  const gridSize = `${mapSize + 1}px`;
+  const gridWidth = `${mapSize + 1}px`;
+  const gridHeight = `${mapSize * props.areaSize.height / props.areaSize.width + 1}px`;
 
   return (
     <div className={`${props.dotbots && props.dotbots.length > 0 ? "visible" : "invisible"}`}>
       <div className="row justify-content-center">
         <div className="col d-flex justify-content-center">
-          <div style={{ height: gridSize, width: gridSize }}>
-            <svg style={{ height: gridSize, width: gridSize }}>
+          <div style={{ height: gridHeight, width: gridWidth }}>
+            <svg style={{ height: gridHeight, width: gridWidth }}>
               <defs>
-                <pattern id={`smallGrid${mapSize}`} width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
+                {/* <pattern id={`smallGrid${mapSize}`} width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
                   <path d={`M ${mapSize / 50} 0 L 0 0 0 ${mapSize / 50}`} fill="none" stroke="gray" strokeWidth="0.5"/>
-                </pattern>
-                <pattern id={`grid${mapSize}`} width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
+                </pattern> */}
+                {/* <pattern id={`grid${mapSize}`} width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
                   <rect width={`${mapSize / 5}`} height={`${mapSize / 5}`} fill={`url(#smallGrid${mapSize})`}/>
                   <path d={`M ${mapSize / 5} 0 L 0 0 0 ${mapSize / 5}`} fill="none" stroke="gray" strokeWidth="1"/>
-                </pattern>
+                </pattern> */}
               </defs>
               {/* Map grid */}
               <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1" onClick={(event) => mapClicked(event)}/>
