@@ -278,6 +278,11 @@ async def ws_dotbots(websocket: WebSocket):
                     }
                 )
                 continue
+
+            if msg.address not in api.controller.dotbots:
+                # ignore messages where address doesn't exist
+                continue
+
             if isinstance(msg, WSRgbLed):
                 _dotbots_rgb_led(
                     address=msg.address,

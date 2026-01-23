@@ -12,6 +12,10 @@ from dotbot.models import (
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
+    DotBotWaypoints,
+    WSMoveRaw,
+    WSRgbLed,
+    WSWaypoints,
 )
 from dotbot.protocol import (
     ApplicationType,
@@ -609,3 +613,128 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 #     serve.side_effect = asyncio.exceptions.CancelledError()
 #     await web(None)
 #     assert "Web server cancelled" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "dotbots,ws_message,expected_payload,should_call",
+    [
+        pytest.param(
+            # ---- RGB LED (valid) ----
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                )
+            },
+            WSRgbLed(
+                cmd="rgb_led",
+                address="4242",
+                application=ApplicationType.DotBot,
+                data=DotBotRgbLedCommandModel(
+                    red=255,
+                    green=0,
+                    blue=128,
+                ),
+            ),
+            PayloadCommandRgbLed(red=255, green=0, blue=128),
+            True,
+            id="rgb_led_valid",
+        ),
+        pytest.param(
+            # ---- WAYPOINTS (valid) ----
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                )
+            },
+            WSWaypoints(
+                cmd="waypoints",
+                address="4242",
+                application=ApplicationType.DotBot,
+                data=DotBotWaypoints(
+                    threshold=10,
+                    waypoints=[DotBotLH2Position(x=0.5, y=0.1, z=0)],
+                ),
+            ),
+            PayloadLH2Waypoints(
+                threshold=10,
+                count=1,
+                waypoints=[PayloadLH2Location(pos_x=500000, pos_y=100000, pos_z=0)],
+            ),
+            True,
+            id="waypoints_valid",
+        ),
+        pytest.param(
+            # ---- MOVE_RAW (valid) ----
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                )
+            },
+            WSMoveRaw(
+                cmd="move_raw",
+                address="4242",
+                application=ApplicationType.DotBot,
+                data=DotBotMoveRawCommandModel(
+                    left_x=0,
+                    left_y=100,
+                    right_x=0,
+                    right_y=100,
+                ),
+            ),
+            PayloadCommandMoveRaw(
+                left_x=0,
+                left_y=100,
+                right_x=0,
+                right_y=100,
+            ),
+            True,
+            id="move_raw_valid",
+        ),
+        pytest.param(
+            # ---- UNKNOWN ADDRESS (ignored) ----
+            {},
+            WSRgbLed(
+                cmd="rgb_led",
+                address="4242",
+                application=ApplicationType.DotBot,
+                data=DotBotRgbLedCommandModel(
+                    red=255,
+                    green=0,
+                    blue=128,
+                ),
+            ),
+            None,
+            False,
+            id="address_not_found",
+        ),
+    ],
+)
+def test_ws_dotbots_commands(
+    dotbots,
+    ws_message,
+    expected_payload,
+    should_call,
+):
+    api.controller.dotbots = dotbots
+
+    with TestClient(api).websocket_connect("/controller/ws/dotbots") as ws:
+        ws.send_json(ws_message.model_dump())
+
+    if should_call:
+        api.controller.send_payload.assert_called()
+        if expected_payload is not None:
+            api.controller.send_payload.assert_called_with(
+                int(ws_message.address, 16),
+                expected_payload,
+            )
+    else:
+        api.controller.send_payload.assert_not_called()
