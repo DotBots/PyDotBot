@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import TypeAdapter, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
@@ -25,6 +26,10 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
+    WSMessage,
+    WSMoveRaw,
+    WSRgbLed,
+    WSWaypoints,
 )
 from dotbot.protocol import (
     ApplicationType,
@@ -39,6 +44,8 @@ from dotbot.protocol import (
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
     "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"
 )
+
+ws_adapter = TypeAdapter(WSMessage)
 
 
 class ReverseProxyMiddleware(BaseHTTPMiddleware):
@@ -98,6 +105,10 @@ async def dotbots_move_raw(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
+    _dotbots_move_raw(address=address, command=command)
+
+
+def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
     payload = PayloadCommandMoveRaw(
         left_x=command.left_x,
         left_y=command.left_y,
@@ -120,6 +131,10 @@ async def dotbots_rgb_led(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
+    _dotbots_rgb_led(address=address, command=command)
+
+
+def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
     payload = PayloadCommandRgbLed(
         red=command.red, green=command.green, blue=command.blue
     )
@@ -141,6 +156,16 @@ async def dotbots_waypoints(
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
+    await _dotbots_waypoints(
+        address=address, application=application, waypoints=waypoints
+    )
+
+
+async def _dotbots_waypoints(
+    address: str,
+    application: int,
+    waypoints: DotBotWaypoints,
+):
     waypoints_list = waypoints.waypoints
     if application == ApplicationType.SailBot.value:
         if api.controller.dotbots[address].gps_position is not None:
@@ -234,6 +259,49 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in api.controller.websockets:
             api.controller.websockets.remove(websocket)
+
+
+@api.websocket("/controller/ws/dotbots")
+async def ws_dotbots(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            raw = await websocket.receive_json()
+
+            try:
+                msg = ws_adapter.validate_python(raw)
+            except ValidationError as e:
+                await websocket.send_json(
+                    {
+                        "error": "invalid_message",
+                        "details": e.errors(),
+                    }
+                )
+                continue
+
+            if msg.address not in api.controller.dotbots:
+                # ignore messages where address doesn't exist
+                continue
+
+            if isinstance(msg, WSRgbLed):
+                _dotbots_rgb_led(
+                    address=msg.address,
+                    command=msg.data,
+                )
+            elif isinstance(msg, WSMoveRaw):
+                _dotbots_move_raw(
+                    address=msg.address,
+                    command=msg.data,
+                )
+            elif isinstance(msg, WSWaypoints):
+                await _dotbots_waypoints(
+                    address=msg.address,
+                    application=msg.application,
+                    waypoints=msg.data,
+                )
+
+    except WebSocketDisconnect:
+        LOGGER.debug("WebSocket client disconnected")
 
 
 # Mount static files after all routes are defined
