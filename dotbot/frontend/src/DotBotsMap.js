@@ -185,10 +185,10 @@ export const DotBotsMap = (props) => {
                 {/* <pattern id={`smallGrid${mapSize}`} width={`${mapSize / 50}`} height={`${mapSize / 50}`} patternUnits="userSpaceOnUse">
                   <path d={`M ${mapSize / 50} 0 L 0 0 0 ${mapSize / 50}`} fill="none" stroke="gray" strokeWidth="0.5"/>
                 </pattern> */}
-                {/* <pattern id={`grid${mapSize}`} width={`${mapSize / 5}`} height={`${mapSize / 5}`} patternUnits="userSpaceOnUse">
-                  <rect width={`${mapSize / 5}`} height={`${mapSize / 5}`} fill={`url(#smallGrid${mapSize})`}/>
-                  <path d={`M ${mapSize / 5} 0 L 0 0 0 ${mapSize / 5}`} fill="none" stroke="gray" strokeWidth="1"/>
-                </pattern> */}
+                <pattern id={`grid${mapSize}`} width={`${500 * mapSize / props.areaSize.width}`} height={`${500 * mapSize / props.areaSize.width}`} patternUnits="userSpaceOnUse">
+                  <rect width={`${500 * mapSize / props.areaSize.width}`} height={`${500 * mapSize / props.areaSize.width}`} fill={`url(#smallGrid${mapSize})`}/>
+                  <path d={`M ${500 * mapSize / props.areaSize.width} 0 L 0 0 0 ${500 * mapSize / props.areaSize.width}`} fill="none" stroke="gray" strokeWidth="1"/>
+                </pattern>
               </defs>
               {/* Map grid */}
               <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1" onClick={(event) => mapClicked(event)}/>
