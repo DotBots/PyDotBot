@@ -42,6 +42,7 @@ Options:
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
   --config-path FILE              Path to a .toml configuration file.
+  -m, --map-size TEXT             Map size in mm. Defaults to '2000x2000'
   --help                          Show this message and exit.
 """
 

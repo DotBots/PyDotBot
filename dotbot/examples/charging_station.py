@@ -22,23 +22,23 @@ from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
-THRESHOLD = 100  # Acceptable distance error to consider a waypoint reached
+THRESHOLD = 50  # Acceptable distance error to consider a waypoint reached
 DT = 0.05  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
-BOT_RADIUS = 0.03  # Physical radius of a DotBot (unit), used for collision avoidance
-MAX_SPEED = 0.075  # Maximum allowed linear speed of a bot
+BOT_RADIUS = 40  # Physical radius of a DotBot (unit), used for collision avoidance
+MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
 
 (QUEUE_HEAD_X, QUEUE_HEAD_Y) = (
-    0.1,
-    0.8,
+    500,
+    1500,
 )  # World-frame (X, Y) position of the charging queue head
 QUEUE_SPACING = (
-    0.1  # Spacing between consecutive bots in the charging queue (along X axis)
+    200  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
-(PARK_X, PARK_Y) = (0.8, 0.1)  # World-frame (X, Y) position of the parking area origin
-PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
+(PARK_X, PARK_Y) = (1500, 500)  # World-frame (X, Y) position of the parking area origin
+PARK_SPACING = 200  # Spacing between parked bots (along Y axis)
 
 
 async def queue_robots(
@@ -236,8 +236,8 @@ def assign_charge_goals(
     # Send the first one to the charger
     head = ordered[0]
     goals[head.address] = {
-        "x": 0.2,
-        "y": 0.2,
+        "x": 200,
+        "y": 200,
     }
 
     # Remaining bots shift left in the queue

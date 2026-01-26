@@ -164,7 +164,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
             },
             False,
             ApplicationType.DotBot,
-            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
             200,
             True,
             id="dotbot_found",
@@ -176,12 +176,12 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    lh2_position=DotBotLH2Position(x=0.1, y=0.5, z=0),
+                    lh2_position=DotBotLH2Position(x=100, y=500, z=0),
                 ),
             },
             True,
             ApplicationType.DotBot,
-            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
             200,
             True,
             id="dotbot_with_position_found",
@@ -197,7 +197,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
             },
             False,
             ApplicationType.DotBot,
-            {"threshold": 10, "waypoints": [{"x": 0.5, "y": 0.1, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
             404,
             False,
             id="dotbot_not_found",
@@ -274,18 +274,18 @@ async def test_set_dotbots_waypoints(
             expected_waypoints = [DotBotGPSPosition(latitude=0.5, longitude=0.1)]
     else:  # DotBot application
         payload = PayloadLH2Waypoints(
-            threshold=10,
+            threshold=100,
             count=1,
-            waypoints=[PayloadLH2Location(pos_x=500000, pos_y=100000, pos_z=0)],
+            waypoints=[PayloadLH2Location(pos_x=500, pos_y=100, pos_z=0)],
         )
-        expected_threshold = 10
+        expected_threshold = 100
         if has_position is True:
             expected_waypoints = [
-                DotBotLH2Position(x=0.1, y=0.5, z=0),
-                DotBotLH2Position(x=0.5, y=0.1, z=0),
+                DotBotLH2Position(x=100, y=500, z=0),
+                DotBotLH2Position(x=500, y=100, z=0),
             ]
         else:
-            expected_waypoints = [DotBotLH2Position(x=0.5, y=0.1, z=0)]
+            expected_waypoints = [DotBotLH2Position(x=500, y=100, z=0)]
 
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",

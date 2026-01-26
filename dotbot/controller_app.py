@@ -125,7 +125,7 @@ from dotbot.logger import setup_logging
     "-m",
     "--map-size",
     type=str,
-    help=f"Map size of the controller. Defaults to '{MAP_SIZE_DEFAULT}'",
+    help=f"Map size in mm. Defaults to '{MAP_SIZE_DEFAULT}'",
 )
 def main(
     adapter,
