@@ -658,13 +658,13 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
                 application=ApplicationType.DotBot,
                 data=DotBotWaypoints(
                     threshold=10,
-                    waypoints=[DotBotLH2Position(x=0.5, y=0.1, z=0)],
+                    waypoints=[DotBotLH2Position(x=500, y=100, z=0)],
                 ),
             ),
             PayloadLH2Waypoints(
                 threshold=10,
                 count=1,
-                waypoints=[PayloadLH2Location(pos_x=500000, pos_y=100000, pos_z=0)],
+                waypoints=[PayloadLH2Location(pos_x=500, pos_y=100, pos_z=0)],
             ),
             True,
             id="waypoints_valid",
