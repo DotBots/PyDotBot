@@ -60,7 +60,7 @@ If a DotBot is connected, this script should give an output similar to:
     "mode": 0,
     "last_seen": 1701244665.8099585,
     "waypoints": [],
-    "waypoints_threshold": 40,
+    "waypoints_threshold": 50,
     "position_history": []
   }
 ]

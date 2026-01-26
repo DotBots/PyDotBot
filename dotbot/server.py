@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -193,9 +194,9 @@ async def _dotbots_waypoints(
             count=len(waypoints.waypoints),
             waypoints=[
                 PayloadLH2Location(
-                    pos_x=int(waypoint.x * 1e6),
-                    pos_y=int(waypoint.y * 1e6),
-                    pos_z=int(waypoint.z * 1e6),
+                    pos_x=int(waypoint.x),
+                    pos_y=int(waypoint.y),
+                    pos_z=int(waypoint.z),
                 )
                 for waypoint in waypoints.waypoints
             ],
@@ -246,6 +247,18 @@ async def dotbot(address: str, query: DotBotQueryModel = Depends()):
 async def dotbots(query: DotBotQueryModel = Depends()):
     """Dotbots HTTP GET handler."""
     return api.controller.get_dotbots(query)
+
+
+@api.get(
+    path="/controller/map_size",
+    response_model=DotBotMapSizeModel,
+    response_model_exclude_none=True,
+    summary="Return the map size of the controller",
+    tags=["controller"],
+)
+async def map_size():
+    """Map size HTTP GET handler."""
+    return api.controller.map_size
 
 
 @api.websocket("/controller/ws/status")
