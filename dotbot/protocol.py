@@ -259,7 +259,7 @@ class PayloadLH2Waypoints(Payload):
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PayloadFieldMetadata(name="threshold", disp="thr."),
+            PayloadFieldMetadata(name="threshold", disp="thr.", length=2),
             PayloadFieldMetadata(name="count", disp="len."),
             PayloadFieldMetadata(name="waypoints", type_=list, length=0),
         ]
