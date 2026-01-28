@@ -23,7 +23,7 @@ from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
 THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
-DT = 0.2  # Control loop period (seconds)
+DT = 0.13  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
 BOT_RADIUS = 0.03  # Physical radius of a DotBot (unit), used for collision avoidance
@@ -40,8 +40,7 @@ QUEUE_SPACING = (
 (PARK_X, PARK_Y) = (0.8, 0.1)  # World-frame (X, Y) position of the parking area origin
 PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
 
-# DOTBOT_ADDR = None
-DOTBOT_ADDR = "615C79C19FC1E1D6"
+DOTBOT_ADDR = None
 
 
 async def get_dotbots(client: RestClient) -> List[DotBotModel]:
@@ -171,7 +170,7 @@ async def send_to_goal(
             orca_vel = await compute_orca_velocity(
                 agent, neighbors=neighbors, params=params
             )
-            step = Vec2(x=orca_vel.x*2, y=orca_vel.y*2)
+            step = Vec2(x=orca_vel.x*1.4, y=orca_vel.y*1.4)
 
             # ---- CLAMP STEP TO GOAL DISTANCE ----
             goal = goals.get(agent.id)
@@ -319,6 +318,8 @@ async def main() -> None:
     url = os.getenv("DOTBOT_CONTROLLER_URL", "localhost")
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
+    global DOTBOT_ADDR
+    DOTBOT_ADDR = os.getenv("DOTBOT_ADDR", None)
     async with rest_client(url, port, use_https) as client:
         dotbots = await get_dotbots(client)
 
