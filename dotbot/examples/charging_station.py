@@ -23,7 +23,7 @@ from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
 THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
-DT = 0.05  # Control loop period (seconds)
+DT = 0.2  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
 BOT_RADIUS = 0.03  # Physical radius of a DotBot (unit), used for collision avoidance
@@ -39,6 +39,16 @@ QUEUE_SPACING = (
 
 (PARK_X, PARK_Y) = (0.8, 0.1)  # World-frame (X, Y) position of the parking area origin
 PARK_SPACING = 0.1  # Spacing between parked bots (along Y axis)
+
+# DOTBOT_ADDR = None
+DOTBOT_ADDR = "615C79C19FC1E1D6"
+
+
+async def get_dotbots(client: RestClient) -> List[DotBotModel]:
+    dotbots = await client.fetch_active_dotbots()
+    if DOTBOT_ADDR is not None:
+        dotbots = [b for b in dotbots if b.address.lower() == DOTBOT_ADDR.lower()]
+    return dotbots
 
 
 async def queue_robots(
@@ -57,7 +67,7 @@ async def charge_robots(
     ws: DotBotWsClient,
     params: OrcaParams,
 ) -> None:
-    dotbots = await client.fetch_active_dotbots()
+    dotbots = await get_dotbots(client)
     remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
     total_count = len(dotbots)
     # The head of the remaining should park
@@ -66,7 +76,7 @@ async def charge_robots(
     parked_count = total_count - len(remaining)
 
     while remaining or park_dotbot is not None:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await get_dotbots(client)
 
         dotbots = [b for b in dotbots if b.address in {r.address for r in remaining}]
         remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
@@ -133,7 +143,7 @@ async def send_to_goal(
     params: OrcaParams,
 ) -> None:
     while True:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await get_dotbots(client)
         agents: List[Agent] = []
 
         for bot in dotbots:
@@ -161,7 +171,7 @@ async def send_to_goal(
             orca_vel = await compute_orca_velocity(
                 agent, neighbors=neighbors, params=params
             )
-            step = Vec2(x=orca_vel.x, y=orca_vel.y)
+            step = Vec2(x=orca_vel.x*2, y=orca_vel.y*2)
 
             # ---- CLAMP STEP TO GOAL DISTANCE ----
             goal = goals.get(agent.id)
@@ -310,7 +320,7 @@ async def main() -> None:
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
     async with rest_client(url, port, use_https) as client:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await get_dotbots(client)
 
         ws = DotBotWsClient(url, port)
         await ws.connect()
