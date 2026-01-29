@@ -3,7 +3,7 @@
 
 [[dotbots]]
 address = "BADCAFE111111111" # DotBot unique address
-calibrated = 0x01 # optional, defaults to only first lighthouse calibrated
+calibrated = 0xff # optional, defaults to only first lighthouse calibrated
 pos_x = 400 # [0, 2_000] in mm
 pos_y = 400 # [0, 2_000]
 theta = 0.0 # [0.0, 2pi]

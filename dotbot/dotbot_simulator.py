@@ -62,7 +62,7 @@ class SimulatedDotBotSettings(BaseModel):
     pos_x: int
     pos_y: int
     theta: float
-    calibrated: int = 0x01
+    calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
 

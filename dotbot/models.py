@@ -176,7 +176,7 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
-    waypoints_threshold: int = 50  # in mm
+    waypoints_threshold: int = 100  # in mm
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 0.0  # Voltage in Volts
