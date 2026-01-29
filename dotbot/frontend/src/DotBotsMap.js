@@ -9,7 +9,7 @@ const DotBotsWaypoint = (props) => {
       {(props.index === 0) ? (
         <circle
           cx={props.point.x * props.mapSize / props.areaSize.width}
-          cy={props.point.y * props.mapSize / props.areaSize.height}
+          cy={props.point.y * props.mapSize / props.areaSize.width}
           r="4"
           fill="none"
           stroke={props.color}
@@ -20,7 +20,7 @@ const DotBotsWaypoint = (props) => {
         <>
           <circle
             cx={props.point.x * props.mapSize / props.areaSize.width}
-            cy={props.point.y * props.mapSize / props.areaSize.height}
+            cy={props.point.y * props.mapSize / props.areaSize.width}
             r={props.threshold * props.mapSize / props.areaSize.width}
             fill={props.color}
             stroke="none"
@@ -28,14 +28,14 @@ const DotBotsWaypoint = (props) => {
           />
           <line
             x1={props.waypoints[props.index - 1].x * props.mapSize / props.areaSize.width}
-            y1={props.waypoints[props.index - 1].y * props.mapSize / props.areaSize.height}
+            y1={props.waypoints[props.index - 1].y * props.mapSize / props.areaSize.width}
             x2={props.point.x * props.mapSize / props.areaSize.width}
-            y2={props.point.y * props.mapSize / props.areaSize.height}
+            y2={props.point.y * props.mapSize / props.areaSize.width}
             stroke={props.color} strokeWidth="2" strokeDasharray="2" opacity={props.opacity}
           />
           <rect
             x={props.point.x * props.mapSize / props.areaSize.width - 2}
-            y={props.point.y * props.mapSize / props.areaSize.height - 2}
+            y={props.point.y * props.mapSize / props.areaSize.width - 2}
             width="4" height="4" fill={props.color} opacity={props.opacity}
           />
         </>
@@ -50,7 +50,7 @@ const DotBotsPosition = (props) => {
       {(props.index === 0) ? (
         <circle
           cx={props.point.x * props.mapSize / props.areaSize.width}
-          cy={props.point.y * props.mapSize / props.areaSize.height}
+          cy={props.point.y * props.mapSize / props.areaSize.width}
           r="4"
           fill="none"
           stroke={props.color}
@@ -61,15 +61,15 @@ const DotBotsPosition = (props) => {
         <>
           <line
             x1={props.history[props.index - 1].x * props.mapSize / props.areaSize.width}
-            y1={props.history[props.index - 1].y * props.mapSize / props.areaSize.height}
+            y1={props.history[props.index - 1].y * props.mapSize / props.areaSize.width}
             x2={props.point.x * props.mapSize / props.areaSize.width}
-            y2={props.point.y * props.mapSize / props.areaSize.height}
+            y2={props.point.y * props.mapSize / props.areaSize.width}
             stroke={props.color} strokeWidth="2"
             opacity={props.opacity}
           />
           <circle
             cx={props.point.x * props.mapSize / props.areaSize.width}
-            cy={props.point.y * props.mapSize / props.areaSize.height}
+            cy={props.point.y * props.mapSize / props.areaSize.width}
             r="2"
             fill={props.color}
             opacity={props.opacity}
@@ -89,7 +89,7 @@ const DotBotsMapPoint = (props) => {
   }
 
   const posX = props.mapSize * parseInt(props.dotbot.lh2_position.x) / props.areaSize.width;
-  const posY = props.mapSize * parseInt(props.dotbot.lh2_position.y) / props.areaSize.height;
+  const posY = props.mapSize * parseInt(props.dotbot.lh2_position.y) / props.areaSize.width;
 
   const rotation = (props.dotbot.direction) ? props.dotbot.direction : 0;
   const radius = (props.dotbot.address === props.active || hovered) ? 8: 5;
