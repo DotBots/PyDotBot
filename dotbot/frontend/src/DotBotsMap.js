@@ -1,6 +1,6 @@
 import React from "react";
 import { useState } from "react";
-import { ApplicationType, inactiveAddress } from "./utils/constants";
+import { ApplicationType, inactiveAddress, dotbotRadius } from "./utils/constants";
 
 
 const DotBotsWaypoint = (props) => {
@@ -92,9 +92,9 @@ const DotBotsMapPoint = (props) => {
   const posY = props.mapSize * parseInt(props.dotbot.lh2_position.y) / props.areaSize.width;
 
   const rotation = (props.dotbot.direction) ? props.dotbot.direction : 0;
-  const radius = (props.dotbot.address === props.active || hovered) ? 8: 5;
+  const radius = (props.dotbot.address === props.active || hovered) ? props.mapSize * (dotbotRadius + 5) / props.areaSize.width : props.mapSize * dotbotRadius / props.areaSize.width;
   const directionShift = (props.dotbot.address === props.active || hovered) ? 2: 1;
-  const directionSize = (props.dotbot.address === props.active || hovered) ? 8: 5;
+  const directionSize = (props.dotbot.address === props.active || hovered) ? props.mapSize * (dotbotRadius + 5) / props.areaSize.width : props.mapSize * dotbotRadius / props.areaSize.width;
   const opacity = `${props.dotbot.status === 0 ? "80%" : "20%"}`
   const waypointOpacity = `${props.dotbot.status === 0 ? "50%" : "10%"}`
 
@@ -148,7 +148,7 @@ const DotBotsMapPoint = (props) => {
         onMouseLeave={onMouseLeave} >
       <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
     </circle>
-    {(props.dotbot.direction) && <polygon points={`${posX - radius + 2},${posY + radius + directionShift} ${posX + radius - 2},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />}
+    {(props.dotbot.direction) && <polygon points={`${posX - radius + 10},${posY + radius + directionShift} ${posX + radius - 10},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />}
     </g>
     </>
   )

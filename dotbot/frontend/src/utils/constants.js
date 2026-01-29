@@ -30,6 +30,8 @@ export const maxPositionHistory = 100;
 export const lh2_distance_threshold = 20; // 20 mm
 export const gps_distance_threshold = 5;  // 5 meters
 
+export const dotbotRadius = 40; // in mm
+
 export const dotbotStatuses = ["active", "inactive", "lost"];
 export const dotbotBadgeStatuses = ["success", "secondary", "danger"];
 
