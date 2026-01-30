@@ -59,7 +59,7 @@ class DotBotLH2Position(BaseModel):
 
     x: float
     y: float
-    z: float
+    z: float = 0.0
 
 
 class DotBotControlModeModel(BaseModel):
@@ -185,7 +185,7 @@ class DotBotModel(BaseModel):
     waypoints_threshold: int = 100  # in mm
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
-    battery: float = 0.0  # Voltage in Volts
+    battery: float = 3.0  # Voltage in Volts
 
 
 class WSBase(BaseModel):

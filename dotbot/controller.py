@@ -751,18 +751,33 @@ class Controller:
             if query.min_battery is not None and dotbot.battery is not None:
                 if dotbot.battery < query.min_battery:
                     continue
-            if query.max_position_x is not None and dotbot.lh2_position is not None:
-                if dotbot.lh2_position.x > query.max_position_x:
-                    continue
-            if query.min_position_x is not None and dotbot.lh2_position is not None:
-                if dotbot.lh2_position.x < query.min_position_x:
-                    continue
-            if query.max_position_y is not None and dotbot.lh2_position is not None:
-                if dotbot.lh2_position.y > query.max_position_y:
-                    continue
-            if query.min_position_y is not None and dotbot.lh2_position is not None:
-                if dotbot.lh2_position.y < query.min_position_y:
-                    continue
+            if (
+                any(
+                    [
+                        query.max_position_x is not None,
+                        query.min_position_x is not None,
+                        query.max_position_y is not None,
+                        query.min_position_y is not None,
+                    ]
+                )
+                and dotbot.lh2_position is None
+            ):
+                continue
+            if dotbot.lh2_position is None and query.max_positions is not None:
+                continue
+            if dotbot.lh2_position is not None:
+                if query.max_position_x is not None:
+                    if query.max_position_x < dotbot.lh2_position.x:
+                        continue
+                if query.min_position_x is not None:
+                    if query.min_position_x > dotbot.lh2_position.x:
+                        continue
+                if query.max_position_y is not None:
+                    if query.max_position_y < dotbot.lh2_position.y:
+                        continue
+                if query.min_position_y is not None:
+                    if query.min_position_y > dotbot.lh2_position.y:
+                        continue
             _dotbot = DotBotModel(**dotbot.model_dump())
             max_positions = (
                 MAX_POSITION_HISTORY_SIZE
