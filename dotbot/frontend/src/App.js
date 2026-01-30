@@ -14,6 +14,7 @@ const log = logger.child({module: 'app'});
 const App = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [message, setMessage] = useState(null);
+  const [areaSize, setAreaSize] = useState({height: 2000, width: 2000});
   const [dotbots, setDotbots] = useState([]);
 
   const [ready, clientId, mqttData, setMqttData, publish, publishCommand, sendRequest] = useQrKey({
@@ -30,6 +31,8 @@ const App = () => {
       // Received the list of dotbots
       if (payload.request === RequestType.DotBots) {
         setDotbots(payload.data);
+      } else if (payload.request === RequestType.AreaSize) {
+        setAreaSize(payload.data);
       }
     } else if (message.topic === `/notify`) {
       // Process notifications
@@ -45,7 +48,9 @@ const App = () => {
                 x: payload.data.lh2_position.x,
                 y: payload.data.lh2_position.y
               };
-              if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
+              console.log('distance threshold:', lh2_distance_threshold, lh2_distance(dotbotsTmp[idx].lh2_position, newPosition));
+              if (dotbotsTmp[idx].lh2_position && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) >= lh2_distance_threshold)) {
+                console.log('Adding to position history');
                 dotbotsTmp[idx].position_history.push(newPosition);
               }
               dotbotsTmp[idx].lh2_position = newPosition;
@@ -72,13 +77,14 @@ const App = () => {
       }
     }
     setMessage(null);
-  },[clientId, dotbots, setDotbots, sendRequest, message, setMessage]
+  },[clientId, dotbots, setDotbots, setAreaSize, sendRequest, message, setMessage]
   );
 
   useEffect(() => {
     if (clientId) {
       // Ask for the list of dotbots at startup
       setTimeout(sendRequest, 100, ({request: RequestType.DotBots, reply: `${clientId}`}));
+      setTimeout(sendRequest, 200, ({request: RequestType.AreaSize, reply: `${clientId}`}));
     }
   }, [sendRequest, clientId]
   );
@@ -98,6 +104,7 @@ const App = () => {
       <div id="dotbots">
         <DotBots
           dotbots={dotbots}
+          areaSize={areaSize}
           updateDotbots={setDotbots}
           publishCommand={publishCommand}
           publish={publish}

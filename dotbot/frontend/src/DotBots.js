@@ -10,7 +10,7 @@ import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
 
-const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
+const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
@@ -159,7 +159,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
     applyWaypoints, clearWaypoints, activeDotbot
   ]);
 
-  let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated);
+  let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated > 0x00);
 
   return (
     <>
@@ -183,7 +183,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
       <>
       {dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).length > 0 &&
       <div className="row">
-        <div className={`col ${needDotBotMap ? "col-xxl-6" : ""}`}>
+        <div className={`col ${needDotBotMap ? "col-xxl-3" : ""}`}>
           <div className="card m-1">
             <div className="card-header">Available DotBots</div>
             <div className="card-body p-1">
@@ -208,7 +208,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
           </div>
         </div>
         {needDotBotMap &&
-        <div className="col col-xxl-6">
+        <div className="col col-xxl-9">
           <div className="d-block d-md-none m-1">
             <DotBotsMap
               dotbots={dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot)}
@@ -220,6 +220,7 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
               setHistorySize={setDotbotHistorySize}
               mapClicked={mapClicked}
               mapSize={350}
+              areaSize={areaSize}
               publish={publish}
             />
           </div>
@@ -233,7 +234,8 @@ const DotBots = ({ dotbots, updateDotbots, publishCommand, publish }) => {
               historySize={dotbotHistorySize}
               setHistorySize={setDotbotHistorySize}
               mapClicked={mapClicked}
-              mapSize={650}
+              mapSize={1000}
+              areaSize={areaSize}
               publish={publish}
             />
           </div>

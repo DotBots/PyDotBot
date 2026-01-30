@@ -15,12 +15,11 @@ export const NotificationType = {
   Reload: 1,
   Update: 2,
   PinCodeUpdate: 3,
-  LH2CalibrationState: 4,
 };
 
 export const RequestType = {
   DotBots: 0,
-  LH2CalibrationState: 1,
+  AreaSize: 1,
 };
 
 export const inactiveAddress = "0000000000000000";
@@ -28,8 +27,10 @@ export const inactiveAddress = "0000000000000000";
 export const maxWaypoints = 16;
 export const maxPositionHistory = 100;
 
-export const lh2_distance_threshold = 0.01;
+export const lh2_distance_threshold = 20; // 20 mm
 export const gps_distance_threshold = 5;  // 5 meters
+
+export const dotbotRadius = 40; // in mm
 
 export const dotbotStatuses = ["active", "inactive", "lost"];
 export const dotbotBadgeStatuses = ["success", "secondary", "danger"];

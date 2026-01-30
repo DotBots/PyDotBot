@@ -19,6 +19,7 @@ from dotbot import (
     CONTROLLER_HTTP_PORT_DEFAULT,
     DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
+    MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
     NETWORK_ID_DEFAULT,
@@ -120,6 +121,12 @@ from dotbot.logger import setup_logging
     type=click.Path(exists=True, dir_okay=False),
     help="Path to a .toml configuration file.",
 )
+@click.option(
+    "-m",
+    "--map-size",
+    type=str,
+    help=f"Map size in mm. Defaults to '{MAP_SIZE_DEFAULT}'",
+)
 def main(
     adapter,
     port,
@@ -131,6 +138,7 @@ def main(
     gw_address,
     network_id,
     controller_http_port,
+    map_size,
     webbrowser,
     verbose,
     log_level,
@@ -153,6 +161,7 @@ def main(
         "gw_address": gw_address,
         "network_id": network_id,
         "controller_http_port": controller_http_port,
+        "map_size": map_size,
         "webbrowser": webbrowser,
         "verbose": verbose,
         "log_level": log_level,
