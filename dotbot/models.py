@@ -100,11 +100,17 @@ class DotBotStatus(IntEnum):
 class DotBotQueryModel(BaseModel):
     """Model class used to filter DotBots."""
 
-    max_positions: int = MAX_POSITION_HISTORY_SIZE
+    limit: Optional[int] = None
+    address: Optional[str] = None
     application: Optional[ApplicationType] = None
-    mode: Optional[ControlModeType] = None
     status: Optional[DotBotStatus] = None
-    swarm: Optional[str] = None
+    max_battery: Optional[float] = None
+    min_battery: Optional[float] = None
+    max_positions: int = None
+    max_position_x: Optional[float] = None
+    min_position_x: Optional[float] = None
+    max_position_y: Optional[float] = None
+    min_position_y: Optional[float] = None
 
 
 class DotBotNotificationCommand(IntEnum):

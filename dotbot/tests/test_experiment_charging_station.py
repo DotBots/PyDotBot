@@ -51,7 +51,7 @@ class FakeRestClient:
         self.move_raw_commands = []
         self.rgb_commands = []
 
-    async def fetch_active_dotbots(self) -> List[DotBotModel]:
+    async def fetch_dotbots(self, query=None) -> List[DotBotModel]:
         return list(self._dotbots.values())
 
     async def send_waypoint_command(

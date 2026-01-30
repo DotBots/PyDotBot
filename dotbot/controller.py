@@ -736,19 +736,45 @@ class Controller:
         """Returns the list of dotbots matching the query."""
         dotbots: List[DotBotModel] = []
         for dotbot in self.dotbots.values():
+            if query.address is not None and dotbot.address != query.address:
+                continue
             if (
                 query.application is not None
-                and dotbot.application != query.application
+                and dotbot.application.value != query.application
             ):
                 continue
-            if query.mode is not None and dotbot.mode != query.mode:
+            if query.status is not None and dotbot.status.value != query.status:
                 continue
-            if query.status is not None and dotbot.status != query.status:
-                continue
+            if query.max_battery is not None and dotbot.battery is not None:
+                if dotbot.battery > query.max_battery:
+                    continue
+            if query.min_battery is not None and dotbot.battery is not None:
+                if dotbot.battery < query.min_battery:
+                    continue
+            if query.max_position_x is not None and dotbot.lh2_position is not None:
+                if dotbot.lh2_position.x > query.max_position_x:
+                    continue
+            if query.min_position_x is not None and dotbot.lh2_position is not None:
+                if dotbot.lh2_position.x < query.min_position_x:
+                    continue
+            if query.max_position_y is not None and dotbot.lh2_position is not None:
+                if dotbot.lh2_position.y > query.max_position_y:
+                    continue
+            if query.min_position_y is not None and dotbot.lh2_position is not None:
+                if dotbot.lh2_position.y < query.min_position_y:
+                    continue
             _dotbot = DotBotModel(**dotbot.model_dump())
-            _dotbot.position_history = _dotbot.position_history[: query.max_positions]
+            max_positions = (
+                MAX_POSITION_HISTORY_SIZE
+                if query.max_positions is None
+                else query.max_positions
+            )
+            _dotbot.position_history = _dotbot.position_history[:max_positions]
             dotbots.append(_dotbot)
-        return sorted(dotbots, key=lambda dotbot: dotbot.address)
+        dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
+        if query.limit is not None:
+            dotbots = dotbots[: query.limit]
+        return dotbots
 
     async def web(self):
         """Starts the web server application."""

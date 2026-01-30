@@ -20,7 +20,7 @@ from dotbot import (
     pydotbot_version,
 )
 from dotbot.logger import LOGGER, setup_logging
-from dotbot.models import DotBotMoveRawCommandModel
+from dotbot.models import DotBotMoveRawCommandModel, DotBotQueryModel, DotBotStatus
 from dotbot.protocol import ApplicationType
 from dotbot.rest import rest_client
 
@@ -99,12 +99,18 @@ class JoystickController:
 
     async def fetch_active_dotbots(self):
         while 1:
-            self.dotbots = await self.api.fetch_active_dotbots()
+            self.dotbots = await self.api.fetch_active_dotbots(
+                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+            )
             await asyncio.sleep(1)
 
     async def start(self):
         """Starts to read continuously joystick positions."""
-        asyncio.create_task(self.fetch_active_dotbots())
+        asyncio.create_task(
+            self.fetch_active_dotbots(
+                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+            )
+        )
         while True:
             # fetch positions from joystick
             positions = self.pos_from_joystick()

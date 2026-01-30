@@ -13,7 +13,9 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotMoveRawCommandModel,
+    DotBotQueryModel,
     DotBotRgbLedCommandModel,
+    DotBotStatus,
     DotBotWaypoints,
     WSRgbLed,
     WSWaypoints,
@@ -52,12 +54,18 @@ async def queue_robots(
     await send_to_goal(client, ws, goals, params)
 
 
+async def fetch_active_dotbots(client: RestClient) -> List[DotBotModel]:
+    return await client.fetch_dotbots(
+        query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+    )
+
+
 async def charge_robots(
     client: RestClient,
     ws: DotBotWsClient,
     params: OrcaParams,
 ) -> None:
-    dotbots = await client.fetch_active_dotbots()
+    dotbots = await fetch_active_dotbots(client)
     remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
     total_count = len(dotbots)
     # The head of the remaining should park
@@ -66,7 +74,7 @@ async def charge_robots(
     parked_count = total_count - len(remaining)
 
     while remaining or park_dotbot is not None:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await fetch_active_dotbots(client)
 
         dotbots = [b for b in dotbots if b.address in {r.address for r in remaining}]
         remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
@@ -133,7 +141,7 @@ async def send_to_goal(
     params: OrcaParams,
 ) -> None:
     while True:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await fetch_active_dotbots(client)
         agents: List[Agent] = []
 
         for bot in dotbots:
@@ -309,7 +317,7 @@ async def main() -> None:
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
     async with rest_client(url, port, use_https) as client:
-        dotbots = await client.fetch_active_dotbots()
+        dotbots = await fetch_active_dotbots(client)
 
         ws = DotBotWsClient(url, port)
         await ws.connect()

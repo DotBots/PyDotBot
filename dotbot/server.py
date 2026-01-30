@@ -6,10 +6,16 @@
 """Module for the web server application."""
 
 import os
-from typing import List
+from typing import Annotated, List
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    MAX_POSITION_HISTORY_SIZE,
     DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -228,12 +235,12 @@ async def dotbot_positions_history_clear(address: str):
     summary="Return information about a dotbot given its address",
     tags=["dotbots"],
 )
-async def dotbot(address: str, query: DotBotQueryModel = Depends()):
+async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
     """Dotbot HTTP GET handler."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     _dotbot = DotBotModel(**api.controller.dotbots[address].model_dump())
-    _dotbot.position_history = _dotbot.position_history[: query.max_positions]
+    _dotbot.position_history = _dotbot.position_history[:max_positions]
     return _dotbot
 
 
@@ -244,7 +251,7 @@ async def dotbot(address: str, query: DotBotQueryModel = Depends()):
     summary="Return the list of available dotbots",
     tags=["dotbots"],
 )
-async def dotbots(query: DotBotQueryModel = Depends()):
+async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
     """Dotbots HTTP GET handler."""
     return api.controller.get_dotbots(query)
 
