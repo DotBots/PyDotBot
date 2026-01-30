@@ -42,6 +42,9 @@ nitpick_ignore_regex = [
     ("py:class", r"dotbot_utils.*"),
     ("py:class", r"ASGIApp"),
     ("py:class", r"DispatchFunction"),
+    ("py:class", r"dotbot.models.Annotated"),
+    ("py:class", r"Query"),
+    ("py:class", r"PydanticUndefined"),
 ]
 
 # -- Options for HTML output -------------------------------------------------

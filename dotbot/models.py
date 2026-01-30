@@ -59,7 +59,7 @@ class DotBotLH2Position(BaseModel):
 
     x: float
     y: float
-    z: float
+    z: float = 0.0
 
 
 class DotBotControlModeModel(BaseModel):
@@ -100,11 +100,17 @@ class DotBotStatus(IntEnum):
 class DotBotQueryModel(BaseModel):
     """Model class used to filter DotBots."""
 
-    max_positions: int = MAX_POSITION_HISTORY_SIZE
+    limit: Optional[int] = None
+    address: Optional[str] = None
     application: Optional[ApplicationType] = None
-    mode: Optional[ControlModeType] = None
     status: Optional[DotBotStatus] = None
-    swarm: Optional[str] = None
+    max_battery: Optional[float] = None
+    min_battery: Optional[float] = None
+    max_positions: int = None
+    max_position_x: Optional[float] = None
+    min_position_x: Optional[float] = None
+    max_position_y: Optional[float] = None
+    min_position_y: Optional[float] = None
 
 
 class DotBotNotificationCommand(IntEnum):
@@ -179,7 +185,7 @@ class DotBotModel(BaseModel):
     waypoints_threshold: int = 100  # in mm
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
-    battery: float = 0.0  # Voltage in Volts
+    battery: float = 3.0  # Voltage in Volts
 
 
 class WSBase(BaseModel):

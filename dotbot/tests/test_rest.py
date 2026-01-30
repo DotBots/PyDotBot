@@ -7,7 +7,9 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotMoveRawCommandModel,
+    DotBotQueryModel,
     DotBotRgbLedCommandModel,
+    DotBotStatus,
     DotBotWaypoints,
 )
 from dotbot.protocol import ApplicationType
@@ -25,7 +27,7 @@ from dotbot.rest import rest_client
             httpx.Response(
                 200, json=[{"address": "test", "status": 1, "last_seen": 0}]
             ),
-            [],
+            [DotBotModel(**{"address": "test", "status": 1, "last_seen": 0})],
             id="none active",
         ),
         pytest.param(
@@ -38,15 +40,40 @@ from dotbot.rest import rest_client
     ],
 )
 @mock.patch("httpx.AsyncClient.get")
-async def test_fetch_active_dotbots(get, response, expected):
+async def test_fetch_dotbots(get, response, expected):
     if response == httpx.ConnectError:
         get.side_effect = response("error")
     else:
         get.return_value = response
     async with rest_client("localhost", 1234, False) as client:
-        result = await client.fetch_active_dotbots()
+        result = await client.fetch_dotbots()
         get.assert_called_once()
+        get.assert_called_with(
+            "http://localhost:1234/controller/dotbots",
+            headers={
+                "Accept": "application/json",
+            },
+        )
         assert result == expected
+
+
+@pytest.mark.asyncio
+@mock.patch("httpx.AsyncClient.get")
+async def test_fetch_dotbots_with_query(get):
+    dotbots = [{"address": "test", "status": 0, "last_seen": 0}]
+    get.return_value = httpx.Response(200, json=dotbots)
+    async with rest_client("localhost", 1234, False) as client:
+        result = await client.fetch_dotbots(
+            query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+        )
+        get.assert_called_once()
+        get.assert_called_with(
+            "http://localhost:1234/controller/dotbots?status=0",
+            headers={
+                "Accept": "application/json",
+            },
+        )
+        assert result == [DotBotModel(**dotbots[0])]
 
 
 @pytest.mark.asyncio

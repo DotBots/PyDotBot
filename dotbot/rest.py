@@ -5,13 +5,14 @@
 
 """Module containing client code to interact with the controller REST API."""
 
+import urllib.parse
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 
 import httpx
 
 from dotbot.logger import LOGGER, setup_logging
-from dotbot.models import DotBotModel, DotBotStatus
+from dotbot.models import DotBotModel, DotBotQueryModel
 from dotbot.protocol import ApplicationType
 
 
@@ -43,11 +44,16 @@ class RestClient:
     async def close(self):
         await self._client.aclose()
 
-    async def fetch_active_dotbots(self) -> List[DotBotModel]:
-        """Fetch active DotBots."""
+    async def fetch_dotbots(
+        self, query: Optional[DotBotQueryModel] = None
+    ) -> List[DotBotModel]:
+        """Fetch DotBots matching the query."""
         try:
+            url = f"{self.base_url}/dotbots"
+            if query is not None:
+                url += f"?{urllib.parse.urlencode(query.model_dump(exclude_none=True))}"
             response = await self._client.get(
-                f"{self.base_url}/dotbots",
+                url,
                 headers={
                     "Accept": "application/json",
                 },
@@ -60,11 +66,7 @@ class RestClient:
                     f"Failed to fetch dotbots: {response} {response.text}"
                 )
             else:
-                return [
-                    DotBotModel(**dotbot)
-                    for dotbot in response.json()
-                    if dotbot["status"] == DotBotStatus.ACTIVE.value
-                ]
+                return [DotBotModel(**dotbot) for dotbot in response.json()]
         return []
 
     async def _send_command(self, address, application, resource, command):
