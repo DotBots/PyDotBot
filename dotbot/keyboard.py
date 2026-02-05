@@ -12,6 +12,7 @@ from enum import Enum
 
 import click
 
+from dotbot.models import DotBotQueryModel, DotBotStatus
 from dotbot.rest import rest_client
 
 try:
@@ -236,12 +237,18 @@ class KeyboardController:
 
     async def fetch_active_dotbots(self):
         while 1:
-            self.dotbots = await self.api.fetch_active_dotbots()
+            self.dotbots = await self.api.fetch_active_dotbots(
+                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+            )
             await asyncio.sleep(1)
 
     async def start(self):
         """Starts to continuously listen on keyboard key press/release events."""
-        asyncio.create_task(self.fetch_active_dotbots())
+        asyncio.create_task(
+            self.fetch_active_dotbots(
+                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
+            )
+        )
         asyncio.create_task(self.update_active_keys())
         while 1:
             await self.refresh_speeds()
