@@ -113,9 +113,9 @@ class KeyboardEvent:
 class KeyboardController:
     """Dotbot controller for a keyboard interface."""
 
-    def __init__(self, rest_client, dotbot_address, application):
+    def __init__(self, client, dotbot_address, application):
         """Initializes the keyboard controller."""
-        self.api = rest_client
+        self.client = client
         self.dotbots = []
         self.dotbot_address = dotbot_address
         self.application = APPLICATION_TYPE_MAP[application]
@@ -175,7 +175,7 @@ class KeyboardController:
                 if hasattr(event.key, "char") and event.key.char in COLOR_KEYS:
                     red, green, blue = rgb_from_key(event.key.char)
                     self._logger.info("color pressed", red=red, green=green, blue=blue)
-                    await self.api.send_rgb_led_command(
+                    await self.client.send_rgb_led_command(
                         self.selected_dotbot,
                         DotBotRgbLedCommandModel(red=red, green=green, blue=blue),
                     )
@@ -225,7 +225,7 @@ class KeyboardController:
         left_speed, right_speed = self.speeds_from_keys()
         if (left_speed, right_speed) != (0, 0) or self.previous_speeds != (0, 0):
             self._logger.info("refresh speeds", left=left_speed, right=right_speed)
-            await self.api.send_move_raw_command(
+            await self.client.send_move_raw_command(
                 self.selected_dotbot,
                 self.application,
                 DotBotMoveRawCommandModel(
@@ -237,18 +237,14 @@ class KeyboardController:
 
     async def fetch_active_dotbots(self):
         while 1:
-            self.dotbots = await self.api.fetch_active_dotbots(
+            self.dotbots = await self.client.fetch_dotbots(
                 query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
             )
             await asyncio.sleep(1)
 
     async def start(self):
         """Starts to continuously listen on keyboard key press/release events."""
-        asyncio.create_task(
-            self.fetch_active_dotbots(
-                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
-            )
-        )
+        asyncio.create_task(self.fetch_active_dotbots())
         asyncio.create_task(self.update_active_keys())
         while 1:
             await self.refresh_speeds()

@@ -45,7 +45,7 @@ class JoystickController:
 
     def __init__(self, joystick_index, client, dotbot_address, application):
         """Initialize the joystick controller."""
-        self.api = rest_client
+        self.client = client
         self.dotbots = []
         self.dotbot_address = dotbot_address
         self.application = APPLICATION_TYPE_MAP[application]
@@ -99,24 +99,20 @@ class JoystickController:
 
     async def fetch_active_dotbots(self):
         while 1:
-            self.dotbots = await self.api.fetch_active_dotbots(
+            self.dotbots = await self.client.fetch_dotbots(
                 query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
             )
             await asyncio.sleep(1)
 
     async def start(self):
         """Starts to read continuously joystick positions."""
-        asyncio.create_task(
-            self.fetch_active_dotbots(
-                query=DotBotQueryModel(status=DotBotStatus.ACTIVE)
-            )
-        )
+        asyncio.create_task(self.fetch_active_dotbots())
         while True:
             # fetch positions from joystick
             positions = self.pos_from_joystick()
             if positions != NULL_POSITION or self.previous_positions != NULL_POSITION:
                 self._logger.info("refresh positions", positions=positions)
-                await self.api.send_move_raw_command(
+                await self.client.send_move_raw_command(
                     self.selected_dotbot,
                     self.application,
                     DotBotMoveRawCommandModel(
