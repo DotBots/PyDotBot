@@ -17,7 +17,6 @@ import toml
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
-    DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
@@ -69,12 +68,6 @@ from dotbot.logger import setup_logging
     "--mqtt-use_tls",
     is_flag=True,
     help="Use TLS with MQTT (for cloud adapter).",
-)
-@click.option(
-    "-d",
-    "--dotbot-address",
-    type=str,
-    help=f"Address in hex of the DotBot to control. Defaults to {DOTBOT_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
     "-g",
@@ -134,7 +127,6 @@ def main(
     mqtt_host,
     mqtt_port,
     mqtt_use_tls,
-    dotbot_address,
     gw_address,
     network_id,
     controller_http_port,
@@ -157,7 +149,6 @@ def main(
         "mqtt_host": mqtt_host,
         "mqtt_port": mqtt_port,
         "mqtt_use_tls": mqtt_use_tls,
-        "dotbot_address": dotbot_address,
         "gw_address": gw_address,
         "network_id": network_id,
         "controller_http_port": controller_http_port,

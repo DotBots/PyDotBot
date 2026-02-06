@@ -35,7 +35,6 @@ def controller(monkeypatch):
         port="/dev/null",
         baudrate=115200,
         network_id="0",
-        dotbot_address="456",
         gw_address="78",
     )
     _controller = Controller(settings)
@@ -203,7 +202,6 @@ def test_controller_sailbot_simulator():
         settings = ControllerSettings(
             adapter="sailbot-simulator",
             network_id="0",
-            dotbot_address="456",
             gw_address="78",
             controller_http_port=8000,
         )
@@ -226,7 +224,6 @@ def test_controller_dotbot_simulator(_):
         settings = ControllerSettings(
             adapter="dotbot-simulator",
             network_id="0",
-            dotbot_address="456",
             gw_address="78",
             controller_http_port=8001,
         )

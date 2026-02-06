@@ -27,8 +27,6 @@ Options:
   -P, --mqtt-port INTEGER         MQTT port used by cloud adapter. Default:
                                   1883.
   -T, --mqtt-use_tls              Use TLS with MQTT (for cloud adapter).
-  -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
-                                  Defaults to FFFFFFFFFFFFFFFF
   -g, --gw-address TEXT           Gateway address in hex. Defaults to
                                   0000000000000000
   -s, --network-id TEXT           Network ID in hex. Defaults to 0000

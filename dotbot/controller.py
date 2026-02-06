@@ -32,7 +32,6 @@ from qrkey import QrkeyController, SubscriptionModel, qrkey_settings
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
-    DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
@@ -136,7 +135,6 @@ class ControllerSettings:
     mqtt_host: str = MQTT_HOST_DEFAULT
     mqtt_port: int = MQTT_PORT_DEFAULT
     mqtt_use_tls: bool = False
-    dotbot_address: str = DOTBOT_ADDRESS_DEFAULT
     gw_address: str = GATEWAY_ADDRESS_DEFAULT
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
