@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from dotbot_utils.hdlc import hdlc_encode
@@ -203,7 +203,7 @@ def test_controller_sailbot_simulator():
             adapter="sailbot-simulator",
             network_id="0",
             gw_address="78",
-            controller_http_port=8000,
+            controller_http_port=8002,
         )
         controller = Controller(settings)
         try:
@@ -216,8 +216,7 @@ def test_controller_sailbot_simulator():
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
-@patch("dotbot.controller.QrkeyController.start")
-def test_controller_dotbot_simulator(_):
+def test_controller_dotbot_simulator():
     """Check controller called for dotbot simulator."""
 
     async def start_simulator():

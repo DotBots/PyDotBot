@@ -12,7 +12,7 @@ from typing import List, Optional
 import httpx
 
 from dotbot.logger import LOGGER, setup_logging
-from dotbot.models import DotBotModel, DotBotQueryModel
+from dotbot.models import DotBotMapSizeModel, DotBotModel, DotBotQueryModel
 from dotbot.protocol import ApplicationType
 
 
@@ -69,10 +69,36 @@ class RestClient:
                 return [DotBotModel(**dotbot) for dotbot in response.json()]
         return []
 
+    async def fetch_map_size(self) -> DotBotMapSizeModel:
+        """Fetch DotBot area map size."""
+        try:
+            response = await self._client.get(
+                f"{self.base_url}/map_size",
+                headers={
+                    "Accept": "application/json",
+                },
+            )
+        except httpx.ConnectError as exc:
+            self._logger.warning(f"Failed to fetch map size: {exc}")
+        else:
+            if response.status_code != 200:
+                self._logger.warning(
+                    f"Failed to fetch map size: {response} {response.text}"
+                )
+                raise RuntimeError("Failed to fetch map size")
+        return DotBotMapSizeModel(**response.json())
+
     async def _send_command(self, address, application, resource, command):
+        self._logger.info(
+            "Sending command",
+            address=address,
+            application=application,
+            resource=resource,
+            command=command.__class__.__name__,
+        )
         try:
             response = await self._client.put(
-                f"{self.base_url}/dotbots" f"/{address}/{application.value}/{resource}",
+                f"{self.base_url}/dotbots/{address}/{application.value}/{resource}",
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/json",
@@ -101,3 +127,24 @@ class RestClient:
     async def send_waypoint_command(self, address, application, command):
         """Send an waypoint command to a DotBot."""
         await self._send_command(address, application, "waypoints", command)
+
+    async def clear_position_history(self, address):
+        """Clear the position history of a DotBot."""
+        try:
+            response = await self._client.put(
+                f"{self.base_url}/dotbots" f"/{address}/positions",
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+            )
+        except httpx.ConnectError as exc:
+            self._logger.warning(f"Failed to clear positions: {exc}")
+            return
+        if response.status_code != 200:
+            self._logger.error(
+                "Cannot clear positions",
+                response=str(response),
+                status_code=response.status_code,
+                content=str(response.text),
+            )

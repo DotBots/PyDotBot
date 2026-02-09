@@ -54,10 +54,9 @@ def test_main_help():
 
 
 @patch("dotbot_utils.serial_interface.serial.Serial.open")
-@patch("dotbot.controller.QrkeyController")
 @patch("dotbot.version")
 @patch("dotbot.controller.Controller.run")
-def test_main(run, version, _, __):
+def test_main(run, version, _):
     version.return_value = "test"
     runner = CliRunner()
     result = runner.invoke(main)
@@ -72,9 +71,8 @@ def test_main(run, version, _, __):
 
 
 @patch("dotbot_utils.serial_interface.serial.Serial.open")
-@patch("dotbot.controller.QrkeyController")
 @patch("dotbot.controller.Controller.run")
-def test_main_interrupts(run, _, __):
+def test_main_interrupts(run, _):
     runner = CliRunner()
     run.side_effect = KeyboardInterrupt
     result = runner.invoke(main)
@@ -93,9 +91,8 @@ def test_main_interrupts(run, _, __):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot_utils.serial_interface.serial.Serial.open")
-@patch("dotbot.controller.QrkeyController")
 @patch("dotbot.controller_app.Controller")
-def test_main_with_config(controller, _, __, tmp_path):
+def test_main_with_config(controller, _, tmp_path):
     log_file = tmp_path / "logfile.log"
     config_file = tmp_path / "config.toml"
     config_file.write_text(
