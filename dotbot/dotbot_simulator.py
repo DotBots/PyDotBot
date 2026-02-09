@@ -285,7 +285,7 @@ class DotBotSimulatorCommunicationInterface(threading.Thread):
         pass
 
     def _packet_delivered(self):
-        return random.randint(0, 100) < self.network_pdr
+        return random.randint(0, 100) <= self.network_pdr
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
