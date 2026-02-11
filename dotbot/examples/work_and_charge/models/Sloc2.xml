@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model version="0.0" type="FSA" id="Untitled">
+<data>
+	<state id="0" name="1" initial ="False" marked="True" x="100" y="90" />
+	<state id="1" name="2" initial ="False" marked="False" x="190" y="90" />
+	<state id="2" name="3" initial ="False" marked="False" x="280" y="90" />
+	<state id="3" name="4" initial ="False" marked="False" x="370" y="90" />
+	<state id="4" name="5" initial ="False" marked="False" x="460" y="90" />
+	<state id="5" name="6" initial ="False" marked="False" x="550" y="90" />
+	<state id="6" name="7" initial ="True" marked="True" x="640" y="90" />
+	<state id="7" name="8" initial ="False" marked="False" x="100" y="180" />
+	<event id="0" name="charge" controllable="True" observable="True"/>
+	<event id="1" name="work" controllable="True" observable="True"/>
+	<event id="2" name="lowEnergy" controllable="False" observable="True"/>
+	<event id="3" name="moveToCharge" controllable="True" observable="True"/>
+	<event id="4" name="highEnergy" controllable="False" observable="True"/>
+	<event id="5" name="moveToWork" controllable="True" observable="True"/>
+	<transition source="0" target="4" event="5"/>
+	<transition source="0" target="0" event="2"/>
+	<transition source="0" target="6" event="4"/>
+	<transition source="1" target="6" event="0"/>
+	<transition source="1" target="1" event="4"/>
+	<transition source="1" target="3" event="2"/>
+	<transition source="2" target="5" event="2"/>
+	<transition source="2" target="2" event="4"/>
+	<transition source="3" target="3" event="2"/>
+	<transition source="3" target="1" event="4"/>
+	<transition source="3" target="0" event="0"/>
+	<transition source="4" target="7" event="4"/>
+	<transition source="4" target="5" event="1"/>
+	<transition source="4" target="4" event="2"/>
+	<transition source="5" target="2" event="4"/>
+	<transition source="5" target="5" event="2"/>
+	<transition source="5" target="3" event="3"/>
+	<transition source="6" target="7" event="5"/>
+	<transition source="6" target="6" event="4"/>
+	<transition source="6" target="0" event="2"/>
+	<transition source="7" target="4" event="2"/>
+	<transition source="7" target="2" event="1"/>
+	<transition source="7" target="7" event="4"/>
+</data>
+</model>

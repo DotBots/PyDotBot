@@ -1,0 +1,47 @@
+[[dotbots]]
+address = "AAAAAAAA00000001"
+pos_x = 800
+pos_y = 200
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000002"
+pos_x = 100
+pos_y = 400
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000003"
+pos_x = 800
+pos_y = 600
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000004"
+pos_x = 100
+pos_y = 800
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000005"
+pos_x = 800
+pos_y = 1_000
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000006"
+pos_x = 100
+pos_y = 1_200
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000007"
+pos_x = 800
+pos_y = 1_400
+theta = 3.14
+
+[[dotbots]]
+address = "AAAAAAAA00000008"
+pos_x = 100
+pos_y = 1_600
+theta = 3.14

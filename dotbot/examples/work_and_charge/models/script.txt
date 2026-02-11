@@ -1,0 +1,14 @@
+Gloc1 = Sync(G1,G3)
+Gloc2 = Sync(G1,G3)
+Gloc3 = Sync(G1,G2)
+Gloc4 = Sync(G1,G2)
+
+Kloc1 = Sync(Gloc1,E1)
+Kloc2 = Sync(Gloc2,E2)
+Kloc3 = Sync(Gloc3,E3)
+Kloc4 = Sync(Gloc4,E4)
+
+Sloc1 = SupC(Gloc1,Kloc1)
+Sloc2 = SupC(Gloc2,Kloc2)
+Sloc3 = SupC(Gloc3,Kloc3)
+Sloc4 = SupC(Gloc4,Kloc4)
