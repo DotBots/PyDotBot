@@ -1,0 +1,149 @@
+[[dotbots]]
+address = "AAAAAAAA00000001"
+pos_x = 120
+pos_y = 120
+theta = 4.38
+
+[[dotbots]]
+address = "AAAAAAAA00000002"
+pos_x = 360
+pos_y = 120
+theta = 0.56
+
+[[dotbots]]
+address = "AAAAAAAA00000003"
+pos_x = 600
+pos_y = 120
+theta = 2.12
+
+[[dotbots]]
+address = "AAAAAAAA00000004"
+pos_x = 840
+pos_y = 120
+theta = 2.37
+
+[[dotbots]]
+address = "AAAAAAAA00000005"
+pos_x = 1_080
+pos_y = 120
+theta = 0.69
+
+[[dotbots]]
+address = "AAAAAAAA00000006"
+pos_x = 120
+pos_y = 360
+theta = 5.21
+
+[[dotbots]]
+address = "AAAAAAAA00000007"
+pos_x = 360
+pos_y = 360
+theta = 5.09
+
+[[dotbots]]
+address = "AAAAAAAA00000008"
+pos_x = 600
+pos_y = 360
+theta = 3.86
+
+[[dotbots]]
+address = "AAAAAAAA00000009"
+pos_x = 840
+pos_y = 360
+theta = 2.66
+
+[[dotbots]]
+address = "AAAAAAAA0000000A"
+pos_x = 1_080
+pos_y = 360
+theta = 3.44
+
+[[dotbots]]
+address = "AAAAAAAA0000000B"
+pos_x = 120
+pos_y = 600
+theta = 2.64
+
+[[dotbots]]
+address = "AAAAAAAA0000000C"
+pos_x = 360
+pos_y = 600
+theta = 2.15
+
+[[dotbots]]
+address = "AAAAAAAA0000000D"
+pos_x = 600
+pos_y = 600
+theta = 5.72
+
+[[dotbots]]
+address = "AAAAAAAA0000000E"
+pos_x = 840
+pos_y = 600
+theta = 0.24
+
+[[dotbots]]
+address = "AAAAAAAA0000000F"
+pos_x = 1_080
+pos_y = 600
+theta = 0.07
+
+[[dotbots]]
+address = "AAAAAAAA00000010"
+pos_x = 120
+pos_y = 840
+theta = 4.61
+
+[[dotbots]]
+address = "AAAAAAAA00000011"
+pos_x = 360
+pos_y = 840
+theta = 2.62
+
+[[dotbots]]
+address = "AAAAAAAA00000012"
+pos_x = 600
+pos_y = 840
+theta = 4.47
+
+[[dotbots]]
+address = "AAAAAAAA00000013"
+pos_x = 840
+pos_y = 840
+theta = 4.52
+
+[[dotbots]]
+address = "AAAAAAAA00000014"
+pos_x = 1_080
+pos_y = 840
+theta = 6.11
+
+[[dotbots]]
+address = "AAAAAAAA00000015"
+pos_x = 120
+pos_y = 1_080
+theta = 2.42
+
+[[dotbots]]
+address = "AAAAAAAA00000016"
+pos_x = 360
+pos_y = 1_080
+theta = 1.86
+
+[[dotbots]]
+address = "AAAAAAAA00000017"
+pos_x = 600
+pos_y = 1_080
+theta = 1.56
+
+[[dotbots]]
+address = "AAAAAAAA00000018"
+pos_x = 840
+pos_y = 1_080
+theta = 0.86
+
+[[dotbots]]
+address = "AAAAAAAA00000019"
+pos_x = 1_080
+pos_y = 1_080
+theta = 3.28

@@ -1,0 +1,8 @@
+Gloc1 = Sync(G1,G3)
+Gloc2 = Sync(G2,G4)
+
+Kloc1 = Sync(Gloc1,E1)
+Kloc2 = Sync(Gloc2,E2)
+
+Sloc1 = SupC(Gloc1,Kloc1)
+Sloc2 = SupC(Gloc2,Kloc2)
