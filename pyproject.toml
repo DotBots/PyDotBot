@@ -47,6 +47,8 @@ dependencies = [
     "marilib-pkg    >= 0.8.0",
     "pydotbot-utils >= 0.3.0",
     "toml           >= 0.10.2",
+    "pyyaml         >= 6.0.3",
+    "scipy          >= 1.17.0",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
