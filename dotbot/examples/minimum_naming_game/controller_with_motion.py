@@ -5,7 +5,7 @@ from dotbot.models import (
     DotBotModel,
 )
 from dotbot.examples.sct import SCT
-from dotbot.examples.minimum_naming_game_with_motion.walk_avoid import walk_avoid
+from dotbot.examples.minimum_naming_game.walk_avoid import walk_avoid
 
 DISTINCT_COLORS = [
     (255, 0, 0),    # Red
@@ -70,6 +70,7 @@ class Controller:
 
         self.vector = walk_avoid(self.position.x, self.position.y, self.direction, self.neighbors, self.max_speed, self.arena_limits)
         # print(f'DotBot {self.address} Walk Vector: {self.vector}')
+
 
     def update_pose(self, position: DotBotLH2Position) -> None:
         if self.prev_position is not None:

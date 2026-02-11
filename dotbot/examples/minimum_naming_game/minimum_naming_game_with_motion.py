@@ -21,7 +21,7 @@ from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
-from dotbot.examples.minimum_naming_game_with_motion.controller import Controller
+from dotbot.examples.minimum_naming_game.controller_with_motion import Controller
 
 import numpy as np
 import random
