@@ -14,7 +14,9 @@ pip install pyyaml scipy
 
 ## How to run
 
-1. Specify the initial state of the DotBots by replacing the file path for ```simulator_init_state_path``` in [config_sample.toml](config_sample.toml).
+### Specify the initial state
+
+Specify the initial state of the DotBots by replacing the file path for ```simulator_init_state_path``` in [config_sample.toml](config_sample.toml).
 
 **Static setup** (without motion) using init_state.toml:
 
@@ -28,13 +30,13 @@ simulator_init_state_path = "dotbot/examples/minimum_naming_game/init_state.toml
 simulator_init_state_path = "dotbot/examples/minimum_naming_game/init_state_with_motion.toml"
 ```
 
-2. Start the controller in simulator mode:
+### Start the controller in simulator mode
 
 ```bash
 python -m dotbot.controller_app --config-path config_sample.toml -p dotbot-simulator -a dotbot-simulator --log-level error
 ```
 
-3. Run the minimum naming game scenario:
+### Run the minimum naming game scenario
 
 Open a new terminal and run the minimum naming game scenario.
 
