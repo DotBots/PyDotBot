@@ -45,6 +45,7 @@ nitpick_ignore_regex = [
     ("py:class", r"dotbot.models.Annotated"),
     ("py:class", r"Query"),
     ("py:class", r"PydanticUndefined"),
+    ("py:class", r"queue.Queue"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
