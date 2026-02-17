@@ -164,7 +164,7 @@ export const DotBotsMap = (props) => {
     const dim = event.target.getBoundingClientRect();
     const x = event.clientX - dim.left;
     const y = event.clientY - dim.top;
-    props.mapClicked(x * props.areaSize.width / props.mapSize, y * props.areaSize.height / props.mapSize);
+    props.mapClicked(x * props.areaSize.width / props.mapSize, y * props.areaSize.width / props.mapSize);
   };
 
   const updateDisplayGrid = (event) => {
