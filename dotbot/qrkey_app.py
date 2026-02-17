@@ -102,8 +102,7 @@ def main(
         ["console", "file"],
     )
     try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(cli(client_settings))
+        asyncio.run(cli(client_settings))
     except (SystemExit, KeyboardInterrupt):
         sys.exit(0)
 

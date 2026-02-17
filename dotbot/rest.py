@@ -16,15 +16,6 @@ from dotbot.models import DotBotMapSizeModel, DotBotModel, DotBotQueryModel
 from dotbot.protocol import ApplicationType
 
 
-@asynccontextmanager
-async def rest_client(host, port, https):
-    client = RestClient(host, port, https)
-    try:
-        yield client
-    finally:
-        await client.close()
-
-
 class RestClient:
     """Client to interact with the controller REST API."""
 
@@ -148,3 +139,12 @@ class RestClient:
                 status_code=response.status_code,
                 content=str(response.text),
             )
+
+
+@asynccontextmanager
+async def rest_client(host, port, https):
+    client = RestClient(host, port, https)
+    try:
+        yield client
+    finally:
+        await client.close()
