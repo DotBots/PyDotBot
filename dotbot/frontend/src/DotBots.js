@@ -9,6 +9,8 @@ import { SailBotsMap } from "./SailBotsMap";
 import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
 
+import logger from './utils/logger';
+const log = logger.child({module: 'DotBots'});
 
 const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
@@ -21,6 +23,7 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
   const backspace = useKeyPress("Backspace");
 
   const updateActive = useCallback(async (address) => {
+    log.info(`Updating active dotbot to ${address}`);
     setActiveDotbot(address);
   }, [setActiveDotbot]
   );
@@ -132,23 +135,24 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
   };
 
   useEffect(() => {
-
-    if (dotbots && control && enter) {
-      if (activeDotbot !== inactiveAddress) {
-        for (let idx = 0; idx < dotbots.length; idx++) {
-          if (dotbots[idx].address === activeDotbot) {
-            applyWaypoints(activeDotbot, dotbots[idx].application);
-            break;
+    if (dotbots && control) {
+      if (enter) {
+        if (activeDotbot !== inactiveAddress) {
+          for (let idx = 0; idx < dotbots.length; idx++) {
+            if (dotbots[idx].address === activeDotbot) {
+              applyWaypoints(activeDotbot, dotbots[idx].application);
+              break;
+            }
           }
         }
       }
-    }
-    if (dotbots && control && backspace) {
-      if (activeDotbot !== inactiveAddress) {
-        for (let idx = 0; idx < dotbots.length; idx++) {
-          if (dotbots[idx].address === activeDotbot) {
-            clearWaypoints(activeDotbot, dotbots[idx].application);
-            break;
+      if (backspace) {
+        if (activeDotbot !== inactiveAddress) {
+          for (let idx = 0; idx < dotbots.length; idx++) {
+            if (dotbots[idx].address === activeDotbot) {
+              clearWaypoints(activeDotbot, dotbots[idx].application);
+              break;
+            }
           }
         }
       }

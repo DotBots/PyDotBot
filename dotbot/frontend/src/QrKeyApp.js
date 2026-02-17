@@ -9,7 +9,7 @@ import DotBots from './DotBots';
 import QrKeyForm from './QrKeyForm';
 
 import logger from './utils/logger';
-const log = logger.child({module: 'app'});
+const log = logger.child({module: 'QrKeyApp'});
 
 const QrKeyApp = () => {
   const [searchParams, setSearchParams] = useSearchParams();

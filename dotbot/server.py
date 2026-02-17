@@ -114,6 +114,9 @@ async def dotbots_move_raw(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     _dotbots_move_raw(address=address, command=command)
+    await api.controller.notify_clients(
+        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    )
 
 
 def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
@@ -140,6 +143,9 @@ async def dotbots_rgb_led(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     _dotbots_rgb_led(address=address, command=command)
+    await api.controller.notify_clients(
+        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    )
 
 
 def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
@@ -226,6 +232,9 @@ async def dotbot_positions_history_clear(address: str):
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     api.controller.dotbots[address].position_history = []
+    await api.controller.notify_clients(
+        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    )
 
 
 @api.get(

@@ -8,7 +8,7 @@ import { apiFetchDotbots, apiFetchMapSize, apiUpdateMoveRaw, apiUpdateRgbLed, ap
 import DotBots from './DotBots';
 
 import logger from './utils/logger';
-const log = logger.child({module: 'app'});
+const log = logger.child({module: 'RestApp'});
 
 const RestApp = () => {
   const [areaSize, setAreaSize] = useState(undefined);
@@ -28,17 +28,17 @@ const RestApp = () => {
   }, [setAreaSize]
   );
 
-  const publishCommand = useCallback((address, application, command, data) => {
+  const publishCommand = async (address, application, command, data) => {
     if (command === "move_raw") {
-      return apiUpdateMoveRaw(address, application, data.left_x, data.left_y, data.right_x, data.right_y).catch(error => console.log(error));
+      return await apiUpdateMoveRaw(address, application, data.left_x, data.left_y, data.right_x, data.right_y).catch(error => console.log(error));
     } else if (command === "rgb_led") {
-      return apiUpdateRgbLed(address, application, data.red, data.green, data.blue).catch(error => console.log(error));
+      return await apiUpdateRgbLed(address, application, data.red, data.green, data.blue).catch(error => console.log(error));
     } else if (command === "waypoints") {
-      return apiUpdateWaypoints(address, application, data.waypoints, data.threshold).catch(error => console.log(error));
-    } else if (command === "clear_positions_history") {
-      return apiClearPositionsHistory(address).catch(error => console.log(error));
+      return await apiUpdateWaypoints(address, application, data.waypoints, data.threshold).catch(error => console.log(error));
+    } else if (command === "clear_position_history") {
+      return await apiClearPositionsHistory(address).catch(error => console.log(error));
     }
-  }, []);
+  };
 
   const publish = useCallback((topic, message) => {
     log.info(`Publishing message: ${message} to topic: ${topic}`);
@@ -90,8 +90,8 @@ const onWsOpen = () => {
             }
             dotbotsTmp[idx].gps_position = newPosition;
           }
-          if (payload.data.battery !== undefined) {
-            dotbotsTmp[idx].battery = payload.data.battery;
+          if (message.data.battery !== undefined) {
+            dotbotsTmp[idx].battery = message.data.battery;
           }
           setDotbots(dotbotsTmp);
         }
