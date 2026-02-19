@@ -4,7 +4,7 @@ import { Joystick } from "./Joystick";
 import { dotbotStatuses, dotbotBadgeStatuses } from "./utils/constants";
 
 import logger from './utils/logger';
-const log = logger.child({module: 'dotbot-item'});
+const log = logger.child({module: 'DotBotItem'});
 
 export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints, clearWaypoints, updateWaypointThreshold, clearPositionsHistory}) => {
 
@@ -100,11 +100,11 @@ export const DotBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints
           <>
             <div className="d-flex mx-auto card">
               <div className="card-body p-1">
-                <p className="m-0 p-0">
-                  <span>Autonomous mode: </span>
+                <div className="m-0 p-0">
+                  <div>Autonomous navigation</div>
                   <button className="btn btn-primary btn-sm m-1" onClick={async () => applyWaypoints(dotbot.address, dotbot.application)}>Start</button>
                   <button className="btn btn-primary btn-sm m-1" onClick={async () => clearWaypoints(dotbot.address, dotbot.application)}>Clear</button>
-                </p>
+                </div>
                 <div className="mx-auto justify-content-center">
                   <p>{`Target threshold: ${dotbot.waypoints_threshold}`}</p>
                   <input type="range" min="0" max="1000" defaultValue={dotbot.waypoints_threshold} onChange={thresholdUpdate}/>

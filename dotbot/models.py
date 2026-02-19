@@ -126,10 +126,10 @@ class DotBotNotificationUpdate(BaseModel):
     """Update notification model."""
 
     address: str
-    direction: Optional[int]
-    wind_angle: Optional[int]
-    rudder_angle: Optional[int]
-    sail_angle: Optional[int]
+    direction: Optional[int] = None
+    wind_angle: Optional[int] = None
+    rudder_angle: Optional[int] = None
+    sail_angle: Optional[int] = None
     lh2_position: Optional[DotBotLH2Position] = None
     gps_position: Optional[DotBotGPSPosition] = None
     battery: Optional[float] = None

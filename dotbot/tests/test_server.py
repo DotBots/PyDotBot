@@ -740,7 +740,6 @@ def test_ws_dotbots_commands(
         api.controller.send_payload.assert_not_called()
 
 
-@pytest.mark.asyncio
 def test_ws_invalid_message_validation_error():
     api.controller.dotbots = {
         "4242": DotBotModel(
