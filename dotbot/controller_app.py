@@ -65,8 +65,8 @@ from dotbot.logger import setup_logging
 )
 @click.option(
     "-T",
-    "--mqtt-use_tls",
-    is_flag=True,
+    "--mqtt-use_tls/--no-mqtt-use_tls",
+    default=None,
     help="Use TLS with MQTT (for cloud adapter).",
 )
 @click.option(
@@ -89,8 +89,8 @@ from dotbot.logger import setup_logging
 )
 @click.option(
     "-w",
-    "--webbrowser",
-    is_flag=True,
+    "--webbrowser/--no-webbrowser",
+    default=None,
     help="Open a web browser automatically",
 )
 @click.option(
@@ -164,7 +164,7 @@ def main(
         file_data = toml.load(config_path)
         data.update(file_data)
 
-    data.update({k: v for k, v in cli_args.items() if v not in (None, False)})
+    data.update({k: v for k, v in cli_args.items() if v is not None})
 
     controller_settings = ControllerSettings(**data)
 
