@@ -31,6 +31,7 @@ from dotbot.models import (
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
+    DotBotNotificationUpdate,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
@@ -114,9 +115,6 @@ async def dotbots_move_raw(
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
     _dotbots_move_raw(address=address, command=command)
-    await api.controller.notify_clients(
-        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-    )
 
 
 def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
@@ -141,19 +139,20 @@ async def dotbots_rgb_led(
     """Set the current active DotBot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-
-    _dotbots_rgb_led(address=address, command=command)
-    await api.controller.notify_clients(
-        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-    )
+    await _dotbots_rgb_led(address=address, command=command)
 
 
-def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
+async def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
     payload = PayloadCommandRgbLed(
         red=command.red, green=command.green, blue=command.blue
     )
     api.controller.send_payload(int(address, 16), payload)
     api.controller.dotbots[address].rgb_led = command
+    notification = DotBotNotificationModel(
+        cmd=DotBotNotificationCommand.UPDATE,
+        data=DotBotNotificationUpdate(address=address, rgb_led=command),
+    )
+    await api.controller.notify_clients(notification)
 
 
 @api.put(
@@ -197,6 +196,10 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
+        update_data = DotBotNotificationUpdate(
+            address=address,
+            gps_waypoints=waypoints_list,
+        )
     else:  # DotBot application
         if api.controller.dotbots[address].lh2_position is not None:
             waypoints_list = [
@@ -214,12 +217,17 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
+        update_data = DotBotNotificationUpdate(
+            address=address,
+            lh2_waypoints=waypoints_list,
+        )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
     api.controller.send_payload(int(address, 16), payload)
-    await api.controller.notify_clients(
-        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+    notification = DotBotNotificationModel(
+        cmd=DotBotNotificationCommand.UPDATE, data=update_data
     )
+    await api.controller.notify_clients(notification)
 
 
 @api.delete(
@@ -233,7 +241,10 @@ async def dotbot_positions_history_clear(address: str):
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     api.controller.dotbots[address].position_history = []
     await api.controller.notify_clients(
-        DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
+        DotBotNotificationModel(
+            cmd=DotBotNotificationCommand.UPDATE,
+            data=DotBotNotificationUpdate(address=address, position_history=[]),
+        )
     )
 
 
@@ -313,7 +324,7 @@ async def ws_dotbots(websocket: WebSocket):
                 continue
 
             if isinstance(msg, WSRgbLed):
-                _dotbots_rgb_led(
+                await _dotbots_rgb_led(
                     address=msg.address,
                     command=msg.data,
                 )

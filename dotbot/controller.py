@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
-import starlette
 import serial
+import starlette
 import uvicorn
 import websockets
 from dotbot_utils.protocol import Frame, Payload
@@ -295,7 +295,7 @@ class Controller:
         else:
             # reload if a new dotbot comes in
             logger.info("New robot")
-            notification_cmd = DotBotNotificationCommand.RELOAD
+            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
@@ -426,6 +426,8 @@ class Controller:
         if self.settings.verbose is True:
             print(frame)
         self.dotbots.update({dotbot.address: dotbot})
+        if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
+            notification.data = DotBotModel(**dotbot.model_dump(exclude_none=True))
         if notification_cmd != DotBotNotificationCommand.NONE:
             asyncio.create_task(self.notify_clients(notification))
 

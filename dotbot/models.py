@@ -113,36 +113,6 @@ class DotBotQueryModel(BaseModel):
     min_position_y: Optional[float] = None
 
 
-class DotBotNotificationCommand(IntEnum):
-    """Notification command of a DotBot."""
-
-    NONE: int = 0
-    RELOAD: int = 1
-    UPDATE: int = 2
-    PIN_CODE_UPDATE: int = 3
-
-
-class DotBotNotificationUpdate(BaseModel):
-    """Update notification model."""
-
-    address: str
-    direction: Optional[int] = None
-    wind_angle: Optional[int] = None
-    rudder_angle: Optional[int] = None
-    sail_angle: Optional[int] = None
-    lh2_position: Optional[DotBotLH2Position] = None
-    gps_position: Optional[DotBotGPSPosition] = None
-    battery: Optional[float] = None
-
-
-class DotBotNotificationModel(BaseModel):
-    """Model class used to send controller notifications."""
-
-    cmd: DotBotNotificationCommand
-    data: Optional[DotBotNotificationUpdate] = None
-    pin_code: Optional[int] = None
-
-
 class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
@@ -186,6 +156,41 @@ class DotBotModel(BaseModel):
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
+
+
+class DotBotNotificationCommand(IntEnum):
+    """Notification command of a DotBot."""
+
+    NONE: int = 0
+    RELOAD: int = 1
+    UPDATE: int = 2
+    PIN_CODE_UPDATE: int = 3
+    NEW_DOTBOT: int = 4
+
+
+class DotBotNotificationUpdate(BaseModel):
+    """Update notification model."""
+
+    address: str
+    direction: Optional[int] = None
+    wind_angle: Optional[int] = None
+    rudder_angle: Optional[int] = None
+    sail_angle: Optional[int] = None
+    lh2_position: Optional[DotBotLH2Position] = None
+    gps_position: Optional[DotBotGPSPosition] = None
+    battery: Optional[float] = None
+    rgb_led: Optional[DotBotRgbLedCommandModel] = None
+    lh2_waypoints: Optional[List[DotBotLH2Position]] = None
+    gps_waypoints: Optional[List[DotBotGPSPosition]] = None
+    position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
+
+
+class DotBotNotificationModel(BaseModel):
+    """Model class used to send controller notifications."""
+
+    cmd: DotBotNotificationCommand
+    data: Optional[Union[DotBotNotificationUpdate, DotBotModel]] = None
+    pin_code: Optional[int] = None
 
 
 class WSBase(BaseModel):
