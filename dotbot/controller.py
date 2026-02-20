@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
+import starlette
 import serial
 import uvicorn
 import websockets
@@ -432,8 +433,17 @@ class Controller:
         """Safely send a message to a websocket client."""
         try:
             await websocket.send_text(msg)
-        except websockets.exceptions.ConnectionClosedError:
-            await asyncio.sleep(0.1)
+        except (
+            websockets.exceptions.ConnectionClosedError,
+            RuntimeError,
+            starlette.websockets.WebSocketDisconnect,
+        ) as exc:
+            self.logger.warning(
+                "Failed to send message to websocket client",
+                error=str(exc),
+            )
+            if websocket in self.websockets:
+                self.websockets.remove(websocket)
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
