@@ -213,7 +213,7 @@ class DotBotSimulator:
                     )
                 ),
             )
-            self.tx_queue.put(payload)
+            self.tx_queue.put_nowait(payload)
             time.sleep(0.5)
 
     def rx_frame(self):
@@ -253,7 +253,7 @@ class DotBotSimulator:
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
         self._stop_event.set()
-        self.queue.put(None)  # unblock the rx_thread if waiting on the queue
+        self.queue.put_nowait(None)  # unblock the rx_thread if waiting on the queue
         self.advertise_thread.join()
         self.rx_thread.join()
         self.main_thread.join()
@@ -292,7 +292,7 @@ class DotBotSimulatorCommunicationInterface:
     def stop(self):
         self.logger.info("Stopping DotBot Simulation...")
         self._stp_event.set()
-        self.queue.put(None)  # unblock the run thread if waiting on the queue
+        self.queue.put_nowait(None)  # unblock the run thread if waiting on the queue
         for dotbot in self.dotbots:
             dotbot.stop()
         self.main_thread.join()
@@ -321,4 +321,4 @@ class DotBotSimulatorCommunicationInterface:
                     f"Packet to DotBot {dotbot.address} lost in simulation"
                 )
                 continue
-            dotbot.queue.put(Frame.from_bytes(bytes_))
+            dotbot.queue.put_nowait(Frame.from_bytes(bytes_))
