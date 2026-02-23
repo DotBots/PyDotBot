@@ -9,7 +9,6 @@
 import queue
 import random
 import threading
-import time
 from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
@@ -31,6 +30,9 @@ SIMULATOR_STEP_DELTA_T = 0.002  # 2 ms
 
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 300  # 5 minutes
+
+ADVERTISEMENT_INTERVAL_S = 0.5
+SIMULATOR_UPDATE_INTERVAL_S = 0.1
 
 
 def battery_discharge_model(time_elapsed_s: float) -> int:
@@ -195,7 +197,6 @@ class DotBotSimulator:
             "DotBot simulator update", x=self.pos_x, y=self.pos_y, theta=self.theta
         )
         self.time_elapsed_s += dt
-        time.sleep(dt)
 
     def advertise(self):
         """Send an advertisement message to the gateway."""
@@ -214,7 +215,9 @@ class DotBotSimulator:
                 ),
             )
             self.tx_queue.put_nowait(payload)
-            time.sleep(0.5)
+            is_stopped = self._stop_event.wait(ADVERTISEMENT_INTERVAL_S)
+            if is_stopped:
+                break
 
     def rx_frame(self):
         """Decode the serial input received from the gateway."""
@@ -246,9 +249,12 @@ class DotBotSimulator:
 
     def run(self):
         """Update the state of the dotbot simulator."""
-        while self._stop_event.is_set() is False:
+        while True:
             with self._lock:
-                self.update(0.1)
+                self.update(SIMULATOR_UPDATE_INTERVAL_S)
+                is_stopped = self._stop_event.wait(SIMULATOR_UPDATE_INTERVAL_S)
+                if is_stopped:
+                    break
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
