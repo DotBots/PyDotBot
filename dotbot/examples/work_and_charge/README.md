@@ -2,6 +2,10 @@
 
 This demo shows a work-and-charge scenario in the DotBot simulator, where agents alternate moving between two regions to perform some work and return to charge.
 
+**Work and Charge**
+
+![Work and Charge](screenshots/work_and_charge.png)
+
 ## Install Python packages (pip)
 
 Install the Python packages required to run this demo.
@@ -28,7 +32,7 @@ python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simul
 
 ### Run the work-and-charge scenario
 
-Open a new terminal and run the work-and-charge scenario.
+Open a new terminal and run the work-and-charge scenario in the top-level directory ```PyDotBot/```.
 
 ```bash
 python -m dotbot.examples.work_and_charge.work_and_charge

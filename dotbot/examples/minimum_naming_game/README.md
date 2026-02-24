@@ -4,6 +4,14 @@ This demo runs the minimum naming game in the DotBot simulator, where the robots
 
 This demo includes two variants: a static setup without motion and a dynamic setup with motion.
 
+**Minimum naming game without motion**
+
+![Minimum naming game](screenshots/minimum_naming_game.png)
+
+**Minimum naming game with motion**
+
+![Minimum naming game with motion](screenshots/minimum_naming_game_with_motion.png)
+
 ## Install Python packages (pip)
 
 Install the Python packages required to run this demo.
@@ -38,7 +46,7 @@ python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simul
 
 ### Run the minimum naming game scenario
 
-Open a new terminal and run the minimum naming game scenario.
+Open a new terminal and run the minimum naming game scenario in the top-level directory ```PyDotBot/```.
 
 **Static setup** (without motion):
 
