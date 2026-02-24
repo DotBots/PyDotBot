@@ -2,3 +2,5 @@ build
 hatchling
 tox
 twine
+scipy
+pyyaml
