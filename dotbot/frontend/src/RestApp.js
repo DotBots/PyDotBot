@@ -44,7 +44,7 @@ const RestApp = () => {
     log.info(`Publishing message: ${message} to topic: ${topic}`);
   }, []);
 
-const onWsOpen = () => {
+  const onWsOpen = () => {
     log.info('websocket opened');
     fetchDotBots();
   };
@@ -104,6 +104,7 @@ const onWsOpen = () => {
     onClose: () => log.warn("websocket closed"),
     onMessage: (event) => onWsMessage(event),
     shouldReconnect: (event) => true,
+    filter: () => false,
   });
 
   useEffect(() => {
