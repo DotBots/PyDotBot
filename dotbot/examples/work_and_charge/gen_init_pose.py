@@ -1,9 +1,10 @@
 from pathlib import Path
 
+
 def generate_dotbot_script():
     # Configuration Constants
-    NUM_ROBOTS = 8       # Total robots to generate
-    START_ID = 1         # Start at AAAAAAAA00000001
+    NUM_ROBOTS = 8  # Total robots to generate
+    START_ID = 1  # Start at AAAAAAAA00000001
     X_RIGHT = 800
     X_LEFT = 100
     START_Y = 200
@@ -30,7 +31,8 @@ def generate_dotbot_script():
         # Build the TOML block
         block = (
             f"[[dotbots]]\n"
-            f"address = \"{address_hex}\"\n"
+            f'address = "{address_hex}"\n'
+            f"calibrated = 0xff\n"
             f"pos_x = {pos_x}\n"
             f"pos_y = {pos_y}\n"
             f"theta = {THETA}\n"
@@ -43,6 +45,7 @@ def generate_dotbot_script():
         f.write("\n".join(lines))
 
     print(f"Generated TOML file at {output_path}")
-    
+
+
 if __name__ == "__main__":
     generate_dotbot_script()
