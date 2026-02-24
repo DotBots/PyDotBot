@@ -40,7 +40,7 @@ DT = 0.05  # Control loop period (seconds)
 BOT_RADIUS = 40  # Physical radius of a DotBot (unit), used for collision avoidance
 MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
 
-(QUEUE_HEAD_X, QUEUE_HEAD_Y) = (
+QUEUE_HEAD_X, QUEUE_HEAD_Y = (
     200,
     200,
 )  # World-frame (X, Y) position of the charging queue head
@@ -79,9 +79,9 @@ def assign_goals(
 ) -> Dict[str, dict]:
     goals = {}
     for i, bot in enumerate(ordered):
-        
+
         # TODO: depending on the robot's current state (moving to base or work regions), assign a different goal
-        
+
         goals[bot.address] = {
             "x": head_x,
             "y": head_y + i * spacing,
@@ -149,7 +149,9 @@ async def main() -> None:
     url = os.getenv("DOTBOT_CONTROLLER_URL", "localhost")
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
-    sct_path = os.getenv("DOTBOT_SCT_PATH", "dotbot/examples/work_and_charge/models/supervisor.yaml")
+    sct_path = os.getenv(
+        "DOTBOT_SCT_PATH", "dotbot/examples/work_and_charge/models/supervisor.yaml"
+    )
     async with rest_client(url, port, use_https) as client:
         dotbots = await fetch_active_dotbots(client)
 
@@ -158,7 +160,7 @@ async def main() -> None:
 
             # Init controller
             controller = Controller(dotbot.address, sct_path)
-            dotbot_controllers[dotbot.address] = controller        
+            dotbot_controllers[dotbot.address] = controller
 
             # Cosmetic: all bots are red
             await client.send_rgb_led_command(
@@ -169,16 +171,20 @@ async def main() -> None:
         # Set work and charge goals for each robot
         # sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
         sorted_bots = sorted(dotbots, key=lambda bot: bot.address)
-        base_goals = assign_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
-        work_goals = assign_goals(sorted_bots, WORK_REGION_X, QUEUE_HEAD_Y, QUEUE_SPACING)
+        base_goals = assign_goals(
+            sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING
+        )
+        work_goals = assign_goals(
+            sorted_bots, WORK_REGION_X, QUEUE_HEAD_Y, QUEUE_SPACING
+        )
 
         for address, controller in dotbot_controllers.items():
             goal = base_goals[address]
-            waypoint_charge = DotBotLH2Position(x=goal['x'], y=goal['y'], z=0)
+            waypoint_charge = DotBotLH2Position(x=goal["x"], y=goal["y"], z=0)
             controller.set_charge_waypoint(waypoint_charge)
 
             goal = work_goals[address]
-            waypoint_work = DotBotLH2Position(x=goal['x'], y=goal['y'], z=0)
+            waypoint_work = DotBotLH2Position(x=goal["x"], y=goal["y"], z=0)
             controller.set_work_waypoint(waypoint_work)
 
         while True:
@@ -197,27 +203,32 @@ async def main() -> None:
                         # print(f'waypoint_current for DotBot {bot.address}: {dotbot_controllers.get(bot.address).waypoint_current}')
 
                         # Get current goals
-                        if dotbot_controllers.get(bot.address).waypoint_current is not None:
+                        if (
+                            dotbot_controllers.get(bot.address).waypoint_current
+                            is not None
+                        ):
                             goals[bot.address] = {
                                 "x": dotbot_controllers[bot.address].waypoint_current.x,
                                 "y": dotbot_controllers[bot.address].waypoint_current.y,
                             }
-                            
+
                         agents[bot.address] = Agent(
                             id=bot.address,
-                                position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
-                                velocity=Vec2(x=0, y=0),
-                                radius=BOT_RADIUS,
-                                max_speed=MAX_SPEED,
-                                preferred_velocity=preferred_vel(
-                                    dotbot=bot, goal=goals.get(bot.address)
-                                ),
-                            )
-                        
+                            position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
+                            velocity=Vec2(x=0, y=0),
+                            radius=BOT_RADIUS,
+                            max_speed=MAX_SPEED,
+                            preferred_velocity=preferred_vel(
+                                dotbot=bot, goal=goals.get(bot.address)
+                            ),
+                        )
+
                     # Prepare coordinates for all agents
                     # Extract [x, y] for every agent in the same order
                     agent_list = list(agents.values())
-                    positions = np.array([[a.position.x, a.position.y] for a in agent_list])
+                    positions = np.array(
+                        [[a.position.x, a.position.y] for a in agent_list]
+                    )
 
                     # Build the KD-Tree
                     tree = cKDTree(positions)
@@ -230,8 +241,8 @@ async def main() -> None:
 
                         # Run controller
                         controller = dotbot_controllers[dotbot.address]
-                        controller.set_current_position(pos) # update position
-                        controller.control_step() # run SCT step
+                        controller.set_current_position(pos)  # update position
+                        controller.control_step()  # run SCT step
 
                         # Get current goal
                         goal = controller.waypoint_current
@@ -246,8 +257,14 @@ async def main() -> None:
                         # local_neighbors = [neighbor for neighbor in agents.values() if neighbor.id != agent.id]
 
                         # Using KD-Tree: Prepare neighbor list using KD-Tree
-                        neighbor_indices = tree.query_ball_point([agent.position.x, agent.position.y], r=ORCA_RANGE)
-                        local_neighbors = [agent_list[idx] for idx in neighbor_indices if agent_list[idx].id != agent.id]
+                        neighbor_indices = tree.query_ball_point(
+                            [agent.position.x, agent.position.y], r=ORCA_RANGE
+                        )
+                        local_neighbors = [
+                            agent_list[idx]
+                            for idx in neighbor_indices
+                            if agent_list[idx].id != agent.id
+                        ]
 
                         if not local_neighbors:
                             orca_vel = agent.preferred_velocity
@@ -286,7 +303,9 @@ async def main() -> None:
                             threshold=THRESHOLD,
                             waypoints=[
                                 DotBotLH2Position(
-                                    x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
+                                    x=agent.position.x + step.x,
+                                    y=agent.position.y + step.y,
+                                    z=0,
                                 )
                             ],
                         )
