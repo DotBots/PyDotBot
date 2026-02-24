@@ -33,7 +33,7 @@ simulator_init_state_path = "dotbot/examples/minimum_naming_game/init_state_with
 ### Start the controller in simulator mode
 
 ```bash
-python -m dotbot.controller_app --config-path config_sample.toml -p dotbot-simulator -a dotbot-simulator --log-level error
+python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simulator --log-level error
 ```
 
 ### Run the minimum naming game scenario
