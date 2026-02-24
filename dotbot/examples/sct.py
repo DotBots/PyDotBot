@@ -311,4 +311,3 @@ class SCTProb(SCT):
                     return True, i
 
         return False, None
-    
