@@ -30,7 +30,7 @@ def client(monkeypatch):
         await asyncio.sleep(0.5)  # simulate some async work
         raise websockets_exceptions.ConnectionClosedError(1000, None)
 
-    qrkey_controller_mock = AsyncMock()
+    qrkey_controller_mock = MagicMock()
     qrkey_controller_mock.start.side_effect = qrkey_controller_start_mock
     monkeypatch.setattr(
         "dotbot.qrkey.QrkeyController", lambda *args, **kwargs: qrkey_controller_mock

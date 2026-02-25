@@ -1,0 +1,174 @@
+[[dotbots]]
+address = "AAAAAAAA00000001"
+calibrated = 0xff
+pos_x = 120
+pos_y = 120
+theta = 4.79
+
+[[dotbots]]
+address = "AAAAAAAA00000002"
+calibrated = 0xff
+pos_x = 360
+pos_y = 120
+theta = 5.85
+
+[[dotbots]]
+address = "AAAAAAAA00000003"
+calibrated = 0xff
+pos_x = 600
+pos_y = 120
+theta = 4.34
+
+[[dotbots]]
+address = "AAAAAAAA00000004"
+calibrated = 0xff
+pos_x = 840
+pos_y = 120
+theta = 2.86
+
+[[dotbots]]
+address = "AAAAAAAA00000005"
+calibrated = 0xff
+pos_x = 1_080
+pos_y = 120
+theta = 4.62
+
+[[dotbots]]
+address = "AAAAAAAA00000006"
+calibrated = 0xff
+pos_x = 120
+pos_y = 360
+theta = 2.88
+
+[[dotbots]]
+address = "AAAAAAAA00000007"
+calibrated = 0xff
+pos_x = 360
+pos_y = 360
+theta = 0.84
+
+[[dotbots]]
+address = "AAAAAAAA00000008"
+calibrated = 0xff
+pos_x = 600
+pos_y = 360
+theta = 4.11
+
+[[dotbots]]
+address = "AAAAAAAA00000009"
+calibrated = 0xff
+pos_x = 840
+pos_y = 360
+theta = 1.36
+
+[[dotbots]]
+address = "AAAAAAAA0000000A"
+calibrated = 0xff
+pos_x = 1_080
+pos_y = 360
+theta = 1.7
+
+[[dotbots]]
+address = "AAAAAAAA0000000B"
+calibrated = 0xff
+pos_x = 120
+pos_y = 600
+theta = 1.79
+
+[[dotbots]]
+address = "AAAAAAAA0000000C"
+calibrated = 0xff
+pos_x = 360
+pos_y = 600
+theta = 5.67
+
+[[dotbots]]
+address = "AAAAAAAA0000000D"
+calibrated = 0xff
+pos_x = 600
+pos_y = 600
+theta = 5.6
+
+[[dotbots]]
+address = "AAAAAAAA0000000E"
+calibrated = 0xff
+pos_x = 840
+pos_y = 600
+theta = 3.07
+
+[[dotbots]]
+address = "AAAAAAAA0000000F"
+calibrated = 0xff
+pos_x = 1_080
+pos_y = 600
+theta = 3.97
+
+[[dotbots]]
+address = "AAAAAAAA00000010"
+calibrated = 0xff
+pos_x = 120
+pos_y = 840
+theta = 0.89
+
+[[dotbots]]
+address = "AAAAAAAA00000011"
+calibrated = 0xff
+pos_x = 360
+pos_y = 840
+theta = 5.04
+
+[[dotbots]]
+address = "AAAAAAAA00000012"
+calibrated = 0xff
+pos_x = 600
+pos_y = 840
+theta = 1.56
+
+[[dotbots]]
+address = "AAAAAAAA00000013"
+calibrated = 0xff
+pos_x = 840
+pos_y = 840
+theta = 2.1
+
+[[dotbots]]
+address = "AAAAAAAA00000014"
+calibrated = 0xff
+pos_x = 1_080
+pos_y = 840
+theta = 2.5
+
+[[dotbots]]
+address = "AAAAAAAA00000015"
+calibrated = 0xff
+pos_x = 120
+pos_y = 1_080
+theta = 0.63
+
+[[dotbots]]
+address = "AAAAAAAA00000016"
+calibrated = 0xff
+pos_x = 360
+pos_y = 1_080
+theta = 6.22
+
+[[dotbots]]
+address = "AAAAAAAA00000017"
+calibrated = 0xff
+pos_x = 600
+pos_y = 1_080
+theta = 3.68
+
+[[dotbots]]
+address = "AAAAAAAA00000018"
+calibrated = 0xff
+pos_x = 840
+pos_y = 1_080
+theta = 3.07
+
+[[dotbots]]
+address = "AAAAAAAA00000019"
+calibrated = 0xff
+pos_x = 1_080
+pos_y = 1_080
+theta = 3.32

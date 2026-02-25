@@ -1,0 +1,11 @@
+
+num_events: 5
+num_supervisors: 2
+events: [ EV_startTimer, EV_selectAndBroadcast, EV_updateInventory, EV__selectAndBroadcast, EV_timeout ]
+ev_controllable: [ 1, 1, 1, 0, 0 ]
+ev_public: [ 0, 1, 0, 1, 0 ]
+sup_events: [ [0, 0, 1, 1, 0], [1, 1, 0, 0, 1] ]
+sup_init_state: [ 1, 0 ]
+sup_current_state: [ 1, 0 ]
+sup_data_pos: [ 0, 11 ]
+sup_data: [ 2, EV_updateInventory, 0, 1, EV__selectAndBroadcast, 0, 0, 1, EV__selectAndBroadcast, 0, 0, 1, EV_startTimer, 0, 1, 1, EV_timeout, 0, 2, 1, EV_selectAndBroadcast, 0, 0 ]
