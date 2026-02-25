@@ -342,9 +342,24 @@ class Controller:
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
                     dotbot.lh2_position = new_position
-                    dotbot.position_history.append(new_position)
-                    if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                        dotbot.position_history.pop(0)
+                    if (
+                        dotbot.position_history
+                        and lh2_distance(dotbot.position_history[-1], new_position)
+                        < LH2_POSITION_DISTANCE_THRESHOLD
+                    ):
+                        # If the new position is too close from the last one, we consider it as noise and we don't add it to the position history
+                        logger.debug(
+                            "Discarding LH2 position update because it's too close from the last one",
+                            last_position=dotbot.position_history[-1].model_dump(),
+                            new_position=new_position.model_dump(),
+                            distance=lh2_distance(
+                                dotbot.position_history[-1], new_position
+                            ),
+                        )
+                    else:
+                        dotbot.position_history.append(new_position)
+                        if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
+                            dotbot.position_history.pop(0)
                 need_update = True
 
             if dotbot.battery != frame.packet.payload.battery / 1000.0:
