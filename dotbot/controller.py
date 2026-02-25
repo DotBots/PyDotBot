@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import serial
+import starlette
 import uvicorn
 import websockets
 from dotbot_utils.protocol import Frame, Payload
@@ -294,7 +295,7 @@ class Controller:
         else:
             # reload if a new dotbot comes in
             logger.info("New robot")
-            notification_cmd = DotBotNotificationCommand.RELOAD
+            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
             logger = logger.bind(
@@ -425,6 +426,8 @@ class Controller:
         if self.settings.verbose is True:
             print(frame)
         self.dotbots.update({dotbot.address: dotbot})
+        if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
+            notification.data = DotBotModel(**dotbot.model_dump(exclude_none=True))
         if notification_cmd != DotBotNotificationCommand.NONE:
             asyncio.create_task(self.notify_clients(notification))
 
@@ -432,8 +435,17 @@ class Controller:
         """Safely send a message to a websocket client."""
         try:
             await websocket.send_text(msg)
-        except websockets.exceptions.ConnectionClosedError:
-            await asyncio.sleep(0.1)
+        except (
+            websockets.exceptions.ConnectionClosedError,
+            RuntimeError,
+            starlette.websockets.WebSocketDisconnect,
+        ) as exc:
+            self.logger.warning(
+                "Failed to send message to websocket client",
+                error=str(exc),
+            )
+            if websocket in self.websockets:
+                self.websockets.remove(websocket)
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""

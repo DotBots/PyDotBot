@@ -15,6 +15,7 @@ export const NotificationType = {
   Reload: 1,
   Update: 2,
   PinCodeUpdate: 3,
+  NewDotBot: 4,
 };
 
 export const RequestType = {

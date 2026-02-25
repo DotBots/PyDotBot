@@ -54,12 +54,29 @@ const onWsOpen = () => {
     if (message.cmd === NotificationType.Reload) {
       fetchDotBots();
     }
+    if (message.cmd === NotificationType.NewDotBot) {
+      let dotbotsTmp = dotbots.slice();
+      dotbotsTmp.push(message.data);
+      setDotbots(dotbotsTmp);
+    }
     if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
       let dotbotsTmp = dotbots.slice();
       for (let idx = 0; idx < dotbots.length; idx++) {
         if (dotbots[idx].address === message.data.address) {
           if (message.data.direction !== undefined && message.data.direction !== null) {
             dotbotsTmp[idx].direction = message.data.direction;
+          }
+          if (message.data.rgb_led !== undefined) {
+            if (dotbotsTmp[idx].rgb_led === undefined) {
+              dotbotsTmp[idx].rgb_led = {
+                red: 0,
+                green: 0,
+                blue: 0
+              }
+            }
+            dotbotsTmp[idx].rgb_led.red = message.data.rgb_led.red;
+            dotbotsTmp[idx].rgb_led.green = message.data.rgb_led.green;
+            dotbotsTmp[idx].rgb_led.blue = message.data.rgb_led.blue;
           }
           if (message.data.wind_angle !== undefined && message.data.wind_angle !== null) {
             dotbotsTmp[idx].wind_angle = message.data.wind_angle;
@@ -80,6 +97,9 @@ const onWsOpen = () => {
             }
             dotbotsTmp[idx].lh2_position = newPosition;
           }
+          if (message.data.lh2_waypoints !== undefined) {
+            dotbotsTmp[idx].lh2_waypoints = message.data.lh2_waypoints;
+          }
           if (message.data.gps_position !== undefined && message.data.gps_position !== null) {
             const newPosition = {
               latitude: message.data.gps_position.latitude,
@@ -90,10 +110,17 @@ const onWsOpen = () => {
             }
             dotbotsTmp[idx].gps_position = newPosition;
           }
+          if (message.data.gps_waypoints !== undefined) {
+            dotbotsTmp[idx].gps_waypoints = message.data.gps_waypoints;
+          }
+          if (message.data.position_history !== undefined) {
+            dotbotsTmp[idx].position_history = message.data.position_history;
+          }
           if (message.data.battery !== undefined) {
             dotbotsTmp[idx].battery = message.data.battery;
           }
           setDotbots(dotbotsTmp);
+          break;
         }
       }
     }

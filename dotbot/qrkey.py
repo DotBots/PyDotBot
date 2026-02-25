@@ -22,7 +22,6 @@ from dotbot import CONTROLLER_HTTP_HOSTNAME_DEFAULT, CONTROLLER_HTTP_PORT_DEFAUL
 from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotMoveRawCommandModel,
-    DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotReplyModel,
     DotBotRequestModel,
@@ -144,12 +143,6 @@ class QrKeyClient:
             command=command.__class__.__name__,
         )
         self.worker.run(self.client.send_rgb_led_command(address, command))
-        self.qrkey.publish(
-            "/notify",
-            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
-                exclude_none=True
-            ),
-        )
 
     def on_command_xgo_action(self, topic, payload):
         """Called when an rgb led command is received."""
@@ -202,12 +195,6 @@ class QrKeyClient:
                 address, ApplicationType(int(application)), command
             )
         )
-        self.qrkey.publish(
-            "/notify",
-            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
-                exclude_none=True
-            ),
-        )
 
     def on_command_clear_position_history(self, topic, _):
         """Called when a clear position history command is received."""
@@ -223,12 +210,6 @@ class QrKeyClient:
         )
         logger.info("Notify clear command", address=address)
         self.worker.run(self.client.clear_position_history(address))
-        self.qrkey.publish(
-            "/notify",
-            DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD).model_dump(
-                exclude_none=True
-            ),
-        )
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")

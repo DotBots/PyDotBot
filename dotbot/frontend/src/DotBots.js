@@ -164,6 +164,9 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
   ]);
 
   let needDotBotMap = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).some((dotbot) => dotbot.calibrated > 0x00);
+  let dotbotCount = dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).length;
+  let sailbotCount = dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot).length;
+  let xgoCount = dotbots.filter(dotbot => dotbot.application === ApplicationType.XGO).length;
 
   return (
     <>
@@ -185,11 +188,11 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
     <div className="container">
       {dotbots && dotbots.length > 0 && (
       <>
-      {dotbots.filter(dotbot => dotbot.application === ApplicationType.DotBot).length > 0 &&
+      {dotbotCount > 0 &&
       <div className="row">
         <div className={`col ${needDotBotMap ? "col-xxl-3" : ""}`}>
           <div className="card m-1">
-            <div className="card-header">Available DotBots</div>
+            <div className="card-header">Available DotBots ({`${dotbotCount}`})</div>
             <div className="card-body p-1">
               <div className="accordion" id="accordion-dotbots">
                 {dotbots
@@ -247,7 +250,7 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
         }
       </div>
       }
-      {dotbots.filter(dotbot => dotbot.application === ApplicationType.SailBot).length > 0 &&
+      {sailbotCount > 0 &&
       <div className="row">
         <div className="col col-xxl-6">
           <div className="card m-1">
@@ -297,7 +300,7 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
         </div>
       </div>
       }
-      {dotbots.filter(dotbot => dotbot.application === ApplicationType.XGO).length > 0 &&
+      {xgoCount > 0 &&
       <div className="row">
         <div className="col">
           <div className="card m-1">

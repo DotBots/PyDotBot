@@ -36,12 +36,29 @@ const QrKeyApp = () => {
       }
     } else if (message.topic === `/notify`) {
       // Process notifications
+      if (message.cmd === NotificationType.NewDotBot) {
+        let dotbotsTmp = dotbots.slice();
+        dotbotsTmp.push(message.data);
+        setDotbots(dotbotsTmp);
+      }
       if (payload.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
         let dotbotsTmp = dotbots.slice();
         for (let idx = 0; idx < dotbots.length; idx++) {
           if (dotbots[idx].address === payload.data.address) {
             if (payload.data.direction !== undefined && payload.data.direction !== null) {
               dotbotsTmp[idx].direction = payload.data.direction;
+            }
+            if (payload.data.rgb_led !== undefined) {
+              if (dotbotsTmp[idx].rgb_led === undefined) {
+                dotbotsTmp[idx].rgb_led = {
+                  red: 0,
+                  green: 0,
+                  blue: 0
+                }
+              }
+              dotbotsTmp[idx].rgb_led.red = payload.data.rgb_led.red;
+              dotbotsTmp[idx].rgb_led.green = payload.data.rgb_led.green;
+              dotbotsTmp[idx].rgb_led.blue = payload.data.rgb_led.blue;
             }
             if (payload.data.lh2_position !== undefined && payload.data.lh2_position !== null) {
               const newPosition = {
@@ -55,6 +72,9 @@ const QrKeyApp = () => {
               }
               dotbotsTmp[idx].lh2_position = newPosition;
             }
+            if (payload.data.lh2_waypoints !== undefined) {
+              dotbotsTmp[idx].lh2_waypoints = payload.data.lh2_waypoints;
+            }
             if (payload.data.gps_position !== undefined && payload.data.gps_position !== null) {
               const newPosition = {
                 latitude: payload.data.gps_position.latitude,
@@ -65,10 +85,17 @@ const QrKeyApp = () => {
               }
               dotbotsTmp[idx].gps_position = newPosition;
             }
+            if (payload.data.gps_waypoints !== undefined) {
+              dotbotsTmp[idx].gps_waypoints = payload.data.gps_waypoints;
+            }
+            if (payload.data.position_history !== undefined) {
+              dotbotsTmp[idx].position_history = payload.data.position_history;
+            }
             if (payload.data.battery !== undefined) {
               dotbotsTmp[idx].battery = payload.data.battery ;
             }
             setDotbots(dotbotsTmp);
+            break;
           }
         }
       } else if (payload.cmd === NotificationType.Reload) {
