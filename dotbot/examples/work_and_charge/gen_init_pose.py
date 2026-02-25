@@ -10,7 +10,6 @@ def generate_dotbot_script():
     START_Y = 200
     Y_STEP = 200
     THETA = 3.14
-    FILENAME = "dotbots_config.toml"
 
     lines = []
 

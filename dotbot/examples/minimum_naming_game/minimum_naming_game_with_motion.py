@@ -1,31 +1,24 @@
 import asyncio
-import math
 import os
-from time import time
-from typing import Dict, List
+import random
+from typing import List
 
-from dotbot.examples.vec2 import Vec2
+import numpy as np
+from scipy.spatial import cKDTree
+
+from dotbot.examples.minimum_naming_game.controller_with_motion import Controller
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
-    DotBotMoveRawCommandModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotStatus,
     DotBotWaypoints,
     WSRgbLed,
-    WSMoveRaw,
-    WSWaypoints,
 )
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
-
-from dotbot.examples.minimum_naming_game.controller_with_motion import Controller
-
-import numpy as np
-import random
-from scipy.spatial import cKDTree
 
 COMM_RANGE = 250
 THRESHOLD = 0

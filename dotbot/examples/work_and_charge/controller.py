@@ -1,8 +1,9 @@
 import math
+
+from dotbot.examples.sct import SCT
 from dotbot.models import (
     DotBotLH2Position,
 )
-from dotbot.examples.sct import SCT
 
 
 class Controller:
@@ -57,11 +58,11 @@ class Controller:
             stripped_name = event.split("EV_", 1)[1]  # Strip preceding string 'EV_'
 
             if is_controllable:  # Add controllable event
-                func_name = "_callback_{0}".format(stripped_name)
+                func_name = f"_callback_{stripped_name}"
                 func = getattr(self, func_name)
                 self.sct.add_callback(event, func, None, None)
             else:  # Add uncontrollable event
-                func_name = "_check_{0}".format(stripped_name)
+                func_name = f"_check_{stripped_name}"
                 func = getattr(self, func_name)
                 self.sct.add_callback(event, None, func, None)
 

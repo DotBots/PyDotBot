@@ -1,6 +1,6 @@
 build
 hatchling
+pyyaml
+scipy
 tox
 twine
-scipy
-pyyaml

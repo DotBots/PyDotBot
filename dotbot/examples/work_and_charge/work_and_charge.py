@@ -1,8 +1,10 @@
 import asyncio
 import math
 import os
-import time
 from typing import Dict, List
+
+import numpy as np
+from scipy.spatial import cKDTree
 
 from dotbot.examples.orca import (
     Agent,
@@ -10,10 +12,10 @@ from dotbot.examples.orca import (
     compute_orca_velocity_for_agent,
 )
 from dotbot.examples.vec2 import Vec2
+from dotbot.examples.work_and_charge.controller import Controller
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
-    DotBotMoveRawCommandModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotStatus,
@@ -24,12 +26,6 @@ from dotbot.models import (
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
-
-from dotbot.examples.sct import SCT
-from dotbot.examples.work_and_charge.controller import Controller
-
-import numpy as np
-from scipy.spatial import cKDTree
 
 ORCA_RANGE = 200
 

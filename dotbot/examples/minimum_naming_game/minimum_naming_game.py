@@ -1,7 +1,12 @@
 import asyncio
 import os
+import random
 from typing import List
 
+import numpy as np
+from scipy.spatial import cKDTree
+
+from dotbot.examples.minimum_naming_game.controller import Controller
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
@@ -14,12 +19,6 @@ from dotbot.models import (
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
-
-from dotbot.examples.minimum_naming_game.controller import Controller
-
-import numpy as np
-import random
-from scipy.spatial import cKDTree
 
 COMM_RANGE = 250
 THRESHOLD = 50

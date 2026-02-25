@@ -3,172 +3,172 @@ address = "AAAAAAAA00000001"
 calibrated = 0xff
 pos_x = 120
 pos_y = 120
-theta = 4.38
+theta = 2.59
 
 [[dotbots]]
 address = "AAAAAAAA00000002"
 calibrated = 0xff
 pos_x = 360
 pos_y = 120
-theta = 0.56
+theta = 0.2
 
 [[dotbots]]
 address = "AAAAAAAA00000003"
 calibrated = 0xff
 pos_x = 600
 pos_y = 120
-theta = 2.12
+theta = 1.09
 
 [[dotbots]]
 address = "AAAAAAAA00000004"
 calibrated = 0xff
 pos_x = 840
 pos_y = 120
-theta = 2.37
+theta = 5.39
 
 [[dotbots]]
 address = "AAAAAAAA00000005"
 calibrated = 0xff
 pos_x = 1_080
 pos_y = 120
-theta = 0.69
+theta = 5.84
 
 [[dotbots]]
 address = "AAAAAAAA00000006"
 calibrated = 0xff
 pos_x = 120
 pos_y = 360
-theta = 5.21
+theta = 2.4
 
 [[dotbots]]
 address = "AAAAAAAA00000007"
 calibrated = 0xff
 pos_x = 360
 pos_y = 360
-theta = 5.09
+theta = 5.33
 
 [[dotbots]]
 address = "AAAAAAAA00000008"
 calibrated = 0xff
 pos_x = 600
 pos_y = 360
-theta = 3.86
+theta = 1.04
 
 [[dotbots]]
 address = "AAAAAAAA00000009"
 calibrated = 0xff
 pos_x = 840
 pos_y = 360
-theta = 2.66
+theta = 4.21
 
 [[dotbots]]
 address = "AAAAAAAA0000000A"
 calibrated = 0xff
 pos_x = 1_080
 pos_y = 360
-theta = 3.44
+theta = 0.83
 
 [[dotbots]]
 address = "AAAAAAAA0000000B"
 calibrated = 0xff
 pos_x = 120
 pos_y = 600
-theta = 2.64
+theta = 2.14
 
 [[dotbots]]
 address = "AAAAAAAA0000000C"
 calibrated = 0xff
 pos_x = 360
 pos_y = 600
-theta = 2.15
+theta = 2.12
 
 [[dotbots]]
 address = "AAAAAAAA0000000D"
 calibrated = 0xff
 pos_x = 600
 pos_y = 600
-theta = 5.72
+theta = 3.98
 
 [[dotbots]]
 address = "AAAAAAAA0000000E"
 calibrated = 0xff
 pos_x = 840
 pos_y = 600
-theta = 0.24
+theta = 5.11
 
 [[dotbots]]
 address = "AAAAAAAA0000000F"
 calibrated = 0xff
 pos_x = 1_080
 pos_y = 600
-theta = 0.07
+theta = 0.06
 
 [[dotbots]]
 address = "AAAAAAAA00000010"
 calibrated = 0xff
 pos_x = 120
 pos_y = 840
-theta = 4.61
+theta = 3.14
 
 [[dotbots]]
 address = "AAAAAAAA00000011"
 calibrated = 0xff
 pos_x = 360
 pos_y = 840
-theta = 2.62
+theta = 0.47
 
 [[dotbots]]
 address = "AAAAAAAA00000012"
 calibrated = 0xff
 pos_x = 600
 pos_y = 840
-theta = 4.47
+theta = 1.37
 
 [[dotbots]]
 address = "AAAAAAAA00000013"
 calibrated = 0xff
 pos_x = 840
 pos_y = 840
-theta = 4.52
+theta = 2.06
 
 [[dotbots]]
 address = "AAAAAAAA00000014"
 calibrated = 0xff
 pos_x = 1_080
 pos_y = 840
-theta = 6.11
+theta = 3.86
 
 [[dotbots]]
 address = "AAAAAAAA00000015"
 calibrated = 0xff
 pos_x = 120
 pos_y = 1_080
-theta = 2.42
+theta = 2.98
 
 [[dotbots]]
 address = "AAAAAAAA00000016"
 calibrated = 0xff
 pos_x = 360
 pos_y = 1_080
-theta = 1.86
+theta = 3.85
 
 [[dotbots]]
 address = "AAAAAAAA00000017"
 calibrated = 0xff
 pos_x = 600
 pos_y = 1_080
-theta = 1.56
+theta = 3.71
 
 [[dotbots]]
 address = "AAAAAAAA00000018"
 calibrated = 0xff
 pos_x = 840
 pos_y = 1_080
-theta = 0.86
+theta = 6.18
 
 [[dotbots]]
 address = "AAAAAAAA00000019"
 calibrated = 0xff
 pos_x = 1_080
 pos_y = 1_080
-theta = 3.28
+theta = 4.82
