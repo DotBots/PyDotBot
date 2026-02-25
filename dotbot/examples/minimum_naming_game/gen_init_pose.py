@@ -2,6 +2,12 @@ import math
 import random
 from pathlib import Path
 
+# --- Configuration ---
+WIDTH_NODES = 5  # Robots per row
+HEIGHT_NODES = 5  # Number of rows
+SEP_X = 240  # Separation between columns
+SEP_Y = 240  # Separation between rows
+
 
 def format_with_underscores(value):
     """Formats an integer with underscores every three digits."""
@@ -37,18 +43,17 @@ def generate_lattice_toml(
     return "\n".join(output_lines)
 
 
-# --- Configuration ---
-WIDTH_NODES = 5  # Robots per row
-HEIGHT_NODES = 5  # Number of rows
-SEP_X = 240  # Separation between columns
-SEP_Y = 240  # Separation between rows
+def generate_dotbot_list():
+    # Generate
+    toml_string = generate_lattice_toml(WIDTH_NODES, HEIGHT_NODES, SEP_X, SEP_Y)
 
-# Generate
-toml_string = generate_lattice_toml(WIDTH_NODES, HEIGHT_NODES, SEP_X, SEP_Y)
+    # Save to file
+    output_path = Path(__file__).resolve().parent / "init_state.toml"
+    with open(output_path, "w") as f:
+        f.write(toml_string)
 
-# Save to file
-output_path = Path(__file__).resolve().parent / "init_state.toml"
-with open(output_path, "w") as f:
-    f.write(toml_string)
+    print(f"Generated TOML file at {output_path}")
 
-print(f"Generated TOML file at {output_path}")
+
+if __name__ == "__main__":
+    generate_dotbot_list()

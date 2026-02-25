@@ -1,15 +1,16 @@
 from pathlib import Path
 
+# Configuration Constants
+NUM_ROBOTS = 8  # Total robots to generate
+START_ID = 1  # Start at AAAAAAAA00000001
+X_RIGHT = 800
+X_LEFT = 100
+START_Y = 200
+Y_STEP = 200
+THETA = 3.14
+
 
 def generate_dotbot_script():
-    # Configuration Constants
-    NUM_ROBOTS = 8  # Total robots to generate
-    START_ID = 1  # Start at AAAAAAAA00000001
-    X_RIGHT = 800
-    X_LEFT = 100
-    START_Y = 200
-    Y_STEP = 200
-    THETA = 3.14
 
     lines = []
 
