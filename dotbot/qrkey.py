@@ -305,8 +305,13 @@ class QrKeyClient:
                 asyncio.create_task(
                     name="WebSocket client", coro=self.start_ws_client()
                 ),
-                asyncio.create_task(name="Web browser", coro=self._open_webbrowser()),
             ]
+            if self.settings.webbrowser:
+                tasks.append(
+                    asyncio.create_task(
+                        name="Web browser opener", coro=self._open_webbrowser()
+                    )
+                )
             await asyncio.gather(*tasks)
         except ConnectionRefusedError as exc:
             self.logger.warning(f"Failed to connect to PyDotBot controller: {exc}")
