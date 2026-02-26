@@ -26,14 +26,16 @@ Options:
                                   localhost.
   -P, --mqtt-port INTEGER         MQTT port used by cloud adapter. Default:
                                   1883.
-  -T, --mqtt-use_tls              Use TLS with MQTT (for cloud adapter).
+  -T, --mqtt-use_tls / --no-mqtt-use_tls
+                                  Use TLS with MQTT (for cloud adapter).
   -g, --gw-address TEXT           Gateway address in hex. Defaults to
                                   0000000000000000
   -s, --network-id TEXT           Network ID in hex. Defaults to 0000
   -c, --controller-http-port INTEGER
                                   Controller HTTP port of the REST API. Defaults
                                   to '8000'
-  -w, --webbrowser                Open a web browser automatically
+  -w, --webbrowser / --no-webbrowser
+                                  Open a web browser automatically
   -v, --verbose                   Run in verbose mode (all payloads received are
                                   printed in terminal)
   --log-level [debug|info|warning|error]
