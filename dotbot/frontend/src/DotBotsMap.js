@@ -80,7 +80,7 @@ const DotBotsPosition = (props) => {
   )
 }
 
-const DotBotsMapPoint = (props) => {
+const DotBotsMapPoint = React.memo((props) => {
   const [hovered, setHovered ] = useState(false);
 
   let rgbColor = "rgb(0, 0, 0)"
@@ -122,7 +122,6 @@ const DotBotsMapPoint = (props) => {
           opacity={waypointOpacity}
           waypoints={props.dotbot.waypoints}
           threshold={props.dotbot.waypoints_threshold}
-          {...props}
           />
       ))
     )}
@@ -152,7 +151,7 @@ const DotBotsMapPoint = (props) => {
     </g>
     </>
   )
-}
+})
 
 export const DotBotsMap = (props) => {
 
@@ -197,7 +196,16 @@ export const DotBotsMap = (props) => {
                 props.dotbots && props.dotbots
                   .filter(dotbot => dotbot.status !== 2)
                   .filter(dotbot => dotbot.lh2_position)
-                  .map(dotbot => <DotBotsMapPoint key={dotbot.address} dotbot={dotbot} {...props} />)
+                  .map(dotbot => <DotBotsMapPoint
+                    key={dotbot.address}
+                    dotbot={dotbot}
+                    areaSize={props.areaSize}
+                    mapSize={props.mapSize}
+                    showHistory={props.showHistory}
+                    updateActive={props.updateActive}
+                    active={props.active}
+                    historySize={props.historySize}
+                  />)
               }
             </svg>
           </div>

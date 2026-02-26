@@ -60,69 +60,90 @@ const RestApp = () => {
       setDotbots(dotbotsTmp);
     }
     if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === message.data.address) {
-          if (message.data.direction !== undefined && message.data.direction !== null) {
-            dotbotsTmp[idx].direction = message.data.direction;
+      setDotbots(prev => {
+        let changed = false;
+        let next = prev.map(bot => {
+          if (bot.address !== message.data.address) { return bot; }
+
+          let botChanged = false;
+          let updated = bot;
+
+          // direction
+          if (message.data.direction != null && bot.direction !== message.data.direction) {
+            updated = { ...updated, direction: message.data.direction };
+            botChanged = true;
           }
-          if (message.data.rgb_led !== undefined) {
-            if (dotbotsTmp[idx].rgb_led === undefined) {
-              dotbotsTmp[idx].rgb_led = {
-                red: 0,
-                green: 0,
-                blue: 0
-              }
+
+          // rgb_led
+          if (message.data.rgb_led != null) {
+            const newLed = message.data.rgb_led;
+            const oldLed = bot.rgb_led ?? { red: 0, green: 0, blue: 0 };
+
+            if (
+              oldLed.red !== newLed.red ||
+              oldLed.green !== newLed.green ||
+              oldLed.blue !== newLed.blue
+            ) {
+              updated = { ...updated, rgb_led: newLed };
+              botChanged = true;
             }
-            dotbotsTmp[idx].rgb_led.red = message.data.rgb_led.red;
-            dotbotsTmp[idx].rgb_led.green = message.data.rgb_led.green;
-            dotbotsTmp[idx].rgb_led.blue = message.data.rgb_led.blue;
           }
-          if (message.data.wind_angle !== undefined && message.data.wind_angle !== null) {
-            dotbotsTmp[idx].wind_angle = message.data.wind_angle;
+
+          // wind_angle
+          if (message.data.wind_angle != null && bot.wind_angle !== message.data.wind_angle) {
+            updated = { ...updated, wind_angle: message.data.wind_angle };
+            botChanged = true;
           }
-          if (message.data.rudder_angle !== undefined && message.data.rudder_angle !== null) {
-            dotbotsTmp[idx].rudder_angle = message.data.rudder_angle;
+
+          // rudder_angle
+          if (message.data.rudder_angle != null && bot.rudder_angle !== message.data.rudder_angle) {
+            updated = { ...updated, rudder_angle: message.data.rudder_angle };
+            botChanged = true;
           }
-          if (message.data.sail_angle !== undefined && message.data.sail_angle !== null) {
-            dotbotsTmp[idx].sail_angle = message.data.sail_angle;
+
+          // sail_angle
+          if (message.data.sail_angle != null && bot.sail_angle !== message.data.sail_angle) {
+            updated = { ...updated, sail_angle: message.data.sail_angle };
+            botChanged = true;
           }
-          if (message.data.lh2_position !== undefined && message.data.lh2_position !== null) {
-            const newPosition = {
-              x: message.data.lh2_position.x,
-              y: message.data.lh2_position.y
-            };
-            if (dotbotsTmp[idx].lh2_position !== undefined && dotbotsTmp[idx].lh2_position !== null && (dotbotsTmp[idx].position_history.length === 0 || lh2_distance(dotbotsTmp[idx].lh2_position, newPosition) > lh2_distance_threshold)) {
-              dotbotsTmp[idx].position_history.push(newPosition);
-            }
-            dotbotsTmp[idx].lh2_position = newPosition;
+
+          // lh2_position + position_history
+          if (message.data.lh2_position != null && lh2_distance(bot.lh2_position, message.data.lh2_position) > lh2_distance_threshold) {
+            let newHistory = [...bot.position_history, message.data.lh2_position];
+            updated = { ...updated, lh2_position: message.data.lh2_position, position_history: newHistory };
+            botChanged = true;
           }
-          if (message.data.lh2_waypoints !== undefined) {
-            dotbotsTmp[idx].lh2_waypoints = message.data.lh2_waypoints;
+
+          // lh2_waypoints
+          if (message.data.lh2_waypoints != null) {
+            updated = { ...updated, lh2_waypoints: message.data.lh2_waypoints };
+            botChanged = true;
           }
-          if (message.data.gps_position !== undefined && message.data.gps_position !== null) {
-            const newPosition = {
-              latitude: message.data.gps_position.latitude,
-              longitude: message.data.gps_position.longitude
-            };
-            if (dotbotsTmp[idx].gps_position !== undefined && dotbotsTmp[idx].gps_position !== null && (dotbotsTmp[idx].position_history.length === 0 || gps_distance(dotbotsTmp[idx].gps_position, newPosition) > gps_distance_threshold)) {
-              dotbotsTmp[idx].position_history.push(newPosition);
-            }
-            dotbotsTmp[idx].gps_position = newPosition;
+
+          // gps_position + position_history
+          if (message.data.gps_position != null && gps_distance(bot.gps_position, message.data.gps_position) > gps_distance_threshold) {
+            let newHistory = [...bot.position_history, message.data.gps_position];
+            updated = { ...updated, gps_position: message.data.gps_position, position_history: newHistory };
+            botChanged = true;
           }
-          if (message.data.gps_waypoints !== undefined) {
-            dotbotsTmp[idx].gps_waypoints = message.data.gps_waypoints;
+
+          // gps_waypoints
+          if (message.data.gps_waypoints != null) {
+            updated = { ...updated, gps_waypoints: message.data.gps_waypoints };
+            botChanged = true;
           }
-          if (message.data.position_history !== undefined) {
-            dotbotsTmp[idx].position_history = message.data.position_history;
+
+          // battery
+          if (message.data.battery != null && Math.abs(bot.battery - message.data.battery) > 0.1) {
+            updated = { ...updated, battery: message.data.battery };
+            botChanged = true;
           }
-          if (message.data.battery !== undefined) {
-            dotbotsTmp[idx].battery = message.data.battery;
-          }
-          setDotbots(dotbotsTmp);
-          break;
-        }
-      }
+
+          if (botChanged) {changed = true;}
+          return botChanged ? updated : bot;
+        });
+        return changed ? next : prev;
+      });
     }
   };
 
