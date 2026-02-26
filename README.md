@@ -36,7 +36,7 @@ Usage: dotbot-controller [OPTIONS]
   DotBotController, universal SailBot and DotBot controller.
 
 Options:
-  -a, --adapter [serial|edge|cloud]
+  -a, --adapter [serial|edge|cloud|dotbot-simulator|sailbot-simulator]
                                   Controller interface adapter. Defaults to
                                   serial
   -p, --port TEXT                 Serial port used by 'serial' and 'edge'
@@ -47,22 +47,23 @@ Options:
                                   localhost.
   -P, --mqtt-port INTEGER         MQTT port used by cloud adapter. Default:
                                   1883.
-  -T, --mqtt-use_tls              Use TLS with MQTT (for cloud adapter).
-  -d, --dotbot-address TEXT       Address in hex of the DotBot to control.
-                                  Defaults to FFFFFFFFFFFFFFFF
+  -T, --mqtt-use_tls / --no-mqtt-use_tls
+                                  Use TLS with MQTT (for cloud adapter).
   -g, --gw-address TEXT           Gateway address in hex. Defaults to
                                   0000000000000000
   -s, --network-id TEXT           Network ID in hex. Defaults to 0000
   -c, --controller-http-port INTEGER
-                                  Controller HTTP port of the REST API.
-                                  Defaults to '8000'
-  -w, --webbrowser                Open a web browser automatically
-  -v, --verbose                   Run in verbose mode (all payloads received
-                                  are printed in terminal)
+                                  Controller HTTP port of the REST API. Defaults
+                                  to '8000'
+  -w, --webbrowser / --no-webbrowser
+                                  Open a web browser automatically
+  -v, --verbose                   Run in verbose mode (all payloads received are
+                                  printed in terminal)
   --log-level [debug|info|warning|error]
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
   --config-path FILE              Path to a .toml configuration file.
+  -m, --map-size TEXT             Map size in mm. Defaults to '2000x2000'
   --help                          Show this message and exit.
 ```
 
