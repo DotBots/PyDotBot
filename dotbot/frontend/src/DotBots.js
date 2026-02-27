@@ -55,35 +55,35 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
     }
 
     if (dotbot.application === ApplicationType.SailBot) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === dotbot.address) {
-          if (dotbotsTmp[idx].waypoints.length === 0) {
-            dotbotsTmp[idx].waypoints.push({
-              latitude: dotbotsTmp[idx].gps_position.latitude,
-              longitude: dotbotsTmp[idx].gps_position.longitude,
-            });
-          }
-          dotbotsTmp[idx].waypoints.push({latitude: x, longitude: y});
-          updateDotbots(dotbotsTmp);
+      const dotbotsTmp = dotbots.map(db => {
+        if (db.address !== dotbot.address) return db; // unchanged refs are fine
+
+        const newWaypoints = [...db.waypoints]; // new array, new ref
+        if (newWaypoints.length === 0) {
+          newWaypoints.push({
+            latitude: db.gps_position.latitude,
+            longitude: db.gps_position.longitude,
+          });
         }
-      }
+        newWaypoints.push({ latitude: x, longitude: y });
+
+        return { ...db, waypoints: newWaypoints }; // new object ref ✓
+      });
+      updateDotbots(dotbotsTmp);
     }
     if (dotbot.application === ApplicationType.DotBot) {
-      let dotbotsTmp = dotbots.slice();
-      for (let idx = 0; idx < dotbots.length; idx++) {
-        if (dotbots[idx].address === dotbot.address) {
-          if (dotbotsTmp[idx].waypoints.length === 0) {
-            dotbotsTmp[idx].waypoints.push({
-              x: dotbotsTmp[idx].lh2_position.x,
-              y: dotbotsTmp[idx].lh2_position.y,
-              z: 0
-            });
-          }
-          dotbotsTmp[idx].waypoints.push({x: x, y: y, z: 0});
-          updateDotbots(dotbotsTmp);
+      const dotbotsTmp = dotbots.map(db => {
+        if (db.address !== dotbot.address) return db;
+
+        const newWaypoints = [...db.waypoints];
+        if (newWaypoints.length === 0) {
+          newWaypoints.push({ x: db.lh2_position.x, y: db.lh2_position.y, z: 0 });
         }
-      }
+        newWaypoints.push({ x, y, z: 0 });
+
+        return { ...db, waypoints: newWaypoints }; // new object ref ✓
+      });
+      updateDotbots(dotbotsTmp);
     }
   }, [activeDotbot, dotbots, updateDotbots]
   );
