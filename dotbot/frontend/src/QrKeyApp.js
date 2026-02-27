@@ -36,7 +36,7 @@ const QrKeyApp = () => {
       }
     } else if (message.topic === `/notify`) {
       // Process notifications
-      if (message.cmd === NotificationType.NewDotBot) {
+      if (payload.cmd === NotificationType.NewDotBot) {
         setDotbots(prev => {
           return [...prev, payload.data];
         });
