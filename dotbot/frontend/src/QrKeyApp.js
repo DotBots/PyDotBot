@@ -2,8 +2,8 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from "react";
 import { useQrKey } from "qrkey";
-import { gps_distance_threshold, lh2_distance_threshold, NotificationType, RequestType } from "./utils/constants";
-import { gps_distance, lh2_distance } from "./utils/helpers";
+import { NotificationType, RequestType } from "./utils/constants";
+import { handleDotBotUpdate } from "./utils/helpers";
 
 import DotBots from './DotBots';
 import QrKeyForm from './QrKeyForm';
@@ -36,95 +36,14 @@ const QrKeyApp = () => {
       }
     } else if (message.topic === `/notify`) {
       // Process notifications
-      if (message.cmd === NotificationType.NewDotBot) {
-        let dotbotsTmp = dotbots.slice();
-        dotbotsTmp.push(message.data);
-        setDotbots(dotbotsTmp);
+      if (payload.cmd === NotificationType.NewDotBot) {
+        setDotbots(prev => {
+          return [...prev, payload.data];
+        });
       }
       if (payload.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
         setDotbots(prev => {
-          let changed = false;
-          let next = prev.map(bot => {
-            if (bot.address !== payload.data.address) { return bot; }
-
-            let botChanged = false;
-            let updated = bot;
-
-            // direction
-            if (payload.data.direction != null && bot.direction !== payload.data.direction) {
-              updated = { ...updated, direction: payload.data.direction };
-              botChanged = true;
-            }
-
-            // rgb_led
-            if (payload.data.rgb_led != null) {
-              const newLed = payload.data.rgb_led;
-              const oldLed = bot.rgb_led ?? { red: 0, green: 0, blue: 0 };
-
-              if (
-                oldLed.red !== newLed.red ||
-                oldLed.green !== newLed.green ||
-                oldLed.blue !== newLed.blue
-              ) {
-                updated = { ...updated, rgb_led: newLed };
-                botChanged = true;
-              }
-            }
-
-            // wind_angle
-            if (payload.data.wind_angle != null && bot.wind_angle !== payload.data.wind_angle) {
-              updated = { ...updated, wind_angle: payload.data.wind_angle };
-              botChanged = true;
-            }
-
-            // rudder_angle
-            if (payload.data.rudder_angle != null && bot.rudder_angle !== payload.data.rudder_angle) {
-              updated = { ...updated, rudder_angle: payload.data.rudder_angle };
-              botChanged = true;
-            }
-
-            // sail_angle
-            if (payload.data.sail_angle != null && bot.sail_angle !== payload.data.sail_angle) {
-              updated = { ...updated, sail_angle: payload.data.sail_angle };
-              botChanged = true;
-            }
-
-            // lh2_position + position_history
-            if (payload.data.lh2_position != null && lh2_distance(bot.lh2_position, payload.data.lh2_position) > lh2_distance_threshold) {
-              let newHistory = [...bot.position_history, payload.data.lh2_position];
-              updated = { ...updated, lh2_position: payload.data.lh2_position, position_history: newHistory };
-              botChanged = true;
-            }
-
-            // lh2_waypoints
-            if (payload.data.lh2_waypoints != null) {
-              updated = { ...updated, lh2_waypoints: payload.data.lh2_waypoints };
-              botChanged = true;
-            }
-
-            // gps_position + position_history
-            if (payload.data.gps_position != null && gps_distance(bot.gps_position, payload.data.gps_position) > gps_distance_threshold) {
-              let newHistory = [...bot.position_history, payload.data.gps_position];
-              updated = { ...updated, gps_position: payload.data.gps_position, position_history: newHistory };
-              botChanged = true;
-            }
-
-            // gps_waypoints
-            if (payload.data.gps_waypoints != null) {
-              updated = { ...updated, gps_waypoints: payload.data.gps_waypoints };
-              botChanged = true;
-            }
-
-            // battery
-            if (payload.data.battery != null && Math.abs(bot.battery - payload.data.battery) > 0.1) {
-              updated = { ...updated, battery: payload.data.battery };
-              botChanged = true;
-            }
-
-            if (botChanged) {changed = true;}
-            return botChanged ? updated : bot;
-          });
-          return changed ? next : prev;
+          return handleDotBotUpdate(prev, payload);
         });
       } else if (payload.cmd === NotificationType.Reload) {
         log.info("Reload notification");
