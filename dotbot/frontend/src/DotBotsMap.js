@@ -122,6 +122,8 @@ const DotBotsMapPoint = React.memo((props) => {
           opacity={waypointOpacity}
           waypoints={props.dotbot.waypoints}
           threshold={props.dotbot.waypoints_threshold}
+          areaSize={props.areaSize}
+          mapSize={props.mapSize}
           />
       ))
     )}
@@ -203,6 +205,7 @@ export const DotBotsMap = (props) => {
                     mapSize={props.mapSize}
                     showHistory={props.showHistory}
                     updateActive={props.updateActive}
+                    mapClicked={mapClicked}
                     active={props.active}
                     historySize={props.historySize}
                   />)
