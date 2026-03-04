@@ -1,8 +1,8 @@
 import math
 import random
 
+from dotbot.examples.common.sct import SCT
 from dotbot.examples.minimum_naming_game.walk_avoid import walk_avoid
-from dotbot.examples.sct import SCT
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,

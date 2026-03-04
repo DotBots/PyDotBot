@@ -16,7 +16,7 @@ from dotbot.examples.charging_station import (
     charge_robots,
     queue_robots,
 )
-from dotbot.examples.orca import OrcaParams
+from dotbot.examples.common.orca import OrcaParams
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
