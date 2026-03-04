@@ -1,6 +1,6 @@
 import math
 
-from dotbot.examples.sct import SCT
+from dotbot.examples.common.sct import SCT
 from dotbot.models import (
     DotBotLH2Position,
 )

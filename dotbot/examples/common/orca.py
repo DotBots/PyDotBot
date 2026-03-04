@@ -5,7 +5,7 @@ Computes collision-free velocities for multiple agents with reciprocal responsib
 import math
 from dataclasses import dataclass
 
-from dotbot.examples.vec2 import (
+from dotbot.examples.common.vec2 import (
     Vec2,
     add,
     dot,

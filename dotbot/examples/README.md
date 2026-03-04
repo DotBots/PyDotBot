@@ -1,27 +1,26 @@
-# DotBot Simulator Experiments
+# DotBot Examples
 
-This directory contains **experimental control scripts** for the DotBot simulator.
-The goal is to prototype, test, and iterate on the testbed without needing to deploy anything,
-with the same API that will run on a real testbed. **without touching the controller internals**.
+This directory contains example scenarios for DotBots.
+Examples can run against either real robots or the simulator, using the same controller APIs.
+The simulator setup is documented as the default path because it is the most common way to reproduce experiments.
+Each scenario has its own folder with dedicated instructions, initial states, and run commands.
 
-All interaction with the simulator is done **via HTTP**, exactly like a real deployment.
+## Available scenarios
 
----
+- `minimum_naming_game/`: naming game examples (with and without motion)
+- `work_and_charge/`: work/charge alternation scenario
+- `charging_station/`: queue-and-charge scenario
 
-## 1. Start the simulator
+We also provide a stop.py helper script to halt the simulator (without needing to stop robots via SwarmIT).
 
-First, start the DotBot controller in **simulator mode** with the correct configuration:
+## Common usage pattern (default: simulator)
 
-```bash
-dotbot-controller \
-  --config-path config_sample.toml \
-  -a dotbot-simulator
-```
-
-## 2. Run the experiments
-
-For example, if you want to run the charging station proof-of-concept
+1. Pick a scenario and read its local `README.md`.
+2. Set `simulator_init_state_path` in `config_sample.toml` as described by that scenario.
+3. Start the controller in simulator mode:
 
 ```bash
-python3 dotbot/examples/charging_station.py
+python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simulator
 ```
+
+4. Run the selected example using its documented command.

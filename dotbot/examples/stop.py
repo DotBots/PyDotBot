@@ -5,11 +5,11 @@ from dotbot.models import DotBotQueryModel, DotBotStatus, DotBotWaypoints, WSWay
 from dotbot.rest import rest_client
 from dotbot.websocket import DotBotWsClient
 
-
 """
 This example shows how to stop a dotbot swarm. Run it with:
 python -m dotbot.examples.stop
 """
+
 
 async def main() -> None:
     url = os.getenv("DOTBOT_CONTROLLER_URL", "localhost")
