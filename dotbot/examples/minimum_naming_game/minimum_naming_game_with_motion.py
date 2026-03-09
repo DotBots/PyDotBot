@@ -15,6 +15,7 @@ from dotbot.models import (
     DotBotStatus,
     DotBotWaypoints,
     WSRgbLed,
+    WSWaypoints,
 )
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
@@ -190,6 +191,21 @@ async def main() -> None:
 
                 # await asyncio.sleep(0.1)
                 counter += 1
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # stop all dotbots
+            active_dotbots = await fetch_active_dotbots(client)
+            for dotbot in active_dotbots:
+                await ws.send(
+                    WSWaypoints(
+                        cmd="waypoints",
+                        address=dotbot.address,
+                        application=dotbot.application,
+                        data=DotBotWaypoints(
+                            threshold=0,
+                            waypoints=[],
+                        ),
+                    )
+                )
         finally:
             await ws.close()
 
