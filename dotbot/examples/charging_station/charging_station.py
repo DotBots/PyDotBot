@@ -3,12 +3,12 @@ import math
 import os
 from typing import Dict, List
 
-from dotbot.examples.orca import (
+from dotbot.examples.common.orca import (
     Agent,
     OrcaParams,
     compute_orca_velocity_for_agent,
 )
-from dotbot.examples.vec2 import Vec2
+from dotbot.examples.common.vec2 import Vec2
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
@@ -300,7 +300,7 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
 
 def direction_to_rad(direction: float) -> float:
     rad = (direction + 90) * math.pi / 180.0
-    return math.atan2(math.sin(rad), math.cos(rad))  # normalize to [-π, π]
+    return math.atan2(math.sin(rad), math.cos(rad))  # normalize to [-π, +π]
 
 
 async def compute_orca_velocity(
@@ -342,6 +342,20 @@ async def main() -> None:
 
             # Phase 2: charging loop
             await charge_robots(client, ws, params)
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            active_dotbots = await fetch_active_dotbots(client)
+            for dotbot in active_dotbots:
+                await ws.send(
+                    WSWaypoints(
+                        cmd="waypoints",
+                        address=dotbot.address,
+                        application=dotbot.application,
+                        data=DotBotWaypoints(
+                            threshold=0,
+                            waypoints=[],
+                        ),
+                    )
+                )
         finally:
             await ws.close()
 

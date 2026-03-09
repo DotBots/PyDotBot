@@ -6,12 +6,12 @@ from typing import Dict, List
 import numpy as np
 from scipy.spatial import cKDTree
 
-from dotbot.examples.orca import (
+from dotbot.examples.common.orca import (
     Agent,
     OrcaParams,
     compute_orca_velocity_for_agent,
 )
-from dotbot.examples.vec2 import Vec2
+from dotbot.examples.common.vec2 import Vec2
 from dotbot.examples.work_and_charge.controller import Controller
 from dotbot.models import (
     DotBotLH2Position,
@@ -327,6 +327,21 @@ async def main() -> None:
                         )
 
                     await asyncio.sleep(DT)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                active_dotbots = await fetch_active_dotbots(client)
+                for dotbot in active_dotbots:
+                    await ws.send(
+                        WSWaypoints(
+                            cmd="waypoints",
+                            address=dotbot.address,
+                            application=dotbot.application,
+                            data=DotBotWaypoints(
+                                threshold=0,
+                                waypoints=[],
+                            ),
+                        )
+                    )
+                return
             except Exception as e:
                 print(f"Connection lost: {e}")
                 print("Retrying in 1 seconds...")
