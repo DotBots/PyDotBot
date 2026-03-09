@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from dotbot.examples.charging_station import (
+from dotbot.examples.charging_station.charging_station import (
     DT,
     PARK_SPACING,
     PARK_X,
