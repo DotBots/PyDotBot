@@ -327,6 +327,21 @@ async def main() -> None:
                         )
 
                     await asyncio.sleep(DT)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                active_dotbots = await fetch_active_dotbots(client)
+                for dotbot in active_dotbots:
+                    await ws.send(
+                        WSWaypoints(
+                            cmd="waypoints",
+                            address=dotbot.address,
+                            application=dotbot.application,
+                            data=DotBotWaypoints(
+                                threshold=0,
+                                waypoints=[],
+                            ),
+                        )
+                    )
+                return
             except Exception as e:
                 print(f"Connection lost: {e}")
                 print("Retrying in 1 seconds...")

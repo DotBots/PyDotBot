@@ -342,6 +342,20 @@ async def main() -> None:
 
             # Phase 2: charging loop
             await charge_robots(client, ws, params)
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            active_dotbots = await fetch_active_dotbots(client)
+            for dotbot in active_dotbots:
+                await ws.send(
+                    WSWaypoints(
+                        cmd="waypoints",
+                        address=dotbot.address,
+                        application=dotbot.application,
+                        data=DotBotWaypoints(
+                            threshold=0,
+                            waypoints=[],
+                        ),
+                    )
+                )
         finally:
             await ws.close()
 
