@@ -138,7 +138,7 @@ class DotBotSimulator:
             source=int(self.address, 16),
         )
 
-    def _diff_drive_model_update(self, dt: float):
+    def _diff_drive_model_update(self):
         """State space model update."""
         pos_x_old = self.pos_x
         pos_y_old = self.pos_y
@@ -178,16 +178,16 @@ class DotBotSimulator:
             v_left_real=v_left_real,
             v_right_real=v_right_real,
         )
-        self.time_elapsed_s += dt
+        self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
 
     def update_state(self):
         """Update the state of the dotbot simulator."""
         while True:
             with self._lock:
-                self._diff_drive_model_update(SIMULATOR_STEP_DELTA_T)
-                is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
-                if is_stopped:
-                    break
+                self._diff_drive_model_update()
+            is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
+            if is_stopped:
+                break
 
     def _compute_automatic_control(self):
         if self.controller_mode != DotBotSimulatorMode.AUTOMATIC:
