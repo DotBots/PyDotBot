@@ -68,7 +68,7 @@ export const handleDotBotUpdate = (prevList, message) => {
 
      // lh2_waypoints
     if (message.data.lh2_waypoints != null) {
-      updated = { ...updated, lh2_waypoints: message.data.lh2_waypoints };
+      updated = { ...updated, waypoints: message.data.lh2_waypoints };
       botChanged = true;
     }
 
