@@ -228,9 +228,12 @@ class DotBotSimulator:
             if distance_to_target < self.waypoint_threshold * 2:
                 speed_reduction_factor = REDUCE_SPEED_FACTOR
 
-            if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
+            error_angle_degrees = error_angle * 180 / pi
+            if (
+                error_angle_degrees > REDUCE_SPEED_ANGLE
+                or error_angle_degrees < -REDUCE_SPEED_ANGLE
+            ):
                 speed_reduction_factor = REDUCE_SPEED_FACTOR
-
             angular_speed = error_angle * MOTOR_SPEED * ANGULAR_SPEED_GAIN
             self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
             self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
