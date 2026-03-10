@@ -21,10 +21,10 @@ from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
 COMM_RANGE = 250
-THRESHOLD = 50
+THRESHOLD = 100
 
 # TODO: Measure these values for real dotbots
-BOT_RADIUS = 40  # Physical radius of a DotBot (unit), used for collision avoidance
+BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
 
 dotbot_controllers = dict()
 

@@ -12,7 +12,7 @@ from dotbot.examples.common.orca import (
     compute_orca_velocity_for_agent,
 )
 from dotbot.examples.common.vec2 import Vec2
-from dotbot.examples.work_and_charge.controller import Controller
+from dotbot.examples.work_and_charge.controller import THRESHOLD, Controller
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
@@ -29,23 +29,22 @@ from dotbot.websocket import DotBotWsClient
 
 ORCA_RANGE = 200
 
-THRESHOLD = 50  # Acceptable distance error to consider a waypoint reached
-DT = 0.05  # Control loop period (seconds)
+DT = 0.2  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
-BOT_RADIUS = 40  # Physical radius of a DotBot (unit), used for collision avoidance
-MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
+BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
+MAX_SPEED = 200  # Maximum allowed linear speed of a bot (mm/s)
 
 QUEUE_HEAD_X, QUEUE_HEAD_Y = (
-    200,
-    200,
+    500,
+    500,
 )  # World-frame (X, Y) position of the charging queue head
 QUEUE_SPACING = (
-    200  # Spacing between consecutive bots in the charging queue (along X axis)
+    500  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
 CHARGE_REGION_X = QUEUE_HEAD_X
-WORK_REGION_X = 1800
+WORK_REGION_X = 1500
 
 dotbot_controllers = dict()
 
@@ -95,13 +94,11 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
 
     dist1000 = dist * 1000
     # If close to goal, stop
-    if dist1000 < THRESHOLD:
+    if dist1000 < THRESHOLD * 1.15:
         return Vec2(x=0, y=0)
 
     # Right-hand rule bias
     bias_angle = 0.0
-    # Bot can only walk on a cone [-60, 60] in front of himself
-    max_deviation = math.radians(60)
 
     # Convert bot direction into radians
     direction = direction_to_rad(dotbot.direction)
@@ -112,12 +109,6 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
     delta = angle_to_goal - direction
     # Wrap to [-π, +π]
     delta = math.atan2(math.sin(delta), math.cos(delta))
-
-    # Clamp delta to [-MAX, +MAX]
-    if delta > max_deviation:
-        delta = max_deviation
-    if delta < -max_deviation:
-        delta = -max_deviation
 
     # Final allowed direction
     final_angle = direction + delta
