@@ -149,7 +149,9 @@ const DotBotsMapPoint = React.memo((props) => {
         onMouseLeave={onMouseLeave} >
       <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
     </circle>
-    {(props.dotbot.direction) && <polygon points={`${posX - radius + 10},${posY + radius + directionShift} ${posX + radius - 10},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />}
+    {(props.dotbot.direction) &&
+      <polygon points={`${posX - radius + 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX + radius - 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />
+    }
     </g>
     </>
   )
