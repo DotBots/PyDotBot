@@ -28,7 +28,7 @@ from dotbot.models import (
 )
 from dotbot.protocol import ApplicationType
 
-MOVE_RAW_SCALE = 0.001  # small, deterministic displacement
+MOVE_RAW_SCALE = 10  # displacement per raw move step
 
 
 class FakeRestClient:
@@ -52,7 +52,10 @@ class FakeRestClient:
         self.rgb_commands = []
 
     async def fetch_dotbots(self, query=None) -> List[DotBotModel]:
-        return list(self._dotbots.values())
+        bots = list(self._dotbots.values())
+        if query is not None and query.address is not None:
+            bots = [b for b in bots if b.address == query.address]
+        return bots
 
     async def send_waypoint_command(
         self,
@@ -112,8 +115,8 @@ class FakeRestClient:
         if forward == 0:
             return
 
-        # Convert bot direction (degrees) to radians
-        theta = math.radians(bot.direction)
+        # Convert bot direction to radians (matching direction_to_rad convention)
+        theta = (bot.direction + 90) * math.pi / 180.0
 
         # Move along heading
         dx = math.cos(theta) * forward * MOVE_RAW_SCALE
