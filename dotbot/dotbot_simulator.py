@@ -57,7 +57,7 @@ def battery_discharge_model(time_elapsed_s: float) -> int:
 
 def wheel_speed_from_pwm(pwm: float) -> float:
     """Convert a PWM value to a wheel speed in mm/s."""
-    if pwm < MIN_PWM_TO_MOVE:
+    if abs(pwm) < MIN_PWM_TO_MOVE:
         return 0.0
     return pwm * R * Kv / (r * 127)
 
@@ -148,10 +148,10 @@ class DotBotSimulator:
             self.pwm_left = 100
         if self.pwm_right > 100:
             self.pwm_right = 100
-        if self.pwm_left < 0:
-            self.pwm_left = 0
-        if self.pwm_right < 0:
-            self.pwm_right = 0
+        if self.pwm_left < -100:
+            self.pwm_left = -100
+        if self.pwm_right < -100:
+            self.pwm_right = -100
 
         # Compute each wheel's real speed considering the motor error and the minimum PWM to move
         v_left_real = wheel_speed_from_pwm(self.pwm_left) * (1 - self.motor_left_error)
