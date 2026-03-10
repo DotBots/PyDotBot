@@ -5,6 +5,8 @@ from dotbot.models import (
     DotBotLH2Position,
 )
 
+THRESHOLD = 100  # Acceptable distance error to consider a waypoint reached
+
 
 class Controller:
     def __init__(self, address: str, path: str):
@@ -15,7 +17,7 @@ class Controller:
         self.add_callbacks()
 
         self.waypoint_current = None
-        self.waypoint_threshold = 50  # default threshold
+        self.waypoint_threshold = THRESHOLD * 1.15  # default threshold
 
         self.led = (0, 0, 0)  # initial LED color
         self.energy = "high"  # initial energy level

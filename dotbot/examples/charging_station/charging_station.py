@@ -24,23 +24,28 @@ from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
 from dotbot.websocket import DotBotWsClient
 
-THRESHOLD = 50  # Acceptable distance error to consider a waypoint reached
-DT = 0.05  # Control loop period (seconds)
+THRESHOLD = 100  # Acceptable distance error to consider a waypoint reached
+DT = 0.2  # Control loop period (seconds)
 
 # TODO: Measure these values for real dotbots
-BOT_RADIUS = 40  # Physical radius of a DotBot (unit), used for collision avoidance
+BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
 MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
+
+(CHARGER_X, CHARGER_Y) = (
+    500,
+    500,
+)
 
 (QUEUE_HEAD_X, QUEUE_HEAD_Y) = (
     500,
     1500,
 )  # World-frame (X, Y) position of the charging queue head
 QUEUE_SPACING = (
-    200  # Spacing between consecutive bots in the charging queue (along X axis)
+    300  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
 (PARK_X, PARK_Y) = (1500, 500)  # World-frame (X, Y) position of the parking area origin
-PARK_SPACING = 200  # Spacing between parked bots (along Y axis)
+PARK_SPACING = 300  # Spacing between parked bots (along Y axis)
 
 
 async def queue_robots(
@@ -98,10 +103,10 @@ async def charge_robots(
 
         # Cosmetic: wait for charging...
         colors = [
-            (255, 255, 0),  # yellow
+            (255, 128, 0),  # yellow
             (0, 255, 0),  # green
         ]
-        await asyncio.sleep(20 * DT)
+        await asyncio.sleep(10 * DT)
 
         for r, g, b in colors:
             await client.send_rgb_led_command(
@@ -109,10 +114,10 @@ async def charge_robots(
                 command=DotBotRgbLedCommandModel(red=r, green=g, blue=b),
             )
 
-            await asyncio.sleep(20 * DT)
+            await asyncio.sleep(10 * DT)
 
         # Reverse slightly to disengage the robot from the charging station
-        await disengage_from_charger(client, head)
+        await disengage_from_charger(client, head.address)
 
         parked_count = total_count - len(remaining)
 
@@ -122,16 +127,47 @@ async def charge_robots(
         remaining = remaining[1:]
 
 
-async def disengage_from_charger(client: RestClient, dotbot: DotBotModel):
-    for _ in range(25):
+async def disengage_from_charger(client: RestClient, dotbot_address: str):
+    bots = await client.fetch_dotbots(query=DotBotQueryModel(address=dotbot_address))
+    if not bots:
+        return
+    dotbot = bots[0]
+    initial_y = dotbot.lh2_position.y
+
+    # reverse until 300 units below initial position
+    y_after_reverse = initial_y + 300
+    # forward a bit to recover direction
+    y_after_forward = y_after_reverse - 10
+
+    while True:
+        bots = await client.fetch_dotbots(
+            query=DotBotQueryModel(address=dotbot_address)
+        )
+        if not bots or bots[0].lh2_position.y >= y_after_reverse:
+            break
         await client.send_move_raw_command(
-            address=dotbot.address,
+            address=dotbot_address,
             application=dotbot.application,
             command=DotBotMoveRawCommandModel(
                 left_x=0, left_y=-100, right_x=0, right_y=-100
             ),
         )
-        await asyncio.sleep(DT)
+        await asyncio.sleep(0.1)
+
+    while True:
+        bots = await client.fetch_dotbots(
+            query=DotBotQueryModel(address=dotbot_address)
+        )
+        if not bots or bots[0].lh2_position.y <= y_after_forward:
+            break
+        await client.send_move_raw_command(
+            address=dotbot_address,
+            application=dotbot.application,
+            command=DotBotMoveRawCommandModel(
+                left_x=0, left_y=100, right_x=0, right_y=100
+            ),
+        )
+        await asyncio.sleep(0.1)
 
 
 async def send_to_goal(
@@ -185,7 +221,7 @@ async def send_to_goal(
             # ------------------------------------
 
             waypoints = DotBotWaypoints(
-                threshold=THRESHOLD,
+                threshold=THRESHOLD * 0.9,
                 waypoints=[
                     DotBotLH2Position(
                         x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
@@ -244,8 +280,8 @@ def assign_charge_goals(
     # Send the first one to the charger
     head = ordered[0]
     goals[head.address] = {
-        "x": 200,
-        "y": 200,
+        "x": CHARGER_X,
+        "y": CHARGER_Y,
     }
 
     # Remaining bots shift left in the queue
@@ -271,9 +307,6 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
 
     # Right-hand rule bias
     bias_angle = 0.0
-    # Bot can only walk on a cone [-60, 60] in front of himself
-    max_deviation = math.radians(60)
-
     # Convert bot direction into radians
     direction = direction_to_rad(dotbot.direction)
 
@@ -283,12 +316,6 @@ def preferred_vel(dotbot: DotBotModel, goal: Vec2 | None) -> Vec2:
     delta = angle_to_goal - direction
     # Wrap to [-π, +π]
     delta = math.atan2(math.sin(delta), math.cos(delta))
-
-    # Clamp delta to [-MAX, +MAX]
-    if delta > max_deviation:
-        delta = max_deviation
-    if delta < -max_deviation:
-        delta = -max_deviation
 
     # Final allowed direction
     final_angle = direction + delta
