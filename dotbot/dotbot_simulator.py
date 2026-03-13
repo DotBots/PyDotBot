@@ -6,6 +6,7 @@
 
 """Dotbot simulator for the DotBot project."""
 
+import ctypes
 import queue
 import random
 import threading
@@ -13,6 +14,7 @@ from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
+from pathlib import Path
 from typing import Callable, List
 
 import toml
@@ -85,6 +87,22 @@ class SimulatedDotBotSettings(BaseModel):
     calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
+    custom_control_loop_library: Path = None
+
+
+class RobotControl(ctypes.Structure):
+    _fields_ = [
+        ("pos_x", ctypes.c_uint32),
+        ("pos_y", ctypes.c_uint32),
+        ("direction", ctypes.c_float),
+        ("waypoints_length", ctypes.c_uint8),
+        ("waypoint_idx", ctypes.c_uint8),
+        ("waypoint_x", ctypes.c_uint32),
+        ("waypoint_y", ctypes.c_uint32),
+        ("waypoint_threshold", ctypes.c_uint32),
+        ("pwm_left", ctypes.c_int8),
+        ("pwm_right", ctypes.c_int8),
+    ]
 
 
 class SimulatedNetworkSettings(BaseModel):
@@ -106,6 +124,8 @@ class DotBotSimulator:
         self.theta = settings.theta
         self.motor_left_error = settings.motor_left_error
         self.motor_right_error = settings.motor_right_error
+        self.custom_control_loop_library = settings.custom_control_loop_library
+        self._control_loop_func = self._init_control_loop()
         self.time_elapsed_s = 0
 
         self.pwm_left = 0
@@ -189,10 +209,62 @@ class DotBotSimulator:
             if is_stopped:
                 break
 
-    def _compute_automatic_control(self):
-        if self.controller_mode != DotBotSimulatorMode.AUTOMATIC:
-            return
+    def _init_control_loop(self) -> callable:
+        """Initialize the control loop, potentially loading a custom control loop library."""
+        if self.custom_control_loop_library is not None:
+            self.custom_control_loop_library = ctypes.CDLL(
+                self.custom_control_loop_library
+            )
+            self.custom_robot_control = RobotControl()
+            self.custom_robot_control.waypoint_idx = 0
+            return self._control_loop_custom
+        else:
+            return self._control_loop_default
 
+    def _control_loop_custom(self):
+        """Control loop using a custom control loop library."""
+        if self.custom_control_loop_library is None:
+            return
+        self.custom_robot_control.pos_x = int(self.pos_x)
+        self.custom_robot_control.pos_y = int(self.pos_y)
+        self.custom_robot_control.direction = self.theta
+        self.custom_robot_control.waypoints_length = len(self.waypoints)
+        if self.custom_robot_control.waypoint_idx < len(self.waypoints):
+            self.custom_robot_control.waypoint_x = int(
+                self.waypoints[self.custom_robot_control.waypoint_idx].pos_x
+            )
+            self.custom_robot_control.waypoint_y = int(
+                self.waypoints[self.custom_robot_control.waypoint_idx].pos_y
+            )
+        else:
+            self.custom_robot_control.waypoint_idx = 0
+            self.pwm_left = 0
+            self.pwm_right = 0
+            self.controller_mode = DotBotSimulatorMode.MANUAL
+        self.custom_robot_control.waypoint_threshold = int(self.waypoint_threshold)
+
+        # Call the custom control loop function from the shared library
+        self.custom_control_loop_library.update_control(
+            ctypes.byref(self.custom_robot_control)
+        )
+
+        # Update the PWM values based on the output of the custom control loop
+        self.pwm_left = self.custom_robot_control.pwm_left
+        self.pwm_right = self.custom_robot_control.pwm_right
+
+        self.logger.info(
+            "Custom control loop update",
+            v_left=self.pwm_left,
+            v_right=self.pwm_right,
+            theta=self.theta,
+            waypoint_index=self.custom_robot_control.waypoint_idx,
+            waypoints_length=self.custom_robot_control.waypoints_length,
+            waypoint_threshold=self.custom_robot_control.waypoint_threshold,
+            waypoint_x=self.custom_robot_control.waypoint_x,
+            waypoint_y=self.custom_robot_control.waypoint_y,
+        )
+
+    def _control_loop_default(self):
         delta_x = self.pos_x - self.waypoints[self.waypoint_index].pos_x
         delta_y = self.pos_y - self.waypoints[self.waypoint_index].pos_y
         distance_to_target = sqrt(delta_x**2 + delta_y**2)
@@ -239,7 +311,7 @@ class DotBotSimulator:
             self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
 
         self.logger.info(
-            "Control loop update",
+            "Default control loop update",
             v_left=self.pwm_left,
             v_right=self.pwm_right,
             theta=self.theta,
@@ -248,8 +320,9 @@ class DotBotSimulator:
     def control_thread(self):
         """Control thread to update the state of the dotbot simulator."""
         while self._stop_event.is_set() is False:
-            with self._lock:
-                self._compute_automatic_control()
+            if self.controller_mode == DotBotSimulatorMode.AUTOMATIC:
+                with self._lock:
+                    self._control_loop_func()
             is_stopped = self._stop_event.wait(SIMULATOR_UPDATE_INTERVAL_S)
             if is_stopped:
                 break
