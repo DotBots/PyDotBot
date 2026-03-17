@@ -91,7 +91,7 @@ const DotBotsMapPoint = React.memo((props) => {
   const posX = props.mapSize * parseInt(props.dotbot.lh2_position.x) / props.areaSize.width;
   const posY = props.mapSize * parseInt(props.dotbot.lh2_position.y) / props.areaSize.width;
 
-  const rotation = (props.dotbot.direction) ? props.dotbot.direction : 0;
+  const rotation = (props.dotbot.direction !== -1000) ? props.dotbot.direction : 0;
   const radius = (props.dotbot.address === props.active || hovered) ? props.mapSize * (dotbotRadius + 5) / props.areaSize.width : props.mapSize * dotbotRadius / props.areaSize.width;
   const directionShift = (props.dotbot.address === props.active || hovered) ? 2: 1;
   const directionSize = (props.dotbot.address === props.active || hovered) ? props.mapSize * (dotbotRadius + 5) / props.areaSize.width : props.mapSize * dotbotRadius / props.areaSize.width;
@@ -134,12 +134,12 @@ const DotBotsMapPoint = React.memo((props) => {
         <DotBotsPosition key={`position-${index}`} index={index} point={point} color={rgbColor} opacity={opacity} history={props.dotbot.position_history.slice(-props.historySize)} {...props} />
       ))
     )}
-    <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
     <circle cx={posX} cy={posY}
         r={radius}
         opacity={opacity}
         fill={rgbColor}
         style={{ cursor: "pointer" }}
+        stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1"
         onClick={
           () => {
             props.updateActive(props.dotbot.address === props.active ? inactiveAddress : props.dotbot.address)
@@ -149,10 +149,11 @@ const DotBotsMapPoint = React.memo((props) => {
         onMouseLeave={onMouseLeave} >
       <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
     </circle>
-    {(props.dotbot.direction) &&
+    {(props.dotbot.direction !== -1000) &&
+    <g transform={`rotate(${rotation} ${posX} ${posY})`} stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1">
       <polygon points={`${posX - radius + 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX + radius - 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`} fill={rgbColor} opacity={opacity} />
-    }
     </g>
+    }
     </>
   )
 })
