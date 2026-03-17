@@ -33,7 +33,7 @@ MIN_PWM_TO_MOVE = 30  # minimum PWM value to overcome static friction and start 
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 1.2
+ANGULAR_SPEED_GAIN = 50
 REDUCE_SPEED_FACTOR = 0.7
 REDUCE_SPEED_ANGLE = 25
 
@@ -94,7 +94,7 @@ class RobotControl(ctypes.Structure):
     _fields_ = [
         ("pos_x", ctypes.c_uint32),
         ("pos_y", ctypes.c_uint32),
-        ("direction", ctypes.c_float),
+        ("direction", ctypes.c_int16),
         ("waypoints_length", ctypes.c_uint8),
         ("waypoint_idx", ctypes.c_uint8),
         ("waypoint_x", ctypes.c_uint32),
@@ -179,24 +179,24 @@ class DotBotSimulator:
             1 - self.motor_right_error
         )
 
-        V = (v_left_real + v_right_real) / 2
-        w = (v_left_real - v_right_real) / L
-        x_dot = V * cos(theta_old - pi)
-        y_dot = V * sin(theta_old - pi)
+        V = (v_right_real + v_left_real) / 2
+        w = (v_right_real - v_left_real) / L
+        x_dot = V * cos(theta_old * pi / 180 - pi / 2)
+        y_dot = V * sin(theta_old * pi / 180 + pi / 2)
 
         self.pos_x = pos_x_old + x_dot * SIMULATOR_STEP_DELTA_T
         self.pos_y = pos_y_old + y_dot * SIMULATOR_STEP_DELTA_T
-        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T) % (2 * pi)
+        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T * 180 / pi) % 360
 
         self.logger.debug(
             "State updated",
-            pos_x=self.pos_x,
-            pos_y=self.pos_y,
-            theta=self.theta,
-            pwm_left=self.pwm_left,
-            pwm_right=self.pwm_right,
-            v_left_real=v_left_real,
-            v_right_real=v_right_real,
+            pos_x=int(self.pos_x),
+            pos_y=int(self.pos_y),
+            theta=int(self.theta),
+            pwm_left=int(self.pwm_left),
+            pwm_right=int(self.pwm_right),
+            v_left_real=int(v_left_real),
+            v_right_real=int(v_right_real),
         )
         self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
 
@@ -227,7 +227,7 @@ class DotBotSimulator:
             return
         self.custom_robot_control.pos_x = int(self.pos_x)
         self.custom_robot_control.pos_y = int(self.pos_y)
-        self.custom_robot_control.direction = self.theta
+        self.custom_robot_control.direction = int(self.theta * -1)
         self.custom_robot_control.waypoints_length = len(self.waypoints)
         if self.custom_robot_control.waypoint_idx < len(self.waypoints):
             self.custom_robot_control.waypoint_x = int(
@@ -253,9 +253,9 @@ class DotBotSimulator:
         self.pwm_right = self.custom_robot_control.pwm_right
 
         self.logger.info(
-            "Custom control loop update",
-            v_left=self.pwm_left,
-            v_right=self.pwm_right,
+            "Custom loop",
+            pwm_left=self.pwm_left,
+            pwm_right=self.pwm_right,
             theta=self.theta,
             waypoint_index=self.custom_robot_control.waypoint_idx,
             waypoints_length=self.custom_robot_control.waypoints_length,
@@ -265,8 +265,8 @@ class DotBotSimulator:
         )
 
     def _control_loop_default(self):
-        delta_x = self.pos_x - self.waypoints[self.waypoint_index].pos_x
-        delta_y = self.pos_y - self.waypoints[self.waypoint_index].pos_y
+        delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
+        delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
         distance_to_target = sqrt(delta_x**2 + delta_y**2)
 
         # check if we are close enough to the "next" waypoint
@@ -282,39 +282,41 @@ class DotBotSimulator:
                 self.pwm_right = 0
                 self.waypoint_index = 0
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-        else:
-            robot_angle = self.theta
-            angle_to_target = atan2(delta_y, delta_x)
-            if robot_angle >= pi:
-                robot_angle = robot_angle - 2 * pi
+                return
 
-            error_angle = ((angle_to_target - robot_angle + pi) % (2 * pi)) - pi
-            self.logger.info(
-                "Moving to waypoint",
-                robot_angle=robot_angle,
-                angle_to_target=angle_to_target,
-                error_angle=error_angle,
-            )
+        angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
+        robot_angle = self.theta * -1
+        if robot_angle >= 180:
+            robot_angle -= 360
+        elif robot_angle < -180:
+            robot_angle += 360
 
-            speed_reduction_factor: float = 1.0
-            if distance_to_target < self.waypoint_threshold * 2:
-                speed_reduction_factor = REDUCE_SPEED_FACTOR
+        error_angle = angle_to_target - robot_angle
+        if error_angle >= 180:
+            error_angle -= 360
+        elif error_angle < -180:
+            error_angle += 360
 
-            error_angle_degrees = error_angle * 180 / pi
-            if (
-                error_angle_degrees > REDUCE_SPEED_ANGLE
-                or error_angle_degrees < -REDUCE_SPEED_ANGLE
-            ):
-                speed_reduction_factor = REDUCE_SPEED_FACTOR
-            angular_speed = error_angle * MOTOR_SPEED * ANGULAR_SPEED_GAIN
-            self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
-            self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
+        speed_reduction_factor: float = 1.0
+        if distance_to_target < self.waypoint_threshold * 2:
+            speed_reduction_factor = REDUCE_SPEED_FACTOR
+        if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
+            speed_reduction_factor = REDUCE_SPEED_FACTOR
+
+        angular_speed = (error_angle / 180) * ANGULAR_SPEED_GAIN
+        self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
+        self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
 
         self.logger.info(
-            "Default control loop update",
-            v_left=self.pwm_left,
-            v_right=self.pwm_right,
-            theta=self.theta,
+            "Loop update",
+            robot_angle=int(robot_angle),
+            angle_to_target=int(angle_to_target),
+            error_angle=int(error_angle),
+            angular_speed=int(angular_speed),
+            pwm_left=int(self.pwm_left),
+            pwm_right=int(self.pwm_right),
+            theta=int(self.theta),
+            waypoint=f"{self.waypoint_index}/{len(self.waypoints)}",
         )
 
     def control_thread(self):
@@ -335,7 +337,7 @@ class DotBotSimulator:
                 packet=Packet.from_payload(
                     PayloadDotBotAdvertisement(
                         calibrated=self.calibrated,
-                        direction=int(self.theta * 180 / pi + 90),
+                        direction=int(self.theta * -1),
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
                         pos_z=0,
@@ -361,17 +363,15 @@ class DotBotSimulator:
                         self.controller_mode = DotBotSimulatorMode.MANUAL
                         self.pwm_left = frame.packet.payload.left_y
                         self.pwm_right = frame.packet.payload.right_y
-                        self.logger.info(
-                            "RAW command received",
-                            v_left=self.pwm_left,
-                            v_right=self.pwm_right,
-                        )
-
                         if self.pwm_left > 127:
                             self.pwm_left = self.pwm_left - 256
                         if self.pwm_right > 127:
                             self.pwm_right = self.pwm_right - 256
-
+                        self.logger.info(
+                            "RAW command received",
+                            pwm_left=self.pwm_left,
+                            pwm_right=self.pwm_right,
+                        )
                     elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
                         self.pwm_left = 0
                         self.pwm_right = 0
