@@ -27,14 +27,14 @@ from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
 Kv = 400  # motor speed constant in RPM
 r = 50  # motor reduction ratio
-R = 25  # wheel radius in mm
+R = 50  # wheel diameter in mm
 L = 70  # distance between the two wheels in mm
 MIN_PWM_TO_MOVE = 30  # minimum PWM value to overcome static friction and start moving
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-# ANGULAR_SPEED_GAIN = 50
-REDUCE_SPEED_FACTOR = 0.7
+ANGULAR_SPEED_GAIN = 0.6
+REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
 DIRECTION_THRESHOLD = 50  # threshold to update the direction (50mm)
 
@@ -313,7 +313,7 @@ class DotBotSimulator:
         if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
             speed_reduction_factor = REDUCE_SPEED_FACTOR
 
-        angular_speed = (error_angle / 180) * MOTOR_SPEED
+        angular_speed = (error_angle / 180) * MOTOR_SPEED * ANGULAR_SPEED_GAIN
         self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
         self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
 
