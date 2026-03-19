@@ -48,6 +48,7 @@ nitpick_ignore_regex = [
     ("py:class", r"queue.Queue"),
     ("py:class", r"_ctypes.Structure"),
     ("py:class", r"pathlib._local.Path"),
+    ("py:class", r"pathlib.Path"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
