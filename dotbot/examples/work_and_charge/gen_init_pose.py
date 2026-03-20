@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import click
+
 # Configuration Constants
 NUM_ROBOTS = 8  # Total robots to generate
 START_ID = 1  # Start at AAAAAAAA00000001
@@ -7,10 +9,21 @@ X_RIGHT = 800
 X_LEFT = 100
 START_Y = 200
 Y_STEP = 200
-THETA = 3.14
+DIRECTION = 180
 
 
-def generate_dotbot_script():
+@click.command()
+@click.argument(
+    "output_path",
+    type=click.Path(dir_okay=False, writable=True),
+    default="init_state.toml",
+)
+@click.option(
+    "--control-loop-library-path",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to an optional .so control loop library.",
+)
+def main(output_path, control_loop_library_path):
 
     lines = []
 
@@ -35,12 +48,13 @@ def generate_dotbot_script():
             f"calibrated = 0xff\n"
             f"pos_x = {pos_x}\n"
             f"pos_y = {pos_y}\n"
-            f"theta = {THETA}\n"
+            f"direction = {DIRECTION}\n"
         )
+        if control_loop_library_path is not None:
+            block += f'control_loop_library_path = "{control_loop_library_path}"\n'
         lines.append(block)
 
     # Save to file
-    output_path = Path(__file__).resolve().parent / "init_state.toml"
     with open(output_path, "w") as f:
         f.write("\n".join(lines))
 
@@ -48,4 +62,4 @@ def generate_dotbot_script():
 
 
 if __name__ == "__main__":
-    generate_dotbot_script()
+    main()
