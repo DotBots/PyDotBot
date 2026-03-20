@@ -6,6 +6,7 @@
 
 """Dotbot simulator for the DotBot project."""
 
+import ctypes
 import queue
 import random
 import threading
@@ -13,6 +14,7 @@ from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
+from pathlib import Path
 from typing import Callable, List
 
 import toml
@@ -24,16 +26,17 @@ from dotbot.logger import LOGGER
 from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
 Kv = 400  # motor speed constant in RPM
-r = 50  # motor reduction ratio
-R = 25  # wheel radius in mm
+R = 50  # motor reduction ratio
+D = 50  # wheel diameter in mm
 L = 70  # distance between the two wheels in mm
 MIN_PWM_TO_MOVE = 30  # minimum PWM value to overcome static friction and start moving
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 1.2
-REDUCE_SPEED_FACTOR = 0.7
+ANGULAR_SPEED_GAIN = 2
+REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
+DIRECTION_THRESHOLD = 50  # threshold to update the direction (50mm)
 
 SIMULATOR_STEP_DELTA_T = 0.02  # 20 ms
 
@@ -59,7 +62,11 @@ def wheel_speed_from_pwm(pwm: float) -> float:
     """Convert a PWM value to a wheel speed in mm/s."""
     if abs(pwm) < MIN_PWM_TO_MOVE:
         return 0.0
-    return pwm * R * Kv / (r * 127)
+    if pwm > 100:
+        pwm = 100
+    if pwm < -100:
+        pwm = -100
+    return pwm * D * Kv / (R * 127)
 
 
 class DotBotSimulatorMode(Enum):
@@ -81,10 +88,26 @@ class SimulatedDotBotSettings(BaseModel):
     address: str
     pos_x: int
     pos_y: int
-    theta: float
+    direction: int = -1000
     calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
+    custom_control_loop_library: Path = None
+
+
+class RobotControl(ctypes.Structure):
+    _fields_ = [
+        ("pos_x", ctypes.c_uint32),
+        ("pos_y", ctypes.c_uint32),
+        ("direction", ctypes.c_int16),
+        ("waypoints_length", ctypes.c_uint8),
+        ("waypoint_idx", ctypes.c_uint8),
+        ("waypoint_x", ctypes.c_uint32),
+        ("waypoint_y", ctypes.c_uint32),
+        ("waypoint_threshold", ctypes.c_uint32),
+        ("pwm_left", ctypes.c_int8),
+        ("pwm_right", ctypes.c_int8),
+    ]
 
 
 class SimulatedNetworkSettings(BaseModel):
@@ -103,13 +126,16 @@ class DotBotSimulator:
         self.address = settings.address.lower()
         self.pos_x = settings.pos_x
         self.pos_y = settings.pos_y
-        self.theta = settings.theta
+        self.theta = settings.direction * -1 if settings.direction != -1000 else 0
         self.motor_left_error = settings.motor_left_error
         self.motor_right_error = settings.motor_right_error
+        self.custom_control_loop_library = settings.custom_control_loop_library
+        self._control_loop_func = self._init_control_loop()
         self.time_elapsed_s = 0
 
         self.pwm_left = 0
         self.pwm_right = 0
+        self.direction = settings.direction
 
         self.calibrated = settings.calibrated
         self.waypoint_threshold = 0
@@ -130,6 +156,13 @@ class DotBotSimulator:
         self.advertise_thread.start()
         self.control_thread.start()
         self.main_thread.start()
+        self.logger.info(
+            "DotBot simulator initialized",
+            pos_x=self.pos_x,
+            pos_y=self.pos_y,
+            direction=self.direction,
+            theta=self.theta,
+        )
 
     @property
     def header(self):
@@ -144,39 +177,34 @@ class DotBotSimulator:
         pos_y_old = self.pos_y
         theta_old = self.theta
 
-        if self.pwm_left > 100:
-            self.pwm_left = 100
-        if self.pwm_right > 100:
-            self.pwm_right = 100
-        if self.pwm_left < -100:
-            self.pwm_left = -100
-        if self.pwm_right < -100:
-            self.pwm_right = -100
-
         # Compute each wheel's real speed considering the motor error and the minimum PWM to move
         v_left_real = wheel_speed_from_pwm(self.pwm_left) * (1 - self.motor_left_error)
         v_right_real = wheel_speed_from_pwm(self.pwm_right) * (
             1 - self.motor_right_error
         )
 
-        V = (v_left_real + v_right_real) / 2
-        w = (v_left_real - v_right_real) / L
-        x_dot = V * cos(theta_old - pi)
-        y_dot = V * sin(theta_old - pi)
+        V = (v_right_real + v_left_real) / 2
+        w = (v_right_real - v_left_real) / L
+        x_dot = V * cos(theta_old * pi / 180 - pi / 2)
+        y_dot = V * sin(theta_old * pi / 180 + pi / 2)
+        dx = x_dot * SIMULATOR_STEP_DELTA_T
+        dy = y_dot * SIMULATOR_STEP_DELTA_T
 
-        self.pos_x = pos_x_old + x_dot * SIMULATOR_STEP_DELTA_T
-        self.pos_y = pos_y_old + y_dot * SIMULATOR_STEP_DELTA_T
-        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T) % (2 * pi)
+        self.pos_x = pos_x_old + dx
+        self.pos_y = pos_y_old + dy
+        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T * 180 / pi) % 360
+
+        if sqrt(dx**2 + dy**2):
+            self.direction = int(-1 * atan2(dx, dy) * 180 / pi) % 360
 
         self.logger.debug(
             "State updated",
-            pos_x=self.pos_x,
-            pos_y=self.pos_y,
-            theta=self.theta,
-            pwm_left=self.pwm_left,
-            pwm_right=self.pwm_right,
-            v_left_real=v_left_real,
-            v_right_real=v_right_real,
+            pos_x=int(self.pos_x),
+            pos_y=int(self.pos_y),
+            theta=int(self.theta),
+            direction=int(self.direction),
+            pwm_left=int(self.pwm_left),
+            pwm_right=int(self.pwm_right),
         )
         self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
 
@@ -189,12 +217,63 @@ class DotBotSimulator:
             if is_stopped:
                 break
 
-    def _compute_automatic_control(self):
-        if self.controller_mode != DotBotSimulatorMode.AUTOMATIC:
-            return
+    def _init_control_loop(self) -> callable:
+        """Initialize the control loop, potentially loading a custom control loop library."""
+        if self.custom_control_loop_library is not None:
+            self.custom_control_loop_library = ctypes.CDLL(
+                self.custom_control_loop_library
+            )
+            self.custom_robot_control = RobotControl()
+            self.custom_robot_control.waypoint_idx = 0
+            return self._control_loop_custom
+        else:
+            return self._control_loop_default
 
-        delta_x = self.pos_x - self.waypoints[self.waypoint_index].pos_x
-        delta_y = self.pos_y - self.waypoints[self.waypoint_index].pos_y
+    def _control_loop_custom(self):
+        """Control loop using a custom control loop library."""
+        self.custom_robot_control.pos_x = int(self.pos_x)
+        self.custom_robot_control.pos_y = int(self.pos_y)
+        self.custom_robot_control.direction = self.direction
+        self.custom_robot_control.waypoints_length = len(self.waypoints)
+        self.custom_robot_control.waypoint_x = int(
+            self.waypoints[self.custom_robot_control.waypoint_idx].pos_x
+        )
+        self.custom_robot_control.waypoint_y = int(
+            self.waypoints[self.custom_robot_control.waypoint_idx].pos_y
+        )
+        self.custom_robot_control.waypoint_threshold = int(self.waypoint_threshold)
+        # Call the custom control loop function from the shared library
+        self.custom_control_loop_library.update_control(
+            ctypes.byref(self.custom_robot_control)
+        )
+
+        # Update the PWM values based on the output of the custom control loop
+        self.pwm_left = self.custom_robot_control.pwm_left
+        self.pwm_right = self.custom_robot_control.pwm_right
+
+        if self.custom_robot_control.waypoint_idx >= len(self.waypoints):
+            self.logger.info("Last waypoint reached")
+            self.pwm_left = 0
+            self.pwm_right = 0
+            self.waypoint_index = 0
+            self.custom_robot_control.waypoint_idx = 0
+            self.controller_mode = DotBotSimulatorMode.MANUAL
+
+        self.logger.info(
+            "Custom loop",
+            pwm_left=self.pwm_left,
+            pwm_right=self.pwm_right,
+            direction=self.direction,
+            waypoint_index=self.custom_robot_control.waypoint_idx,
+            waypoints_length=self.custom_robot_control.waypoints_length,
+            waypoint_threshold=self.custom_robot_control.waypoint_threshold,
+            waypoint_x=self.custom_robot_control.waypoint_x,
+            waypoint_y=self.custom_robot_control.waypoint_y,
+        )
+
+    def _control_loop_default(self):
+        delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
+        delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
         distance_to_target = sqrt(delta_x**2 + delta_y**2)
 
         # check if we are close enough to the "next" waypoint
@@ -210,46 +289,49 @@ class DotBotSimulator:
                 self.pwm_right = 0
                 self.waypoint_index = 0
                 self.controller_mode = DotBotSimulatorMode.MANUAL
-        else:
-            robot_angle = self.theta
-            angle_to_target = atan2(delta_y, delta_x)
-            if robot_angle >= pi:
-                robot_angle = robot_angle - 2 * pi
+                return
 
-            error_angle = ((angle_to_target - robot_angle + pi) % (2 * pi)) - pi
-            self.logger.info(
-                "Moving to waypoint",
-                robot_angle=robot_angle,
-                angle_to_target=angle_to_target,
-                error_angle=error_angle,
-            )
+        angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
+        robot_angle = self.direction
+        if robot_angle >= 180:
+            robot_angle -= 360
+        elif robot_angle < -180:
+            robot_angle += 360
 
-            speed_reduction_factor: float = 1.0
-            if distance_to_target < self.waypoint_threshold * 2:
-                speed_reduction_factor = REDUCE_SPEED_FACTOR
+        error_angle = angle_to_target - robot_angle
+        if error_angle >= 180:
+            error_angle -= 360
+        elif error_angle < -180:
+            error_angle += 360
 
-            error_angle_degrees = error_angle * 180 / pi
-            if (
-                error_angle_degrees > REDUCE_SPEED_ANGLE
-                or error_angle_degrees < -REDUCE_SPEED_ANGLE
-            ):
-                speed_reduction_factor = REDUCE_SPEED_FACTOR
-            angular_speed = error_angle * MOTOR_SPEED * ANGULAR_SPEED_GAIN
-            self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
-            self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
+        speed_reduction_factor: float = 1.0
+        if distance_to_target < self.waypoint_threshold * 2:
+            speed_reduction_factor = REDUCE_SPEED_FACTOR
+        if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
+            speed_reduction_factor = REDUCE_SPEED_FACTOR
+
+        angular_speed = (error_angle / 180) * MOTOR_SPEED * ANGULAR_SPEED_GAIN
+        self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
+        self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
 
         self.logger.info(
-            "Control loop update",
-            v_left=self.pwm_left,
-            v_right=self.pwm_right,
-            theta=self.theta,
+            "Loop update",
+            robot_angle=int(robot_angle),
+            angle_to_target=int(angle_to_target),
+            error_angle=int(error_angle),
+            angular_speed=int(angular_speed),
+            pwm_left=int(self.pwm_left),
+            pwm_right=int(self.pwm_right),
+            theta=int(self.theta),
+            waypoint=f"{self.waypoint_index}/{len(self.waypoints)}",
         )
 
     def control_thread(self):
         """Control thread to update the state of the dotbot simulator."""
         while self._stop_event.is_set() is False:
-            with self._lock:
-                self._compute_automatic_control()
+            if self.controller_mode == DotBotSimulatorMode.AUTOMATIC:
+                with self._lock:
+                    self._control_loop_func()
             is_stopped = self._stop_event.wait(SIMULATOR_UPDATE_INTERVAL_S)
             if is_stopped:
                 break
@@ -262,7 +344,7 @@ class DotBotSimulator:
                 packet=Packet.from_payload(
                     PayloadDotBotAdvertisement(
                         calibrated=self.calibrated,
-                        direction=int(self.theta * 180 / pi + 90),
+                        direction=self.direction,
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
                         pos_z=0,
@@ -288,21 +370,16 @@ class DotBotSimulator:
                         self.controller_mode = DotBotSimulatorMode.MANUAL
                         self.pwm_left = frame.packet.payload.left_y
                         self.pwm_right = frame.packet.payload.right_y
-                        self.logger.info(
-                            "RAW command received",
-                            v_left=self.pwm_left,
-                            v_right=self.pwm_right,
-                        )
-
                         if self.pwm_left > 127:
                             self.pwm_left = self.pwm_left - 256
                         if self.pwm_right > 127:
                             self.pwm_right = self.pwm_right - 256
-
+                        self.logger.info(
+                            "RAW command received",
+                            pwm_left=self.pwm_left,
+                            pwm_right=self.pwm_right,
+                        )
                     elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
-                        self.pwm_left = 0
-                        self.pwm_right = 0
-                        self.controller_mode = DotBotSimulatorMode.MANUAL
                         self.waypoint_threshold = frame.packet.payload.threshold
                         self.waypoints = frame.packet.payload.waypoints
                         self.logger.info(
@@ -312,6 +389,10 @@ class DotBotSimulator:
                         )
                         if self.waypoints:
                             self.controller_mode = DotBotSimulatorMode.AUTOMATIC
+                        else:
+                            self.pwm_left = 0
+                            self.pwm_right = 0
+                            self.controller_mode = DotBotSimulatorMode.MANUAL
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
