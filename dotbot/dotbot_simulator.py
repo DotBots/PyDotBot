@@ -26,14 +26,14 @@ from dotbot.logger import LOGGER
 from dotbot.protocol import PayloadDotBotAdvertisement, PayloadType
 
 Kv = 400  # motor speed constant in RPM
-r = 50  # motor reduction ratio
-R = 50  # wheel diameter in mm
+R = 50  # motor reduction ratio
+D = 50  # wheel diameter in mm
 L = 70  # distance between the two wheels in mm
 MIN_PWM_TO_MOVE = 30  # minimum PWM value to overcome static friction and start moving
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 0.6
+ANGULAR_SPEED_GAIN = 2
 REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
 DIRECTION_THRESHOLD = 50  # threshold to update the direction (50mm)
@@ -66,7 +66,7 @@ def wheel_speed_from_pwm(pwm: float) -> float:
         pwm = 100
     if pwm < -100:
         pwm = -100
-    return pwm * R * Kv / (r * 127)
+    return pwm * D * Kv / (R * 127)
 
 
 class DotBotSimulatorMode(Enum):
@@ -291,10 +291,7 @@ class DotBotSimulator:
                 self.controller_mode = DotBotSimulatorMode.MANUAL
                 return
 
-        if distance_to_target < DIRECTION_THRESHOLD:
-            angle_to_target = 0  # move forward a bit
-        else:
-            angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
+        angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
         robot_angle = self.direction
         if robot_angle >= 180:
             robot_angle -= 360
@@ -383,9 +380,6 @@ class DotBotSimulator:
                             pwm_right=self.pwm_right,
                         )
                     elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
-                        self.pwm_left = 0
-                        self.pwm_right = 0
-                        self.controller_mode = DotBotSimulatorMode.MANUAL
                         self.waypoint_threshold = frame.packet.payload.threshold
                         self.waypoints = frame.packet.payload.waypoints
                         self.logger.info(
@@ -395,6 +389,10 @@ class DotBotSimulator:
                         )
                         if self.waypoints:
                             self.controller_mode = DotBotSimulatorMode.AUTOMATIC
+                        else:
+                            self.pwm_left = 0
+                            self.pwm_right = 0
+                            self.controller_mode = DotBotSimulatorMode.MANUAL
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
