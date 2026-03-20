@@ -149,7 +149,7 @@ async def disengage_from_charger(client: RestClient, dotbot_address: str):
             address=dotbot_address,
             application=dotbot.application,
             command=DotBotMoveRawCommandModel(
-                left_x=0, left_y=-100, right_x=0, right_y=-100
+                left_x=0, left_y=-80, right_x=0, right_y=-80
             ),
         )
         await asyncio.sleep(0.1)
@@ -164,7 +164,7 @@ async def disengage_from_charger(client: RestClient, dotbot_address: str):
             address=dotbot_address,
             application=dotbot.application,
             command=DotBotMoveRawCommandModel(
-                left_x=0, left_y=100, right_x=0, right_y=100
+                left_x=0, left_y=80, right_x=0, right_y=80
             ),
         )
         await asyncio.sleep(0.1)
