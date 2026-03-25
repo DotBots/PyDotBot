@@ -194,6 +194,10 @@ export const DotBotsMap = (props) => {
                   <path d={`M ${500 * mapSize / props.areaSize.width} 0 L 0 0 0 ${500 * mapSize / props.areaSize.width}`} fill="none" stroke="gray" strokeWidth="1"/>
                 </pattern>
               </defs>
+              {/* Background map */}
+              {props.backgroundMap &&
+                <image href={`data:image/png;base64,${props.backgroundMap}`} x="0" y="0" width={gridWidth} height={gridHeight} />
+              }
               {/* Map grid */}
               <rect width="100%" height="100%" fill={displayGrid ? `url(#grid${mapSize})`: "none"} stroke="gray" strokeWidth="1" onClick={(event) => mapClicked(event)}/>
               {/* DotBots points */}

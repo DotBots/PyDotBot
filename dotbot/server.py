@@ -5,6 +5,7 @@
 
 """Module for the web server application."""
 
+import base64
 import os
 from typing import Annotated, List
 
@@ -286,6 +287,19 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
 async def map_size():
     """Map size HTTP GET handler."""
     return api.controller.map_size
+
+
+@api.get(
+    path="/controller/background_map",
+    response_model=str,
+    summary="Return the background map of the controller",
+    tags=["controller"],
+)
+async def background_map():
+    """Background map HTTP GET handler."""
+    with open(api.controller.settings.background_map, "rb") as f:
+        encoded_string = base64.b64encode(f.read()).decode("utf-8")
+    return encoded_string
 
 
 @api.websocket("/controller/ws/status")

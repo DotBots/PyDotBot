@@ -19,6 +19,16 @@ export const apiFetchMapSize = async () => {
   ).then(res => res.data);
 }
 
+export const apiFetchBackgroundMap = async () => {
+  log.info("Fetching background map from API");;
+  return await axios.get(
+    `${API_URL}/controller/background_map`,
+  ).then(res => {
+    console.log(`Received background map data from API ${res.data.slice(0,100)} characters long`);
+    return res.data
+  });
+}
+
 export const apiUpdateMoveRaw = async (address, application, left_x, left_y, right_x, right_y) => {
   log.info(`Setting move raw for dotbot ${address} with values (${left_x}, ${left_y}, ${right_x}, ${right_y})`);
   const command = { left_x: parseInt(left_x), left_y: parseInt(left_y), right_x: parseInt(right_x), right_y: parseInt(right_y) };
