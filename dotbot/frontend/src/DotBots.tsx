@@ -7,7 +7,7 @@ import { SailBotItem } from "./SailBotItem";
 import { SailBotsMap } from "./SailBotsMap";
 import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
-import { AreaSize, DotBot, GpsPosition, LH2Position, PublishCommandFn } from "./types";
+import { AreaSize, BackgroundMap, DotBot, GpsPosition, LH2Position, PublishCommandFn } from "./types";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'DotBots' });
@@ -15,12 +15,13 @@ const log = logger.child({ module: 'DotBots' });
 interface DotBotsProps {
   dotbots: DotBot[];
   areaSize: AreaSize;
+  backgroundMap?: BackgroundMap;
   updateDotbots: React.Dispatch<React.SetStateAction<DotBot[]>>;
   publishCommand: PublishCommandFn;
   publish: (topic: string, message: unknown) => void;
 }
 
-const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) => {
+const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish }) => {
   const [activeDotbot, setActiveDotbot] = useState(inactiveAddress);
   const [showDotBotHistory, setShowDotBotHistory] = useState(true);
   const [dotbotHistorySize, setDotbotHistorySize] = useState(maxPositionHistory);
@@ -213,6 +214,7 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, updateDotbots, pub
                         mapClicked={mapClicked}
                         mapSize={350}
                         areaSize={areaSize}
+                        backgroundMap={backgroundMap}
                         publish={publish}
                       />
                     </div>
@@ -228,6 +230,7 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, updateDotbots, pub
                         mapClicked={mapClicked}
                         mapSize={1000}
                         areaSize={areaSize}
+                        backgroundMap={backgroundMap}
                         publish={publish}
                       />
                     </div>

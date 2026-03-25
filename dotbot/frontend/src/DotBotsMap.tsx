@@ -1,6 +1,6 @@
 import React, { memo, useState } from "react";
 import { ApplicationType, inactiveAddress, dotbotRadius } from "./utils/constants";
-import { AreaSize, DotBot, LH2Position } from "./types";
+import { AreaSize, BackgroundMap, DotBot, LH2Position } from "./types";
 
 interface DotBotsWaypointProps {
   index: number;
@@ -215,6 +215,7 @@ interface DotBotsMapProps {
   dotbots: DotBot[];
   active: string;
   areaSize: AreaSize;
+  backgroundMap?: BackgroundMap;
   mapSize: number;
   showHistory: boolean;
   historySize: number;
@@ -269,6 +270,10 @@ export const DotBotsMap: React.FC<DotBotsMapProps> = (props) => {
                   />
                 </pattern>
               </defs>
+              {/* Background map */}
+              {props.backgroundMap?.data &&
+                <image href={`data:image/png;base64,${props.backgroundMap.data}`} x="0" y="0" width={gridWidth} height={gridHeight} />
+              }
               <rect
                 width="100%"
                 height="100%"

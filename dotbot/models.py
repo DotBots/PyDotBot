@@ -89,6 +89,12 @@ class DotBotMapSizeModel(BaseModel):
     height: int  # in mm unit
 
 
+class DotBotBackgroundMapModel(BaseModel):
+    """Background map model."""
+
+    data: Optional[str] = None  # Base64-encoded PNG image data
+
+
 class DotBotStatus(IntEnum):
     """Status of a DotBot."""
 
