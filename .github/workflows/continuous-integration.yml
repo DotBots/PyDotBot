@@ -52,6 +52,28 @@ jobs:
       with:
         verbose: true
 
+  control_loop:
+    name: check custom control loop
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Checkout DotBot-libs repo
+        uses: actions/checkout@v4
+        with:
+          repository: DotBots/DotBot-libs
+          path: DotBot-libs
+      - name: Build control loop library
+        run: |
+          cmake -DDOTBOT_LIBS_DIR=${PWD}/DotBot-libs -S utils/control_loop -B build
+          cmake --build build
+
   doc:
     name: check documentation
     runs-on: ubuntu-latest
@@ -92,7 +114,7 @@ jobs:
         path: ./dotbot/frontend/build
 
   package:
-    needs: [test, doc, frontend]
+    needs: [test, doc, frontend, control_loop]
     name: build source package
     runs-on: ${{ matrix.os }}
     strategy:

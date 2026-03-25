@@ -4,7 +4,7 @@ import { NotificationType } from "./utils/constants";
 import { handleDotBotUpdate } from "./utils/helpers";
 
 import useWebSocket from 'react-use-websocket';
-import { apiFetchDotbots, apiFetchMapSize, apiUpdateMoveRaw, apiUpdateRgbLed, apiUpdateWaypoints, apiClearPositionsHistory } from "./utils/rest";
+import { apiFetchDotbots, apiFetchMapSize, apiFetchBackgroundMap, apiUpdateMoveRaw, apiUpdateRgbLed, apiUpdateWaypoints, apiClearPositionsHistory } from "./utils/rest";
 import DotBots from './DotBots';
 
 import logger from './utils/logger';
@@ -12,6 +12,7 @@ const log = logger.child({module: 'RestApp'});
 
 const RestApp = () => {
   const [areaSize, setAreaSize] = useState(undefined);
+  const [backgroundMap, setBackgroundMap] = useState(undefined);
   const [dotbots, setDotbots] = useState([]);
 
   const websocketUrl = `ws://localhost:8000/controller/ws/status`;
@@ -26,6 +27,12 @@ const RestApp = () => {
     const data = await apiFetchMapSize().catch(error => console.log(error));
     setAreaSize(data);
   }, [setAreaSize]
+  );
+
+  const fetchBackgroundMap = useCallback(async () => {
+    const data = await apiFetchBackgroundMap().catch(error => console.log(error));
+    setBackgroundMap(data);
+  }, [setBackgroundMap]
   );
 
   const publishCommand = async (address, application, command, data) => {
@@ -79,7 +86,10 @@ const RestApp = () => {
     if (!areaSize) {
       fetchAreaSize();
     }
-  }, [dotbots, areaSize, fetchDotBots, fetchAreaSize]
+    if (!backgroundMap) {
+      fetchBackgroundMap();
+    }
+  }, [dotbots, areaSize, backgroundMap, fetchDotBots, fetchAreaSize, fetchBackgroundMap]
   );
 
   return (
@@ -89,6 +99,7 @@ const RestApp = () => {
       <DotBots
         dotbots={dotbots}
         areaSize={areaSize}
+        backgroundMap={backgroundMap}
         updateDotbots={setDotbots}
         publishCommand={publishCommand}
         publish={publish}

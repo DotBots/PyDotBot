@@ -12,7 +12,7 @@ import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } fr
 import logger from './utils/logger';
 const log = logger.child({module: 'DotBots'});
 
-const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) => {
+const DotBots = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish }) => {
   const [ activeDotbot, setActiveDotbot ] = useState(inactiveAddress);
   const [ showDotBotHistory, setShowDotBotHistory ] = useState(true);
   const [ dotbotHistorySize, setDotbotHistorySize ] = useState(maxPositionHistory);
@@ -243,6 +243,7 @@ const DotBots = ({ dotbots, areaSize, updateDotbots, publishCommand, publish }) 
               mapClicked={mapClicked}
               mapSize={1000}
               areaSize={areaSize}
+              backgroundMap={backgroundMap}
               publish={publish}
             />
           </div>
