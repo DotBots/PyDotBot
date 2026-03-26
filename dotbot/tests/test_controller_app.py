@@ -41,6 +41,8 @@ Options:
   --log-level [debug|info|warning|error]
                                   Logging level. Defaults to info
   --log-output PATH               Filename where logs are redirected
+  --csv-data-output PATH          Filename where CSV data logs are stored. If
+                                  not set, CSV data logging is disabled.
   --config-path FILE              Path to a .toml configuration file.
   -m, --map-size TEXT             Map size in mm. Defaults to '2000x2000'
   -M, --background-map FILE       Path to a background map image file in png

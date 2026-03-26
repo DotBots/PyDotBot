@@ -17,7 +17,7 @@ import webbrowser
 from binascii import hexlify
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import serial
 import starlette
@@ -47,6 +47,7 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.csv_data_logger import CSVDataLogger
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
@@ -128,6 +129,7 @@ class ControllerSettings:
     verbose: bool = False
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
+    csv_data_output: Optional[str] = None
     simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
 
 
@@ -197,6 +199,11 @@ class Controller:
             width=int(settings.map_size.split("x")[0]),
             height=int(settings.map_size.split("x")[1]),
         )
+        if settings.csv_data_output is not None:
+            self.logger.info("CSV data output enabled", path=settings.csv_data_output)
+            self.csv_data_logger = CSVDataLogger(settings.csv_data_output)
+        else:
+            self.csv_data_logger = None
         api.controller = self
 
     async def _open_webbrowser(self):
@@ -365,6 +372,16 @@ class Controller:
                         dotbot.position_history.append(new_position)
                         if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                             dotbot.position_history.pop(0)
+                    if self.csv_data_logger is not None:
+                        self.csv_data_logger.log(
+                            real_pos_x=new_position.x,
+                            real_pos_y=new_position.y,
+                            real_direction=dotbot.direction,
+                            pwm_right=frame.packet.payload.pwm_right,
+                            pwm_left=frame.packet.payload.pwm_left,
+                            battery_level=dotbot.battery,
+                            address=dotbot.address,
+                        )
                 need_update = True
 
             if dotbot.battery != frame.packet.payload.battery / 1000.0:
@@ -630,6 +647,8 @@ class Controller:
         except SystemExit:
             pass
         finally:
+            if self.csv_data_logger is not None:
+                self.csv_data_logger.close()
             self.adapter.close()
             self.logger.info("Stopping controller")
             for task in tasks:

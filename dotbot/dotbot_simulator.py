@@ -169,10 +169,6 @@ class DotBotSimulator:
         self.controller_mode: ControlModeType = ControlModeType.MANUAL
         self.logger = LOGGER.bind(context=__name__, address=self.address)
         self._stop_event = threading.Event()
-        self.rx_thread.start()
-        self.advertise_thread.start()
-        self.control_thread.start()
-        self.main_thread.start()
         self.logger.info(
             "DotBot simulator initialized",
             pos_x=self.pos_x,
@@ -181,6 +177,13 @@ class DotBotSimulator:
             theta=self.theta,
         )
 
+    def start(self):
+        self.rx_thread.start()
+        self.advertise_thread.start()
+        self.control_thread.start()
+        self.main_thread.start()
+        self.logger.info("DotBot simulator started")
+
     @property
     def header(self):
         return Header(
@@ -188,7 +191,7 @@ class DotBotSimulator:
             source=int(self.address, 16),
         )
 
-    def _diff_drive_model_update(self):
+    def diff_drive_model_update(self, dt=SIMULATOR_STEP_DELTA_T):
         """State space model update."""
         pos_x_old = self.pos_x
         pos_y_old = self.pos_y
@@ -204,12 +207,12 @@ class DotBotSimulator:
         w = (v_right_real - v_left_real) / L
         x_dot = V * cos(theta_old * pi / 180 - pi / 2)
         y_dot = V * sin(theta_old * pi / 180 + pi / 2)
-        dx = x_dot * SIMULATOR_STEP_DELTA_T
-        dy = y_dot * SIMULATOR_STEP_DELTA_T
+        dx = x_dot * dt
+        dy = y_dot * dt
 
         self.pos_x = pos_x_old + dx
         self.pos_y = pos_y_old + dy
-        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T * 180 / pi) % 360
+        self.theta = (theta_old + w * dt * 180 / pi) % 360
 
         if sqrt(dx**2 + dy**2):
             self.direction = int(-1 * atan2(dx, dy) * 180 / pi) % 360
@@ -227,13 +230,13 @@ class DotBotSimulator:
             pwm_left=int(self.pwm_left),
             pwm_right=int(self.pwm_right),
         )
-        self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
+        self.time_elapsed_s += dt
 
     def update_state(self):
         """Update the state of the dotbot simulator."""
         while True:
             with self._lock:
-                self._diff_drive_model_update()
+                self.diff_drive_model_update()
             is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
             if is_stopped:
                 break
@@ -471,8 +474,12 @@ class DotBotSimulatorCommunicationInterface:
             for dotbot_settings in init_state.dotbots
         ]
 
-        self.main_thread.start()
         self.logger = LOGGER.bind(context=__name__)
+
+    def start(self):
+        for dotbot in self.dotbots:
+            dotbot.start()
+        self.main_thread.start()
         self.logger.info("DotBot Simulation Started")
 
     def run(self):
