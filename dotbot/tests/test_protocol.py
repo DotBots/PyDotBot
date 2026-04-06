@@ -193,8 +193,8 @@ def test_parse_header(bytes_, expected):
         pytest.param(
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x08"
             b"\x0a\x00\x02"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00",
             Header(
                 version=4,
                 type_=2,
@@ -206,8 +206,8 @@ def test_parse_header(bytes_, expected):
                 threshold=10,
                 count=2,
                 waypoints=[
-                    PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
-                    PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
+                    PayloadLH2Location(pos_x=1000, pos_y=1000),
+                    PayloadLH2Location(pos_x=1000, pos_y=1000),
                 ],
             ),
             id="PayloadLH2Waypoints",
@@ -404,15 +404,15 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                         threshold=10,
                         count=2,
                         waypoints=[
-                            PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
-                            PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
+                            PayloadLH2Location(pos_x=1000, pos_y=1000),
+                            PayloadLH2Location(pos_x=1000, pos_y=1000),
                         ],
                     )
                 ),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x08\x0a\x00\x02"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00\x02\x00\x00\x00",
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00",
             id="PayloadLH2Waypoints",
         ),
         pytest.param(
@@ -647,8 +647,8 @@ def test_payload_to_bytes(frame, expected):
                         threshold=10,
                         count=2,
                         waypoints=[
-                            PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
-                            PayloadLH2Location(pos_x=1000, pos_y=1000, pos_z=2),
+                            PayloadLH2Location(pos_x=1000, pos_y=1000),
+                            PayloadLH2Location(pos_x=1000, pos_y=1000),
                         ],
                     )
                 ),
@@ -656,12 +656,12 @@ def test_payload_to_bytes(frame, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " LH2_WAYPOINTS   | ver. | type | dst                | src                | type |\n"
-                " (46 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x08 |\n"
+                " (38 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x08 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
-                "                 +--------+------+------------+------------+------------+------------+------------+------------+\n"
-                "                 | thr.   | len. | x          | y          | z          | x          | y          | z          |\n"
-                "                 | 0x000a | 0x02 | 0x000003e8 | 0x000003e8 | 0x00000002 | 0x000003e8 | 0x000003e8 | 0x00000002 |\n"
-                "                 +--------+------+------------+------------+------------+------------+------------+------------+\n"
+                "                 +--------+------+------------+------------+------------+------------+\n"
+                "                 | thr.   | len. | x          | y          | x          | y          |\n"
+                "                 | 0x000a | 0x02 | 0x000003e8 | 0x000003e8 | 0x000003e8 | 0x000003e8 |\n"
+                "                 +--------+------+------------+------------+------------+------------+\n"
                 "\n"
             ),
             id="LH2Waypoints",

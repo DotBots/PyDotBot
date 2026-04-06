@@ -73,8 +73,9 @@ class PayloadDotBotAdvertisement(Payload):
             PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
             PayloadFieldMetadata(name="pos_x", disp="x", length=4),
             PayloadFieldMetadata(name="pos_y", disp="y", length=4),
-            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
             PayloadFieldMetadata(name="battery", disp="bat.", length=2),
+            PayloadFieldMetadata(name="pwm_left", disp="pwm_l", length=1, signed=True),
+            PayloadFieldMetadata(name="pwm_right", disp="pwm_r", length=1, signed=True),
         ]
     )
 
@@ -82,8 +83,9 @@ class PayloadDotBotAdvertisement(Payload):
     direction: int = 0xFFFF
     pos_x: int = 0xFFFFFFFF
     pos_y: int = 0xFFFFFFFF
-    pos_z: int = 0xFFFFFFFF
     battery: int = 0
+    pwm_left: int = 0
+    pwm_right: int = 0
 
 
 @dataclass
@@ -159,13 +161,11 @@ class PayloadLH2Location(Payload):
         default_factory=lambda: [
             PayloadFieldMetadata(name="pos_x", disp="x", length=4),
             PayloadFieldMetadata(name="pos_y", disp="y", length=4),
-            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
         ]
     )
 
     pos_x: int = 0
     pos_y: int = 0
-    pos_z: int = 0
 
 
 @dataclass

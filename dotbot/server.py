@@ -214,7 +214,6 @@ async def _dotbots_waypoints(
                 PayloadLH2Location(
                     pos_x=int(waypoint.x),
                     pos_y=int(waypoint.y),
-                    pos_z=int(waypoint.z),
                 )
                 for waypoint in waypoints.waypoints
             ],

@@ -370,7 +370,6 @@ class DotBotSimulator:
                         direction=self.direction,
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        pos_z=0,
                         battery=battery_discharge_model(self.time_elapsed_s),
                     )
                 ),

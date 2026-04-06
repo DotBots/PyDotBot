@@ -145,7 +145,7 @@ async def main() -> None:
                     ### TEMPORARY: The simulator does not accept negative coordinates,
                     #   so we set it to zero and scale the positive value proportionally.
                     point = DotBotLH2Position(
-                        x=controller.vector[0], y=controller.vector[1], z=0.0
+                        x=controller.vector[0], y=controller.vector[1]
                     )
                     if dotbot.lh2_position.x + controller.vector[0] < 0:
                         point.y = controller.vector[1] * (
@@ -165,7 +165,6 @@ async def main() -> None:
                             DotBotLH2Position(
                                 x=dotbot.lh2_position.x + round(point.x, 2),
                                 y=dotbot.lh2_position.y + round(point.y, 2),
-                                z=0,
                             )
                         ],
                     )

@@ -339,7 +339,6 @@ class Controller:
                 new_position = DotBotLH2Position(
                     x=frame.packet.payload.pos_x,
                     y=frame.packet.payload.pos_y,
-                    z=0.0,
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
                     dotbot.lh2_position = new_position

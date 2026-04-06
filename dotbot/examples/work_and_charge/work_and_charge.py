@@ -167,11 +167,11 @@ async def main() -> None:
 
         for address, controller in dotbot_controllers.items():
             goal = base_goals[address]
-            waypoint_charge = DotBotLH2Position(x=goal["x"], y=goal["y"], z=0)
+            waypoint_charge = DotBotLH2Position(x=goal["x"], y=goal["y"])
             controller.set_charge_waypoint(waypoint_charge)
 
             goal = work_goals[address]
-            waypoint_work = DotBotLH2Position(x=goal["x"], y=goal["y"], z=0)
+            waypoint_work = DotBotLH2Position(x=goal["x"], y=goal["y"])
             controller.set_work_waypoint(waypoint_work)
 
         while True:
@@ -292,7 +292,6 @@ async def main() -> None:
                                 DotBotLH2Position(
                                     x=agent.position.x + step.x,
                                     y=agent.position.y + step.y,
-                                    z=0,
                                 )
                             ],
                         )

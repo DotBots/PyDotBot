@@ -164,7 +164,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
             },
             False,
             ApplicationType.DotBot,
-            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100}]},
             200,
             True,
             id="dotbot_found",
@@ -176,12 +176,12 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    lh2_position=DotBotLH2Position(x=100, y=500, z=0),
+                    lh2_position=DotBotLH2Position(x=100, y=500),
                 ),
             },
             True,
             ApplicationType.DotBot,
-            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100}]},
             200,
             True,
             id="dotbot_with_position_found",
@@ -197,7 +197,7 @@ async def test_set_dotbots_rgb_led(dotbots, code, found):
             },
             False,
             ApplicationType.DotBot,
-            {"threshold": 100, "waypoints": [{"x": 500, "y": 100, "z": 0}]},
+            {"threshold": 100, "waypoints": [{"x": 500, "y": 100}]},
             404,
             False,
             id="dotbot_not_found",
@@ -276,16 +276,16 @@ async def test_set_dotbots_waypoints(
         payload = PayloadLH2Waypoints(
             threshold=100,
             count=1,
-            waypoints=[PayloadLH2Location(pos_x=500, pos_y=100, pos_z=0)],
+            waypoints=[PayloadLH2Location(pos_x=500, pos_y=100)],
         )
         expected_threshold = 100
         if has_position is True:
             expected_waypoints = [
-                DotBotLH2Position(x=100, y=500, z=0),
-                DotBotLH2Position(x=500, y=100, z=0),
+                DotBotLH2Position(x=100, y=500),
+                DotBotLH2Position(x=500, y=100),
             ]
         else:
-            expected_waypoints = [DotBotLH2Position(x=500, y=100, z=0)]
+            expected_waypoints = [DotBotLH2Position(x=500, y=100)]
 
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
@@ -440,8 +440,8 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     swarm="0000",
                     last_seen=123.4,
                     position_history=[
-                        DotBotLH2Position(x=0.0, y=0.5, z=0.0),
-                        DotBotLH2Position(x=0.5, y=0.5, z=0.0),
+                        DotBotLH2Position(x=0.0, y=0.5),
+                        DotBotLH2Position(x=0.5, y=0.5),
                     ],
                 ),
                 "12345": DotBotModel(
@@ -450,8 +450,8 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     swarm="0000",
                     last_seen=123.4,
                     position_history=[
-                        DotBotLH2Position(x=0.5, y=0.5, z=0.0),
-                        DotBotLH2Position(x=0.5, y=0.0, z=0.0),
+                        DotBotLH2Position(x=0.5, y=0.5),
+                        DotBotLH2Position(x=0.5, y=0.0),
                     ],
                 ),
             },
@@ -658,13 +658,13 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
                 application=ApplicationType.DotBot,
                 data=DotBotWaypoints(
                     threshold=10,
-                    waypoints=[DotBotLH2Position(x=500, y=100, z=0)],
+                    waypoints=[DotBotLH2Position(x=500, y=100)],
                 ),
             ),
             PayloadLH2Waypoints(
                 threshold=10,
                 count=1,
-                waypoints=[PayloadLH2Location(pos_x=500, pos_y=100, pos_z=0)],
+                waypoints=[PayloadLH2Location(pos_x=500, pos_y=100)],
             ),
             True,
             id="waypoints_valid",
