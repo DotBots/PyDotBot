@@ -57,6 +57,7 @@
   "scripts": {
     "start": "react-app-rewired --openssl-legacy-provider start",
     "build": "react-app-rewired build",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/.",
     "test": "react-app-rewired test --watchAll=false --collectCoverage --colors --transformIgnorePatterns \"node_modules/(?!react-leaflet)/\"",
     "eject": "react-app-rewired eject",
