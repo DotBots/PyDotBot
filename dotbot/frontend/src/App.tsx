@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import RestApp from "./RestApp";
 import QrKeyApp from "./QrKeyApp";
 
-const App = () => {
+const App: React.FC = () => {
   const [useQrKey, setUseQrKey] = useState(false);
   const [searchParams] = useSearchParams();
 
@@ -22,14 +22,13 @@ const App = () => {
     } else {
       localStorage.setItem('use_qrkey', 'false');
     }
-  }, [searchParams, setUseQrKey]
-  );
+  }, [searchParams, setUseQrKey]);
 
   return (
     <>
-    {useQrKey ? <QrKeyApp /> : <RestApp />}
+      {useQrKey ? <QrKeyApp /> : <RestApp />}
     </>
   );
-}
+};
 
 export default App;

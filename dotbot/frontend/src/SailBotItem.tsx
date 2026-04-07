@@ -1,53 +1,77 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import useInterval from "use-interval";
 import { RgbColorPicker } from "react-colorful";
 import { ApplicationType, dotbotStatuses, dotbotBadgeStatuses } from "./utils/constants";
+import { DotBot, PublishCommandFn } from "./types";
 
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
 
-export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoints, clearWaypoints, updateWaypointThreshold, clearPositionsHistory}) => {
+interface SailBotItemProps {
+  dotbot: DotBot;
+  publishCommand: PublishCommandFn;
+  updateActive: (address: string) => void;
+  applyWaypoints: (address: string, application: number) => Promise<void>;
+  clearWaypoints: (address: string, application: number) => Promise<void>;
+  updateWaypointThreshold: (address: string, threshold: number) => void;
+  clearPositionsHistory: (address: string) => Promise<void>;
+}
 
+export const SailBotItem: React.FC<SailBotItemProps> = ({
+  dotbot,
+  publishCommand,
+  updateActive,
+  applyWaypoints,
+  clearWaypoints,
+  updateWaypointThreshold,
+  clearPositionsHistory,
+}) => {
   const [rudderValue, setRudderValue] = useState(0);
   const [sailValue, setSailValue] = useState(0);
   const [active, setActive] = useState(true);
-  const [color, setColor] = useState({ r: 0, g: 0, b: 0 });
+  const [color, setColor] = useState<RgbColor>({ r: 0, g: 0, b: 0 });
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState('0'); // used for editing the value as a string
+  const [editValue, setEditValue] = useState('0');
 
-  const applyColor = async () => {
+  const applyColor = async (): Promise<void> => {
     await publishCommand(dotbot.address, dotbot.application, "rgb_led", { red: color.r, green: color.g, blue: color.b });
-  }
+  };
 
-  const handleTextClick = () => {
+  const handleTextClick = (): void => {
     setIsEditing(true);
     setEditValue(rudderValue.toString());
   };
 
-  const clampValue = (value) => {
+  const clampValue = (value: string): number => {
     const num = parseInt(value, 10);
     if (isNaN(num)) return 0;
     return Math.min(Math.max(num, -128), 127);
   };
 
-  const handleInputChange = (event) => {
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setEditValue(event.target.value);
   };
 
-  const handleInputConfirm = () => {
+  const handleInputConfirm = (): void => {
     const newValue = clampValue(editValue);
     rudderUpdate(newValue);
     setIsEditing(false);
   };
 
-  const handleInputBlur = () => handleInputConfirm();
-  const handleKeyPress = (event) => {
+  const handleInputBlur = (): void => handleInputConfirm();
+
+  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Enter') {
       event.preventDefault();
       handleInputConfirm();
     }
   };
 
-  const rudderUpdate = async (event) => {
-    let newRudderValue;
+  const rudderUpdate = (event: React.ChangeEvent<HTMLInputElement> | number): void => {
+    let newRudderValue: number;
     if (typeof event === 'object' && event.target) {
       newRudderValue = parseInt(event.target.value, 10);
     } else if (typeof event === 'number') {
@@ -59,13 +83,13 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
     setActive(newRudderValue !== undefined && newRudderValue !== null);
   };
 
-  const sailUpdate = async (event) => {
+  const sailUpdate = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const newSailValue = parseInt(event.target.value);
     setSailValue(newSailValue);
     setActive(newSailValue !== undefined && newSailValue !== null);
   };
 
-  const thresholdUpdate = async (event) => {
+  const thresholdUpdate = (event: React.ChangeEvent<HTMLInputElement>): void => {
     updateWaypointThreshold(dotbot.address, parseInt(event.target.value));
   };
 
@@ -78,16 +102,23 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
 
   useEffect(() => {
     if (dotbot.rgb_led) {
-      setColor({ r: dotbot.rgb_led.red, g: dotbot.rgb_led.green, b: dotbot.rgb_led.blue })
+      setColor({ r: dotbot.rgb_led.red, g: dotbot.rgb_led.green, b: dotbot.rgb_led.blue });
     } else {
-      setColor({ r: 0, g: 0, b: 0 })
+      setColor({ r: 0, g: 0, b: 0 });
     }
   }, [dotbot.rgb_led, setColor]);
 
   return (
     <div className="accordion-item">
       <h2 className="accordion-header" id={`heading-${dotbot.address}`}>
-        <button className="accordion-button collapsed" onClick={() => updateActive(dotbot.address)} type="button" data-bs-toggle="collapse" data-bs-target={`#collapse-${dotbot.address}`} aria-controls={`collapse-${dotbot.address}`}>
+        <button
+          className="accordion-button collapsed"
+          onClick={() => updateActive(dotbot.address)}
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target={`#collapse-${dotbot.address}`}
+          aria-controls={`collapse-${dotbot.address}`}
+        >
           <div className="d-flex" style={{ width: '100%' }}>
             <div className="me-auto">{dotbot.address}</div>
             <div className="me-2">
@@ -98,7 +129,12 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
           </div>
         </button>
       </h2>
-      <div id={`collapse-${dotbot.address}`} className="accordion-collapse collapse" aria-labelledby={`heading-${dotbot.address}`} data-bs-parent="#accordion-sailbots">
+      <div
+        id={`collapse-${dotbot.address}`}
+        className="accordion-collapse collapse"
+        aria-labelledby={`heading-${dotbot.address}`}
+        data-bs-parent="#accordion-sailbots"
+      >
         <div className="accordion-body">
           <div className="d-flex">
             <div className="mx-auto justify-content-center">
@@ -120,7 +156,7 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
             </div>
             <div className="mx-auto justify-content-center">
               <p>{`Sail: ${sailValue}`}</p>
-              <input type="range" min="-128" max="127" defaultValue={sailValue} onChange={sailUpdate}/>
+              <input type="range" min="-128" max="127" defaultValue={sailValue} onChange={sailUpdate} />
             </div>
           </div>
           <div className="d-flex justify-content-center">
@@ -133,7 +169,7 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
               <button className="btn btn-primary m-1" onClick={applyColor}>Apply color</button>
             </div>
           </div>
-          {dotbot.waypoints && dotbot.waypoints.length > 0 &&
+          {dotbot.waypoints && dotbot.waypoints.length > 0 && (
             <>
               <div className="d-flex mx-auto card">
                 <div className="card-body p-1">
@@ -144,19 +180,19 @@ export const SailBotItem = ({dotbot, publishCommand, updateActive, applyWaypoint
                   </p>
                   <div className="mx-auto justify-content-center">
                     <p>{`Target threshold: ${dotbot.waypoints_threshold}`}</p>
-                    <input type="range" min="0" max="100" defaultValue={dotbot.waypoints_threshold} onChange={thresholdUpdate}/>
-                </div>
+                    <input type="range" min="0" max="100" defaultValue={dotbot.waypoints_threshold} onChange={thresholdUpdate} />
+                  </div>
                 </div>
               </div>
             </>
-          }
-          {dotbot.position_history && dotbot.position_history.length > 0 &&
+          )}
+          {dotbot.position_history && dotbot.position_history.length > 0 && (
             <div className="d-flex me-auto">
               <button className="btn btn-primary btn-sm m-1" onClick={async () => clearPositionsHistory(dotbot.address)}>Clear positions history</button>
             </div>
-          }
+          )}
         </div>
       </div>
     </div>
   );
-}
+};
