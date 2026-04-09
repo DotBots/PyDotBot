@@ -40,6 +40,7 @@ dependencies = [
     "pynput         >= 1.8.1",
     "pyserial       >= 3.5",
     "qrkey          >= 0.12.1",
+    "rich           >= 14.0.0",
     "structlog      >= 24.4.0",
     "uvicorn        >= 0.32.0",
     "websockets     >= 13.1.0",
