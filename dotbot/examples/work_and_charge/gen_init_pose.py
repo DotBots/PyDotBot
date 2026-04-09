@@ -49,7 +49,7 @@ def main(output_path, control_loop_library_path):
             f"direction = {DIRECTION}\n"
         )
         if control_loop_library_path is not None:
-            block += f'control_loop_library_path = "{control_loop_library_path}"\n'
+            block += f'custom_control_loop_library = "{control_loop_library_path}"\n'
         lines.append(block)
 
     # Save to file

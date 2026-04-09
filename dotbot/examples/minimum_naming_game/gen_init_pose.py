@@ -46,7 +46,7 @@ def generate_lattice_toml(
             output_lines.append(f"direction = {direction}")
             if control_loop_library_path is not None:
                 output_lines.append(
-                    f'control_loop_library_path = "{control_loop_library_path}"'
+                    f'custom_control_loop_library = "{control_loop_library_path}"'
                 )
             output_lines.append("")  # Empty line for readability
 
