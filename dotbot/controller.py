@@ -122,6 +122,7 @@ class ControllerSettings:
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     map_size: str = MAP_SIZE_DEFAULT
+    background_map: str = ""
     webbrowser: bool = False
     verbose: bool = False
     log_level: str = "info"

@@ -6,19 +6,21 @@ import useWebSocket from 'react-use-websocket';
 import {
   apiFetchDotbots,
   apiFetchMapSize,
+  apiFetchBackgroundMap,
   apiUpdateMoveRaw,
   apiUpdateRgbLed,
   apiUpdateWaypoints,
   apiClearPositionsHistory,
 } from "./utils/rest";
 import DotBots from './DotBots';
-import { AreaSize, DotBot, CommandData, MoveRawData, RgbLedData, WaypointsData, WsMessage } from "./types";
+import { AreaSize, BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, WaypointsData, WsMessage } from "./types";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'RestApp' });
 
 const RestApp: React.FC = () => {
   const [areaSize, setAreaSize] = useState<AreaSize | undefined>(undefined);
+  const [backgroundMap, setBackgroundMap] = useState<BackgroundMap | undefined>(undefined);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
 
   const websocketUrl = `ws://localhost:8000/controller/ws/status`;
@@ -32,6 +34,11 @@ const RestApp: React.FC = () => {
     const data = await apiFetchMapSize().catch(error => console.log(error));
     if (data) setAreaSize(data);
   }, [setAreaSize]);
+
+  const fetchBackgroundMap = useCallback(async () => {
+    const data = await apiFetchBackgroundMap().catch(error => console.log(error));
+    if (data) setBackgroundMap(data);
+  }, [setBackgroundMap]);
 
   const publishCommand = async (
     address: string,
@@ -90,7 +97,10 @@ const RestApp: React.FC = () => {
     if (!areaSize) {
       fetchAreaSize();
     }
-  }, [dotbots, areaSize, fetchDotBots, fetchAreaSize]);
+    if (!backgroundMap) {
+      fetchBackgroundMap();
+    }
+  }, [dotbots, areaSize, backgroundMap, fetchDotBots, fetchAreaSize, fetchBackgroundMap]);
 
   return (
     <>
@@ -99,6 +109,7 @@ const RestApp: React.FC = () => {
           <DotBots
             dotbots={dotbots}
             areaSize={areaSize}
+            backgroundMap={backgroundMap}
             updateDotbots={setDotbots}
             publishCommand={publishCommand}
             publish={publish}

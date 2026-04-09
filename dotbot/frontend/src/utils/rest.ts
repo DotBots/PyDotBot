@@ -1,7 +1,7 @@
 import axios from 'axios';
 import logger from './logger';
 
-import { DotBot, AreaSize, MoveRawData, RgbLedData, LH2Position, GpsPosition } from '../types';
+import { DotBot, AreaSize, BackgroundMap, MoveRawData, RgbLedData, LH2Position, GpsPosition } from '../types';
 
 const log = logger.child({ module: 'Rest' });
 
@@ -20,6 +20,16 @@ export const apiFetchMapSize = async (): Promise<AreaSize> => {
     `${API_URL}/controller/map_size`,
   ).then(res => res.data);
 };
+
+export const apiFetchBackgroundMap = async (): Promise<BackgroundMap> => {
+  log.info("Fetching background map from API");
+  return await axios.get<BackgroundMap>(
+    `${API_URL}/controller/background_map`,
+  ).then(res => {
+    log.info(`Received background map data from API (${res.data.data.length} chars)`);
+    return res.data;
+  });
+}
 
 export const apiUpdateMoveRaw = async (
   address: string,

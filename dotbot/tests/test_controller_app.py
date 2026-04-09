@@ -43,6 +43,12 @@ Options:
   --log-output PATH               Filename where logs are redirected
   --config-path FILE              Path to a .toml configuration file.
   -m, --map-size TEXT             Map size in mm. Defaults to '2000x2000'
+  -M, --background-map FILE       Path to a background map image file in png
+                                  format. The image shouldbe a top-down view of
+                                  the environment, with 1024 pixels width and a
+                                  height proportional to the real map size. The
+                                  map size should be set with the --map-size
+                                  option (default: 2000x2000).
   --help                          Show this message and exit.
 """
 

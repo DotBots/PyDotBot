@@ -20,6 +20,10 @@ export interface AreaSize {
   height: number;
 }
 
+export interface BackgroundMap {
+  data: string; // Base64-encoded PNG image data
+}
+
 export interface DotBot {
   address: string;
   application: number;
