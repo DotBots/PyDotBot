@@ -122,7 +122,7 @@ const DotBotsMapPoint: React.FC<DotBotsMapPointProps> = memo((props) => {
   const posX = props.mapSize * parseInt(String(lh2Pos.x)) / props.areaSize.width;
   const posY = props.mapSize * parseInt(String(lh2Pos.y)) / props.areaSize.width;
 
-  const rotation = props.dotbot.direction ?? 0;
+  const rotation = (props.dotbot.direction !== -1000) ? props.dotbot.direction : 0;
   const isActiveOrHovered = props.dotbot.address === props.active || hovered;
   const radius = isActiveOrHovered
     ? props.mapSize * (dotbotRadius + 5) / props.areaSize.width
@@ -179,11 +179,6 @@ const DotBotsMapPoint: React.FC<DotBotsMapPointProps> = memo((props) => {
             />
           ))
       }
-      <g
-        transform={`rotate(${rotation} ${posX} ${posY})`}
-        stroke={`${props.dotbot.address === props.active ? "black" : "none"}`}
-        strokeWidth="1"
-      >
         <circle
           cx={posX}
           cy={posY}
@@ -191,22 +186,27 @@ const DotBotsMapPoint: React.FC<DotBotsMapPointProps> = memo((props) => {
           opacity={opacity}
           fill={rgbColor}
           style={{ cursor: "pointer" }}
+          stroke={`${(props.dotbot.address === props.active) ? "black" : "none"}`} strokeWidth="1"
           onClick={() => {
             props.updateActive(props.dotbot.address === props.active ? inactiveAddress : props.dotbot.address);
           }}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
         >
-          <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
+        <title>{`${props.dotbot.address}@${posX}x${posY}`}</title>
         </circle>
-        {props.dotbot.direction != null && (
+        {props.dotbot.direction !== -1000 && (
+        <g
+          transform={`rotate(${rotation} ${posX} ${posY})`}
+          stroke={`${props.dotbot.address === props.active ? "black" : "none"}`}
+          strokeWidth="1">
           <polygon
             points={`${posX - radius + 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX + radius - 10 * props.mapSize / props.areaSize.width},${posY + radius + directionShift} ${posX},${posY + radius + directionSize + directionShift}`}
             fill={rgbColor}
             opacity={opacity}
           />
+        </g>
         )}
-      </g>
     </>
   );
 });
