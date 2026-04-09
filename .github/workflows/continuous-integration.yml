@@ -105,6 +105,8 @@ jobs:
     #   working-directory: ./dotbot/frontend
     - run: npm run lint
       working-directory: ./dotbot/frontend
+    - run: npm run typecheck
+      working-directory: ./dotbot/frontend
     - run: npm run build
       working-directory: ./dotbot/frontend
     - name: Upload frontend build

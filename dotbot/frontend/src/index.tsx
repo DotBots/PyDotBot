@@ -11,7 +11,7 @@ import 'bootstrap-icons/font/bootstrap-icons.css';
 import 'bootstrap/dist/js/bootstrap.bundle.min';
 
 import logger from './utils/logger';
-const log = logger.child({module: 'index'});
+const log = logger.child({ module: 'index' });
 log.info(`Starting dotbot frontend`);
 
 const router = createBrowserRouter([
@@ -21,7 +21,7 @@ const router = createBrowserRouter([
   },
 ]);
 
-const root = ReactDOM.createRoot(document.getElementById('dotbots'));
+const root = ReactDOM.createRoot(document.getElementById('dotbots') as HTMLElement);
 root.render(
   <RouterProvider router={router} />
 );

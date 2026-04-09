@@ -1,50 +1,56 @@
-import React from 'react';
-import { useState } from "react";
+import React, { useState } from 'react';
 
 import './QrKeyForm.css';
 
-export const QrKeyForm = ({ mqttDataUpdate }) => {
+import { MqttData } from './types';
 
-  const [pinCode, setPinCode] = useState(null);
-  const [mqttHost, setMqttHost] = useState(null);
-  const [mqttPort, setMqttPort] = useState(null);
-  const [mqttVersion, setMqttVersion] = useState(5);
-  const [mqttUseSSL, setMqttUseSSL] = useState(true);
-  const [mqttUsername, setMqttUsername] = useState(null);
-  const [mqttPassword, setMqttPassword] = useState(null);
+interface QrKeyFormProps {
+  mqttDataUpdate: (data: MqttData) => void;
+}
 
-  const onInputPinChange = (event) => {
-    if (event.target.value.length === parseInt(process.env.REACT_APP_PIN_CODE_LENGTH)) {
+export const QrKeyForm: React.FC<QrKeyFormProps> = ({ mqttDataUpdate }) => {
+  const [pinCode, setPinCode] = useState<string | null>(null);
+  const [mqttHost, setMqttHost] = useState<string | null>(null);
+  const [mqttPort, setMqttPort] = useState<number | null>(null);
+  const [mqttVersion, setMqttVersion] = useState<number>(5);
+  const [mqttUseSSL, setMqttUseSSL] = useState<boolean>(true);
+  const [mqttUsername, setMqttUsername] = useState<string | null>(null);
+  const [mqttPassword, setMqttPassword] = useState<string | null>(null);
+
+  const pinCodeLength = parseInt(process.env.REACT_APP_PIN_CODE_LENGTH ?? "12");
+
+  const onInputPinChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    if (event.target.value.length === pinCodeLength) {
       setPinCode(event.target.value);
     }
   };
 
-  const onInputMqttHostChange = (event) => {
+  const onInputMqttHostChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttHost(event.target.value);
   };
 
-  const onInputMqttPortChange = (event) => {
+  const onInputMqttPortChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttPort(parseInt(event.target.value));
   };
 
-  const onInputMqttVersionChange = (event) => {
+  const onInputMqttVersionChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttVersion(parseInt(event.target.value));
   };
 
-  const onInputMqttUseSSLChange = (event) => {
+  const onInputMqttUseSSLChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttUseSSL(event.target.checked);
   };
 
-  const onInputMqttUsernameChange = (event) => {
+  const onInputMqttUsernameChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttUsername(event.target.value);
   };
 
-  const onInputMqttPasswordChange = (event) => {
+  const onInputMqttPasswordChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     setMqttPassword(event.target.value);
   };
 
-  const connect = () => {
-    const mqttData = {
+  const connect = (): void => {
+    const mqttData: MqttData = {
       pin: pinCode,
       mqtt_host: mqttHost,
       mqtt_port: mqttPort,
@@ -57,14 +63,19 @@ export const QrKeyForm = ({ mqttDataUpdate }) => {
     mqttDataUpdate(mqttData);
   };
 
-  const buttonDisabled = pinCode === null || pinCode.length !== parseInt(process.env.REACT_APP_PIN_CODE_LENGTH) || mqttHost === null || mqttPort === null || mqttVersion === null;
+  const buttonDisabled =
+    pinCode === null ||
+    pinCode.length !== pinCodeLength ||
+    mqttHost === null ||
+    mqttPort === null ||
+    mqttVersion === null;
 
   return (
     <div className="container">
       <form id="form-input">
         <p>Pin Code & MQTT broker settings:</p>
         <p>
-          <input type="password" className="form-control" placeholder="Pin Code" autoFocus="autofocus" onChange={(event) => onInputPinChange(event)} />
+          <input type="password" className="form-control" placeholder="Pin Code" autoFocus onChange={(event) => onInputPinChange(event)} />
         </p>
         <p>
           <input type="text" className="form-control" placeholder="MQTT Host" required onChange={(event) => onInputMqttHostChange(event)} />
@@ -76,7 +87,7 @@ export const QrKeyForm = ({ mqttDataUpdate }) => {
           <input type="number" className="form-control" placeholder="MQTT Version" required value={mqttVersion} onChange={(event) => onInputMqttVersionChange(event)} />
         </p>
         <p className="form-check form-control-sm">
-          <input className="form-check-input" type="checkbox" id="useSSLCheck" onChange={(event) => onInputMqttUseSSLChange(event)} value={ mqttUseSSL ? "on" : "off"} />
+          <input className="form-check-input" type="checkbox" id="useSSLCheck" onChange={(event) => onInputMqttUseSSLChange(event)} value={mqttUseSSL ? "on" : "off"} />
           <label className="form-check-label" htmlFor="useSSLCheck">Use SSL</label>
         </p>
         <p>

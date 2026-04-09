@@ -3,12 +3,12 @@ export const ApplicationType = {
   SailBot: 1,
   Freebot: 2,
   XGO: 3,
-};
+} as const;
 
 export const ControlModeType = {
   Manual: 0,
   Auto: 1,
-};
+} as const;
 
 export const NotificationType = {
   None: 0,
@@ -16,12 +16,12 @@ export const NotificationType = {
   Update: 2,
   PinCodeUpdate: 3,
   NewDotBot: 4,
-};
+} as const;
 
 export const RequestType = {
   DotBots: 0,
   AreaSize: 1,
-};
+} as const;
 
 export const inactiveAddress = "0000000000000000";
 
@@ -60,4 +60,4 @@ export const XGOActionId = {
   Dance: 23,
   Naughty: 24,
   Restore: 255,
-};
+} as const;
