@@ -120,16 +120,11 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
     }
   };
 
-  const updateWaypointThreshold = (address: string, threshold: number): void => {
-    const dotbotsTmp = dotbots.slice();
-    for (let idx = 0; idx < dotbots.length; idx++) {
-      if (dotbots[idx].address === address) {
-        dotbotsTmp[idx].waypoints_threshold = threshold;
-        updateDotbots(dotbotsTmp);
-        return;
-      }
-    }
-  };
+  const updateWaypointThreshold = useCallback((address: string, threshold: number): void => {
+    updateDotbots(prev => prev.map(db =>
+      db.address !== address ? db : { ...db, waypoints_threshold: threshold }
+    ));
+  }, [updateDotbots]);
 
   useEffect(() => {
     if (dotbots && control) {
