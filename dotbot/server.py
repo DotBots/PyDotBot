@@ -298,6 +298,8 @@ async def map_size():
 )
 async def background_map():
     """Background map HTTP GET handler."""
+    if not api.controller.settings.background_map:
+        return DotBotBackgroundMapModel(data="")
     with open(api.controller.settings.background_map, "rb") as f:
         encoded_string = base64.b64encode(f.read()).decode("utf-8")
     return DotBotBackgroundMapModel(data=encoded_string)
