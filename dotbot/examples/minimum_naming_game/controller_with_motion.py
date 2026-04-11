@@ -32,7 +32,7 @@ class Controller:
         self.max_speed = max_speed
         self.arena_limits = arena_limits
 
-        self.position = DotBotLH2Position(x=0.0, y=0.0, z=0.0)  # initial position
+        self.position = DotBotLH2Position(x=0.0, y=0.0)  # initial position
         self.direction = 0.0  # initial orientation
         self.prev_position: DotBotLH2Position | None = None
 

@@ -124,7 +124,6 @@ async def main() -> None:
                             DotBotLH2Position(
                                 x=dotbots[0].lh2_position.x,
                                 y=dotbots[0].lh2_position.y,
-                                z=0,
                             )
                         ],
                     )

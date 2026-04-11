@@ -309,7 +309,11 @@ class Controller:
         if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
             logger = logger.bind(application=ApplicationType.DotBot.name)
             dotbot.calibrated = int(frame.packet.payload.calibrated)
-            logger.info("Advertisement received", calibrated=hex(dotbot.calibrated))
+            dict_adv = dataclasses.asdict(frame.packet.payload)
+            dict_adv.pop("metadata", None)
+            logger.info(
+                "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
+            )
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             need_update = False
             is_fully_calibrated = all(
@@ -339,7 +343,6 @@ class Controller:
                 new_position = DotBotLH2Position(
                     x=frame.packet.payload.pos_x,
                     y=frame.packet.payload.pos_y,
-                    z=0.0,
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
                     dotbot.lh2_position = new_position

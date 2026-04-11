@@ -95,7 +95,6 @@ class FakeRestClient:
         bot.lh2_position = DotBotLH2Position(
             x=wp.x,
             y=wp.y,
-            z=wp.z,
         )
 
     async def send_move_raw_command(
@@ -190,7 +189,7 @@ def fake_bot(address: str, x: float, y: float) -> DotBotModel:
         application=ApplicationType.DotBot,
         status=DotBotStatus.ACTIVE,
         direction=0,
-        lh2_position=DotBotLH2Position(x=x, y=y, z=0),
+        lh2_position=DotBotLH2Position(x=x, y=y),
         last_seen=0,
     )
 

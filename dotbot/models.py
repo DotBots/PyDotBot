@@ -59,7 +59,6 @@ class DotBotLH2Position(BaseModel):
 
     x: float
     y: float
-    z: float = 0.0
 
 
 class DotBotControlModeModel(BaseModel):

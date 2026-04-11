@@ -73,8 +73,19 @@ class PayloadDotBotAdvertisement(Payload):
             PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
             PayloadFieldMetadata(name="pos_x", disp="x", length=4),
             PayloadFieldMetadata(name="pos_y", disp="y", length=4),
-            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
             PayloadFieldMetadata(name="battery", disp="bat.", length=2),
+            PayloadFieldMetadata(name="pwm_left", disp="pwm_l", signed=True),
+            PayloadFieldMetadata(name="pwm_right", disp="pwm_r", signed=True),
+            PayloadFieldMetadata(name="mode", disp="mode"),
+            PayloadFieldMetadata(
+                name="encoder_left", disp="enc_l", signed=True, length=4
+            ),
+            PayloadFieldMetadata(
+                name="encoder_right", disp="enc_r", signed=True, length=4
+            ),
+            PayloadFieldMetadata(name="waypoint_x", disp="wp_x", length=4),
+            PayloadFieldMetadata(name="waypoint_y", disp="wp_y", length=4),
+            PayloadFieldMetadata(name="waypoint_idx", disp="wp_idx"),
         ]
     )
 
@@ -82,8 +93,15 @@ class PayloadDotBotAdvertisement(Payload):
     direction: int = 0xFFFF
     pos_x: int = 0xFFFFFFFF
     pos_y: int = 0xFFFFFFFF
-    pos_z: int = 0xFFFFFFFF
     battery: int = 0
+    pwm_left: int = 0
+    pwm_right: int = 0
+    mode: int = ControlModeType.MANUAL
+    encoder_left: int = 0
+    encoder_right: int = 0
+    waypoint_x: int = 0
+    waypoint_y: int = 0
+    waypoint_idx: int = 0
 
 
 @dataclass
@@ -159,13 +177,11 @@ class PayloadLH2Location(Payload):
         default_factory=lambda: [
             PayloadFieldMetadata(name="pos_x", disp="x", length=4),
             PayloadFieldMetadata(name="pos_y", disp="y", length=4),
-            PayloadFieldMetadata(name="pos_z", disp="z", length=4),
         ]
     )
 
     pos_x: int = 0
     pos_y: int = 0
-    pos_z: int = 0
 
 
 @dataclass

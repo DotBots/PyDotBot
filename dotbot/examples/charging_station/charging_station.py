@@ -224,7 +224,7 @@ async def send_to_goal(
                 threshold=THRESHOLD * 0.9,
                 waypoints=[
                     DotBotLH2Position(
-                        x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
+                        x=agent.position.x + step.x, y=agent.position.y + step.y
                     )
                 ],
             )
