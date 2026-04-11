@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 export const useKeyPress = (targetKey: string): boolean => {
   const [keyPressed, setKeyPressed] = useState(false);
 
-  const downHandler = ({ key }: KeyboardEvent): void => {
-    if (key === targetKey) {
+  const downHandler = ({ key, repeat }: KeyboardEvent): void => {
+    if (key === targetKey && !repeat) {
       setKeyPressed(true);
     }
   };

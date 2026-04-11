@@ -71,9 +71,9 @@ export const handleDotBotUpdate = (prevList: DotBot[], message: WsMessage): DotB
       botChanged = true;
     }
 
-    // lh2_waypoints
-    if (message.data.waypoints != null && message.data.waypoints.length !== 0) {
-      updated = { ...updated, waypoints: message.data.waypoints };
+    // lh2_waypoints (from explicit waypoint notification, not position updates)
+    if (message.data.lh2_waypoints != null) {
+      updated = { ...updated, waypoints: message.data.lh2_waypoints };
       botChanged = true;
     }
 
@@ -88,9 +88,9 @@ export const handleDotBotUpdate = (prevList: DotBot[], message: WsMessage): DotB
       botChanged = true;
     }
 
-    // gps_waypoints
-    if (message.data.gps_waypoints != null && message.data.gps_waypoints.length === 0) {
-      updated = { ...updated, gps_waypoints: message.data.gps_waypoints };
+    // gps_waypoints (from explicit waypoint notification, not position updates)
+    if (message.data.gps_waypoints != null) {
+      updated = { ...updated, waypoints: message.data.gps_waypoints };
       botChanged = true;
     }
 

@@ -38,6 +38,7 @@ export interface DotBot {
   position_history: (LH2Position | GpsPosition)[];
   waypoints: (LH2Position | GpsPosition)[];
   waypoints_threshold: number;
+  lh2_waypoints?: LH2Position[];
   gps_position?: GpsPosition;
   gps_waypoints?: GpsPosition[];
   wind_angle?: number;

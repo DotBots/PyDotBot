@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { useKeyPress } from "./hooks/keyPress";
 import { DotBotItem } from "./DotBotItem";
@@ -30,6 +30,8 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
   const control = useKeyPress("Control");
   const enter = useKeyPress("Enter");
   const backspace = useKeyPress("Backspace");
+  const prevEnter = useRef(false);
+  const prevBackspace = useRef(false);
 
   const updateActive = useCallback(async (address: string) => {
     log.info(`Updating active dotbot to ${address}`);
@@ -108,17 +110,14 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
     }
   }, [dotbots, updateDotbots, publishCommand]);
 
-  const clearPositionsHistory = async (address: string): Promise<void> => {
-    const dotbotsTmp = dotbots.slice();
-    for (let idx = 0; idx < dotbots.length; idx++) {
-      if (dotbots[idx].address === address) {
-        dotbotsTmp[idx].position_history = [];
-        await publishCommand(address, dotbots[idx].application, "clear_position_history", "");
-        updateDotbots(dotbotsTmp);
-        return;
-      }
-    }
-  };
+  const clearPositionsHistory = useCallback(async (address: string): Promise<void> => {
+    const dotbot = dotbots.find(db => db.address === address);
+    if (!dotbot) return;
+    updateDotbots(prev => prev.map(db =>
+      db.address !== address ? db : { ...db, position_history: [] }
+    ));
+    await publishCommand(address, dotbot.application, "clear_position_history", "");
+  }, [dotbots, updateDotbots, publishCommand]);
 
   const updateWaypointThreshold = useCallback((address: string, threshold: number): void => {
     updateDotbots(prev => prev.map(db =>
@@ -127,8 +126,12 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
   }, [updateDotbots]);
 
   useEffect(() => {
+    const enterPressed = enter && !prevEnter.current;
+    const backspacePressed = backspace && !prevBackspace.current;
+    prevEnter.current = enter;
+    prevBackspace.current = backspace;
     if (dotbots && control) {
-      if (enter) {
+      if (enterPressed) {
         if (activeDotbot !== inactiveAddress) {
           for (let idx = 0; idx < dotbots.length; idx++) {
             if (dotbots[idx].address === activeDotbot) {
@@ -138,7 +141,7 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
           }
         }
       }
-      if (backspace) {
+      if (backspacePressed) {
         if (activeDotbot !== inactiveAddress) {
           for (let idx = 0; idx < dotbots.length; idx++) {
             if (dotbots[idx].address === activeDotbot) {
