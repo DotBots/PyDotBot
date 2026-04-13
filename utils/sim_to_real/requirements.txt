@@ -1,0 +1,6 @@
+click
+matplotlib
+numpy
+pandas
+rich
+torch
