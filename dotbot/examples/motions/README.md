@@ -11,6 +11,7 @@ This example moves a single DotBot through a predefined motion: either a geometr
 | `triangle`    | waypoints  | Equilateral triangle centred in the arena        |
 | `circle`      | waypoints  | Circular path centred in the arena               |
 | `infinity`    | waypoints  | Lemniscate (∞) path centred in the arena         |
+| `sawtooth`    | waypoints  | Boustrophedon sawtooth sweep across the arena    |
 | `speed_ramp`  | move\_raw  | Forward motion with a sinusoidal speed envelope  |
 | `speed_steps` | move\_raw  | Forward/backward motion stepping through discrete speed levels |
 
@@ -36,11 +37,13 @@ If `--address` is omitted, the script automatically picks the first available Do
 
 ```
   -a, --address TEXT              DotBot address (hex).
-  -m, --motion [square|triangle|circle|infinity|speed_ramp|speed_steps]
+  -m, --motion [square|triangle|circle|infinity|sawtooth|speed_ramp|speed_steps]
                                   Motion to execute.  [required]
   -n, --repeat INTEGER            Number of times to replay the motion.  [default: 1]
   --scale FLOAT                   Shape scale in mm.  [default: 400]
   --arena-size INTEGER            Arena size in mm (square arena).  [default: 2000]
+  --waypoint-threshold INTEGER    Proximity threshold in mm to consider a waypoint reached.
+                                  Ignored for raw motions.  [default: 100]
   --host TEXT                     Controller host.  [default: localhost]
   --port INTEGER                  Controller port.  [default: 8000]
 ```
