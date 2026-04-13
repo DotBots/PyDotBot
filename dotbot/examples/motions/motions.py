@@ -192,7 +192,7 @@ def _center(arena_size: int) -> tuple[int, int]:
 
 
 def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
-    """Return the 4 corners of a square centered in the arena."""
+    """Return the 4 corners of a square centered in the arena, closed back to the start."""
     cx, cy = _center(arena_size)
     h = scale / 2
     return [
@@ -200,6 +200,7 @@ def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
         {"x": round(cx + h), "y": round(cy + h)},
         {"x": round(cx - h), "y": round(cy + h)},
         {"x": round(cx - h), "y": round(cy - h)},
+        {"x": round(cx + h), "y": round(cy - h)},
     ]
 
 
