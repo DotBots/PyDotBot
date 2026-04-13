@@ -144,7 +144,7 @@ export const DotBotItem: React.FC<DotBotItemProps> = ({
                   </div>
                   <div className="mx-auto justify-content-center">
                     <p>{`Target threshold: ${dotbot.waypoints_threshold}`}</p>
-                    <input type="range" min="0" max="1000" defaultValue={dotbot.waypoints_threshold} onChange={thresholdUpdate} />
+                    <input type="range" min="0" max="1000" value={dotbot.waypoints_threshold ?? 0} onChange={thresholdUpdate} />
                   </div>
                 </div>
               </div>
