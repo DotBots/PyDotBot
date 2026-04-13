@@ -37,7 +37,7 @@ from dotbot.models import (
     WSMoveRaw,
     WSWaypoints,
 )
-from dotbot.protocol import ApplicationType
+from dotbot.protocol import ApplicationType, ControlModeType
 from dotbot.rest import rest_client
 from dotbot.websocket import DotBotWsClient
 
@@ -82,6 +82,7 @@ async def send_waypoints(
     waypoints: list[dict],
     host: str,
     port: int,
+    threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     """
     Send a list of waypoints to the DotBot via WebSocket.
@@ -104,7 +105,7 @@ async def send_waypoints(
                 address=address,
                 application=APPLICATION,
                 data=DotBotWaypoints(
-                    threshold=WAYPOINT_THRESHOLD,
+                    threshold=threshold,
                     waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
                 ),
             )
@@ -112,23 +113,29 @@ async def send_waypoints(
         rprint(
             f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sent [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for completion ...[/yellow]"
         )
-        await _wait_for_waypoints_done(address, chunk[-1], host, port)
+        await _wait_for_waypoints_done(address, host, port, threshold)
     rprint("  [green]✓[/green] All waypoint batches completed")
 
 
 async def _wait_for_waypoints_done(
     address: str,
-    last_wp: dict,
     host: str,
     port: int,
+    threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     """
     Poll the REST API until the batch is complete.
-    Two conditions are accepted:
-    - The controller cleared the waypoints list (nominal case for intermediate waypoints).
-    - The robot is within threshold of the last waypoint (handles the case where the
-      controller never removes the last waypoint because there is no next one to move to).
+
+    The batch is considered done when one of these conditions holds:
+    - The controller cleared the waypoints list (nominal case when there are
+      more waypoints to come and the robot advances the index beyond the end).
+    - The robot's mode transitions AUTO → MANUAL, which is set by the firmware/
+      simulator when all_done fires after the last waypoint is reached. This is
+      the only reliable signal: waypoint_idx resets to 0 on completion so
+      index-based checks cannot be used. Requiring seen_auto first prevents
+      exiting before the robot has started executing the batch.
     """
+    seen_auto = False
     async with rest_client(host, port, False) as client:
         while True:
             dotbots = await client.fetch_dotbots(
@@ -138,13 +145,10 @@ async def _wait_for_waypoints_done(
                 bot = dotbots[0]
                 if not bot.waypoints:
                     break
-                if bot.lh2_position is not None:
-                    dist = math.hypot(
-                        bot.lh2_position.x - last_wp["x"],
-                        bot.lh2_position.y - last_wp["y"],
-                    )
-                    if dist <= WAYPOINT_THRESHOLD:
-                        break
+                if bot.mode == ControlModeType.AUTO:
+                    seen_auto = True
+                if seen_auto and bot.mode == ControlModeType.MANUAL:
+                    break
             await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
 
@@ -188,7 +192,7 @@ def _center(arena_size: int) -> tuple[int, int]:
 
 
 def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
-    """Return the 4 corners of a square centered in the arena."""
+    """Return the 4 corners of a square centered in the arena, closed back to the start."""
     cx, cy = _center(arena_size)
     h = scale / 2
     return [
@@ -196,6 +200,7 @@ def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
         {"x": round(cx + h), "y": round(cy + h)},
         {"x": round(cx - h), "y": round(cy + h)},
         {"x": round(cx - h), "y": round(cy - h)},
+        {"x": round(cx + h), "y": round(cy - h)},
     ]
 
 
@@ -230,6 +235,63 @@ def circle_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]
                 "y": round(cy + r * math.sin(angle)),
             }
         )
+    return points
+
+
+def sawtooth_waypoints(scale: float, arena_size: int, _) -> list[dict]:
+    """
+    Boustrophedon sawtooth sweep centered in the arena.
+
+    The robot sweeps left→right across 80% of the arena width with 4 teeth,
+    then takes a single vertical step at the right edge, then sweeps right→left
+    with teeth interleaved with the forward sweep.  `scale` sets the
+    peak-to-valley height of each tooth.
+
+    All waypoints — both sweeps — are horizontally spaced at tooth_w / 2,
+    forming a regular grid.  The return peaks land at the x positions of the
+    forward valleys and vice versa:
+
+        Sweep 1 (→):  P   P   P   P   P      (y_high, x = 0, t, 2t, 3t, 4t)
+                       \\ / \\ / \\ / \\ /
+                        V   V   V   V         (y_low,  x = 0.5t … 3.5t)
+
+        vertical step at x = 4t: y_high → y_low
+
+        Sweep 2 (←):      P   P   P   P      (y_high, x = 3.5t, 2.5t, 1.5t, 0.5t)
+                          / \\ / \\ / \\ / \\
+                         V   V   V   V   V   (y_low,  x = 4t, 3t, 2t, t, 0)
+    """
+    N_TEETH = 4
+    cx, cy = _center(arena_size)
+    width = 0.8 * arena_size
+    left_x = round(cx - width / 2)
+    right_x = round(cx + width / 2)
+    tooth_w = width / N_TEETH
+    y_high = round(cy - scale / 2)
+    y_low = round(cy + scale / 2)
+
+    points = []
+
+    # Sweep 1: left → right
+    # Peaks (y_high) at left_x + i*tooth_w, valleys (y_low) at left_x + (i+0.5)*tooth_w
+    points.append({"x": left_x, "y": y_high})
+    for i in range(N_TEETH):
+        points.append({"x": round(left_x + (i + 0.5) * tooth_w), "y": y_low})
+        points.append({"x": round(left_x + (i + 1) * tooth_w), "y": y_high})
+    # Now at (right_x, y_high)
+
+    # Vertical step at right edge
+    points.append({"x": right_x, "y": y_low})
+
+    # Sweep 2: right → left, interleaved with sweep 1
+    # Peaks (y_high) at right_x - (i+0.5)*tooth_w  → same x as sweep 1 valleys
+    # Valleys (y_low) at right_x - (i+1)*tooth_w   → same x as sweep 1 peaks
+    for i in range(N_TEETH):
+        points.append({"x": round(right_x - (i + 0.5) * tooth_w), "y": y_high})
+        points.append({"x": round(right_x - (i + 1) * tooth_w), "y": y_low})
+    # Now at (left_x, y_low) — close back to the start
+    points.append({"x": left_x, "y": y_high})
+
     return points
 
 
@@ -328,6 +390,7 @@ MOTIONS = {
     "triangle": ("waypoints", triangle_waypoints),
     "circle": ("waypoints", circle_waypoints),
     "infinity": ("waypoints", infinity_waypoints),
+    "sawtooth": ("waypoints", sawtooth_waypoints),
     "speed_ramp": ("move_raw", speed_ramp),
     "speed_steps": ("move_raw", speed_steps),
 }
@@ -341,6 +404,7 @@ async def run_motion(
     scale: float,
     arena_size: int,
     num_points: int,
+    waypoint_threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     kind, fn = MOTIONS[motion_name]
 
@@ -364,7 +428,7 @@ async def run_motion(
             for i, wp in enumerate(waypoints):
                 table.add_row(str(i + 1), str(wp["x"]), str(wp["y"]))
             Console().print(table)
-            await send_waypoints(ws, address, waypoints, host, port)
+            await send_waypoints(ws, address, waypoints, host, port, waypoint_threshold)
 
         elif kind == "move_raw":
             await fn(ws, address)
@@ -372,7 +436,17 @@ async def run_motion(
         await ws.close()
 
 
-async def run_async(host, port, address, motion, repeat, scale, arena_size, num_points):
+async def run_async(
+    host,
+    port,
+    address,
+    motion,
+    repeat,
+    scale,
+    arena_size,
+    num_points,
+    waypoint_threshold,
+):
     if address is None:
         rprint("[yellow]No address provided — fetching available DotBots ...[/yellow]")
         async with rest_client(host, port, False) as client:
@@ -387,7 +461,16 @@ async def run_async(host, port, address, motion, repeat, scale, arena_size, num_
     for i in range(repeat):
         if repeat > 1:
             rprint(f"\n  [bold]Iteration {i + 1}/{repeat}[/bold]")
-        await run_motion(host, port, address, motion, scale, arena_size, num_points)
+        await run_motion(
+            host,
+            port,
+            address,
+            motion,
+            scale,
+            arena_size,
+            num_points,
+            waypoint_threshold,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -453,10 +536,37 @@ async def run_async(host, port, address, motion, repeat, scale, arena_size, num_
     show_default=True,
     help="Number of waypoints used with circle and infinity motions.",
 )
-def main(host, port, address, motion, repeat, scale, arena_size, num_points) -> None:
+@click.option(
+    "--waypoint-threshold",
+    type=int,
+    default=WAYPOINT_THRESHOLD,
+    show_default=True,
+    help="Proximity threshold in mm to consider a waypoint reached. Ignored for raw motions.",
+)
+def main(
+    host,
+    port,
+    address,
+    motion,
+    repeat,
+    scale,
+    arena_size,
+    num_points,
+    waypoint_threshold,
+) -> None:
     """DotBot motion examples."""
     asyncio.run(
-        run_async(host, port, address, motion, repeat, scale, arena_size, num_points)
+        run_async(
+            host,
+            port,
+            address,
+            motion,
+            repeat,
+            scale,
+            arena_size,
+            num_points,
+            waypoint_threshold,
+        )
     )
 
 
