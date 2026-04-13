@@ -87,6 +87,7 @@ const RestApp: React.FC = () => {
     onClose: () => log.warn("websocket closed"),
     onMessage: (event) => onWsMessage(event),
     shouldReconnect: () => true,
+    reconnectInterval: (attempt) => Math.min(500 * 2 ** attempt, 10000),
     filter: () => false,
   });
 
