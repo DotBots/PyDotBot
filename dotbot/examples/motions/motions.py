@@ -82,6 +82,7 @@ async def send_waypoints(
     waypoints: list[dict],
     host: str,
     port: int,
+    threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     """
     Send a list of waypoints to the DotBot via WebSocket.
@@ -104,7 +105,7 @@ async def send_waypoints(
                 address=address,
                 application=APPLICATION,
                 data=DotBotWaypoints(
-                    threshold=WAYPOINT_THRESHOLD,
+                    threshold=threshold,
                     waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
                 ),
             )
@@ -112,7 +113,7 @@ async def send_waypoints(
         rprint(
             f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sent [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for completion ...[/yellow]"
         )
-        await _wait_for_waypoints_done(address, chunk[-1], host, port)
+        await _wait_for_waypoints_done(address, chunk[-1], host, port, threshold)
     rprint("  [green]✓[/green] All waypoint batches completed")
 
 
@@ -121,6 +122,7 @@ async def _wait_for_waypoints_done(
     last_wp: dict,
     host: str,
     port: int,
+    threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     """
     Poll the REST API until the batch is complete.
@@ -143,7 +145,7 @@ async def _wait_for_waypoints_done(
                         bot.lh2_position.x - last_wp["x"],
                         bot.lh2_position.y - last_wp["y"],
                     )
-                    if dist <= WAYPOINT_THRESHOLD:
+                    if dist <= threshold:
                         break
             await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
@@ -341,6 +343,7 @@ async def run_motion(
     scale: float,
     arena_size: int,
     num_points: int,
+    waypoint_threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     kind, fn = MOTIONS[motion_name]
 
@@ -364,7 +367,7 @@ async def run_motion(
             for i, wp in enumerate(waypoints):
                 table.add_row(str(i + 1), str(wp["x"]), str(wp["y"]))
             Console().print(table)
-            await send_waypoints(ws, address, waypoints, host, port)
+            await send_waypoints(ws, address, waypoints, host, port, waypoint_threshold)
 
         elif kind == "move_raw":
             await fn(ws, address)
@@ -372,7 +375,17 @@ async def run_motion(
         await ws.close()
 
 
-async def run_async(host, port, address, motion, repeat, scale, arena_size, num_points):
+async def run_async(
+    host,
+    port,
+    address,
+    motion,
+    repeat,
+    scale,
+    arena_size,
+    num_points,
+    waypoint_threshold,
+):
     if address is None:
         rprint("[yellow]No address provided — fetching available DotBots ...[/yellow]")
         async with rest_client(host, port, False) as client:
@@ -387,7 +400,16 @@ async def run_async(host, port, address, motion, repeat, scale, arena_size, num_
     for i in range(repeat):
         if repeat > 1:
             rprint(f"\n  [bold]Iteration {i + 1}/{repeat}[/bold]")
-        await run_motion(host, port, address, motion, scale, arena_size, num_points)
+        await run_motion(
+            host,
+            port,
+            address,
+            motion,
+            scale,
+            arena_size,
+            num_points,
+            waypoint_threshold,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -453,10 +475,37 @@ async def run_async(host, port, address, motion, repeat, scale, arena_size, num_
     show_default=True,
     help="Number of waypoints used with circle and infinity motions.",
 )
-def main(host, port, address, motion, repeat, scale, arena_size, num_points) -> None:
+@click.option(
+    "--waypoint-threshold",
+    type=int,
+    default=WAYPOINT_THRESHOLD,
+    show_default=True,
+    help="Proximity threshold in mm to consider a waypoint reached. Ignored for raw motions.",
+)
+def main(
+    host,
+    port,
+    address,
+    motion,
+    repeat,
+    scale,
+    arena_size,
+    num_points,
+    waypoint_threshold,
+) -> None:
     """DotBot motion examples."""
     asyncio.run(
-        run_async(host, port, address, motion, repeat, scale, arena_size, num_points)
+        run_async(
+            host,
+            port,
+            address,
+            motion,
+            repeat,
+            scale,
+            arena_size,
+            num_points,
+            waypoint_threshold,
+        )
     )
 
 
