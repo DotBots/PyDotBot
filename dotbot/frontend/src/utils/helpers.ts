@@ -77,6 +77,12 @@ export const handleDotBotUpdate = (prevList: DotBot[], message: WsMessage): DotB
       botChanged = true;
     }
 
+    // waypoints_threshold
+    if (message.data.waypoints_threshold != null && bot.waypoints_threshold !== message.data.waypoints_threshold) {
+      updated = { ...updated, waypoints_threshold: message.data.waypoints_threshold };
+      botChanged = true;
+    }
+
     // gps_position + position_history
     if (
       message.data.gps_position != null &&

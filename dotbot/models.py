@@ -187,6 +187,7 @@ class DotBotNotificationUpdate(BaseModel):
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
     lh2_waypoints: Optional[List[DotBotLH2Position]] = None
     gps_waypoints: Optional[List[DotBotGPSPosition]] = None
+    waypoints_threshold: Optional[int] = None
     position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
 
 

@@ -201,6 +201,7 @@ async def _dotbots_waypoints(
         update_data = DotBotNotificationUpdate(
             address=address,
             gps_waypoints=waypoints_list,
+            waypoints_threshold=waypoints.threshold,
         )
     else:  # DotBot application
         if api.controller.dotbots[address].lh2_position is not None:
@@ -221,6 +222,7 @@ async def _dotbots_waypoints(
         update_data = DotBotNotificationUpdate(
             address=address,
             lh2_waypoints=waypoints_list,
+            waypoints_threshold=waypoints.threshold,
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
