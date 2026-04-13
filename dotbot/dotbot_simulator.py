@@ -51,6 +51,18 @@ MAX_BATTERY_DURATION = 300  # 5 minutes
 ADVERTISEMENT_INTERVAL_S = 0.5
 SIMULATOR_UPDATE_INTERVAL_S = 0.1
 
+# Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
+GRU_FEATURE_COLS = [
+    "pwm_left",
+    "pwm_right",
+    "encoder_left",
+    "encoder_right",
+    "direction",
+    "pos_x",
+    "pos_y",
+]
+GRU_SEQ_LEN_DEFAULT = 20  # must match --seq-len used during training
+
 
 def battery_discharge_model(time_elapsed_s: float) -> int:
     """Simple battery discharge model."""
@@ -90,6 +102,7 @@ class SimulatedDotBotSettings(BaseModel):
     motor_left_error: float = 0
     motor_right_error: float = 0
     custom_control_loop_library: Path = None
+    gru_model_path: Path = None
 
 
 class RobotControl(ctypes.Structure):
@@ -161,6 +174,13 @@ class DotBotSimulator:
         self.waypoint_x = 0
         self.waypoint_y = 0
 
+        self._gru_model = None
+        self._gru_buffer: list[list[float]] = (
+            []
+        )  # rolling window of raw feature vectors
+        if settings.gru_model_path is not None:
+            self._gru_model = self._load_gru_model(settings.gru_model_path)
+
         self._lock = threading.Lock()
         self.tx_queue = tx_queue
         self.queue = queue.Queue()
@@ -178,6 +198,37 @@ class DotBotSimulator:
             direction=self.direction,
             theta=self.theta,
         )
+
+    def _load_gru_model(self, path: Path):
+        """Load a TorchScript GRU residual model from *path*."""
+        try:
+            import torch  # imported lazily — not required when model is unused
+
+            model = torch.jit.load(str(path), map_location="cpu")
+            model.eval()
+            self.logger.info("GRU residual model loaded", path=str(path))
+            return model
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(
+                "Failed to load GRU model", path=str(path), error=str(exc)
+            )
+            return None
+
+    def _gru_residual(self) -> tuple[float, float]:
+        """Return (dx_residual, dy_residual) predicted by the GRU, or (0, 0)."""
+        if self._gru_model is None or len(self._gru_buffer) < GRU_SEQ_LEN_DEFAULT:
+            return 0.0, 0.0
+        try:
+            import torch
+
+            seq = self._gru_buffer[-GRU_SEQ_LEN_DEFAULT:]
+            x = torch.tensor([seq], dtype=torch.float32)  # (1, seq_len, n_features)
+            with torch.no_grad():
+                pred = self._gru_model(x)  # (1, 2)
+            return float(pred[0, 0]), float(pred[0, 1])
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("GRU inference failed", error=str(exc))
+            return 0.0, 0.0
 
     def start(self):
         self.rx_thread.start()
@@ -222,6 +273,26 @@ class DotBotSimulator:
         # Accumulate encoder counts for this physics step
         self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
         self.encoder_right_acc += v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
+
+        # Update GRU feature buffer with the post-step state
+        if self._gru_model is not None:
+            self._gru_buffer.append(
+                [
+                    float(self.pwm_left),
+                    float(self.pwm_right),
+                    float(self.encoder_left_acc),
+                    float(self.encoder_right_acc),
+                    float(self.direction),
+                    float(self.pos_x),
+                    float(self.pos_y),
+                ]
+            )
+            # Keep only as many steps as needed to avoid unbounded growth
+            if len(self._gru_buffer) > GRU_SEQ_LEN_DEFAULT:
+                self._gru_buffer.pop(0)
+            res_x, res_y = self._gru_residual()
+            self.pos_x += res_x
+            self.pos_y += res_y
 
         self.logger.debug(
             "State updated",
