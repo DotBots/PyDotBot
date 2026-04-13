@@ -37,7 +37,7 @@ from dotbot.models import (
     WSMoveRaw,
     WSWaypoints,
 )
-from dotbot.protocol import ApplicationType
+from dotbot.protocol import ApplicationType, ControlModeType
 from dotbot.rest import rest_client
 from dotbot.websocket import DotBotWsClient
 
@@ -113,24 +113,29 @@ async def send_waypoints(
         rprint(
             f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sent [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for completion ...[/yellow]"
         )
-        await _wait_for_waypoints_done(address, chunk[-1], host, port, threshold)
+        await _wait_for_waypoints_done(address, host, port, threshold)
     rprint("  [green]✓[/green] All waypoint batches completed")
 
 
 async def _wait_for_waypoints_done(
     address: str,
-    last_wp: dict,
     host: str,
     port: int,
     threshold: int = WAYPOINT_THRESHOLD,
 ) -> None:
     """
     Poll the REST API until the batch is complete.
-    Two conditions are accepted:
-    - The controller cleared the waypoints list (nominal case for intermediate waypoints).
-    - The robot is within threshold of the last waypoint (handles the case where the
-      controller never removes the last waypoint because there is no next one to move to).
+
+    The batch is considered done when one of these conditions holds:
+    - The controller cleared the waypoints list (nominal case when there are
+      more waypoints to come and the robot advances the index beyond the end).
+    - The robot's mode transitions AUTO → MANUAL, which is set by the firmware/
+      simulator when all_done fires after the last waypoint is reached. This is
+      the only reliable signal: waypoint_idx resets to 0 on completion so
+      index-based checks cannot be used. Requiring seen_auto first prevents
+      exiting before the robot has started executing the batch.
     """
+    seen_auto = False
     async with rest_client(host, port, False) as client:
         while True:
             dotbots = await client.fetch_dotbots(
@@ -140,13 +145,10 @@ async def _wait_for_waypoints_done(
                 bot = dotbots[0]
                 if not bot.waypoints:
                     break
-                if bot.lh2_position is not None:
-                    dist = math.hypot(
-                        bot.lh2_position.x - last_wp["x"],
-                        bot.lh2_position.y - last_wp["y"],
-                    )
-                    if dist <= threshold:
-                        break
+                if bot.mode == ControlModeType.AUTO:
+                    seen_auto = True
+                if seen_auto and bot.mode == ControlModeType.MANUAL:
+                    break
             await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
 

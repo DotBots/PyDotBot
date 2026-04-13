@@ -62,6 +62,7 @@ from dotbot.models import (
 )
 from dotbot.protocol import (
     ApplicationType,
+    ControlModeType,
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
@@ -368,6 +369,10 @@ class Controller:
 
             if dotbot.battery != frame.packet.payload.battery / 1000.0:
                 dotbot.battery = frame.packet.payload.battery / 1000.0  # mV to V
+                need_update = True
+
+            if dotbot.mode != ControlModeType(frame.packet.payload.mode):
+                dotbot.mode = ControlModeType(frame.packet.payload.mode)
                 need_update = True
 
             self.logger.debug(
