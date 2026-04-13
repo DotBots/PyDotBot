@@ -158,6 +158,8 @@ class DotBotSimulator:
         self.waypoint_threshold = 0
         self.waypoints = []
         self.waypoint_index = 0
+        self.waypoint_x = 0
+        self.waypoint_y = 0
 
         self._lock = threading.Lock()
         self.tx_queue = tx_queue
@@ -269,6 +271,9 @@ class DotBotSimulator:
             self.pwm_left = 0
             self.pwm_right = 0
             self.custom_robot_control.waypoint_idx = 0
+            self.waypoint_index = 0
+            self.waypoint_x = 0
+            self.waypoint_y = 0
             self.controller_mode = ControlModeType.MANUAL
             return
 
@@ -290,6 +295,9 @@ class DotBotSimulator:
 
         self.pwm_left = self.custom_robot_control.pwm_left
         self.pwm_right = self.custom_robot_control.pwm_right
+        self.waypoint_index = self.custom_robot_control.waypoint_idx
+        self.waypoint_x = self.custom_robot_control.waypoint_x
+        self.waypoint_y = self.custom_robot_control.waypoint_y
 
         self.logger.info(
             "Custom loop",
@@ -309,6 +317,9 @@ class DotBotSimulator:
         if self.custom_robot_control.all_done:
             self.logger.info("All waypoints completed")
             self.custom_robot_control.waypoint_idx = 0
+            self.waypoint_index = 0
+            self.waypoint_x = 0
+            self.waypoint_y = 0
             self.controller_mode = ControlModeType.MANUAL
 
     def _control_loop_default(self):
@@ -328,8 +339,13 @@ class DotBotSimulator:
                 self.pwm_left = 0
                 self.pwm_right = 0
                 self.waypoint_index = 0
+                self.waypoint_x = 0
+                self.waypoint_y = 0
                 self.controller_mode = ControlModeType.MANUAL
                 return
+
+        self.waypoint_x = int(self.waypoints[self.waypoint_index].pos_x)
+        self.waypoint_y = int(self.waypoints[self.waypoint_index].pos_y)
 
         angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
         robot_angle = self.direction
@@ -393,8 +409,8 @@ class DotBotSimulator:
                         mode=int(self.controller_mode),
                         encoder_left=int(self.encoder_left_acc),
                         encoder_right=int(self.encoder_right_acc),
-                        # waypoint_x=int(self.waypoint_x),
-                        # waypoint_y=int(self.waypoint_y),
+                        waypoint_x=int(self.waypoint_x),
+                        waypoint_y=int(self.waypoint_y),
                         waypoint_idx=int(self.waypoint_index),
                     )
                 ),
@@ -415,6 +431,9 @@ class DotBotSimulator:
                 if self.address == hex(frame.header.destination)[2:]:
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
+                        self.waypoint_index = 0
+                        self.waypoint_x = 0
+                        self.waypoint_y = 0
                         self.pwm_left = frame.packet.payload.left_y
                         self.pwm_right = frame.packet.payload.right_y
                         if self.pwm_left > 127:

@@ -379,6 +379,14 @@ class Controller:
                             real_direction=dotbot.direction,
                             pwm_right=frame.packet.payload.pwm_right,
                             pwm_left=frame.packet.payload.pwm_left,
+                            encoder_right=frame.packet.payload.encoder_right,
+                            encoder_left=frame.packet.payload.encoder_left,
+                            control_mode=ControlModeType(
+                                frame.packet.payload.mode
+                            ).name,
+                            waypoint_index=frame.packet.payload.waypoint_idx,
+                            waypoint_x=frame.packet.payload.waypoint_x,
+                            waypoint_y=frame.packet.payload.waypoint_y,
                             battery_level=dotbot.battery,
                             address=dotbot.address,
                         )
