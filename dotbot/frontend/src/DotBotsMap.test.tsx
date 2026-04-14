@@ -201,7 +201,7 @@ test('DotBotsMap renders waypoint shapes when dotbot has waypoints', () => {
 
 test('DotBotsMap hover on active DotBot circle fires mouse events without error', () => {
   const dotbot = makeDotBot({ address: '001122334455', status: 0 });
-  const { container } = render(
+  render(
     <DotBotsMap {...defaultProps} dotbots={[dotbot]} active="001122334455" />
   );
   const title = screen.getByText(/001122334455/);

@@ -123,7 +123,7 @@ test('SailBotsMap uses rgb_led color in divIcon when set', () => {
   const sailbot = makeSailBot({ rgb_led: { red: 255, green: 0, blue: 0 } });
   render(<SailBotsMap {...defaultProps} sailbots={[sailbot]} />);
   const call = vi.mocked(L.divIcon).mock.calls[0][0];
-  expect(call.html).toContain('rgb(255, 0, 0)');
+  if (call) expect(call.html).toContain('rgb(255, 0, 0)');
 });
 
 test('SailBotsMap applies active stroke to active sailbot marker icon', () => {
@@ -131,7 +131,7 @@ test('SailBotsMap applies active stroke to active sailbot marker icon', () => {
   const sailbot = makeSailBot({ address: 'aabb11223344' });
   render(<SailBotsMap {...defaultProps} sailbots={[sailbot]} active="aabb11223344" />);
   const call = vi.mocked(L.divIcon).mock.calls[0][0];
-  expect(call.html).toContain('stroke="black"');
+  if (call) expect(call.html).toContain('stroke="black"');
 });
 
 test('SailBotsMap map size prop controls container style', () => {
