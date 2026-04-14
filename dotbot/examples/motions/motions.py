@@ -76,6 +76,79 @@ SPEED_PROFILE_DURATION = 10  # seconds for speed profile motions
 # ---------------------------------------------------------------------------
 
 
+async def _send_waypoint_chunk(
+    ws: DotBotWsClient,
+    address: str,
+    chunk: list[dict],
+    threshold: int,
+) -> None:
+    """Send a single waypoint batch over WebSocket."""
+    await ws.send(
+        WSWaypoints(
+            cmd="waypoints",
+            address=address,
+            application=APPLICATION,
+            data=DotBotWaypoints(
+                threshold=threshold,
+                waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
+            ),
+        )
+    )
+
+
+async def _wait_for_auto_mode(
+    ws: DotBotWsClient,
+    address: str,
+    chunk: list[dict],
+    threshold: int,
+    host: str,
+    port: int,
+) -> None:
+    """
+    Send a waypoint batch and retry every 100 ms until the robot enters AUTO mode.
+    The command is sometimes missed by the robot, so we keep resending until the
+    mode change is confirmed via the REST API.
+    """
+    async with rest_client(host, port, False) as client:
+        while True:
+            await _send_waypoint_chunk(ws, address, chunk, threshold)
+            await asyncio.sleep(0.1)
+            dotbots = await client.fetch_dotbots(
+                query=DotBotQueryModel(address=address)
+            )
+            if dotbots and dotbots[0].mode == ControlModeType.AUTO:
+                break
+
+
+async def _wait_for_waypoints_done(
+    address: str,
+    host: str,
+    port: int,
+) -> None:
+    """
+    Poll the REST API until the batch is complete.
+
+    Called after AUTO mode is already confirmed, so the batch is considered done
+    when one of these conditions holds:
+    - The controller cleared the waypoints list (nominal case when there are
+      more waypoints to come and the robot advances the index beyond the end).
+    - The robot's mode transitions back to MANUAL, which is set by the firmware/
+      simulator when all_done fires after the last waypoint is reached.
+    """
+    async with rest_client(host, port, False) as client:
+        while True:
+            dotbots = await client.fetch_dotbots(
+                query=DotBotQueryModel(address=address)
+            )
+            if dotbots:
+                bot = dotbots[0]
+                if not bot.waypoints:
+                    break
+                if bot.mode == ControlModeType.MANUAL:
+                    break
+            await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
+
+
 async def send_waypoints(
     ws: DotBotWsClient,
     address: str,
@@ -86,9 +159,9 @@ async def send_waypoints(
 ) -> None:
     """
     Send a list of waypoints to the DotBot via WebSocket.
-    Waypoints are sent in batches of MAX_WAYPOINTS_DEFAULT. The function waits for
-    each batch to complete (empty waypoints list on the controller) before
-    sending the next one.
+    Waypoints are sent in batches of MAX_WAYPOINTS. Each batch is retried every
+    100 ms until the robot confirms AUTO mode, then the function waits for
+    completion before sending the next batch.
     Each waypoint is a dict: {"x": float, "y": float}
     """
     chunks = [
@@ -99,57 +172,15 @@ async def send_waypoints(
         f"  [cyan]→[/cyan] Sending [bold]{len(waypoints)}[/bold] waypoints in [bold]{len(chunks)}[/bold] batch(es) of ≤{MAX_WAYPOINTS} each"
     )
     for idx, chunk in enumerate(chunks):
-        await ws.send(
-            WSWaypoints(
-                cmd="waypoints",
-                address=address,
-                application=APPLICATION,
-                data=DotBotWaypoints(
-                    threshold=threshold,
-                    waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
-                ),
-            )
-        )
         rprint(
-            f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sent [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for completion ...[/yellow]"
+            f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sending [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for AUTO mode ...[/yellow]"
         )
-        await _wait_for_waypoints_done(address, host, port, threshold)
+        await _wait_for_auto_mode(ws, address, chunk, threshold, host, port)
+        rprint(
+            "    [green]AUTO confirmed[/green] — [yellow]waiting for completion ...[/yellow]"
+        )
+        await _wait_for_waypoints_done(address, host, port)
     rprint("  [green]✓[/green] All waypoint batches completed")
-
-
-async def _wait_for_waypoints_done(
-    address: str,
-    host: str,
-    port: int,
-    threshold: int = WAYPOINT_THRESHOLD,
-) -> None:
-    """
-    Poll the REST API until the batch is complete.
-
-    The batch is considered done when one of these conditions holds:
-    - The controller cleared the waypoints list (nominal case when there are
-      more waypoints to come and the robot advances the index beyond the end).
-    - The robot's mode transitions AUTO → MANUAL, which is set by the firmware/
-      simulator when all_done fires after the last waypoint is reached. This is
-      the only reliable signal: waypoint_idx resets to 0 on completion so
-      index-based checks cannot be used. Requiring seen_auto first prevents
-      exiting before the robot has started executing the batch.
-    """
-    seen_auto = False
-    async with rest_client(host, port, False) as client:
-        while True:
-            dotbots = await client.fetch_dotbots(
-                query=DotBotQueryModel(address=address)
-            )
-            if dotbots:
-                bot = dotbots[0]
-                if not bot.waypoints:
-                    break
-                if bot.mode == ControlModeType.AUTO:
-                    seen_auto = True
-                if seen_auto and bot.mode == ControlModeType.MANUAL:
-                    break
-            await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
 
 async def send_move_raw(
