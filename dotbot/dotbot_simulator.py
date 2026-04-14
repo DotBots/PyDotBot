@@ -113,6 +113,12 @@ class RobotControl(ctypes.Structure):
         ("direction", ctypes.c_int16),
         ("waypoints_length", ctypes.c_uint8),
         ("waypoint_idx", ctypes.c_uint8),
+        # Inputs — segment info for Pure Pursuit (optional; set prev_waypoint_valid=0 to disable)
+        ("prev_waypoint_x", ctypes.c_uint32),
+        ("prev_waypoint_y", ctypes.c_uint32),
+        ("prev_waypoint_valid", ctypes.c_uint8),
+        # 1-byte field; will be padded to 4-byte alignment, then 4-byte field
+        ("lookahead_distance", ctypes.c_uint32),
         # Outputs — actuation + status flags (all 1-byte)
         ("pwm_left", ctypes.c_int8),
         ("pwm_right", ctypes.c_int8),
@@ -250,6 +256,8 @@ class DotBotSimulator:
             self.custom_control_loop_library.update_control.restype = None
             self.custom_robot_control = RobotControl()
             self.custom_robot_control.waypoint_idx = 0
+            self.custom_robot_control.prev_waypoint_valid = 1  # < 1 use prev_waypoint to calculate; 0 = legacy distance-only behavior
+            self.custom_robot_control.lookahead_distance = 50
             return self._control_loop_custom
         else:
             return self._control_loop_default
@@ -277,6 +285,17 @@ class DotBotSimulator:
         self.encoder_right_acc -= int(self.encoder_right_acc)
         self.custom_robot_control.direction = self.direction
         self.custom_robot_control.waypoints_length = n
+
+        if idx == 0:
+            self.custom_robot_control.prev_waypoint_x = int(self.waypoints[idx].pos_x)
+            self.custom_robot_control.prev_waypoint_y = int(self.waypoints[idx].pos_y)
+        else:
+            self.custom_robot_control.prev_waypoint_x = int(
+                self.waypoints[idx - 1].pos_x
+            )
+            self.custom_robot_control.prev_waypoint_y = int(
+                self.waypoints[idx - 1].pos_y
+            )
         self.custom_robot_control.waypoint_x = int(self.waypoints[idx].pos_x)
         self.custom_robot_control.waypoint_y = int(self.waypoints[idx].pos_y)
         self.custom_robot_control.waypoint_threshold = int(self.waypoint_threshold)
