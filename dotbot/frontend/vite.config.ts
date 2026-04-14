@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
     ],
     // Inject process.* shims needed by pino and the qrkey library
     define: {
-      'process.version': JSON.stringify('v18.0.0'),
+      ...(mode !== 'test' ? { 'process.version': JSON.stringify('v18.0.0') } : {}),
       'process.env.REACT_APP_MQTT_BROKER_HOST': JSON.stringify(env.VITE_MQTT_BROKER_HOST ?? ''),
       'process.env.REACT_APP_MQTT_BROKER_PORT': JSON.stringify(env.VITE_MQTT_BROKER_PORT ?? ''),
       'process.env.REACT_APP_MQTT_VERSION': JSON.stringify(env.VITE_MQTT_VERSION ?? ''),
@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
         provider: 'v8',
         reporter: ['text', 'lcov'],
         reportsDirectory: './coverage',
+        exclude: ['build/**', 'vite.config.ts', 'src/vite-env.d.ts', 'src/types.ts', 'src/declarations.d.ts'],
       },
     },
   };
