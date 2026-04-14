@@ -46,7 +46,7 @@ SIMULATOR_STEP_DELTA_T = 0.02  # 20 ms
 
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
-MAX_BATTERY_DURATION = 300  # 5 minutes
+MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
 SIMULATOR_UPDATE_INTERVAL_S = 0.1
@@ -103,6 +103,7 @@ class SimulatedDotBotSettings(BaseModel):
     motor_right_error: float = 0
     custom_control_loop_library: Path = None
     gru_model_path: Path = None
+    battery_model_path: Path = None
 
 
 class RobotControl(ctypes.Structure):
@@ -181,6 +182,11 @@ class DotBotSimulator:
         if settings.gru_model_path is not None:
             self._gru_model = self._load_gru_model(settings.gru_model_path)
 
+        self._battery_model = None
+        self.battery_voltage: float = float(INITIAL_BATTERY_VOLTAGE)
+        if settings.battery_model_path is not None:
+            self._battery_model = self._load_battery_model(settings.battery_model_path)
+
         self._lock = threading.Lock()
         self.tx_queue = tx_queue
         self.queue = queue.Queue()
@@ -211,6 +217,21 @@ class DotBotSimulator:
         except Exception as exc:  # noqa: BLE001
             self.logger.error(
                 "Failed to load GRU model", path=str(path), error=str(exc)
+            )
+            return None
+
+    def _load_battery_model(self, path: Path):
+        """Load a TorchScript battery discharge model from *path*."""
+        try:
+            import torch  # imported lazily — not required when model is unused
+
+            model = torch.jit.load(str(path), map_location="cpu")
+            model.eval()
+            self.logger.info("Battery discharge model loaded", path=str(path))
+            return model
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(
+                "Failed to load battery model", path=str(path), error=str(exc)
             )
             return None
 
@@ -293,6 +314,27 @@ class DotBotSimulator:
             res_x, res_y = self._gru_residual()
             self.pos_x += res_x
             self.pos_y += res_y
+
+        if self._battery_model is not None:
+            try:
+                import torch
+
+                features = torch.tensor(
+                    [
+                        [
+                            float(self.pwm_left),
+                            float(self.pwm_right),
+                            float(self.encoder_left_acc),
+                            float(self.encoder_right_acc),
+                        ]
+                    ],
+                    dtype=torch.float32,
+                )
+                with torch.no_grad():
+                    rate = float(self._battery_model(features)[0, 0])  # mV/s
+                self.battery_voltage = max(0.0, self.battery_voltage + rate * dt)
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning("Battery model inference failed", error=str(exc))
 
         self.logger.debug(
             "State updated",
@@ -474,7 +516,11 @@ class DotBotSimulator:
                         direction=self.direction,
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        battery=battery_discharge_model(self.time_elapsed_s),
+                        battery=(
+                            int(self.battery_voltage)
+                            if self._battery_model is not None
+                            else battery_discharge_model(self.time_elapsed_s)
+                        ),
                         pwm_left=int(self.pwm_left),
                         pwm_right=int(self.pwm_right),
                         mode=int(self.controller_mode),
