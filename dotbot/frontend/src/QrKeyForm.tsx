@@ -17,7 +17,7 @@ export const QrKeyForm: React.FC<QrKeyFormProps> = ({ mqttDataUpdate }) => {
   const [mqttUsername, setMqttUsername] = useState<string | null>(null);
   const [mqttPassword, setMqttPassword] = useState<string | null>(null);
 
-  const pinCodeLength = parseInt(process.env.REACT_APP_PIN_CODE_LENGTH ?? "12");
+  const pinCodeLength = parseInt(import.meta.env.VITE_PIN_CODE_LENGTH ?? "12");
 
   const onInputPinChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     if (event.target.value.length === pinCodeLength) {

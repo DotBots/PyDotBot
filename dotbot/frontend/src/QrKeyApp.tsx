@@ -18,7 +18,7 @@ const QrKeyApp: React.FC = () => {
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
 
   const [ready, clientId, mqttData, setMqttData, publish, publishCommand, sendRequest] = useQrKey({
-    rootTopic: process.env.REACT_APP_ROOT_TOPIC,
+    rootTopic: import.meta.env.VITE_ROOT_TOPIC,
     setQrKeyMessage: setMessage,
     searchParams,
     setSearchParams,

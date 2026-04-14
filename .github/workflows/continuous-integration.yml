@@ -100,15 +100,18 @@ jobs:
         node-version: "20"
     - run: npm install
       working-directory: ./dotbot/frontend
-    # Disable this step for now because the tests are outdated
-    # - run: npm run test
-    #   working-directory: ./dotbot/frontend
     - run: npm run lint
       working-directory: ./dotbot/frontend
     - run: npm run typecheck
       working-directory: ./dotbot/frontend
+    - run: npm run test
+      working-directory: ./dotbot/frontend
     - run: npm run build
       working-directory: ./dotbot/frontend
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        verbose: true
     - name: Upload frontend build
       uses: actions/upload-artifact@v4
       with:
