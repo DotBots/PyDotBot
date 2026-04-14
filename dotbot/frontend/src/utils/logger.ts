@@ -27,7 +27,7 @@ const logger = pino({
       );
     },
   },
-  level: process.env.REACT_APP_LOG_LEVEL || "info",
+  level: import.meta.env.VITE_LOG_LEVEL || "info",
   timestamp: pino.stdTimeFunctions.isoTime,
   serializers: {},
 });

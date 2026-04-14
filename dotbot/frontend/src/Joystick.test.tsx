@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
 
@@ -69,7 +70,7 @@ const dragJoystick = async (elemDrag: Element): Promise<void> => {
 };
 
 test('Joystick test', async () => {
-  const mockPublish = jest.fn().mockResolvedValue(undefined);
+  const mockPublish = vi.fn().mockResolvedValue(undefined);
   render(<Joystick address="test" application={0} publishCommand={mockPublish} />);
   await waitFor(() => expect(screen.getByRole("region")).toBeVisible());
   await waitFor(() => expect(screen.getByRole("button")).toBeVisible());

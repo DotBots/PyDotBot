@@ -16,7 +16,7 @@ log.info(`Starting dotbot frontend`);
 
 const router = createBrowserRouter([
   {
-    path: `/${process.env.PUBLIC_URL}/`,
+    path: import.meta.env.BASE_URL,
     element: <App />,
   },
 ]);
