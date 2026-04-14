@@ -256,7 +256,7 @@ def triangle_waypoints(scale: float, arena_size: int, _) -> list[dict]:
 def circle_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]:
     """Approximate a circle with n_points waypoints centered in the arena."""
     cx, cy = _center(arena_size)
-    r = scale
+    r = scale / 2
     points = []
     for i in range(n_points + 1):
         angle = math.radians(i * 360 / n_points)
