@@ -1,5 +1,5 @@
-# SPDX-FileCopyrightText: 2024-present Inria
-# SPDX-FileCopyrightText: 2024-present Alexandre Abadie <alexandre.abadie@inria.fr>
+# SPDX-FileCopyrightText: 2026-present Inria
+# SPDX-FileCopyrightText: 2026-present Alexandre Abadie <alexandre.abadie@inria.fr>
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -44,7 +44,14 @@ console = Console()
 # Features and target
 # ---------------------------------------------------------------------------
 
-FEATURE_COLS = ["pwm_left", "pwm_right", "encoder_left", "encoder_right"]
+FEATURE_COLS = [
+    "pwm_left",
+    "pwm_right",
+    "encoder_left",
+    "encoder_right",
+    "control_mode",
+]
+# FEATURE_COLS = ["pwm_left", "pwm_right", "control_mode"]  # simpler, no encoder acc which is noisy and not available in all versions of the simulator
 
 # Maximum delta_t between consecutive rows of the same robot to be considered
 # part of the same session (larger gaps indicate a controller restart).
@@ -73,6 +80,11 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
 
     # Convert battery voltage from V to mV
     df["battery_mv"] = df["battery_level"] * BATTERY_MV_SCALE
+
+    # Encoders are only reported by the hardware in AUTO mode (control_mode == 1).
+    # Zero them out in MANUAL rows so the model learns a consistent input space.
+    manual_mask = df["control_mode"] != 1
+    df.loc[manual_mask, ["encoder_left", "encoder_right"]] = 0.0
 
     rows = []
     for address, group in df.groupby("address"):
@@ -217,10 +229,10 @@ def train(
         rate_std = 1.0
 
     X = torch.from_numpy(
-        ((df[FEATURE_COLS].to_numpy(dtype=np.float32) - feat_mean) / feat_std)
+        (df[FEATURE_COLS].to_numpy(dtype=np.float32) - feat_mean) / feat_std
     )
     y = torch.from_numpy(
-        ((df["discharge_rate"].to_numpy(dtype=np.float32) - rate_mean) / rate_std)
+        (df["discharge_rate"].to_numpy(dtype=np.float32) - rate_mean) / rate_std
     ).unsqueeze(1)
 
     val_size = max(1, int(0.2 * len(X)))
