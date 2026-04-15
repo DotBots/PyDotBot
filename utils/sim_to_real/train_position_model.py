@@ -1,14 +1,16 @@
-# SPDX-FileCopyrightText: 2024-present Inria
-# SPDX-FileCopyrightText: 2024-present Alexandre Abadie <alexandre.abadie@inria.fr>
+# SPDX-FileCopyrightText: 2026-present Inria
+# SPDX-FileCopyrightText: 2026-present Alexandre Abadie <alexandre.abadie@inria.fr>
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Train a GRU model to reduce the sim-to-real gap in DotBot position prediction.
 
 The model learns to predict the residual error between the kinematic simulator
-output (sim_pos_x, sim_pos_y) and the real robot position (real_pos_x,
-real_pos_y). During inference in the simulator, the predicted residual is added
-on top of the kinematic step at each SIMULATOR_UPDATE_INTERVAL_S tick.
+output (sim_pos_x, sim_pos_y, sim_encoder_left, sim_encoder_right) and the real
+robot measurements (real_pos_x, real_pos_y, encoder_left, encoder_right). During
+inference in the simulator, the predicted residuals are added on top of the
+kinematic step at each SIMULATOR_UPDATE_INTERVAL_S tick (both for position and
+for the accumulated encoder counts).
 
 The model is saved as a TorchScript file so it can be loaded without the
 training code present. The path to the saved model is then referenced in
@@ -48,7 +50,12 @@ FEATURE_COLS = [
     "sim_pos_x",
     "sim_pos_y",
 ]
-TARGET_COLS = ["residual_x", "residual_y"]
+TARGET_COLS = [
+    "residual_x",
+    "residual_y",
+    "residual_encoder_left",
+    "residual_encoder_right",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +118,8 @@ class ResidualGRU(nn.Module):
             batch_first=True,
             dropout=0.1 if num_layers > 1 else 0.0,
         )
-        self.head = nn.Linear(hidden_size, 2)  # (residual_x, residual_y)
+        # (residual_x, residual_y, residual_encoder_left, residual_encoder_right)
+        self.head = nn.Linear(hidden_size, 4)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch, seq_len, input_size)
@@ -134,6 +142,10 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
             "real_pos_y",
             "sim_pos_x",
             "sim_pos_y",
+            "encoder_left",
+            "encoder_right",
+            "sim_encoder_left",
+            "sim_encoder_right",
             "control_mode",
             "address",
         ]
@@ -145,6 +157,8 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
 
     df["residual_x"] = df["real_pos_x"] - df["sim_pos_x"]
     df["residual_y"] = df["real_pos_y"] - df["sim_pos_y"]
+    df["residual_encoder_left"] = df["encoder_left"] - df["sim_encoder_left"]
+    df["residual_encoder_right"] = df["encoder_right"] - df["sim_encoder_right"]
     return df
 
 

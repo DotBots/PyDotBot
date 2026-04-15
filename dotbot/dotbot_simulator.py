@@ -231,21 +231,26 @@ class DotBotSimulator:
             )
             return None
 
-    def _gru_residual(self) -> tuple[float, float]:
-        """Return (dx_residual, dy_residual) predicted by the GRU, or (0, 0)."""
+    def _gru_residual(self) -> tuple[float, float, float, float]:
+        """Return (dx, dy, d_enc_left, d_enc_right) predicted by the GRU, or zeros."""
         if self._gru_model is None or len(self._gru_buffer) < GRU_SEQ_LEN_DEFAULT:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
         try:
             import torch
 
             seq = self._gru_buffer[-GRU_SEQ_LEN_DEFAULT:]
             x = torch.tensor([seq], dtype=torch.float32)  # (1, seq_len, n_features)
             with torch.no_grad():
-                pred = self._gru_model(x)  # (1, 2)
-            return float(pred[0, 0]), float(pred[0, 1])
+                pred = self._gru_model(x)  # (1, 4)
+            return (
+                float(pred[0, 0]),
+                float(pred[0, 1]),
+                float(pred[0, 2]),
+                float(pred[0, 3]),
+            )
         except Exception as exc:  # noqa: BLE001
             self.logger.warning("GRU inference failed", error=str(exc))
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
     def start(self):
         self.rx_thread.start()
@@ -307,21 +312,29 @@ class DotBotSimulator:
             # Keep only as many steps as needed to avoid unbounded growth
             if len(self._gru_buffer) > GRU_SEQ_LEN_DEFAULT:
                 self._gru_buffer.pop(0)
-            res_x, res_y = self._gru_residual()
+            res_x, res_y, res_enc_l, res_enc_r = self._gru_residual()
             self.pos_x += res_x
             self.pos_y += res_y
+            self.encoder_left_acc += res_enc_l
+            self.encoder_right_acc += res_enc_r
 
         if self._battery_model is not None:
             try:
                 import torch
 
+                # Encoders are only reported by the real hardware in AUTO mode;
+                # mirror that here so the battery model sees consistent inputs.
+                in_auto = self.controller_mode == ControlModeType.AUTO
+                enc_left = float(self.encoder_left_acc) if in_auto else 0.0
+                enc_right = float(self.encoder_right_acc) if in_auto else 0.0
                 features = torch.tensor(
                     [
                         [
                             float(self.pwm_left),
                             float(self.pwm_right),
-                            float(self.encoder_left_acc),
-                            float(self.encoder_right_acc),
+                            enc_left,
+                            enc_right,
+                            float(int(self.controller_mode)),
                         ]
                     ],
                     dtype=torch.float32,
