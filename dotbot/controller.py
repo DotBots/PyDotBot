@@ -12,6 +12,7 @@ import dataclasses
 import json
 import math
 import os
+import queue
 import time
 import webbrowser
 from binascii import hexlify
@@ -47,7 +48,8 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
-from dotbot.csv_data_logger import CSVDataLogger
+from dotbot.csv_data_logger import CSVDataLogger, CSVLog
+from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
@@ -204,7 +206,46 @@ class Controller:
             self.csv_data_logger = CSVDataLogger(settings.csv_data_output)
         else:
             self.csv_data_logger = None
+        self._dotbot_twins: Dict[str, DotBotSimulator] = {}
+        self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def _update_dotbot_twin(
+        self,
+        address: str,
+        pwm_left: int,
+        pwm_right: int,
+        init_pos_x: int = 0,
+        init_pos_y: int = 0,
+        init_direction: int = 0,
+        init_encoder_left: int = 0,
+        init_encoder_right: int = 0,
+    ) -> DotBotSimulator:
+        """Create (if needed) and advance the kinematic twin for *address*.
+
+        The init_* parameters are only used on first contact to seed the twin's
+        initial state; subsequent calls ignore them and let the twin evolve freely.
+        """
+        twin = self._dotbot_twins.get(address)
+        now = time.time()
+        if twin is None:
+            twin = DotBotSimulator(
+                SimulatedDotBotSettings(
+                    address=address, pos_x=init_pos_x, pos_y=init_pos_y
+                ),
+                queue.Queue(),
+            )
+            twin.direction = init_direction
+            twin.encoder_left_acc = init_encoder_left
+            twin.encoder_right_acc = init_encoder_right
+            self._dotbot_twins[address] = twin
+            self._dotbot_twin_timestamps[address] = now
+        twin.pwm_left = pwm_left
+        twin.pwm_right = pwm_right
+        dt = now - self._dotbot_twin_timestamps[address]
+        self._dotbot_twin_timestamps[address] = now
+        twin.diff_drive_model_update(dt)
+        return twin
 
     async def _open_webbrowser(self):
         """Wait until the server is ready before opening a web browser."""
@@ -372,15 +413,38 @@ class Controller:
                         dotbot.position_history.append(new_position)
                         if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                             dotbot.position_history.pop(0)
+                    twin = self._update_dotbot_twin(
+                        address=dotbot.address,
+                        pwm_left=frame.packet.payload.pwm_left,
+                        pwm_right=frame.packet.payload.pwm_right,
+                        init_pos_x=new_position.x,
+                        init_pos_y=new_position.y,
+                        init_direction=dotbot.direction,
+                        init_encoder_left=frame.packet.payload.encoder_left,
+                        init_encoder_right=frame.packet.payload.encoder_right,
+                    )
                     if self.csv_data_logger is not None:
-                        self.csv_data_logger.log(
-                            real_pos_x=new_position.x,
-                            real_pos_y=new_position.y,
-                            real_direction=dotbot.direction,
-                            pwm_right=frame.packet.payload.pwm_right,
+                        real_log = CSVLog(
+                            pos_x=dotbot.lh2_position.x,
+                            pos_y=dotbot.lh2_position.y,
+                            direction=dotbot.direction,
                             pwm_left=frame.packet.payload.pwm_left,
-                            encoder_right=frame.packet.payload.encoder_right,
+                            pwm_right=frame.packet.payload.pwm_right,
                             encoder_left=frame.packet.payload.encoder_left,
+                            encoder_right=frame.packet.payload.encoder_right,
+                        )
+                        sim_log = CSVLog(
+                            pos_x=int(twin.pos_x),
+                            pos_y=int(twin.pos_y),
+                            direction=int(twin.direction),
+                            pwm_left=int(twin.pwm_left),
+                            pwm_right=int(twin.pwm_right),
+                            encoder_left=int(twin.encoder_left_acc),
+                            encoder_right=int(twin.encoder_right_acc),
+                        )
+                        self.csv_data_logger.log(
+                            real_log=real_log,
+                            sim_log=sim_log,
                             control_mode=ControlModeType(
                                 frame.packet.payload.mode
                             ).name,
@@ -388,6 +452,7 @@ class Controller:
                             waypoint_x=frame.packet.payload.waypoint_x,
                             waypoint_y=frame.packet.payload.waypoint_y,
                             battery_level=dotbot.battery,
+                            sim_battery_voltage=twin.battery_voltage / 1000.0,
                             address=dotbot.address,
                         )
                 need_update = True

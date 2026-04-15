@@ -175,6 +175,7 @@ class DotBotSimulator:
         self.waypoint_x = 0
         self.waypoint_y = 0
 
+        self.logger = LOGGER.bind(context=__name__, address=self.address)
         self._gru_model = None
         self._gru_buffer: list[list[float]] = (
             []
@@ -195,7 +196,6 @@ class DotBotSimulator:
         self.rx_thread = threading.Thread(target=self.rx_frame, daemon=True)
         self.main_thread = threading.Thread(target=self.update_state, daemon=True)
         self.controller_mode: ControlModeType = ControlModeType.MANUAL
-        self.logger = LOGGER.bind(context=__name__, address=self.address)
         self._stop_event = threading.Event()
         self.logger.info(
             "DotBot simulator initialized",
@@ -524,8 +524,16 @@ class DotBotSimulator:
                         pwm_left=int(self.pwm_left),
                         pwm_right=int(self.pwm_right),
                         mode=int(self.controller_mode),
-                        encoder_left=int(self.encoder_left_acc),
-                        encoder_right=int(self.encoder_right_acc),
+                        encoder_left=(
+                            int(self.encoder_left_acc)
+                            if self.controller_mode == ControlModeType.AUTO
+                            else 0
+                        ),
+                        encoder_right=(
+                            int(self.encoder_right_acc)
+                            if self.controller_mode == ControlModeType.AUTO
+                            else 0
+                        ),
                         waypoint_x=int(self.waypoint_x),
                         waypoint_y=int(self.waypoint_y),
                         waypoint_idx=int(self.waypoint_index),
