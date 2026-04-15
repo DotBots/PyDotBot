@@ -65,13 +65,9 @@ GRU_SEQ_LEN_DEFAULT = 20  # must match --seq-len used during training
 
 
 def battery_discharge_model(time_elapsed_s: float) -> int:
-    """Simple battery discharge model."""
+    """Linear discharge over MAX_BATTERY_DURATION (supercapacitor idle model)."""
     t = min(time_elapsed_s / MAX_BATTERY_DURATION, 1.0)
-    nonlinear_t = t**1.3
-    voltage = int(INITIAL_BATTERY_VOLTAGE * (1 - nonlinear_t))
-    if voltage < 0:
-        voltage = 0
-    return voltage
+    return max(0, int(INITIAL_BATTERY_VOLTAGE * (1 - t)))
 
 
 def wheel_speed_from_pwm(pwm: float) -> float:
