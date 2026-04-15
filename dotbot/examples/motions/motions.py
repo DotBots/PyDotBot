@@ -12,6 +12,7 @@ Motions available:
     triangle    - Follow a triangle path (via waypoints)
     infinity    - Follow a lemniscate / infinity symbol path (via waypoints)
     speed_ramp  - Ramp speed from -MAX_SPEED to +MAX_SPEED sinusoidally (via move_raw)
+    speed_swing - Alternate ±speed with increasing-then-decreasing magnitude (via move_raw)
     speed_steps - Move forward stepping through discrete speed levels (via move_raw)
 
 Requirements:
@@ -393,6 +394,39 @@ async def speed_ramp(
     await stop(ws, address)
 
 
+async def speed_swing(
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
+) -> None:
+    """
+    Alternate between positive and negative speeds with increasing-then-decreasing
+    magnitude: 0, +MIN, -MIN, +(MIN+10), -(MIN+10), ..., +MAX, -MAX, ..., +MIN, -MIN, 0.
+    Useful for capturing symmetric acceleration/deceleration step responses.
+    """
+    ascending = list(range(MIN_SPEED, MAX_SPEED + 1, 10))
+    descending = list(range(MAX_SPEED - 10, MIN_SPEED - 1, -10))
+    magnitudes = ascending + descending
+    levels: list[int] = [0]
+    for m in magnitudes:
+        levels.extend([m, -m])
+    levels.append(0)
+
+    step_duration = duration / len(levels)
+    rprint(
+        f"  Running [bold]{len(levels)}[/bold] swing steps, [bold]{step_duration:.2f}[/bold]s each ..."
+    )
+    for speed in levels:
+        color = "green" if speed > 0 else "red" if speed < 0 else "white"
+        rprint(f"    Speed = [{color}]{speed:>4}[/{color}]")
+        step_start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - step_start < step_duration:
+            await send_move_raw(ws, address, speed, speed)
+            await asyncio.sleep(interval)
+    await stop(ws, address)
+
+
 async def speed_steps(
     ws: DotBotWsClient,
     address: str,
@@ -431,6 +465,7 @@ MOTIONS = {
     "sawtooth": ("waypoints", sawtooth_waypoints),
     "speed_ramp": ("move_raw", speed_ramp),
     "speed_steps": ("move_raw", speed_steps),
+    "speed_swing": ("move_raw", speed_swing),
 }
 
 
