@@ -11,7 +11,7 @@ Motions available:
     circle      - Follow a circular path (via waypoints)
     triangle    - Follow a triangle path (via waypoints)
     infinity    - Follow a lemniscate / infinity symbol path (via waypoints)
-    speed_ramp  - Move forward with a sinusoidal speed profile (via move_raw)
+    speed_ramp  - Ramp speed from -MAX_SPEED to +MAX_SPEED sinusoidally (via move_raw)
     speed_steps - Move forward stepping through discrete speed levels (via move_raw)
 
 Requirements:
@@ -57,18 +57,19 @@ ARENA_SIZE_DEFAULT = 2000
 
 # Shape parameters (all distances in mm, matching the controller's coordinate space)
 SHAPE_SCALE_DEFAULT = 400  # radius / half-size in mm for all shapes
-WAYPOINT_THRESHOLD = (
+WAYPOINT_THRESHOLD_DEFAULT = (
     100  # mm — how close the robot must get before moving to next waypoint
 )
 WAYPOINT_POLL_INTERVAL = (
     0.5  # seconds between polls when waiting for waypoint completion
 )
+MOTION_REPEAT_DEFAULT = 1  # number of times to repeat the motion
 
 # move_raw speed range: motors have a dead zone, valid range is [-100,-30] ∪ [30,100]
 MIN_SPEED = 30  # minimum PWM to overcome the motor dead zone
 MAX_SPEED = 80  # keep a safe margin below 100
-MOVE_RAW_INTERVAL = 0.1  # seconds between move_raw commands (must be < 0.2s)
-SPEED_PROFILE_DURATION = 10  # seconds for speed profile motions
+MOVE_RAW_INTERVAL_DEFAULT = 0.1  # seconds between move_raw commands (must be < 0.2s)
+SPEED_PROFILE_DURATION_DEFAULT = 10  # seconds for speed profile motions
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +156,7 @@ async def send_waypoints(
     waypoints: list[dict],
     host: str,
     port: int,
-    threshold: int = WAYPOINT_THRESHOLD,
+    threshold: int,
 ) -> None:
     """
     Send a list of waypoints to the DotBot via WebSocket.
@@ -335,7 +336,7 @@ def infinity_waypoints(scale: float, arena_size: int, n_points: int) -> list[dic
     n_points is kept low to avoid threshold-area overlaps near the crossing point.
     """
     cx, cy = _center(arena_size)
-    a = scale * 1.5  # stretch factor
+    a = scale / 2  # scale is the total width of the shape
     points = []
     for i in range(n_points + 1):
         t = math.radians(i * 360 / n_points)
@@ -364,11 +365,14 @@ def clamp_speed(speed: int) -> int:
 
 
 async def speed_ramp(
-    ws: DotBotWsClient, address: str, duration: float = SPEED_PROFILE_DURATION
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
 ) -> None:
     """
     Move forward with a smooth sinusoidal speed ramp.
-    Speed oscillates between 0 and MAX_SPEED over the duration.
+    Speed ramps smoothly from -MAX_SPEED to +MAX_SPEED over the duration.
     Good for capturing acceleration/deceleration dynamics.
     """
     rprint(f"  Running sinusoidal speed ramp for [bold]{duration}[/bold]s ...")
@@ -378,19 +382,22 @@ async def speed_ramp(
         elapsed = asyncio.get_event_loop().time() - start
         if elapsed >= duration:
             break
-        raw = int(MAX_SPEED * math.sin(math.pi * elapsed / duration))
+        raw = int(-MAX_SPEED * math.cos(math.pi * elapsed / duration))
         speed = clamp_speed(raw)
         await send_move_raw(ws, address, speed, speed)
         color = "green" if speed > 0 else "red" if speed < 0 else "white"
         console.print(
             f"    t=[cyan]{elapsed:.2f}[/cyan]s  speed=[{color}]{speed:>4}[/{color}]"
         )
-        await asyncio.sleep(MOVE_RAW_INTERVAL)
+        await asyncio.sleep(interval)
     await stop(ws, address)
 
 
 async def speed_steps(
-    ws: DotBotWsClient, address: str, duration: float = SPEED_PROFILE_DURATION
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
 ) -> None:
     """
     Move forward stepping through discrete speed levels.
@@ -408,7 +415,7 @@ async def speed_steps(
         step_start = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - step_start < step_duration:
             await send_move_raw(ws, address, speed, speed)
-            await asyncio.sleep(MOVE_RAW_INTERVAL)
+            await asyncio.sleep(interval)
     await stop(ws, address)
 
 
@@ -435,7 +442,10 @@ async def run_motion(
     scale: float,
     arena_size: int,
     num_points: int,
-    waypoint_threshold: int = WAYPOINT_THRESHOLD,
+    waypoint_threshold: int = WAYPOINT_THRESHOLD_DEFAULT,
+    duration: float = SPEED_PROFILE_DURATION_DEFAULT,
+    interval: float = MOVE_RAW_INTERVAL_DEFAULT,
+    reverse: bool = False,
 ) -> None:
     kind, fn = MOTIONS[motion_name]
 
@@ -448,8 +458,10 @@ async def run_motion(
     try:
         if kind == "waypoints":
             waypoints = fn(scale, arena_size, num_points)
+            if reverse:
+                waypoints = list(reversed(waypoints))
             table = Table(
-                title=f"{motion_name} waypoints",
+                title=f"{motion_name} waypoints{' (reversed)' if reverse else ''}",
                 show_header=True,
                 header_style="bold blue",
             )
@@ -462,7 +474,7 @@ async def run_motion(
             await send_waypoints(ws, address, waypoints, host, port, waypoint_threshold)
 
         elif kind == "move_raw":
-            await fn(ws, address)
+            await fn(ws, address, duration, interval)
     finally:
         await ws.close()
 
@@ -477,6 +489,9 @@ async def run_async(
     arena_size,
     num_points,
     waypoint_threshold,
+    duration,
+    interval,
+    reverse,
 ):
     if address is None:
         rprint("[yellow]No address provided — fetching available DotBots ...[/yellow]")
@@ -501,6 +516,9 @@ async def run_async(
             arena_size,
             num_points,
             waypoint_threshold,
+            duration,
+            interval,
+            reverse,
         )
 
 
@@ -549,7 +567,7 @@ async def run_async(
     "-n",
     "--repeat",
     type=int,
-    default=1,
+    default=MOTION_REPEAT_DEFAULT,
     show_default=True,
     help="Number of times to replay the motion.",
 )
@@ -570,9 +588,29 @@ async def run_async(
 @click.option(
     "--waypoint-threshold",
     type=int,
-    default=WAYPOINT_THRESHOLD,
+    default=WAYPOINT_THRESHOLD_DEFAULT,
     show_default=True,
     help="Proximity threshold in mm to consider a waypoint reached. Ignored for raw motions.",
+)
+@click.option(
+    "--duration",
+    type=float,
+    default=SPEED_PROFILE_DURATION_DEFAULT,
+    show_default=True,
+    help="Duration in seconds for move_raw motions (speed_ramp, speed_steps). Ignored for waypoint motions.",
+)
+@click.option(
+    "--move-raw-interval",
+    type=float,
+    default=MOVE_RAW_INTERVAL_DEFAULT,
+    show_default=True,
+    help="Interval in seconds between move_raw commands. Ignored for waypoint motions.",
+)
+@click.option(
+    "--reverse",
+    is_flag=True,
+    default=False,
+    help="Reverse the waypoint order. Ignored for move_raw motions.",
 )
 def main(
     host,
@@ -584,6 +622,9 @@ def main(
     arena_size,
     num_points,
     waypoint_threshold,
+    duration,
+    move_raw_interval,
+    reverse,
 ) -> None:
     """DotBot motion examples."""
     asyncio.run(
@@ -597,6 +638,9 @@ def main(
             arena_size,
             num_points,
             waypoint_threshold,
+            duration,
+            move_raw_interval,
+            reverse,
         )
     )
 
