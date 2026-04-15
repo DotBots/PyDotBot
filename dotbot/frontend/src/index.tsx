@@ -19,9 +19,17 @@ const router = createBrowserRouter([
     path: import.meta.env.BASE_URL,
     element: <App />,
   },
-]);
+], {
+  future: {
+    v7_relativeSplatPath: true,
+    v7_fetcherPersist: true,
+    v7_normalizeFormMethod: true,
+    v7_partialHydration: true,
+    v7_skipActionErrorRevalidation: true,
+  },
+});
 
 const root = ReactDOM.createRoot(document.getElementById('dotbots') as HTMLElement);
 root.render(
-  <RouterProvider router={router} />
+  <RouterProvider router={router} future={{ v7_startTransition: true }} />
 );
