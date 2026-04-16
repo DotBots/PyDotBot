@@ -291,6 +291,10 @@ class DotBotSimulator:
 
         if sqrt(dx**2 + dy**2):
             self.direction = int(-1 * atan2(dx, dy) * 180 / pi) % 360
+            if self.direction > 180:
+                self.direction -= 360
+            elif self.direction < -180:
+                self.direction += 360
 
         # Accumulate encoder counts for this physics step
         self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
