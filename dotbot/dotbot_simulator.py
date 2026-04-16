@@ -102,32 +102,41 @@ class SimulatedDotBotSettings(BaseModel):
     battery_model_path: Path = None
 
 
-class RobotControl(ctypes.Structure):
+class ControlLoopWaypoint(ctypes.Structure):
+    """Mirrors coordinate_t from control_loop.h — used when calling control_loop_set_waypoints."""
+
     _fields_ = [
-        # Inputs — robot state (all 4-byte fields first, no padding gaps)
+        ("x", ctypes.c_uint32),
+        ("y", ctypes.c_uint32),
+    ]
+
+
+class RobotControl(ctypes.Structure):
+    """Mirrors robot_control_t from control_loop.h.
+
+    Only the stable external I/O boundary is represented here.  All internal
+    algorithm state lives in the opaque context managed by the C library.
+    Layout must stay in sync with the C struct (no internal padding gaps).
+    """
+
+    _fields_ = [
+        # Inputs — robot state (4-byte fields first, no padding gaps)
         ("pos_x", ctypes.c_uint32),
         ("pos_y", ctypes.c_uint32),
-        (
-            "encoder_left",
-            ctypes.c_int32,
-        ),  # signed delta counts since last call; 0 if unavailable
-        (
-            "encoder_right",
-            ctypes.c_int32,
-        ),  # signed delta counts since last call; 0 if unavailable
-        # Inputs — current waypoint (4-byte fields)
+        ("encoder_left", ctypes.c_int32),  # signed delta counts since last call
+        ("encoder_right", ctypes.c_int32),  # signed delta counts since last call
+        # Outputs — current target waypoint coordinates (written by C, for telemetry)
         ("waypoint_x", ctypes.c_uint32),
         ("waypoint_y", ctypes.c_uint32),
-        ("waypoint_threshold", ctypes.c_uint32),
-        # 2-byte + two 1-byte fields pack cleanly into 4 bytes
+        # Input — robot heading (2-byte, followed by 1-byte fields — no internal padding)
         ("direction", ctypes.c_int16),
-        ("waypoints_length", ctypes.c_uint8),
-        ("waypoint_idx", ctypes.c_uint8),
-        # Outputs — actuation + status flags (all 1-byte)
+        # Outputs — actuation (written by C)
         ("pwm_left", ctypes.c_int8),
         ("pwm_right", ctypes.c_int8),
-        ("waypoint_reached", ctypes.c_uint8),  # set to 1 by C when waypoint reached
-        ("all_done", ctypes.c_uint8),  # set to 1 by C when batch complete
+        # Outputs — status flags (written by C)
+        ("waypoint_reached", ctypes.c_uint8),
+        ("all_done", ctypes.c_uint8),
+        ("waypoint_idx", ctypes.c_uint8),
     ]
 
 
@@ -372,37 +381,37 @@ class DotBotSimulator:
     def _init_control_loop(self) -> callable:
         """Initialize the control loop, potentially loading a custom control loop library."""
         if self.custom_control_loop_library is not None:
-            self.custom_control_loop_library = ctypes.CDLL(
-                self.custom_control_loop_library
-            )
-            self.custom_control_loop_library.update_control.argtypes = [
-                ctypes.POINTER(RobotControl)
+            lib = ctypes.CDLL(self.custom_control_loop_library)
+            self.custom_control_loop_library = lib
+
+            lib.control_loop_alloc.argtypes = []
+            lib.control_loop_alloc.restype = ctypes.c_void_p
+
+            lib.control_loop_free.argtypes = [ctypes.c_void_p]
+            lib.control_loop_free.restype = None
+
+            lib.control_loop_set_waypoints.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ControlLoopWaypoint),
+                ctypes.c_uint8,
+                ctypes.c_uint32,
             ]
-            self.custom_control_loop_library.update_control.restype = None
+            lib.control_loop_set_waypoints.restype = None
+
+            lib.update_control.argtypes = [
+                ctypes.POINTER(RobotControl),
+                ctypes.c_void_p,
+            ]
+            lib.update_control.restype = None
+
+            self._control_ctx = lib.control_loop_alloc()
             self.custom_robot_control = RobotControl()
-            self.custom_robot_control.waypoint_idx = 0
             return self._control_loop_custom
         else:
             return self._control_loop_default
 
     def _control_loop_custom(self):
         """Control loop using a custom control loop library."""
-        idx = self.custom_robot_control.waypoint_idx
-        n = len(self.waypoints)
-
-        # Safety guard: C should have set all_done on the previous call, but
-        # protect against an inconsistent state before indexing the waypoints list.
-        if idx >= n:
-            self.logger.warning("waypoint_idx out of bounds, resetting", idx=idx, n=n)
-            self.pwm_left = 0
-            self.pwm_right = 0
-            self.custom_robot_control.waypoint_idx = 0
-            self.waypoint_index = 0
-            self.waypoint_x = 0
-            self.waypoint_y = 0
-            self.controller_mode = ControlModeType.MANUAL
-            return
-
         self.custom_robot_control.pos_x = int(self.pos_x)
         self.custom_robot_control.pos_y = int(self.pos_y)
         self.custom_robot_control.encoder_left = int(self.encoder_left_acc)
@@ -410,13 +419,10 @@ class DotBotSimulator:
         self.encoder_left_acc -= int(self.encoder_left_acc)
         self.encoder_right_acc -= int(self.encoder_right_acc)
         self.custom_robot_control.direction = self.direction
-        self.custom_robot_control.waypoints_length = n
-        self.custom_robot_control.waypoint_x = int(self.waypoints[idx].pos_x)
-        self.custom_robot_control.waypoint_y = int(self.waypoints[idx].pos_y)
-        self.custom_robot_control.waypoint_threshold = int(self.waypoint_threshold)
 
         self.custom_control_loop_library.update_control(
-            ctypes.byref(self.custom_robot_control)
+            ctypes.byref(self.custom_robot_control),
+            self._control_ctx,
         )
 
         self.pwm_left = self.custom_robot_control.pwm_left
@@ -433,7 +439,6 @@ class DotBotSimulator:
             encoder_left=int(self.custom_robot_control.encoder_left),
             encoder_right=int(self.custom_robot_control.encoder_right),
             waypoint_index=self.custom_robot_control.waypoint_idx,
-            waypoints_length=self.custom_robot_control.waypoints_length,
             waypoint_x=self.custom_robot_control.waypoint_x,
             waypoint_y=self.custom_robot_control.waypoint_y,
             waypoint_reached=self.custom_robot_control.waypoint_reached,
@@ -442,7 +447,6 @@ class DotBotSimulator:
 
         if self.custom_robot_control.all_done:
             self.logger.info("All waypoints completed")
-            self.custom_robot_control.waypoint_idx = 0
             self.waypoint_index = 0
             self.waypoint_x = 0
             self.waypoint_y = 0
@@ -589,8 +593,21 @@ class DotBotSimulator:
                         self.waypoint_index = 0
                         self.encoder_left_acc = 0.0
                         self.encoder_right_acc = 0.0
-                        if hasattr(self, "custom_robot_control"):
-                            self.custom_robot_control.waypoint_idx = 0
+                        if hasattr(self, "_control_ctx"):
+                            n = len(self.waypoints)
+                            WaypointArray = ControlLoopWaypoint * n
+                            waypoint_arr = WaypointArray(
+                                *[
+                                    ControlLoopWaypoint(x=int(w.pos_x), y=int(w.pos_y))
+                                    for w in self.waypoints
+                                ]
+                            )
+                            self.custom_control_loop_library.control_loop_set_waypoints(
+                                self._control_ctx,
+                                waypoint_arr,
+                                n,
+                                int(self.waypoint_threshold),
+                            )
                         self.logger.info(
                             "Waypoints received",
                             threshold=self.waypoint_threshold,
@@ -611,6 +628,9 @@ class DotBotSimulator:
         self.control_thread.join()
         self.rx_thread.join()
         self.main_thread.join()
+        if hasattr(self, "_control_ctx"):
+            self.custom_control_loop_library.control_loop_free(self._control_ctx)
+            self._control_ctx = None
 
 
 class DotBotSimulatorCommunicationInterface:
