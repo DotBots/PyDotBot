@@ -110,6 +110,11 @@ from dotbot.logger import setup_logging
     help="Filename where logs are redirected",
 )
 @click.option(
+    "--csv-data-output",
+    type=click.Path(),
+    help="Filename where CSV data logs are stored. If not set, CSV data logging is disabled.",
+)
+@click.option(
     "--config-path",
     type=click.Path(exists=True, dir_okay=False),
     help="Path to a .toml configuration file.",
@@ -147,6 +152,7 @@ def main(
     verbose,
     log_level,
     log_output,
+    csv_data_output,
     config_path,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
@@ -170,6 +176,7 @@ def main(
         "verbose": verbose,
         "log_level": log_level,
         "log_output": log_output,
+        "csv_data_output": csv_data_output,
     }
 
     data = {}

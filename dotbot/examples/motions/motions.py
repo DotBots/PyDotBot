@@ -11,7 +11,8 @@ Motions available:
     circle      - Follow a circular path (via waypoints)
     triangle    - Follow a triangle path (via waypoints)
     infinity    - Follow a lemniscate / infinity symbol path (via waypoints)
-    speed_ramp  - Move forward with a sinusoidal speed profile (via move_raw)
+    speed_ramp  - Ramp speed from -MAX_SPEED to +MAX_SPEED sinusoidally (via move_raw)
+    speed_swing - Alternate ±speed with increasing-then-decreasing magnitude (via move_raw)
     speed_steps - Move forward stepping through discrete speed levels (via move_raw)
 
 Requirements:
@@ -57,23 +58,97 @@ ARENA_SIZE_DEFAULT = 2000
 
 # Shape parameters (all distances in mm, matching the controller's coordinate space)
 SHAPE_SCALE_DEFAULT = 400  # radius / half-size in mm for all shapes
-WAYPOINT_THRESHOLD = (
+WAYPOINT_THRESHOLD_DEFAULT = (
     100  # mm — how close the robot must get before moving to next waypoint
 )
 WAYPOINT_POLL_INTERVAL = (
     0.5  # seconds between polls when waiting for waypoint completion
 )
+MOTION_REPEAT_DEFAULT = 1  # number of times to repeat the motion
 
 # move_raw speed range: motors have a dead zone, valid range is [-100,-30] ∪ [30,100]
 MIN_SPEED = 30  # minimum PWM to overcome the motor dead zone
 MAX_SPEED = 80  # keep a safe margin below 100
-MOVE_RAW_INTERVAL = 0.1  # seconds between move_raw commands (must be < 0.2s)
-SPEED_PROFILE_DURATION = 10  # seconds for speed profile motions
+MOVE_RAW_INTERVAL_DEFAULT = 0.1  # seconds between move_raw commands (must be < 0.2s)
+SPEED_PROFILE_DURATION_DEFAULT = 10  # seconds for speed profile motions
 
 
 # ---------------------------------------------------------------------------
 # API helpers
 # ---------------------------------------------------------------------------
+
+
+async def _send_waypoint_chunk(
+    ws: DotBotWsClient,
+    address: str,
+    chunk: list[dict],
+    threshold: int,
+) -> None:
+    """Send a single waypoint batch over WebSocket."""
+    await ws.send(
+        WSWaypoints(
+            cmd="waypoints",
+            address=address,
+            application=APPLICATION,
+            data=DotBotWaypoints(
+                threshold=threshold,
+                waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
+            ),
+        )
+    )
+
+
+async def _wait_for_auto_mode(
+    ws: DotBotWsClient,
+    address: str,
+    chunk: list[dict],
+    threshold: int,
+    host: str,
+    port: int,
+) -> None:
+    """
+    Send a waypoint batch and retry every 100 ms until the robot enters AUTO mode.
+    The command is sometimes missed by the robot, so we keep resending until the
+    mode change is confirmed via the REST API.
+    """
+    async with rest_client(host, port, False) as client:
+        while True:
+            await _send_waypoint_chunk(ws, address, chunk, threshold)
+            await asyncio.sleep(0.1)
+            dotbots = await client.fetch_dotbots(
+                query=DotBotQueryModel(address=address)
+            )
+            if dotbots and dotbots[0].mode == ControlModeType.AUTO:
+                break
+
+
+async def _wait_for_waypoints_done(
+    address: str,
+    host: str,
+    port: int,
+) -> None:
+    """
+    Poll the REST API until the batch is complete.
+
+    Called after AUTO mode is already confirmed, so the batch is considered done
+    when one of these conditions holds:
+    - The controller cleared the waypoints list (nominal case when there are
+      more waypoints to come and the robot advances the index beyond the end).
+    - The robot's mode transitions back to MANUAL, which is set by the firmware/
+      simulator when all_done fires after the last waypoint is reached.
+    """
+    async with rest_client(host, port, False) as client:
+        while True:
+            dotbots = await client.fetch_dotbots(
+                query=DotBotQueryModel(address=address)
+            )
+            if dotbots:
+                bot = dotbots[0]
+                if not bot.waypoints:
+                    break
+                if bot.mode == ControlModeType.MANUAL:
+                    break
+            await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
 
 async def send_waypoints(
@@ -82,13 +157,13 @@ async def send_waypoints(
     waypoints: list[dict],
     host: str,
     port: int,
-    threshold: int = WAYPOINT_THRESHOLD,
+    threshold: int,
 ) -> None:
     """
     Send a list of waypoints to the DotBot via WebSocket.
-    Waypoints are sent in batches of MAX_WAYPOINTS_DEFAULT. The function waits for
-    each batch to complete (empty waypoints list on the controller) before
-    sending the next one.
+    Waypoints are sent in batches of MAX_WAYPOINTS. Each batch is retried every
+    100 ms until the robot confirms AUTO mode, then the function waits for
+    completion before sending the next batch.
     Each waypoint is a dict: {"x": float, "y": float}
     """
     chunks = [
@@ -99,57 +174,15 @@ async def send_waypoints(
         f"  [cyan]→[/cyan] Sending [bold]{len(waypoints)}[/bold] waypoints in [bold]{len(chunks)}[/bold] batch(es) of ≤{MAX_WAYPOINTS} each"
     )
     for idx, chunk in enumerate(chunks):
-        await ws.send(
-            WSWaypoints(
-                cmd="waypoints",
-                address=address,
-                application=APPLICATION,
-                data=DotBotWaypoints(
-                    threshold=threshold,
-                    waypoints=[DotBotLH2Position(x=wp["x"], y=wp["y"]) for wp in chunk],
-                ),
-            )
-        )
         rprint(
-            f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sent [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for completion ...[/yellow]"
+            f"    Batch [bold]{idx + 1}[/bold]/[bold]{len(chunks)}[/bold]: sending [bold]{len(chunk)}[/bold] waypoints — [yellow]waiting for AUTO mode ...[/yellow]"
         )
-        await _wait_for_waypoints_done(address, host, port, threshold)
+        await _wait_for_auto_mode(ws, address, chunk, threshold, host, port)
+        rprint(
+            "    [green]AUTO confirmed[/green] — [yellow]waiting for completion ...[/yellow]"
+        )
+        await _wait_for_waypoints_done(address, host, port)
     rprint("  [green]✓[/green] All waypoint batches completed")
-
-
-async def _wait_for_waypoints_done(
-    address: str,
-    host: str,
-    port: int,
-    threshold: int = WAYPOINT_THRESHOLD,
-) -> None:
-    """
-    Poll the REST API until the batch is complete.
-
-    The batch is considered done when one of these conditions holds:
-    - The controller cleared the waypoints list (nominal case when there are
-      more waypoints to come and the robot advances the index beyond the end).
-    - The robot's mode transitions AUTO → MANUAL, which is set by the firmware/
-      simulator when all_done fires after the last waypoint is reached. This is
-      the only reliable signal: waypoint_idx resets to 0 on completion so
-      index-based checks cannot be used. Requiring seen_auto first prevents
-      exiting before the robot has started executing the batch.
-    """
-    seen_auto = False
-    async with rest_client(host, port, False) as client:
-        while True:
-            dotbots = await client.fetch_dotbots(
-                query=DotBotQueryModel(address=address)
-            )
-            if dotbots:
-                bot = dotbots[0]
-                if not bot.waypoints:
-                    break
-                if bot.mode == ControlModeType.AUTO:
-                    seen_auto = True
-                if seen_auto and bot.mode == ControlModeType.MANUAL:
-                    break
-            await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 
 
 async def send_move_raw(
@@ -225,7 +258,7 @@ def triangle_waypoints(scale: float, arena_size: int, _) -> list[dict]:
 def circle_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]:
     """Approximate a circle with n_points waypoints centered in the arena."""
     cx, cy = _center(arena_size)
-    r = scale
+    r = scale / 2
     points = []
     for i in range(n_points + 1):
         angle = math.radians(i * 360 / n_points)
@@ -304,7 +337,7 @@ def infinity_waypoints(scale: float, arena_size: int, n_points: int) -> list[dic
     n_points is kept low to avoid threshold-area overlaps near the crossing point.
     """
     cx, cy = _center(arena_size)
-    a = scale * 1.5  # stretch factor
+    a = scale / 2  # scale is the total width of the shape
     points = []
     for i in range(n_points + 1):
         t = math.radians(i * 360 / n_points)
@@ -333,11 +366,14 @@ def clamp_speed(speed: int) -> int:
 
 
 async def speed_ramp(
-    ws: DotBotWsClient, address: str, duration: float = SPEED_PROFILE_DURATION
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
 ) -> None:
     """
     Move forward with a smooth sinusoidal speed ramp.
-    Speed oscillates between 0 and MAX_SPEED over the duration.
+    Speed ramps smoothly from -MAX_SPEED to +MAX_SPEED over the duration.
     Good for capturing acceleration/deceleration dynamics.
     """
     rprint(f"  Running sinusoidal speed ramp for [bold]{duration}[/bold]s ...")
@@ -347,19 +383,55 @@ async def speed_ramp(
         elapsed = asyncio.get_event_loop().time() - start
         if elapsed >= duration:
             break
-        raw = int(MAX_SPEED * math.sin(math.pi * elapsed / duration))
+        raw = int(-MAX_SPEED * math.cos(math.pi * elapsed / duration))
         speed = clamp_speed(raw)
         await send_move_raw(ws, address, speed, speed)
         color = "green" if speed > 0 else "red" if speed < 0 else "white"
         console.print(
             f"    t=[cyan]{elapsed:.2f}[/cyan]s  speed=[{color}]{speed:>4}[/{color}]"
         )
-        await asyncio.sleep(MOVE_RAW_INTERVAL)
+        await asyncio.sleep(interval)
+    await stop(ws, address)
+
+
+async def speed_swing(
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
+) -> None:
+    """
+    Alternate between positive and negative speeds with increasing-then-decreasing
+    magnitude: 0, +MIN, -MIN, +(MIN+10), -(MIN+10), ..., +MAX, -MAX, ..., +MIN, -MIN, 0.
+    Useful for capturing symmetric acceleration/deceleration step responses.
+    """
+    ascending = list(range(MIN_SPEED, MAX_SPEED + 1, 10))
+    descending = list(range(MAX_SPEED - 10, MIN_SPEED - 1, -10))
+    magnitudes = ascending + descending
+    levels: list[int] = [0]
+    for m in magnitudes:
+        levels.extend([m, -m])
+    levels.append(0)
+
+    step_duration = duration / len(levels)
+    rprint(
+        f"  Running [bold]{len(levels)}[/bold] swing steps, [bold]{step_duration:.2f}[/bold]s each ..."
+    )
+    for speed in levels:
+        color = "green" if speed > 0 else "red" if speed < 0 else "white"
+        rprint(f"    Speed = [{color}]{speed:>4}[/{color}]")
+        step_start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - step_start < step_duration:
+            await send_move_raw(ws, address, speed, speed)
+            await asyncio.sleep(interval)
     await stop(ws, address)
 
 
 async def speed_steps(
-    ws: DotBotWsClient, address: str, duration: float = SPEED_PROFILE_DURATION
+    ws: DotBotWsClient,
+    address: str,
+    duration: float,
+    interval: float,
 ) -> None:
     """
     Move forward stepping through discrete speed levels.
@@ -377,7 +449,7 @@ async def speed_steps(
         step_start = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - step_start < step_duration:
             await send_move_raw(ws, address, speed, speed)
-            await asyncio.sleep(MOVE_RAW_INTERVAL)
+            await asyncio.sleep(interval)
     await stop(ws, address)
 
 
@@ -393,6 +465,7 @@ MOTIONS = {
     "sawtooth": ("waypoints", sawtooth_waypoints),
     "speed_ramp": ("move_raw", speed_ramp),
     "speed_steps": ("move_raw", speed_steps),
+    "speed_swing": ("move_raw", speed_swing),
 }
 
 
@@ -404,7 +477,10 @@ async def run_motion(
     scale: float,
     arena_size: int,
     num_points: int,
-    waypoint_threshold: int = WAYPOINT_THRESHOLD,
+    waypoint_threshold: int = WAYPOINT_THRESHOLD_DEFAULT,
+    duration: float = SPEED_PROFILE_DURATION_DEFAULT,
+    interval: float = MOVE_RAW_INTERVAL_DEFAULT,
+    reverse: bool = False,
 ) -> None:
     kind, fn = MOTIONS[motion_name]
 
@@ -417,8 +493,10 @@ async def run_motion(
     try:
         if kind == "waypoints":
             waypoints = fn(scale, arena_size, num_points)
+            if reverse:
+                waypoints = list(reversed(waypoints))
             table = Table(
-                title=f"{motion_name} waypoints",
+                title=f"{motion_name} waypoints{' (reversed)' if reverse else ''}",
                 show_header=True,
                 header_style="bold blue",
             )
@@ -431,7 +509,7 @@ async def run_motion(
             await send_waypoints(ws, address, waypoints, host, port, waypoint_threshold)
 
         elif kind == "move_raw":
-            await fn(ws, address)
+            await fn(ws, address, duration, interval)
     finally:
         await ws.close()
 
@@ -446,6 +524,9 @@ async def run_async(
     arena_size,
     num_points,
     waypoint_threshold,
+    duration,
+    interval,
+    reverse,
 ):
     if address is None:
         rprint("[yellow]No address provided — fetching available DotBots ...[/yellow]")
@@ -470,6 +551,9 @@ async def run_async(
             arena_size,
             num_points,
             waypoint_threshold,
+            duration,
+            interval,
+            reverse,
         )
 
 
@@ -518,7 +602,7 @@ async def run_async(
     "-n",
     "--repeat",
     type=int,
-    default=1,
+    default=MOTION_REPEAT_DEFAULT,
     show_default=True,
     help="Number of times to replay the motion.",
 )
@@ -539,9 +623,29 @@ async def run_async(
 @click.option(
     "--waypoint-threshold",
     type=int,
-    default=WAYPOINT_THRESHOLD,
+    default=WAYPOINT_THRESHOLD_DEFAULT,
     show_default=True,
     help="Proximity threshold in mm to consider a waypoint reached. Ignored for raw motions.",
+)
+@click.option(
+    "--duration",
+    type=float,
+    default=SPEED_PROFILE_DURATION_DEFAULT,
+    show_default=True,
+    help="Duration in seconds for move_raw motions (speed_ramp, speed_steps). Ignored for waypoint motions.",
+)
+@click.option(
+    "--move-raw-interval",
+    type=float,
+    default=MOVE_RAW_INTERVAL_DEFAULT,
+    show_default=True,
+    help="Interval in seconds between move_raw commands. Ignored for waypoint motions.",
+)
+@click.option(
+    "--reverse",
+    is_flag=True,
+    default=False,
+    help="Reverse the waypoint order. Ignored for move_raw motions.",
 )
 def main(
     host,
@@ -553,6 +657,9 @@ def main(
     arena_size,
     num_points,
     waypoint_threshold,
+    duration,
+    move_raw_interval,
+    reverse,
 ) -> None:
     """DotBot motion examples."""
     asyncio.run(
@@ -566,6 +673,9 @@ def main(
             arena_size,
             num_points,
             waypoint_threshold,
+            duration,
+            move_raw_interval,
+            reverse,
         )
     )
 

@@ -25,9 +25,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${DOTBOT_LIBS_DIR}/drv
 )
 
-# Set preprocessor definition
+# Set preprocessor definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     BOARD_DOTBOT_V${DOTBOT_VERSION}
+    DOTBOT_SIMULATION
 )
 
 # Add fast-math flag

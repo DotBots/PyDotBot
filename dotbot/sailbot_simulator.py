@@ -415,7 +415,6 @@ class SailBotSimulatorCommunicationInterface(threading.Thread):
         ]
 
         super().__init__(daemon=True)  # automatically close when the main program exits
-        self.start()
         self.logger = LOGGER.bind(context=__name__)
         self.logger.info("SailBot simulation started")
 

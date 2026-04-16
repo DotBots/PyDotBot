@@ -28,7 +28,7 @@ Kv = 400  # motor speed constant in RPM
 R = 50  # motor reduction ratio
 D = 50  # wheel diameter in mm
 L = 70  # distance between the two wheels in mm
-MIN_PWM_TO_MOVE = 30  # minimum PWM value to overcome static friction and start moving
+MIN_PWM_TO_MOVE = 40  # minimum PWM value to overcome static friction and start moving
 
 # Encoder model: counts per mm of wheel travel (must match C-side DB_MM_PER_COUNT)
 # mm_per_count = pi * D / (CPR * R)
@@ -46,20 +46,28 @@ SIMULATOR_STEP_DELTA_T = 0.02  # 20 ms
 
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
-MAX_BATTERY_DURATION = 300  # 5 minutes
+MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
 SIMULATOR_UPDATE_INTERVAL_S = 0.1
 
+# Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
+GRU_FEATURE_COLS = [
+    "pwm_left",
+    "pwm_right",
+    "encoder_left",
+    "encoder_right",
+    "direction",
+    "pos_x",
+    "pos_y",
+]
+GRU_SEQ_LEN_DEFAULT = 20  # must match --seq-len used during training
+
 
 def battery_discharge_model(time_elapsed_s: float) -> int:
-    """Simple battery discharge model."""
+    """Linear discharge over MAX_BATTERY_DURATION (supercapacitor idle model)."""
     t = min(time_elapsed_s / MAX_BATTERY_DURATION, 1.0)
-    nonlinear_t = t**1.3
-    voltage = int(INITIAL_BATTERY_VOLTAGE * (1 - nonlinear_t))
-    if voltage < 0:
-        voltage = 0
-    return voltage
+    return max(0, int(INITIAL_BATTERY_VOLTAGE * (1 - t)))
 
 
 def wheel_speed_from_pwm(pwm: float) -> float:
@@ -90,34 +98,45 @@ class SimulatedDotBotSettings(BaseModel):
     motor_left_error: float = 0
     motor_right_error: float = 0
     custom_control_loop_library: Path = None
+    gru_model_path: Path = None
+    battery_model_path: Path = None
+
+
+class ControlLoopWaypoint(ctypes.Structure):
+    """Mirrors coordinate_t from control_loop.h — used when calling control_loop_set_waypoints."""
+
+    _fields_ = [
+        ("x", ctypes.c_uint32),
+        ("y", ctypes.c_uint32),
+    ]
 
 
 class RobotControl(ctypes.Structure):
+    """Mirrors robot_control_t from control_loop.h.
+
+    Only the stable external I/O boundary is represented here.  All internal
+    algorithm state lives in the opaque context managed by the C library.
+    Layout must stay in sync with the C struct (no internal padding gaps).
+    """
+
     _fields_ = [
-        # Inputs — robot state (all 4-byte fields first, no padding gaps)
+        # Inputs — robot state (4-byte fields first, no padding gaps)
         ("pos_x", ctypes.c_uint32),
         ("pos_y", ctypes.c_uint32),
-        (
-            "encoder_left",
-            ctypes.c_int32,
-        ),  # signed delta counts since last call; 0 if unavailable
-        (
-            "encoder_right",
-            ctypes.c_int32,
-        ),  # signed delta counts since last call; 0 if unavailable
-        # Inputs — current waypoint (4-byte fields)
+        ("encoder_left", ctypes.c_int32),  # signed delta counts since last call
+        ("encoder_right", ctypes.c_int32),  # signed delta counts since last call
+        # Outputs — current target waypoint coordinates (written by C, for telemetry)
         ("waypoint_x", ctypes.c_uint32),
         ("waypoint_y", ctypes.c_uint32),
-        ("waypoint_threshold", ctypes.c_uint32),
-        # 2-byte + two 1-byte fields pack cleanly into 4 bytes
+        # Input — robot heading (2-byte, followed by 1-byte fields — no internal padding)
         ("direction", ctypes.c_int16),
-        ("waypoints_length", ctypes.c_uint8),
-        ("waypoint_idx", ctypes.c_uint8),
-        # Outputs — actuation + status flags (all 1-byte)
+        # Outputs — actuation (written by C)
         ("pwm_left", ctypes.c_int8),
         ("pwm_right", ctypes.c_int8),
-        ("waypoint_reached", ctypes.c_uint8),  # set to 1 by C when waypoint reached
-        ("all_done", ctypes.c_uint8),  # set to 1 by C when batch complete
+        # Outputs — status flags (written by C)
+        ("waypoint_reached", ctypes.c_uint8),
+        ("all_done", ctypes.c_uint8),
+        ("waypoint_idx", ctypes.c_uint8),
     ]
 
 
@@ -158,6 +177,21 @@ class DotBotSimulator:
         self.waypoint_threshold = 0
         self.waypoints = []
         self.waypoint_index = 0
+        self.waypoint_x = 0
+        self.waypoint_y = 0
+
+        self.logger = LOGGER.bind(context=__name__, address=self.address)
+        self._gru_model = None
+        self._gru_buffer: list[list[float]] = (
+            []
+        )  # rolling window of raw feature vectors
+        if settings.gru_model_path is not None:
+            self._gru_model = self._load_gru_model(settings.gru_model_path)
+
+        self._battery_model = None
+        self.battery_voltage: float = float(INITIAL_BATTERY_VOLTAGE)
+        if settings.battery_model_path is not None:
+            self._battery_model = self._load_battery_model(settings.battery_model_path)
 
         self._lock = threading.Lock()
         self.tx_queue = tx_queue
@@ -167,12 +201,7 @@ class DotBotSimulator:
         self.rx_thread = threading.Thread(target=self.rx_frame, daemon=True)
         self.main_thread = threading.Thread(target=self.update_state, daemon=True)
         self.controller_mode: ControlModeType = ControlModeType.MANUAL
-        self.logger = LOGGER.bind(context=__name__, address=self.address)
         self._stop_event = threading.Event()
-        self.rx_thread.start()
-        self.advertise_thread.start()
-        self.control_thread.start()
-        self.main_thread.start()
         self.logger.info(
             "DotBot simulator initialized",
             pos_x=self.pos_x,
@@ -181,6 +210,64 @@ class DotBotSimulator:
             theta=self.theta,
         )
 
+    def _load_gru_model(self, path: Path):
+        """Load a TorchScript GRU residual model from *path*."""
+        try:
+            import torch  # imported lazily — not required when model is unused
+
+            model = torch.jit.load(str(path), map_location="cpu")
+            model.eval()
+            self.logger.info("GRU residual model loaded", path=str(path))
+            return model
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(
+                "Failed to load GRU model", path=str(path), error=str(exc)
+            )
+            return None
+
+    def _load_battery_model(self, path: Path):
+        """Load a TorchScript battery discharge model from *path*."""
+        try:
+            import torch  # imported lazily — not required when model is unused
+
+            model = torch.jit.load(str(path), map_location="cpu")
+            model.eval()
+            self.logger.info("Battery discharge model loaded", path=str(path))
+            return model
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(
+                "Failed to load battery model", path=str(path), error=str(exc)
+            )
+            return None
+
+    def _gru_residual(self) -> tuple[float, float, float, float]:
+        """Return (dx, dy, d_enc_left, d_enc_right) predicted by the GRU, or zeros."""
+        if self._gru_model is None or len(self._gru_buffer) < GRU_SEQ_LEN_DEFAULT:
+            return 0.0, 0.0, 0.0, 0.0
+        try:
+            import torch
+
+            seq = self._gru_buffer[-GRU_SEQ_LEN_DEFAULT:]
+            x = torch.tensor([seq], dtype=torch.float32)  # (1, seq_len, n_features)
+            with torch.no_grad():
+                pred = self._gru_model(x)  # (1, 4)
+            return (
+                float(pred[0, 0]),
+                float(pred[0, 1]),
+                float(pred[0, 2]),
+                float(pred[0, 3]),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("GRU inference failed", error=str(exc))
+            return 0.0, 0.0, 0.0, 0.0
+
+    def start(self):
+        self.rx_thread.start()
+        self.advertise_thread.start()
+        self.control_thread.start()
+        self.main_thread.start()
+        self.logger.info("DotBot simulator started")
+
     @property
     def header(self):
         return Header(
@@ -188,7 +275,7 @@ class DotBotSimulator:
             source=int(self.address, 16),
         )
 
-    def _diff_drive_model_update(self):
+    def diff_drive_model_update(self, dt=SIMULATOR_STEP_DELTA_T):
         """State space model update."""
         pos_x_old = self.pos_x
         pos_y_old = self.pos_y
@@ -204,19 +291,72 @@ class DotBotSimulator:
         w = (v_right_real - v_left_real) / L
         x_dot = V * cos(theta_old * pi / 180 - pi / 2)
         y_dot = V * sin(theta_old * pi / 180 + pi / 2)
-        dx = x_dot * SIMULATOR_STEP_DELTA_T
-        dy = y_dot * SIMULATOR_STEP_DELTA_T
+        dx = x_dot * dt
+        dy = y_dot * dt
 
         self.pos_x = pos_x_old + dx
         self.pos_y = pos_y_old + dy
-        self.theta = (theta_old + w * SIMULATOR_STEP_DELTA_T * 180 / pi) % 360
+        self.theta = (theta_old + w * dt * 180 / pi) % 360
 
         if sqrt(dx**2 + dy**2):
             self.direction = int(-1 * atan2(dx, dy) * 180 / pi) % 360
+            if self.direction > 180:
+                self.direction -= 360
+            elif self.direction < -180:
+                self.direction += 360
 
         # Accumulate encoder counts for this physics step
         self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
         self.encoder_right_acc += v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
+
+        # Update GRU feature buffer with the post-step state
+        if self._gru_model is not None:
+            self._gru_buffer.append(
+                [
+                    float(self.pwm_left),
+                    float(self.pwm_right),
+                    float(self.encoder_left_acc),
+                    float(self.encoder_right_acc),
+                    float(self.direction),
+                    float(self.pos_x),
+                    float(self.pos_y),
+                ]
+            )
+            # Keep only as many steps as needed to avoid unbounded growth
+            if len(self._gru_buffer) > GRU_SEQ_LEN_DEFAULT:
+                self._gru_buffer.pop(0)
+            res_x, res_y, res_enc_l, res_enc_r = self._gru_residual()
+            self.pos_x += res_x
+            self.pos_y += res_y
+            self.encoder_left_acc += res_enc_l
+            self.encoder_right_acc += res_enc_r
+
+        if self._battery_model is not None:
+            try:
+                import torch
+
+                # Encoders are only reported by the real hardware in AUTO mode;
+                # mirror that here so the battery model sees consistent inputs.
+                in_auto = self.controller_mode == ControlModeType.AUTO
+                enc_left = float(self.encoder_left_acc) if in_auto else 0.0
+                enc_right = float(self.encoder_right_acc) if in_auto else 0.0
+                features = torch.tensor(
+                    [
+                        [
+                            float(self.pwm_left),
+                            float(self.pwm_right),
+                            enc_left,
+                            enc_right,
+                            float(int(self.controller_mode)),
+                        ]
+                    ],
+                    dtype=torch.float32,
+                )
+                with torch.no_grad():
+                    rate = float(self._battery_model(features)[0, 0])  # mV/s
+                self.battery_voltage = max(0.0, self.battery_voltage + rate * dt)
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning("Battery model inference failed", error=str(exc))
 
         self.logger.debug(
             "State updated",
@@ -227,13 +367,13 @@ class DotBotSimulator:
             pwm_left=int(self.pwm_left),
             pwm_right=int(self.pwm_right),
         )
-        self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
+        self.time_elapsed_s += dt
 
     def update_state(self):
         """Update the state of the dotbot simulator."""
         while True:
             with self._lock:
-                self._diff_drive_model_update()
+                self.diff_drive_model_update()
             is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
             if is_stopped:
                 break
@@ -241,34 +381,37 @@ class DotBotSimulator:
     def _init_control_loop(self) -> callable:
         """Initialize the control loop, potentially loading a custom control loop library."""
         if self.custom_control_loop_library is not None:
-            self.custom_control_loop_library = ctypes.CDLL(
-                self.custom_control_loop_library
-            )
-            self.custom_control_loop_library.update_control.argtypes = [
-                ctypes.POINTER(RobotControl)
+            lib = ctypes.CDLL(self.custom_control_loop_library)
+            self.custom_control_loop_library = lib
+
+            lib.control_loop_alloc.argtypes = []
+            lib.control_loop_alloc.restype = ctypes.c_void_p
+
+            lib.control_loop_free.argtypes = [ctypes.c_void_p]
+            lib.control_loop_free.restype = None
+
+            lib.control_loop_set_waypoints.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ControlLoopWaypoint),
+                ctypes.c_uint8,
+                ctypes.c_uint32,
             ]
-            self.custom_control_loop_library.update_control.restype = None
+            lib.control_loop_set_waypoints.restype = None
+
+            lib.update_control.argtypes = [
+                ctypes.POINTER(RobotControl),
+                ctypes.c_void_p,
+            ]
+            lib.update_control.restype = None
+
+            self._control_ctx = lib.control_loop_alloc()
             self.custom_robot_control = RobotControl()
-            self.custom_robot_control.waypoint_idx = 0
             return self._control_loop_custom
         else:
             return self._control_loop_default
 
     def _control_loop_custom(self):
         """Control loop using a custom control loop library."""
-        idx = self.custom_robot_control.waypoint_idx
-        n = len(self.waypoints)
-
-        # Safety guard: C should have set all_done on the previous call, but
-        # protect against an inconsistent state before indexing the waypoints list.
-        if idx >= n:
-            self.logger.warning("waypoint_idx out of bounds, resetting", idx=idx, n=n)
-            self.pwm_left = 0
-            self.pwm_right = 0
-            self.custom_robot_control.waypoint_idx = 0
-            self.controller_mode = ControlModeType.MANUAL
-            return
-
         self.custom_robot_control.pos_x = int(self.pos_x)
         self.custom_robot_control.pos_y = int(self.pos_y)
         self.custom_robot_control.encoder_left = int(self.encoder_left_acc)
@@ -276,17 +419,17 @@ class DotBotSimulator:
         self.encoder_left_acc -= int(self.encoder_left_acc)
         self.encoder_right_acc -= int(self.encoder_right_acc)
         self.custom_robot_control.direction = self.direction
-        self.custom_robot_control.waypoints_length = n
-        self.custom_robot_control.waypoint_x = int(self.waypoints[idx].pos_x)
-        self.custom_robot_control.waypoint_y = int(self.waypoints[idx].pos_y)
-        self.custom_robot_control.waypoint_threshold = int(self.waypoint_threshold)
 
         self.custom_control_loop_library.update_control(
-            ctypes.byref(self.custom_robot_control)
+            ctypes.byref(self.custom_robot_control),
+            self._control_ctx,
         )
 
         self.pwm_left = self.custom_robot_control.pwm_left
         self.pwm_right = self.custom_robot_control.pwm_right
+        self.waypoint_index = self.custom_robot_control.waypoint_idx
+        self.waypoint_x = self.custom_robot_control.waypoint_x
+        self.waypoint_y = self.custom_robot_control.waypoint_y
 
         self.logger.info(
             "Custom loop",
@@ -296,7 +439,6 @@ class DotBotSimulator:
             encoder_left=int(self.custom_robot_control.encoder_left),
             encoder_right=int(self.custom_robot_control.encoder_right),
             waypoint_index=self.custom_robot_control.waypoint_idx,
-            waypoints_length=self.custom_robot_control.waypoints_length,
             waypoint_x=self.custom_robot_control.waypoint_x,
             waypoint_y=self.custom_robot_control.waypoint_y,
             waypoint_reached=self.custom_robot_control.waypoint_reached,
@@ -305,7 +447,9 @@ class DotBotSimulator:
 
         if self.custom_robot_control.all_done:
             self.logger.info("All waypoints completed")
-            self.custom_robot_control.waypoint_idx = 0
+            self.waypoint_index = 0
+            self.waypoint_x = 0
+            self.waypoint_y = 0
             self.controller_mode = ControlModeType.MANUAL
 
     def _control_loop_default(self):
@@ -325,8 +469,13 @@ class DotBotSimulator:
                 self.pwm_left = 0
                 self.pwm_right = 0
                 self.waypoint_index = 0
+                self.waypoint_x = 0
+                self.waypoint_y = 0
                 self.controller_mode = ControlModeType.MANUAL
                 return
+
+        self.waypoint_x = int(self.waypoints[self.waypoint_index].pos_x)
+        self.waypoint_y = int(self.waypoints[self.waypoint_index].pos_y)
 
         angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
         robot_angle = self.direction
@@ -384,14 +533,26 @@ class DotBotSimulator:
                         direction=self.direction,
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        battery=battery_discharge_model(self.time_elapsed_s),
+                        battery=(
+                            int(self.battery_voltage)
+                            if self._battery_model is not None
+                            else battery_discharge_model(self.time_elapsed_s)
+                        ),
                         pwm_left=int(self.pwm_left),
                         pwm_right=int(self.pwm_right),
                         mode=int(self.controller_mode),
-                        encoder_left=int(self.encoder_left_acc),
-                        encoder_right=int(self.encoder_right_acc),
-                        # waypoint_x=int(self.waypoint_x),
-                        # waypoint_y=int(self.waypoint_y),
+                        encoder_left=(
+                            int(self.encoder_left_acc)
+                            if self.controller_mode == ControlModeType.AUTO
+                            else 0
+                        ),
+                        encoder_right=(
+                            int(self.encoder_right_acc)
+                            if self.controller_mode == ControlModeType.AUTO
+                            else 0
+                        ),
+                        waypoint_x=int(self.waypoint_x),
+                        waypoint_y=int(self.waypoint_y),
                         waypoint_idx=int(self.waypoint_index),
                     )
                 ),
@@ -412,6 +573,9 @@ class DotBotSimulator:
                 if self.address == hex(frame.header.destination)[2:]:
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
+                        self.waypoint_index = 0
+                        self.waypoint_x = 0
+                        self.waypoint_y = 0
                         self.pwm_left = frame.packet.payload.left_y
                         self.pwm_right = frame.packet.payload.right_y
                         if self.pwm_left > 127:
@@ -429,8 +593,21 @@ class DotBotSimulator:
                         self.waypoint_index = 0
                         self.encoder_left_acc = 0.0
                         self.encoder_right_acc = 0.0
-                        if hasattr(self, "custom_robot_control"):
-                            self.custom_robot_control.waypoint_idx = 0
+                        if hasattr(self, "_control_ctx"):
+                            n = len(self.waypoints)
+                            WaypointArray = ControlLoopWaypoint * n
+                            waypoint_arr = WaypointArray(
+                                *[
+                                    ControlLoopWaypoint(x=int(w.pos_x), y=int(w.pos_y))
+                                    for w in self.waypoints
+                                ]
+                            )
+                            self.custom_control_loop_library.control_loop_set_waypoints(
+                                self._control_ctx,
+                                waypoint_arr,
+                                n,
+                                int(self.waypoint_threshold),
+                            )
                         self.logger.info(
                             "Waypoints received",
                             threshold=self.waypoint_threshold,
@@ -451,6 +628,9 @@ class DotBotSimulator:
         self.control_thread.join()
         self.rx_thread.join()
         self.main_thread.join()
+        if hasattr(self, "_control_ctx"):
+            self.custom_control_loop_library.control_loop_free(self._control_ctx)
+            self._control_ctx = None
 
 
 class DotBotSimulatorCommunicationInterface:
@@ -471,8 +651,12 @@ class DotBotSimulatorCommunicationInterface:
             for dotbot_settings in init_state.dotbots
         ]
 
-        self.main_thread.start()
         self.logger = LOGGER.bind(context=__name__)
+
+    def start(self):
+        for dotbot in self.dotbots:
+            dotbot.start()
+        self.main_thread.start()
         self.logger.info("DotBot Simulation Started")
 
     def run(self):

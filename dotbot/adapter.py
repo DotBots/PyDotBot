@@ -224,6 +224,7 @@ class SimulatorAdapterBase(GatewayAdapterBase):
             event_loop.call_soon_threadsafe(queue.put_nowait, frame)
 
         self.simulator = self.create_simulator(_frame_received)
+        self.simulator.start()
 
         LOGGER.info("Connected to simulator")
         while 1:
