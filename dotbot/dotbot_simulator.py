@@ -172,6 +172,10 @@ class DotBotSimulator:
         # physics steps per control call)
         self.encoder_left_acc = 0.0
         self.encoder_right_acc = 0.0
+        # Last encoder delta actually passed to update_control — advertised to match
+        # real-robot telemetry semantics (the value from the most recent control call)
+        self._last_encoder_left = 0
+        self._last_encoder_right = 0
 
         self.calibrated = settings.calibrated
         self.waypoint_threshold = 0
@@ -306,8 +310,11 @@ class DotBotSimulator:
                 self.direction += 360
 
         # Accumulate encoder counts for this physics step
-        self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
-        self.encoder_right_acc += v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
+        if self.controller_mode == ControlModeType.AUTO:
+            self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
+            self.encoder_right_acc += (
+                v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
+            )
 
         # Update GRU feature buffer with the post-step state
         if self._gru_model is not None:
@@ -328,9 +335,11 @@ class DotBotSimulator:
             res_x, res_y, res_enc_l, res_enc_r = self._gru_residual()
             self.pos_x += res_x
             self.pos_y += res_y
-            self.encoder_left_acc += res_enc_l
-            self.encoder_right_acc += res_enc_r
+            if self.controller_mode == ControlModeType.AUTO:
+                self.encoder_left_acc += res_enc_l
+                self.encoder_right_acc += res_enc_r
 
+        self.time_elapsed_s += dt
         if self._battery_model is not None:
             try:
                 import torch
@@ -357,6 +366,8 @@ class DotBotSimulator:
                 self.battery_voltage = max(0.0, self.battery_voltage + rate * dt)
             except Exception as exc:  # noqa: BLE001
                 self.logger.warning("Battery model inference failed", error=str(exc))
+        else:
+            self.battery_voltage = battery_discharge_model(self.time_elapsed_s)
 
         self.logger.debug(
             "State updated",
@@ -367,7 +378,6 @@ class DotBotSimulator:
             pwm_left=int(self.pwm_left),
             pwm_right=int(self.pwm_right),
         )
-        self.time_elapsed_s += dt
 
     def update_state(self):
         """Update the state of the dotbot simulator."""
@@ -414,11 +424,13 @@ class DotBotSimulator:
         """Control loop using a custom control loop library."""
         self.custom_robot_control.pos_x = int(self.pos_x)
         self.custom_robot_control.pos_y = int(self.pos_y)
-        self.custom_robot_control.encoder_left = int(self.encoder_left_acc)
-        self.custom_robot_control.encoder_right = int(self.encoder_right_acc)
-        self.encoder_left_acc -= int(self.encoder_left_acc)
-        self.encoder_right_acc -= int(self.encoder_right_acc)
         self.custom_robot_control.direction = self.direction
+        self._last_encoder_left = int(self.encoder_left_acc)
+        self._last_encoder_right = int(self.encoder_right_acc)
+        self.custom_robot_control.encoder_left = self._last_encoder_left
+        self.custom_robot_control.encoder_right = self._last_encoder_right
+        self.encoder_left_acc = 0
+        self.encoder_right_acc = 0
 
         self.custom_control_loop_library.update_control(
             ctypes.byref(self.custom_robot_control),
@@ -451,6 +463,8 @@ class DotBotSimulator:
             self.waypoint_x = 0
             self.waypoint_y = 0
             self.controller_mode = ControlModeType.MANUAL
+            self.encoder_right_acc = 0
+            self.encoder_left_acc = 0
 
     def _control_loop_default(self):
         delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
@@ -472,6 +486,8 @@ class DotBotSimulator:
                 self.waypoint_x = 0
                 self.waypoint_y = 0
                 self.controller_mode = ControlModeType.MANUAL
+                self.encoder_right_acc = 0
+                self.encoder_left_acc = 0
                 return
 
         self.waypoint_x = int(self.waypoints[self.waypoint_index].pos_x)
@@ -533,24 +549,12 @@ class DotBotSimulator:
                         direction=self.direction,
                         pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
                         pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        battery=(
-                            int(self.battery_voltage)
-                            if self._battery_model is not None
-                            else battery_discharge_model(self.time_elapsed_s)
-                        ),
+                        battery=int(self.battery_voltage),
                         pwm_left=int(self.pwm_left),
                         pwm_right=int(self.pwm_right),
                         mode=int(self.controller_mode),
-                        encoder_left=(
-                            int(self.encoder_left_acc)
-                            if self.controller_mode == ControlModeType.AUTO
-                            else 0
-                        ),
-                        encoder_right=(
-                            int(self.encoder_right_acc)
-                            if self.controller_mode == ControlModeType.AUTO
-                            else 0
-                        ),
+                        encoder_left=self._last_encoder_left,
+                        encoder_right=self._last_encoder_right,
                         waypoint_x=int(self.waypoint_x),
                         waypoint_y=int(self.waypoint_y),
                         waypoint_idx=int(self.waypoint_index),
