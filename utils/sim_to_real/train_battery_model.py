@@ -53,9 +53,15 @@ FEATURE_COLS = [
 ]
 # FEATURE_COLS = ["pwm_left", "pwm_right", "control_mode"]  # simpler, no encoder acc which is noisy and not available in all versions of the simulator
 
-# Maximum delta_t between consecutive rows of the same robot to be considered
-# part of the same session (larger gaps indicate a controller restart).
+# A gap larger than this between consecutive rows of the same robot signals a
+# controller restart / new recording session.
 MAX_DELTA_T_S = 2.0
+
+# Each training sample is built from a fixed-length time window.  Longer windows
+# average out more sensor noise; shorter windows give more samples.  30 s is a
+# good compromise: the true discharge signal (~0.3–3 mV) is detectable over 30 s
+# while the quantisation noise (~±5 mV) averages down by ~√60 ≈ 8×.
+WINDOW_S = 30.0
 
 # battery_level in the CSV is in Volts; convert to mV to match the simulator.
 BATTERY_MV_SCALE = 1000.0
@@ -67,7 +73,18 @@ BATTERY_MV_SCALE = 1000.0
 
 
 def load_and_prepare(csv_path: Path) -> pd.DataFrame:
-    """Load CSV and compute per-step discharge rate (mV/s) for each robot."""
+    """Load CSV and return one training sample per fixed-duration time window.
+
+    Per-step voltage differences are dominated by sensor quantisation noise
+    (±5–15 mV at 0.5 s resolution vs. a true discharge signal of <3 mV/step).
+    Averaging over WINDOW_S-second windows reduces this noise by ~√(WINDOW_S/0.5)
+    and makes the motor-load effect visible.
+
+    Each window becomes one sample:
+      - discharge_rate : (last_mv − first_mv) / window_duration  [mV/s]
+      - features       : mean of each FEATURE_COL over the window
+    Windows that span a recording gap (any step > MAX_DELTA_T_S) are discarded.
+    """
     df = pd.read_csv(csv_path)
 
     required = set(
@@ -78,7 +95,6 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
         console.print(f"[bold red]Error:[/bold red] CSV is missing columns: {missing}")
         raise SystemExit(1)
 
-    # Convert battery voltage from V to mV
     df["battery_mv"] = df["battery_level"] * BATTERY_MV_SCALE
 
     # Encoders are only reported by the hardware in AUTO mode (control_mode == 1).
@@ -87,32 +103,57 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
     df.loc[manual_mask, ["encoder_left", "encoder_right"]] = 0.0
 
     rows = []
+    window_id = 0
     for address, group in df.groupby("address"):
         group = group.sort_values("timestamp").reset_index(drop=True)
-        delta_t = group["timestamp"].diff()
-        delta_mv = group["battery_mv"].diff()
 
-        # Discharge rate in mV/s (negative = discharging)
-        rate = delta_mv / delta_t
+        # Walk forward in time, emitting one sample per WINDOW_S window.
+        start = 0
+        while start < len(group):
+            t0 = group["timestamp"].iloc[start]
+            # Find the end of this window (up to WINDOW_S ahead, no recording gap).
+            end = start + 1
+            while end < len(group):
+                dt_step = (
+                    group["timestamp"].iloc[end] - group["timestamp"].iloc[end - 1]
+                )
+                if dt_step > MAX_DELTA_T_S:
+                    break  # recording gap — stop here and restart after the gap
+                if group["timestamp"].iloc[end] - t0 >= WINDOW_S:
+                    break
+                end += 1
 
-        mask = (
-            (delta_t > 0)
-            & (delta_t < MAX_DELTA_T_S)
-            & (rate <= 0)  # only keep discharge samples (drop noise/charging)
-        )
+            window = group.iloc[start:end]
+            dt = window["timestamp"].iloc[-1] - window["timestamp"].iloc[0]
 
-        subset = group[mask].copy()
-        subset["discharge_rate"] = rate[mask].values
-        rows.append(subset)
+            if dt >= WINDOW_S * 0.9 and len(window) >= 2:  # require ≥90% of window
+                dmv = window["battery_mv"].iloc[-1] - window["battery_mv"].iloc[0]
+                rate = dmv / dt
+                if rate <= 0:  # drop apparent charging artifacts
+                    row = {
+                        "address": address,
+                        "window_id": window_id,
+                        "discharge_rate": rate,
+                    }
+                    for col in FEATURE_COLS:
+                        row[col] = window[col].mean()
+                    rows.append(row)
+                    window_id += 1
+
+            # Advance: skip past a recording gap or step one row forward.
+            if end < len(group) and (
+                group["timestamp"].iloc[end] - group["timestamp"].iloc[end - 1]
+                > MAX_DELTA_T_S
+            ):
+                start = end  # jump past the gap
+            else:
+                start += max(1, end - start)  # non-overlapping: advance by window size
 
     if not rows:
-        console.print(
-            "[bold red]Error:[/bold red] No valid discharge samples found in the CSV."
-        )
+        console.print("[bold red]Error:[/bold red] No valid windows found in the CSV.")
         raise SystemExit(1)
 
-    result = pd.concat(rows, ignore_index=True)
-    return result
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +247,8 @@ def train(
     df = load_and_prepare(csv_path)
 
     summary = Table(show_header=False, box=None, padding=(0, 1))
-    summary.add_row("[cyan]Samples[/cyan]", str(len(df)))
+    summary.add_row("[cyan]Windows[/cyan]", str(len(df)))
+    summary.add_row("[cyan]Window size[/cyan]", f"{WINDOW_S:.0f} s")
     summary.add_row("[cyan]Robots[/cyan]", str(df["address"].nunique()))
     summary.add_row("[cyan]Addresses[/cyan]", ", ".join(df["address"].unique()))
     summary.add_row(
@@ -217,36 +259,54 @@ def train(
     )
     console.print(summary)
 
-    # Normalisation statistics (computed on training data only, but we use the
-    # full dataset here since the CSV is typically from a single collection run)
-    feat_mean = df[FEATURE_COLS].mean().to_numpy(dtype=np.float32)
-    feat_std = df[FEATURE_COLS].std().to_numpy(dtype=np.float32)
+    # Stratified 80/20 train/val split by robot address.
+    # Each row is one non-overlapping window, randomised independently per robot.
+    rng = np.random.default_rng(42)
+    train_dfs, val_dfs = [], []
+    for _addr, group in df.groupby("address"):
+        idx = rng.permutation(len(group))
+        n_val = max(1, int(0.2 * len(group)))
+        val_dfs.append(group.iloc[idx[:n_val]])
+        train_dfs.append(group.iloc[idx[n_val:]])
+    train_df = pd.concat(train_dfs).reset_index(drop=True)
+    val_df = pd.concat(val_dfs).reset_index(drop=True)
+
+    summary2 = Table(show_header=False, box=None, padding=(0, 1))
+    summary2.add_row("[cyan]Train windows[/cyan]", str(len(train_df)))
+    summary2.add_row("[cyan]Val windows[/cyan]", str(len(val_df)))
+    console.print(summary2)
+
+    # Normalisation statistics computed on training data only.
+    feat_mean = train_df[FEATURE_COLS].mean().to_numpy(dtype=np.float32)
+    feat_std = train_df[FEATURE_COLS].std().to_numpy(dtype=np.float32)
     feat_std[feat_std < 1e-6] = 1.0
 
-    rate_mean = float(df["discharge_rate"].mean())
-    rate_std = float(df["discharge_rate"].std())
+    rate_mean = float(train_df["discharge_rate"].mean())
+    rate_std = float(train_df["discharge_rate"].std())
     if rate_std < 1e-6:
         rate_std = 1.0
 
-    X = torch.from_numpy(
-        (df[FEATURE_COLS].to_numpy(dtype=np.float32) - feat_mean) / feat_std
-    )
-    y = torch.from_numpy(
-        (df["discharge_rate"].to_numpy(dtype=np.float32) - rate_mean) / rate_std
-    ).unsqueeze(1)
+    def make_tensors(frame: pd.DataFrame):
+        X = torch.from_numpy(
+            (frame[FEATURE_COLS].to_numpy(dtype=np.float32) - feat_mean) / feat_std
+        )
+        y = torch.from_numpy(
+            (frame["discharge_rate"].to_numpy(dtype=np.float32) - rate_mean) / rate_std
+        ).unsqueeze(1)
+        return X, y
 
-    val_size = max(1, int(0.2 * len(X)))
-    train_size = len(X) - val_size
-    indices = torch.randperm(len(X))
-    train_idx, val_idx = indices[:train_size], indices[train_size:]
+    X_train, y_train = make_tensors(train_df)
+    X_val, y_val = make_tensors(val_df)
+    train_size = len(X_train)
+    val_size = len(X_val)
 
     train_loader = DataLoader(
-        TensorDataset(X[train_idx], y[train_idx]),
+        TensorDataset(X_train, y_train),
         batch_size=batch_size,
         shuffle=True,
     )
     val_loader = DataLoader(
-        TensorDataset(X[val_idx], y[val_idx]),
+        TensorDataset(X_val, y_val),
         batch_size=batch_size,
     )
 

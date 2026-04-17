@@ -35,14 +35,23 @@ REQUIRED_COLS = {
     "address",
 }
 
+# A gap larger than this between consecutive rows of the same robot signals a
+# new independent acquisition (controller restart / different recording session).
+ACQUISITION_GAP_S = 60.0
+
 
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
 
-def load(csv_path: Path, address: str | None) -> dict[str, pd.DataFrame]:
-    """Return a dict {address: DataFrame} filtered to rows with valid battery data."""
+def load(csv_path: Path, address: str | None) -> list[tuple[str, pd.DataFrame]]:
+    """Return a list of (label, DataFrame) pairs, one entry per acquisition.
+
+    Robots with a single continuous recording produce one entry.  Robots whose
+    data contains a gap larger than ACQUISITION_GAP_S are split into multiple
+    entries labelled "<address> — acq N".
+    """
     df = pd.read_csv(csv_path)
 
     missing = REQUIRED_COLS - set(df.columns)
@@ -63,7 +72,20 @@ def load(csv_path: Path, address: str | None) -> dict[str, pd.DataFrame]:
             )
             raise SystemExit(1)
 
-    return {addr: grp.reset_index(drop=True) for addr, grp in df.groupby("address")}
+    result = []
+    for addr, grp in df.groupby("address"):
+        grp = grp.sort_values("timestamp").reset_index(drop=True)
+        # Find indices where a new acquisition begins (large timestamp gap).
+        new_acq = grp["timestamp"].diff().fillna(0) > ACQUISITION_GAP_S
+        acq_id = new_acq.cumsum()
+        acquisitions = [g.reset_index(drop=True) for _, g in grp.groupby(acq_id)]
+        if len(acquisitions) == 1:
+            result.append((addr, acquisitions[0]))
+        else:
+            for i, acq_df in enumerate(acquisitions, start=1):
+                result.append((f"{addr} — acq {i}", acq_df))
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -196,40 +218,41 @@ def main(csv, address, save):
         save.mkdir(parents=True, exist_ok=True)
 
     console.print(Panel(f"[bold]Loading[/bold] {csv}", expand=False))
-    robots = load(csv, address)
+    acquisitions = load(csv, address)
 
     summary = Table(
-        "Address",
+        "Label",
         "Rows",
         "Mean |error| [V]",
         "Max |error| [V]",
         header_style="bold cyan",
     )
-    for addr, df in robots.items():
+    for label, df in acquisitions:
         err = abs_error(df)
         summary.add_row(
-            addr,
+            label,
             str(len(df)),
             f"{err.mean():.4f}",
             f"{err.max():.4f}",
         )
     console.print(summary)
 
-    for addr, df in robots.items():
+    for label, df in acquisitions:
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle(
-            f"Battery fidelity — {addr}\n"
+            f"Battery fidelity — {label}\n"
             f"({len(df)} samples, mean |error| {abs_error(df).mean():.4f} V)",
             fontsize=13,
         )
-        plot_voltage_over_time(axes[0, 0], df, addr)
-        plot_error_over_time(axes[0, 1], df, addr)
-        plot_error_distribution(axes[1, 0], df, addr)
-        plot_voltage_vs_pwm(axes[1, 1], df, addr)
+        plot_voltage_over_time(axes[0, 0], df, label)
+        plot_error_over_time(axes[0, 1], df, label)
+        plot_error_distribution(axes[1, 0], df, label)
+        plot_voltage_vs_pwm(axes[1, 1], df, label)
         fig.tight_layout()
 
         if save is not None:
-            out = save / f"battery_fidelity_{addr}.png"
+            slug = label.replace(" ", "_").replace("—", "-")
+            out = save / f"battery_fidelity_{slug}.png"
             fig.savefig(out, dpi=150)
             console.print(f"  [green]Saved[/green] {out}")
         else:
