@@ -7,18 +7,21 @@
 """Dotbot simulator for the DotBot project."""
 
 import ctypes
+import heapq
 import queue
 import random
 import threading
+import time
 from binascii import hexlify
 from dataclasses import dataclass
+from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.logger import LOGGER
@@ -50,6 +53,10 @@ MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
 SIMULATOR_UPDATE_INTERVAL_S = 0.1
+
+MARI_SLOTFRAME_SIZE = (
+    102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
+)
 
 # Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
 GRU_FEATURE_COLS = [
@@ -89,6 +96,27 @@ class Waypoint:
     y: int
 
 
+class SimulatedNetworkMode(str, Enum):
+    DEFAULT = "default"
+    MARI = "mari"
+
+
+class SimulatedNetworkSettings(BaseModel):
+    pdr: int = 100
+    uplink_pdr: Optional[int] = None
+    downlink_pdr: Optional[int] = None
+    slot_duration_ms: float = 1.236
+    mqtt_latency_ms: float = 0.0
+
+    @model_validator(mode="after")
+    def _fill_mari_pdrs(self):
+        if self.uplink_pdr is None:
+            self.uplink_pdr = self.pdr
+        if self.downlink_pdr is None:
+            self.downlink_pdr = self.pdr
+        return self
+
+
 class SimulatedDotBotSettings(BaseModel):
     address: str
     pos_x: int
@@ -100,6 +128,7 @@ class SimulatedDotBotSettings(BaseModel):
     custom_control_loop_library: Path = None
     gru_model_path: Path = None
     battery_model_path: Path = None
+    network_mode: SimulatedNetworkMode = SimulatedNetworkMode.DEFAULT
 
 
 class ControlLoopWaypoint(ctypes.Structure):
@@ -138,10 +167,6 @@ class RobotControl(ctypes.Structure):
         ("all_done", ctypes.c_uint8),
         ("waypoint_idx", ctypes.c_uint8),
     ]
-
-
-class SimulatedNetworkSettings(BaseModel):
-    pdr: int = 100
 
 
 class InitStateToml(BaseModel):
@@ -637,6 +662,82 @@ class DotBotSimulator:
             self._control_ctx = None
 
 
+class MariNetworkSimulator:
+    """TSCH slot-based network simulator modelling the Mari link layer."""
+
+    def __init__(self, settings: SimulatedNetworkSettings, on_frame_received: Callable):
+        self._settings = settings
+        self._on_frame_received = on_frame_received
+        self._heap: list = []
+        self._seq = 0
+        self._cond = threading.Condition()
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        with self._cond:
+            self._cond.notify_all()
+        self._thread.join()
+
+    def _slot_delay_s(self, dotbot_index: int, slot_shift: int = 0) -> float:
+        slotframe_duration_s = (
+            MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms / 1000
+        )
+        slot_pos = (dotbot_index + slot_shift) % MARI_SLOTFRAME_SIZE
+        slot_offset_s = slot_pos * self._settings.slot_duration_ms / 1000
+        phase = time.monotonic() % slotframe_duration_s
+        return (slot_offset_s - phase) % slotframe_duration_s
+
+    def _enqueue(self, delay_s: float, fn: Callable):
+        delivery = time.monotonic() + delay_s
+        with self._cond:
+            heapq.heappush(self._heap, (delivery, self._seq, fn))
+            self._seq += 1
+            self._cond.notify()
+
+    def schedule_uplink(self, frame, dotbot_index: int):
+        if random.randint(0, 100) > self._settings.uplink_pdr:
+            return
+        delay = self._slot_delay_s(dotbot_index) + self._settings.mqtt_latency_ms / 1000
+        self._enqueue(delay, lambda: self._on_frame_received(frame))
+
+    def schedule_downlink(
+        self, bytes_: bytes, dotbot: "DotBotSimulator", dotbot_index: int
+    ):
+        if random.randint(0, 100) > self._settings.downlink_pdr:
+            return
+        frame = Frame.from_bytes(bytes_)
+        # Downlink slots are in the second half of the frame — distinct from uplink slots
+        delay = (
+            self._slot_delay_s(dotbot_index, slot_shift=MARI_SLOTFRAME_SIZE // 2)
+            + self._settings.mqtt_latency_ms / 1000
+        )
+        self._enqueue(delay, lambda: dotbot.queue.put_nowait(frame))
+
+    def _run(self):
+        with self._cond:
+            while not self._stop_event.is_set():
+                now = time.monotonic()
+                if self._heap:
+                    deadline, _, fn = self._heap[0]
+                    if deadline <= now:
+                        heapq.heappop(self._heap)
+                        self._cond.release()
+                        try:
+                            fn()
+                        finally:
+                            self._cond.acquire()
+                        continue
+                    wait = deadline - now
+                else:
+                    wait = None
+                self._cond.wait(timeout=wait)
+
+
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
@@ -646,7 +747,7 @@ class DotBotSimulatorCommunicationInterface:
         self._stp_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
         init_state = InitStateToml(**toml.load(simulator_init_state_path))
-        self.network_pdr = init_state.network.pdr
+        self._network = init_state.network
         self.dotbots = [
             DotBotSimulator(
                 settings=dotbot_settings,
@@ -654,12 +755,19 @@ class DotBotSimulatorCommunicationInterface:
             )
             for dotbot_settings in init_state.dotbots
         ]
+        self._dotbot_modes = [s.network_mode for s in init_state.dotbots]
+        self._address_to_index = {d.address: i for i, d in enumerate(self.dotbots)}
+        self._mari = None
+        if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):
+            self._mari = MariNetworkSimulator(self._network, self.on_frame_received)
 
         self.logger = LOGGER.bind(context=__name__)
 
     def start(self):
         for dotbot in self.dotbots:
             dotbot.start()
+        if self._mari is not None:
+            self._mari.start()
         self.main_thread.start()
         self.logger.info("DotBot Simulation Started")
 
@@ -677,18 +785,25 @@ class DotBotSimulatorCommunicationInterface:
         self.queue.put_nowait(None)  # unblock the run thread if waiting on the queue
         for dotbot in self.dotbots:
             dotbot.stop()
+        if self._mari is not None:
+            self._mari.stop()
         self.main_thread.join()
 
     def flush(self):
         """Flush fake serial output."""
         pass
 
-    def _packet_delivered(self):
-        return random.randint(0, 100) <= self.network_pdr
+    def _packet_delivered(self, pdr: int) -> bool:
+        return random.randint(0, 100) <= pdr
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
-        if self._packet_delivered() is False:
+        addr = hex(frame.header.source)[2:]
+        index = self._address_to_index.get(addr, 0)
+        if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
+            self._mari.schedule_uplink(frame, index)
+            return
+        if not self._packet_delivered(self._network.pdr):
             self.logger.info(
                 f"Packet from DotBot {hexlify(int(frame.header.source).to_bytes(8, 'big')).decode()} lost in simulation"
             )
@@ -697,8 +812,11 @@ class DotBotSimulatorCommunicationInterface:
 
     def write(self, bytes_):
         """Write bytes on the fake serial."""
-        for dotbot in self.dotbots:
-            if self._packet_delivered() is False:
+        for index, dotbot in enumerate(self.dotbots):
+            if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
+                self._mari.schedule_downlink(bytes_, dotbot, index)
+                continue
+            if not self._packet_delivered(self._network.pdr):
                 self.logger.info(
                     f"Packet to DotBot {dotbot.address} lost in simulation"
                 )
