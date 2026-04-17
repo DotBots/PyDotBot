@@ -64,7 +64,7 @@ class CSVDataLogger:
         self,
         real_log: CSVLog,
         sim_log: CSVLog,
-        control_mode: str,
+        control_mode: int,
         waypoint_index: int,
         waypoint_x: int,
         waypoint_y: int,

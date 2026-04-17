@@ -447,7 +447,7 @@ class Controller:
                             sim_log=sim_log,
                             control_mode=ControlModeType(
                                 frame.packet.payload.mode
-                            ).name,
+                            ).value,
                             waypoint_index=frame.packet.payload.waypoint_idx,
                             waypoint_x=frame.packet.payload.waypoint_x,
                             waypoint_y=frame.packet.payload.waypoint_y,
