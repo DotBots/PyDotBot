@@ -10,6 +10,7 @@ Each scenario has its own folder with dedicated instructions, initial states, an
 - `minimum_naming_game/`: naming game examples (with and without motion)
 - `work_and_charge/`: work/charge alternation scenario
 - `charging_station/`: queue-and-charge scenario
+- `labyrinth/`: two-robot labyrinth navigation
 - `motions/`: move a single DotBot through predefined shapes or speed profiles
 
 We also provide a stop.py helper script to halt the simulator (without needing to stop robots via SwarmIT).

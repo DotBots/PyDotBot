@@ -1,0 +1,19 @@
+# Labyrinth example: two robots placed at opposite top corners of the maze.
+# Use with:
+#   dotbot-controller -p dotbot-simulator \
+#       --simulator-init-state dotbot/examples/labyrinth/init_simulator_state.toml \
+#       --background-map dotbot/examples/labyrinth/labyrinth-2000x2000.png
+
+[[dotbots]]
+address = "AAAAAAAA00000001"
+calibrated = 0xff
+pos_x = 200
+pos_y = 200
+direction = 0
+
+[[dotbots]]
+address = "AAAAAAAA00000002"
+calibrated = 0xff
+pos_x = 1800
+pos_y = 200
+direction = 0
