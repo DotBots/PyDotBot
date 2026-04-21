@@ -24,4 +24,4 @@ log_level = "info"
 log_output = "pydotbot.log"
 
 # --- Simulator ---
-simulator_init_state_path = "simulator_init_state.toml"
+simulator_init_state = "simulator_init_state.toml"

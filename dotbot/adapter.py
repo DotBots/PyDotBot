@@ -19,7 +19,7 @@ from marilib.marilib_cloud import MarilibCloud
 from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
-from dotbot import SIMULATOR_INIT_STATE_PATH_DEFAULT
+from dotbot import SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
 from dotbot.logger import LOGGER
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
@@ -248,13 +248,13 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
 
     def __init__(
         self,
-        simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT,
+        simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
     ):
-        self.simulator_init_state_path = simulator_init_state_path
+        self.simulator_init_state = simulator_init_state
 
     def create_simulator(self, on_frame_received: callable):
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, self.simulator_init_state_path
+            on_frame_received, self.simulator_init_state
         )
 
 

@@ -51,6 +51,8 @@ Options:
                                   height proportional to the real map size. The
                                   map size should be set with the --map-size
                                   option (default: 2000x2000).
+  --simulator-init-state FILE     Path to the simulator initial state .toml
+                                  file. Defaults to 'simulator_init_state.toml'.
   --help                          Show this message and exit.
 """
 

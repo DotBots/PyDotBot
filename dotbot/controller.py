@@ -38,7 +38,7 @@ from dotbot import (
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
-    SIMULATOR_INIT_STATE_PATH_DEFAULT,
+    SIMULATOR_INIT_STATE_DEFAULT,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -132,7 +132,7 @@ class ControllerSettings:
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
-    simulator_init_state_path: str = SIMULATOR_INIT_STATE_PATH_DEFAULT
+    simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -683,7 +683,7 @@ class Controller:
             )
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(
-                self.settings.simulator_init_state_path,
+                self.settings.simulator_init_state,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

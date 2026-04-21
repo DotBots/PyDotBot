@@ -24,6 +24,7 @@ from dotbot import (
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
+    SIMULATOR_INIT_STATE_DEFAULT,
     pydotbot_version,
 )
 from dotbot.controller import Controller, ControllerSettings
@@ -136,6 +137,11 @@ from dotbot.logger import setup_logging
         f"with the --map-size option (default: {MAP_SIZE_DEFAULT})."
     ),
 )
+@click.option(
+    "--simulator-init-state",
+    type=click.Path(dir_okay=False),
+    help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
+)
 def main(
     adapter,
     port,
@@ -148,6 +154,7 @@ def main(
     controller_http_port,
     map_size,
     background_map,
+    simulator_init_state,
     webbrowser,
     verbose,
     log_level,
@@ -172,6 +179,7 @@ def main(
         "controller_http_port": controller_http_port,
         "map_size": map_size,
         "background_map": background_map,
+        "simulator_init_state": simulator_init_state,
         "webbrowser": webbrowser,
         "verbose": verbose,
         "log_level": log_level,
