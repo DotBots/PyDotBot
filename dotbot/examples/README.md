@@ -17,11 +17,11 @@ We also provide a stop.py helper script to halt the simulator (without needing t
 ## Common usage pattern (default: simulator)
 
 1. Pick a scenario and read its local `README.md`.
-2. Set `simulator_init_state_path` in `config_sample.toml` as described by that scenario.
-3. Start the controller in simulator mode:
+2. Start the controller in simulator mode, passing the scenario's init state:
 
 ```bash
-python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simulator
+dotbot-controller -a dotbot-simulator \
+    --simulator-init-state <path/to/init_state.toml>
 ```
 
-4. Run the selected example using its documented command.
+3. Run the selected example using its documented command.

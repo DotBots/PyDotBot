@@ -741,12 +741,12 @@ class MariNetworkSimulator:
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, on_frame_received: Callable, simulator_init_state_path: str):
+    def __init__(self, on_frame_received: Callable, simulator_init_state: str):
         self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
         self._stp_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
-        init_state = InitStateToml(**toml.load(simulator_init_state_path))
+        init_state = InitStateToml(**toml.load(simulator_init_state))
         self._network = init_state.network
         self.dotbots = [
             DotBotSimulator(
