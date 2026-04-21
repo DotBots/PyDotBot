@@ -44,7 +44,7 @@ QUEUE_SPACING = (
     300  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
-(PARK_X, PARK_Y) = (1500, 500)  # World-frame (X, Y) position of the parking area origin
+(PARK_X, PARK_Y) = (1700, 500)  # World-frame (X, Y) position of the parking area origin
 PARK_SPACING = 300  # Spacing between parked bots (along Y axis)
 
 
@@ -134,8 +134,8 @@ async def disengage_from_charger(client: RestClient, dotbot_address: str):
     dotbot = bots[0]
     initial_y = dotbot.lh2_position.y
 
-    # reverse until 300 units below initial position
-    y_after_reverse = initial_y + 300
+    # reverse until 400 units below initial position
+    y_after_reverse = initial_y + 400
     # forward a bit to recover direction
     y_after_forward = y_after_reverse - 10
 

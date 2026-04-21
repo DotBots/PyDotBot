@@ -11,7 +11,8 @@ The simulator setup below is the default path for reproducibility.
 
 ```bash
 dotbot-controller -a dotbot-simulator \
-    --simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml
+    --simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml \
+    --background-map dotbot/examples/charging_station/charging_station-2000x2000.png
 ```
 
 ### 2. Run the charging-station scenario
