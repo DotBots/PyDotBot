@@ -11,8 +11,12 @@ The simulator setup below is the default path for reproducibility.
 
 ```bash
 dotbot-controller -a dotbot-simulator \
-    --simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml
+    --background-map dotbot/examples/charging_station/charging_station-2000x2000.png
 ```
+
+Use `--simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml` to test with 10 robots.
+The default map size should also be changed with `--map-size=4000x2000` and the
+background map used above doesn't work anymore in that case.
 
 ### 2. Run the charging-station scenario
 
