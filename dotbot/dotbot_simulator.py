@@ -26,9 +26,8 @@ from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, Payload
 
 Kv = 400  # motor speed constant in RPM
 R = 50  # motor reduction ratio
-D = 50  # wheel diameter in mm
-L = 70  # distance between the two wheels in mm
-MIN_PWM_TO_MOVE = 40  # minimum PWM value to overcome static friction and start moving
+D = 44  # wheel diameter in mm
+L = 78  # distance between the two wheels in mm
 
 # Encoder model: counts per mm of wheel travel (must match C-side DB_MM_PER_COUNT)
 # mm_per_count = pi * D / (CPR * R)
@@ -37,12 +36,11 @@ MM_PER_COUNT = (pi * D) / (ENCODER_CPR * R)  # ~0.2618 mm/count
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 2
+ANGULAR_SPEED_GAIN = 1.5
 REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
-DIRECTION_THRESHOLD = 50  # threshold to update the direction (50mm)
 
-SIMULATOR_STEP_DELTA_T = 0.02  # 20 ms
+SIMULATOR_STEP_DELTA_T = 0.05  # 50 ms
 
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
@@ -72,8 +70,6 @@ def battery_discharge_model(time_elapsed_s: float) -> int:
 
 def wheel_speed_from_pwm(pwm: float) -> float:
     """Convert a PWM value to a wheel speed in mm/s."""
-    if abs(pwm) < MIN_PWM_TO_MOVE:
-        return 0.0
     if pwm > 100:
         pwm = 100
     if pwm < -100:
