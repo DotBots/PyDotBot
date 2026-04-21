@@ -11,14 +11,14 @@ mqtt_latency_ms = 0.0  # one-way MQTT broker latency in ms (applied in both mode
 [[dotbots]]
 address = "BADCAFE111111111" # DotBot unique address
 calibrated = 0xff # optional, defaults to only first lighthouse calibrated
-pos_x = 400 # [0, 2_000] in mm
-pos_y = 400 # [0, 2_000]
+pos_x = 1000 # [0, 2_000] in mm
+pos_y = 250 # [0, 2_000]
 direction = 0 # [0, 360] in degrees, 0 is facing north, increasing clockwise
 network_mode = "default" # optional, defaults to "default", can be set to "mari"
 
 [[dotbots]]
 address = "DEADBEEF22222222"
-pos_x = 400
+pos_x = 1500
 pos_y = 200
 direction = 180
 
