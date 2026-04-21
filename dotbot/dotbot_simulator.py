@@ -117,8 +117,12 @@ class SimulatedNetworkSettings(BaseModel):
         return self
 
 
+def _random_address() -> str:
+    return f"{random.getrandbits(64):016x}"
+
+
 class SimulatedDotBotSettings(BaseModel):
-    address: str
+    address: str = Field(default_factory=_random_address)
     pos_x: int
     pos_y: int
     direction: int = -1000
