@@ -36,7 +36,7 @@ MM_PER_COUNT = (pi * D) / (ENCODER_CPR * R)  # ~0.2618 mm/count
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 2
+ANGULAR_SPEED_GAIN = 1.5
 REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
 DIRECTION_THRESHOLD = 50  # threshold to update the direction (50mm)
