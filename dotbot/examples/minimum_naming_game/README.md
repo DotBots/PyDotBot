@@ -22,31 +22,25 @@ pip install pyyaml scipy
 
 ## How to run
 
-### Specify the initial state
+### 1. Start the controller in simulator mode
 
-Specify the initial state of the DotBots by replacing the file path for ```simulator_init_state_path``` in [config_sample.toml](config_sample.toml).
-
-**Static setup** (without motion) using init_state.toml:
-
-```toml
-simulator_init_state_path = "dotbot/examples/minimum_naming_game/init_state.toml"
-```
-
-**Dynamic setup** (with motion) using init_state_with_motion.toml:
-
-```toml
-simulator_init_state_path = "dotbot/examples/minimum_naming_game/init_state_with_motion.toml"
-```
-
-### Start the controller in simulator mode
+**Static setup** (without motion):
 
 ```bash
-python -m dotbot.controller_app --config-path config_sample.toml -a dotbot-simulator
+dotbot-controller -a dotbot-simulator \
+    --simulator-init-state dotbot/examples/minimum_naming_game/init_state.toml
 ```
 
-### Run the minimum naming game scenario
+**Dynamic setup** (with motion):
 
-Open a new terminal and run the minimum naming game scenario in the top-level directory ```PyDotBot/```.
+```bash
+dotbot-controller -a dotbot-simulator \
+    --simulator-init-state dotbot/examples/minimum_naming_game/init_state_with_motion.toml
+```
+
+### 2. Run the minimum naming game scenario
+
+From the `PyDotBot/` root in a new terminal:
 
 **Static setup** (without motion):
 
@@ -54,7 +48,7 @@ Open a new terminal and run the minimum naming game scenario in the top-level di
 python -m dotbot.examples.minimum_naming_game.minimum_naming_game
 ```
 
-**Dynamic setup** (with motion) :
+**Dynamic setup** (with motion):
 
 ```bash
 python -m dotbot.examples.minimum_naming_game.minimum_naming_game_with_motion
