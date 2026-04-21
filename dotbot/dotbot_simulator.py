@@ -70,8 +70,6 @@ def battery_discharge_model(time_elapsed_s: float) -> int:
 
 def wheel_speed_from_pwm(pwm: float) -> float:
     """Convert a PWM value to a wheel speed in mm/s."""
-    if abs(pwm) < MIN_PWM_TO_MOVE:
-        return 0.0
     if pwm > 100:
         pwm = 100
     if pwm < -100:
