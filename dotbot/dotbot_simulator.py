@@ -26,9 +26,8 @@ from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, Payload
 
 Kv = 400  # motor speed constant in RPM
 R = 50  # motor reduction ratio
-D = 50  # wheel diameter in mm
-L = 70  # distance between the two wheels in mm
-MIN_PWM_TO_MOVE = 40  # minimum PWM value to overcome static friction and start moving
+D = 44  # wheel diameter in mm
+L = 78  # distance between the two wheels in mm
 
 # Encoder model: counts per mm of wheel travel (must match C-side DB_MM_PER_COUNT)
 # mm_per_count = pi * D / (CPR * R)
