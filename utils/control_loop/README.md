@@ -17,16 +17,42 @@ version provided by DotBot-libs and integrate it with the simulator using FFI
 ### Build Steps
 
 ```bash
-cmake -DDOTBOT_LIBS_DIR=<path to DotBot-libs base directory> -DDOTBOT_VERSION=<DotBot version> -B build .
+cd utils/control_loop
+cmake -DDOTBOT_LIBS_DIR=<path to DotBot-libs base directory> -B build .
 make -C build
 ```
 
 This creates the `build/` subdirectory and generates there the
 `libdotbot_control_loop.so` library file.
 
-`DOTBOT_LIBS_DIR` variable must be set to tell the build system where to find
-the dotbot control loop library.
-If not set default value for `DOTBOT_VERSION` is 3.
+`DOTBOT_LIBS_DIR` must be set to tell the build system where to find the
+DotBot control loop source files.
+
+### CMake Options
+
+All options below are cache variables and can be set via the command line
+(`-D<OPTION>=<value>`), `ccmake` (TUI), or `cmake-gui`.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `DOTBOT_LIBS_DIR` | PATH | _(required)_ | Path to the DotBot-libs base directory |
+| `DOTBOT_VERSION` | STRING | `3` | DotBot hardware version — sets `BOARD_DOTBOT_V<N>` |
+| `BUILD_WITH_EKF` | BOOL | `OFF` | Enable EKF support (`DOBOT_CONTROL_LOOP_USE_EKF`) |
+| `BUILD_WITH_PURE_PURSUIT` | BOOL | `OFF` | Enable Pure Pursuit support (`DOTBOT_CONTROL_LOOP_USE_PURE_PURSUIT`) |
+
+Example enabling both optional features:
+
+```bash
+cmake -DDOTBOT_LIBS_DIR=<path> -DDOTBOT_VERSION=3 \
+      -DBUILD_WITH_EKF=ON -DBUILD_WITH_PURE_PURSUIT=ON \
+      -B build .
+```
+
+Alternatively, use the interactive TUI to configure all options:
+
+```bash
+ccmake -DDOTBOT_LIBS_DIR=<path> -B build .
+```
 
 
 3. The compiled shared library will be in the `build/` directory (`.so` on Linux,
