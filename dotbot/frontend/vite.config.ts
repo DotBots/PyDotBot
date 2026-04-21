@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => {
       'process.env.REACT_APP_MQTT_BROKER_PASSWORD': JSON.stringify(env.VITE_MQTT_BROKER_PASSWORD ?? ''),
       'process.env.REACT_APP_MQTT_PATH': JSON.stringify(env.VITE_MQTT_PATH ?? ''),
     },
+    server: {
+      watch: {
+        ignored: ['**/coverage/**'],
+      },
+    },
     build: {
       outDir: 'build',
       chunkSizeWarningLimit: 800,
