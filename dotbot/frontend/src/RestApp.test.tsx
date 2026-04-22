@@ -3,17 +3,24 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
-// Capture WebSocket callbacks for manual invocation in tests
-let capturedOnOpen: () => void = () => {};
-let capturedOnMessage: (event: MessageEvent) => void = () => {};
+// Mock native WebSocket so tests never hit the network
+type MockWs = {
+  onopen: (() => void) | null;
+  onclose: (() => void) | null;
+  onmessage: ((event: MessageEvent) => void) | null;
+  readyState: number;
+  close: ReturnType<typeof vi.fn>;
+};
 
-vi.mock('react-use-websocket', () => ({
-  default: (_url: string, opts: { onOpen?: () => void; onMessage?: (event: MessageEvent) => void }) => {
-    if (opts.onOpen) capturedOnOpen = opts.onOpen;
-    if (opts.onMessage) capturedOnMessage = opts.onMessage;
-    return {};
+let capturedWs: MockWs | null = null;
+
+const MockWebSocket = Object.assign(
+  function MockWebSocket() {
+    capturedWs = { onopen: null, onclose: null, onmessage: null, readyState: 0, close: vi.fn() };
+    return capturedWs;
   },
-}));
+  { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 },
+);
 
 vi.mock('./utils/rest', () => ({
   apiFetchDotbots: vi.fn(),
@@ -83,6 +90,8 @@ const dotbot = {
 };
 
 beforeEach(() => {
+  capturedWs = null;
+  vi.stubGlobal('WebSocket', MockWebSocket);
   vi.clearAllMocks();
   capturedPublishCommand = async () => {};
   mockedFetchMapSize.mockResolvedValue(areaSize);
@@ -95,6 +104,10 @@ beforeEach(() => {
   mockedHandleDotBotUpdate.mockImplementation((prev) => prev);
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 // ─── Mount behaviour ────────────────────────────────────────────────────────
 
 test('RestApp fetches areaSize and backgroundMap on mount', async () => {
@@ -103,10 +116,9 @@ test('RestApp fetches areaSize and backgroundMap on mount', async () => {
   await waitFor(() => expect(mockedFetchBackgroundMap).toHaveBeenCalledOnce());
 });
 
-test('RestApp does not fetch dotbots on mount (dotbots starts as empty array)', async () => {
+test('RestApp fetches dotbots on mount as connection health check', async () => {
   render(<RestApp />);
-  await waitFor(() => expect(mockedFetchMapSize).toHaveBeenCalledOnce());
-  expect(mockedFetchDotbots).not.toHaveBeenCalled();
+  await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalled());
 });
 
 test('RestApp renders nothing until areaSize resolves', () => {
@@ -124,58 +136,49 @@ test('RestApp renders DotBots after areaSize resolves', async () => {
 
 test('RestApp fetches dotbots when WebSocket opens', async () => {
   render(<RestApp />);
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toBeInTheDocument());
-  await act(async () => {
-    capturedOnOpen();
-  });
+  await waitFor(() => expect(capturedWs).not.toBeNull());
+  vi.clearAllMocks();
+  await act(async () => { capturedWs?.onopen?.(); });
   await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalledOnce());
 });
 
 test('RestApp WS Reload message triggers fetchDotBots', async () => {
   render(<RestApp />);
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toBeInTheDocument());
+  await waitFor(() => expect(capturedWs).not.toBeNull());
+  vi.clearAllMocks();
   await act(async () => {
-    capturedOnMessage(
+    capturedWs?.onmessage?.(
       new MessageEvent('message', {
         data: JSON.stringify({ cmd: NotificationType.Reload }),
       }),
     );
   });
-  await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalled());
+  await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalledOnce());
 });
 
 test('RestApp WS NewDotBot message appends a dotbot', async () => {
   render(<RestApp />);
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toBeInTheDocument());
-  expect(screen.getByTestId('dotbots')).toHaveTextContent('0');
+  // After health check, dotbots is populated with [dotbot] → count is 1
+  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('1'));
 
   await act(async () => {
-    capturedOnMessage(
+    capturedWs?.onmessage?.(
       new MessageEvent('message', {
         data: JSON.stringify({ cmd: NotificationType.NewDotBot, data: dotbot }),
       }),
     );
   });
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('1'));
+  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('2'));
 });
 
 test('RestApp WS Update message calls handleDotBotUpdate when dotbots are present', async () => {
   render(<RestApp />);
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toBeInTheDocument());
-
-  // Populate dotbots via NewDotBot first
-  await act(async () => {
-    capturedOnMessage(
-      new MessageEvent('message', {
-        data: JSON.stringify({ cmd: NotificationType.NewDotBot, data: dotbot }),
-      }),
-    );
-  });
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('1'));
+  // After health check dotbots is non-empty; send Update directly
+  await waitFor(() => expect(capturedWs).not.toBeNull());
 
   const updateMsg = { cmd: NotificationType.Update, data: { address: 'aabbccddeeff', status: 2 } };
   await act(async () => {
-    capturedOnMessage(
+    capturedWs?.onmessage?.(
       new MessageEvent('message', { data: JSON.stringify(updateMsg) }),
     );
   });

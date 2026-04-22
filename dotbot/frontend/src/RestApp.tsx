@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NotificationType } from "./utils/constants";
 import { handleDotBotUpdate } from "./utils/helpers";
 
-import useWebSocket from 'react-use-websocket';
 import {
   apiFetchDotbots,
   apiFetchMapSize,
@@ -64,32 +63,66 @@ const RestApp: React.FC = () => {
     log.info(`Publishing message: ${message} to topic: ${topic}`);
   }, []);
 
-  const onWsOpen = (): void => {
-    log.info('websocket opened');
-    fetchDotBots();
-  };
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectWebSocketRef = useRef<() => void>(() => {});
 
-  const onWsMessage = (event: MessageEvent): void => {
-    const message: WsMessage = JSON.parse(event.data as string);
-    if (message.cmd === NotificationType.Reload) {
+  const openWebSocket = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      return;
+    }
+
+    const ws = new WebSocket(websocketUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      log.info('websocket opened');
       fetchDotBots();
-    }
-    if (message.cmd === NotificationType.NewDotBot) {
-      setDotbots(prev => [...prev, message.data as DotBot]);
-    }
-    if (message.cmd === NotificationType.Update && dotbots && dotbots.length > 0) {
-      setDotbots(prev => handleDotBotUpdate(prev, message));
-    }
-  };
+    };
 
-  useWebSocket(websocketUrl, {
-    onOpen: () => onWsOpen(),
-    onClose: () => log.warn("websocket closed"),
-    onMessage: (event) => onWsMessage(event),
-    shouldReconnect: () => true,
-    reconnectInterval: (attempt) => Math.min(500 * 2 ** attempt, 10000),
-    filter: () => false,
-  });
+    ws.onclose = () => {
+      log.warn("websocket closed");
+      reconnectTimerRef.current = setTimeout(() => connectWebSocketRef.current(), 1000);
+    };
+
+    ws.onmessage = (event: MessageEvent) => {
+      const message: WsMessage = JSON.parse(event.data as string);
+      if (message.cmd === NotificationType.Reload) {
+        fetchDotBots();
+      }
+      if (message.cmd === NotificationType.NewDotBot) {
+        setDotbots(prev => [...prev, message.data as DotBot]);
+      }
+      if (message.cmd === NotificationType.Update) {
+        setDotbots(prev => prev.length > 0 ? handleDotBotUpdate(prev, message) : prev);
+      }
+    };
+  }, [fetchDotBots, websocketUrl]);
+
+  const connectWebSocket = useCallback(() => {
+    apiFetchDotbots()
+      .then(data => {
+        if (data) setDotbots(data);
+        openWebSocket();
+      })
+      .catch(() => {
+        reconnectTimerRef.current = setTimeout(() => connectWebSocketRef.current(), 1000);
+      });
+  }, [openWebSocket]);
+
+  useEffect(() => {
+    connectWebSocketRef.current = connectWebSocket;
+  }, [connectWebSocket]);
+
+  useEffect(() => {
+    connectWebSocket();
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      wsRef.current?.close();
+    };
+  }, [connectWebSocket]);
 
   useEffect(() => {
     if (!dotbots) {

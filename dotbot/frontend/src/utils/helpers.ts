@@ -101,7 +101,7 @@ export const handleDotBotUpdate = (prevList: DotBot[], message: WsMessage): DotB
     }
 
     // battery
-    if (message.data.battery != null && Math.abs((bot.battery ?? 0) - message.data.battery) > 0.1) {
+    if (message.data.battery != null && Math.abs((bot.battery ?? 0) - message.data.battery) > 0.05) {
       updated = { ...updated, battery: message.data.battery };
       botChanged = true;
     }
