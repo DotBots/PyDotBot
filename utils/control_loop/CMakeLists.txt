@@ -39,4 +39,8 @@ if(BUILD_WITH_PURE_PURSUIT)
 endif()
 
 # Add fast-math flag
-target_compile_options(${PROJECT_NAME} PRIVATE -ffast-math)
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /fp:fast)
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE -ffast-math)
+endif()

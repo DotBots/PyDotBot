@@ -215,6 +215,7 @@ class Controller:
         address: str,
         pwm_left: int,
         pwm_right: int,
+        controller_mode: ControlModeType = ControlModeType.MANUAL,
         init_pos_x: int = 0,
         init_pos_y: int = 0,
         init_direction: int = 0,
@@ -242,9 +243,14 @@ class Controller:
             self._dotbot_twin_timestamps[address] = now
         twin.pwm_left = pwm_left
         twin.pwm_right = pwm_right
+        twin.controller_mode = controller_mode
         dt = now - self._dotbot_twin_timestamps[address]
         self._dotbot_twin_timestamps[address] = now
         twin.diff_drive_model_update(dt)
+        twin._last_encoder_left = int(twin.encoder_left_acc)
+        twin._last_encoder_right = int(twin.encoder_right_acc)
+        twin.encoder_left_acc = 0.0
+        twin.encoder_right_acc = 0.0
         return twin
 
     async def _open_webbrowser(self):
@@ -417,6 +423,7 @@ class Controller:
                         address=dotbot.address,
                         pwm_left=frame.packet.payload.pwm_left,
                         pwm_right=frame.packet.payload.pwm_right,
+                        controller_mode=ControlModeType(frame.packet.payload.mode),
                         init_pos_x=new_position.x,
                         init_pos_y=new_position.y,
                         init_direction=dotbot.direction,
@@ -439,8 +446,8 @@ class Controller:
                             direction=int(twin.direction),
                             pwm_left=int(twin.pwm_left),
                             pwm_right=int(twin.pwm_right),
-                            encoder_left=int(twin.encoder_left_acc),
-                            encoder_right=int(twin.encoder_right_acc),
+                            encoder_left=twin._last_encoder_left,
+                            encoder_right=twin._last_encoder_right,
                         )
                         self.csv_data_logger.log(
                             real_log=real_log,
