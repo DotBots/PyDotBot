@@ -27,7 +27,7 @@ from dotbot import GATEWAY_ADDRESS_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
 
-Kv = 400  # motor speed constant in RPM
+Kv = 700  # motor speed constant in RPM
 R = 50  # motor reduction ratio
 D = 44  # wheel diameter in mm
 L = 78  # distance between the two wheels in mm
@@ -43,14 +43,14 @@ ANGULAR_SPEED_GAIN = 1.5
 REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
 
-SIMULATOR_STEP_DELTA_T = 0.05  # 50 ms
+SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
 
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
-SIMULATOR_UPDATE_INTERVAL_S = 0.1
+SIMULATOR_UPDATE_INTERVAL_S = 0.05
 
 MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
@@ -492,6 +492,11 @@ class DotBotSimulator:
             self.encoder_left_acc = 0
 
     def _control_loop_default(self):
+        self._last_encoder_left = int(self.encoder_left_acc)
+        self._last_encoder_right = int(self.encoder_right_acc)
+        self.encoder_left_acc = 0.0
+        self.encoder_right_acc = 0.0
+
         delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
         delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
         distance_to_target = sqrt(delta_x**2 + delta_y**2)
