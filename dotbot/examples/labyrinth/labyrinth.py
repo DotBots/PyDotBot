@@ -43,9 +43,10 @@ MAX_WAYPOINTS = 12  # hardware limit per waypoint batch
 # gap (x=1150–1500) into the top corridor and explores the dead end.
 ROBOT1_WAYPOINTS = [
     (200, 680),  # explore toward bottom of left pocket (wall A ends at y=750)
-    (1000, 1600),  # go south past wall D (y=1400–1450)
+    (200, 1600),  # go south past wall D (y=1400–1450)
+    (1000, 1600),  # go east past wall C bottom (wall C ends at y=1450)
     (1300, 1400),  # go east past wall C bottom (wall C ends at y=1450)
-    (1000, 1000),  # go north through the gap into the top corridor
+    (1000, 1100),  # go north through the gap into the top corridor
     (1300, 750),  # explore the middle-right dead end (wall C ends at y=750)
     (1300, 500),  # explore the top-right dead end (wall E ends at y=600)
     (600, 500),  # final target (blue disk)
