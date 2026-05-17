@@ -167,6 +167,11 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
           <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span className="navbar-toggler-icon"></span>
           </button>
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            <span className="badge bg-info" title="Number of connected robots">
+              {dotbots.length} {dotbots.length === 1 ? 'robot' : 'robots'}
+            </span>
+          </div>
         </div>
       </nav>
       <div className="container">
