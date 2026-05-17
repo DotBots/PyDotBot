@@ -19,9 +19,11 @@ interface DotBotsProps {
   updateDotbots: React.Dispatch<React.SetStateAction<DotBot[]>>;
   publishCommand: PublishCommandFn;
   publish: (topic: string, message: unknown) => void;
+  qrkeyAvailable?: boolean;
+  qrkeyUrl?: string;
 }
 
-const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish }) => {
+const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
   const [activeDotbot, setActiveDotbot] = useState(inactiveAddress);
   const [showDotBotHistory, setShowDotBotHistory] = useState(true);
   const [dotbotHistorySize, setDotbotHistorySize] = useState(maxPositionHistory);
@@ -167,9 +169,31 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
           <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span className="navbar-toggler-icon"></span>
           </button>
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            <span className="badge bg-info" title="Number of connected robots">
+              {dotbots.length} {dotbots.length === 1 ? 'robot' : 'robots'}
+            </span>
+            {qrkeyAvailable && qrkeyUrl && (
+              <a
+                className="btn btn-sm btn-outline-light py-0"
+                href={`${qrkeyUrl}/pin/`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Show QR code to connect a phone"
+              >
+                Show QR
+              </a>
+            )}
+          </div>
         </div>
       </nav>
       <div className="container">
+        {(!dotbots || dotbots.length === 0) && (
+          <div className="text-center text-muted py-5">
+            <p className="mb-1 fs-5">No robots connected</p>
+            <p className="mb-0">Waiting for advertisements&hellip;</p>
+          </div>
+        )}
         {dotbots && dotbots.length > 0 && (
           <>
             {dotbotCount > 0 && (

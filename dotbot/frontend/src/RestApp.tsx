@@ -21,8 +21,35 @@ const RestApp: React.FC = () => {
   const [areaSize, setAreaSize] = useState<AreaSize | undefined>(undefined);
   const [backgroundMap, setBackgroundMap] = useState<BackgroundMap | undefined>(undefined);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
+  const [qrkeyAvailable, setQrkeyAvailable] = useState<boolean>(false);
 
   const websocketUrl = `ws://localhost:8000/controller/ws/status`;
+  const qrkeyUrl = "http://localhost:8080";
+  // Only probe qrkey when the dashboard is served from a local controller.
+  // The same bundle also lands on gh-pages (as the phone-mode app); from
+  // there localhost:8080 means the phone itself and the probe is noise.
+  const isLocalController =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  useEffect(() => {
+    if (!isLocalController) return;
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2000);
+        const res = await fetch(`${qrkeyUrl}/pin_code`, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!cancelled) setQrkeyAvailable(res.ok);
+      } catch {
+        if (!cancelled) setQrkeyAvailable(false);
+      }
+    };
+    probe();
+    const interval = setInterval(probe, 10000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isLocalController]);
 
   const fetchDotBots = useCallback(async () => {
     const data = await apiFetchDotbots().catch(error => console.log(error));
@@ -67,6 +94,12 @@ const RestApp: React.FC = () => {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectWebSocketRef = useRef<() => void>(() => {});
 
+  // Mirror dotbots into a ref so onmessage (which is inside a useCallback
+  // that intentionally doesn't depend on `dotbots`) can check "do we know
+  // this address?" without stale-closure issues.
+  const dotbotsRef = useRef<DotBot[]>(dotbots);
+  useEffect(() => { dotbotsRef.current = dotbots; }, [dotbots]);
+
   const openWebSocket = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       return;
@@ -87,13 +120,28 @@ const RestApp: React.FC = () => {
 
     ws.onmessage = (event: MessageEvent) => {
       const message: WsMessage = JSON.parse(event.data as string);
-      if (message.cmd === NotificationType.Reload) {
+      if (
+        message.cmd === NotificationType.Reload ||
+        message.cmd === NotificationType.NewDotBot
+      ) {
+        // NewDotBot is delivered without a `data` field; the server
+        // (controller.py) intentionally omits it for that cmd. Refetch
+        // the full list — same path as Reload — instead of pushing
+        // `undefined` into the array (which then crashes the next render
+        // when filters access dotbot.application).
         fetchDotBots();
       }
-      if (message.cmd === NotificationType.NewDotBot) {
-        setDotbots(prev => [...prev, message.data as DotBot]);
-      }
       if (message.cmd === NotificationType.Update) {
+        const addr = message.data?.address;
+        if (addr && !dotbotsRef.current.some(b => b.address === addr)) {
+          // First time we see this address. The server overrides
+          // cmd=NEW_DOTBOT to UPDATE whenever the advertisement payload
+          // sets need_update=True (controller.py:483), so brand-new bots
+          // arrive here as UPDATE with no entry in the list yet. Refetch
+          // the full list to pick them up.
+          fetchDotBots();
+          return;
+        }
         setDotbots(prev => prev.length > 0 ? handleDotBotUpdate(prev, message) : prev);
       }
     };
@@ -147,6 +195,8 @@ const RestApp: React.FC = () => {
             updateDotbots={setDotbots}
             publishCommand={publishCommand}
             publish={publish}
+            qrkeyAvailable={qrkeyAvailable}
+            qrkeyUrl={qrkeyUrl}
           />
         </div>
       )}
