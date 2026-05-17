@@ -67,6 +67,12 @@ const RestApp: React.FC = () => {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectWebSocketRef = useRef<() => void>(() => {});
 
+  // Mirror dotbots into a ref so onmessage (which is inside a useCallback
+  // that intentionally doesn't depend on `dotbots`) can check "do we know
+  // this address?" without stale-closure issues.
+  const dotbotsRef = useRef<DotBot[]>(dotbots);
+  useEffect(() => { dotbotsRef.current = dotbots; }, [dotbots]);
+
   const openWebSocket = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       return;
@@ -87,13 +93,28 @@ const RestApp: React.FC = () => {
 
     ws.onmessage = (event: MessageEvent) => {
       const message: WsMessage = JSON.parse(event.data as string);
-      if (message.cmd === NotificationType.Reload) {
+      if (
+        message.cmd === NotificationType.Reload ||
+        message.cmd === NotificationType.NewDotBot
+      ) {
+        // NewDotBot is delivered without a `data` field; the server
+        // (controller.py) intentionally omits it for that cmd. Refetch
+        // the full list — same path as Reload — instead of pushing
+        // `undefined` into the array (which then crashes the next render
+        // when filters access dotbot.application).
         fetchDotBots();
       }
-      if (message.cmd === NotificationType.NewDotBot) {
-        setDotbots(prev => [...prev, message.data as DotBot]);
-      }
       if (message.cmd === NotificationType.Update) {
+        const addr = message.data?.address;
+        if (addr && !dotbotsRef.current.some(b => b.address === addr)) {
+          // First time we see this address. The server overrides
+          // cmd=NEW_DOTBOT to UPDATE whenever the advertisement payload
+          // sets need_update=True (controller.py:483), so brand-new bots
+          // arrive here as UPDATE with no entry in the list yet. Refetch
+          // the full list to pick them up.
+          fetchDotBots();
+          return;
+        }
         setDotbots(prev => prev.length > 0 ? handleDotBotUpdate(prev, message) : prev);
       }
     };
