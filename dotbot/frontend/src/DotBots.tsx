@@ -19,9 +19,11 @@ interface DotBotsProps {
   updateDotbots: React.Dispatch<React.SetStateAction<DotBot[]>>;
   publishCommand: PublishCommandFn;
   publish: (topic: string, message: unknown) => void;
+  qrkeyAvailable?: boolean;
+  qrkeyUrl?: string;
 }
 
-const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish }) => {
+const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
   const [activeDotbot, setActiveDotbot] = useState(inactiveAddress);
   const [showDotBotHistory, setShowDotBotHistory] = useState(true);
   const [dotbotHistorySize, setDotbotHistorySize] = useState(maxPositionHistory);
@@ -171,6 +173,17 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
             <span className="badge bg-info" title="Number of connected robots">
               {dotbots.length} {dotbots.length === 1 ? 'robot' : 'robots'}
             </span>
+            {qrkeyAvailable && qrkeyUrl && (
+              <a
+                className="btn btn-sm btn-outline-light py-0"
+                href={`${qrkeyUrl}/pin/`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Show QR code to connect a phone"
+              >
+                Show QR
+              </a>
+            )}
           </div>
         </div>
       </nav>

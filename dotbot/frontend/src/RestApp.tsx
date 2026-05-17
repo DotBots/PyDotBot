@@ -21,8 +21,35 @@ const RestApp: React.FC = () => {
   const [areaSize, setAreaSize] = useState<AreaSize | undefined>(undefined);
   const [backgroundMap, setBackgroundMap] = useState<BackgroundMap | undefined>(undefined);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
+  const [qrkeyAvailable, setQrkeyAvailable] = useState<boolean>(false);
 
   const websocketUrl = `ws://localhost:8000/controller/ws/status`;
+  const qrkeyUrl = "http://localhost:8080";
+  // Only probe qrkey when the dashboard is served from a local controller.
+  // The same bundle also lands on gh-pages (as the phone-mode app); from
+  // there localhost:8080 means the phone itself and the probe is noise.
+  const isLocalController =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  useEffect(() => {
+    if (!isLocalController) return;
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2000);
+        const res = await fetch(`${qrkeyUrl}/pin_code`, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!cancelled) setQrkeyAvailable(res.ok);
+      } catch {
+        if (!cancelled) setQrkeyAvailable(false);
+      }
+    };
+    probe();
+    const interval = setInterval(probe, 10000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isLocalController]);
 
   const fetchDotBots = useCallback(async () => {
     const data = await apiFetchDotbots().catch(error => console.log(error));
@@ -168,6 +195,8 @@ const RestApp: React.FC = () => {
             updateDotbots={setDotbots}
             publishCommand={publishCommand}
             publish={publish}
+            qrkeyAvailable={qrkeyAvailable}
+            qrkeyUrl={qrkeyUrl}
           />
         </div>
       )}
