@@ -170,6 +170,12 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
         </div>
       </nav>
       <div className="container">
+        {(!dotbots || dotbots.length === 0) && (
+          <div className="text-center text-muted py-5">
+            <p className="mb-1 fs-5">No robots connected</p>
+            <p className="mb-0">Waiting for advertisements&hellip;</p>
+          </div>
+        )}
         {dotbots && dotbots.length > 0 && (
           <>
             {dotbotCount > 0 && (
