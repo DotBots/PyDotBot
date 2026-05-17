@@ -479,7 +479,10 @@ class Controller:
                 Y=frame.packet.payload.pos_x,
                 battery=frame.packet.payload.battery,
             )
-            if need_update is True:
+            if (
+                need_update is True
+                and notification_cmd != DotBotNotificationCommand.NEW_DOTBOT
+            ):
                 notification_cmd = DotBotNotificationCommand.UPDATE
 
         if (
@@ -525,7 +528,8 @@ class Controller:
                 dotbot.position_history.append(new_position)
             if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
                 dotbot.position_history.pop(0)
-            notification_cmd = DotBotNotificationCommand.UPDATE
+            if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
+                notification_cmd = DotBotNotificationCommand.UPDATE
 
         if notification_cmd == DotBotNotificationCommand.UPDATE:
             notification = DotBotNotificationModel(
