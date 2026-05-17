@@ -127,6 +127,19 @@ test('RestApp renders nothing until areaSize resolves', () => {
   expect(screen.queryByTestId('dotbots')).not.toBeInTheDocument();
 });
 
+test('RestApp probes qrkey on localhost', async () => {
+  // jsdom default hostname is 'localhost', so the qrkey probe should run.
+  const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal('fetch', fetchSpy);
+  render(<RestApp />);
+  await waitFor(() =>
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://localhost:8080/pin_code',
+      expect.objectContaining({ signal: expect.anything() }),
+    ),
+  );
+});
+
 test('RestApp renders DotBots after areaSize resolves', async () => {
   render(<RestApp />);
   await waitFor(() => expect(screen.getByTestId('dotbots')).toBeInTheDocument());
@@ -156,19 +169,20 @@ test('RestApp WS Reload message triggers fetchDotBots', async () => {
   await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalledOnce());
 });
 
-test('RestApp WS NewDotBot message appends a dotbot', async () => {
+test('RestApp WS NewDotBot message triggers fetchDotBots', async () => {
+  // NewDotBot is delivered without a `data` field by the server, so the
+  // frontend refetches the full list — same path as Reload.
   render(<RestApp />);
-  // After health check, dotbots is populated with [dotbot] → count is 1
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('1'));
-
+  await waitFor(() => expect(capturedWs).not.toBeNull());
+  vi.clearAllMocks();
   await act(async () => {
     capturedWs?.onmessage?.(
       new MessageEvent('message', {
-        data: JSON.stringify({ cmd: NotificationType.NewDotBot, data: dotbot }),
+        data: JSON.stringify({ cmd: NotificationType.NewDotBot }),
       }),
     );
   });
-  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('2'));
+  await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalledOnce());
 });
 
 test('RestApp WS Update message calls handleDotBotUpdate when dotbots are present', async () => {
@@ -183,6 +197,26 @@ test('RestApp WS Update message calls handleDotBotUpdate when dotbots are presen
     );
   });
   await waitFor(() => expect(mockedHandleDotBotUpdate).toHaveBeenCalled());
+});
+
+test('RestApp WS Update with unknown address triggers fetchDotBots', async () => {
+  // Server overrides cmd=NEW_DOTBOT to UPDATE whenever need_update=true,
+  // so the very first frame from a brand-new bot arrives as UPDATE for an
+  // address we don't yet have in the list. The frontend must refetch.
+  render(<RestApp />);
+  await waitFor(() => expect(capturedWs).not.toBeNull());
+  // Wait for the initial fetch to populate dotbotsRef with [dotbot].
+  await waitFor(() => expect(screen.getByTestId('dotbots')).toHaveTextContent('1'));
+  vi.clearAllMocks();
+  const updateMsg = { cmd: NotificationType.Update, data: { address: 'newaddrnewaddr', status: 0 } };
+  await act(async () => {
+    capturedWs?.onmessage?.(
+      new MessageEvent('message', { data: JSON.stringify(updateMsg) }),
+    );
+  });
+  await waitFor(() => expect(mockedFetchDotbots).toHaveBeenCalledOnce());
+  // handleDotBotUpdate is NOT called on this path — we refetch instead.
+  expect(mockedHandleDotBotUpdate).not.toHaveBeenCalled();
 });
 
 // ─── publishCommand dispatch ─────────────────────────────────────────────────
