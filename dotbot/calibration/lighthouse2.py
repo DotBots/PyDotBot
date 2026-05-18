@@ -99,13 +99,9 @@ def calculate_camera_point(counts: LH2Counts) -> np.ndarray:
 
     cam_x = -math.tan(0.5 * (a1 + a2))
     if counts.count1 < counts.count2:
-        cam_y = -math.sin(a2 / 2 - a1 / 2 - 60 * math.pi / 180) / math.tan(
-            math.pi / 6
-        )
+        cam_y = -math.sin(a2 / 2 - a1 / 2 - 60 * math.pi / 180) / math.tan(math.pi / 6)
     else:
-        cam_y = -math.sin(a1 / 2 - a2 / 2 - 60 * math.pi / 180) / math.tan(
-            math.pi / 6
-        )
+        cam_y = -math.sin(a1 / 2 - a2 / 2 - 60 * math.pi / 180) / math.tan(math.pi / 6)
 
     return np.asarray([cam_x, cam_y], dtype=np.float64)
 
@@ -144,9 +140,7 @@ def apply_homography(
     for row in camera_view_points:
         projected = np.dot(homography, np.array([row[0], row[1], 1.0]))
         projected /= projected[2]
-        ground_plane_coordinates = np.vstack(
-            (ground_plane_coordinates, projected[:2])
-        )
+        ground_plane_coordinates = np.vstack((ground_plane_coordinates, projected[:2]))
 
     return ground_plane_coordinates
 
@@ -156,11 +150,10 @@ def homography_as_bytes(matrix: np.ndarray) -> bytes:
     matrix_bytes = bytearray()
     try:
         for bytes_block in [
-            int(n * 1e3).to_bytes(4, "little", signed=True)
-            for n in matrix.ravel()
+            int(n * 1e3).to_bytes(4, "little", signed=True) for n in matrix.ravel()
         ]:
             matrix_bytes += bytes_block
-    except:
+    except Exception:  # noqa: BLE001 - defensive fallback for overflow
         matrix_bytes = bytearray(36)
     return matrix_bytes
 
@@ -217,16 +210,11 @@ class LighthouseManager:
     ) -> LH2Homography:
         """Compute the extra lighthouse calibration values and matrices."""
 
-        print(
-            f"ref: {samples[0].ref_lh_index}, homographies: {self.homographies}"
-        )
+        print(f"ref: {samples[0].ref_lh_index}, homographies: {self.homographies}")
 
         # Convert reference counts to camera points
         ref_camera_points = camera_points_from_counts(
-            [
-                LH2Counts(s.ref_lh_index, s.ref_count1, s.ref_count2)
-                for s in samples
-            ]
+            [LH2Counts(s.ref_lh_index, s.ref_count1, s.ref_count2) for s in samples]
         )
 
         print(f"ref_camera_points: {ref_camera_points}")
@@ -276,23 +264,15 @@ class LighthouseManager:
             for s in calibration_samples
             if s.lh_index == 0
         ]
-        self.homographies[0] = self._compute_reference_homography(
-            reference_counts
-        )
+        self.homographies[0] = self._compute_reference_homography(reference_counts)
 
-        print(
-            f"Computing {self.extra_lh_num} extra lighthouse calibrations..."
-        )
+        print(f"Computing {self.extra_lh_num} extra lighthouse calibrations...")
         if self.extra_lh_num > 0:
             for lh_index in range(self.extra_lh_num):
                 print(f"Computing calibration for LH{lh_index + 1}")
-                samples = [
-                    s
-                    for s in calibration_samples
-                    if s.lh_index == lh_index + 1
-                ]
-                self.homographies[lh_index + 1] = (
-                    self._compute_extra_calibration(samples)
+                samples = [s for s in calibration_samples if s.lh_index == lh_index + 1]
+                self.homographies[lh_index + 1] = self._compute_extra_calibration(
+                    samples
                 )
 
     def has_calibration(self, lh_index) -> bool:

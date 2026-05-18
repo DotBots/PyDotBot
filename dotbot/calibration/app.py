@@ -107,7 +107,7 @@ def read_calibration_data_from_csv(
 ) -> list[LH2CalibrationSample]:
     """Read calibration data from CSV file."""
     calibration_samples: list[LH2CalibrationSample] = []
-    with open(file_path, "r") as input_file:
+    with open(file_path) as input_file:
         reader = csv.DictReader(
             input_file,
             quoting=csv.QUOTE_STRINGS,
@@ -147,9 +147,7 @@ class CalibrationApp(App):
         self.input_data = input_data
         self.calibration_samples: list[LH2CalibrationSample] = [None] * 4
         if self.input_data is not None:
-            self.calibration_samples = read_calibration_data_from_csv(
-                self.input_data
-            )
+            self.calibration_samples = read_calibration_data_from_csv(self.input_data)
         else:
             self.serial = serial.Serial(self.port, self.baudrate, timeout=0.1)
             self.serial.flushInput()
@@ -186,19 +184,13 @@ class CalibrationApp(App):
                         yield BUTTONS["bottom_left"].button
                         yield BUTTONS["bottom_right"].button
                 with Container(id="data-logs"):
-                    self.data_log = RichLog(
-                        id="log", highlight=True, markup=True
-                    )
+                    self.data_log = RichLog(id="log", highlight=True, markup=True)
                     yield self.data_log
             if self.extra_lh_num > 0:
                 with TabbedContent(id="extra-lh-tabs", initial="tab-lh1"):
                     for lh in range(self.extra_lh_num):
-                        with TabPane(
-                            f"LH{lh + 1} calibration", id=f"tab-lh{lh+1}"
-                        ):
-                            with Container(
-                                classes="extra-lh-calibration-section"
-                            ):
+                        with TabPane(f"LH{lh + 1} calibration", id=f"tab-lh{lh+1}"):
+                            with Container(classes="extra-lh-calibration-section"):
                                 with Container(
                                     classes="calibration-extra-lh-container"
                                 ):
@@ -220,12 +212,8 @@ class CalibrationApp(App):
                                             ],
                                             value=0,
                                         )
-                                        yield EXTRA_LH_BUTTONS[
-                                            f"lh{lh+1}"
-                                        ].button
-                                with Container(
-                                    classes="calibration-state-info"
-                                ):
+                                        yield EXTRA_LH_BUTTONS[f"lh{lh+1}"].button
+                                with Container(classes="calibration-state-info"):
                                     log = RichLog(
                                         id=f"extra_lh_logs_{lh + 1}",
                                         highlight=True,
@@ -234,18 +222,14 @@ class CalibrationApp(App):
                                     self.extra_lh_logs.append(log)
                                     yield log
             with Container(id="app-logs"):
-                self.app_log = RichLog(
-                    id="app_log", highlight=True, markup=True
-                )
+                self.app_log = RichLog(id="app_log", highlight=True, markup=True)
                 yield self.app_log
             with Horizontal():
                 self.save_calibration_button = Button(
                     "Save calibration", id="save-btn", variant="primary"
                 )
                 yield self.save_calibration_button
-                yield Button(
-                    "Reset calibration", id="reset-btn", variant="warning"
-                )
+                yield Button("Reset calibration", id="reset-btn", variant="warning")
                 yield Button("Exit", id="exit-btn", variant="error")
 
     async def on_button_pressed(self, event: Button.Pressed):
@@ -287,21 +271,13 @@ class CalibrationApp(App):
     def handle_received_payload(self, payload: bytes):
         """Handle a received frame."""
         if len(payload) != 9:
-            self.data_log.write(
-                f"[red]Invalid payload received '{payload.hex()}'[/]"
-            )
+            self.data_log.write(f"[red]Invalid payload received '{payload.hex()}'[/]")
             return
 
         counts: LH2Counts = LH2Counts(
-            lh_index=int.from_bytes(
-                payload[0:1], byteorder="little", signed=False
-            ),
-            count1=int.from_bytes(
-                payload[1:5], byteorder="little", signed=False
-            ),
-            count2=int.from_bytes(
-                payload[5:9], byteorder="little", signed=False
-            ),
+            lh_index=int.from_bytes(payload[0:1], byteorder="little", signed=False),
+            count1=int.from_bytes(payload[1:5], byteorder="little", signed=False),
+            count2=int.from_bytes(payload[5:9], byteorder="little", signed=False),
         )
 
         # The firmware reports counts for every LH it sees, including ones
@@ -352,9 +328,7 @@ class CalibrationApp(App):
         """Add a calibration point."""
 
         if self.input_data is not None:
-            calibration_sample = self.calibration_samples[
-                BUTTONS[point_id].value
-            ]
+            calibration_sample = self.calibration_samples[BUTTONS[point_id].value]
             self.last_counts[0] = LH2Counts(
                 lh_index=calibration_sample.lh_index,
                 count1=calibration_sample.count1,
@@ -371,12 +345,10 @@ class CalibrationApp(App):
         self.last_counts[0] = None
 
         if self.input_data is None:
-            self.calibration_samples[BUTTONS[point_id].value] = (
-                LH2CalibrationSample(
-                    lh_index=counts.lh_index,
-                    count1=counts.count1,
-                    count2=counts.count2,
-                )
+            self.calibration_samples[BUTTONS[point_id].value] = LH2CalibrationSample(
+                lh_index=counts.lh_index,
+                count1=counts.count1,
+                count2=counts.count2,
             )
 
         if self.csv_writer is not None:
@@ -417,9 +389,7 @@ class CalibrationApp(App):
         ref_index = self.extra_lh_index_references[lh_index - 1]
 
         if self.input_data is not None:
-            samples = [
-                s for s in self.calibration_samples if s.lh_index == lh_index
-            ]
+            samples = [s for s in self.calibration_samples if s.lh_index == lh_index]
             if self.extra_lh_samples_num[lh_index - 1] >= len(samples):
                 self.app_log.write(
                     f"[red]Error: No more calibration samples available for LH{lh_index}[/]"

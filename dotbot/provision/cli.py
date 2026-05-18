@@ -102,9 +102,7 @@ def normalize_network_id(raw: str | None) -> tuple[int, str] | None:
             f"Invalid network_id '{raw}' (expected hex)."
         ) from exc
     if not (0x0000 <= value <= 0xFFFF):
-        raise click.ClickException(
-            "network_id must be 16-bit (0x0000..0xFFFF)."
-        )
+        raise click.ClickException("network_id must be 16-bit (0x0000..0xFFFF).")
     return value, f"{value:04X}"
 
 
@@ -118,9 +116,7 @@ def download_file(url: str, dest: Path) -> None:
         with urllib.request.urlopen(url) as resp:
             status = getattr(resp, "status", 200)
             if status != 200:
-                raise click.ClickException(
-                    f"HTTP {status} while downloading {url}"
-                )
+                raise click.ClickException(f"HTTP {status} while downloading {url}")
             data = resp.read()
     except urllib.error.HTTPError as exc:
         raise click.ClickException(
@@ -319,9 +315,7 @@ def cli() -> None:
 )
 def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
     if fw_version == "local" and not local_root:
-        raise click.ClickException(
-            "--local-root is required when --fw-version=local."
-        )
+        raise click.ClickException("--local-root is required when --fw-version=local.")
     if fw_version != "local" and local_root:
         click.echo(
             "[WARN] --local-root ignored when --fw-version is not 'local'.",
@@ -348,9 +342,7 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         missing = [name for name, src in mapping.items() if not src.exists()]
         if missing:
             missing_list = ", ".join(missing)
-            raise click.ClickException(
-                f"Missing local build artifacts: {missing_list}"
-            )
+            raise click.ClickException(f"Missing local build artifacts: {missing_list}")
 
         for name, src in mapping.items():
             dest = out_dir / name
@@ -391,9 +383,7 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
     "flash",
     help="Flash firmware + config using versioned bin layout.",
 )
-@click.option(
-    "--device", "-d", type=click.Choice(VALID_DEVICES), required=True
-)
+@click.option("--device", "-d", type=click.Choice(VALID_DEVICES), required=True)
 @click.option("--fw-version", "-f", help="Firmware version tag or 'local'.")
 @click.option(
     "--config",
@@ -481,9 +471,7 @@ def cmd_flash(
     if config_path:
         config = load_config(config_path)
 
-    provisioning = (
-        config.get("provisioning", {}) if isinstance(config, dict) else {}
-    )
+    provisioning = config.get("provisioning", {}) if isinstance(config, dict) else {}
     fw_version = fw_version or provisioning.get("firmware_version")
     net_raw = network_id or provisioning.get("network_id")
 
@@ -510,9 +498,7 @@ def cmd_flash(
         count, matrices = load_calibration_file(calibration_path)
         calibration_data = (count, matrices)
         calibration_hex = (bytes([count]) + matrices).hex()
-        click.echo(
-            f"[INFO] calibration: {count} matrices from {calibration_path}"
-        )
+        click.echo(f"[INFO] calibration: {count} matrices from {calibration_path}")
 
     fw_root = resolve_fw_root(bin_dir, fw_version)
     if not fw_root.exists():
@@ -526,20 +512,14 @@ def cmd_flash(
                 raise click.ClickException("--app cannot be empty.")
             candidate = fw_root / f"{name}-{device}.bin"
             if candidate.exists():
-                default_app_hex = convert_bin_to_hex(
-                    candidate, APP_FLASH_BASE_ADDR
-                )
+                default_app_hex = convert_bin_to_hex(candidate, APP_FLASH_BASE_ADDR)
             else:
-                raise click.ClickException(
-                    f"App firmware not found: {candidate}"
-                )
+                raise click.ClickException(f"App firmware not found: {candidate}")
         else:
             # default to dotbot app if no name is provided
             candidate = fw_root / "dotbot-dotbot-v3.bin"
             if candidate.exists():
-                default_app_hex = convert_bin_to_hex(
-                    candidate, APP_FLASH_BASE_ADDR
-                )
+                default_app_hex = convert_bin_to_hex(candidate, APP_FLASH_BASE_ADDR)
     else:
         if default_app_name:
             click.echo(
@@ -556,9 +536,7 @@ def cmd_flash(
         click.echo(
             f"[INFO] loaded manifest {manifest_path}: {json.dumps(manifest, indent=2)}"
         )
-        if manifest_matches(
-            manifest, device, fw_version, net_id_hex, calibration_hex
-        ):
+        if manifest_matches(manifest, device, fw_version, net_id_hex, calibration_hex):
             candidate = fw_root / manifest["config_hex"]
             if candidate.exists():
                 config_hex = candidate
@@ -573,9 +551,7 @@ def cmd_flash(
             )
 
     if config_hex is None:
-        config_hex = make_config_hex_path(
-            fw_root, device, fw_version, net_id_hex
-        )
+        config_hex = make_config_hex_path(fw_root, device, fw_version, net_id_hex)
         click.secho(f"[INFO] created new config hex: {config_hex}", fg="green")
 
     missing = [str(p) for p in (app_hex, net_hex) if not p.exists()]
@@ -602,9 +578,7 @@ def cmd_flash(
         )
         write_config_manifest(manifest_path, manifest_payload)
         click.echo(f"[OK  ] wrote config manifest: {manifest_path}")
-        click.echo(
-            f"[INFO] manifest: {json.dumps(manifest_payload, indent=2)}"
-        )
+        click.echo(f"[INFO] manifest: {json.dumps(manifest_payload, indent=2)}")
     else:
         click.echo(f"[INFO] using existing config hex: {config_hex}")
     click.echo()
@@ -612,9 +586,7 @@ def cmd_flash(
     flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr)
     if default_app_hex is not None:
         click.echo(f"[INFO] default app hex: {default_app_hex}")
-        flash_nrf_one_core(
-            app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr
-        )
+        flash_nrf_one_core(app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr)
     elif device == "dotbot-v3":
         click.echo("[INFO] default app hex not found; skipping.")
     click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
@@ -625,21 +597,20 @@ def cmd_flash(
     except RuntimeError as exc:
         click.echo(f"[WARN] readback failed: {exc}", err=True)
         return
-    click.echo(f"[INFO] readback values:")
+    click.echo("[INFO] readback values:")
     click.echo(f"[INFO] net_id: {readback_net_id}")
     last_6_digits_spaced = " ".join(
-        readback_device_id[-6:][i:i+2] for i in range(0, len(readback_device_id[-6:]), 2)
+        readback_device_id[-6:][i : i + 2]
+        for i in range(0, len(readback_device_id[-6:]), 2)
     )
-    click.echo(f"[INFO] device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})")
+    click.echo(
+        f"[INFO] device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})"
+    )
 
 
 @cli.command("flash-hex", help="Flash explicit app/net hex files.")
-@click.option(
-    "--app", "app_hex", type=click.Path(path_type=Path, dir_okay=False)
-)
-@click.option(
-    "--net", "net_hex", type=click.Path(path_type=Path, dir_okay=False)
-)
+@click.option("--app", "app_hex", type=click.Path(path_type=Path, dir_okay=False))
+@click.option("--net", "net_hex", type=click.Path(path_type=Path, dir_okay=False))
 def cmd_flash_hex(app_hex: Path | None, net_hex: Path | None) -> None:
     if not app_hex and not net_hex:
         raise click.ClickException("Provide at least one of --app or --net.")
@@ -673,9 +644,12 @@ def cmd_read_config(sn_starting_digits: str | None) -> None:
         return
     click.echo(f"[INFO] readback net_id: {readback_net_id}")
     last_6_digits_spaced = " ".join(
-        readback_device_id[-6:][i:i+2] for i in range(0, len(readback_device_id[-6:]), 2)
+        readback_device_id[-6:][i : i + 2]
+        for i in range(0, len(readback_device_id[-6:]), 2)
     )
-    click.echo(f"[INFO] readback device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})")
+    click.echo(
+        f"[INFO] readback device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})"
+    )
 
 
 @cli.command(

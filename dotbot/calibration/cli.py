@@ -65,13 +65,13 @@ LH_NUM_DEFAULT = 0
     help="Extra lighthouse number to calibrate.",
 )
 @click.option(
-    '--output-data',
+    "--output-data",
     type=click.Path(file_okay=True, dir_okay=False, writable=True),
     required=False,
     help="Path to save calibration data.",
 )
 @click.option(
-    '--input-data',
+    "--input-data",
     type=click.Path(exists=True, readable=True),
     required=False,
     help="Path to load calibration data.",
@@ -98,9 +98,7 @@ def main(
         # Textual swallows exceptions from its event loop; tee to stderr
         # (visible after teardown) and to the calibration log file.
         traceback.print_exc()
-        logging.getLogger("dotbot.calibration").exception(
-            "CalibrationApp crashed"
-        )
+        logging.getLogger("dotbot.calibration").exception("CalibrationApp crashed")
         sys.exit(1)
 
 

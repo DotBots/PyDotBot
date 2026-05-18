@@ -34,9 +34,7 @@ def export_calibration(calibrations: list[bytes]) -> str:
     # Store homography matrix as C header to use in SwarmIT bootloader
     output = CALIBRATION_HEADER_HEADER
     output += f"#define LH2_CALIBRATION_COUNT       ({len(calibrations)})\n\n"
-    output += (
-        "static int32_t swrmt_homographies[LH2_CALIBRATION_COUNT][3][3] = {\n"
-    )
+    output += "static int32_t swrmt_homographies[LH2_CALIBRATION_COUNT][3][3] = {\n"
 
     for calibration in calibrations:
         output += "    {\n"

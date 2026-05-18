@@ -34,9 +34,7 @@ def run_capture(cmd):
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     if proc.returncode != 0:
-        raise RuntimeError(
-            proc.stdout.strip() or f"Command failed: {' '.join(cmd)}"
-        )
+        raise RuntimeError(proc.stdout.strip() or f"Command failed: {' '.join(cmd)}")
     return proc.stdout
 
 
@@ -77,9 +75,7 @@ def jlink_flash_hex(jlink_exe, device, image_hex, timeout=TIMEOUT_JLINK_SEC):
         tf.write(make_jlink_script(device, speed_khz, str(image_hex)))
         script_path = tf.name
     try:
-        rc, out = run(
-            [jlink_exe, "-CommanderScript", script_path], timeout=timeout
-        )
+        rc, out = run([jlink_exe, "-CommanderScript", script_path], timeout=timeout)
     finally:
         try:
             os.unlink(script_path)
@@ -89,9 +85,7 @@ def jlink_flash_hex(jlink_exe, device, image_hex, timeout=TIMEOUT_JLINK_SEC):
         raise RuntimeError("J-Link flash failed; see log above.")
 
 
-def pyocd_flash_hex(
-    jlink_bin, device, pack_path: str, probe_uid: str | None = None
-):
+def pyocd_flash_hex(jlink_bin, device, pack_path: str, probe_uid: str | None = None):
     erase_args = [
         "pyocd",
         "erase",
@@ -197,14 +191,10 @@ def pick_last_jlink_snr(nrfjprog_opt=None):
     print(f"[DEBUG] Found J-Link IDs: {ids}")
     if ids:
         return ids[-1]
-    raise RuntimeError(
-        "Unable to auto-select J-Link; provide --snr explicitly."
-    )
+    raise RuntimeError("Unable to auto-select J-Link; provide --snr explicitly.")
 
 
-def pick_matching_jlink_snr(
-    sn_starting_digits: str, nrfjprog_opt: str | None = None
-):
+def pick_matching_jlink_snr(sn_starting_digits: str, nrfjprog_opt: str | None = None):
     nrfjprog = which_tool(
         "nrfjprog.exe",
         nrfjprog_opt,
@@ -219,8 +209,7 @@ def pick_matching_jlink_snr(
         [
             line.strip()
             for line in out2.splitlines()
-            if line.strip().isdigit()
-            and line.strip().startswith(sn_starting_digits)
+            if line.strip().isdigit() and line.strip().startswith(sn_starting_digits)
         ]
         if rc2 == 0
         else []
@@ -238,12 +227,8 @@ def nrfjprog_recover(nrfjprog, snr=None):
     if snr:
         args += ["-s", str(snr)]
     print(f"[INFO] Recovering both cores of nRF5340 (SNR={snr})...")
-    rc, out = run(
-        args + ["--recover", "--coprocessor", "CP_APPLICATION"], timeout=120
-    )
-    rc, out = run(
-        args + ["--recover", "--coprocessor", "CP_NETWORK"], timeout=120
-    )
+    rc, out = run(args + ["--recover", "--coprocessor", "CP_APPLICATION"], timeout=120)
+    rc, out = run(args + ["--recover", "--coprocessor", "CP_NETWORK"], timeout=120)
     print(f"[INFO] Erasing both cores of nRF5340 (SNR={snr})...")
     rc, out = run(args + ["-e"], timeout=120)
 
