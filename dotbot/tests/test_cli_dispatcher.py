@@ -53,14 +53,17 @@ EXPECTED_SUBCOMMANDS = {
 }
 
 # Subcommands whose --help backends live in OTHER packages with their
-# own protocol registries (swarmit, dotbot-lh2-calibration). When
-# pytest pre-loads dotbot.protocol via test_controller etc., importing
-# those packages in the same process triggers a duplicate payload-type
-# registration (ValueError 0x81 already registered). This is the known
-# cross-package protocol duplication captured in the consolidation
-# roadmap §1; it never happens in real `dotbot <sub>` invocations
-# (each shell run is a fresh process). We verify these in a subprocess.
-_CROSS_PACKAGE_SUBS = {"testbed", "calibrate"}
+# own protocol registries (swarmit). When pytest pre-loads
+# dotbot.protocol via test_controller etc., importing swarmit in the
+# same process triggers a duplicate payload-type registration
+# (ValueError 0x81 already registered). This is the known cross-package
+# protocol duplication captured in the consolidation roadmap §1; it
+# never happens in real `dotbot <sub>` invocations (each shell run is
+# a fresh process). We verify these in a subprocess.
+#
+# `calibrate` used to be in this set; after Phase 2's fold it's in-tree
+# and uses dotbot's own (vendored) modules, no collision possible.
+_CROSS_PACKAGE_SUBS = {"testbed"}
 
 
 @pytest.fixture
