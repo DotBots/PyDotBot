@@ -228,3 +228,25 @@ def test_legacy_console_scripts_still_resolve():
 
     for cmd in (controller_main, keyboard_main, joystick_main):
         assert isinstance(cmd, click.Command), f"{cmd!r} is not a Click cmd"
+
+
+def test_calibrate_missing_extras_prints_hint(runner, monkeypatch):
+    """When [calibrate] extras aren't installed, `dotbot calibrate`
+    exits 1 with a pip-install hint instead of a traceback."""
+    # Simulate the dotbot.calibration.cli module being unavailable.
+    # `monkeypatch.setitem(sys.modules, name, None)` makes
+    # `from name import ...` raise ImportError per CPython's import
+    # protocol — same condition as a real missing extra.
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
+    result = runner.invoke(cli, ["calibrate"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_export_missing_extras_prints_hint(runner, monkeypatch):
+    """Same install-hint fallback for the `dotbot calibrate export`
+    subcommand."""
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
+    result = runner.invoke(cli, ["calibrate", "export", "/tmp/x"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
