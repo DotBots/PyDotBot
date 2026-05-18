@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from dotbot.qrkey import QrKeyClientSettings
-from dotbot.qrkey_app import main
+from dotbot.examples.qrkey_demo import QrKeyClientSettings
+from dotbot.examples.qrkey_demo.cli import main
 
 MAIN_HELP_EXPECTED = """Usage: main [OPTIONS]
 
@@ -42,7 +42,7 @@ def cli_mock():
         asyncio.sleep(0.1)  # simulate some async work
         return None
 
-    with patch("dotbot.qrkey_app.cli") as cli:
+    with patch("dotbot.examples.qrkey_demo.cli.cli") as cli:
         cli.return_value = fake_cli
         yield cli
 

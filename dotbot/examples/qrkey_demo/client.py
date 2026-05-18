@@ -33,6 +33,15 @@ from dotbot.models import (
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient
 
+# PyDotBot's museum-demo UX prefers a long rotation window: operators
+# scan a QR, walk away with a phone, come back later. Upstream qrkey
+# defaults of 15min / 2min are too aggressive for that. Override the
+# singleton in-place — QrkeyController reads these at runtime in the
+# rotation loop, so post-import mutation is safe (only mqtt_* fields
+# are read at QrkeyController.__init__ time).
+qrkey_settings.pin_code_refresh_interval = 2 * 60 * 60  # 2 hours
+qrkey_settings.pin_code_revoke_delay = 15 * 60  # 15 minutes
+
 
 @dataclass
 class QrKeyClientSettings:
@@ -57,8 +66,15 @@ class AsyncWorker:
         self.loop.run_forever()
 
     def run(self, coro):
+        # The 1-second timeout in the original qrkey 0.12.1 design was
+        # too tight: every move_raw / rgb_led / waypoints command makes
+        # an HTTP call to the controller, and a slow network or a busy
+        # controller would trip a TimeoutError even though the command
+        # was actually delivered. 10 s gives MQTT-side commands enough
+        # slack without hanging forever if the controller is truly
+        # unreachable.
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        return future.result(timeout=1)
+        return future.result(timeout=10)
 
 
 class QrKeyClient:

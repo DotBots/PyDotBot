@@ -18,8 +18,8 @@ from dotbot import (
     CONTROLLER_HTTP_PORT_DEFAULT,
     pydotbot_version,
 )
+from dotbot.examples.qrkey_demo import QrKeyClient, QrKeyClientSettings
 from dotbot.logger import setup_logging
-from dotbot.qrkey import QrKeyClient, QrKeyClientSettings
 from dotbot.rest import rest_client
 
 
