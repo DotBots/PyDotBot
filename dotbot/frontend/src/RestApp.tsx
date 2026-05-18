@@ -24,10 +24,12 @@ const RestApp: React.FC = () => {
   const [qrkeyAvailable, setQrkeyAvailable] = useState<boolean>(false);
 
   const websocketUrl = `ws://localhost:8000/controller/ws/status`;
+  // Probe for the qrkey demo example on its conventional port. When
+  // `python -m dotbot.examples.qrkey_demo` is running it serves
+  // /pin_code on localhost:8080 and the Show QR chip appears.
+  // Otherwise the chip stays hidden — the controller itself knows
+  // nothing about qrkey.
   const qrkeyUrl = "http://localhost:8080";
-  // Only probe qrkey when the dashboard is served from a local controller.
-  // The same bundle also lands on gh-pages (as the phone-mode app); from
-  // there localhost:8080 means the phone itself and the probe is noise.
   const isLocalController =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
@@ -47,7 +49,7 @@ const RestApp: React.FC = () => {
       }
     };
     probe();
-    const interval = setInterval(probe, 10000);
+    const interval = setInterval(probe, 1000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [isLocalController]);
 
@@ -171,6 +173,13 @@ const RestApp: React.FC = () => {
       wsRef.current?.close();
     };
   }, [connectWebSocket]);
+
+  // TODO: the controller's WebSocket pushes NewDotBot/Update but never
+  // a "bot dropped off" event, so the list grows monotonically. Need a
+  // proper fix — either a server-side BOT_REMOVED notification, or a
+  // refetch that merges instead of replacing (a naive setInterval +
+  // setDotbots(data) wipes any unsent waypoints the user just clicked,
+  // since mapClicked is optimistic-only and only PUTs on Enter).
 
   useEffect(() => {
     if (!dotbots) {
