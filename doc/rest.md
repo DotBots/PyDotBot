@@ -1,10 +1,10 @@
 # REST
 
-While connected to a DotBot gateway, the `dotbot-controller`
+While connected to a DotBot gateway, the `dotbot controller`
 application provides a REST server to send commands to and receive information
 from connected DotBots.
 
-The REST API is documented in the running `dotbot-controller` application itself
+The REST API is documented in the running `dotbot controller` application itself
 at [http://localhost:8000/api](http://localhost:8000/api). This page also allows
 you to play with the API directly from the browser.
 
@@ -18,7 +18,7 @@ you to play with the API directly from the browser.
 ## Prerequisites
 
 Make sure you already followed the [getting started](getting_started) page and
-have a functional setup with `dotbot-controller` running and connected to a
+have a functional setup with `dotbot controller` running and connected to a
 nRF DK gateway.
 
 To interact with the REST API, you will use the Python
@@ -66,7 +66,7 @@ If a DotBot is connected, this script should give an output similar to:
 ]
 ```
 
-This is a list of all DotBots connected to the `dotbot-controller`. In the
+This is a list of all DotBots connected to the `dotbot controller`. In the
 example above, there is only one DotBot connected.
 The 8-byte `address` uniquely identifies a DotBot in the controller. The
 `status` indicates whether the DotBot is `Active` (value=0, the DotBot has been

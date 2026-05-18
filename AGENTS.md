@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Also ships CLI tools (`dotbot-controller`, `dotbot-edge-gateway`, `dotbot-keyboard`, `dotbot-joystick`, `dotbot-qrkey`) and DotBot/SailBot simulators.
+Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI (`dotbot controller`, `dotbot testbed`, `dotbot calibrate`, `dotbot demo`, `dotbot keyboard`, `dotbot joystick`, ...) plus DotBot/SailBot simulators. Legacy entry points `dotbot-controller` / `dotbot-keyboard` / `dotbot-joystick` are kept as backwards-compat aliases for one deprecation cycle.
 
 This is the most active repo in the ecosystem (187 commits in last 90 days as of 2026-05-05).
 
@@ -15,7 +15,8 @@ This is the most active repo in the ecosystem (187 commits in last 90 days as of
 
 ## Entry points
 
-- `dotbot/controller_app.py` — main CLI (`dotbot-controller`); wires adapters and settings
+- `dotbot/cli/main.py` — unified `dotbot` Click group (lazy subcommand loader)
+- `dotbot/controller_app.py` — `dotbot controller` subcommand backend; wires adapters and settings
 - `dotbot/controller.py:1` — 737-line `Controller` class; central object
 - `dotbot/frontend/src/App.tsx` — React UI root
 
@@ -23,8 +24,11 @@ This is the most active repo in the ecosystem (187 commits in last 90 days as of
 
 ```bash
 pip install pydotbot                         # or `pip install -e .`
-dotbot-controller --help
-# Other entry points: dotbot-edge-gateway, dotbot-keyboard, dotbot-joystick, dotbot-qrkey
+dotbot --help               # unified dispatcher
+dotbot controller --help    # start the controller
+dotbot testbed --help       # testbed ops (optional: pip install pydotbot[testbed])
+dotbot calibrate --help     # LH2 calibration (optional: pip install pydotbot[calibrate])
+dotbot demo --list          # built-in research demos
 
 # Tests / lint / build
 tox                                          # envs: tests, check, cli, web=npm run lint, doc

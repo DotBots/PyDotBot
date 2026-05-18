@@ -29,66 +29,61 @@ nRF52833DK/nRF52840DK/nrf5340DK board as gateway), as explained in
 
 ## Usage
 
+A single `dotbot` CLI dispatches to every workflow — controller,
+testbed ops, calibration, demos:
+
 ```
-dotbot-controller --help
-Usage: dotbot-controller [OPTIONS]
+dotbot --help
+Usage: dotbot [OPTIONS] COMMAND [ARGS]...
 
-  DotBotController, universal SailBot and DotBot controller.
+  Control DotBots: drive robots, run testbed experiments, calibrate, demos.
 
-Options:
-  -a, --adapter [serial|edge|cloud|dotbot-simulator|sailbot-simulator]
-                                  Controller interface adapter. Defaults to
-                                  serial
-  -p, --port TEXT                 Serial port used by 'serial' and 'edge'
-                                  adapters. Defaults to '/dev/ttyACM0'
-  -b, --baudrate INTEGER          Serial baudrate used by 'serial' and 'edge'
-                                  adapters. Defaults to 1000000
-  -H, --mqtt-host TEXT            MQTT host used by cloud adapter. Default:
-                                  localhost.
-  -P, --mqtt-port INTEGER         MQTT port used by cloud adapter. Default:
-                                  1883.
-  -T, --mqtt-use_tls / --no-mqtt-use_tls
-                                  Use TLS with MQTT (for cloud adapter).
-  -g, --gw-address TEXT           Gateway address in hex. Defaults to
-                                  0000000000000000
-  -s, --network-id TEXT           Network ID in hex. Defaults to 0000
-  -c, --controller-http-port INTEGER
-                                  Controller HTTP port of the REST API. Defaults
-                                  to '8000'
-  -w, --webbrowser / --no-webbrowser
-                                  Open a web browser automatically
-  -v, --verbose                   Run in verbose mode (all payloads received are
-                                  printed in terminal)
-  --log-level [debug|info|warning|error]
-                                  Logging level. Defaults to info
-  --log-output PATH               Filename where logs are redirected
-  --config-path FILE              Path to a .toml configuration file.
-  -m, --map-size TEXT             Map size in mm. Defaults to '2000x2000'
-  --help                          Show this message and exit.
+Commands:
+  controller  Start the controller (adapter + REST/WS + dashboard).
+  sim         Standalone simulator (equivalent to controller --adapter dotbot-simulator).
+  testbed     Testbed-side ops: provision, status, start/stop, OTA flash, monitor.
+  calibrate   Run the LH2 calibration workflow.
+  demo        Built-in research demos (qrkey phone bridge, ...).
+  fw          Firmware-developer workflow (scaffold/build/flash). Not yet implemented.
+  keyboard    Drive a DotBot from the keyboard (live).
+  joystick    Drive a DotBot from a joystick (live).
 ```
 
-By default, the controller expects the serial port to be `/dev/ttyACM0`, as on
-Linux, use the `--port` option to specify another one if it's different. For
-example, on Windows, you'll need to check which COM port is connected to the
-gateway and add `--port COM3` if it's COM3.
+The `testbed`, `calibrate`, and some `demo` subcommands need optional
+backends installed:
 
-Using the `--webbrowser` option, a tab will automatically open at
-[http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot). The page maintains
-a list of available DotBots, allows to set which one is selected and controllable
-and provide a virtual joystick to control it or change the color of the on-board
-RGB LED.
+```
+pip install pydotbot[testbed]    # adds swarmit + dotbot-provision
+pip install pydotbot[calibrate]  # adds dotbot-lh2-calibration
+pip install pydotbot[all]        # all of the above
+```
 
-Use `--config-path` to specify the file:
+### Starting the controller
+
+Run `dotbot controller --help` for the full flag list (adapter, MQTT,
+HTTP port, map size, etc.). By default the controller expects the serial
+port to be `/dev/ttyACM0` on Linux — use `--port` to override (e.g.
+`--port COM3` on Windows).
+
+With `--webbrowser`, a tab opens at
+[http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot). The
+page lists available DotBots, lets you select and control one, and
+exposes a virtual joystick and RGB LED control.
+
+Use `--config-path` for a TOML config file:
 
 ```bash
 # Use settings from the config file
-dotbot-controller --config-path config_sample.toml
+dotbot controller --config-path config_sample.toml
 # Use config file but override port and adapter (simulator example)
-dotbot-controller --config-path config_sample.toml -a dotbot-simulator
+dotbot controller --config-path config_sample.toml -a dotbot-simulator
 ```
 
-Values defined in the config file behave exactly like CLI options.
-If both are provided, CLI flags override config values.
+CLI flags override config-file values when both are provided.
+
+The legacy `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick`
+console scripts remain as backwards-compatible aliases for one
+deprecation cycle. Prefer `dotbot <subcommand>` for new code.
 
 **Firefox users:**
 If the webapp is not working, press `Ctrl + L`, type `about:config`,
