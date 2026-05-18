@@ -67,37 +67,42 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/PyDotBot/issues"
 
 [project.scripts]
-# Unified dispatcher — the future. See plans/dotbot-unified-dx.md.
+# Unified dispatcher.
 dotbot = "dotbot.cli.main:cli"
 
 # Legacy entry points kept as backwards-compat aliases for one release.
 # They will be removed once external scripts have migrated to
-# `dotbot <subcommand>`. Tracked in plans/dotbot-unified-dx.md Phase 1.
+# `dotbot <subcommand>`.
 dotbot-controller = "dotbot.controller_app:main"
 dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
-# dotbot-edge-gateway dropped: dotbot.edge_gateway_app does not exist
-# (silent breakage on main as of 2026-05). Workspace AGENTS.md flagged.
-# dotbot-qrkey console script removed — the demo is now an example,
-# run via `python -m dotbot.examples.qrkey_demo`. See
-# dotbot/examples/qrkey_demo/README.md.
+# Folded-in tooling (formerly standalone PyPI packages). These
+# point at the vendored modules so external scripts pinning the
+# old console_script names keep working through one deprecation
+# cycle. The standalone PyPI packages ship a final release that
+# emits DeprecationWarning and removes their own console_scripts.
+dotbot-provision = "dotbot.provision.cli:main"
+dotbot-calibration = "dotbot.calibration.cli:main"
+dotbot-calibration-exporter = "dotbot.calibration.exporter:main"
 
 [project.optional-dependencies]
-# Lazy-loaded subcommand backends. Keep the core install lean; opt in
-# to the bits you actually use. Pins set conservatively against the
-# installed-in-the-testbed-as-of-2026-05 versions; bump as upstream
-# ships breaking changes.
+# Optional subcommand backends. Keep the core install lean; opt in to
+# the bits you actually use.
 testbed = [
     "swarmit          >= 0.6.0",
-    "dotbot-provision >= 0.1.5",
+]
+provision = [
+    "intelhex         >= 2.3.0",
 ]
 calibrate = [
-    "dotbot-lh2-calibration >= 0.2.0",
+    "opencv-python    >= 4.12.0.88",
+    "textual          >= 6.4.0",
 ]
 all = [
-    "swarmit                >= 0.6.0",
-    "dotbot-provision       >= 0.1.5",
-    "dotbot-lh2-calibration >= 0.2.0",
+    "swarmit          >= 0.6.0",
+    "intelhex         >= 2.3.0",
+    "opencv-python    >= 4.12.0.88",
+    "textual          >= 6.4.0",
 ]
 dev = [
     "pytest",
