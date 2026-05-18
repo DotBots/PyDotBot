@@ -176,7 +176,7 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
             {qrkeyAvailable && qrkeyUrl && (
               <a
                 className="btn btn-sm btn-outline-light py-0"
-                href={`${qrkeyUrl}/pin/`}
+                href={`${qrkeyUrl}/pin_code/qr_code`}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Show QR code to connect a phone"
