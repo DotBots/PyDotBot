@@ -5,11 +5,24 @@ The original test called calculate_camera_point with positional args
 matching an older signature (count1, count2, lh_index); the function
 now takes an LH2Counts dataclass. Fixed during the fold; kept the
 golden values.
+
+Skips when opencv-python isn't installed — that's the [calibrate]
+extra. The test itself doesn't use cv2, but the module under test
+imports it at module-load (homography math).
 """
 
 import pytest
 
-from dotbot.calibration.lighthouse2 import LH2Counts, calculate_camera_point
+pytest.importorskip(
+    "cv2",
+    reason="dotbot.calibration.lighthouse2 imports cv2 at module load; "
+    "install `dotbot[calibrate]` to run this test.",
+)
+
+from dotbot.calibration.lighthouse2 import (  # noqa: E402  (after importorskip)
+    LH2Counts,
+    calculate_camera_point,
+)
 
 
 def test_camera_points():
