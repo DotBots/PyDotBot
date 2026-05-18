@@ -1,0 +1,3 @@
+[provisioning]
+network_id = "0100"
+# firmware_version = "v0.6.0"
