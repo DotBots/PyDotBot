@@ -36,12 +36,12 @@ DotBot(s).
   If using an nRF5340DK, you might see 2 TTY port, use the one with the lowest
   id.
 
-3. From a terminal window (or powershell on Windows), run `dotbot-controller`
+3. From a terminal window (or powershell on Windows), run `dotbot controller`
   with the TTY port you identified above and the `--webbrowser` flag to
   automatically open the web client:
 
 ```
-dotbot-controller --port <tty port> --webbrowser
+dotbot controller --port <tty port> --webbrowser
 ```
 
 At this point, if the DotBot is powered on with fully charged batteries, you
@@ -84,7 +84,7 @@ Welcome to the DotBots controller (version: 0.xx).
     the DotBot to move
   - by using the color selector in the UI
 
-5. In a separate command window, launch `dotbot-keyboard`:
+5. In a separate command window, launch `dotbot keyboard`:
 ```
 Welcome to the DotBots keyboard interface (version: 0.16).
 2023-12-08T10:07:32.597536Z [info     ] Controller initialized         [pydotbot] context=dotbot.keyboard

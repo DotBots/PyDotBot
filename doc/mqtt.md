@@ -42,7 +42,7 @@ change and recomputes (or rederive) their key/topic accordingly.
 ## Prerequisites
 
 Make sure you already followed the [getting started](getting_started) page and
-have a functional setup with `dotbot-controller` running and connected to a
+have a functional setup with `dotbot controller` running and connected to a
 nRF DK gateway.
 
 To interact with the MQTT broker, you will use a Python script that require
@@ -65,7 +65,7 @@ pip install cryptography joserfc paho-mqtt requests
 Running the controller is as easy as running the following command:
 
 ```
-dotbot-controller
+dotbot controller
 ```
 
 The logs should contain information about the MQTT broker connection and the
