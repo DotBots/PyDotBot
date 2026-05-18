@@ -9,6 +9,7 @@ the underlying subcommand behavior here — that lives in each
 subcommand's own test module (test_controller_app.py etc.).
 """
 
+import os
 import subprocess
 import sys
 
@@ -17,6 +18,28 @@ from click.testing import CliRunner
 
 from dotbot.cli import _lazy
 from dotbot.cli.main import _SUBCOMMANDS, cli
+
+# Importing dotbot.controller (transitively, dotbot.server) blows up at
+# module-import time if the React UI hasn't been built — FastAPI's
+# StaticFiles mount asserts the directory exists. That's a pre-existing
+# import-time side effect, not something the CLI scaffold introduced.
+# Skip the subcommands whose lazy import triggers it when the bundle
+# isn't built (typical for fresh editable installs).
+_FRONTEND_BUILD = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "frontend",
+    "build",
+)
+_FRONTEND_PRESENT = os.path.isdir(_FRONTEND_BUILD)
+_needs_frontend = pytest.mark.skipif(
+    not _FRONTEND_PRESENT,
+    reason=(
+        "frontend bundle missing — run `cd dotbot/frontend && npm run build`. "
+        "The CLI scaffold itself does not depend on the bundle; this skip "
+        "exists because dotbot.server.api.mount(StaticFiles) runs at import."
+    ),
+)
+
 
 EXPECTED_SUBCOMMANDS = {
     "controller",
@@ -64,6 +87,9 @@ def test_version_flag(runner):
     assert "dotbot" in result.output
 
 
+_FRONTEND_DEPENDENT = {"controller", "sim"}
+
+
 @pytest.mark.parametrize(
     "subcommand",
     sorted(EXPECTED_SUBCOMMANDS - {"keyboard", "joystick"} - _CROSS_PACKAGE_SUBS),
@@ -76,7 +102,13 @@ def test_subcommand_help_works(runner, subcommand):
     excluded because their backends collide with PyDotBot's protocol
     registry inside a single pytest process — covered separately by
     test_cross_package_subcommand_help_works in a subprocess.
+    controller/sim trigger dotbot.server's StaticFiles import-time mount;
+    skipped if the frontend bundle hasn't been built.
     """
+    if subcommand in _FRONTEND_DEPENDENT and not _FRONTEND_PRESENT:
+        pytest.skip(
+            "frontend bundle missing; run `cd dotbot/frontend && npm run build`"
+        )
     result = runner.invoke(cli, [subcommand, "--help"])
     assert result.exit_code == 0, result.output
 
@@ -145,9 +177,51 @@ def test_lazy_subcommand_missing_extra_exits_with_hint():
 
 def test_python_m_dotbot_cli_entrypoint(runner):
     """`python -m dotbot.cli` must dispatch through the same group."""
-    # The __main__ module's behavior is tested by importing and asserting
-    # it references the same cli object — running it as a subprocess
-    # would slow tests down without adding coverage.
+    # In-process check that the __main__ module routes to the same group.
     from dotbot.cli import __main__ as cli_main_module
 
     assert cli_main_module.cli is cli
+
+
+def test_python_m_dotbot_cli_help_subprocess():
+    """End-to-end: `python -m dotbot.cli --help` runs in a fresh process."""
+    result = subprocess.run(
+        [sys.executable, "-m", "dotbot.cli", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    for name in EXPECTED_SUBCOMMANDS:
+        assert name in result.stdout, f"`{name}` missing from `python -m` help"
+
+
+def test_python_m_dotbot_cli_version_subprocess():
+    """End-to-end: `python -m dotbot.cli --version` prints a version line."""
+    result = subprocess.run(
+        [sys.executable, "-m", "dotbot.cli", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "dotbot" in result.stdout
+
+
+@_needs_frontend
+def test_legacy_console_scripts_still_resolve():
+    """Backwards-compat aliases (dotbot-controller, dotbot-keyboard,
+    dotbot-joystick) must still resolve to importable Click commands.
+
+    Checks the entry-point targets via direct import. Skipped without
+    the frontend bundle because dotbot.controller_app pulls in
+    dotbot.server which mounts StaticFiles at import.
+    """
+    import click
+
+    from dotbot.controller_app import main as controller_main
+    from dotbot.joystick import main as joystick_main
+    from dotbot.keyboard import main as keyboard_main
+
+    for cmd in (controller_main, keyboard_main, joystick_main):
+        assert isinstance(cmd, click.Command), f"{cmd!r} is not a Click cmd"
