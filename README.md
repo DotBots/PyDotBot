@@ -49,14 +49,19 @@ Commands:
   joystick    Drive a DotBot from a joystick (live).
 ```
 
-The `testbed`, `calibrate`, and some `demo` subcommands need optional
-backends installed:
+Some subcommands need optional runtime deps:
 
 ```
-pip install pydotbot[testbed]    # adds swarmit + dotbot-provision
-pip install pydotbot[calibrate]  # adds dotbot-lh2-calibration
+pip install pydotbot[testbed]    # adds swarmit (testbed orchestration)
+pip install pydotbot[provision]  # adds intelhex (used by `dotbot testbed provision`)
+pip install pydotbot[calibrate]  # adds opencv-python + textual (LH2 calibration TUI + exporter)
 pip install pydotbot[all]        # all of the above
 ```
+
+Calibration (`dotbot calibrate`) and provisioning (`dotbot testbed
+provision`) are vendored in-tree, but their heavyweight runtime deps
+(textual / opencv-python / intelhex) are gated behind extras so the
+core install stays lean.
 
 ### Starting the controller
 
