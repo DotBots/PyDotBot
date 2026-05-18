@@ -13,13 +13,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   sim, testbed ops, calibration, demos, keyboard/joystick) under one
   command. Subcommand modules are loaded lazily so `dotbot --help` stays
   cheap.
-- Optional dependency groups: `pip install pydotbot[testbed]` adds
-  `swarmit` + `dotbot-provision`; `pip install pydotbot[calibrate]` adds
-  `dotbot-lh2-calibration`; `pip install pydotbot[all]` pulls all three.
 - `dotbot demo` discoverable launcher; `dotbot demo qr` runs the qrkey
   phone-bridge demo.
 - `dotbot fw` mock surface (scaffold/build/flash subcommands; placeholder
   for the firmware-developer workflow).
+- **Vendored `dotbot-provision`** into `dotbot/provision/`. All five
+  subcommands available as `dotbot testbed provision <fetch|flash|
+  flash-hex|read-config|flash-bringup>`.
+- **Vendored `dotbot-lh2-calibration` (Python side)** into
+  `dotbot/calibration/`. New unified `dotbot calibrate` subgroup runs
+  the Textual TUI by default; `dotbot calibrate export PATH` writes the
+  C header for the swarmit bootloader bake-in. (The C firmware in the
+  `dotbot-lh2-calibration` repo is unchanged.)
+- Optional dependency groups (revised):
+  - `pip install dotbot[testbed]` adds `swarmit` (still external)
+  - `pip install dotbot[provision]` adds `intelhex` (provision runtime)
+  - `pip install dotbot[calibrate]` adds `opencv-python` + `textual`
+  - `pip install dotbot[all]` pulls all three
 
 ### Changed
 
@@ -40,9 +50,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `dotbot.edge_gateway_app` never existed; the entry was silently broken.
 - `pin_code` tox env — referenced `dotbot/pin_code_ui/` which never
   existed.
+- `dotbot-provision` and `dotbot-lh2-calibration` PyPI dependencies
+  (folded into the `dotbot` package). The standalone PyPI packages are
+  scheduled for deprecation releases that point users at `pip install
+  dotbot[provision]` / `pip install dotbot[calibrate]`.
 
 ### Deprecated
 
 - `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick` console
   scripts remain working as backwards-compat aliases for one deprecation
   cycle. Prefer `dotbot <subcommand>` for new code.
+- `dotbot-provision`, `dotbot-calibration`, `dotbot-calibration-exporter`
+  console scripts now resolve to the vendored modules (still work). The
+  standalone PyPI packages will issue `DeprecationWarning` on next
+  release; prefer `dotbot testbed provision …` and `dotbot calibrate …`.
