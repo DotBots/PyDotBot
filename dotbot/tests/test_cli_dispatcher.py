@@ -45,7 +45,7 @@ EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
     "testbed",
-    "calibrate",
+    "calibrate-lh2",
     "demo",
     "fw",
     "keyboard",
@@ -230,32 +230,51 @@ def test_legacy_console_scripts_still_resolve():
         assert isinstance(cmd, click.Command), f"{cmd!r} is not a Click cmd"
 
 
-def test_calibrate_missing_extras_prints_hint(runner, monkeypatch):
-    """When [calibrate] extras aren't installed, `dotbot calibrate`
-    exits 1 with a pip-install hint instead of a traceback."""
+def test_calibrate_lh2_missing_extras_prints_hint(runner, monkeypatch):
+    """When [calibrate] extras aren't installed, `dotbot calibrate-lh2`
+    (default `collect`) exits 1 with a pip-install hint instead of a
+    traceback."""
     # Simulate the dotbot.calibration.cli module being unavailable.
     # `monkeypatch.setitem(sys.modules, name, None)` makes
     # `from name import ...` raise ImportError per CPython's import
     # protocol — same condition as a real missing extra.
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
-    result = runner.invoke(cli, ["calibrate"])
+    result = runner.invoke(cli, ["calibrate-lh2"])
     assert result.exit_code == 1, result.output
     assert "pip install dotbot[calibrate]" in result.output
 
 
-def test_calibrate_export_missing_extras_prints_hint(runner, monkeypatch):
-    """Same install-hint fallback for the `dotbot calibrate export`
-    subcommand."""
+def test_calibrate_lh2_export_missing_extras_prints_hint(runner, monkeypatch):
+    """Same install-hint fallback for `dotbot calibrate-lh2 export`."""
     monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
-    result = runner.invoke(cli, ["calibrate", "export", "/tmp/x"])
+    result = runner.invoke(cli, ["calibrate-lh2", "export", "/tmp/x"])
     assert result.exit_code == 1, result.output
     assert "pip install dotbot[calibrate]" in result.output
 
 
-def test_calibrate_tui_alias_missing_extras_prints_hint(runner, monkeypatch):
-    """`dotbot calibrate tui` is the explicit alias for the default;
-    falls back to the same install-hint when extras are missing."""
+def test_calibrate_lh2_collect_missing_extras_prints_hint(runner, monkeypatch):
+    """`dotbot calibrate-lh2 collect` is the explicit alias for the
+    default; same install-hint fallback when extras are missing."""
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
-    result = runner.invoke(cli, ["calibrate", "tui"])
+    result = runner.invoke(cli, ["calibrate-lh2", "collect"])
     assert result.exit_code == 1, result.output
     assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_lh2_apply_bare_stub(runner):
+    """`apply --bare` is gated on bare-metal firmware work; for now
+    it exits 2 with a clear "not yet implemented" message."""
+    result = runner.invoke(cli, ["calibrate-lh2", "apply", "--bare", "/tmp/x"])
+    assert result.exit_code == 2, result.output
+    assert "not yet implemented" in result.output.lower()
+
+
+def test_calibrate_lh2_apply_sandbox_stub(runner):
+    """`apply --sandbox` (default) currently points users at the
+    working alternatives (provision flash --calibration, swarmit OTA)
+    until the partial config-page rewrite lands."""
+    result = runner.invoke(
+        cli, ["calibrate-lh2", "apply", "--sandbox", "/tmp/x"]
+    )
+    assert result.exit_code == 2, result.output
+    assert "not yet implemented" in result.output.lower()
