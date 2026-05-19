@@ -88,20 +88,29 @@ def main(
         wrapper_class=structlog.make_filtering_bound_logger(logging.CRITICAL),
     )
 
+    app = CalibrationApp(
+        port, baudrate, distance, extra_lh_num, output_data, input_data
+    )
     try:
-        CalibrationApp(
-            port, baudrate, distance, extra_lh_num, output_data, input_data
-        ).run()
+        app.run()
     except serial.serialutil.SerialException as exc:
         sys.exit(exc)
     except (SystemExit, KeyboardInterrupt):
-        sys.exit(0)
+        pass
     except Exception:
         # Textual swallows exceptions from its event loop; tee to stderr
         # (visible after teardown) and to the calibration log file.
         traceback.print_exc()
         logging.getLogger("dotbot.calibration").exception("CalibrationApp crashed")
         sys.exit(1)
+
+    # The TUI's "saved" log line is invisible after teardown — echo the
+    # path to stdout so the user knows where the calibration landed.
+    saved_path = getattr(
+        getattr(app, "lh2_manager", None), "last_saved_toml_path", None
+    )
+    if saved_path is not None:
+        click.echo(f"Calibration saved to {saved_path}")
 
 
 if __name__ == "__main__":

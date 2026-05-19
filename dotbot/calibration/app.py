@@ -503,12 +503,12 @@ class CalibrationApp(App):
             _log_exception(self.app_log, "Error computing calibration", e)
             return
         try:
-            self.lh2_manager.save_calibration()
+            saved_path = self.lh2_manager.save_calibration()
         except Exception as e:
             _log_exception(self.app_log, "Error saving calibration", e)
             return
 
-        self.app_log.write("[green]Calibration data saved[/]")
+        self.app_log.write(f"[green]Calibration data saved to {saved_path}[/]")
 
     async def on_unmount(self):
         """Cleanup on app exit."""
