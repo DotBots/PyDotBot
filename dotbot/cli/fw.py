@@ -1,14 +1,12 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot fw` — firmware-developer workflow (mocked in Phase 1).
+"""`dotbot fw` — firmware-developer workflow (mocked).
 
 The CLI surface is wired so the help text is discoverable today, but
 the underlying build/flash/template machinery doesn't exist yet — it
 depends on a C toolchain pipeline (cmake + ninja + gcc-arm-none-eabi)
-and app templates that the firmware unification plan delivers.
-
-See plans/dotbot-firmware-unification.md (Track B Phase 2 + Phase 5).
+and app templates that the firmware-unification work will deliver.
 """
 
 import sys
@@ -17,7 +15,6 @@ import click
 
 _NOT_READY = (
     "`dotbot fw {sub}` is not implemented yet.\n"
-    "Tracking: plans/dotbot-firmware-unification.md (Track B Phase 2 + Phase 5).\n"
     "For now: use SEGGER Embedded Studio or the per-target Makefile in "
     "`DotBot-firmware` / `dotbot-swarmit` / `dotbot-lh2-calibration`."
 )
@@ -27,7 +24,7 @@ _NOT_READY = (
     name="fw",
     help=(
         "Firmware-developer workflow: scaffold, build, USB-cable flash. "
-        "MOCK in Phase 1 — see plans/dotbot-firmware-unification.md."
+        "Currently a mock surface — subcommands print install instructions."
     ),
 )
 def cmd():

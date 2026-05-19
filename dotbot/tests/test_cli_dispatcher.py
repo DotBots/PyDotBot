@@ -45,7 +45,7 @@ EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
     "testbed",
-    "calibrate",
+    "calibrate-lh2",
     "demo",
     "fw",
     "keyboard",
@@ -53,14 +53,17 @@ EXPECTED_SUBCOMMANDS = {
 }
 
 # Subcommands whose --help backends live in OTHER packages with their
-# own protocol registries (swarmit, dotbot-lh2-calibration). When
-# pytest pre-loads dotbot.protocol via test_controller etc., importing
-# those packages in the same process triggers a duplicate payload-type
-# registration (ValueError 0x81 already registered). This is the known
-# cross-package protocol duplication captured in the consolidation
-# roadmap §1; it never happens in real `dotbot <sub>` invocations
-# (each shell run is a fresh process). We verify these in a subprocess.
-_CROSS_PACKAGE_SUBS = {"testbed", "calibrate"}
+# own protocol registries (swarmit). When pytest pre-loads
+# dotbot.protocol via test_controller etc., importing swarmit in the
+# same process triggers a duplicate payload-type registration
+# (ValueError 0x81 already registered). This is the known cross-package
+# protocol duplication captured in the consolidation roadmap §1; it
+# never happens in real `dotbot <sub>` invocations (each shell run is
+# a fresh process). We verify these in a subprocess.
+#
+# `calibrate` used to be in this set; after Phase 2's fold it's in-tree
+# and uses dotbot's own (vendored) modules, no collision possible.
+_CROSS_PACKAGE_SUBS = {"testbed"}
 
 
 @pytest.fixture
@@ -225,3 +228,47 @@ def test_legacy_console_scripts_still_resolve():
 
     for cmd in (controller_main, keyboard_main, joystick_main):
         assert isinstance(cmd, click.Command), f"{cmd!r} is not a Click cmd"
+
+
+def test_calibrate_lh2_missing_extras_prints_hint(runner, monkeypatch):
+    """When [calibrate] extras aren't installed, `dotbot calibrate-lh2`
+    (default `collect`) exits 1 with a pip-install hint instead of a
+    traceback."""
+    # Simulate the dotbot.calibration.cli module being unavailable.
+    # `monkeypatch.setitem(sys.modules, name, None)` makes
+    # `from name import ...` raise ImportError per CPython's import
+    # protocol — same condition as a real missing extra.
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
+    result = runner.invoke(cli, ["calibrate-lh2"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_lh2_collect_missing_extras_prints_hint(runner, monkeypatch):
+    """`dotbot calibrate-lh2 collect` is the explicit alias for the
+    default; same install-hint fallback when extras are missing."""
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
+    result = runner.invoke(cli, ["calibrate-lh2", "collect"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_lh2_apply_missing_extras_prints_hint(runner, monkeypatch):
+    """`dotbot calibrate-lh2 apply` falls back to the install hint
+    when the calibration runtime deps aren't available."""
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.lighthouse2", None)
+    result = runner.invoke(cli, ["calibrate-lh2", "apply", "/tmp/lh2.h"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_lh2_apply_no_saved_calibration(runner, tmp_path, monkeypatch):
+    """`apply` exits 1 with a clear message when no saved calibration
+    exists at the expected location."""
+    # Point LighthouseManager at an empty tmp dir so load_calibration
+    # finds nothing.
+    monkeypatch.setattr("dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path)
+    result = runner.invoke(cli, ["calibrate-lh2", "apply", str(tmp_path / "out.h")])
+    assert result.exit_code == 1, result.output
+    assert "No saved calibration" in result.output

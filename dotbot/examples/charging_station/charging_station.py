@@ -31,12 +31,12 @@ DT = 0.2  # Control loop period (seconds)
 BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
 MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
 
-(CHARGER_X, CHARGER_Y) = (
+CHARGER_X, CHARGER_Y = (
     500,
     500,
 )
 
-(QUEUE_HEAD_X, QUEUE_HEAD_Y) = (
+QUEUE_HEAD_X, QUEUE_HEAD_Y = (
     500,
     1500,
 )  # World-frame (X, Y) position of the charging queue head
@@ -44,7 +44,7 @@ QUEUE_SPACING = (
     300  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
-(PARK_X, PARK_Y) = (1700, 500)  # World-frame (X, Y) position of the parking area origin
+PARK_X, PARK_Y = (1700, 500)  # World-frame (X, Y) position of the parking area origin
 PARK_SPACING = 300  # Spacing between parked bots (along Y axis)
 
 

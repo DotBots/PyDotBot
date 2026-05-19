@@ -42,21 +42,26 @@ Commands:
   controller  Start the controller (adapter + REST/WS + dashboard).
   sim         Standalone simulator (equivalent to controller --adapter dotbot-simulator).
   testbed     Testbed-side ops: provision, status, start/stop, OTA flash, monitor.
-  calibrate   Run the LH2 calibration workflow.
+  calibrate-lh2 LH2 calibration: capture, apply, export (serial-side / single device).
   demo        Built-in research demos (qrkey phone bridge, ...).
   fw          Firmware-developer workflow (scaffold/build/flash). Not yet implemented.
   keyboard    Drive a DotBot from the keyboard (live).
   joystick    Drive a DotBot from a joystick (live).
 ```
 
-The `testbed`, `calibrate`, and some `demo` subcommands need optional
-backends installed:
+Some subcommands need optional runtime deps:
 
 ```
-pip install pydotbot[testbed]    # adds swarmit + dotbot-provision
-pip install pydotbot[calibrate]  # adds dotbot-lh2-calibration
+pip install pydotbot[testbed]    # adds swarmit (testbed orchestration)
+pip install pydotbot[provision]  # adds intelhex (used by `dotbot testbed provision`)
+pip install pydotbot[calibrate]  # adds opencv-python + textual (LH2 calibration TUI + exporter)
 pip install pydotbot[all]        # all of the above
 ```
+
+Calibration (`dotbot calibrate-lh2`) and provisioning (`dotbot testbed
+provision`) are vendored in-tree, but their heavyweight runtime deps
+(textual / opencv-python / intelhex) are gated behind extras so the
+core install stays lean.
 
 ### Starting the controller
 

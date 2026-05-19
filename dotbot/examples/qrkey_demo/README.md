@@ -61,9 +61,6 @@ The controller is **completely agnostic** to the demo. Stop the demo
 and the controller is unaffected; if the broker is unreachable, the
 demo logs and retries — the controller never blocks on it.
 
-See `plans/dotbot-access-levels.md` for the broader access-level
-architecture sketch this example sits inside.
-
 ## Configuration
 
 Settings come from env vars (or a `.env` file in the working

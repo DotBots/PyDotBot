@@ -1,0 +1,25 @@
+# Codecov config — split project-level (long-term) from patch-level
+# (per-PR) policy. Project-level keeps the long-term floor honest;
+# patch-level is informational because vendoring / refactor PRs can
+# legitimately ship diffs with low instantaneous coverage even when
+# the project total stays healthy.
+
+coverage:
+  status:
+    project:
+      default:
+        # Compare against main's current coverage. Allow tiny dips
+        # (rounding / one-off branches) without flapping CI.
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        # Report patch coverage but don't fail CI on it. Reviewers can
+        # still see the number in the PR comment; the gate just lives
+        # in human judgment instead of a hard threshold.
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false

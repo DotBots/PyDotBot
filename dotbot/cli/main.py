@@ -45,7 +45,11 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
         "dotbot.cli.testbed",
         "Testbed-side ops: provision, status, start/stop, OTA flash, monitor.",
     ),
-    ("calibrate", "dotbot.cli.calibrate", "Run the LH2 calibration workflow."),
+    (
+        "calibrate-lh2",
+        "dotbot.cli.calibrate",
+        "LH2 calibration: capture, apply, export (serial-side / single device).",
+    ),
     ("demo", "dotbot.cli.demo", "Built-in research demos (qrkey phone bridge, ...)."),
     (
         "fw",

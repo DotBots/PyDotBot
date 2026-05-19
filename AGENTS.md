@@ -49,7 +49,13 @@ CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Wind
 - **`PyDotBot-utils`** — `pyproject.toml:49`; used by `utils/hooks/sdist.py:build_frontend`
 - **`DotBot-libs`** — checked out in CI to build `utils/control_loop` C library
 - **`DotBot-firmware`** — referenced only in README (flashing instructions); no code dep
-- No references to: `swarmit`, `dotbot-lh2-calibration`, `dotbot-provision`
+- **`swarmit`** — optional sibling package (`pyproject.toml`'s
+  `[testbed]` extra); imported lazily inside `dotbot/cli/testbed.py`.
+- **`dotbot-provision`** — vendored into `dotbot/provision/` (Phase 2,
+  2026-05). Standalone PyPI package scheduled for deprecation.
+- **`dotbot-lh2-calibration` (Python)** — vendored into
+  `dotbot/calibration/` (Phase 2, 2026-05). The C firmware stays in
+  its own repo.
 
 ## State of repo (snapshot 2026-05-05)
 
