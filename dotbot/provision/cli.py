@@ -165,8 +165,34 @@ def make_config_hex_path(
 
 
 def load_calibration_file(path: Path) -> tuple[int, bytes]:
-    """Parse a swarmit LH2 calibration file: 1-byte count + N*36 bytes."""
-    data = path.read_bytes()
+    """Parse a swarmit LH2 calibration file.
+
+    Accepts two formats:
+
+    - **TOML** (`*.toml`, the modern record): schema-versioned, carries
+      metadata (timestamp, station count, calibration distance). The
+      `[calibration].data_hex` field is the same byte payload as the
+      legacy format, hex-encoded.
+    - **Legacy binary** (`calibration.out`): 1-byte count + N × 36 bytes.
+
+    The flash path itself only needs the raw bytes; this loader just
+    extracts them from whichever envelope was provided.
+    """
+    if path.suffix == ".toml":
+        if tomllib is None:
+            raise click.ClickException(
+                "Reading a .toml calibration file needs Python 3.11+ "
+                "(tomllib in the stdlib) or the tomli backport."
+            )
+        try:
+            parsed = tomllib.loads(path.read_text())
+            data = bytes.fromhex(parsed["calibration"]["data_hex"])
+        except (KeyError, ValueError) as exc:
+            raise click.ClickException(
+                f"Malformed TOML calibration file {path}: {exc}"
+            ) from exc
+    else:
+        data = path.read_bytes()
     if len(data) < 1 or (len(data) - 1) % LH2_MATRIX_BYTES != 0:
         raise click.ClickException(
             f"Invalid calibration file size: expected 1+N*{LH2_MATRIX_BYTES} "
