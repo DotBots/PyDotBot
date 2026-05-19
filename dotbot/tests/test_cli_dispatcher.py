@@ -250,3 +250,12 @@ def test_calibrate_export_missing_extras_prints_hint(runner, monkeypatch):
     result = runner.invoke(cli, ["calibrate", "export", "/tmp/x"])
     assert result.exit_code == 1, result.output
     assert "pip install dotbot[calibrate]" in result.output
+
+
+def test_calibrate_tui_alias_missing_extras_prints_hint(runner, monkeypatch):
+    """`dotbot calibrate tui` is the explicit alias for the default;
+    falls back to the same install-hint when extras are missing."""
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
+    result = runner.invoke(cli, ["calibrate", "tui"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output

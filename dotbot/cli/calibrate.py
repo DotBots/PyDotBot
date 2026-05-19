@@ -4,8 +4,9 @@
 """`dotbot calibrate` — LH2 calibration TUI + exporter.
 
 Native subgroup mounting the vendored `dotbot.calibration` package. The
-default (no subcommand) runs the Textual TUI; `dotbot calibrate export
-PATH` writes the C header for the swarmit bootloader bake-in.
+default (no subcommand) runs the Textual TUI; `dotbot calibrate tui`
+is an explicit alias for the same; `dotbot calibrate export PATH`
+writes the C header for the swarmit bootloader bake-in.
 
 Calibration runtime deps (`opencv-python`, `textual`) live behind the
 `[calibrate]` extra; ImportError at subcommand invocation prints an
@@ -17,17 +18,8 @@ import sys
 import click
 
 
-@click.group(
-    name="calibrate",
-    help="Run the LH2 calibration workflow (capture + export).",
-    invoke_without_command=True,
-)
-@click.pass_context
-def cmd(ctx: click.Context) -> None:
-    if ctx.invoked_subcommand is not None:
-        return
-    # Default: run the capture TUI. Lazy-import so `dotbot calibrate --help`
-    # works without the [calibrate] extra installed.
+def _run_tui(ctx: click.Context) -> None:
+    """Lazy-load the TUI Click command and hand off this process's argv tail."""
     try:
         from dotbot.calibration.cli import main as _tui_main
     except ImportError as exc:
@@ -44,6 +36,33 @@ def cmd(ctx: click.Context) -> None:
     # itself, so ctx.args/ctx.parent.args don't carry the right tail —
     # let the TUI re-parse from a clean state.
     _tui_main.main(args=list(ctx.args), standalone_mode=True)
+
+
+@click.group(
+    name="calibrate",
+    help="Run the LH2 calibration workflow (capture + export).",
+    invoke_without_command=True,
+)
+@click.pass_context
+def cmd(ctx: click.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+    _run_tui(ctx)
+
+
+@cmd.command(
+    name="tui",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        help_option_names=[],
+    ),
+    add_help_option=False,
+    help="Run the LH2 calibration TUI (same as `dotbot calibrate`).",
+)
+@click.pass_context
+def _tui(ctx: click.Context) -> None:
+    _run_tui(ctx)
 
 
 @cmd.command(
