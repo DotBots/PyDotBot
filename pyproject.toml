@@ -76,14 +76,12 @@ dotbot = "dotbot.cli.main:cli"
 dotbot-controller = "dotbot.controller_app:main"
 dotbot-keyboard = "dotbot.keyboard:main"
 dotbot-joystick = "dotbot.joystick:main"
-# Folded-in tooling (formerly standalone PyPI packages). These
-# point at the vendored modules so external scripts pinning the
-# old console_script names keep working through one deprecation
-# cycle. The standalone PyPI packages ship a final release that
-# emits DeprecationWarning and removes their own console_scripts.
-dotbot-provision = "dotbot.provision.cli:main"
-dotbot-calibration = "dotbot.calibration.cli:main"
-dotbot-calibration-exporter = "dotbot.calibration.exporter:main"
+# No backwards-compat aliases for the folded-in tooling
+# (provision, calibration): those console scripts never existed
+# in dotbot-python — the names belonged to the standalone PyPI
+# packages, which keep their own scripts during their own
+# deprecation cycle. Users coming from those packages use
+# `dotbot testbed provision …` and `dotbot calibrate …`.
 
 [project.optional-dependencies]
 # Optional subcommand backends. Keep the core install lean; opt in to

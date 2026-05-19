@@ -60,7 +60,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick` console
   scripts remain working as backwards-compat aliases for one deprecation
   cycle. Prefer `dotbot <subcommand>` for new code.
-- `dotbot-provision`, `dotbot-calibration`, `dotbot-calibration-exporter`
-  console scripts now resolve to the vendored modules (still work). The
-  standalone PyPI packages will issue `DeprecationWarning` on next
-  release; prefer `dotbot testbed provision …` and `dotbot calibrate …`.
+- The standalone `dotbot-provision` and `dotbot-lh2-calibration` PyPI
+  packages will issue `DeprecationWarning` on their next release and
+  point users at `pip install dotbot[provision]` /
+  `pip install dotbot[calibrate]`. Their console scripts
+  (`dotbot-provision`, `dotbot-calibration`,
+  `dotbot-calibration-exporter`) are not re-exported by `dotbot`
+  because they never shipped from this package; use the unified
+  subcommands instead.
