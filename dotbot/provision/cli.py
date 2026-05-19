@@ -554,7 +554,18 @@ def cmd_flash(
         config_hex = make_config_hex_path(fw_root, device, fw_version, net_id_hex)
         click.secho(f"[INFO] created new config hex: {config_hex}", fg="green")
 
-    missing = [str(p) for p in (app_hex, net_hex) if not p.exists()]
+    missing = []
+    for p in (app_hex, net_hex):
+        if p.exists():
+            continue
+        if p.is_symlink():
+            # Path.exists() follows symlinks; a dangling symlink reports
+            # missing without surfacing the broken target. Re-running
+            # `provision fetch -f <ver> --local-root <path>` typically
+            # refreshes these.
+            missing.append(f"{p} (broken symlink → {os.readlink(p)})")
+        else:
+            missing.append(str(p))
     if missing:
         missing_list = ", ".join(missing)
         raise click.ClickException(f"Missing firmware files: {missing_list}")
