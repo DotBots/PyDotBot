@@ -268,11 +268,7 @@ def test_calibrate_lh2_apply_no_saved_calibration(runner, tmp_path, monkeypatch)
     exists at the expected location."""
     # Point LighthouseManager at an empty tmp dir so load_calibration
     # finds nothing.
-    monkeypatch.setattr(
-        "dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path
-    )
-    result = runner.invoke(
-        cli, ["calibrate-lh2", "apply", str(tmp_path / "out.h")]
-    )
+    monkeypatch.setattr("dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path)
+    result = runner.invoke(cli, ["calibrate-lh2", "apply", str(tmp_path / "out.h")])
     assert result.exit_code == 1, result.output
     assert "No saved calibration" in result.output
