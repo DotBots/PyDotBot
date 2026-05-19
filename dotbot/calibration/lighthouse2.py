@@ -384,6 +384,9 @@ class LighthouseManager:
         # and a footgun on some Unix tools.
         ts_for_filename = now.strftime("%Y-%m-%dT%H-%M-%SZ")
         toml_path = CALIBRATION_DIR / f"calibration-{ts_for_filename}.toml"
+        # Explicit UTF-8 — TOML is spec'd as UTF-8, and Path.write_text
+        # defaults to the platform encoding (cp1252 on Windows), which
+        # mangles any non-ASCII byte and breaks the tomllib reader.
         toml_path.write_text(
             f"schema_version = {CALIBRATION_SCHEMA_VERSION}\n"
             "\n"
@@ -393,9 +396,10 @@ class LighthouseManager:
             f"num_lh_stations = {1 + self.extra_lh_num}\n"
             "\n"
             "[calibration]\n"
-            "# 1-byte homography count + N × 36-byte int32 LE matrices,\n"
+            "# 1-byte homography count + N x 36-byte int32 LE matrices,\n"
             "# hex-encoded. Same bytes as the legacy calibration.out.\n"
-            f'data_hex = "{payload.hex()}"\n'
+            f'data_hex = "{payload.hex()}"\n',
+            encoding="utf-8",
         )
 
         # Legacy back-compat write — drop once swarmit OTA + provision

@@ -48,7 +48,8 @@ def test_save_calibration_writes_toml_and_legacy_out(monkeypatch, tmp_path):
         tmp_path / "calibration.out"
     ).exists(), "legacy .out should still be written"
 
-    parsed = tomllib.loads(toml_files[0].read_text())
+    with open(toml_files[0], "rb") as f:
+        parsed = tomllib.load(f)
     assert parsed["schema_version"] == lighthouse2.CALIBRATION_SCHEMA_VERSION
     assert parsed["metadata"]["calibration_distance_mm"] == 750
     assert parsed["metadata"]["num_lh_stations"] == 2

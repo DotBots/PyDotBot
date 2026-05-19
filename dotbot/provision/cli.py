@@ -185,7 +185,11 @@ def load_calibration_file(path: Path) -> tuple[int, bytes]:
                 "(tomllib in the stdlib) or the tomli backport."
             )
         try:
-            parsed = tomllib.loads(path.read_text())
+            # Binary mode lets tomllib handle UTF-8 itself (TOML is
+            # spec'd as UTF-8); read_text() would pick up the platform
+            # default (cp1252 on Windows) and mangle the contents.
+            with open(path, "rb") as f:
+                parsed = tomllib.load(f)
             data = bytes.fromhex(parsed["calibration"]["data_hex"])
         except (KeyError, ValueError) as exc:
             raise click.ClickException(
