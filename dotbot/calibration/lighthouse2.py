@@ -15,8 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import numpy as np
+
+# cv2 is imported lazily inside `compute_homography_matrix` (the only
+# function that uses it). This keeps `dotbot calibrate export` usable
+# without opencv-python installed — the exporter only reads / writes
+# bytes and does no homography math itself.
 
 CALIBRATION_DIR = Path.home() / ".dotbot"
 CALIBRATION_DISTANCE_DEFAULT = 500  # in millimeters
@@ -119,6 +123,8 @@ def compute_homography_matrix(
     reference_points: np.ndarray,
 ) -> np.ndarray:
     """Compute homography matrix from camera points to reference points."""
+    import cv2  # lazy: opencv-python is only required for the capture path
+
     M, _ = cv2.findHomography(
         camera_points,
         reference_points,
