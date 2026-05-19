@@ -244,14 +244,6 @@ def test_calibrate_lh2_missing_extras_prints_hint(runner, monkeypatch):
     assert "pip install dotbot[calibrate]" in result.output
 
 
-def test_calibrate_lh2_export_missing_extras_prints_hint(runner, monkeypatch):
-    """Same install-hint fallback for `dotbot calibrate-lh2 export`."""
-    monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
-    result = runner.invoke(cli, ["calibrate-lh2", "export", "/tmp/x"])
-    assert result.exit_code == 1, result.output
-    assert "pip install dotbot[calibrate]" in result.output
-
-
 def test_calibrate_lh2_collect_missing_extras_prints_hint(runner, monkeypatch):
     """`dotbot calibrate-lh2 collect` is the explicit alias for the
     default; same install-hint fallback when extras are missing."""
@@ -261,20 +253,26 @@ def test_calibrate_lh2_collect_missing_extras_prints_hint(runner, monkeypatch):
     assert "pip install dotbot[calibrate]" in result.output
 
 
-def test_calibrate_lh2_apply_bare_stub(runner):
-    """`apply --bare` is gated on bare-metal firmware work; for now
-    it exits 2 with a clear "not yet implemented" message."""
-    result = runner.invoke(cli, ["calibrate-lh2", "apply", "--bare", "/tmp/x"])
-    assert result.exit_code == 2, result.output
-    assert "not yet implemented" in result.output.lower()
+def test_calibrate_lh2_apply_missing_extras_prints_hint(runner, monkeypatch):
+    """`dotbot calibrate-lh2 apply` falls back to the install hint
+    when the calibration runtime deps aren't available."""
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
+    monkeypatch.setitem(sys.modules, "dotbot.calibration.lighthouse2", None)
+    result = runner.invoke(cli, ["calibrate-lh2", "apply", "/tmp/lh2.h"])
+    assert result.exit_code == 1, result.output
+    assert "pip install dotbot[calibrate]" in result.output
 
 
-def test_calibrate_lh2_apply_sandbox_stub(runner):
-    """`apply --sandbox` (default) currently points users at the
-    working alternatives (provision flash --calibration, swarmit OTA)
-    until the partial config-page rewrite lands."""
-    result = runner.invoke(
-        cli, ["calibrate-lh2", "apply", "--sandbox", "/tmp/x"]
+def test_calibrate_lh2_apply_no_saved_calibration(runner, tmp_path, monkeypatch):
+    """`apply` exits 1 with a clear message when no saved calibration
+    exists at the expected location."""
+    # Point LighthouseManager at an empty tmp dir so load_calibration
+    # finds nothing.
+    monkeypatch.setattr(
+        "dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path
     )
-    assert result.exit_code == 2, result.output
-    assert "not yet implemented" in result.output.lower()
+    result = runner.invoke(
+        cli, ["calibrate-lh2", "apply", str(tmp_path / "out.h")]
+    )
+    assert result.exit_code == 1, result.output
+    assert "No saved calibration" in result.output

@@ -22,18 +22,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   flash-hex|read-config|flash-bringup>`.
 - **Vendored `dotbot-lh2-calibration` (Python side)** into
   `dotbot/calibration/`. Surfaced as `dotbot calibrate-lh2` with
-  three subcommands:
+  two subcommands:
   - `collect` — runs the Textual TUI (default — bare
     `dotbot calibrate-lh2` invokes this for muscle memory)
-  - `apply --bare/--sandbox <path>` — write a saved calibration to a
-    serial-attached device's flash (stubbed today; sandbox path will
-    extend `dotbot/provision/`, bare path is gated on firmware work)
-  - `export <dir>` — C header for compile-time bake-in to the
-    swarmit secure bootloader (legacy path; prefer `apply --sandbox`
-    or `dotbot testbed calibrate-lh2` once those land)
+  - `apply <path>` — write the saved calibration as a C header to
+    `<path>` (replaces the previous `dotbot-calibration-exporter`;
+    today the only consumer is the swarmit secure bootloader which
+    `#include`s the file at compile time)
   The C firmware in the `dotbot-lh2-calibration` repo is unchanged.
-  Future OTA / swarm-wide counterparts will live under
-  `dotbot testbed calibrate-lh2` — see
+  Future OTA / swarm-wide counterparts (`collect` over MQTT,
+  `apply` as OTA push) will live under `dotbot testbed
+  calibrate-lh2` — see
   `plans/ideas/testbed-scale-lh2-calibration.md`.
 - Optional dependency groups (revised):
   - `pip install dotbot[testbed]` adds `swarmit` (still external)
