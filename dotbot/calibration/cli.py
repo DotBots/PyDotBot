@@ -21,16 +21,17 @@ from dotbot.calibration.lighthouse2 import CALIBRATION_DISTANCE_DEFAULT
 
 
 def get_default_port():
-    """Return default serial port."""
-    ports = [port for port in list_ports.comports()]
+    """Return default serial port. Called lazily by Click on subcommand
+    invocation — `import` of this module no longer enumerates serial
+    ports (that side effect was inherited from the pre-fold layout)."""
+    ports = list(list_ports.comports())
     if sys.platform != "win32":
-        ports = sorted([port for port in ports])
+        ports = sorted(ports)
     if not ports:
         return "/dev/ttyACM0"
     return ports[0].device
 
 
-SERIAL_PORT_DEFAULT = get_default_port()
 SERIAL_BAUDRATE_DEFAULT = 115200
 LH_NUM_DEFAULT = 0
 
@@ -40,8 +41,9 @@ LH_NUM_DEFAULT = 0
     "-p",
     "--port",
     type=str,
-    default=SERIAL_PORT_DEFAULT,
-    help=f"Serial port used by 'serial' and 'edge' adapters. Defaults to '{SERIAL_PORT_DEFAULT}'",
+    default=get_default_port,
+    show_default="auto-detected serial port",
+    help="Serial port used to read LH2 counts from the calibration firmware.",
 )
 @click.option(
     "-b",
