@@ -32,8 +32,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   The C firmware in the `dotbot-lh2-calibration` repo is unchanged.
   Future OTA / swarm-wide counterparts (`collect` over MQTT,
   `apply` as OTA push) will live under `dotbot testbed
-  calibrate-lh2` — see
-  `plans/ideas/testbed-scale-lh2-calibration.md`.
+  calibrate-lh2`.
 - Calibration records are now saved as timestamped, schema-versioned
   TOML files (`~/.dotbot/calibration-<UTC timestamp>.toml`) carrying
   metadata (number of LH stations, calibration distance, creation

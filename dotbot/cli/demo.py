@@ -3,11 +3,11 @@
 
 """`dotbot demo` — discoverable launcher for built-in research demos.
 
-Demos live in `dotbot/examples/`. Each demo is a Level-3 consumer of
-the controller's REST/WS API (see the access-levels architecture in
-plans/dotbot-consolidation-roadmap.md). Adding a new demo means
-dropping a Click command somewhere under `dotbot/examples/` and
-registering it below.
+Demos live in `dotbot/examples/`. Each demo consumes the controller's
+REST/WS API and runs as a separate process — the controller stays
+agnostic to whichever demo (if any) is talking to it. Adding a new
+demo means dropping a Click command somewhere under `dotbot/examples/`
+and registering it below.
 """
 
 import click

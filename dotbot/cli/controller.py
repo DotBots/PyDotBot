@@ -4,8 +4,8 @@
 """`dotbot controller` — start the controller + REST/WS + dashboard.
 
 Today this re-mounts the existing `dotbot.controller_app:main` Click
-command verbatim. Future phases (see plans/dotbot-unified-dx.md
-Phase 4) extract the engine from the controller monolith.
+command verbatim. A future refactor will extract the engine from the
+controller monolith.
 """
 
 from dotbot.controller_app import main as _controller_main

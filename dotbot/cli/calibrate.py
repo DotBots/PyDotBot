@@ -5,8 +5,7 @@
 
 Native subgroup mounting the vendored `dotbot.calibration` package.
 Serial-attached, single-device operations. OTA / swarm-wide
-counterparts will live under `dotbot testbed calibrate-lh2` (see
-plans/ideas/testbed-scale-lh2-calibration.md).
+counterparts will live under `dotbot testbed calibrate-lh2`.
 
 Subcommands:
 

@@ -7,10 +7,10 @@ Equivalent to `dotbot controller --adapter dotbot-simulator`. The name
 advertises the no-hardware case so students can discover the offline
 path from `dotbot --help` without reading adapter docs.
 
-Phase 1 implementation: prepend `--adapter dotbot-simulator` to argv
-and delegate to the controller's Click command. Phase 3 turns this
-into a first-class entry that wires Engine + SimulatorAdapter directly
-(see plans/dotbot-unified-dx.md).
+Implementation: prepend `--adapter dotbot-simulator` to argv and
+delegate to the controller's Click command. A future refactor will
+turn this into a first-class entry that wires Engine + SimulatorAdapter
+directly.
 """
 
 import click

@@ -7,8 +7,7 @@ standalone `qrkey` library (see https://github.com/DotBots/qrkey).
 
 This example consumes qrkey-decrypted MQTT commands from a phone and
 forwards them to a running PyDotBot controller via the controller's
-REST API. The controller stays unaware of qrkey — see
-plans/pydotbot-qrkey-example.md.
+REST API. The controller stays unaware of qrkey.
 """
 
 from dotbot.examples.qrkey_demo.client import (  # noqa: F401
