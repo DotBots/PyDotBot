@@ -9,8 +9,10 @@
 # pylint: disable=invalid-name,unspecified-encoding,no-member
 
 import dataclasses
+import datetime
 import math
 import os
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -24,6 +26,13 @@ import numpy as np
 
 CALIBRATION_DIR = Path.home() / ".dotbot"
 CALIBRATION_DISTANCE_DEFAULT = 500  # in millimeters
+CALIBRATION_SCHEMA_VERSION = 1
+# Legacy binary file. Kept as a back-compat byproduct of save_calibration()
+# so external consumers (swarmit OTA `calibrate-lh2 <path>`,
+# dotbot-provision `flash --calibration <path>`) keep working until they
+# learn to read the new TOML format. Once they do, drop the .out write.
+CALIBRATION_LEGACY_OUT = "calibration.out"
+CALIBRATION_TOML_GLOB = "calibration-*.toml"
 REFERENCE_POINTS_DEFAULT = [
     [0.4, 0.4],  # Top-left
     [0.6, 0.4],  # Top-right
@@ -164,6 +173,53 @@ def homography_as_bytes(matrix: np.ndarray) -> bytes:
     return matrix_bytes
 
 
+def _build_calibration_payload(
+    homographies: list[LH2Homography], extra_lh_num: int
+) -> bytes:
+    """Pack homographies as 1-byte count + N × 36-byte matrices.
+
+    Same wire shape the legacy `calibration.out` carried; the TOML
+    payload also stores this byte-for-byte (hex-encoded) so external
+    consumers can decode it without ambiguity.
+    """
+    payload = bytearray()
+    payload.append(1 + extra_lh_num)
+    for homography in homographies:
+        payload += homography_as_bytes(homography.matrix)
+    return bytes(payload)
+
+
+def _parse_calibration_payload(payload: bytes) -> list[bytes]:
+    """Inverse of `_build_calibration_payload`: yields the per-LH 36-byte
+    matrix chunks. Used when loading from either TOML or legacy .out."""
+    if not payload:
+        return []
+    count = payload[0]
+    matrices = []
+    for i in range(count):
+        start = 1 + i * 36
+        matrices.append(payload[start : start + 36])
+    return matrices
+
+
+def _read_toml_payload(path: Path) -> bytes:
+    """Read a calibration-*.toml file and return the raw byte payload.
+
+    Validates `schema_version` so future writers can break compatibility
+    explicitly instead of silently corrupting reads.
+    """
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+    schema = data.get("schema_version", 0)
+    if schema != CALIBRATION_SCHEMA_VERSION:
+        raise ValueError(
+            f"{path}: unsupported calibration schema_version {schema} "
+            f"(this build supports {CALIBRATION_SCHEMA_VERSION})"
+        )
+    hex_data = data["calibration"]["data_hex"]
+    return bytes.fromhex(hex_data)
+
+
 class LighthouseManager:
     """Class to manage the LightHouse positionning state and workflow."""
 
@@ -173,12 +229,15 @@ class LighthouseManager:
         extra_lh_num: int = 0,
     ):
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
-        self.calibration_output_path = CALIBRATION_DIR / "calibration.out"
+        # Legacy path, kept for back-compat with external consumers.
+        # The primary record is now timestamped TOML files in CALIBRATION_DIR.
+        self.calibration_output_path = CALIBRATION_DIR / CALIBRATION_LEGACY_OUT
         self.calibration_distance = calibration_distance
         self.extra_lh_num = extra_lh_num
         self.homographies: list[LH2Homography] = [LH2Homography()] * (
             1 + self.extra_lh_num
         )
+        self.last_saved_toml_path: Optional[Path] = None
 
     def _compute_reference_homography(
         self, calibration_counts: list[LH2Counts]
@@ -288,26 +347,62 @@ class LighthouseManager:
         )
 
     def load_calibration(self) -> list[bytes]:
-        if not os.path.exists(self.calibration_output_path):
-            return []
-        homographies_bytes = []
-        with open(self.calibration_output_path, "rb") as calibration_file:
-            homographies_num = int.from_bytes(
-                calibration_file.read(1), "little", signed=False
-            )
-            for _ in range(homographies_num):
-                homography_matrix = calibration_file.read(36)
-                homographies_bytes.append(homography_matrix)
-        return homographies_bytes
+        """Load the most recent calibration as a flat list of matrix bytes.
 
-    def save_calibration(self) -> None:
-        """Save the calibration to a file."""
-        with open(self.calibration_output_path, "wb") as calibration_file:
-            calibration_file.write(
-                int(1 + self.extra_lh_num).to_bytes(1, "little", signed=False)
-            )
-            for homography in self.homographies:
-                calibration_file.write(homography_as_bytes(homography.matrix))
+        Prefers the newest timestamped `calibration-*.toml`; falls back
+        to the legacy binary `calibration.out` if no TOML files exist
+        (so setups predating the format change keep working).
+        """
+        toml_files = sorted(
+            CALIBRATION_DIR.glob(CALIBRATION_TOML_GLOB),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if toml_files:
+            return _parse_calibration_payload(_read_toml_payload(toml_files[0]))
+        if os.path.exists(self.calibration_output_path):
+            return _parse_calibration_payload(self.calibration_output_path.read_bytes())
+        return []
+
+    def save_calibration(self) -> Path:
+        """Save the calibration as a timestamped TOML file (+ legacy .out).
+
+        The TOML file is the new primary record: versioned, metadata-
+        bearing, human-inspectable. The legacy `.out` file is also
+        written so external consumers (swarmit OTA, dotbot-provision)
+        keep working until they learn to read TOML.
+
+        Returns the path of the TOML file just written, and also stores
+        it on `self.last_saved_toml_path` so a caller that lost the
+        return value (e.g. the TUI handler) can still surface it after
+        the fact.
+        """
+        payload = _build_calibration_payload(self.homographies, self.extra_lh_num)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # Filename-safe variant of ISO 8601: `:` is rejected on Windows
+        # and a footgun on some Unix tools.
+        ts_for_filename = now.strftime("%Y-%m-%dT%H-%M-%SZ")
+        toml_path = CALIBRATION_DIR / f"calibration-{ts_for_filename}.toml"
+        toml_path.write_text(
+            f"schema_version = {CALIBRATION_SCHEMA_VERSION}\n"
+            "\n"
+            "[metadata]\n"
+            f'created_at = "{now.strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
+            f"calibration_distance_mm = {int(self.calibration_distance)}\n"
+            f"num_lh_stations = {1 + self.extra_lh_num}\n"
+            "\n"
+            "[calibration]\n"
+            "# 1-byte homography count + N × 36-byte int32 LE matrices,\n"
+            "# hex-encoded. Same bytes as the legacy calibration.out.\n"
+            f'data_hex = "{payload.hex()}"\n'
+        )
+
+        # Legacy back-compat write — drop once swarmit OTA + provision
+        # read TOML.
+        self.calibration_output_path.write_bytes(payload)
+        self.last_saved_toml_path = toml_path
+        return toml_path
 
     def ground_coordinate_from_counts(self, counts: LH2Counts) -> np.ndarray:
         """Convert counts to ground plane coordinates using homography."""

@@ -34,6 +34,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `apply` as OTA push) will live under `dotbot testbed
   calibrate-lh2` — see
   `plans/ideas/testbed-scale-lh2-calibration.md`.
+- Calibration records are now saved as timestamped, schema-versioned
+  TOML files (`~/.dotbot/calibration-<UTC timestamp>.toml`) carrying
+  metadata (number of LH stations, calibration distance, creation
+  time) alongside the homography bytes (hex-encoded under
+  `[calibration].data_hex`). The legacy `~/.dotbot/calibration.out`
+  binary is still written as a back-compat byproduct so external
+  consumers (swarmit OTA, `dotbot testbed provision flash`) keep
+  working unchanged; once they learn to read TOML the legacy write
+  will be dropped. `load_calibration()` prefers the newest TOML and
+  falls back to `calibration.out` if no TOML files exist.
+- `dotbot testbed provision flash --calibration <path>` accepts a
+  `.toml` calibration file in addition to the legacy binary format
+  (the file extension drives the parsing path).
 - Optional dependency groups (revised):
   - `pip install dotbot[testbed]` adds `swarmit` (still external)
   - `pip install dotbot[provision]` adds `intelhex` (provision runtime)
