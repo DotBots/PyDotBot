@@ -647,6 +647,11 @@ def cmd_flash(
     click.echo(
         f"[INFO] device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})"
     )
+    click.secho(
+        "[NOTE] you may need to press the reset button on the DotBot "
+        "for it to join the network",
+        fg="yellow",
+    )
 
 
 @cli.command("flash-hex", help="Flash explicit app/net hex files.")
