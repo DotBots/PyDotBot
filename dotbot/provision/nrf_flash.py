@@ -308,15 +308,21 @@ def read_net_id(snr: str | None = None) -> str:
     )
     args = [nrfjprog, "-f", "NRF53"]
     args += ["--coprocessor", "CP_NETWORK"]
+    # Read both has_net_id (offset 4) and net_id (offset 8) from the swarmit
+    # config page; layout matches swarmit_config_t (see create_config_hex
+    # in cli.py and DotBots/swarmit network_core/Source/main.c).
     args += ["--memrd", "0x0103F804"]
-    args += ["--n", "4"]
+    args += ["--n", "8"]
     if snr:
         args += ["-s", str(snr)]
     out = run_capture(args)
     words = _parse_memrd_words(out)
-    if len(words) < 1:
+    if len(words) < 2:
         raise RuntimeError(f"Unexpected net ID output: {out.strip()}")
-    return f"{words[0][-4:]}"
+    has_net_id, net_id = words[0], words[1]
+    if int(has_net_id, 16) != 1:
+        return "unprovisioned"
+    return f"{net_id[-4:]}"
 
 
 def flash_nrf_both_cores(
