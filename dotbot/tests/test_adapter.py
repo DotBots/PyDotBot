@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
+from marilib.mari_protocol import NextProto
 
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -80,7 +81,9 @@ async def test_marilib_edge_adapter(_):
 
         adapter.send_payload(frame.header.destination, payload)
         adapter.mari.send_frame.assert_called_once_with(
-            dst=frame.header.destination, payload=frame.packet.to_bytes()
+            dst=frame.header.destination,
+            payload=frame.packet.to_bytes(),
+            next_proto=NextProto.DOTBOT_APP,
         )
         adapter.close()
         adapter.mari.close.assert_called_once()
@@ -115,7 +118,9 @@ async def test_marilib_cloud_adapter(_):
 
         adapter.send_payload(frame.header.destination, payload)
         adapter.mari.send_frame.assert_called_once_with(
-            dst=frame.header.destination, payload=frame.packet.to_bytes()
+            dst=frame.header.destination,
+            payload=frame.packet.to_bytes(),
+            next_proto=NextProto.DOTBOT_APP,
         )
         adapter.close()
 
