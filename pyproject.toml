@@ -81,13 +81,19 @@ dotbot-joystick = "dotbot.joystick:main"
 # in dotbot-python — the names belonged to the standalone PyPI
 # packages, which keep their own scripts during their own
 # deprecation cycle. Users coming from those packages use
-# `dotbot testbed provision …` and `dotbot calibrate …`.
+# `dotbot swarm provision …` and `dotbot calibrate …`.
 
 [project.optional-dependencies]
 # Optional subcommand backends. Keep the core install lean; opt in to
 # the bits you actually use.
-testbed = [
+swarm = [
     "swarmit          >= 0.6.0",
+]
+# Deprecated alias for `[swarm]` (was the original extras name when
+# the subcommand was called `dotbot testbed`). Drop one release after
+# the rename ships.
+testbed = [
+    "pydotbot[swarm]",
 ]
 provision = [
     "intelhex         >= 2.3.0",

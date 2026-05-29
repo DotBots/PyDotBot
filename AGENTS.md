@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI (`dotbot controller`, `dotbot testbed`, `dotbot calibrate`, `dotbot demo`, `dotbot keyboard`, `dotbot joystick`, ...) plus DotBot/SailBot simulators. Legacy entry points `dotbot-controller` / `dotbot-keyboard` / `dotbot-joystick` are kept as backwards-compat aliases for one deprecation cycle.
+Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI (`dotbot controller`, `dotbot swarm`, `dotbot calibrate-lh2`, `dotbot fw`, `dotbot demo`, `dotbot keyboard`, `dotbot joystick`, ...) plus DotBot/SailBot simulators. Legacy entry points `dotbot-controller` / `dotbot-keyboard` / `dotbot-joystick` are kept as backwards-compat aliases for one deprecation cycle, as is the `dotbot testbed` subcommand (renamed to `dotbot swarm`).
 
 This is the most active repo in the ecosystem (187 commits in last 90 days as of 2026-05-05).
 
@@ -26,8 +26,9 @@ This is the most active repo in the ecosystem (187 commits in last 90 days as of
 pip install pydotbot                         # or `pip install -e .`
 dotbot --help               # unified dispatcher
 dotbot controller --help    # start the controller
-dotbot testbed --help       # testbed ops (optional: pip install pydotbot[testbed])
-dotbot calibrate --help     # LH2 calibration (optional: pip install pydotbot[calibrate])
+dotbot swarm --help         # swarm orchestration (optional: pip install pydotbot[swarm])
+dotbot calibrate-lh2 --help # LH2 calibration (optional: pip install pydotbot[calibrate])
+dotbot fw --help            # bare firmware build/clean/targets/artifacts
 dotbot demo --list          # built-in research demos
 
 # Tests / lint / build

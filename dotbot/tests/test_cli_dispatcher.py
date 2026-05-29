@@ -44,13 +44,19 @@ _needs_frontend = pytest.mark.skipif(
 EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
-    "testbed",
+    "swarm",
     "calibrate-lh2",
     "demo",
     "fw",
     "keyboard",
     "joystick",
 }
+
+# Deprecated CLI names that route to a canonical subcommand. These are
+# NOT in `EXPECTED_SUBCOMMANDS` (they don't appear in `dotbot --help`)
+# but must keep working with a stderr deprecation warning until they're
+# dropped one release after the rename.
+_DEPRECATED_ALIASES = {"testbed": "swarm"}
 
 # Subcommands whose --help backends live in OTHER packages with their
 # own protocol registries (swarmit). When pytest pre-loads
@@ -63,7 +69,7 @@ EXPECTED_SUBCOMMANDS = {
 #
 # `calibrate` used to be in this set; after Phase 2's fold it's in-tree
 # and uses dotbot's own (vendored) modules, no collision possible.
-_CROSS_PACKAGE_SUBS = {"testbed"}
+_CROSS_PACKAGE_SUBS = {"swarm"}
 
 
 @pytest.fixture
@@ -101,9 +107,9 @@ def test_subcommand_help_works(runner, subcommand):
     """Every in-process subcommand's --help runs cleanly.
 
     keyboard/joystick are excluded because they import pygame/pynput at
-    module load time (headless-CI hostile). testbed/calibrate are
-    excluded because their backends collide with PyDotBot's protocol
-    registry inside a single pytest process — covered separately by
+    module load time (headless-CI hostile). swarm is excluded because
+    its swarmit backend collides with PyDotBot's protocol registry
+    inside a single pytest process — covered separately by
     test_cross_package_subcommand_help_works in a subprocess.
     controller/sim trigger dotbot.server's StaticFiles import-time mount;
     skipped if the frontend bundle hasn't been built.
@@ -118,7 +124,7 @@ def test_subcommand_help_works(runner, subcommand):
 
 @pytest.mark.parametrize("subcommand", sorted(_CROSS_PACKAGE_SUBS))
 def test_cross_package_subcommand_help_works(subcommand):
-    """`dotbot testbed --help` / `dotbot calibrate --help` in a clean process.
+    """`dotbot swarm --help` in a clean process.
 
     A subprocess avoids the swarmit/lh2-calibration vs PyDotBot
     protocol-registry collision that only manifests inside pytest's
@@ -134,6 +140,36 @@ def test_cross_package_subcommand_help_works(subcommand):
     # Sanity: the help text should mention the subcommand or its purpose.
     combined = result.stdout + result.stderr
     assert "Usage" in combined
+
+
+@pytest.mark.parametrize("deprecated,canonical", sorted(_DEPRECATED_ALIASES.items()))
+def test_deprecated_alias_still_dispatches(deprecated, canonical):
+    """`dotbot testbed --help` (deprecated) routes to `dotbot swarm`."""
+    result = subprocess.run(
+        [sys.executable, "-m", "dotbot.cli", deprecated, "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "Usage" in result.stdout + result.stderr
+    # The stderr warning must name both the old name and the canonical
+    # replacement, so callers see the migration path on first invocation.
+    assert deprecated in result.stderr
+    assert canonical in result.stderr
+    assert "deprecated" in result.stderr.lower()
+
+
+def test_deprecated_alias_not_in_help_listing(runner):
+    """Deprecated names stay out of `dotbot --help` so they don't get
+    re-adopted by readers."""
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    for deprecated in _DEPRECATED_ALIASES:
+        assert deprecated not in result.output, (
+            f"deprecated alias `{deprecated}` should not appear in --help; "
+            "see _ALIASES in dotbot.cli.main"
+        )
 
 
 def test_fw_mock_exits_nonzero(runner):

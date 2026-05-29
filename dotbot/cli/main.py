@@ -19,6 +19,11 @@ Adding a new subcommand:
      short help string shown in `dotbot --help`).
   3. If the backend lives in an optional sibling package, use
      `dotbot.cli._lazy.lazy_subcommand` inside that module.
+
+Deprecated aliases live in `_ALIASES`: old name → canonical name.
+Aliases are NOT listed in `_SUBCOMMANDS` (so they stay out of
+`dotbot --help`) but resolve at dispatch time with a one-line stderr
+warning. Drop the alias one release after introduction.
 """
 
 import importlib
@@ -41,9 +46,9 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
         "Standalone simulator (equivalent to controller --adapter dotbot-simulator).",
     ),
     (
-        "testbed",
-        "dotbot.cli.testbed",
-        "Testbed-side ops: provision, status, start/stop, OTA flash, monitor.",
+        "swarm",
+        "dotbot.cli.swarm",
+        "Swarm-orchestration ops: provision, status, start/stop, OTA flash, sandbox fw.",
     ),
     (
         "calibrate-lh2",
@@ -54,11 +59,18 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
     (
         "fw",
         "dotbot.cli.fw",
-        "Firmware-developer workflow (scaffold/build/flash). MOCK in Phase 1.",
+        "Bare DotBot firmware: build, clean, list targets, collect artifacts.",
     ),
     ("keyboard", "dotbot.cli.keyboard", "Drive a DotBot from the keyboard (live)."),
     ("joystick", "dotbot.cli.joystick", "Drive a DotBot from a joystick (live)."),
 )
+
+# Deprecated CLI names that route to a canonical subcommand. Print a
+# one-line stderr warning on dispatch so callers see the migration path.
+# Drop entries one release after they ship.
+_ALIASES = {
+    "testbed": "swarm",
+}
 
 _HELP_INDEX = {name: short for name, _, short in _SUBCOMMANDS}
 _MODULE_INDEX = {name: module_path for name, module_path, _ in _SUBCOMMANDS}
@@ -71,6 +83,14 @@ class _LazyGroup(click.Group):
         return [name for name, _, _ in _SUBCOMMANDS]
 
     def get_command(self, ctx, cmd_name) -> Optional[click.Command]:
+        canonical = _ALIASES.get(cmd_name)
+        if canonical is not None:
+            click.echo(
+                f"warning: 'dotbot {cmd_name}' is deprecated; "
+                f"use 'dotbot {canonical}' instead.",
+                err=True,
+            )
+            cmd_name = canonical
         module_path = _MODULE_INDEX.get(cmd_name)
         if module_path is None:
             return None
@@ -91,7 +111,7 @@ class _LazyGroup(click.Group):
 
 @click.group(
     cls=_LazyGroup,
-    help="Control DotBots: drive robots, run testbed experiments, calibrate, demos.",
+    help="Control DotBots: drive robots, run swarm experiments, calibrate, demos.",
 )
 @click.version_option(
     version=pydotbot_version(),
