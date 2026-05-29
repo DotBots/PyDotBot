@@ -29,6 +29,7 @@ from dotbot.cli._fw_helpers import (
     DEFAULT_CONFIG,
     artifact_path,
     list_projects,
+    resolve_firmware_repo,
     run_make,
     validate_bare_target,
 )
@@ -53,29 +54,50 @@ def cmd():
     pass
 
 
+def _target_option(f):
+    """Reusable `--target/-t` option for build/clean/artifacts."""
+    return click.option(
+        "--target",
+        "-t",
+        default=DEFAULT_BARE_TARGET,
+        show_default=True,
+        help=(
+            "BUILD_TARGET (e.g. dotbot-v3, nrf5340dk-app, sailbot-v1). "
+            "See `dotbot fw targets` for the full list."
+        ),
+    )(f)
+
+
 def _project_option(f):
-    """Reusable `--app NAME` option for build/clean/artifacts."""
+    """Reusable `--app/-a NAME` option for build/clean/artifacts."""
     return click.option(
         "--app",
+        "-a",
         "project",
         type=str,
         default=None,
         help=(
             "Build a single app (e.g. `dotbot`, `dotbot_gateway`). "
-            "Default: build every app available for TARGET."
+            "Default: build every app available for the target."
         ),
     )(f)
 
 
+def _config_option(f):
+    """Reusable `--config/-c` option for build/clean/artifacts."""
+    return click.option(
+        "--config",
+        "-c",
+        type=click.Choice(CONFIGS),
+        default=DEFAULT_CONFIG,
+        show_default=True,
+    )(f)
+
+
 @cmd.command()
-@click.argument("target", default=DEFAULT_BARE_TARGET)
+@_target_option
 @_project_option
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_config_option
 @click.option(
     "--rebuild",
     is_flag=True,
@@ -90,39 +112,33 @@ def _project_option(f):
     help="Show full SES `-verbose -echo` output.",
 )
 def build(target, project, config, rebuild, verbose):
-    """Build bare DotBot firmware for TARGET (default: dotbot-v3)."""
+    """Build bare DotBot firmware (default target: dotbot-v3)."""
     validate_bare_target(target)
-    if project:
-        valid = list_projects(target)
-        if project not in valid:
-            raise click.ClickException(
-                f"App {project!r} is not available for target {target!r}.\n"
-                f"Available: {', '.join(valid)}"
-            )
+    apps_to_build = [project] if project else list_projects(target)
+    if project and project not in list_projects(target):
+        raise click.ClickException(
+            f"App {project!r} is not available for target {target!r}.\n"
+            f"Available: {', '.join(list_projects(target))}"
+        )
     mode = "rebuild" if rebuild else "incremental"
     what = project or "all apps"
     click.echo(f"Building {what} for {target} ({config}, {mode})...", err=True)
     elapsed = run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
     click.echo(f"✓ Built {target} in {elapsed:.1f}s", err=True)
-    # Single-artifact case: echo the path to stdout so the user can
-    # pipe it (e.g. `dotbot fw build dotbot-v3 --app dotbot | tail -1`).
-    if project:
-        out = artifact_path(target, project, config)
+    # Echo each produced artifact path on its own stdout line so pipelines
+    # like `dotbot fw build | xargs -n1 nrfjprog --program` work.
+    for app in apps_to_build:
+        out = artifact_path(target, app, config)
         if out.is_file():
             click.echo(str(out))
 
 
 @cmd.command()
-@click.argument("target", default=DEFAULT_BARE_TARGET)
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_target_option
+@_config_option
 @click.option("-v", "--verbose", is_flag=True, default=False)
 def clean(target, config, verbose):
-    """Clean SES build outputs for TARGET (per BUILD_CONFIG)."""
+    """Clean SES build outputs (default target: dotbot-v3)."""
     validate_bare_target(target)
     click.echo(f"Cleaning {target} ({config})...", err=True)
     elapsed = run_make(target, config, make_targets=["clean"], quiet=not verbose)
@@ -137,14 +153,9 @@ def list_targets():
 
 
 @cmd.command()
-@click.argument("target", default=DEFAULT_BARE_TARGET)
+@_target_option
 @_project_option
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_config_option
 @click.option(
     "--print-path",
     is_flag=True,
@@ -166,6 +177,13 @@ def artifacts(target, project, config, print_path, verbose):
     click.echo(f"Collecting artifacts for {target} ({config})...", err=True)
     elapsed = run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
     click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)
+    # Echo every collected artifact path on its own stdout line so the user
+    # sees what's in `artifacts/` without a separate `ls`.
+    artifacts_dir = resolve_firmware_repo() / "artifacts"
+    if artifacts_dir.is_dir():
+        ext = "bin" if target.startswith("sandbox-") else "hex"
+        for p in sorted(artifacts_dir.glob(f"*-{target}.{ext}")):
+            click.echo(str(p))
 
 
 @cmd.command()

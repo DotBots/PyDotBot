@@ -4,12 +4,14 @@
 """`dotbot swarm fw` — TrustZone-sandbox firmware build/clean/targets/artifacts.
 
 Sandbox apps live under `repos/DotBot-firmware/apps-sandbox/` and run as
-non-secure user images inside the SwarmIT TrustZone bootloader; they are
-OTA-flashed via `dotbot swarm flash`. The Makefile uses `sandbox-<BOARD>`
-as the `BUILD_TARGET` to route into `apps-sandbox/` and emit `.bin`
-(what swarmit OTA flashes) instead of `.hex`. This subgroup hides the
-`sandbox-` prefix — the user types `dotbot swarm fw build dotbot-v3`
-and the CLI prepends it before invoking make.
+non-secure user images inside the SwarmIT TrustZone bootloader; they
+are OTA-flashed via `dotbot swarm flash`. The Makefile uses
+`sandbox-<board>` as its `BUILD_TARGET` to route into `apps-sandbox/`
+and emit `.bin` (what swarmit OTA flashes) instead of `.hex`.
+
+This subgroup hides the `sandbox-` prefix from the user: typing
+`dotbot swarm fw build --target dotbot-v3` invokes make with
+`BUILD_TARGET=sandbox-dotbot-v3`.
 
 Mounted on the `dotbot swarm` group by `dotbot/cli/swarm.py`.
 """
@@ -23,6 +25,7 @@ from dotbot.cli._fw_helpers import (
     SANDBOX_BOARDS,
     artifact_path,
     list_projects,
+    resolve_firmware_repo,
     run_make,
     validate_sandbox_board,
 )
@@ -41,32 +44,49 @@ def cmd():
     pass
 
 
-def _board_to_target(board: str) -> str:
-    return f"sandbox-{board}"
+def _target_option(f):
+    """Reusable `--target/-t` option — same flag name as `dotbot fw`."""
+    return click.option(
+        "--target",
+        "-t",
+        default=DEFAULT_SANDBOX_BOARD,
+        show_default=True,
+        help=(
+            "Board to build the sandbox firmware for (e.g. dotbot-v3, "
+            "nrf5340dk — without the `sandbox-` prefix; the CLI adds it). "
+            "See `dotbot swarm fw targets`."
+        ),
+    )(f)
 
 
 def _project_option(f):
     return click.option(
         "--app",
+        "-a",
         "project",
         type=str,
         default=None,
         help=(
             "Build a single sandbox app (e.g. `dotbot`, `motors`, `rgbled`). "
-            "Default: build every sandbox app for BOARD."
+            "Default: build every sandbox app for the target."
         ),
     )(f)
 
 
+def _config_option(f):
+    return click.option(
+        "--config",
+        "-c",
+        type=click.Choice(CONFIGS),
+        default=DEFAULT_CONFIG,
+        show_default=True,
+    )(f)
+
+
 @cmd.command()
-@click.argument("board", default=DEFAULT_SANDBOX_BOARD)
+@_target_option
 @_project_option
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_config_option
 @click.option(
     "--rebuild",
     is_flag=True,
@@ -80,65 +100,56 @@ def _project_option(f):
     default=False,
     help="Show full SES `-verbose -echo` output.",
 )
-def build(board, project, config, rebuild, verbose):
-    """Build sandbox firmware for BOARD (default: dotbot-v3)."""
-    validate_sandbox_board(board)
-    target = _board_to_target(board)
-    if project:
-        valid = list_projects(target)
-        if project not in valid:
-            raise click.ClickException(
-                f"Sandbox app {project!r} is not available for board "
-                f"{board!r}.\nAvailable: {', '.join(valid)}"
-            )
+def build(target, project, config, rebuild, verbose):
+    """Build sandbox firmware (default target: dotbot-v3)."""
+    validate_sandbox_board(target)
+    build_target = f"sandbox-{target}"
+    apps_to_build = [project] if project else list_projects(build_target)
+    if project and project not in list_projects(build_target):
+        raise click.ClickException(
+            f"Sandbox app {project!r} is not available for target "
+            f"{target!r}.\nAvailable: {', '.join(list_projects(build_target))}"
+        )
     mode = "rebuild" if rebuild else "incremental"
     what = project or "all sandbox apps"
     click.echo(
-        f"Building {what} for {board} sandbox ({config}, {mode})...", err=True
+        f"Building {what} for {target} sandbox ({config}, {mode})...", err=True
     )
-    elapsed = run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
-    click.echo(f"✓ Built sandbox {board} in {elapsed:.1f}s", err=True)
-    if project:
-        out = artifact_path(target, project, config)
+    elapsed = run_make(
+        build_target, config, project, rebuild=rebuild, quiet=not verbose
+    )
+    click.echo(f"✓ Built sandbox {target} in {elapsed:.1f}s", err=True)
+    for app in apps_to_build:
+        out = artifact_path(build_target, app, config)
         if out.is_file():
             click.echo(str(out))
 
 
 @cmd.command()
-@click.argument("board", default=DEFAULT_SANDBOX_BOARD)
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_target_option
+@_config_option
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def clean(board, config, verbose):
-    """Clean SES build outputs for BOARD (per BUILD_CONFIG)."""
-    validate_sandbox_board(board)
-    click.echo(f"Cleaning {board} sandbox ({config})...", err=True)
+def clean(target, config, verbose):
+    """Clean SES build outputs (default target: dotbot-v3)."""
+    validate_sandbox_board(target)
+    click.echo(f"Cleaning {target} sandbox ({config})...", err=True)
     elapsed = run_make(
-        _board_to_target(board), config, make_targets=["clean"], quiet=not verbose
+        f"sandbox-{target}", config, make_targets=["clean"], quiet=not verbose
     )
-    click.echo(f"✓ Cleaned sandbox {board} in {elapsed:.1f}s", err=True)
+    click.echo(f"✓ Cleaned sandbox {target} in {elapsed:.1f}s", err=True)
 
 
 @cmd.command(name="targets")
 def list_targets():
-    """List valid BOARDs for `dotbot swarm fw build` (one per line)."""
+    """List valid targets for `dotbot swarm fw build` (one per line)."""
     for b in sorted(SANDBOX_BOARDS):
         click.echo(b)
 
 
 @cmd.command()
-@click.argument("board", default=DEFAULT_SANDBOX_BOARD)
+@_target_option
 @_project_option
-@click.option(
-    "--config",
-    type=click.Choice(CONFIGS),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-)
+@_config_option
 @click.option(
     "--print-path",
     is_flag=True,
@@ -146,18 +157,24 @@ def list_targets():
     help="Print where the artifact lives without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def artifacts(board, project, config, print_path, verbose):
+def artifacts(target, project, config, print_path, verbose):
     """Build + collect canonical sandbox artifacts into `artifacts/`."""
-    validate_sandbox_board(board)
-    target = _board_to_target(board)
+    validate_sandbox_board(target)
+    build_target = f"sandbox-{target}"
     if print_path:
         if not project:
             raise click.ClickException(
                 "`--print-path` requires `--app NAME` — there is no canonical "
                 "artifact path without a specific project."
             )
-        click.echo(str(artifact_path(target, project, config)))
+        click.echo(str(artifact_path(build_target, project, config)))
         return
-    click.echo(f"Collecting artifacts for {board} sandbox ({config})...", err=True)
-    elapsed = run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
+    click.echo(f"Collecting artifacts for {target} sandbox ({config})...", err=True)
+    elapsed = run_make(
+        build_target, config, make_targets=["artifacts"], quiet=not verbose
+    )
     click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)
+    artifacts_dir = resolve_firmware_repo() / "artifacts"
+    if artifacts_dir.is_dir():
+        for p in sorted(artifacts_dir.glob(f"*-{build_target}.bin")):
+            click.echo(str(p))
