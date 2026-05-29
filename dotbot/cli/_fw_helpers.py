@@ -163,16 +163,29 @@ def resolve_firmware_repo() -> Path:
         )
     cwd = Path.cwd().resolve()
     for parent in (cwd, *cwd.parents):
+        # Workspace layout: <somewhere>/repos/DotBot-firmware/
         candidate = parent / "repos" / "DotBot-firmware"
         if (candidate / "Makefile").is_file():
             return candidate
+        # Sibling clone: <cwd>/DotBot-firmware/
+        candidate = parent / "DotBot-firmware"
+        if (candidate / "Makefile").is_file():
+            return candidate
+        # Inside the repo itself (or one of its subdirs): the parent named
+        # `DotBot-firmware` with a Makefile is the root.
+        if parent.name == "DotBot-firmware" and (parent / "Makefile").is_file():
+            return parent
     raise click.ClickException(
-        "Could not locate DotBot-firmware.\n"
-        "Either run from inside a workspace that has "
-        "`repos/DotBot-firmware`, export DOTBOT_FIRMWARE_REPO, or add to "
-        "~/.dotbot/config.toml:\n"
-        "  [fw]\n"
-        '  firmware_repo = "/path/to/DotBot-firmware"'
+        "Could not locate DotBot-firmware. Tried:\n"
+        "  - <cwd>/DotBot-firmware/\n"
+        "  - <cwd>/repos/DotBot-firmware/\n"
+        "  - walking up the parent chain\n"
+        "Fix one of:\n"
+        "  - clone DotBot-firmware into the current directory, or\n"
+        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware, or\n"
+        "  - add to ~/.dotbot/config.toml:\n"
+        "      [fw]\n"
+        '      firmware_repo = "/path/to/DotBot-firmware"'
     )
 
 

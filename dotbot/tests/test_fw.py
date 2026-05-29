@@ -682,6 +682,34 @@ def test_resolve_firmware_repo_config_pointing_at_no_makefile_errors(
     assert "firmware_repo" in str(excinfo.value)
 
 
+def test_resolve_firmware_repo_finds_sibling_clone(
+    tmp_path, monkeypatch, isolated_home
+):
+    """Common new-user flow: clone DotBot-firmware into the current
+    directory (`./DotBot-firmware/`), then run `dotbot fw ...` from
+    that same directory. No `repos/` layer."""
+    repo = tmp_path / "DotBot-firmware"
+    repo.mkdir()
+    (repo / "Makefile").touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    assert _fw_helpers.resolve_firmware_repo() == repo
+
+
+def test_resolve_firmware_repo_finds_when_cwd_inside_the_repo(
+    tmp_path, monkeypatch, isolated_home
+):
+    """Inside the repo itself (e.g. `cd DotBot-firmware/apps/`), walking up
+    finds the dir named `DotBot-firmware` with a Makefile."""
+    repo = tmp_path / "DotBot-firmware"
+    inner = repo / "apps" / "dotbot"
+    inner.mkdir(parents=True)
+    (repo / "Makefile").touch()
+    monkeypatch.chdir(inner)
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    assert _fw_helpers.resolve_firmware_repo() == repo
+
+
 def test_resolve_firmware_repo_errors_outside_workspace(
     tmp_path, monkeypatch, isolated_home
 ):
@@ -690,9 +718,11 @@ def test_resolve_firmware_repo_errors_outside_workspace(
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_firmware_repo()
     msg = str(excinfo.value)
-    # Both escape hatches surfaced.
+    # All escape hatches surfaced.
     assert "DOTBOT_FIRMWARE_REPO" in msg
     assert "~/.dotbot/config.toml" in msg
+    # And the sibling-clone hint.
+    assert "clone DotBot-firmware" in msg
 
 
 def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
