@@ -1,0 +1,239 @@
+# SPDX-FileCopyrightText: 2026-present Inria
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Shared helpers for `dotbot fw` (bare) and `dotbot swarm fw` (sandbox).
+
+Both subcommands shell out to the same `repos/DotBot-firmware/Makefile`,
+which discriminates bare vs sandbox by `BUILD_TARGET` prefix
+(`sandbox-*` routes to `apps-sandbox/`, everything else to `apps/`).
+The wrappers in `dotbot/cli/fw.py` (bare) and `dotbot/cli/_sandbox_fw.py`
+(sandbox) reuse the helpers here so target validation, SEGGER_DIR
+resolution, and the make invocation contract stay in one place.
+"""
+
+import difflib
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Iterable, Optional
+
+import click
+
+# Hardcoded macOS install location used by the dotbot-testbed workspace
+# (see workspace AGENTS.md "Firmware builds — local SES" convention).
+# On Linux/Windows the user must set SEGGER_DIR explicitly.
+SEGGER_MACOS_DEFAULT = "/Applications/SEGGER/SEGGER Embedded Studio 8.22a"
+
+# BUILD_TARGET values handled by DotBot-firmware's Makefile (bare path).
+# Mirrors the explicit branches in the Makefile; an unrecognized target
+# falls through to the catch-all `find apps/` rule which produces opaque
+# SES errors, so we validate up-front.
+BARE_TARGETS = frozenset(
+    {
+        "dotbot-v1",
+        "dotbot-v2",
+        "dotbot-v3",
+        "nrf52833dk",
+        "nrf52840dk",
+        "nrf5340dk-app",
+        "nrf5340dk-net",
+        "sailbot-v1",
+        "freebot-v1.0",
+        "lh2-mini-mote",
+        "xgo-v1",
+        "xgo-v2",
+    }
+)
+
+# BUILD_TARGET = "sandbox-" + BOARD for the sandbox path. Boards
+# supported by the SES `.emProject` files at the DotBot-firmware root.
+SANDBOX_BOARDS = frozenset({"dotbot-v2", "dotbot-v3", "nrf5340dk"})
+
+# Valid `BUILD_CONFIG` values.
+CONFIGS = ("Debug", "Release")
+DEFAULT_CONFIG = "Release"
+DEFAULT_BARE_TARGET = "dotbot-v3"
+DEFAULT_SANDBOX_BOARD = "dotbot-v3"
+
+
+def resolve_segger_dir() -> Path:
+    """SEGGER_DIR env > macOS default > error with install hint."""
+    env = os.environ.get("SEGGER_DIR")
+    if env:
+        return Path(env)
+    if sys.platform == "darwin":
+        candidate = Path(SEGGER_MACOS_DEFAULT)
+        if (candidate / "bin" / "emBuild").is_file():
+            return candidate
+    raise click.ClickException(
+        "SEGGER_DIR is not set. Export it pointing at your SEGGER Embedded "
+        "Studio install root, e.g.\n"
+        f'  export SEGGER_DIR="{SEGGER_MACOS_DEFAULT}"'
+    )
+
+
+def resolve_firmware_repo() -> Path:
+    """Locate `repos/DotBot-firmware/Makefile` for the make invocation.
+
+    Walks up from CWD looking for a `repos/DotBot-firmware/Makefile`
+    sibling — works when run from anywhere inside the workspace.
+    Falls back to the `DOTBOT_FIRMWARE_REPO` env var.
+    """
+    env = os.environ.get("DOTBOT_FIRMWARE_REPO")
+    if env:
+        candidate = Path(env)
+        if (candidate / "Makefile").is_file():
+            return candidate
+        raise click.ClickException(
+            f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
+        )
+    cwd = Path.cwd().resolve()
+    for parent in (cwd, *cwd.parents):
+        candidate = parent / "repos" / "DotBot-firmware"
+        if (candidate / "Makefile").is_file():
+            return candidate
+    raise click.ClickException(
+        "Could not locate `repos/DotBot-firmware`. Run this command from "
+        "inside the dotbot-testbed workspace, or set DOTBOT_FIRMWARE_REPO "
+        "to the path of your DotBot-firmware clone."
+    )
+
+
+def suggest_close_match(name: str, candidates: Iterable[str]) -> str:
+    """One-shot 'did you mean X?' suggestion, or empty string if none close."""
+    close = difflib.get_close_matches(name, list(candidates), n=1, cutoff=0.6)
+    return f" Did you mean {close[0]!r}?" if close else ""
+
+
+def validate_bare_target(target: str) -> None:
+    if target.startswith("sandbox-"):
+        raise click.ClickException(
+            f"{target!r} is a sandbox target. Use "
+            f"`dotbot swarm fw build {target[len('sandbox-'):]}` instead."
+        )
+    if target not in BARE_TARGETS:
+        hint = suggest_close_match(target, BARE_TARGETS)
+        raise click.ClickException(
+            f"Unknown bare target {target!r}.{hint}\n"
+            f"Run `dotbot fw targets` to list valid bare targets."
+        )
+
+
+def validate_sandbox_board(board: str) -> None:
+    if board.startswith("sandbox-"):
+        raise click.ClickException(
+            f"Drop the `sandbox-` prefix — pass just the board name: "
+            f"{board[len('sandbox-'):]!r}."
+        )
+    if board not in SANDBOX_BOARDS:
+        hint = suggest_close_match(board, SANDBOX_BOARDS)
+        raise click.ClickException(
+            f"Unknown sandbox board {board!r}.{hint}\n"
+            f"Run `dotbot swarm fw targets` to list valid sandbox boards."
+        )
+
+
+def _make_env(segger_dir: Path) -> dict:
+    env = dict(os.environ)
+    env["SEGGER_DIR"] = str(segger_dir)
+    return env
+
+
+def list_projects(target: str) -> list[str]:
+    """Return the post-filter project list for `target` via `make list-projects`."""
+    repo = resolve_firmware_repo()
+    segger = resolve_segger_dir()
+    result = subprocess.run(
+        ["make", "-s", "list-projects", f"BUILD_TARGET={target}"],
+        cwd=repo,
+        env=_make_env(segger),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(
+            f"`make list-projects BUILD_TARGET={target}` failed:\n{result.stderr}"
+        )
+    # The Makefile recipe prints an ANSI-styled header line we want to skip;
+    # take only lines that look like bare project identifiers.
+    return [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip()
+        and not line.strip().startswith(("\x1b", "\\e["))
+        and "Available projects" not in line
+    ]
+
+
+def run_make(
+    target: str,
+    config: str,
+    project: Optional[str] = None,
+    *,
+    rebuild: bool = False,
+    quiet: bool = True,
+    make_targets: Optional[list[str]] = None,
+) -> None:
+    """Invoke `make BUILD_TARGET=... BUILD_CONFIG=... [project|make_target]`.
+
+    rebuild=False asks the Makefile to use `-build` (incremental, fast);
+    rebuild=True restores the prior `-rebuild` behavior. Requires the
+    `BUILD_MODE` knob added in DotBot-firmware Makefile (commit
+    "makefile: parameterize emBuild -rebuild via BUILD_MODE knob").
+
+    quiet=True passes `QUIET=1` so the Makefile suppresses SES's
+    `-verbose -echo` flood; the per-project "Building project X" /
+    "Done" banners still come through.
+
+    If `make_targets` is given, those are the make-level targets passed
+    on the command line (e.g. `["clean"]`, `["artifacts"]`). Otherwise
+    `project` is appended (or nothing, which means default `all` →
+    every project for the BUILD_TARGET).
+    """
+    repo = resolve_firmware_repo()
+    segger = resolve_segger_dir()
+    embuild = segger / "bin" / "emBuild"
+    if not embuild.is_file():
+        raise click.ClickException(
+            f"emBuild not found at {embuild}. Check that SEGGER_DIR points "
+            f"at a real SES install."
+        )
+    cmd = ["make", f"BUILD_TARGET={target}", f"BUILD_CONFIG={config}"]
+    if quiet:
+        cmd.append("QUIET=1")
+    cmd.append(f"BUILD_MODE={'-rebuild' if rebuild else '-build'}")
+    if make_targets:
+        cmd.extend(make_targets)
+    elif project:
+        cmd.append(project)
+    # Print the command verbatim so the user can copy/paste to reproduce
+    # outside the CLI.
+    click.echo(f"$ {' '.join(cmd)}", err=True)
+    rc = subprocess.call(cmd, cwd=repo, env=_make_env(segger))
+    if rc != 0:
+        raise click.ClickException(f"`make` exited {rc}.")
+
+
+def artifact_path(target: str, project: str, config: str) -> Path:
+    """Return where the Makefile writes the artifact for (target, project, config).
+
+    Mirrors `ARTIFACT_BASE` in DotBot-firmware/Makefile. Used so the CLI
+    can tell the user where to find the output, and for `dotbot fw
+    artifacts --print-path`.
+    """
+    is_sandbox = target.startswith("sandbox-")
+    apps_dir = "apps-sandbox" if is_sandbox else "apps"
+    ext = "bin" if is_sandbox else "hex"
+    repo = resolve_firmware_repo()
+    return (
+        repo
+        / apps_dir
+        / project
+        / "Output"
+        / target
+        / config
+        / "Exe"
+        / f"{project}-{target}.{ext}"
+    )
