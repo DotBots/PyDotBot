@@ -33,7 +33,8 @@ from dotbot.cli._fw_helpers import (
     help=(
         "Sandbox (TrustZone NS) firmware: build, clean, list boards, "
         "collect artifacts. For bare firmware that talks directly to the "
-        "radio, see `dotbot fw`."
+        "radio, see `dotbot fw`. Need a Makefile knob not covered by these "
+        "flags? Use `dotbot make --help`."
     ),
 )
 def cmd():

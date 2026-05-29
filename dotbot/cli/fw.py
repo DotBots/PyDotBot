@@ -45,7 +45,8 @@ _NOT_READY = (
     help=(
         "Bare DotBot firmware: build, clean, list targets, collect artifacts. "
         "For TrustZone sandbox apps that run inside swarmit, see "
-        "`dotbot swarm fw`."
+        "`dotbot swarm fw`. Need a Makefile knob not covered by these flags? "
+        "Use `dotbot make --help`."
     ),
 )
 def cmd():

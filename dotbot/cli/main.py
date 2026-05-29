@@ -61,6 +61,11 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
         "dotbot.cli.fw",
         "Bare DotBot firmware: build, clean, list targets, collect artifacts.",
     ),
+    (
+        "make",
+        "dotbot.cli.make",
+        "Escape hatch: forward args to `make` in repos/DotBot-firmware/.",
+    ),
     ("keyboard", "dotbot.cli.keyboard", "Drive a DotBot from the keyboard (live)."),
     ("joystick", "dotbot.cli.joystick", "Drive a DotBot from a joystick (live)."),
 )

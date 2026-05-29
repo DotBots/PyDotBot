@@ -48,6 +48,7 @@ EXPECTED_SUBCOMMANDS = {
     "calibrate-lh2",
     "demo",
     "fw",
+    "make",
     "keyboard",
     "joystick",
 }

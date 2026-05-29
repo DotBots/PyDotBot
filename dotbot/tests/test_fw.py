@@ -300,6 +300,94 @@ def test_sandbox_fw_clean_invokes_make_clean(
     assert "clean" in cmd
 
 
+# ── `dotbot make` escape hatch ──────────────────────────────────────────
+
+
+from dotbot.cli.make import cmd as make_cmd  # noqa: E402
+
+
+@pytest.fixture
+def capture_make_passthrough(monkeypatch):
+    """Capture `subprocess.call` in dotbot.cli.make (the escape hatch).
+
+    Distinct from `capture_make` (which patches `_fw_helpers.subprocess`)
+    because `make.py` imports `subprocess` directly.
+    """
+    calls = []
+
+    def fake_call(cmd, cwd=None, env=None):
+        calls.append({"cmd": cmd, "cwd": cwd, "env": env})
+        return 0
+
+    monkeypatch.setattr("dotbot.cli.make.subprocess.call", fake_call)
+    return calls
+
+
+def test_dotbot_make_help_lists_examples(runner):
+    result = runner.invoke(make_cmd, ["--help"])
+    assert result.exit_code == 0
+    # Help should call out the workspace-resolved SEGGER_DIR — that's the
+    # entire point vs. raw `cd repos/DotBot-firmware && make ...`.
+    assert "SEGGER_DIR" in result.output
+
+
+def test_dotbot_make_forwards_args_verbatim(
+    runner, fake_repo, fake_segger, capture_make_passthrough
+):
+    """`dotbot make foo bar BAZ=qux` invokes `make foo bar BAZ=qux`."""
+    result = runner.invoke(
+        make_cmd, ["help", "BUILD_TARGET=dotbot-v3", "PACKAGES_DIR_OPT=-p /opt"]
+    )
+    assert result.exit_code == 0
+    assert len(capture_make_passthrough) == 1
+    cmd = capture_make_passthrough[0]["cmd"]
+    assert cmd[0] == "make"
+    assert "help" in cmd
+    assert "BUILD_TARGET=dotbot-v3" in cmd
+    assert "PACKAGES_DIR_OPT=-p /opt" in cmd
+
+
+def test_dotbot_make_runs_in_firmware_repo(
+    runner, fake_repo, fake_segger, capture_make_passthrough
+):
+    result = runner.invoke(make_cmd, ["list-targets"])
+    assert result.exit_code == 0
+    assert capture_make_passthrough[0]["cwd"] == fake_repo
+
+
+def test_dotbot_make_injects_segger_dir(
+    runner, fake_repo, fake_segger, capture_make_passthrough
+):
+    """SEGGER_DIR is set in the make env regardless of what the user passes."""
+    result = runner.invoke(make_cmd, ["help"])
+    assert result.exit_code == 0
+    env = capture_make_passthrough[0]["env"]
+    assert env["SEGGER_DIR"] == str(fake_segger)
+
+
+def test_dotbot_make_propagates_make_exit_code(
+    runner, fake_repo, fake_segger, monkeypatch
+):
+    monkeypatch.setattr("dotbot.cli.make.subprocess.call", lambda *a, **kw: 7)
+    result = runner.invoke(make_cmd, ["bogus-target"])
+    assert result.exit_code == 7
+
+
+# ── Help-text footer pointing at the escape hatch ───────────────────────
+
+
+def test_fw_help_points_at_dotbot_make(runner):
+    result = runner.invoke(fw_cmd, ["--help"])
+    assert result.exit_code == 0
+    assert "dotbot make" in result.output
+
+
+def test_sandbox_fw_help_points_at_dotbot_make(runner):
+    result = runner.invoke(sandbox_fw_cmd, ["--help"])
+    assert result.exit_code == 0
+    assert "dotbot make" in result.output
+
+
 # ── Helper-level tests ──────────────────────────────────────────────────
 
 
