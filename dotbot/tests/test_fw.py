@@ -306,9 +306,10 @@ def test_sandbox_fw_artifacts_print_path_uses_bin_extension(
     )
     assert result.exit_code == 0, result.output
     out = result.output.strip()
+    # SES uses the board name (no sandbox- prefix) for the Output path
+    # — see `artifact_path()`'s docstring re. the `$(BuildTarget)` macro.
     assert out.endswith(
-        "apps-sandbox/dotbot/Output/sandbox-dotbot-v3/Release/Exe/"
-        "dotbot-sandbox-dotbot-v3.bin"
+        "apps-sandbox/dotbot/Output/dotbot-v3/Release/Exe/dotbot-dotbot-v3.bin"
     )
 
 
