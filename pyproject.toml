@@ -22,7 +22,7 @@ path = "utils/hooks/sdist.py"
 
 [project]
 name = "pydotbot"
-version = "0.27.0"
+version = "0.28.0rc1"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
@@ -30,6 +30,7 @@ authors = [
     { name="Said Alvarado-Marin", email="said-alexander.alvarado-marin@inria.fr" },
     { name="Mališa Vučinić", email="malisa.vucinic@inria.fr" },
     { name="Diego Badillo", email="diego.badillo@sansano.usm.cl" },
+    { name="Geovane Fedrecheski", email="geovane.fedrecheski@inria.fr" },
 ]
 dependencies = [
     "click          >= 8.1.7",
@@ -81,12 +82,12 @@ dotbot-joystick = "dotbot.joystick:main"
 # in dotbot-python — the names belonged to the standalone PyPI
 # packages, which keep their own scripts during their own
 # deprecation cycle. Users coming from those packages use
-# `dotbot testbed provision …` and `dotbot calibrate …`.
+# `dotbot swarm provision …` and `dotbot calibrate …`.
 
 [project.optional-dependencies]
 # Optional subcommand backends. Keep the core install lean; opt in to
 # the bits you actually use.
-testbed = [
+swarm = [
     "swarmit          >= 0.6.0",
 ]
 provision = [

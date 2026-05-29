@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot testbed` — provision, OTA-flash, start/stop/monitor.
+"""`dotbot swarm` — provision, OTA-flash, start/stop/monitor.
 
-Mounts the upstream `swarmit` Click group as the `dotbot testbed`
+Mounts the upstream `swarmit` Click group as the `dotbot swarm`
 parent (operators get `status|start|stop|flash|monitor|reset|message|
 calibrate-lh2` with their existing flags). swarmit stays external for
 now — folding it is Track A Phase 6.
@@ -31,25 +31,36 @@ def _load_provision_group():
     return provision_group
 
 
+def _load_sandbox_fw_group():
+    from dotbot.cli._sandbox_fw import cmd as sandbox_fw_group
+
+    return sandbox_fw_group
+
+
 cmd = lazy_subcommand(
-    name="testbed",
-    extra="testbed",
+    name="swarm",
+    extra="swarm",
     package="swarmit",
     help=(
-        "Testbed-side ops: provision, status, start/stop/monitor, OTA-flash. "
-        "Wraps swarmit + in-tree dotbot.provision."
+        "Swarm-orchestration ops: provision, status, start/stop/monitor, "
+        "OTA-flash, sandbox firmware build. Wraps swarmit + in-tree "
+        "dotbot.provision + dotbot.cli._sandbox_fw."
     ),
     loader=_load_swarmit_group,
 )
 
-# Mount in-tree provision as a subgroup of testbed. The import is
-# unconditional — `dotbot.provision.cli` doesn't require intelhex at
-# import time (it's optional and gated at command execution).
+# Mount in-tree provision + sandbox-fw as subgroups of swarm. The
+# imports are unconditional — neither module pulls in optional runtime
+# deps at module-import time.
 if hasattr(cmd, "commands"):
     try:
         cmd.add_command(_load_provision_group(), name="provision")
     except Exception:  # pylint: disable=broad-except
         # Defensive: if for some reason dotbot.provision fails to import
-        # (unlikely — it's now in-tree), the testbed CLI still works
+        # (unlikely — it's now in-tree), the swarm CLI still works
         # without provision.
+        pass
+    try:
+        cmd.add_command(_load_sandbox_fw_group(), name="fw")
+    except Exception:  # pylint: disable=broad-except
         pass

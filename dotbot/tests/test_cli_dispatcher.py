@@ -44,10 +44,11 @@ _needs_frontend = pytest.mark.skipif(
 EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
-    "testbed",
+    "swarm",
     "calibrate-lh2",
     "demo",
     "fw",
+    "make",
     "keyboard",
     "joystick",
 }
@@ -63,7 +64,7 @@ EXPECTED_SUBCOMMANDS = {
 #
 # `calibrate` used to be in this set; after Phase 2's fold it's in-tree
 # and uses dotbot's own (vendored) modules, no collision possible.
-_CROSS_PACKAGE_SUBS = {"testbed"}
+_CROSS_PACKAGE_SUBS = {"swarm"}
 
 
 @pytest.fixture
@@ -101,9 +102,9 @@ def test_subcommand_help_works(runner, subcommand):
     """Every in-process subcommand's --help runs cleanly.
 
     keyboard/joystick are excluded because they import pygame/pynput at
-    module load time (headless-CI hostile). testbed/calibrate are
-    excluded because their backends collide with PyDotBot's protocol
-    registry inside a single pytest process — covered separately by
+    module load time (headless-CI hostile). swarm is excluded because
+    its swarmit backend collides with PyDotBot's protocol registry
+    inside a single pytest process — covered separately by
     test_cross_package_subcommand_help_works in a subprocess.
     controller/sim trigger dotbot.server's StaticFiles import-time mount;
     skipped if the frontend bundle hasn't been built.
@@ -118,7 +119,7 @@ def test_subcommand_help_works(runner, subcommand):
 
 @pytest.mark.parametrize("subcommand", sorted(_CROSS_PACKAGE_SUBS))
 def test_cross_package_subcommand_help_works(subcommand):
-    """`dotbot testbed --help` / `dotbot calibrate --help` in a clean process.
+    """`dotbot swarm --help` in a clean process.
 
     A subprocess avoids the swarmit/lh2-calibration vs PyDotBot
     protocol-registry collision that only manifests inside pytest's

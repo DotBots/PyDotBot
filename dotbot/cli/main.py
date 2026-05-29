@@ -41,9 +41,9 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
         "Standalone simulator (equivalent to controller --adapter dotbot-simulator).",
     ),
     (
-        "testbed",
-        "dotbot.cli.testbed",
-        "Testbed-side ops: provision, status, start/stop, OTA flash, monitor.",
+        "swarm",
+        "dotbot.cli.swarm",
+        "Swarm-orchestration ops: provision, status, start/stop, OTA flash, sandbox fw.",
     ),
     (
         "calibrate-lh2",
@@ -54,7 +54,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
     (
         "fw",
         "dotbot.cli.fw",
-        "Firmware-developer workflow (scaffold/build/flash). MOCK in Phase 1.",
+        "Bare DotBot firmware: build, clean, list targets, collect artifacts.",
+    ),
+    (
+        "make",
+        "dotbot.cli.make",
+        "Escape hatch: forward args to `make` in repos/DotBot-firmware/.",
     ),
     ("keyboard", "dotbot.cli.keyboard", "Drive a DotBot from the keyboard (live)."),
     ("joystick", "dotbot.cli.joystick", "Drive a DotBot from a joystick (live)."),
@@ -91,7 +96,7 @@ class _LazyGroup(click.Group):
 
 @click.group(
     cls=_LazyGroup,
-    help="Control DotBots: drive robots, run testbed experiments, calibrate, demos.",
+    help="Control DotBots: drive robots, run swarm experiments, calibrate, demos.",
 )
 @click.version_option(
     version=pydotbot_version(),
