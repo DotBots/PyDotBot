@@ -194,7 +194,13 @@ def artifacts(target, project, config, out_dir, print_path, verbose):
     for app in apps_to_collect:
         src = artifact_path(build_target, app, config)
         if src.is_file():
-            dst = out / src.name
+            # Prepend `sandbox-` so the file is distinguishable from any
+            # bare equivalent (e.g. `apps/dotbot/`'s `dotbot-dotbot-v3.hex`)
+            # when both flavors land in the same `./artifacts/` dir. Kept
+            # at the CLI-copy layer rather than as an upstream project
+            # rename — that would force `--app dotbot-sandbox` redundancy
+            # under the already-sandbox-implying `dotbot swarm fw` namespace.
+            dst = out / f"sandbox-{src.name}"
             shutil.copy2(src, dst)
             copied.append(dst)
     click.echo(
