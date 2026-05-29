@@ -35,20 +35,27 @@ def _load_provision_group():
     return provision_group
 
 
+def _load_sandbox_fw_group():
+    from dotbot.cli._sandbox_fw import cmd as sandbox_fw_group
+
+    return sandbox_fw_group
+
+
 cmd = lazy_subcommand(
     name="swarm",
     extra="swarm",
     package="swarmit",
     help=(
         "Swarm-orchestration ops: provision, status, start/stop/monitor, "
-        "OTA-flash. Wraps swarmit + in-tree dotbot.provision."
+        "OTA-flash, sandbox firmware build. Wraps swarmit + in-tree "
+        "dotbot.provision + dotbot.cli._sandbox_fw."
     ),
     loader=_load_swarmit_group,
 )
 
-# Mount in-tree provision as a subgroup of swarm. The import is
-# unconditional — `dotbot.provision.cli` doesn't require intelhex at
-# import time (it's optional and gated at command execution).
+# Mount in-tree provision + sandbox-fw as subgroups of swarm. The
+# imports are unconditional — neither module pulls in optional runtime
+# deps at module-import time.
 if hasattr(cmd, "commands"):
     try:
         cmd.add_command(_load_provision_group(), name="provision")
@@ -56,4 +63,8 @@ if hasattr(cmd, "commands"):
         # Defensive: if for some reason dotbot.provision fails to import
         # (unlikely — it's now in-tree), the swarm CLI still works
         # without provision.
+        pass
+    try:
+        cmd.add_command(_load_sandbox_fw_group(), name="fw")
+    except Exception:  # pylint: disable=broad-except
         pass

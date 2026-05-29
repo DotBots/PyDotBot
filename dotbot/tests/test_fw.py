@@ -211,6 +211,95 @@ def test_fw_flash_still_not_implemented(runner):
     assert "not implemented" in result.output.lower()
 
 
+# ── Sandbox subgroup (`dotbot swarm fw`) ────────────────────────────────
+# These tests invoke the sandbox-fw Click group directly, bypassing the
+# `dotbot swarm` parent (which loads swarmit and triggers the
+# protocol-registry collision documented in test_cli_dispatcher.py).
+
+
+from dotbot.cli._sandbox_fw import cmd as sandbox_fw_cmd  # noqa: E402
+
+
+def test_sandbox_fw_help_lists_real_subcommands(runner):
+    result = runner.invoke(sandbox_fw_cmd, ["--help"])
+    assert result.exit_code == 0
+    for sub in ("build", "clean", "targets", "artifacts"):
+        assert sub in result.output
+    # Cross-reference to the bare path:
+    assert "dotbot fw" in result.output
+    # `new` and `flash` aren't valid sandbox subcommands (no scaffolding,
+    # OTA flash lives under `dotbot swarm flash`).
+    assert "new" not in result.output
+    assert "flash" not in result.output
+
+
+def test_sandbox_fw_targets_lists_boards(runner):
+    result = runner.invoke(sandbox_fw_cmd, ["targets"])
+    assert result.exit_code == 0
+    lines = [ln for ln in result.output.splitlines() if ln.strip()]
+    assert "dotbot-v3" in lines
+    assert "nrf5340dk" in lines
+    # User-facing names — no `sandbox-` prefix:
+    assert not any(ln.startswith("sandbox-") for ln in lines)
+
+
+def test_sandbox_fw_build_rejects_sandbox_prefix(runner):
+    """User shouldn't pass `sandbox-dotbot-v3` — drop the prefix."""
+    result = runner.invoke(sandbox_fw_cmd, ["build", "sandbox-dotbot-v3"])
+    assert result.exit_code != 0
+    assert "Drop the `sandbox-` prefix" in result.output
+
+
+def test_sandbox_fw_build_rejects_unknown_board(runner):
+    result = runner.invoke(sandbox_fw_cmd, ["build", "dotbot-v9"])
+    assert result.exit_code != 0
+    assert "Unknown sandbox board" in result.output
+
+
+def test_sandbox_fw_build_prepends_sandbox_prefix_to_target(
+    runner, fake_repo, fake_segger, capture_make
+):
+    """User-typed `dotbot-v3` becomes `BUILD_TARGET=sandbox-dotbot-v3`."""
+    result = runner.invoke(sandbox_fw_cmd, ["build", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    cmd = capture_make[0]["cmd"]
+    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
+
+
+def test_sandbox_fw_build_default_board(runner, fake_repo, fake_segger, capture_make):
+    result = runner.invoke(sandbox_fw_cmd, ["build"])
+    assert result.exit_code == 0, result.output
+    cmd = capture_make[0]["cmd"]
+    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
+    assert "BUILD_CONFIG=Release" in cmd
+
+
+def test_sandbox_fw_artifacts_print_path_uses_bin_extension(
+    runner, fake_repo, fake_segger
+):
+    """Sandbox artifacts are `.bin` (what swarmit OTA flashes), not `.hex`."""
+    result = runner.invoke(
+        sandbox_fw_cmd,
+        ["artifacts", "dotbot-v3", "--app", "dotbot", "--print-path"],
+    )
+    assert result.exit_code == 0, result.output
+    out = result.output.strip()
+    assert out.endswith(
+        "apps-sandbox/dotbot/Output/sandbox-dotbot-v3/Release/Exe/"
+        "dotbot-sandbox-dotbot-v3.bin"
+    )
+
+
+def test_sandbox_fw_clean_invokes_make_clean(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(sandbox_fw_cmd, ["clean", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    cmd = capture_make[0]["cmd"]
+    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
+    assert "clean" in cmd
+
+
 # ── Helper-level tests ──────────────────────────────────────────────────
 
 
