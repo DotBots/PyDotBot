@@ -16,6 +16,9 @@ This subgroup hides the `sandbox-` prefix from the user: typing
 Mounted on the `dotbot swarm` group by `dotbot/cli/swarm.py`.
 """
 
+import shutil
+from pathlib import Path
+
 import click
 
 from dotbot.cli._fw_helpers import (
@@ -25,7 +28,6 @@ from dotbot.cli._fw_helpers import (
     SANDBOX_BOARDS,
     artifact_path,
     list_projects,
-    resolve_firmware_repo,
     run_make,
     validate_sandbox_board,
 )
@@ -151,14 +153,22 @@ def list_targets():
 @_project_option
 @_config_option
 @click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(file_okay=False, dir_okay=True),
+    default="./artifacts",
+    show_default=True,
+    help="Where to put the collected artifacts (resolved against your CWD).",
+)
+@click.option(
     "--print-path",
     is_flag=True,
     default=False,
     help="Print where the artifact lives without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def artifacts(target, project, config, print_path, verbose):
-    """Build + collect canonical sandbox artifacts into `artifacts/`."""
+def artifacts(target, project, config, out_dir, print_path, verbose):
+    """Build + collect sandbox artifacts into ./artifacts/ (default)."""
     validate_sandbox_board(target)
     build_target = f"sandbox-{target}"
     if print_path:
@@ -169,12 +179,26 @@ def artifacts(target, project, config, print_path, verbose):
             )
         click.echo(str(artifact_path(build_target, project, config)))
         return
-    click.echo(f"Collecting artifacts for {target} sandbox ({config})...", err=True)
-    elapsed = run_make(
-        build_target, config, make_targets=["artifacts"], quiet=not verbose
+    out = Path(out_dir).resolve()
+    click.echo(
+        f"Building + collecting artifacts for {target} sandbox ({config}) → "
+        f"{out}/...",
+        err=True,
     )
-    click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)
-    artifacts_dir = resolve_firmware_repo() / "artifacts"
-    if artifacts_dir.is_dir():
-        for p in sorted(artifacts_dir.glob(f"*-{build_target}.bin")):
-            click.echo(str(p))
+    # Force a full rebuild — see `dotbot/cli/fw.py:artifacts` for why
+    # (sandbox and bare builds share the SES Output dir per board).
+    elapsed = run_make(build_target, config, project, rebuild=True, quiet=not verbose)
+    out.mkdir(parents=True, exist_ok=True)
+    apps_to_collect = [project] if project else list_projects(build_target)
+    copied = []
+    for app in apps_to_collect:
+        src = artifact_path(build_target, app, config)
+        if src.is_file():
+            dst = out / src.name
+            shutil.copy2(src, dst)
+            copied.append(dst)
+    click.echo(
+        f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True
+    )
+    for p in copied:
+        click.echo(str(p))

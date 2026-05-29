@@ -256,8 +256,10 @@ def run_make(
 ) -> float:
     """Invoke `make BUILD_TARGET=... BUILD_CONFIG=... [project|make_target]`.
 
-    rebuild=False asks the Makefile to use `-build` (incremental, fast);
-    rebuild=True restores the prior `-rebuild` behavior. Requires the
+    rebuild=False passes an empty `BUILD_MODE=` to make so the
+    `emBuild` recipe runs with no action flag — emBuild defaults to
+    incremental builds in that case. rebuild=True passes
+    `BUILD_MODE=-rebuild` to force full rebuilds. Requires the
     `BUILD_MODE` knob added in DotBot-firmware Makefile (commit
     "makefile: parameterize emBuild -rebuild via BUILD_MODE knob").
 
@@ -286,7 +288,7 @@ def run_make(
     cmd = ["make", f"BUILD_TARGET={target}", f"BUILD_CONFIG={config}"]
     if quiet:
         cmd.append("QUIET=1")
-    cmd.append(f"BUILD_MODE={'-rebuild' if rebuild else '-build'}")
+    cmd.append(f"BUILD_MODE={'-rebuild' if rebuild else ''}")
     if make_targets:
         cmd.extend(make_targets)
     elif project:

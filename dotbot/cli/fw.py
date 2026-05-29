@@ -18,7 +18,9 @@ build-only): firmware-scaffolding templates and the cabled-flash
 toolchain pickling each warrant their own design pass.
 """
 
+import shutil
 import sys
+from pathlib import Path
 
 import click
 
@@ -29,7 +31,6 @@ from dotbot.cli._fw_helpers import (
     DEFAULT_CONFIG,
     artifact_path,
     list_projects,
-    resolve_firmware_repo,
     run_make,
     validate_bare_target,
 )
@@ -157,14 +158,22 @@ def list_targets():
 @_project_option
 @_config_option
 @click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(file_okay=False, dir_okay=True),
+    default="./artifacts",
+    show_default=True,
+    help="Where to put the collected artifacts (resolved against your CWD).",
+)
+@click.option(
     "--print-path",
     is_flag=True,
     default=False,
     help="Print where the artifact lives without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def artifacts(target, project, config, print_path, verbose):
-    """Build + collect canonical artifacts into `artifacts/`."""
+def artifacts(target, project, config, out_dir, print_path, verbose):
+    """Build + collect artifacts into ./artifacts/ (default)."""
     validate_bare_target(target)
     if print_path:
         if not project:
@@ -174,16 +183,32 @@ def artifacts(target, project, config, print_path, verbose):
             )
         click.echo(str(artifact_path(target, project, config)))
         return
-    click.echo(f"Collecting artifacts for {target} ({config})...", err=True)
-    elapsed = run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
-    click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)
-    # Echo every collected artifact path on its own stdout line so the user
-    # sees what's in `artifacts/` without a separate `ls`.
-    artifacts_dir = resolve_firmware_repo() / "artifacts"
-    if artifacts_dir.is_dir():
-        ext = "bin" if target.startswith("sandbox-") else "hex"
-        for p in sorted(artifacts_dir.glob(f"*-{target}.{ext}")):
-            click.echo(str(p))
+    out = Path(out_dir).resolve()
+    click.echo(
+        f"Building + collecting artifacts for {target} ({config}) → {out}/...",
+        err=True,
+    )
+    # Build (not `make artifacts` — that target's path formula is buggy
+    # for sandbox and writes to repos/DotBot-firmware/artifacts/ instead
+    # of the user's CWD). Force a full rebuild because bare and sandbox
+    # builds share the SES Output dir per board (`$(BuildTarget)` is the
+    # same in both .emProject files), so incremental can pick up stale
+    # objects from the other flavor and link-error.
+    elapsed = run_make(target, config, project, rebuild=True, quiet=not verbose)
+    out.mkdir(parents=True, exist_ok=True)
+    apps_to_collect = [project] if project else list_projects(target)
+    copied = []
+    for app in apps_to_collect:
+        src = artifact_path(target, app, config)
+        if src.is_file():
+            dst = out / src.name
+            shutil.copy2(src, dst)
+            copied.append(dst)
+    click.echo(
+        f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True
+    )
+    for p in copied:
+        click.echo(str(p))
 
 
 @cmd.command()

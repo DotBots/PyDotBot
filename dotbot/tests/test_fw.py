@@ -129,11 +129,13 @@ def test_fw_build_default_target_is_dotbot_v3(
 def test_fw_build_passes_incremental_by_default(
     runner, fake_repo, fake_segger, capture_make
 ):
-    """Default is `BUILD_MODE=-build` (incremental) for fast edit/build loop."""
+    """Default is `BUILD_MODE=` (empty → emBuild's natural incremental
+    mode) for fast edit/build loop. SES 8.22a has no `-build` flag; the
+    only valid action flag is `-rebuild`."""
     result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3"])
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
-    assert "BUILD_MODE=-build" in cmd
+    assert "BUILD_MODE=" in cmd
     assert "BUILD_MODE=-rebuild" not in cmd
 
 
@@ -192,13 +194,24 @@ def test_fw_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_mak
     assert "clean" in cmd
 
 
-def test_fw_artifacts_invokes_make_artifacts(
-    runner, fake_repo, fake_segger, capture_make
+def test_fw_artifacts_builds_then_collects_to_user_dir(
+    runner, fake_repo, fake_segger, capture_make, tmp_path
 ):
-    result = runner.invoke(fw_cmd, ["artifacts", "--target", "dotbot-v3"])
+    """`dotbot fw artifacts` no longer runs `make artifacts` (whose path
+    formula is buggy for sandbox and writes to the firmware repo's
+    `artifacts/`). It does a regular build, then copies the produced
+    artifacts to the user-chosen out dir (default `./artifacts/`)."""
+    out = tmp_path / "user-artifacts"
+    result = runner.invoke(
+        fw_cmd, ["artifacts", "--target", "dotbot-v3", "--out", str(out)]
+    )
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
-    assert "artifacts" in cmd
+    # Builds (no explicit make target), doesn't invoke `make artifacts`.
+    assert "artifacts" not in cmd
+    assert "BUILD_TARGET=dotbot-v3" in cmd
+    # The user-chosen out dir was created.
+    assert out.is_dir()
 
 
 def test_fw_artifacts_print_path_requires_app(runner, fake_repo, fake_segger):
@@ -379,12 +392,15 @@ def test_fw_clean_prints_cleaned_success_line(
 
 
 def test_fw_artifacts_prints_collected_success_line(
-    runner, fake_repo, fake_segger, capture_make
+    runner, fake_repo, fake_segger, capture_make, tmp_path
 ):
-    result = runner.invoke(fw_cmd, ["artifacts", "--target", "dotbot-v3"])
+    result = runner.invoke(
+        fw_cmd,
+        ["artifacts", "--target", "dotbot-v3", "--out", str(tmp_path / "out")],
+    )
     assert result.exit_code == 0, result.output
-    assert "Collecting artifacts" in result.output
-    assert "✓ Artifacts collected" in result.output
+    assert "Building + collecting artifacts" in result.output
+    assert "✓ Collected" in result.output
 
 
 def test_run_make_returns_elapsed_seconds(fake_repo, fake_segger, monkeypatch):
