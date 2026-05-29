@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI (`dotbot controller`, `dotbot swarm`, `dotbot calibrate-lh2`, `dotbot fw`, `dotbot demo`, `dotbot keyboard`, `dotbot joystick`, ...) plus DotBot/SailBot simulators. Legacy entry points `dotbot-controller` / `dotbot-keyboard` / `dotbot-joystick` are kept as backwards-compat aliases for one deprecation cycle, as is the `dotbot testbed` subcommand (renamed to `dotbot swarm`).
+Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI (`dotbot controller`, `dotbot swarm`, `dotbot calibrate-lh2`, `dotbot fw`, `dotbot make`, `dotbot demo`, `dotbot keyboard`, `dotbot joystick`, ...) plus DotBot/SailBot simulators. Legacy entry points `dotbot-controller` / `dotbot-keyboard` / `dotbot-joystick` are kept as backwards-compat aliases for one deprecation cycle.
 
 This is the most active repo in the ecosystem (187 commits in last 90 days as of 2026-05-05).
 

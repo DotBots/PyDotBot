@@ -89,12 +89,6 @@ dotbot-joystick = "dotbot.joystick:main"
 swarm = [
     "swarmit          >= 0.6.0",
 ]
-# Deprecated alias for `[swarm]` (was the original extras name when
-# the subcommand was called `dotbot testbed`). Drop one release after
-# the rename ships.
-testbed = [
-    "pydotbot[swarm]",
-]
 provision = [
     "intelhex         >= 2.3.0",
 ]

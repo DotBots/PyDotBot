@@ -19,11 +19,6 @@ Adding a new subcommand:
      short help string shown in `dotbot --help`).
   3. If the backend lives in an optional sibling package, use
      `dotbot.cli._lazy.lazy_subcommand` inside that module.
-
-Deprecated aliases live in `_ALIASES`: old name → canonical name.
-Aliases are NOT listed in `_SUBCOMMANDS` (so they stay out of
-`dotbot --help`) but resolve at dispatch time with a one-line stderr
-warning. Drop the alias one release after introduction.
 """
 
 import importlib
@@ -70,13 +65,6 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
     ("joystick", "dotbot.cli.joystick", "Drive a DotBot from a joystick (live)."),
 )
 
-# Deprecated CLI names that route to a canonical subcommand. Print a
-# one-line stderr warning on dispatch so callers see the migration path.
-# Drop entries one release after they ship.
-_ALIASES = {
-    "testbed": "swarm",
-}
-
 _HELP_INDEX = {name: short for name, _, short in _SUBCOMMANDS}
 _MODULE_INDEX = {name: module_path for name, module_path, _ in _SUBCOMMANDS}
 
@@ -88,14 +76,6 @@ class _LazyGroup(click.Group):
         return [name for name, _, _ in _SUBCOMMANDS]
 
     def get_command(self, ctx, cmd_name) -> Optional[click.Command]:
-        canonical = _ALIASES.get(cmd_name)
-        if canonical is not None:
-            click.echo(
-                f"warning: 'dotbot {cmd_name}' is deprecated; "
-                f"use 'dotbot {canonical}' instead.",
-                err=True,
-            )
-            cmd_name = canonical
         module_path = _MODULE_INDEX.get(cmd_name)
         if module_path is None:
             return None

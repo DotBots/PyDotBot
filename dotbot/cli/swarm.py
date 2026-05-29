@@ -14,10 +14,6 @@ dep `intelhex` is gated behind `pip install dotbot[provision]`; if
 intelhex is missing, invoking provision-dependent paths raises a
 ClickException with a clear message (the package itself imports
 cleanly thanks to a try/except around the intelhex import).
-
-Historical name: `dotbot testbed`. Still works as a deprecated alias
-(see `dotbot.cli.main._ALIASES`); slated for removal one release after
-the rename ships.
 """
 
 from dotbot.cli._lazy import lazy_subcommand
