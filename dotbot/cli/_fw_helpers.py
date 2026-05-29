@@ -309,30 +309,23 @@ def artifact_path(target: str, project: str, config: str) -> Path:
     """Return where SES writes the artifact for (target, project, config).
 
     SES uses its internal `$(BuildTarget)` macro for the Output directory
-    and the suffix on the file name. In both `dotbot-v3.emProject` and
-    `sandbox-dotbot-v3.emProject` that macro is hardcoded to the board
-    name (e.g. `dotbot-v3`) — the `sandbox-` prefix only affects which
-    apps/ directory SES uses, not the Output path. So the on-disk path
-    is `apps[-sandbox]/<app>/Output/<board>/<config>/Exe/<app>-<board>.<ext>`.
-
-    Note: DotBot-firmware's Makefile `ARTIFACT_BASE` formula uses the
-    Make-level `BUILD_TARGET` (which DOES include the `sandbox-` prefix)
-    and so disagrees with SES's actual output path for sandbox targets.
-    The CLI tracks the real on-disk location, not the (buggy) Makefile
-    expectation.
+    and the suffix on the file name. The `.emProject` solution files set
+    that macro to match the make-level `BUILD_TARGET` exactly (bare
+    `dotbot-v3` → `BuildTarget=dotbot-v3`, sandbox `sandbox-dotbot-v3` →
+    `BuildTarget=sandbox-dotbot-v3`), so the on-disk path mirrors what
+    the Makefile's `ARTIFACT_BASE` formula expects.
     """
     is_sandbox = target.startswith("sandbox-")
     apps_dir = "apps-sandbox" if is_sandbox else "apps"
     ext = "bin" if is_sandbox else "hex"
-    board = target[len("sandbox-") :] if is_sandbox else target
     repo = resolve_firmware_repo()
     return (
         repo
         / apps_dir
         / project
         / "Output"
-        / board
+        / target
         / config
         / "Exe"
-        / f"{project}-{board}.{ext}"
+        / f"{project}-{target}.{ext}"
     )

@@ -319,10 +319,11 @@ def test_sandbox_fw_artifacts_print_path_uses_bin_extension(
     )
     assert result.exit_code == 0, result.output
     out = result.output.strip()
-    # SES uses the board name (no sandbox- prefix) for the Output path
-    # — see `artifact_path()`'s docstring re. the `$(BuildTarget)` macro.
+    # SES's `$(BuildTarget)` macro now matches the make-level BUILD_TARGET
+    # (including the `sandbox-` prefix), so Output paths are flavor-distinct.
     assert out.endswith(
-        "apps-sandbox/dotbot/Output/dotbot-v3/Release/Exe/dotbot-dotbot-v3.bin"
+        "apps-sandbox/dotbot/Output/sandbox-dotbot-v3/Release/Exe/"
+        "dotbot-sandbox-dotbot-v3.bin"
     )
 
 
@@ -336,25 +337,25 @@ def test_sandbox_fw_clean_invokes_make_clean(
     assert "clean" in cmd
 
 
-def test_sandbox_fw_artifacts_prepends_sandbox_prefix_in_copy(
+def test_sandbox_fw_artifacts_collected_filename_distinct_from_bare(
     runner, fake_repo, fake_segger, capture_make, tmp_path, monkeypatch
 ):
-    """Sandbox artifacts get a `sandbox-` filename prefix at copy time so
-    they don't collide with bare artifacts in the same `./artifacts/` dir.
-    No upstream project rename needed; the user types `--app dotbot` in
-    the `dotbot swarm fw` namespace without re-stating 'sandbox'."""
-    # Pretend SES wrote a sandbox artifact in the expected location.
+    """Sandbox artifacts land in `./artifacts/` with a filename naturally
+    distinct from any bare equivalent — `dotbot-sandbox-dotbot-v3.bin`
+    vs bare `dotbot-dotbot-v3.hex` — because SES's `$(BuildTarget)` macro
+    now includes the `sandbox-` prefix. No CLI-side mangling required;
+    the user types `--app dotbot` in either namespace."""
     src_dir = (
         fake_repo
         / "apps-sandbox"
         / "dotbot"
         / "Output"
-        / "dotbot-v3"
+        / "sandbox-dotbot-v3"
         / "Release"
         / "Exe"
     )
     src_dir.mkdir(parents=True)
-    (src_dir / "dotbot-dotbot-v3.bin").write_bytes(b"\xde\xad\xbe\xef")
+    (src_dir / "dotbot-sandbox-dotbot-v3.bin").write_bytes(b"\xde\xad\xbe\xef")
     monkeypatch.setattr(
         "dotbot.cli._sandbox_fw.list_projects", lambda target: ["dotbot"]
     )
@@ -366,8 +367,7 @@ def test_sandbox_fw_artifacts_prepends_sandbox_prefix_in_copy(
     assert result.exit_code == 0, result.output
     collected = list(out.iterdir())
     assert len(collected) == 1
-    # Filename has the prefix; bare equivalent would be dotbot-dotbot-v3.hex.
-    assert collected[0].name == "sandbox-dotbot-dotbot-v3.bin"
+    assert collected[0].name == "dotbot-sandbox-dotbot-v3.bin"
 
 
 # ── Output polish: preamble, timing, gated make-line echo ───────────────
