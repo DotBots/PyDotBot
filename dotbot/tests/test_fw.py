@@ -16,6 +16,7 @@ rule isn't available.
 """
 
 import subprocess
+from pathlib import Path
 
 import click
 import pytest
@@ -482,20 +483,84 @@ def test_sandbox_fw_help_points_at_dotbot_make(runner):
 # ── Helper-level tests ──────────────────────────────────────────────────
 
 
-def test_resolve_segger_dir_uses_env_first(tmp_path, monkeypatch):
+@pytest.fixture
+def isolated_home(tmp_path, monkeypatch):
+    """Point `~/.dotbot/` at a tmp dir so config tests don't see the
+    real user's `~/.dotbot/config.toml`."""
+    home = tmp_path / "home"
+    (home / ".dotbot").mkdir(parents=True)
+    monkeypatch.setattr(
+        "dotbot.cli._fw_helpers._CONFIG_PATH",
+        home / ".dotbot" / "config.toml",
+    )
+    return home
+
+
+def _write_config(home, toml_body):
+    (home / ".dotbot" / "config.toml").write_text(toml_body)
+
+
+def test_resolve_segger_dir_uses_env_first(tmp_path, monkeypatch, isolated_home):
+    """Env var beats config file beats glob."""
+    _write_config(isolated_home, '[fw]\nsegger_dir = "/from/config"\n')
     monkeypatch.setenv("SEGGER_DIR", str(tmp_path))
     assert _fw_helpers.resolve_segger_dir() == tmp_path
 
 
-def test_resolve_segger_dir_errors_when_unset_on_linux(monkeypatch):
+def test_resolve_segger_dir_falls_back_to_config(monkeypatch, isolated_home):
+    """When SEGGER_DIR is unset, `[fw].segger_dir` from the config wins."""
+    _write_config(isolated_home, '[fw]\nsegger_dir = "/from/config"\n')
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
+    assert _fw_helpers.resolve_segger_dir() == Path("/from/config")
+
+
+def test_resolve_segger_dir_uses_macos_glob_when_no_env_or_config(
+    tmp_path, monkeypatch, isolated_home
+):
+    """macOS fallback: glob `/Applications/SEGGER/SEGGER Embedded Studio*`."""
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
+    fake_install = tmp_path / "SEGGER Embedded Studio 9.99"
+    (fake_install / "bin").mkdir(parents=True)
+    (fake_install / "bin" / "emBuild").touch()
+    monkeypatch.setattr("dotbot.cli._fw_helpers.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "dotbot.cli._fw_helpers._SEGGER_MACOS_GLOB",
+        str(tmp_path / "SEGGER Embedded Studio*"),
+    )
+    assert _fw_helpers.resolve_segger_dir() == fake_install
+
+
+def test_resolve_segger_dir_picks_latest_glob_match(
+    tmp_path, monkeypatch, isolated_home
+):
+    """Multiple SES installs → lexicographically-latest wins (newer version)."""
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
+    for v in ("8.22a", "8.30a", "9.10"):
+        d = tmp_path / f"SEGGER Embedded Studio {v}" / "bin"
+        d.mkdir(parents=True)
+        (d / "emBuild").touch()
+    monkeypatch.setattr("dotbot.cli._fw_helpers.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "dotbot.cli._fw_helpers._SEGGER_MACOS_GLOB",
+        str(tmp_path / "SEGGER Embedded Studio*"),
+    )
+    picked = _fw_helpers.resolve_segger_dir()
+    assert picked.name == "SEGGER Embedded Studio 9.10"
+
+
+def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home):
     monkeypatch.delenv("SEGGER_DIR", raising=False)
     monkeypatch.setattr("dotbot.cli._fw_helpers.sys.platform", "linux")
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_segger_dir()
-    assert "SEGGER_DIR" in str(excinfo.value)
+    # Error message must surface BOTH escape hatches so the user can fix
+    # whichever they prefer.
+    msg = str(excinfo.value)
+    assert "SEGGER_DIR" in msg
+    assert "~/.dotbot/config.toml" in msg
 
 
-def test_resolve_firmware_repo_walks_up_from_cwd(tmp_path, monkeypatch):
+def test_resolve_firmware_repo_walks_up_from_cwd(tmp_path, monkeypatch, isolated_home):
     workspace = tmp_path / "ws"
     repo = workspace / "repos" / "DotBot-firmware"
     repo.mkdir(parents=True)
@@ -507,11 +572,56 @@ def test_resolve_firmware_repo_walks_up_from_cwd(tmp_path, monkeypatch):
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_errors_outside_workspace(tmp_path, monkeypatch):
+def test_resolve_firmware_repo_uses_config_file(
+    tmp_path, monkeypatch, isolated_home
+):
+    """`[fw].firmware_repo` in the config beats workspace walk-up."""
+    real_repo = tmp_path / "outside-workspace" / "DotBot-firmware"
+    real_repo.mkdir(parents=True)
+    (real_repo / "Makefile").touch()
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{real_repo}"\n')
+    monkeypatch.chdir(tmp_path)  # not inside any workspace
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    assert _fw_helpers.resolve_firmware_repo() == real_repo
+
+
+def test_resolve_firmware_repo_config_pointing_at_no_makefile_errors(
+    tmp_path, monkeypatch, isolated_home
+):
+    """If the config points at a bad path, fail loudly — don't silently fall
+    through to the workspace walk-up."""
+    bad = tmp_path / "no-makefile-here"
+    bad.mkdir()
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{bad}"\n')
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    with pytest.raises(click.ClickException) as excinfo:
+        _fw_helpers.resolve_firmware_repo()
+    assert "firmware_repo" in str(excinfo.value)
+
+
+def test_resolve_firmware_repo_errors_outside_workspace(
+    tmp_path, monkeypatch, isolated_home
+):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    with pytest.raises(click.ClickException):
+    with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_firmware_repo()
+    msg = str(excinfo.value)
+    # Both escape hatches surfaced.
+    assert "DOTBOT_FIRMWARE_REPO" in msg
+    assert "~/.dotbot/config.toml" in msg
+
+
+def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
+    _write_config(isolated_home, "this is not [valid toml\n")
+    with pytest.raises(click.ClickException) as excinfo:
+        _fw_helpers.load_config()
+    assert str(_fw_helpers._CONFIG_PATH) in str(excinfo.value)
+
+
+def test_missing_config_returns_empty_dict(isolated_home):
+    """No `~/.dotbot/config.toml` is the common case — must not error."""
+    assert _fw_helpers.load_config() == {}
 
 
 # ── Parity guard against silent drift ───────────────────────────────────

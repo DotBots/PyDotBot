@@ -3,15 +3,35 @@
 
 """Shared helpers for `dotbot fw` (bare) and `dotbot swarm fw` (sandbox).
 
-Both subcommands shell out to the same `repos/DotBot-firmware/Makefile`,
+Both subcommands shell out to the same `DotBot-firmware` Makefile,
 which discriminates bare vs sandbox by `BUILD_TARGET` prefix
 (`sandbox-*` routes to `apps-sandbox/`, everything else to `apps/`).
 The wrappers in `dotbot/cli/fw.py` (bare) and `dotbot/cli/_sandbox_fw.py`
 (sandbox) reuse the helpers here so target validation, SEGGER_DIR
 resolution, and the make invocation contract stay in one place.
+
+## Configuration
+
+`SEGGER_DIR` and the path to the DotBot-firmware checkout can be set
+in `~/.dotbot/config.toml` so they don't need to be passed via env
+on every shell:
+
+```toml
+[fw]
+segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
+firmware_repo = "/Users/me/Developer/dotbot-testbed/repos/DotBot-firmware"
+```
+
+Resolution order (first match wins):
+- `SEGGER_DIR` env var ↦ `[fw].segger_dir` in config ↦ glob
+  `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS (latest
+  sort-order pick).
+- `DOTBOT_FIRMWARE_REPO` env var ↦ `[fw].firmware_repo` in config ↦
+  walk up from CWD looking for `repos/DotBot-firmware/Makefile`.
 """
 
 import difflib
+import glob
 import os
 import subprocess
 import sys
@@ -20,11 +40,18 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import click
+import toml
 
-# Hardcoded macOS install location used by the dotbot-testbed workspace
-# (see workspace AGENTS.md "Firmware builds — local SES" convention).
-# On Linux/Windows the user must set SEGGER_DIR explicitly.
-SEGGER_MACOS_DEFAULT = "/Applications/SEGGER/SEGGER Embedded Studio 8.22a"
+# Glob used to discover SES installs on macOS. Picks the lexicographically
+# largest match (e.g. "Studio 8.30" beats "Studio 8.22a"), which is good
+# enough as a fallback when the user hasn't set SEGGER_DIR or written
+# `[fw].segger_dir` in `~/.dotbot/config.toml`.
+_SEGGER_MACOS_GLOB = "/Applications/SEGGER/SEGGER Embedded Studio*"
+
+# Per-user persistent config — shares the `~/.dotbot/` directory the
+# controller / calibration already use (see dotbot/controller.py's
+# CALIBRATION_PATH).
+_CONFIG_PATH = Path.home() / ".dotbot" / "config.toml"
 
 # BUILD_TARGET values handled by DotBot-firmware's Makefile (bare path).
 # Mirrors the explicit branches in the Makefile; an unrecognized target
@@ -58,29 +85,67 @@ DEFAULT_BARE_TARGET = "dotbot-v3"
 DEFAULT_SANDBOX_BOARD = "dotbot-v3"
 
 
+def load_config() -> dict:
+    """Read `~/.dotbot/config.toml`. Empty dict if missing.
+
+    Raises ClickException with the file path if the TOML is malformed,
+    so the user knows where to fix.
+    """
+    if not _CONFIG_PATH.is_file():
+        return {}
+    try:
+        return toml.load(_CONFIG_PATH)
+    except toml.TomlDecodeError as exc:
+        raise click.ClickException(
+            f"Failed to parse {_CONFIG_PATH}: {exc}"
+        ) from exc
+
+
+def _config_fw_value(key: str) -> Optional[str]:
+    """Read `[fw].<key>` from `~/.dotbot/config.toml`, or None."""
+    fw_section = load_config().get("fw") or {}
+    val = fw_section.get(key)
+    return str(val) if val else None
+
+
+def _glob_macos_segger() -> Optional[Path]:
+    """Pick the lexicographically-latest SES install matching the glob.
+
+    Returns None if no match has a usable `bin/emBuild`. The sort order
+    favours newer versions (e.g. `8.30` > `8.22a`) for typical SES
+    version strings.
+    """
+    if sys.platform != "darwin":
+        return None
+    matches = sorted(glob.glob(_SEGGER_MACOS_GLOB))
+    for match in reversed(matches):
+        candidate = Path(match)
+        if (candidate / "bin" / "emBuild").is_file():
+            return candidate
+    return None
+
+
 def resolve_segger_dir() -> Path:
-    """SEGGER_DIR env > macOS default > error with install hint."""
+    """SEGGER_DIR env → config → macOS glob → error."""
     env = os.environ.get("SEGGER_DIR")
     if env:
         return Path(env)
-    if sys.platform == "darwin":
-        candidate = Path(SEGGER_MACOS_DEFAULT)
-        if (candidate / "bin" / "emBuild").is_file():
-            return candidate
+    cfg = _config_fw_value("segger_dir")
+    if cfg:
+        return Path(cfg)
+    macos = _glob_macos_segger()
+    if macos:
+        return macos
     raise click.ClickException(
-        "SEGGER_DIR is not set. Export it pointing at your SEGGER Embedded "
-        "Studio install root, e.g.\n"
-        f'  export SEGGER_DIR="{SEGGER_MACOS_DEFAULT}"'
+        "SEGGER_DIR is not set and no SEGGER install was found.\n"
+        "Either export SEGGER_DIR, or add to ~/.dotbot/config.toml:\n"
+        "  [fw]\n"
+        '  segger_dir = "/path/to/SEGGER Embedded Studio X.YY"'
     )
 
 
 def resolve_firmware_repo() -> Path:
-    """Locate `repos/DotBot-firmware/Makefile` for the make invocation.
-
-    Walks up from CWD looking for a `repos/DotBot-firmware/Makefile`
-    sibling — works when run from anywhere inside the workspace.
-    Falls back to the `DOTBOT_FIRMWARE_REPO` env var.
-    """
+    """DOTBOT_FIRMWARE_REPO env → config → workspace walk-up → error."""
     env = os.environ.get("DOTBOT_FIRMWARE_REPO")
     if env:
         candidate = Path(env)
@@ -89,15 +154,27 @@ def resolve_firmware_repo() -> Path:
         raise click.ClickException(
             f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
         )
+    cfg = _config_fw_value("firmware_repo")
+    if cfg:
+        candidate = Path(cfg)
+        if (candidate / "Makefile").is_file():
+            return candidate
+        raise click.ClickException(
+            f"[fw].firmware_repo={cfg!r} in {_CONFIG_PATH} does not contain "
+            f"a Makefile."
+        )
     cwd = Path.cwd().resolve()
     for parent in (cwd, *cwd.parents):
         candidate = parent / "repos" / "DotBot-firmware"
         if (candidate / "Makefile").is_file():
             return candidate
     raise click.ClickException(
-        "Could not locate `repos/DotBot-firmware`. Run this command from "
-        "inside the dotbot-testbed workspace, or set DOTBOT_FIRMWARE_REPO "
-        "to the path of your DotBot-firmware clone."
+        "Could not locate DotBot-firmware.\n"
+        "Either run from inside a workspace that has "
+        "`repos/DotBot-firmware`, export DOTBOT_FIRMWARE_REPO, or add to "
+        "~/.dotbot/config.toml:\n"
+        "  [fw]\n"
+        '  firmware_repo = "/path/to/DotBot-firmware"'
     )
 
 
