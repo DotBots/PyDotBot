@@ -114,9 +114,7 @@ def build(target, project, config, rebuild, verbose):
         )
     mode = "rebuild" if rebuild else "incremental"
     what = project or "all sandbox apps"
-    click.echo(
-        f"Building {what} for {target} sandbox ({config}, {mode})...", err=True
-    )
+    click.echo(f"Building {what} for {target} sandbox ({config}, {mode})...", err=True)
     elapsed = run_make(
         build_target, config, project, rebuild=rebuild, quiet=not verbose
     )
@@ -200,8 +198,6 @@ def artifacts(target, project, config, out_dir, print_path, verbose):
             dst = out / src.name
             shutil.copy2(src, dst)
             copied.append(dst)
-    click.echo(
-        f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True
-    )
+    click.echo(f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True)
     for p in copied:
         click.echo(str(p))

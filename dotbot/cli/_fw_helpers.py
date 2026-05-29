@@ -96,9 +96,7 @@ def load_config() -> dict:
     try:
         return toml.load(_CONFIG_PATH)
     except toml.TomlDecodeError as exc:
-        raise click.ClickException(
-            f"Failed to parse {_CONFIG_PATH}: {exc}"
-        ) from exc
+        raise click.ClickException(f"Failed to parse {_CONFIG_PATH}: {exc}") from exc
 
 
 def _config_fw_value(key: str) -> Optional[str]:

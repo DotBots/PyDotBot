@@ -170,7 +170,9 @@ def test_fw_build_with_app_appends_project_name(
     monkeypatch.setattr(
         "dotbot.cli.fw.list_projects", lambda target: ["dotbot", "lh2_calibration"]
     )
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "--app", "dotbot"])
+    result = runner.invoke(
+        fw_cmd, ["build", "--target", "dotbot-v3", "--app", "dotbot"]
+    )
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
     assert cmd[-1] == "dotbot"
@@ -181,7 +183,9 @@ def test_fw_build_rejects_unavailable_project(
 ):
     """Project not in the post-filter list is rejected pre-make."""
     monkeypatch.setattr("dotbot.cli.fw.list_projects", lambda target: ["dotbot"])
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v1", "--app", "dotbot_gateway"])
+    result = runner.invoke(
+        fw_cmd, ["build", "--target", "dotbot-v1", "--app", "dotbot_gateway"]
+    )
     assert result.exit_code != 0
     assert "not available" in result.output
 
@@ -216,7 +220,9 @@ def test_fw_artifacts_builds_then_collects_to_user_dir(
 
 def test_fw_artifacts_print_path_requires_app(runner, fake_repo, fake_segger):
     """`--print-path` without `--app` exits with a hint."""
-    result = runner.invoke(fw_cmd, ["artifacts", "--target", "dotbot-v3", "--print-path"])
+    result = runner.invoke(
+        fw_cmd, ["artifacts", "--target", "dotbot-v3", "--print-path"]
+    )
     assert result.exit_code != 0
     assert "--app" in result.output
 
@@ -225,7 +231,8 @@ def test_fw_artifacts_print_path_returns_makefile_formula(
     runner, fake_repo, fake_segger
 ):
     result = runner.invoke(
-        fw_cmd, ["artifacts", "--target", "dotbot-v3", "--app", "dotbot", "--print-path"]
+        fw_cmd,
+        ["artifacts", "--target", "dotbot-v3", "--app", "dotbot", "--print-path"],
     )
     assert result.exit_code == 0, result.output
     out = result.output.strip()
@@ -439,17 +446,13 @@ def test_fw_artifacts_prints_collected_success_line(
 
 def test_run_make_returns_elapsed_seconds(fake_repo, fake_segger, monkeypatch):
     """`run_make` must return a float so subcommands can format the timing."""
-    monkeypatch.setattr(
-        "dotbot.cli._fw_helpers.subprocess.call", lambda *a, **kw: 0
-    )
+    monkeypatch.setattr("dotbot.cli._fw_helpers.subprocess.call", lambda *a, **kw: 0)
     elapsed = _fw_helpers.run_make("dotbot-v3", "Release", "dotbot")
     assert isinstance(elapsed, float)
     assert elapsed >= 0
 
 
-def test_sandbox_fw_build_prints_preamble(
-    runner, fake_repo, fake_segger, capture_make
-):
+def test_sandbox_fw_build_prints_preamble(runner, fake_repo, fake_segger, capture_make):
     result = runner.invoke(sandbox_fw_cmd, ["build", "--target", "dotbot-v3"])
     assert result.exit_code == 0, result.output
     assert "Building" in result.output
@@ -637,9 +640,7 @@ def test_resolve_firmware_repo_walks_up_from_cwd(tmp_path, monkeypatch, isolated
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_uses_config_file(
-    tmp_path, monkeypatch, isolated_home
-):
+def test_resolve_firmware_repo_uses_config_file(tmp_path, monkeypatch, isolated_home):
     """`[fw].firmware_repo` in the config beats workspace walk-up."""
     real_repo = tmp_path / "outside-workspace" / "DotBot-firmware"
     real_repo.mkdir(parents=True)
@@ -738,7 +739,9 @@ def test_targets_match_makefile_list_targets():
             "checkout. Bump the submodule / pull a newer Makefile to enable "
             "this parity guard."
         )
-    makefile_targets = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    makefile_targets = {
+        line.strip() for line in result.stdout.splitlines() if line.strip()
+    }
     cli_targets = set(_fw_helpers.BARE_TARGETS) | {
         f"sandbox-{b}" for b in _fw_helpers.SANDBOX_BOARDS
     }

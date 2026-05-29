@@ -204,9 +204,7 @@ def artifacts(target, project, config, out_dir, print_path, verbose):
             dst = out / src.name
             shutil.copy2(src, dst)
             copied.append(dst)
-    click.echo(
-        f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True
-    )
+    click.echo(f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True)
     for p in copied:
         click.echo(str(p))
 
