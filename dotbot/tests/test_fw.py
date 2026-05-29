@@ -662,9 +662,7 @@ def test_resolve_firmware_repo_uses_config_file(tmp_path, monkeypatch, isolated_
     (real_repo / "Makefile").touch()
     # `.as_posix()` keeps backslashes out of the TOML double-quoted
     # string literal on Windows (where they'd be parsed as escapes).
-    _write_config(
-        isolated_home, f'[fw]\nfirmware_repo = "{real_repo.as_posix()}"\n'
-    )
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{real_repo.as_posix()}"\n')
     monkeypatch.chdir(tmp_path)  # not inside any workspace
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
     assert _fw_helpers.resolve_firmware_repo() == real_repo
