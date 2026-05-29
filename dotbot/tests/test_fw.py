@@ -236,7 +236,16 @@ def test_fw_artifacts_print_path_returns_makefile_formula(
     )
     assert result.exit_code == 0, result.output
     out = result.output.strip()
-    assert out.endswith("apps/dotbot/Output/dotbot-v3/Release/Exe/dotbot-dotbot-v3.hex")
+    expected = str(
+        Path("apps")
+        / "dotbot"
+        / "Output"
+        / "dotbot-v3"
+        / "Release"
+        / "Exe"
+        / "dotbot-dotbot-v3.hex"
+    )
+    assert out.endswith(expected)
 
 
 def test_fw_new_still_not_implemented(runner):
@@ -328,10 +337,16 @@ def test_sandbox_fw_artifacts_print_path_uses_bin_extension(
     out = result.output.strip()
     # SES's `$(BuildTarget)` macro now matches the make-level BUILD_TARGET
     # (including the `sandbox-` prefix), so Output paths are flavor-distinct.
-    assert out.endswith(
-        "apps-sandbox/dotbot/Output/sandbox-dotbot-v3/Release/Exe/"
-        "dotbot-sandbox-dotbot-v3.bin"
+    expected = str(
+        Path("apps-sandbox")
+        / "dotbot"
+        / "Output"
+        / "sandbox-dotbot-v3"
+        / "Release"
+        / "Exe"
+        / "dotbot-sandbox-dotbot-v3.bin"
     )
+    assert out.endswith(expected)
 
 
 def test_sandbox_fw_clean_invokes_make_clean(
@@ -645,7 +660,11 @@ def test_resolve_firmware_repo_uses_config_file(tmp_path, monkeypatch, isolated_
     real_repo = tmp_path / "outside-workspace" / "DotBot-firmware"
     real_repo.mkdir(parents=True)
     (real_repo / "Makefile").touch()
-    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{real_repo}"\n')
+    # `.as_posix()` keeps backslashes out of the TOML double-quoted
+    # string literal on Windows (where they'd be parsed as escapes).
+    _write_config(
+        isolated_home, f'[fw]\nfirmware_repo = "{real_repo.as_posix()}"\n'
+    )
     monkeypatch.chdir(tmp_path)  # not inside any workspace
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
     assert _fw_helpers.resolve_firmware_repo() == real_repo
@@ -658,7 +677,7 @@ def test_resolve_firmware_repo_config_pointing_at_no_makefile_errors(
     through to the workspace walk-up."""
     bad = tmp_path / "no-makefile-here"
     bad.mkdir()
-    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{bad}"\n')
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{bad.as_posix()}"\n')
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_firmware_repo()
