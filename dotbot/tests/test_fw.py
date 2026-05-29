@@ -7,8 +7,15 @@ These tests stub `subprocess.call` / `subprocess.run` so they don't
 need a SEGGER install or a DotBot-firmware checkout — they verify the
 CLI's argument shape, validations, and the command line passed to
 make, not the actual build.
+
+The single exception is `test_bare_targets_match_makefile_list_targets`,
+which shells out to `make list-targets` in the real DotBot-firmware
+repo to catch silent drift between the CLI's hardcoded enums and the
+Makefile. It self-skips if the workspace layout or the `list-targets`
+rule isn't available.
 """
 
+import subprocess
 
 import click
 import pytest
@@ -505,3 +512,63 @@ def test_resolve_firmware_repo_errors_outside_workspace(tmp_path, monkeypatch):
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
     with pytest.raises(click.ClickException):
         _fw_helpers.resolve_firmware_repo()
+
+
+# ── Parity guard against silent drift ───────────────────────────────────
+
+
+def _real_firmware_repo_or_skip():
+    """Find the real DotBot-firmware repo for the parity test, or skip."""
+    import os
+    from pathlib import Path
+
+    env = os.environ.get("DOTBOT_FIRMWARE_REPO")
+    if env and (Path(env) / "Makefile").is_file():
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "repos" / "DotBot-firmware"
+        if (candidate / "Makefile").is_file():
+            return candidate
+    pytest.skip(
+        "Could not locate the real DotBot-firmware repo; set "
+        "DOTBOT_FIRMWARE_REPO or run from inside the workspace."
+    )
+
+
+def test_targets_match_makefile_list_targets():
+    """`set(BARE_TARGETS) | set('sandbox-'+SANDBOX_BOARDS)` must equal what
+    the Makefile reports via `make list-targets`.
+
+    Catches the silent drift case where someone adds e.g. dotbot-v4 to
+    the Makefile and forgets to update the CLI's hardcoded enum.
+
+    Self-skips if the real DotBot-firmware repo or the `list-targets`
+    Make rule isn't available (older checkout pre-dating that commit).
+    """
+    repo = _real_firmware_repo_or_skip()
+    try:
+        result = subprocess.run(
+            ["make", "-s", "list-targets"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pytest.skip("`make list-targets` not runnable in this environment.")
+    if result.returncode != 0:
+        pytest.skip(
+            "`make list-targets` rule not present in this DotBot-firmware "
+            "checkout. Bump the submodule / pull a newer Makefile to enable "
+            "this parity guard."
+        )
+    makefile_targets = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    cli_targets = set(_fw_helpers.BARE_TARGETS) | {
+        f"sandbox-{b}" for b in _fw_helpers.SANDBOX_BOARDS
+    }
+    assert makefile_targets == cli_targets, (
+        f"CLI hardcoded targets drifted from Makefile.\n"
+        f"In CLI but not Makefile: {cli_targets - makefile_targets}\n"
+        f"In Makefile but not CLI: {makefile_targets - cli_targets}"
+    )
