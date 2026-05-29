@@ -300,6 +300,90 @@ def test_sandbox_fw_clean_invokes_make_clean(
     assert "clean" in cmd
 
 
+# ── Output polish: preamble, timing, gated make-line echo ───────────────
+
+
+def test_fw_build_quiet_does_not_echo_make_line(
+    runner, fake_repo, fake_segger, capture_make
+):
+    """Default (no -v): make command line stays out of output."""
+    result = runner.invoke(fw_cmd, ["build", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    assert "$ make" not in result.output
+
+
+def test_fw_build_verbose_echoes_make_line(
+    runner, fake_repo, fake_segger, capture_make
+):
+    """-v echoes the full make command so it's copy-pasteable."""
+    result = runner.invoke(fw_cmd, ["build", "dotbot-v3", "-v"])
+    assert result.exit_code == 0, result.output
+    assert "$ make" in result.output
+    assert "BUILD_TARGET=dotbot-v3" in result.output
+
+
+def test_fw_build_prints_preamble_and_success(
+    runner, fake_repo, fake_segger, capture_make
+):
+    """Happy path: preamble before make, success line with timing after."""
+    result = runner.invoke(fw_cmd, ["build", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    assert "Building" in result.output
+    assert "dotbot-v3" in result.output
+    assert "Release" in result.output
+    assert "incremental" in result.output
+    # Success line uses a check mark + timing.
+    assert "✓" in result.output
+    assert "Built dotbot-v3" in result.output
+
+
+def test_fw_build_rebuild_says_rebuild_in_preamble(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(fw_cmd, ["build", "dotbot-v3", "--rebuild"])
+    assert result.exit_code == 0, result.output
+    assert "rebuild" in result.output
+    assert "incremental" not in result.output
+
+
+def test_fw_clean_prints_cleaned_success_line(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(fw_cmd, ["clean", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    assert "Cleaning dotbot-v3" in result.output
+    assert "✓ Cleaned" in result.output
+
+
+def test_fw_artifacts_prints_collected_success_line(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(fw_cmd, ["artifacts", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    assert "Collecting artifacts" in result.output
+    assert "✓ Artifacts collected" in result.output
+
+
+def test_run_make_returns_elapsed_seconds(fake_repo, fake_segger, monkeypatch):
+    """`run_make` must return a float so subcommands can format the timing."""
+    monkeypatch.setattr(
+        "dotbot.cli._fw_helpers.subprocess.call", lambda *a, **kw: 0
+    )
+    elapsed = _fw_helpers.run_make("dotbot-v3", "Release", "dotbot")
+    assert isinstance(elapsed, float)
+    assert elapsed >= 0
+
+
+def test_sandbox_fw_build_prints_preamble(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(sandbox_fw_cmd, ["build", "dotbot-v3"])
+    assert result.exit_code == 0, result.output
+    assert "Building" in result.output
+    assert "sandbox" in result.output.lower()
+    assert "✓ Built" in result.output
+
+
 # ── `dotbot make` escape hatch ──────────────────────────────────────────
 
 

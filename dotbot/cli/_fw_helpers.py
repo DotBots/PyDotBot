@@ -15,6 +15,7 @@ import difflib
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -175,7 +176,7 @@ def run_make(
     rebuild: bool = False,
     quiet: bool = True,
     make_targets: Optional[list[str]] = None,
-) -> None:
+) -> float:
     """Invoke `make BUILD_TARGET=... BUILD_CONFIG=... [project|make_target]`.
 
     rebuild=False asks the Makefile to use `-build` (incremental, fast);
@@ -185,12 +186,17 @@ def run_make(
 
     quiet=True passes `QUIET=1` so the Makefile suppresses SES's
     `-verbose -echo` flood; the per-project "Building project X" /
-    "Done" banners still come through.
+    "Done" banners still come through. quiet=False also echoes the full
+    make command line to stderr so the user has a copy-pasteable line
+    to reproduce outside the CLI.
 
     If `make_targets` is given, those are the make-level targets passed
     on the command line (e.g. `["clean"]`, `["artifacts"]`). Otherwise
     `project` is appended (or nothing, which means default `all` →
     every project for the BUILD_TARGET).
+
+    Returns elapsed wall-clock seconds. Raises `ClickException` on
+    non-zero exit so callers can short-circuit.
     """
     repo = resolve_firmware_repo()
     segger = resolve_segger_dir()
@@ -208,12 +214,16 @@ def run_make(
         cmd.extend(make_targets)
     elif project:
         cmd.append(project)
-    # Print the command verbatim so the user can copy/paste to reproduce
-    # outside the CLI.
-    click.echo(f"$ {' '.join(cmd)}", err=True)
+    if not quiet:
+        # Verbose mode: print the make command so the user can copy/paste
+        # it to reproduce outside the CLI.
+        click.echo(f"$ {' '.join(cmd)}", err=True)
+    t0 = time.perf_counter()
     rc = subprocess.call(cmd, cwd=repo, env=_make_env(segger))
+    elapsed = time.perf_counter() - t0
     if rc != 0:
-        raise click.ClickException(f"`make` exited {rc}.")
+        raise click.ClickException(f"`make` exited {rc} after {elapsed:.1f}s.")
+    return elapsed
 
 
 def artifact_path(target: str, project: str, config: str) -> Path:

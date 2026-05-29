@@ -91,7 +91,13 @@ def build(board, project, config, rebuild, verbose):
                 f"Sandbox app {project!r} is not available for board "
                 f"{board!r}.\nAvailable: {', '.join(valid)}"
             )
-    run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
+    mode = "rebuild" if rebuild else "incremental"
+    what = project or "all sandbox apps"
+    click.echo(
+        f"Building {what} for {board} sandbox ({config}, {mode})...", err=True
+    )
+    elapsed = run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
+    click.echo(f"✓ Built sandbox {board} in {elapsed:.1f}s", err=True)
     if project:
         out = artifact_path(target, project, config)
         if out.is_file():
@@ -110,7 +116,11 @@ def build(board, project, config, rebuild, verbose):
 def clean(board, config, verbose):
     """Clean SES build outputs for BOARD (per BUILD_CONFIG)."""
     validate_sandbox_board(board)
-    run_make(_board_to_target(board), config, make_targets=["clean"], quiet=not verbose)
+    click.echo(f"Cleaning {board} sandbox ({config})...", err=True)
+    elapsed = run_make(
+        _board_to_target(board), config, make_targets=["clean"], quiet=not verbose
+    )
+    click.echo(f"✓ Cleaned sandbox {board} in {elapsed:.1f}s", err=True)
 
 
 @cmd.command(name="targets")
@@ -148,4 +158,6 @@ def artifacts(board, project, config, print_path, verbose):
             )
         click.echo(str(artifact_path(target, project, config)))
         return
-    run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
+    click.echo(f"Collecting artifacts for {board} sandbox ({config})...", err=True)
+    elapsed = run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
+    click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)

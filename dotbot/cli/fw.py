@@ -99,8 +99,13 @@ def build(target, project, config, rebuild, verbose):
                 f"App {project!r} is not available for target {target!r}.\n"
                 f"Available: {', '.join(valid)}"
             )
-    run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
-    # Echo where to find the output on success.
+    mode = "rebuild" if rebuild else "incremental"
+    what = project or "all apps"
+    click.echo(f"Building {what} for {target} ({config}, {mode})...", err=True)
+    elapsed = run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
+    click.echo(f"✓ Built {target} in {elapsed:.1f}s", err=True)
+    # Single-artifact case: echo the path to stdout so the user can
+    # pipe it (e.g. `dotbot fw build dotbot-v3 --app dotbot | tail -1`).
     if project:
         out = artifact_path(target, project, config)
         if out.is_file():
@@ -119,7 +124,9 @@ def build(target, project, config, rebuild, verbose):
 def clean(target, config, verbose):
     """Clean SES build outputs for TARGET (per BUILD_CONFIG)."""
     validate_bare_target(target)
-    run_make(target, config, make_targets=["clean"], quiet=not verbose)
+    click.echo(f"Cleaning {target} ({config})...", err=True)
+    elapsed = run_make(target, config, make_targets=["clean"], quiet=not verbose)
+    click.echo(f"✓ Cleaned in {elapsed:.1f}s", err=True)
 
 
 @cmd.command(name="targets")
@@ -156,7 +163,9 @@ def artifacts(target, project, config, print_path, verbose):
             )
         click.echo(str(artifact_path(target, project, config)))
         return
-    run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
+    click.echo(f"Collecting artifacts for {target} ({config})...", err=True)
+    elapsed = run_make(target, config, make_targets=["artifacts"], quiet=not verbose)
+    click.echo(f"✓ Artifacts collected in {elapsed:.1f}s", err=True)
 
 
 @cmd.command()
