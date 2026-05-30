@@ -242,6 +242,10 @@ class MarilibCloudAdapter(GatewayAdapterBase):
 class SimulatorAdapterBase(GatewayAdapterBase):
     """Base class used to interface with the simulator."""
 
+    # Assigned in start(); stays None if start() failed before the
+    # simulator was constructed, so close() can no-op instead of raising.
+    simulator = None
+
     @abstractmethod
     def create_simulator(self, _byte_received: callable):
         """Create the simulator instance."""
@@ -264,6 +268,8 @@ class SimulatorAdapterBase(GatewayAdapterBase):
             self.on_frame_received(frame)
 
     def close(self):
+        if self.simulator is None:
+            return
         LOGGER.info("Disconnect from simulator...")
         self.simulator.stop()
 
