@@ -74,7 +74,7 @@ def resolve_app_artifact(
 
     - Flat ``./artifacts/<app>-<board>.hex`` (bare) or
       ``./artifacts/<app>-sandbox-<board>.bin`` (sandbox), as produced by
-      `dotbot fw build` / `dotbot fw artifacts`.
+      `dotbot fw artifacts`.
     - Else, if a DotBot-firmware repo is locatable, build it (needs SES)
       and use the SES output path.
     - Else, a friendly error telling the user to build or fetch first.

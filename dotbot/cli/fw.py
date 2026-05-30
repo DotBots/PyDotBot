@@ -4,18 +4,24 @@
 """`dotbot fw` — firmware artifacts: build, fetch, list.
 
 `fw` is the *artifacts* namespace — it produces or downloads firmware
-files into the CWD-local `./artifacts/`. It never touches hardware:
-flashing a device lives under `dotbot fw`'s sibling `dotbot device`, and
-OTA-flashing the fleet under `dotbot swarm`.
+files. It never touches hardware: flashing a device lives under `fw`'s
+sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
 
-- `build` compiles from source via SES (`emBuild`) in `DotBot-firmware`.
-  Bare apps by default; `--sandbox` builds the TrustZone NS flavor
-  (`sandbox-<board>`, emits `.bin`).
+- `build` compiles from source via SES (`emBuild`) in `DotBot-firmware`,
+  leaving the result in the SES `Output/.../Exe/` tree and echoing that
+  path — it does *not* copy into `./artifacts/`. Bare apps by default;
+  `--sandbox` builds the TrustZone NS flavor (`sandbox-<board>`, `.bin`).
+- `artifacts` builds *and* collects the result into `./artifacts/`, with
+  the flat `<app>-<board>.hex` / `<app>-sandbox-<board>.bin` names.
 - `fetch` downloads a published release into `./artifacts/<version>/`.
-- `list` shows what's cached.
+- `list` shows what's cached in `./artifacts/`.
 
-Both sources fill the same `./artifacts/`; `dotbot device flash` and
-`dotbot swarm flash` drain it (auto-resolving via build/fetch on demand).
+Only `artifacts` and `fetch` populate `./artifacts/`. The device-flash
+commands then auto-resolve their input, by *different* rules: `dotbot
+device flash <app>` resolves an app image present-in-`./artifacts/` →
+build-from-source → error (it never fetches); `device flash-sandbox-host`
+/ `flash-gateway` resolve a release's system firmware
+present-in-`./artifacts/` → fetch (they never build).
 """
 
 import sys
@@ -40,7 +46,7 @@ from dotbot.cli._fw_helpers import (
 _NOT_READY = (
     "`dotbot fw {sub}` is not implemented yet.\n"
     "For now: use SEGGER Embedded Studio directly, or invoke the "
-    "Makefile in `repos/DotBot-firmware`."
+    "Makefile in your DotBot-firmware checkout (set `DOTBOT_FIRMWARE_REPO`)."
 )
 
 
