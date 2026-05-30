@@ -43,7 +43,14 @@ class GatewayAdapterBase(ABC):
 
 
 class SerialAdapter(GatewayAdapterBase):
-    """Class used to interface with the serial port."""
+    """Raw (non-Mari) serial gateway interface.
+
+    Deprecated: the `--conn` CLI no longer selects this — a device-path
+    connection maps to the Mari `edge` adapter, since bare DotBot apps now
+    emit Mari-shaped frames and the gateway speaks Mari-shaped UART
+    packets (so the edge adapter handles both sandbox and bare). Kept for
+    now as no CLI path constructs it; likely removed in a future cleanup.
+    """
 
     def __init__(
         self,
