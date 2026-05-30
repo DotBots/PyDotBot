@@ -12,22 +12,21 @@ resolution, and the make invocation contract stay in one place.
 
 ## Configuration
 
-`SEGGER_DIR` and the path to the DotBot-firmware checkout can be set
-in `~/.dotbot/config.toml` so they don't need to be passed via env
-on every shell:
+`SEGGER_DIR` can be persisted in `~/.dotbot/config.toml` so it doesn't
+have to ride in every shell:
 
 ```toml
 [fw]
 segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
-firmware_repo = "/Users/me/Developer/dotbot-testbed/repos/DotBot-firmware"
 ```
 
 Resolution order (first match wins):
-- `SEGGER_DIR` env var ↦ `[fw].segger_dir` in config ↦ glob
-  `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS (latest
-  sort-order pick).
-- `DOTBOT_FIRMWARE_REPO` env var ↦ `[fw].firmware_repo` in config ↦
-  walk up from CWD looking for `repos/DotBot-firmware/Makefile`.
+- SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
+  `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
+- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `<cwd>/DotBot-firmware/`.
+  Deliberately minimal — no parent walk-up, no `repos/` heuristics, no
+  config-file precedence. Either you `cd` to where your clone is, or
+  you point at it explicitly.
 """
 
 import difflib
@@ -143,7 +142,13 @@ def resolve_segger_dir() -> Path:
 
 
 def resolve_firmware_repo() -> Path:
-    """DOTBOT_FIRMWARE_REPO env → config → workspace walk-up → error."""
+    """DOTBOT_FIRMWARE_REPO env → ./DotBot-firmware/ → error.
+
+    Deliberately minimal — no parent walk-up, no `repos/` heuristics,
+    no config-file precedence. Either the env var points somewhere
+    valid, or the user `cd`'d to the directory that contains a
+    sibling `DotBot-firmware/` clone.
+    """
     env = os.environ.get("DOTBOT_FIRMWARE_REPO")
     if env:
         candidate = Path(env)
@@ -152,40 +157,13 @@ def resolve_firmware_repo() -> Path:
         raise click.ClickException(
             f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
         )
-    cfg = _config_fw_value("firmware_repo")
-    if cfg:
-        candidate = Path(cfg)
-        if (candidate / "Makefile").is_file():
-            return candidate
-        raise click.ClickException(
-            f"[fw].firmware_repo={cfg!r} in {_CONFIG_PATH} does not contain "
-            f"a Makefile."
-        )
-    cwd = Path.cwd().resolve()
-    for parent in (cwd, *cwd.parents):
-        # Workspace layout: <somewhere>/repos/DotBot-firmware/
-        candidate = parent / "repos" / "DotBot-firmware"
-        if (candidate / "Makefile").is_file():
-            return candidate
-        # Sibling clone: <cwd>/DotBot-firmware/
-        candidate = parent / "DotBot-firmware"
-        if (candidate / "Makefile").is_file():
-            return candidate
-        # Inside the repo itself (or one of its subdirs): the parent named
-        # `DotBot-firmware` with a Makefile is the root.
-        if parent.name == "DotBot-firmware" and (parent / "Makefile").is_file():
-            return parent
+    candidate = Path.cwd() / "DotBot-firmware"
+    if (candidate / "Makefile").is_file():
+        return candidate
     raise click.ClickException(
-        "Could not locate DotBot-firmware. Tried:\n"
-        "  - <cwd>/DotBot-firmware/\n"
-        "  - <cwd>/repos/DotBot-firmware/\n"
-        "  - walking up the parent chain\n"
-        "Fix one of:\n"
-        "  - clone DotBot-firmware into the current directory, or\n"
-        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware, or\n"
-        "  - add to ~/.dotbot/config.toml:\n"
-        "      [fw]\n"
-        '      firmware_repo = "/path/to/DotBot-firmware"'
+        "Could not locate DotBot-firmware. Either:\n"
+        "  - `cd` to the directory containing your DotBot-firmware clone, or\n"
+        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware"
     )
 
 

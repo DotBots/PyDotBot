@@ -643,51 +643,8 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
     assert "~/.dotbot/config.toml" in msg
 
 
-def test_resolve_firmware_repo_walks_up_from_cwd(tmp_path, monkeypatch, isolated_home):
-    workspace = tmp_path / "ws"
-    repo = workspace / "repos" / "DotBot-firmware"
-    repo.mkdir(parents=True)
-    (repo / "Makefile").touch()
-    inner = workspace / "deep" / "subdir"
-    inner.mkdir(parents=True)
-    monkeypatch.chdir(inner)
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    assert _fw_helpers.resolve_firmware_repo() == repo
-
-
-def test_resolve_firmware_repo_uses_config_file(tmp_path, monkeypatch, isolated_home):
-    """`[fw].firmware_repo` in the config beats workspace walk-up."""
-    real_repo = tmp_path / "outside-workspace" / "DotBot-firmware"
-    real_repo.mkdir(parents=True)
-    (real_repo / "Makefile").touch()
-    # `.as_posix()` keeps backslashes out of the TOML double-quoted
-    # string literal on Windows (where they'd be parsed as escapes).
-    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{real_repo.as_posix()}"\n')
-    monkeypatch.chdir(tmp_path)  # not inside any workspace
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    assert _fw_helpers.resolve_firmware_repo() == real_repo
-
-
-def test_resolve_firmware_repo_config_pointing_at_no_makefile_errors(
-    tmp_path, monkeypatch, isolated_home
-):
-    """If the config points at a bad path, fail loudly — don't silently fall
-    through to the workspace walk-up."""
-    bad = tmp_path / "no-makefile-here"
-    bad.mkdir()
-    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{bad.as_posix()}"\n')
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    with pytest.raises(click.ClickException) as excinfo:
-        _fw_helpers.resolve_firmware_repo()
-    assert "firmware_repo" in str(excinfo.value)
-
-
-def test_resolve_firmware_repo_finds_sibling_clone(
-    tmp_path, monkeypatch, isolated_home
-):
-    """Common new-user flow: clone DotBot-firmware into the current
-    directory (`./DotBot-firmware/`), then run `dotbot fw ...` from
-    that same directory. No `repos/` layer."""
+def test_resolve_firmware_repo_finds_sibling_clone(tmp_path, monkeypatch):
+    """The one default lookup path: `<cwd>/DotBot-firmware/Makefile`."""
     repo = tmp_path / "DotBot-firmware"
     repo.mkdir()
     (repo / "Makefile").touch()
@@ -696,33 +653,42 @@ def test_resolve_firmware_repo_finds_sibling_clone(
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_finds_when_cwd_inside_the_repo(
-    tmp_path, monkeypatch, isolated_home
-):
-    """Inside the repo itself (e.g. `cd DotBot-firmware/apps/`), walking up
-    finds the dir named `DotBot-firmware` with a Makefile."""
-    repo = tmp_path / "DotBot-firmware"
-    inner = repo / "apps" / "dotbot"
-    inner.mkdir(parents=True)
-    (repo / "Makefile").touch()
-    monkeypatch.chdir(inner)
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    assert _fw_helpers.resolve_firmware_repo() == repo
+def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch):
+    """Env var overrides the CWD-sibling default."""
+    sibling = tmp_path / "DotBot-firmware"
+    sibling.mkdir()
+    (sibling / "Makefile").touch()
+    elsewhere = tmp_path / "elsewhere" / "DotBot-firmware"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "Makefile").touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(elsewhere))
+    assert _fw_helpers.resolve_firmware_repo() == elsewhere
 
 
-def test_resolve_firmware_repo_errors_outside_workspace(
-    tmp_path, monkeypatch, isolated_home
-):
+def test_resolve_firmware_repo_errors_when_nothing_found(tmp_path, monkeypatch):
+    """No env var, no `<cwd>/DotBot-firmware/` → clear error with both
+    escape hatches in the message."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_firmware_repo()
     msg = str(excinfo.value)
-    # All escape hatches surfaced.
     assert "DOTBOT_FIRMWARE_REPO" in msg
-    assert "~/.dotbot/config.toml" in msg
-    # And the sibling-clone hint.
-    assert "clone DotBot-firmware" in msg
+    assert "cd" in msg  # the "cd to the directory containing your clone" hint
+
+
+def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(
+    tmp_path, monkeypatch
+):
+    """Bad env-var path fails loudly rather than silently falling back."""
+    bad = tmp_path / "no-makefile-here"
+    bad.mkdir()
+    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(bad))
+    with pytest.raises(click.ClickException) as excinfo:
+        _fw_helpers.resolve_firmware_repo()
+    assert "DOTBOT_FIRMWARE_REPO" in str(excinfo.value)
+    assert "Makefile" in str(excinfo.value)
 
 
 def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
