@@ -384,6 +384,10 @@ def fetch_assets(
         "03app_gateway_app-nrf5340-app.hex",
         "03app_gateway_net-nrf5340-net.hex",
     ]
+    # Optional sample sandbox apps. These are built from DotBot-firmware's
+    # apps-sandbox/ and aren't guaranteed to be on every swarmit release, so
+    # a 404 here is expected, not fatal — the four system images above are
+    # all that provisioning (flash-sandbox-host / flash-gateway) needs.
     example_bins = [
         "dotbot-dotbot-v3.bin",
         "spin-dotbot-v3.bin",
@@ -398,7 +402,14 @@ def fetch_assets(
     for name in example_bins:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
         dest = out_dir / name
-        download_file(url, dest)
+        try:
+            download_file(url, dest)
+        except click.ClickException as exc:
+            click.echo(
+                f"[skip] optional sample app {name} not in release "
+                f"{fw_version} ({exc.format_message()})",
+                err=True,
+            )
     return out_dir
 
 

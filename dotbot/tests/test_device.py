@@ -10,6 +10,7 @@ the `device info` read-and-report contract (never fails on a blank
 board), and the friendly nrfjprog-missing error.
 """
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -219,3 +220,38 @@ def test_intelhex_is_a_core_dependency():
     import dotbot.firmware.flash as flash
 
     assert flash.IntelHex is not None
+
+
+def test_fetch_assets_skips_missing_optional_examples(tmp_path, monkeypatch):
+    """A 404 on an optional sample .bin must NOT abort the fetch — the four
+    required system images still complete (so provisioning's auto-fetch works
+    even when the sample apps aren't on the release)."""
+    import dotbot.firmware.flash as flash
+
+    downloaded = []
+
+    def fake_download(url, dest):
+        name = url.rsplit("/", 1)[-1]
+        if name.endswith(".hex"):  # the 4 required system images
+            dest.write_bytes(b"\x00")
+            downloaded.append(name)
+        else:  # optional sample .bin → simulate a release 404
+            raise click.ClickException(f"HTTP Error 404: {name}")
+
+    monkeypatch.setattr(flash, "download_file", fake_download)
+    out = flash.fetch_assets("0.8.0rc1", tmp_path)  # must not raise
+    assert (out / "bootloader-dotbot-v3.hex").exists()
+    assert (out / "netcore-nrf5340-net.hex").exists()
+    assert sum(n.endswith(".hex") for n in downloaded) == 4
+
+
+def test_fetch_assets_still_fails_on_missing_system_image(tmp_path, monkeypatch):
+    """A 404 on a REQUIRED system .hex stays fatal (bad version tag)."""
+    import dotbot.firmware.flash as flash
+
+    def fake_download(url, dest):
+        raise click.ClickException("HTTP Error 404")
+
+    monkeypatch.setattr(flash, "download_file", fake_download)
+    with pytest.raises(click.ClickException):
+        flash.fetch_assets("0.0.0-nope", tmp_path)
