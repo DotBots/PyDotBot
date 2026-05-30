@@ -3,14 +3,14 @@
 
 """`dotbot sim` — standalone simulator (no hardware).
 
-Equivalent to `dotbot controller --adapter dotbot-simulator`. The name
-advertises the no-hardware case so students can discover the offline
-path from `dotbot --help` without reading adapter docs.
+Equivalent to `dotbot controller --conn simulator`. The name advertises
+the no-hardware case so students can discover the offline path from
+`dotbot --help` without reading connection docs.
 
-Implementation: prepend `--adapter dotbot-simulator` to argv and
-delegate to the controller's Click command. A future refactor will
-turn this into a first-class entry that wires Engine + SimulatorAdapter
-directly.
+Implementation: prepend `--conn simulator` to argv and delegate to the
+controller's Click command. `dotbot sim --sailbot` forwards through to
+the controller's robot-type selector. A future refactor may turn this
+into a first-class entry (and possibly a separate sim process).
 """
 
 import click
@@ -31,8 +31,9 @@ from dotbot.controller_app import main as _controller_main
 def cmd(ctx):
     """Run a standalone simulator (no hardware required).
 
-    All other controller flags are forwarded as-is. Try
+    `dotbot sim` runs a dotbot simulator; `dotbot sim --sailbot` runs a
+    sailbot one. Other controller flags are forwarded as-is. Try
     `dotbot sim --help` for the full option list.
     """
-    args = ["--adapter", "dotbot-simulator", *ctx.args]
+    args = ["--conn", "simulator", *ctx.args]
     _controller_main.main(args=args, standalone_mode=True)

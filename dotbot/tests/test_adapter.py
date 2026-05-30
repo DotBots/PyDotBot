@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -191,3 +192,33 @@ async def test_sailbot_simulator_adapter(_):
         adapter.simulator.write.assert_called_once_with(frame.to_bytes())
         adapter.close()
         adapter.simulator.stop.assert_called_once()
+
+
+def test_simulator_adapter_close_before_start_is_noop():
+    """close() must not raise when start() never assigned `simulator`
+    (e.g. start() failed loading the init state)."""
+    adapter = DotBotSimulatorAdapter()
+    adapter.close()  # no AttributeError
+
+
+def test_resolve_init_state_path_falls_back_to_packaged(tmp_path, monkeypatch):
+    """The default init-state resolves to the packaged world when no file
+    exists in the cwd, so `dotbot sim` works from any directory."""
+    from dotbot import SIMULATOR_INIT_STATE_DEFAULT
+    from dotbot.dotbot_simulator import resolve_init_state_path
+
+    monkeypatch.chdir(tmp_path)  # a dir without simulator_init_state.toml
+    resolved = resolve_init_state_path(SIMULATOR_INIT_STATE_DEFAULT)
+    assert Path(resolved).is_file()
+    assert Path(resolved).name == SIMULATOR_INIT_STATE_DEFAULT
+
+    # A cwd file is preferred over the packaged copy.
+    local = tmp_path / SIMULATOR_INIT_STATE_DEFAULT
+    local.write_text('[[dotbots]]\naddress = "0000000000000001"\n')
+    assert (
+        resolve_init_state_path(SIMULATOR_INIT_STATE_DEFAULT)
+        == SIMULATOR_INIT_STATE_DEFAULT
+    )
+
+    # An explicit, missing path is returned unchanged (caller gets the error).
+    assert resolve_init_state_path("nope/missing.toml") == "nope/missing.toml"

@@ -43,7 +43,14 @@ class GatewayAdapterBase(ABC):
 
 
 class SerialAdapter(GatewayAdapterBase):
-    """Class used to interface with the serial port."""
+    """Raw (non-Mari) serial gateway interface.
+
+    Deprecated: the `--conn` CLI no longer selects this — a device-path
+    connection maps to the Mari `edge` adapter, since bare DotBot apps now
+    emit Mari-shaped frames and the gateway speaks Mari-shaped UART
+    packets (so the edge adapter handles both sandbox and bare). Kept for
+    now as no CLI path constructs it; likely removed in a future cleanup.
+    """
 
     def __init__(
         self,
@@ -159,11 +166,15 @@ class MarilibCloudAdapter(GatewayAdapterBase):
         port: int,
         use_tls: bool,
         network_id: int,
+        username: str | None = None,
+        password: str | None = None,
     ):
         self.host = host
         self.port = port
         self.use_tls = use_tls
         self.network_id = network_id
+        self.username = username
+        self.password = password
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
@@ -189,10 +200,24 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                     queue.put_nowait, Frame(header=event_data.header, packet=packet)
                 )
 
+        # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
+        # threaded down by controller_app) are passed only when set.
+        # NOTE: requires the marilib companion that adds username/password
+        # to MarilibMQTTAdapter; until that lands, set credentials are a
+        # no-op (anonymous connect), which matches today's behaviour.
+        mqtt_kwargs = {}
+        if self.username is not None:
+            mqtt_kwargs["username"] = self.username
+        if self.password is not None:
+            mqtt_kwargs["password"] = self.password
         self.mari = MarilibCloud(
             _on_mari_event,
             MarilibMQTTAdapter(
-                self.host, self.port, use_tls=self.use_tls, is_edge=False
+                self.host,
+                self.port,
+                use_tls=self.use_tls,
+                is_edge=False,
+                **mqtt_kwargs,
             ),
             self.network_id,
         )
@@ -217,6 +242,10 @@ class MarilibCloudAdapter(GatewayAdapterBase):
 class SimulatorAdapterBase(GatewayAdapterBase):
     """Base class used to interface with the simulator."""
 
+    # Assigned in start(); stays None if start() failed before the
+    # simulator was constructed, so close() can no-op instead of raising.
+    simulator = None
+
     @abstractmethod
     def create_simulator(self, _byte_received: callable):
         """Create the simulator instance."""
@@ -239,6 +268,8 @@ class SimulatorAdapterBase(GatewayAdapterBase):
             self.on_frame_received(frame)
 
     def close(self):
+        if self.simulator is None:
+            return
         LOGGER.info("Disconnect from simulator...")
         self.simulator.stop()
 
