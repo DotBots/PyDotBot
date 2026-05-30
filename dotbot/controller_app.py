@@ -113,7 +113,6 @@ def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
     help=f"Gateway address in hex. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
-    "-c",
     "--controller-http-port",
     type=int,
     help=f"Controller HTTP port of the REST API. Defaults to '{CONTROLLER_HTTP_PORT_DEFAULT}'",
