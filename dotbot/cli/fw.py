@@ -1,54 +1,62 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot fw` — bare DotBot firmware build/clean/targets/artifacts.
+"""`dotbot fw` — firmware artifacts: build, fetch, list.
 
-Wraps `make BUILD_TARGET=... BUILD_CONFIG=...` in `repos/DotBot-firmware/`
-using SES (`emBuild`) — see the workspace AGENTS.md "Firmware builds —
-local SES" convention. `dotbot fw build` defaults to incremental
-(passes `BUILD_MODE=-build`) for a fast edit/build loop; pass
-`--rebuild` to force a full rebuild.
+`fw` is the *artifacts* namespace — it produces or downloads firmware
+files. It never touches hardware: flashing a device lives under `fw`'s
+sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
 
-Sandbox apps (TrustZone NS, OTA-flashed via swarmit) live behind a
-separate `dotbot swarm fw` subgroup — different mental model and
-different consumer toolchain. See `dotbot/cli/_sandbox_fw.py`.
+- `build` compiles from source via SES (`emBuild`) in `DotBot-firmware`,
+  leaving the result in the SES `Output/.../Exe/` tree and echoing that
+  path — it does *not* copy into `./artifacts/`. Bare apps by default;
+  `--sandbox` builds the TrustZone NS flavor (`sandbox-<board>`, `.bin`).
+- `artifacts` builds *and* collects the result into `./artifacts/`, with
+  the flat `<app>-<board>.hex` / `<app>-sandbox-<board>.bin` names.
+- `fetch` downloads a published release into `./artifacts/<version>/`.
+- `list` shows what's cached in `./artifacts/`.
 
-Subcommands `new` and `flash` remain mocked (Phase 1 scope is
-build-only): firmware-scaffolding templates and the cabled-flash
-toolchain pickling each warrant their own design pass.
+Only `artifacts` and `fetch` populate `./artifacts/`. The device-flash
+commands then auto-resolve their input, by *different* rules: `dotbot
+device flash <app>` resolves an app image present-in-`./artifacts/` →
+build-from-source → error (it never fetches); `device flash-sandbox-host`
+/ `flash-gateway` resolve a release's system firmware
+present-in-`./artifacts/` → fetch (they never build).
 """
 
-import shutil
 import sys
 from pathlib import Path
 
 import click
 
+from dotbot.cli._artifacts import artifacts_dir, echo_artifact_path
 from dotbot.cli._fw_helpers import (
     BARE_TARGETS,
     CONFIGS,
     DEFAULT_BARE_TARGET,
     DEFAULT_CONFIG,
+    SANDBOX_BOARDS,
     artifact_path,
     list_projects,
     run_make,
     validate_bare_target,
+    validate_sandbox_board,
 )
 
 _NOT_READY = (
     "`dotbot fw {sub}` is not implemented yet.\n"
     "For now: use SEGGER Embedded Studio directly, or invoke the "
-    "Makefile in `repos/DotBot-firmware`."
+    "Makefile in your DotBot-firmware checkout (set `DOTBOT_FIRMWARE_REPO`)."
 )
 
 
 @click.group(
     name="fw",
     help=(
-        "Bare DotBot firmware: build, clean, list targets, collect artifacts. "
-        "For TrustZone sandbox apps that run inside swarmit, see "
-        "`dotbot swarm fw`. Need a Makefile knob not covered by these flags? "
-        "Use `dotbot make --help`."
+        "Firmware artifacts: build (from source via SES), fetch (a release), "
+        "list. Bare apps by default; `--sandbox` for TrustZone NS apps. "
+        "Flashing lives under `dotbot device` (one board) and `dotbot swarm` "
+        "(the fleet). Need a Makefile knob? Use `dotbot make --help`."
     ),
 )
 def cmd():
@@ -63,8 +71,9 @@ def _target_option(f):
         default=DEFAULT_BARE_TARGET,
         show_default=True,
         help=(
-            "BUILD_TARGET (e.g. dotbot-v3, nrf5340dk-app, sailbot-v1). "
-            "See `dotbot fw targets` for the full list."
+            "Board/target (e.g. dotbot-v3, nrf5340dk-app). With --sandbox, "
+            "pass the board name without the `sandbox-` prefix. See "
+            "`dotbot fw targets [--sandbox]`."
         ),
     )(f)
 
@@ -78,7 +87,7 @@ def _project_option(f):
         type=str,
         default=None,
         help=(
-            "Build a single app (e.g. `dotbot`, `dotbot_gateway`). "
+            "Build a single app (e.g. `dotbot`, `spin`). "
             "Default: build every app available for the target."
         ),
     )(f)
@@ -95,10 +104,30 @@ def _config_option(f):
     )(f)
 
 
+def _sandbox_option(f):
+    """Reusable `--sandbox` flavor flag (TrustZone NS apps)."""
+    return click.option(
+        "--sandbox",
+        is_flag=True,
+        default=False,
+        help="Build/list the TrustZone sandbox (NS) flavor — `sandbox-<board>`, emits .bin.",
+    )(f)
+
+
+def _resolve_build_target(target: str, sandbox: bool) -> str:
+    """Validate and return the make BUILD_TARGET for (board, flavor)."""
+    if sandbox:
+        validate_sandbox_board(target)
+        return f"sandbox-{target}"
+    validate_bare_target(target)
+    return target
+
+
 @cmd.command()
 @_target_option
 @_project_option
 @_config_option
+@_sandbox_option
 @click.option(
     "--rebuild",
     is_flag=True,
@@ -112,24 +141,27 @@ def _config_option(f):
     default=False,
     help="Show full SES `-verbose -echo` output.",
 )
-def build(target, project, config, rebuild, verbose):
-    """Build bare DotBot firmware (default target: dotbot-v3)."""
-    validate_bare_target(target)
-    apps_to_build = [project] if project else list_projects(target)
-    if project and project not in list_projects(target):
+def build(target, project, config, sandbox, rebuild, verbose):
+    """Build firmware from source (default target: dotbot-v3)."""
+    build_target = _resolve_build_target(target, sandbox)
+    flavor = "sandbox " if sandbox else ""
+    apps_to_build = [project] if project else list_projects(build_target)
+    if project and project not in list_projects(build_target):
         raise click.ClickException(
             f"App {project!r} is not available for target {target!r}.\n"
-            f"Available: {', '.join(list_projects(target))}"
+            f"Available: {', '.join(list_projects(build_target))}"
         )
     mode = "rebuild" if rebuild else "incremental"
-    what = project or "all apps"
+    what = project or f"all {flavor}apps"
     click.echo(f"Building {what} for {target} ({config}, {mode})...", err=True)
-    elapsed = run_make(target, config, project, rebuild=rebuild, quiet=not verbose)
+    elapsed = run_make(
+        build_target, config, project, rebuild=rebuild, quiet=not verbose
+    )
     click.echo(f"✓ Built {target} in {elapsed:.1f}s", err=True)
     # Echo each produced artifact path on its own stdout line so pipelines
-    # like `dotbot fw build | xargs -n1 nrfjprog --program` work.
+    # like `dotbot fw build | xargs -n1 ...` work.
     for app in apps_to_build:
-        out = artifact_path(target, app, config)
+        out = artifact_path(build_target, app, config)
         if out.is_file():
             click.echo(str(out))
 
@@ -137,19 +169,22 @@ def build(target, project, config, rebuild, verbose):
 @cmd.command()
 @_target_option
 @_config_option
+@_sandbox_option
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def clean(target, config, verbose):
+def clean(target, config, sandbox, verbose):
     """Clean SES build outputs (default target: dotbot-v3)."""
-    validate_bare_target(target)
+    build_target = _resolve_build_target(target, sandbox)
     click.echo(f"Cleaning {target} ({config})...", err=True)
-    elapsed = run_make(target, config, make_targets=["clean"], quiet=not verbose)
+    elapsed = run_make(build_target, config, make_targets=["clean"], quiet=not verbose)
     click.echo(f"✓ Cleaned in {elapsed:.1f}s", err=True)
 
 
 @cmd.command(name="targets")
-def list_targets():
-    """List valid BUILD_TARGETs for `dotbot fw build` (one per line)."""
-    for t in sorted(BARE_TARGETS):
+@_sandbox_option
+def list_targets(sandbox):
+    """List valid targets for `dotbot fw build` (one per line)."""
+    boards = SANDBOX_BOARDS if sandbox else BARE_TARGETS
+    for t in sorted(boards):
         click.echo(t)
 
 
@@ -157,13 +192,13 @@ def list_targets():
 @_target_option
 @_project_option
 @_config_option
+@_sandbox_option
 @click.option(
     "--out",
     "out_dir",
     type=click.Path(file_okay=False, dir_okay=True),
-    default="./artifacts",
-    show_default=True,
-    help="Where to put the collected artifacts (resolved against your CWD).",
+    default=None,
+    help="Where to collect artifacts. Default: ./artifacts/ (your CWD).",
 )
 @click.option(
     "--print-path",
@@ -172,41 +207,76 @@ def list_targets():
     help="Print where the artifact lives without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def artifacts(target, project, config, out_dir, print_path, verbose):
+def artifacts(target, project, config, sandbox, out_dir, print_path, verbose):
     """Build + collect artifacts into ./artifacts/ (default)."""
-    validate_bare_target(target)
+    import shutil
+
+    build_target = _resolve_build_target(target, sandbox)
     if print_path:
         if not project:
             raise click.ClickException(
                 "`--print-path` requires `--app NAME` — there is no canonical "
                 "artifact path without a specific project."
             )
-        click.echo(str(artifact_path(target, project, config)))
+        click.echo(str(artifact_path(build_target, project, config)))
         return
-    out = Path(out_dir).resolve()
+    out = Path(out_dir).resolve() if out_dir else artifacts_dir()
     click.echo(
         f"Building + collecting artifacts for {target} ({config}) → {out}/...",
         err=True,
     )
-    # Build (not `make artifacts` — that target's path formula is buggy
-    # for sandbox and writes to repos/DotBot-firmware/artifacts/ instead
-    # of the user's CWD). Force a full rebuild because bare and sandbox
-    # builds share the SES Output dir per board (`$(BuildTarget)` is the
-    # same in both .emProject files), so incremental can pick up stale
-    # objects from the other flavor and link-error.
-    elapsed = run_make(target, config, project, rebuild=True, quiet=not verbose)
+    # Force a full rebuild: bare and sandbox share the SES Output dir per
+    # board (`$(BuildTarget)`), so incremental can pick up stale objects
+    # from the other flavor and link-error.
+    elapsed = run_make(build_target, config, project, rebuild=True, quiet=not verbose)
     out.mkdir(parents=True, exist_ok=True)
-    apps_to_collect = [project] if project else list_projects(target)
+    apps_to_collect = [project] if project else list_projects(build_target)
     copied = []
     for app in apps_to_collect:
-        src = artifact_path(target, app, config)
+        src = artifact_path(build_target, app, config)
         if src.is_file():
             dst = out / src.name
             shutil.copy2(src, dst)
             copied.append(dst)
+    echo_artifact_path(out, action="collected into")
     click.echo(f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True)
     for p in copied:
         click.echo(str(p))
+
+
+@cmd.command()
+@click.option(
+    "--fw-version", "-f", required=True, help="Release version tag, or 'local'."
+)
+@click.option(
+    "--local-root",
+    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
+    help="Root of a local DotBot-firmware/swarmit build (with --fw-version local).",
+)
+def fetch(fw_version, local_root):
+    """Download a released firmware set into ./artifacts/<version>/."""
+    from dotbot.firmware.flash import fetch_assets
+
+    out = fetch_assets(fw_version, artifacts_dir(), local_root)
+    echo_artifact_path(out, action="fetched into")
+
+
+@cmd.command(name="list")
+def list_artifacts():
+    """List firmware artifacts cached in ./artifacts/."""
+    root = artifacts_dir()
+    echo_artifact_path(root, action="listing")
+    if not root.is_dir():
+        click.echo("(no ./artifacts/ yet — run `dotbot fw build` or `dotbot fw fetch`)")
+        return
+    found = sorted(
+        p for p in root.rglob("*") if p.is_file() and p.suffix in (".hex", ".bin")
+    )
+    if not found:
+        click.echo("(empty)")
+        return
+    for p in found:
+        click.echo(str(p.relative_to(root)))
 
 
 @cmd.command()
@@ -220,20 +290,4 @@ def artifacts(target, project, config, out_dir, print_path, verbose):
 def new(name, template):  # pylint: disable=unused-argument
     """Scaffold a new firmware project (NOT IMPLEMENTED)."""
     click.echo(_NOT_READY.format(sub="new"), err=True)
-    sys.exit(2)
-
-
-@cmd.command()
-@click.argument("image", type=click.Path())
-@click.option("--serial", type=str, help="J-Link / nRF serial number.")
-@click.option(
-    "--component",
-    type=click.Choice(["app", "bootloader", "netcore"]),
-    default="app",
-    show_default=True,
-)
-@click.option("--gateway", is_flag=True, help="Flash a gateway bot.")
-def flash(image, serial, component, gateway):  # pylint: disable=unused-argument
-    """USB-cable flash an image to a single bot (NOT IMPLEMENTED)."""
-    click.echo(_NOT_READY.format(sub="flash"), err=True)
     sys.exit(2)

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot make` — escape hatch to `make` in `repos/DotBot-firmware/`.
+"""`dotbot make` — escape hatch to `make` in your DotBot-firmware checkout.
 
 `dotbot fw build` (and `dotbot swarm fw build`) deliberately model only
 the flags that matter for the daily edit/build loop: TARGET, `--app`,
@@ -12,10 +12,11 @@ shouldn't grow to chase it.
 
 This subcommand is the honest answer: it forwards arbitrary arguments
 to `make` in the firmware repo, with two affordances that bare `cd
-repos/DotBot-firmware && make ...` doesn't give you:
+DotBot-firmware && make ...` doesn't give you:
 
 1. SEGGER_DIR is auto-resolved (env → macOS default → clear error).
-2. The firmware repo is auto-located (workspace walk-up → env var).
+2. The firmware repo is auto-located (`DOTBOT_FIRMWARE_REPO` env →
+   `./DotBot-firmware/`).
 
 Everything else is plain make.
 """
@@ -37,7 +38,7 @@ from dotbot.cli._fw_helpers import resolve_firmware_repo, resolve_segger_dir
         "help_option_names": ["-h", "--help"],
     },
     help=(
-        "Escape hatch: run `make` in repos/DotBot-firmware/ with "
+        "Escape hatch: run `make` in your DotBot-firmware checkout with "
         "workspace-resolved SEGGER_DIR. Forwards all args verbatim. "
         "Use this when `dotbot fw build` / `dotbot swarm fw build` "
         "don't model the Makefile knob you need."

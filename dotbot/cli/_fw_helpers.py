@@ -1,14 +1,15 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared helpers for `dotbot fw` (bare) and `dotbot swarm fw` (sandbox).
+"""Shared helpers for the `dotbot fw` build commands (bare + --sandbox).
 
-Both subcommands shell out to the same `DotBot-firmware` Makefile,
-which discriminates bare vs sandbox by `BUILD_TARGET` prefix
-(`sandbox-*` routes to `apps-sandbox/`, everything else to `apps/`).
-The wrappers in `dotbot/cli/fw.py` (bare) and `dotbot/cli/_sandbox_fw.py`
-(sandbox) reuse the helpers here so target validation, SEGGER_DIR
-resolution, and the make invocation contract stay in one place.
+`dotbot fw build/clean/targets/artifacts` shell out to the same
+`DotBot-firmware` Makefile, which discriminates bare vs sandbox by
+`BUILD_TARGET` prefix (`sandbox-*` routes to `apps-sandbox/`, everything
+else to `apps/`). Sandbox is the `--sandbox` flavor flag on those
+commands (not a separate namespace). The helpers here keep target
+validation, SEGGER_DIR resolution, and the make invocation contract in
+one place.
 
 ## Configuration
 
@@ -134,10 +135,16 @@ def resolve_segger_dir() -> Path:
     if macos:
         return macos
     raise click.ClickException(
-        "SEGGER_DIR is not set and no SEGGER install was found.\n"
-        "Either export SEGGER_DIR, or add to ~/.dotbot/config.toml:\n"
-        "  [fw]\n"
-        '  segger_dir = "/path/to/SEGGER Embedded Studio X.YY"'
+        "Building firmware from source needs SEGGER Embedded Studio (SES), "
+        "which wasn't found.\n"
+        "  • Export SEGGER_DIR, or add to ~/.dotbot/config.toml:\n"
+        "      [fw]\n"
+        '      segger_dir = "/path/to/SEGGER Embedded Studio X.YY"\n'
+        "  • You do NOT need SES to run firmware: `dotbot fw fetch -f <version>` "
+        "downloads pre-built release binaries and `dotbot device flash` flashes "
+        "them.\n"
+        "(A license-free CMake/GCC build path is planned; until then, building "
+        "from source needs SES.)"
     )
 
 
@@ -177,7 +184,7 @@ def validate_bare_target(target: str) -> None:
     if target.startswith("sandbox-"):
         raise click.ClickException(
             f"{target!r} is a sandbox target. Use "
-            f"`dotbot swarm fw build {target[len('sandbox-'):]}` instead."
+            f"`dotbot fw build -t {target[len('sandbox-'):]} --sandbox` instead."
         )
     if target not in BARE_TARGETS:
         hint = suggest_close_match(target, BARE_TARGETS)
@@ -197,7 +204,7 @@ def validate_sandbox_board(board: str) -> None:
         hint = suggest_close_match(board, SANDBOX_BOARDS)
         raise click.ClickException(
             f"Unknown sandbox board {board!r}.{hint}\n"
-            f"Run `dotbot swarm fw targets` to list valid sandbox boards."
+            f"Run `dotbot fw targets --sandbox` to list valid sandbox boards."
         )
 
 

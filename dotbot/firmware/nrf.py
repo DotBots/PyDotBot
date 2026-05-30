@@ -50,6 +50,24 @@ def which_tool(exe_name, user_supplied=None, candidates=None):
     return exe_name
 
 
+_NRFJPROG_CANDIDATES = (
+    "/usr/local/bin/nrfjprog",
+    "/usr/bin/nrfjprog",
+)
+
+
+def nrfjprog_available() -> bool:
+    """True if the `nrfjprog` Nordic command-line tool can be located.
+
+    Checks PATH (both `nrfjprog` and the Windows `nrfjprog.exe`) plus the
+    well-known install locations. Lets the device commands fail fast with
+    a friendly install hint instead of a late, cryptic subprocess error.
+    """
+    if shutil.which("nrfjprog") or shutil.which("nrfjprog.exe"):
+        return True
+    return any(Path(c).exists() for c in _NRFJPROG_CANDIDATES)
+
+
 # ---------- JLink / DAPLink (APM32F103) ----------
 def make_jlink_script(device, speed_khz, hex_path):
     lines = []

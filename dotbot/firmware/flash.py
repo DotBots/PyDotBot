@@ -1,10 +1,19 @@
-#!/usr/bin/env python3
+"""DotBot firmware flashing + provisioning engine (no CLI).
+
+The hardware-facing engine behind `dotbot device` and `dotbot fw fetch`:
+fetch release assets, flash a role's system firmware + config page
+(`flash_role`), flash a single app image (`flash_app_image`), flash the
+debug-chip programmer (`flash_programmer`), and read back provisioning
+state (`read_config_report`). The Click surface lives in
+`dotbot/cli/device.py` and `dotbot/cli/fw.py`; this module is pure
+library code.
+"""
+
 from __future__ import annotations
 
 import json
 import os
 import shutil
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -12,7 +21,7 @@ from pathlib import Path
 
 import click
 
-from .nrf_flash import (
+from .nrf import (
     do_daplink,
     do_daplink_if,
     do_jlink,
@@ -317,33 +326,16 @@ def manifest_matches(
     )
 
 
-@click.group(
-    help="A tool for provisioning DotBot devices and gateways in the context of a SwarmIT-enabled testbed."
-)
-def cli() -> None:
-    pass
+def fetch_assets(
+    fw_version: str, bin_dir: Path, local_root: Path | None = None
+) -> Path:
+    """Download (or symlink, for --fw-version=local) the testbed firmware
+    assets into ``bin_dir/<fw_version>/`` and return that directory.
 
-
-@cli.command("fetch", help="Fetch firmware assets into bin/<fw-version>/.")
-@click.option(
-    "--fw-version",
-    "-f",
-    required=True,
-    help="Firmware version tag or 'local'.",
-)
-@click.option(
-    "--local-root",
-    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    help="Root directory for local builds (used with --fw-version local).",
-)
-@click.option(
-    "--bin-dir",
-    default=DEFAULT_BIN_DIR,
-    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    show_default=True,
-    help="Destination bin directory.",
-)
-def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
+    The single source of truth for "get the system firmware". Used by
+    `dotbot fw fetch` and by the auto-fetch hook in `flash_role`
+    (fetch-if-absent).
+    """
     if fw_version == "local" and not local_root:
         raise click.ClickException("--local-root is required when --fw-version=local.")
     if fw_version != "local" and local_root:
@@ -354,7 +346,7 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
 
     out_dir = resolve_fw_root(bin_dir, fw_version)
     out_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"[INFO] target dir: {out_dir}")
+    click.echo(f"[INFO] target dir: {out_dir.resolve()}")
 
     if fw_version == "local":
         local_root = local_root.expanduser().resolve()
@@ -384,7 +376,7 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
             except OSError:
                 shutil.copy2(src, dest)
                 click.echo(f"[COPY] {dest} <- {src}")
-        return
+        return out_dir
 
     assets = [
         "bootloader-dotbot-v3.hex",
@@ -392,6 +384,10 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         "03app_gateway_app-nrf5340-app.hex",
         "03app_gateway_net-nrf5340-net.hex",
     ]
+    # Optional sample sandbox apps. These are built from DotBot-firmware's
+    # apps-sandbox/ and aren't guaranteed to be on every swarmit release, so
+    # a 404 here is expected, not fatal — the four system images above are
+    # all that provisioning (flash-sandbox-host / flash-gateway) needs.
     example_bins = [
         "dotbot-dotbot-v3.bin",
         "spin-dotbot-v3.bin",
@@ -406,65 +402,39 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
     for name in example_bins:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
         dest = out_dir / name
-        download_file(url, dest)
+        try:
+            download_file(url, dest)
+        except click.ClickException as exc:
+            click.echo(
+                f"[skip] optional sample app {name} not in release "
+                f"{fw_version} ({exc.format_message()})",
+                err=True,
+            )
+    return out_dir
 
 
-@cli.command(
-    "flash",
-    help="Flash firmware + config using versioned bin layout.",
-)
-@click.option("--device", "-d", type=click.Choice(VALID_DEVICES), required=True)
-@click.option("--fw-version", "-f", help="Firmware version tag or 'local'.")
-@click.option(
-    "--config",
-    "-c",
-    "config_path",
-    type=click.Path(path_type=Path, dir_okay=False),
-)
-@click.option("--network-id", "-n", help="16-bit hex network ID, e.g. 0100.")
-@click.option(
-    "--calibration",
-    "-l",
-    "calibration_path",
-    type=click.Path(path_type=Path, dir_okay=False, exists=True),
-    help=(
-        "Optional LH2 calibration file to bake into the swarmit config page "
-        "(1-byte count + N*36 bytes, same format as `swarmit calibrate-lh2`). "
-        "Only valid for --device dotbot-v3."
-    ),
-)
-@click.option(
-    "--sn-starting-digits",
-    "-s",
-    help="Serial number pattern to use for auto-selection, e.g. 77.",
-)
-@click.option(
-    "--bin-dir",
-    default=DEFAULT_BIN_DIR,
-    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    show_default=True,
-    help="Bin directory containing firmware files.",
-)
-@click.option(
-    "--app",
-    "-a",
-    "default_app_name",
-    help=(
-        "Optional app name to flash after provisioning (dotbot-v3 only). "
-        "Looks for <name>-<device>.hex or .bin in the firmware root."
-    ),
-)
-def cmd_flash(
-    device: str,
-    fw_version: str | None,
-    config_path: Path | None,
-    network_id: str | None,
-    calibration_path: Path | None,
-    sn_starting_digits: str | None,
-    bin_dir: Path,
-    default_app_name: str | None,
+def flash_role(
+    role: str,
+    *,
+    net_id: tuple[int, str],
+    fw_version: str,
+    calibration_path: Path | None = None,
+    bin_dir: Path = DEFAULT_BIN_DIR,
+    sn_starting_digits: str | None = None,
+    default_app_name: str | None = None,
 ) -> None:
-    assets = DEVICE_ASSETS[device]
+    """Flash a device's role: system firmware bundle (app+net cores) + config.
+
+    Backend for `dotbot device flash-sandbox-host` (role='dotbot-v3') and
+    `dotbot device flash-gateway` (role='gateway'). Selects the J-Link,
+    flashes both cores, writes the config page (magic + has_net_id +
+    net_id [+ calibration, dotbot-v3 only]), then best-effort reads back
+    net_id/device_id (never raises on readback failure). If the role's
+    images are absent from ``bin_dir/<fw_version>/``, fetches the release
+    first (the "run fetch under the hood" behaviour).
+    """
+    assets = DEVICE_ASSETS[role]
+    net_id_val, net_id_hex = net_id
 
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
@@ -476,9 +446,9 @@ def cmd_flash(
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}")
 
-    if device == "dotbot-v3" and not snr.startswith("77"):
+    if role == "dotbot-v3" and not snr.startswith("77"):
         click.secho(
-            f"[WARN] Serial number {snr} seems to not be a DotBot, but you are trying to flash a {device} firmware to it.",
+            f"[WARN] Serial number {snr} seems to not be a DotBot, but you are trying to flash a {role} firmware to it.",
             fg="yellow",
         )
         if not click.confirm(
@@ -486,9 +456,9 @@ def cmd_flash(
             default=True,
         ):
             raise click.ClickException("Aborting.")
-    elif device == "gateway" and snr.startswith("77"):
+    elif role == "gateway" and snr.startswith("77"):
         click.secho(
-            f"[WARN] Serial number {snr} seems to be a DotBot, but you are trying to flash a {device} firmware to it.",
+            f"[WARN] Serial number {snr} seems to be a DotBot, but you are trying to flash a {role} firmware to it.",
             fg="yellow",
         )
         if not click.confirm(
@@ -496,34 +466,14 @@ def cmd_flash(
             default=True,
         ):
             raise click.ClickException("Aborting.")
-
-    config = {}
-    if config_path:
-        config = load_config(config_path)
-
-    provisioning = config.get("provisioning", {}) if isinstance(config, dict) else {}
-    fw_version = fw_version or provisioning.get("firmware_version")
-    net_raw = network_id or provisioning.get("network_id")
-
-    if not fw_version:
-        raise click.ClickException(
-            "Missing --fw-version (or provisioning.firmware_version in config)."
-        )
-    net_id = normalize_network_id(net_raw)
-    if net_id is None:
-        raise click.ClickException(
-            "Missing --network-id (or provisioning.network_id in config)."
-        )
-
-    net_id_val, net_id_hex = net_id
 
     calibration_data: tuple[int, bytes] | None = None
     calibration_hex: str | None = None
     if calibration_path is not None:
-        if device != "dotbot-v3":
+        if role != "dotbot-v3":
             raise click.ClickException(
-                "--calibration is only valid for --device dotbot-v3 "
-                "(gateway firmware does not have LH2 homographies)."
+                "--calibration is only valid for the sandbox host (dotbot-v3); "
+                "gateway firmware does not have LH2 homographies."
             )
         count, matrices = load_calibration_file(calibration_path)
         calibration_data = (count, matrices)
@@ -531,8 +481,17 @@ def cmd_flash(
         click.echo(f"[INFO] calibration: {count} matrices from {calibration_path}")
 
     fw_root = resolve_fw_root(bin_dir, fw_version)
+    # Auto-fetch: if the role's images aren't already present, pull the
+    # release into bin_dir/<fw_version>/ before flashing (npm-style).
+    pre_app = fw_root / assets["app"]
+    pre_net = fw_root / assets["net"]
+    if fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
+        click.echo(f"[INFO] firmware {fw_version} not found in {fw_root}; fetching...")
+        fetch_assets(fw_version, bin_dir)
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
+
+    device = role
 
     default_app_hex: Path | None = None
     if device == "dotbot-v3":
@@ -591,7 +550,7 @@ def cmd_flash(
         if p.is_symlink():
             # Path.exists() follows symlinks; a dangling symlink reports
             # missing without surfacing the broken target. Re-running
-            # `provision fetch -f <ver> --local-root <path>` typically
+            # `dotbot fw fetch -f <ver> --local-root <path>` typically
             # refreshes these.
             missing.append(f"{p} (broken symlink → {os.readlink(p)})")
         else:
@@ -654,25 +613,17 @@ def cmd_flash(
     )
 
 
-@cli.command("flash-hex", help="Flash explicit app/net hex files.")
-@click.option("--app", "app_hex", type=click.Path(path_type=Path, dir_okay=False))
-@click.option("--net", "net_hex", type=click.Path(path_type=Path, dir_okay=False))
-def cmd_flash_hex(app_hex: Path | None, net_hex: Path | None) -> None:
-    if not app_hex and not net_hex:
-        raise click.ClickException("Provide at least one of --app or --net.")
-    if app_hex:
-        click.echo(f"[TODO] flash app core: {app_hex}")
-    if net_hex:
-        click.echo(f"[TODO] flash net core: {net_hex}")
+def flash_app_image(image: Path, *, sn_starting_digits: str | None = None) -> None:
+    """Flash a single application image to a provisioned device's app core.
 
-
-@cli.command("read-config", help="Read config from the device.")
-@click.option(
-    "--sn-starting-digits",
-    "-s",
-    help="Serial number pattern to use for auto-selection, e.g. 77.",
-)
-def cmd_read_config(sn_starting_digits: str | None) -> None:
+    Backend for `dotbot device flash <app|file>`. Accepts a `.hex`
+    (flashed as-is) or a `.bin` (converted at APP_FLASH_BASE_ADDR first).
+    The device must already carry the sandbox host (run
+    `dotbot device flash-sandbox-host` first); this writes only the NS
+    application slot via a sector-erase one-core program.
+    """
+    if not image.exists():
+        raise click.ClickException(f"Firmware image not found: {image}")
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
     else:
@@ -682,45 +633,45 @@ def cmd_read_config(sn_starting_digits: str | None) -> None:
             "Unable to auto-select J-Link; provide --snr explicitly."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}")
-    try:
-        readback_net_id = read_net_id(snr=snr)
-        readback_device_id = read_device_id(snr=snr)
-    except RuntimeError as exc:
-        click.echo(f"[WARN] readback failed: {exc}", err=True)
-        return
-    click.echo(f"[INFO] readback net_id: {readback_net_id}")
-    last_6_digits_spaced = " ".join(
-        readback_device_id[-6:][i : i + 2]
-        for i in range(0, len(readback_device_id[-6:]), 2)
+    app_hex = (
+        convert_bin_to_hex(image, APP_FLASH_BASE_ADDR)
+        if image.suffix == ".bin"
+        else image
     )
-    click.echo(
-        f"[INFO] readback device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})"
-    )
+    click.echo(f"[INFO] flashing app image: {app_hex}")
+    flash_nrf_one_core(app_hex=app_hex, nrfjprog_opt=None, snr_opt=snr)
+    click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
 
 
-@cli.command(
-    "flash-bringup",
-    help="Flash J-Link OB or DAPLink programmer firmware.",
-)
-@click.option(
-    "--programmer-firmware",
-    "-p",
-    type=click.Choice(VALID_PROGRAMMERS),
-    required=True,
-)
-@click.option(
-    "--files-dir",
-    "-d",
-    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    required=True,
-)
-@click.option(
-    "--probe-uid",
-    help="pyOCD probe UID (use when multiple probes are connected).",
-)
-def cmd_flash_bringup(
-    programmer_firmware: str, files_dir: Path, probe_uid: str | None
+def read_config_report(sn_starting_digits: str | None = None) -> tuple[str, str]:
+    """Read back (net_id, device_id) from a connected device.
+
+    Backend for `dotbot device info`. Returns net_id (or the string
+    "unprovisioned" when the config page has no valid magic) and the
+    64-bit device id. Raises RuntimeError only on a genuine nrfjprog
+    communication failure — a blank/unprovisioned board is not an error.
+    """
+    if sn_starting_digits:
+        snr = pick_matching_jlink_snr(sn_starting_digits)
+    else:
+        snr = pick_last_jlink_snr()
+    if snr is None:
+        raise click.ClickException(
+            "Unable to auto-select J-Link; provide --snr explicitly."
+        )
+    click.echo(f"[INFO] using J-Link with serial number: {snr}", err=True)
+    return read_net_id(snr=snr), read_device_id(snr=snr)
+
+
+def flash_programmer(
+    programmer_firmware: str, files_dir: Path, probe_uid: str | None = None
 ) -> None:
+    """Flash J-Link OB / DAPLink firmware to the on-board debug chip.
+
+    Backend for `dotbot device flash-programmer` (was
+    `provision flash-bringup`). Programs the APM32F103 programmer chip
+    itself — an obscure, one-time-per-board bring-up step.
+    """
     files_dir = files_dir.expanduser().resolve()
     if not files_dir.exists():
         raise click.ClickException(f"files-dir does not exist: {files_dir}")
@@ -782,12 +733,3 @@ def cmd_flash_bringup(
         f"[OK  ] ==== {programmer_firmware} programmer firmware flashed ====",
         fg="green",
     )
-
-
-def main() -> int:
-    cli(standalone_mode=True)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

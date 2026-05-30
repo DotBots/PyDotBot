@@ -52,16 +52,15 @@ Commands:
 Some subcommands need optional runtime deps:
 
 ```
-pip install pydotbot[testbed]    # adds swarmit (testbed orchestration)
-pip install pydotbot[provision]  # adds intelhex (used by `dotbot testbed provision`)
+pip install pydotbot[swarm]      # adds swarmit (fleet orchestration)
 pip install pydotbot[calibrate]  # adds opencv-python + textual (LH2 calibration TUI + exporter)
 pip install pydotbot[all]        # all of the above
 ```
 
-Calibration (`dotbot calibrate-lh2`) and provisioning (`dotbot testbed
-provision`) are vendored in-tree, but their heavyweight runtime deps
-(textual / opencv-python / intelhex) are gated behind extras so the
-core install stays lean.
+Device flashing/provisioning (`dotbot device flash-…`) works out of the
+box — its `intelhex` dep is part of the core install. The LH2 calibration
+TUI/exporter (`dotbot calibrate-lh2`) keeps its heavyweight deps (textual /
+opencv-python) behind the `[calibrate]` extra so the core install stays lean.
 
 ### Starting the controller
 

@@ -45,6 +45,7 @@ EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
     "gateway",
+    "device",
     "swarm",
     "calibrate-lh2",
     "demo",

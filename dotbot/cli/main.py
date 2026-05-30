@@ -46,9 +46,14 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
         "Host-side Mari gateway bridge (UART <-> MQTT).",
     ),
     (
+        "device",
+        "dotbot.cli.device",
+        "One connected device (cable): flash an app/role, read provisioning info.",
+    ),
+    (
         "swarm",
         "dotbot.cli.swarm",
-        "Swarm-orchestration ops: provision, status, start/stop, OTA flash, sandbox fw.",
+        "Fleet ops over the air: status, start/stop, OTA flash, monitor.",
     ),
     (
         "calibrate-lh2",
@@ -59,12 +64,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
     (
         "fw",
         "dotbot.cli.fw",
-        "Bare DotBot firmware: build, clean, list targets, collect artifacts.",
+        "Firmware artifacts: build / fetch / list (bare or --sandbox).",
     ),
     (
         "make",
         "dotbot.cli.make",
-        "Escape hatch: forward args to `make` in repos/DotBot-firmware/.",
+        "Escape hatch: forward args to `make` in your DotBot-firmware checkout.",
     ),
     ("keyboard", "dotbot.cli.keyboard", "Drive a DotBot from the keyboard (live)."),
     ("joystick", "dotbot.cli.joystick", "Drive a DotBot from a joystick (live)."),
