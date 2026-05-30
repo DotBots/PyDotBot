@@ -70,21 +70,10 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/PyDotBot/issues"
 
 [project.scripts]
-# Unified dispatcher.
+# The unified dispatcher is the only console script. Every workflow is a
+# `dotbot <group> <verb>` subcommand — there are no per-command `dotbot-*`
+# binaries.
 dotbot = "dotbot.cli.main:cli"
-
-# Legacy entry points kept as backwards-compat aliases for one release.
-# They will be removed once external scripts have migrated to
-# `dotbot <subcommand>`.
-dotbot-controller = "dotbot.controller_app:main"
-dotbot-keyboard = "dotbot.keyboard:main"
-dotbot-joystick = "dotbot.joystick:main"
-# No backwards-compat aliases for the folded-in tooling
-# (provision, calibration): those console scripts never existed
-# in dotbot-python — the names belonged to the standalone PyPI
-# packages, which keep their own scripts during their own
-# deprecation cycle. Users coming from those packages use
-# `dotbot device flash-…` and `dotbot calibrate-lh2 …`.
 
 [project.optional-dependencies]
 # Optional subcommand backends. Keep the core install lean; opt in to
