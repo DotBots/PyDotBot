@@ -79,9 +79,7 @@ def resolve_app_artifact(
       and use the SES output path.
     - Else, a friendly error telling the user to build or fetch first.
     """
-    name = (
-        f"{app}-sandbox-{board}.bin" if sandbox else f"{app}-{board}.hex"
-    )
+    name = f"{app}-sandbox-{board}.bin" if sandbox else f"{app}-{board}.hex"
     cached = artifacts_dir() / name
     if cached.is_file():
         echo_artifact_path(cached, action="using")

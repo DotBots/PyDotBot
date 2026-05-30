@@ -147,10 +147,10 @@ def build(target, project, config, sandbox, rebuild, verbose):
         )
     mode = "rebuild" if rebuild else "incremental"
     what = project or f"all {flavor}apps"
-    click.echo(
-        f"Building {what} for {target} ({config}, {mode})...", err=True
+    click.echo(f"Building {what} for {target} ({config}, {mode})...", err=True)
+    elapsed = run_make(
+        build_target, config, project, rebuild=rebuild, quiet=not verbose
     )
-    elapsed = run_make(build_target, config, project, rebuild=rebuild, quiet=not verbose)
     click.echo(f"✓ Built {target} in {elapsed:.1f}s", err=True)
     # Echo each produced artifact path on its own stdout line so pipelines
     # like `dotbot fw build | xargs -n1 ...` work.
