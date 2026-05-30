@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Tests for `dotbot gateway` — the CLI surface, not the live bridge.
+"""Tests for `dotbot run gateway` — the CLI surface, not the live bridge.
 
 The bridge itself (`_run_gateway`) needs a real serial gateway, so it's
 mocked here; we check flag parsing and that the command forwards
