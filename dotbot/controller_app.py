@@ -26,6 +26,19 @@ from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
 
+# Old transport/identity config keys replaced by `conn` / `swarm_id`.
+# Present-in-config triggers a warning and is dropped.
+_LEGACY_TOML_KEYS = {
+    "adapter",
+    "mqtt_host",
+    "mqtt_port",
+    "mqtt_use_tls",
+    "network_id",
+    "swarmit_network_id",
+    "port",
+    "baudrate",
+}
+
 
 def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
     """Map `--conn` + `--swarm-id` into internal ControllerSettings fields.
@@ -200,6 +213,17 @@ def main(
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
 
+    # Warn (and drop) legacy transport keys in a config file — they're
+    # superseded by `conn` / `swarm_id` and silently flowing them through
+    # would mask a stale config.
+    legacy = sorted(_LEGACY_TOML_KEYS & set(file_data))
+    if legacy:
+        click.echo(
+            f"warning: ignoring legacy config key(s) {legacy}; "
+            "use `conn` and `swarm_id` instead.",
+            err=True,
+        )
+
     # Translate the single `--conn` connection string into the internal
     # adapter + transport settings. The internal `adapter` enum stays an
     # implementation detail — the CLI never exposes it.
@@ -218,9 +242,10 @@ def main(
         "csv_data_output": csv_data_output,
     }
 
-    # Settings precedence: defaults < config-file (non-conn keys) < conn
-    # translation < other CLI flags.
-    data = {k: v for k, v in file_data.items() if k not in ("conn", "swarm_id")}
+    # Settings precedence: defaults < config-file (non-conn/legacy keys) <
+    # conn translation < other CLI flags.
+    dropped = _LEGACY_TOML_KEYS | {"conn", "swarm_id"}
+    data = {k: v for k, v in file_data.items() if k not in dropped}
     data.update(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
 

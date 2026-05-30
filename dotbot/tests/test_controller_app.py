@@ -102,3 +102,22 @@ log_output = "{log_file}"
     assert settings.mqtt_host == "argus"
     assert settings.log_level == "debug"
     assert settings.log_output == str(log_file)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
+@patch("dotbot.controller_app.Controller")
+def test_main_warns_on_legacy_config_keys(controller, _, tmp_path):
+    """A config file with old transport keys (adapter/mqtt_host/...) gets a
+    warning, and those keys are dropped (conn/swarm_id drive it)."""
+    config_file = tmp_path / "cfg.toml"
+    config_file.write_text(
+        'conn = "simulator"\nadapter = "serial"\nmqtt_host = "stale"\n'
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["--config-path", config_file.as_posix()])
+    assert "legacy config key" in result.output
+    settings = controller.call_args.args[0]
+    # conn=simulator wins; the stale adapter/mqtt_host are ignored.
+    assert settings.adapter == "dotbot-simulator"
+    assert settings.mqtt_host != "stale"
