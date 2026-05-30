@@ -44,6 +44,7 @@ _needs_frontend = pytest.mark.skipif(
 EXPECTED_SUBCOMMANDS = {
     "controller",
     "sim",
+    "gateway",
     "swarm",
     "calibrate-lh2",
     "demo",

@@ -38,7 +38,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, str, str], ...] = (
     (
         "sim",
         "dotbot.cli.sim",
-        "Standalone simulator (equivalent to controller --adapter dotbot-simulator).",
+        "Standalone simulator (equivalent to controller --conn simulator).",
+    ),
+    (
+        "gateway",
+        "dotbot.cli.gateway",
+        "Host-side Mari gateway bridge (UART <-> MQTT).",
     ),
     (
         "swarm",
