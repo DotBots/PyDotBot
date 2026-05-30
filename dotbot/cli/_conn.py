@@ -19,7 +19,8 @@ unit-testable without hardware.
 
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import urlparse
+
+from marilib.communication_adapter import parse_mqtt_url
 
 
 @dataclass(frozen=True)
@@ -59,17 +60,13 @@ def parse_connection(value: str) -> ConnectionSpec:
     if lowered in _SIMULATOR_VALUES:
         return ConnectionSpec(kind="simulator")
 
-    # MQTT — discriminated by the mqtt:// / mqtts:// scheme.
+    # MQTT — discriminated by the mqtt:// / mqtts:// scheme. Delegate the
+    # url → parts mapping to marilib's parse_mqtt_url, the single source of
+    # truth shared with swarmit (so the default-port logic can't drift).
     if lowered.startswith(("mqtt://", "mqtts://")):
-        parsed = urlparse(value)
-        use_tls = parsed.scheme == "mqtts"
-        host = parsed.hostname
-        port = parsed.port
+        host, port, use_tls, _user, _pass = parse_mqtt_url(value)
         if not host:
             raise ConnError(f"no host in MQTT connection string: {value!r}")
-        if port is None:
-            # Sensible MQTT defaults: 8883 for TLS, 1883 for plain.
-            port = 8883 if use_tls else 1883
         return ConnectionSpec(kind="mqtt", host=host, port=port, use_tls=use_tls)
 
     # Anything else that has a `scheme://` we don't recognize is an error,
