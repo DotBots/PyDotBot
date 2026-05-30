@@ -105,7 +105,7 @@ def test_fw_build_rejects_sandbox_target_with_redirect_hint(runner):
     """A `sandbox-` prefixed bare target points at the `--sandbox` flag."""
     result = runner.invoke(fw_cmd, ["build", "--target", "sandbox-dotbot-v3"])
     assert result.exit_code != 0
-    assert "fw build dotbot-v3 --sandbox" in result.output
+    assert "fw build -t dotbot-v3 --sandbox" in result.output
 
 
 def test_fw_build_rejects_unknown_target_with_suggestion(runner):

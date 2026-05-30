@@ -184,7 +184,7 @@ def validate_bare_target(target: str) -> None:
     if target.startswith("sandbox-"):
         raise click.ClickException(
             f"{target!r} is a sandbox target. Use "
-            f"`dotbot fw build {target[len('sandbox-'):]} --sandbox` instead."
+            f"`dotbot fw build -t {target[len('sandbox-'):]} --sandbox` instead."
         )
     if target not in BARE_TARGETS:
         hint = suggest_close_match(target, BARE_TARGETS)

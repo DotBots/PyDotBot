@@ -115,7 +115,7 @@ def resolve_app_artifact(
         f"No artifact for {app!r} ({board}) in {artifacts_dir()} and no "
         "DotBot-firmware source to build from.\n"
         "  • `dotbot fw build "
-        f"{app} --board {board}{' --sandbox' if sandbox else ''}` to build, or\n"
+        f"-a {app} -t {board}{' --sandbox' if sandbox else ''}` to build, or\n"
         "  • `dotbot fw fetch -f <version>` to download a release, then retry, or\n"
         "  • pass an explicit path: `dotbot device flash ./artifacts/<file>`."
     )
