@@ -29,25 +29,40 @@ nRF52833DK/nRF52840DK/nrf5340DK board as gateway), as explained in
 
 ## Usage
 
-A single `dotbot` CLI dispatches to every workflow — controller,
-testbed ops, calibration, demos:
+A single `dotbot` CLI dispatches to every workflow. The top level is four
+namespaces, each one *kind of thing* — firmware artifacts, one connected
+device, the fleet, and host-side processes you launch:
 
 ```
 dotbot --help
 Usage: dotbot [OPTIONS] COMMAND [ARGS]...
 
-  Control DotBots: drive robots, run testbed experiments, calibrate, demos.
+  Control DotBots. Four namespaces: firmware artifacts (fw), one connected
+  device (device), the fleet over the air (swarm), and host-side processes
+  you launch (run).
 
 Commands:
-  controller  Start the controller (adapter + REST/WS + dashboard).
-  sim         Standalone simulator (equivalent to controller --adapter dotbot-simulator).
-  testbed     Testbed-side ops: provision, status, start/stop, OTA flash, monitor.
-  calibrate-lh2 LH2 calibration: capture, apply, export (serial-side / single device).
-  demo        Built-in research demos (qrkey phone bridge, ...).
-  fw          Firmware-developer workflow (scaffold/build/flash). Not yet implemented.
-  keyboard    Drive a DotBot from the keyboard (live).
-  joystick    Drive a DotBot from a joystick (live).
+  fw      Firmware artifacts (no hardware): build / fetch / list / make.
+  device  One connected device (cable/probe): flash an app/role, read info.
+  swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
+  run     Host-side processes: controller, gateway, sim, calibration, demos, teleop.
 ```
+
+Three groups are nouns you *manage*; `run` is the verb — the long-running
+software you launch on your own computer:
+
+```
+dotbot run controller            # control plane + REST/WS + dashboard
+dotbot run gateway               # host-side UART <-> MQTT bridge
+dotbot run sim                   # ≡ run controller --conn simulator (no hardware)
+dotbot run lh2-calibration       # LH2 calibration workflow
+dotbot run demo qr               # built-in research demos
+dotbot run keyboard              # teleop a bot from the keyboard
+```
+
+Note the two "gateway"s the namespaces disambiguate: `dotbot device
+flash-gateway` flashes gateway *firmware* onto a board; `dotbot run
+gateway` runs the host-side bridge *process* that talks to it.
 
 Some subcommands need optional runtime deps:
 
@@ -59,12 +74,13 @@ pip install pydotbot[all]        # all of the above
 
 Device flashing/provisioning (`dotbot device flash-…`) works out of the
 box — its `intelhex` dep is part of the core install. The LH2 calibration
-TUI/exporter (`dotbot calibrate-lh2`) keeps its heavyweight deps (textual /
-opencv-python) behind the `[calibrate]` extra so the core install stays lean.
+TUI/exporter (`dotbot run lh2-calibration`) keeps its heavyweight deps
+(textual / opencv-python) behind the `[calibrate]` extra so the core
+install stays lean.
 
 ### Starting the controller
 
-Run `dotbot controller --help` for the full flag list (adapter, MQTT,
+Run `dotbot run controller --help` for the full flag list (`--conn`, MQTT,
 HTTP port, map size, etc.). By default the controller expects the serial
 port to be `/dev/ttyACM0` on Linux — use `--port` to override (e.g.
 `--port COM3` on Windows).
@@ -78,16 +94,16 @@ Use `--config-path` for a TOML config file:
 
 ```bash
 # Use settings from the config file
-dotbot controller --config-path config_sample.toml
-# Use config file but override port and adapter (simulator example)
-dotbot controller --config-path config_sample.toml -a dotbot-simulator
+dotbot run controller --config-path config_sample.toml
+# Use config file but override the connection (run a simulator instead)
+dotbot run controller --config-path config_sample.toml --conn simulator
 ```
 
 CLI flags override config-file values when both are provided.
 
-The legacy `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick`
-console scripts remain as backwards-compatible aliases for one
-deprecation cycle. Prefer `dotbot <subcommand>` for new code.
+The `dotbot` dispatcher is the only console script — every workflow is a
+`dotbot <group> <verb>` subcommand. There are no per-command `dotbot-*`
+binaries.
 
 **Firefox users:**
 If the webapp is not working, press `Ctrl + L`, type `about:config`,
