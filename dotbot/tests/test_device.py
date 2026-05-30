@@ -63,8 +63,13 @@ def test_flash_gateway_rejects_calibration(runner):
 
 def test_flash_sandbox_host_requires_network_id_and_version(runner):
     """-n and -f are both required for flash-sandbox-host."""
-    assert runner.invoke(device_cmd, ["flash-sandbox-host", "-f", "0.8.0rc1"]).exit_code != 0
-    assert runner.invoke(device_cmd, ["flash-sandbox-host", "-n", "1234"]).exit_code != 0
+    assert (
+        runner.invoke(device_cmd, ["flash-sandbox-host", "-f", "0.8.0rc1"]).exit_code
+        != 0
+    )
+    assert (
+        runner.invoke(device_cmd, ["flash-sandbox-host", "-n", "1234"]).exit_code != 0
+    )
 
 
 def test_flash_gateway_help_disambiguates_from_bridge(runner):
@@ -100,7 +105,9 @@ def test_flash_gateway_calls_engine_with_gateway_role(
         "dotbot.firmware.flash.flash_role",
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
-    result = runner.invoke(device_cmd, ["flash-gateway", "-n", "1234", "-f", "0.8.0rc1"])
+    result = runner.invoke(
+        device_cmd, ["flash-gateway", "-n", "1234", "-f", "0.8.0rc1"]
+    )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
     # gateway carries no calibration.
@@ -176,12 +183,7 @@ def test_looks_like_path(value, is_path):
 
 
 def _read_word_le(ih, addr):
-    return (
-        ih[addr]
-        | (ih[addr + 1] << 8)
-        | (ih[addr + 2] << 16)
-        | (ih[addr + 3] << 24)
-    )
+    return ih[addr] | (ih[addr + 1] << 8) | (ih[addr + 2] << 16) | (ih[addr + 3] << 24)
 
 
 def test_create_config_hex_writes_magic_and_net_id(tmp_path):

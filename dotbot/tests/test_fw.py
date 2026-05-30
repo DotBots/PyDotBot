@@ -336,9 +336,7 @@ def test_sandbox_artifacts_print_path_uses_bin_extension(
     assert out.endswith(expected)
 
 
-def test_sandbox_clean_invokes_make_clean(
-    runner, fake_repo, fake_segger, capture_make
-):
+def test_sandbox_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_make):
     result = runner.invoke(fw_cmd, ["clean", "--target", "dotbot-v3", "--sandbox"])
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
