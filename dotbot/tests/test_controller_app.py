@@ -121,3 +121,63 @@ def test_main_warns_on_legacy_config_keys(controller, _, tmp_path):
     # conn=simulator wins; the stale adapter/mqtt_host are ignored.
     assert settings.adapter == "dotbot-simulator"
     assert settings.mqtt_host != "stale"
+
+
+def test_scaffold_sim_state_creates_example_when_accepted(tmp_path, monkeypatch):
+    """Interactive simulator run with nothing specified + `y` writes an
+    editable `simulator_init_state.toml` in the cwd."""
+    from dotbot import SIMULATOR_INIT_STATE_DEFAULT
+    from dotbot.controller_app import _maybe_scaffold_sim_state
+
+    monkeypatch.chdir(tmp_path)
+    with patch("sys.stdin") as stdin, patch("click.confirm", return_value=True):
+        stdin.isatty.return_value = True
+        _maybe_scaffold_sim_state(None)  # the value main() passes by default
+    created = tmp_path / SIMULATOR_INIT_STATE_DEFAULT
+    assert created.is_file()
+    assert "[[dotbots]]" in created.read_text()
+
+
+def test_scaffold_sim_state_declined_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from dotbot import SIMULATOR_INIT_STATE_DEFAULT
+    from dotbot.controller_app import _maybe_scaffold_sim_state
+
+    with patch("sys.stdin") as stdin, patch("click.confirm", return_value=False):
+        stdin.isatty.return_value = True
+        _maybe_scaffold_sim_state(None)
+    assert not (tmp_path / SIMULATOR_INIT_STATE_DEFAULT).exists()
+
+
+def test_scaffold_sim_state_noninteractive_never_prompts(tmp_path, monkeypatch):
+    """No TTY (CI, a pipe) → no prompt, no file; the packaged world is used."""
+    monkeypatch.chdir(tmp_path)
+    from dotbot import SIMULATOR_INIT_STATE_DEFAULT
+    from dotbot.controller_app import _maybe_scaffold_sim_state
+
+    with patch("sys.stdin") as stdin, patch("click.confirm") as confirm:
+        stdin.isatty.return_value = False
+        _maybe_scaffold_sim_state(None)
+        confirm.assert_not_called()
+    assert not (tmp_path / SIMULATOR_INIT_STATE_DEFAULT).exists()
+
+
+def test_scaffold_sim_state_skips_when_explicit_path_given(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from dotbot.controller_app import _maybe_scaffold_sim_state
+
+    with patch("sys.stdin") as stdin, patch("click.confirm") as confirm:
+        stdin.isatty.return_value = True
+        _maybe_scaffold_sim_state("my_world.toml")  # explicit path → no prompt
+        confirm.assert_not_called()
+
+
+@patch("dotbot_utils.serial_interface.serial.Serial.open")
+@patch("dotbot.controller.Controller.run")
+@patch("dotbot.controller_app._maybe_scaffold_sim_state")
+def test_main_simulator_offers_scaffold_with_none(scaffold, _run, _serial):
+    """Regression: `--conn simulator` with no flag/config must reach the
+    scaffold with None (the option default), not a sentinel string."""
+    runner = CliRunner()
+    runner.invoke(main, ["--conn", "simulator"])
+    scaffold.assert_called_once_with(None)

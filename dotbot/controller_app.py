@@ -9,7 +9,9 @@
 
 import asyncio
 import os
+import shutil
 import sys
+from pathlib import Path
 
 import click
 import serial
@@ -88,6 +90,46 @@ def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
         return settings
     # simulator
     return {"adapter": "dotbot-simulator" if sim_is_dotbot else "sailbot-simulator"}
+
+
+def _maybe_scaffold_sim_state(explicit_init_state):
+    """Offer to drop an editable example world in the current directory.
+
+    `explicit_init_state` is the path set via `--simulator-init-state` or
+    the config file, or None when unspecified (the default world). Fires
+    only when nothing was specified and no `simulator_init_state.toml` is
+    here. An interactive run gets a [Y/n] prompt; declining — or a
+    non-interactive run (CI, a pipe) — leaves the cwd untouched and the
+    simulator falls back to the packaged world, so it always starts.
+    Writing the file lets the operator edit the simulated swarm
+    (positions, count, Mari vs default mode).
+    """
+    if explicit_init_state is not None:
+        return  # a path was set via --simulator-init-state or config
+    if Path(SIMULATOR_INIT_STATE_DEFAULT).is_file():
+        return  # a cwd file already exists; it'll be used as-is
+    if not sys.stdin.isatty():
+        return  # non-interactive: silently use the packaged default
+
+    target = Path.cwd() / SIMULATOR_INIT_STATE_DEFAULT
+    if not click.confirm(
+        f"No {SIMULATOR_INIT_STATE_DEFAULT} in this directory. "
+        "Create an editable example here?",
+        default=True,
+    ):
+        return
+
+    from dotbot.dotbot_simulator import packaged_init_state_path
+
+    try:
+        shutil.copy(packaged_init_state_path(), target)
+    except OSError as exc:
+        click.echo(
+            f"Could not write {target}: {exc}; using the built-in world.",
+            err=True,
+        )
+        return
+    click.echo(f"Created {target} — edit it to customize the simulated swarm.")
 
 
 @click.command()
@@ -228,6 +270,15 @@ def main(
     # adapter + transport settings. The internal `adapter` enum stays an
     # implementation detail — the CLI never exposes it.
     conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
+
+    # For a simulator connection with no init-state set (CLI default is
+    # None, so fold in any config value), offer to scaffold an editable
+    # world file in the cwd. resolve_init_state_path then picks up the
+    # freshly-written file (or the packaged world if declined/non-tty).
+    if conn_settings.get("adapter", "").endswith("simulator"):
+        _maybe_scaffold_sim_state(
+            simulator_init_state or file_data.get("simulator_init_state")
+        )
 
     cli_args = {
         "gw_address": gw_address,
