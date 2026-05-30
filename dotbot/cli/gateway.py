@@ -9,9 +9,12 @@ HDLC frames to/from an MQTT broker, so a `dotbot controller --conn
 mqtts://…` can reach the swarm from anywhere.
 
 Thin re-mount of marilib's `mari-edge`: wraps a `MarilibEdge` with a
-serial adapter and (optionally) an MQTT adapter. With no `--mqtt-url`
-it runs in **local-stdout mode** — received frames print to stdout, so
-a freshly-flashed gateway can be sanity-checked with zero MQTT infra.
+serial adapter and (optionally) an MQTT adapter. Without `--mqtt-url`
+it just prints received frames (handy to sanity-check a freshly-flashed
+gateway with zero MQTT infra); with `--mqtt-url` it bridges to the
+broker. Frame printing is on by default in both modes (`--no-print` to
+silence). Metrics probing is off (`metrics_probe_period=0`), so the
+print-only mode is passive — it doesn't inject traffic onto the link.
 
 Phase 1 is a raw bridge (mari frames + raw mari topics). DotBot-semantic
 MQTT topics are a later phase, tracked in the controller-CLI-redesign
@@ -24,7 +27,7 @@ import time
 import click
 
 
-def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
+def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gateway
     """Construct a MarilibEdge bridge and pump it until interrupted.
 
     Imports marilib lazily so `dotbot gateway --help` is cheap and the
@@ -36,15 +39,12 @@ def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
     from marilib.serial_uart import get_default_port
 
     port = port or get_default_port()
-    stdout_mode = mqtt_url is None
 
     def on_event(event, event_data):
-        # In local-stdout mode, surface received data frames so a fresh
-        # gateway can be eyeballed without a broker.
-        if stdout_mode and event == EdgeEvent.NODE_DATA:
-            src = getattr(event_data.header, "source", 0)
-            payload = getattr(event_data, "payload", b"")
-            click.echo(f"<- {src:016x}: {bytes(payload).hex()}")
+        if do_print and event == EdgeEvent.NODE_DATA:
+            click.echo(
+                f"<- {event_data.header.source:016x}: {event_data.payload.hex()}"
+            )
 
     mqtt_interface = None
     if mqtt_url is not None:
@@ -57,12 +57,15 @@ def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
             password=os.environ.get("DOTBOT_MQTT_PASS"),
         )
 
+    # metrics_probe_period=0 → MarilibEdge starts no metrics thread, so a
+    # print-only run stays passive (no probe traffic on the serial link).
     mari = MarilibEdge(
         on_event,
         serial_interface=SerialAdapter(port),
         mqtt_interface=mqtt_interface,
+        metrics_probe_period=0,
     )
-    where = mqtt_url if mqtt_url else "local-stdout"
+    where = mqtt_url if mqtt_url else "(no broker — print only)"
     click.echo(f"dotbot gateway: {port} <-> {where}", err=True)
     try:
         while True:
@@ -71,18 +74,16 @@ def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
     except KeyboardInterrupt:
         pass
     finally:
-        try:
-            mari.close()
-        except Exception:  # pylint: disable=broad-except
-            pass
+        mari.close()
 
 
 @click.command(
     name="gateway",
     help=(
         "Host-side Mari gateway bridge (UART <-> MQTT). Runs wherever the "
-        "gateway firmware is plugged in. Without --mqtt-url, prints received "
-        "frames to stdout (local debug mode)."
+        "gateway firmware is plugged in. With --mqtt-url it bridges to the "
+        "broker; without it, it just prints received frames. Printing is on "
+        "by default (--no-print to silence)."
     ),
 )
 @click.option(
@@ -97,11 +98,14 @@ def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
     "--mqtt-url",
     type=str,
     default=None,
-    help=(
-        "MQTT broker to bridge to (`mqtts://host:port`). Absent → "
-        "local-stdout debug mode."
-    ),
+    help="MQTT broker to bridge to (`mqtts://host:port`). Absent → print-only.",
 )
-def cmd(port, mqtt_url):
+@click.option(
+    "--print/--no-print",
+    "do_print",
+    default=True,
+    help="Print received frames to stdout (default: on).",
+)
+def cmd(port, mqtt_url, do_print):
     """Run the gateway bridge."""
-    _run_gateway(port, mqtt_url)
+    _run_gateway(port, mqtt_url, do_print)
