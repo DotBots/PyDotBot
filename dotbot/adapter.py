@@ -159,8 +159,8 @@ class MarilibCloudAdapter(GatewayAdapterBase):
         port: int,
         use_tls: bool,
         network_id: int,
-        username: str = None,
-        password: str = None,
+        username: str | None = None,
+        password: str | None = None,
     ):
         self.host = host
         self.port = port
