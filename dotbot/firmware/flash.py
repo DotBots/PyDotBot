@@ -486,9 +486,7 @@ def flash_role(
     pre_app = fw_root / assets["app"]
     pre_net = fw_root / assets["net"]
     if fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
-        click.echo(
-            f"[INFO] firmware {fw_version} not found in {fw_root}; fetching..."
-        )
+        click.echo(f"[INFO] firmware {fw_version} not found in {fw_root}; fetching...")
         fetch_assets(fw_version, bin_dir)
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
