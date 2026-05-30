@@ -159,11 +159,15 @@ class MarilibCloudAdapter(GatewayAdapterBase):
         port: int,
         use_tls: bool,
         network_id: int,
+        username: str = None,
+        password: str = None,
     ):
         self.host = host
         self.port = port
         self.use_tls = use_tls
         self.network_id = network_id
+        self.username = username
+        self.password = password
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
@@ -189,10 +193,24 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                     queue.put_nowait, Frame(header=event_data.header, packet=packet)
                 )
 
+        # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
+        # threaded down by controller_app) are passed only when set.
+        # NOTE: requires the marilib companion that adds username/password
+        # to MarilibMQTTAdapter; until that lands, set credentials are a
+        # no-op (anonymous connect), which matches today's behaviour.
+        mqtt_kwargs = {}
+        if self.username is not None:
+            mqtt_kwargs["username"] = self.username
+        if self.password is not None:
+            mqtt_kwargs["password"] = self.password
         self.mari = MarilibCloud(
             _on_mari_event,
             MarilibMQTTAdapter(
-                self.host, self.port, use_tls=self.use_tls, is_edge=False
+                self.host,
+                self.port,
+                use_tls=self.use_tls,
+                is_edge=False,
+                **mqtt_kwargs,
             ),
             self.network_id,
         )
