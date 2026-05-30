@@ -48,11 +48,14 @@ def _run_gateway(port, mqtt_url):  # pragma: no cover - needs a real gateway
 
     mqtt_interface = None
     if mqtt_url is not None:
-        # Broker credentials come from the environment (see the controller
-        # surface). They take effect once the marilib companion adds
-        # username/password to MQTTAdapter; until then anonymous connect.
-        mqtt_interface = MQTTAdapter.from_url(mqtt_url, is_edge=True)
-        _ = (os.environ.get("DOTBOT_MQTT_USER"), os.environ.get("DOTBOT_MQTT_PASS"))
+        # Broker credentials come from the environment (DOTBOT_MQTT_USER /
+        # DOTBOT_MQTT_PASS); they override any user:pass in the URL.
+        mqtt_interface = MQTTAdapter.from_url(
+            mqtt_url,
+            is_edge=True,
+            username=os.environ.get("DOTBOT_MQTT_USER"),
+            password=os.environ.get("DOTBOT_MQTT_PASS"),
+        )
 
     mari = MarilibEdge(
         on_event,
