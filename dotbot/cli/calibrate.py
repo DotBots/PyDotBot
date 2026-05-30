@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot calibrate-lh2` — LH2 calibration (serial side).
+"""`dotbot run lh2-calibration` — LH2 calibration (serial side).
 
 Native subgroup mounting the vendored `dotbot.calibration` package.
 Serial-attached, single-device operations. OTA / swarm-wide
-counterparts will live under `dotbot testbed calibrate-lh2`.
+counterparts will live under `dotbot swarm calibrate-lh2`.
 
 Subcommands:
 
@@ -31,8 +31,8 @@ def _run_tui(ctx: click.Context) -> None:
         from dotbot.calibration.cli import main as _tui_main
     except ImportError as exc:
         click.echo(
-            "`dotbot calibrate-lh2 collect` needs the calibration runtime "
-            "deps (opencv-python, textual).\n"
+            "`dotbot run lh2-calibration collect` needs the calibration "
+            "runtime deps (opencv-python, textual).\n"
             "Install with:  pip install dotbot[calibrate]",
             err=True,
         )
@@ -46,7 +46,7 @@ def _run_tui(ctx: click.Context) -> None:
 
 
 @click.group(
-    name="calibrate-lh2",
+    name="lh2-calibration",
     help="LH2 calibration: capture, apply, export (serial-side / single device).",
     invoke_without_command=True,
 )
@@ -54,9 +54,9 @@ def _run_tui(ctx: click.Context) -> None:
 def cmd(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
-    # Bare `dotbot calibrate-lh2` with no subcommand defaults to collect,
-    # matching the pre-rename `dotbot calibrate` behavior so muscle
-    # memory still works.
+    # Bare `dotbot run lh2-calibration` with no subcommand defaults to
+    # collect — the most common action — so it works without recalling
+    # the subcommand name.
     _run_tui(ctx)
 
 
@@ -81,7 +81,7 @@ def _collect(ctx: click.Context) -> None:
         "Write the saved calibration as a C header to PATH. Today the "
         "consumer is the swarmit secure bootloader (#includes the file "
         "at compile time). OTA / runtime equivalents will live under "
-        "`dotbot testbed calibrate-lh2 apply`."
+        "`dotbot swarm calibrate-lh2 apply`."
     ),
 )
 @click.argument(
@@ -94,8 +94,8 @@ def _apply(path: str) -> None:
         from dotbot.calibration.lighthouse2 import LighthouseManager
     except ImportError as exc:
         click.echo(
-            "`dotbot calibrate-lh2 apply` needs the calibration runtime "
-            "deps.\nInstall with:  pip install dotbot[calibrate]",
+            "`dotbot run lh2-calibration apply` needs the calibration "
+            "runtime deps.\nInstall with:  pip install dotbot[calibrate]",
             err=True,
         )
         click.echo(f"(import error was: {exc})", err=True)
@@ -107,7 +107,7 @@ def _apply(path: str) -> None:
         click.echo(
             "No saved calibration found at "
             f"{lh2_manager.calibration_output_path}.\n"
-            "Run `dotbot calibrate-lh2 collect` first.",
+            "Run `dotbot run lh2-calibration collect` first.",
             err=True,
         )
         sys.exit(1)

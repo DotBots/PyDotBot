@@ -10,9 +10,8 @@ provisioning state. The fleet/OTA equivalents live under `dotbot swarm`;
 firmware ARTIFACT build/fetch/list live under `dotbot fw`.
 
 NOTE: `dotbot device flash-gateway` FLASHES gateway firmware onto a board
-over the cable. The top-level `dotbot gateway` is something else entirely
-— the host-side UART<->MQTT bridge process. Different verbs, different
-objects.
+over the cable. `dotbot run gateway` is something else entirely — the
+host-side UART<->MQTT bridge process. Different verbs, different objects.
 """
 
 from pathlib import Path
@@ -144,7 +143,7 @@ def flash_gateway(network_id, fw_version, sn_starting_digits):
 
     Flashes the Mari gateway firmware (both cores) + writes the network
     identity. Auto-fetches the release if absent. (To run the host-side
-    UART<->MQTT bridge instead, use the top-level `dotbot gateway`.)
+    UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id
 

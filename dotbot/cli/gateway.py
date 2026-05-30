@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot gateway` — host-side Mari gateway bridge.
+"""`dotbot run gateway` — host-side Mari gateway bridge.
 
 Runs on whatever computer the gateway firmware is plugged into (a
 laptop for a starter setup, a Pi for a permanent install). Bridges UART
-HDLC frames to/from an MQTT broker, so a `dotbot controller --conn
+HDLC frames to/from an MQTT broker, so a `dotbot run controller --conn
 mqtts://…` can reach the swarm from anywhere.
 
 Thin re-mount of marilib's `mari-edge`: wraps a `MarilibEdge` with a
@@ -30,7 +30,7 @@ import click
 def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gateway
     """Construct a MarilibEdge bridge and pump it until interrupted.
 
-    Imports marilib lazily so `dotbot gateway --help` is cheap and the
+    Imports marilib lazily so `dotbot run gateway --help` is cheap and the
     command is importable without a serial port present.
     """
     from marilib.communication_adapter import MQTTAdapter, SerialAdapter
@@ -66,7 +66,7 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
         metrics_probe_period=0,
     )
     where = mqtt_url if mqtt_url else "(no broker — print only)"
-    click.echo(f"dotbot gateway: {port} <-> {where}", err=True)
+    click.echo(f"dotbot run gateway: {port} <-> {where}", err=True)
     try:
         while True:
             mari.update()

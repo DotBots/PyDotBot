@@ -755,7 +755,7 @@ def resolve_init_state_path(path: str) -> str:
     ``simulator_init_state.toml`` in the working directory — is used as
     given. When the default is requested and no such file is present,
     fall back to the world shipped inside the package, so the no-hardware
-    path (``dotbot sim`` / ``--conn simulator``) works from any directory
+    path (``dotbot run sim`` / ``--conn simulator``) works from any directory
     and from a pip-installed wheel. An explicit path that does not exist
     is returned unchanged so the caller gets a clear FileNotFoundError.
     """

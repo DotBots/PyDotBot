@@ -3,7 +3,7 @@
 
 """Parse a `--conn` connection string into a typed result.
 
-`dotbot controller --conn CONNECTION` takes one discriminated
+`dotbot run controller --conn CONNECTION` takes one discriminated
 connection string whose *form* selects the kind of connection - the
 `git remote` / `docker -H` / MAVSDK `add_any_connection()` pattern:
 

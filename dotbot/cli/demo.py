@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot demo` — discoverable launcher for built-in research demos.
+"""`dotbot run demo` — discoverable launcher for built-in research demos.
 
 Demos live in `dotbot/examples/`. Each demo consumes the controller's
 REST/WS API and runs as a separate process — the controller stays
@@ -34,7 +34,7 @@ def cmd(ctx, list_demos):
             short = (sub.help or "").splitlines()[0] if sub.help else ""
             click.echo(f"  {name:<12} {short}")
         click.echo("")
-        click.echo("Run one with: dotbot demo <name> [OPTIONS]")
+        click.echo("Run one with: dotbot run demo <name> [OPTIONS]")
         ctx.exit(0)
 
 
