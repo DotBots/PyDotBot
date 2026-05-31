@@ -22,8 +22,8 @@ sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
 Only `artifacts` and `fetch` populate `./artifacts/`. The device-flash
 commands then auto-resolve their input, by *different* rules: `dotbot
 device flash <app>` resolves an app image present-in-`./artifacts/` →
-build-from-source → error (it never fetches); `device flash-sandbox-host`
-/ `flash-gateway` resolve a release's system firmware
+build-from-source → error (it never fetches); `device flash-swarmit-sandbox`
+/ `flash-mari-gateway` resolve a release's system firmware
 present-in-`./artifacts/` → fetch (they never build).
 """
 

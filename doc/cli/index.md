@@ -47,7 +47,7 @@ A few signposts so the namespaces don't blur together:
 - **Bare vs. sandbox artifacts.** `fw` builds bare apps (`.hex`) by default;
   `fw artifacts --sandbox` builds TrustZone apps (`.bin`) - the payload `swarm`
   flashes over the air.
-- **Same word, different object.** `dotbot device flash-gateway` flashes
+- **Same word, different object.** `dotbot device flash-mari-gateway` flashes
   *firmware onto a board*; `dotbot run gateway` starts the *host bridge
   process*. They are not the same thing.
 - **A DotBot v3 has an on-board programmer.** Normal flashing over USB-C needs

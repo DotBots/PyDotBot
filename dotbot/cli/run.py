@@ -12,7 +12,7 @@ as a top-level `run` (docker, cargo, ros2), so the asymmetry is correct,
 not an inconsistency.
 
 Note the two "gateway"s the namespaces disambiguate:
-`dotbot device flash-gateway` flashes gateway firmware onto a board;
+`dotbot device flash-mari-gateway` flashes gateway firmware onto a board;
 `dotbot run gateway` runs the host-side UART<->MQTT bridge process that
 talks to that board. Different objects, named by their namespace.
 

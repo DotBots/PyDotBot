@@ -11,7 +11,7 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 ## The flow
 
 ```text
-1. provision (once)   device flash-gateway + device flash-sandbox-host
+1. provision (once)   device flash-mari-gateway + device flash-swarmit-sandbox
 2. host bridge        run gateway          (UART <-> MQTT)
 3. build the payload  fw artifacts --sandbox  (or fw fetch)
 4. operate            swarm -c config  flash | start | stop | status | monitor
@@ -25,8 +25,8 @@ USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
-dotbot device flash-gateway      -n 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
-dotbot device flash-sandbox-host -n 1234 -s 77 -f 0.8.0rc1   # each bot -> sandbox host
+dotbot device flash-mari-gateway      -n 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
+dotbot device flash-swarmit-sandbox -n 1234 -s 77 -f 0.8.0rc1   # each bot -> sandbox host
 ```
 
 ## 2. Start the host bridge
@@ -37,7 +37,7 @@ The gateway board needs a host process bridging its UART to MQTT:
 dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem...
 ```
 
-`run gateway` is the host *process*; `device flash-gateway` flashed the
+`run gateway` is the host *process*; `device flash-mari-gateway` flashed the
 *firmware* - same word, different objects.
 
 ## 3. Build the OTA payload

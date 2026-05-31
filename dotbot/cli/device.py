@@ -9,7 +9,7 @@ page + network identity), flash the on-board programmer chip, and read
 provisioning state. The fleet/OTA equivalents live under `dotbot swarm`;
 firmware ARTIFACT build/fetch/list live under `dotbot fw`.
 
-NOTE: `dotbot device flash-gateway` FLASHES gateway firmware onto a board
+NOTE: `dotbot device flash-mari-gateway` FLASHES gateway firmware onto a board
 over the cable. `dotbot run gateway` is something else entirely — the
 host-side UART<->MQTT bridge process. Different verbs, different objects.
 """
@@ -102,7 +102,7 @@ def _sn_option(f):
     )(f)
 
 
-@cmd.command(name="flash-sandbox-host")
+@cmd.command(name="flash-swarmit-sandbox")
 @click.option(
     "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
 )
@@ -115,7 +115,7 @@ def _sn_option(f):
 )
 @_fw_version_option
 @_sn_option
-def flash_sandbox_host(network_id, calibration_path, fw_version, sn_starting_digits):
+def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_digits):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
@@ -136,13 +136,13 @@ def flash_sandbox_host(network_id, calibration_path, fw_version, sn_starting_dig
     )
 
 
-@cmd.command(name="flash-gateway")
+@cmd.command(name="flash-mari-gateway")
 @click.option(
     "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
 )
 @_fw_version_option
 @_sn_option
-def flash_gateway(network_id, fw_version, sn_starting_digits):
+def flash_mari_gateway(network_id, fw_version, sn_starting_digits):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -208,8 +208,8 @@ def info(sn_starting_digits):
     if net_id == "unprovisioned":
         click.echo("config:    not provisioned (no swarm config on this device)")
         click.echo(
-            "  → run `dotbot device flash-sandbox-host` (robot) or "
-            "`flash-gateway` (gateway) first."
+            "  → run `dotbot device flash-swarmit-sandbox` (robot) or "
+            "`flash-mari-gateway` (gateway) first."
         )
     else:
         click.echo("config:    provisioned")

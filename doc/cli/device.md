@@ -11,7 +11,7 @@ To put firmware on the **whole fleet over the air**, use [`swarm`](swarm.md)
 instead. To build the `.hex` first, see [`fw`](fw.md).
 
 ```{tip}
-**`device flash-gateway` flashes _firmware onto a board_.** The host-side
+**`device flash-mari-gateway` flashes _firmware onto a board_.** The host-side
 UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md).
 ```
 
@@ -20,8 +20,8 @@ UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md)
 | Command | What it does |
 |---|---|
 | `flash <app\|file>` | Whole-chip program one app (or a `.hex`/`.bin`) onto the board |
-| `flash-gateway` | Turn an nRF5340-DK into the swarm gateway (both cores + network id) |
-| `flash-sandbox-host` | Turn a DotBot v3 into a swarm sandbox host (bootloader + netcore + id) |
+| `flash-mari-gateway` | Turn an nRF5340-DK into the swarm gateway (both cores + network id) |
+| `flash-swarmit-sandbox` | Turn a DotBot v3 into a swarm sandbox host (bootloader + netcore + id) |
 | `flash-programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink) - needs a J-Link |
 | `info` | Read a board's provisioning state (chip id + network id) |
 
@@ -75,26 +75,26 @@ dotbot device flash nrf5340_net -b nrf5340dk-net -s 10
 
 ## Flash a role
 
-`flash-gateway` and `flash-sandbox-host` flash a **complete system firmware**
+`flash-mari-gateway` and `flash-swarmit-sandbox` flash a **complete system firmware**
 (both cores) and write the **network identity** in one shot. They auto-fetch the
 named release into `./artifacts/` if it isn't cached.
 
 ```bash
 # nRF5340-DK → swarm gateway
-dotbot device flash-gateway -n 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway -n 0100 -f 0.8.0rc1 -s 10
 
 # DotBot v3 → swarm sandbox host (the firmware that runs OTA apps)
-dotbot device flash-sandbox-host -n 0100 -f 0.8.0rc1 -s 77
+dotbot device flash-swarmit-sandbox -n 0100 -f 0.8.0rc1 -s 77
 ```
 
-| Flag | `flash-gateway` | `flash-sandbox-host` |
+| Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
 |---|---|---|
 | `-n, --network-id` | 16-bit hex net id (required) | 16-bit hex net id (required) |
 | `-f, --fw-version` | release to flash (required) | release to flash (required) |
 | `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
 | `-l, --calibration` | - | optional LH2 calibration file to bake in |
 
-A board flashed with `flash-sandbox-host` is what [`swarm flash`](swarm.md)
+A board flashed with `flash-swarmit-sandbox` is what [`swarm flash`](swarm.md)
 targets to run sandboxed apps over the air.
 
 ## Inspect a board

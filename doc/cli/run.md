@@ -50,8 +50,8 @@ dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem1234
 dotbot run gateway                # autodetect port, print-only (no broker)
 ```
 
-> **`run gateway` ≠ `device flash-gateway`.** This is the *host process* that
-> bridges a gateway board to MQTT. [`device flash-gateway`](device.md) is the
+> **`run gateway` ≠ `device flash-mari-gateway`.** This is the *host process* that
+> bridges a gateway board to MQTT. [`device flash-mari-gateway`](device.md) is the
 > *firmware* you flash onto that board, once. Same word, different objects.
 
 ## `simulator` - standalone simulator

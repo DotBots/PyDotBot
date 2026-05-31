@@ -34,52 +34,54 @@ def test_device_help_lists_commands(runner):
     assert result.exit_code == 0
     for sub in (
         "flash",
-        "flash-sandbox-host",
-        "flash-gateway",
+        "flash-swarmit-sandbox",
+        "flash-mari-gateway",
         "flash-programmer",
         "info",
     ):
         assert sub in result.output
 
 
-def test_flash_sandbox_host_accepts_calibration(runner):
-    """flash-sandbox-host has --calibration (LH2 lives on dotbot-v3)."""
-    result = runner.invoke(device_cmd, ["flash-sandbox-host", "--help"])
+def test_flash_swarmit_sandbox_accepts_calibration(runner):
+    """flash-swarmit-sandbox has --calibration (LH2 lives on dotbot-v3)."""
+    result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "--help"])
     assert result.exit_code == 0
     assert "--calibration" in result.output
 
 
-def test_flash_gateway_rejects_calibration(runner):
-    """flash-gateway has no --calibration option (gateway has no LH2)."""
-    result = runner.invoke(device_cmd, ["flash-gateway", "--help"])
+def test_flash_mari_gateway_rejects_calibration(runner):
+    """flash-mari-gateway has no --calibration option (gateway has no LH2)."""
+    result = runner.invoke(device_cmd, ["flash-mari-gateway", "--help"])
     assert result.exit_code == 0
     assert "--calibration" not in result.output
     # Passing it is an unknown-option error.
     bad = runner.invoke(
-        device_cmd, ["flash-gateway", "-n", "1234", "-f", "0.8.0rc1", "-l", "x.out"]
+        device_cmd,
+        ["flash-mari-gateway", "-n", "1234", "-f", "0.8.0rc1", "-l", "x.out"],
     )
     assert bad.exit_code != 0
 
 
-def test_flash_sandbox_host_requires_network_id_and_version(runner):
-    """-n and -f are both required for flash-sandbox-host."""
+def test_flash_swarmit_sandbox_requires_network_id_and_version(runner):
+    """-n and -f are both required for flash-swarmit-sandbox."""
     assert (
-        runner.invoke(device_cmd, ["flash-sandbox-host", "-f", "0.8.0rc1"]).exit_code
+        runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-f", "0.8.0rc1"]).exit_code
         != 0
     )
     assert (
-        runner.invoke(device_cmd, ["flash-sandbox-host", "-n", "1234"]).exit_code != 0
+        runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-n", "1234"]).exit_code
+        != 0
     )
 
 
-def test_flash_gateway_help_disambiguates_from_bridge(runner):
-    """`device flash-gateway` help points away from the `dotbot run gateway` bridge."""
-    result = runner.invoke(device_cmd, ["flash-gateway", "--help"])
+def test_flash_mari_gateway_help_disambiguates_from_bridge(runner):
+    """`device flash-mari-gateway` help points away from the `dotbot run gateway` bridge."""
+    result = runner.invoke(device_cmd, ["flash-mari-gateway", "--help"])
     assert result.exit_code == 0
     assert "dotbot run gateway" in result.output  # the "use the bridge instead" note
 
 
-def test_flash_sandbox_host_calls_engine(runner, _no_nrfjprog_gate, monkeypatch):
+def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypatch):
     calls = {}
 
     def fake_flash_role(role, **kw):
@@ -88,7 +90,8 @@ def test_flash_sandbox_host_calls_engine(runner, _no_nrfjprog_gate, monkeypatch)
 
     monkeypatch.setattr("dotbot.firmware.flash.flash_role", fake_flash_role)
     result = runner.invoke(
-        device_cmd, ["flash-sandbox-host", "-n", "0100", "-f", "0.8.0rc1", "-s", "77"]
+        device_cmd,
+        ["flash-swarmit-sandbox", "-n", "0100", "-f", "0.8.0rc1", "-s", "77"],
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "dotbot-v3"
@@ -97,7 +100,7 @@ def test_flash_sandbox_host_calls_engine(runner, _no_nrfjprog_gate, monkeypatch)
     assert calls["kw"]["sn_starting_digits"] == "77"
 
 
-def test_flash_gateway_calls_engine_with_gateway_role(
+def test_flash_mari_gateway_calls_engine_with_gateway_role(
     runner, _no_nrfjprog_gate, monkeypatch
 ):
     calls = {}
@@ -106,7 +109,7 @@ def test_flash_gateway_calls_engine_with_gateway_role(
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
     result = runner.invoke(
-        device_cmd, ["flash-gateway", "-n", "1234", "-f", "0.8.0rc1"]
+        device_cmd, ["flash-mari-gateway", "-n", "1234", "-f", "0.8.0rc1"]
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
@@ -140,7 +143,7 @@ def test_info_reports_unprovisioned_without_failing(
     result = runner.invoke(device_cmd, ["info"])
     assert result.exit_code == 0, result.output
     assert "not provisioned" in result.output
-    assert "flash-sandbox-host" in result.output
+    assert "flash-swarmit-sandbox" in result.output
 
 
 def test_info_surfaces_comms_failure(runner, _no_nrfjprog_gate, monkeypatch):

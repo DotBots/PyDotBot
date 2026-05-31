@@ -17,7 +17,7 @@ with one 725-bot campaign.
 
 ▶️ [Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
 
-PyDotBot is the control plane in the middle: your code, the web UI, and users 
+PyDotBot is the control plane in the middle: your code, the web UI, and users
 talk to it, and it drives the swarm through a gateway.
 
 ```text
@@ -172,11 +172,11 @@ We also need a more powerful gateway firmware.
 Let's flash both:
 
 ```bash
-dotbot device flash-gateway -n 1234 -s 10 -f 0.8.0rc1  # flash the gateway, setting its swarm id to 0x1234
-dotbot device flash-sandbox-host -n 1234 -s 77 -f 0.8.0rc1  # flash the sandbox firmware - do this on each dotbot
+dotbot device flash-mari-gateway -n 1234 -s 10 -f 0.8.0rc1  # flash the gateway, setting its swarm id to 0x1234
+dotbot device flash-swarmit-sandbox -n 1234 -s 77 -f 0.8.0rc1  # flash the sandbox firmware - do this on each dotbot
 ```
 
-(`device flash-gateway` / `flash-sandbox-host` auto-fetch
+(`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch
 the release into `./artifacts/` if it isn't already there.)
 
 Now, run the gateway:

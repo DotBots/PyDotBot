@@ -387,7 +387,7 @@ def fetch_assets(
     # Optional sample sandbox apps. These are built from DotBot-firmware's
     # apps-sandbox/ and aren't guaranteed to be on every swarmit release, so
     # a 404 here is expected, not fatal — the four system images above are
-    # all that provisioning (flash-sandbox-host / flash-gateway) needs.
+    # all that provisioning (flash-swarmit-sandbox / flash-mari-gateway) needs.
     example_bins = [
         "dotbot-dotbot-v3.bin",
         "spin-dotbot-v3.bin",
@@ -425,8 +425,8 @@ def flash_role(
 ) -> None:
     """Flash a device's role: system firmware bundle (app+net cores) + config.
 
-    Backend for `dotbot device flash-sandbox-host` (role='dotbot-v3') and
-    `dotbot device flash-gateway` (role='gateway'). Selects the J-Link,
+    Backend for `dotbot device flash-swarmit-sandbox` (role='dotbot-v3') and
+    `dotbot device flash-mari-gateway` (role='gateway'). Selects the J-Link,
     flashes both cores, writes the config page (magic + has_net_id +
     net_id [+ calibration, dotbot-v3 only]), then best-effort reads back
     net_id/device_id (never raises on readback failure). If the role's
