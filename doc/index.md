@@ -8,16 +8,29 @@ Guides <guides/index>
 Reference <reference/index>
 ```
 
-```{admonition} Who is this for?
+```{admonition} Where do you want to start?
 :class: tip
 
-- **Students** (high-school & university) — learning Python and robotics; want
-  one bot moving fast → the quickstarts below, then drive it from the
-  [web UI](guides/controller.md).
-- **Researchers** — running swarm experiments for papers → [swarm ops](cli/swarm.md),
-  [LH2 localization](guides/lh2-calibration.md), and the planned [Python SDK](sdk/index.md).
-- **Maintainers & contributors** — operating and extending the platform → the
-  [CLI reference](cli/index.md) and the firmware flows ([fw](cli/fw.md) / [device](cli/device.md)).
+New here? DotBots are small wheeled robots you drive from your browser or your
+own code — one bot, or a swarm of hundreds. Pick a starting point:
+
+- **Try it with no hardware** — the simulator runs the full web UI with no bot
+  or gateway needed: `dotbot run sim -w`. Then explore the
+  [web-UI guide](guides/controller.md).
+- **Get one bot moving** — build and cable-flash a single DotBot and gateway,
+  then drive it from the browser. See the one-bot quickstart below
+  ([`fw`](cli/fw.md) / [`device`](cli/device.md) /
+  [controller guide](guides/controller.md)).
+- **Run a swarm experiment** — provision and command many bots over the air.
+  The swarm quickstart below is the main path; then see [`swarm`](cli/swarm.md)
+  and [LH2 localization](guides/lh2-calibration.md).
+- **Script it / collect data** — drive the swarm from your own code today over
+  [REST / WebSocket](reference/rest.md) or [MQTT](reference/mqtt.md), and log
+  runs with `dotbot run controller --csv-data-output`. (A higher-level
+  [Python SDK](sdk/index.md) is planned.)
+- **Extend the platform** — every command and flag is in the
+  [CLI reference](cli/index.md); the firmware flows live under [`fw`](cli/fw.md)
+  and [`device`](cli/device.md).
 ```
 
 ```{include} ../README.md
