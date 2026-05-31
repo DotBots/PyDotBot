@@ -59,9 +59,9 @@ _SUBCOMMANDS = (
     cls=LazyGroup,
     subcommands=_SUBCOMMANDS,
     help=(
-        "Control DotBots. Four namespaces: firmware artifacts (fw), one "
-        "connected device (device), the fleet over the air (swarm), and "
-        "host-side processes you launch (run)."
+        "One CLI for the whole DotBot workflow: build and flash firmware, "
+        "program and control a single robot, and run experiments over the air "
+        "across a swarm - from one bot to a thousand."
     ),
 )
 @click.version_option(
