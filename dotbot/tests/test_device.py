@@ -73,10 +73,10 @@ def test_flash_sandbox_host_requires_network_id_and_version(runner):
 
 
 def test_flash_gateway_help_disambiguates_from_bridge(runner):
-    """`device flash-gateway` help points away from the `dotbot gateway` bridge."""
+    """`device flash-gateway` help points away from the `dotbot run gateway` bridge."""
     result = runner.invoke(device_cmd, ["flash-gateway", "--help"])
     assert result.exit_code == 0
-    assert "dotbot gateway" in result.output  # the "use the bridge instead" note
+    assert "dotbot run gateway" in result.output  # the "use the bridge instead" note
 
 
 def test_flash_sandbox_host_calls_engine(runner, _no_nrfjprog_gate, monkeypatch):

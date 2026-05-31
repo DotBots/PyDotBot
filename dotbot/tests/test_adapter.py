@@ -203,7 +203,7 @@ def test_simulator_adapter_close_before_start_is_noop():
 
 def test_resolve_init_state_path_falls_back_to_packaged(tmp_path, monkeypatch):
     """The default init-state resolves to the packaged world when no file
-    exists in the cwd, so `dotbot sim` works from any directory."""
+    exists in the cwd, so `dotbot run sim` works from any directory."""
     from dotbot import SIMULATOR_INIT_STATE_DEFAULT
     from dotbot.dotbot_simulator import resolve_init_state_path
 

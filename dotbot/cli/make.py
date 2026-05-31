@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot make` — escape hatch to `make` in your DotBot-firmware checkout.
+"""`dotbot fw make` — escape hatch to `make` in your DotBot-firmware checkout.
 
-`dotbot fw build` (and `dotbot swarm fw build`) deliberately model only
+`dotbot fw build` deliberately models only
 the flags that matter for the daily edit/build loop: TARGET, `--app`,
 `--config`, `--rebuild`, `-v`. Anything else (PACKAGES_DIR_OPT, DOCKER
 overrides, `make doc`, custom CLANG_FORMAT_TYPE, …) is intentionally
@@ -40,8 +40,8 @@ from dotbot.cli._fw_helpers import resolve_firmware_repo, resolve_segger_dir
     help=(
         "Escape hatch: run `make` in your DotBot-firmware checkout with "
         "workspace-resolved SEGGER_DIR. Forwards all args verbatim. "
-        "Use this when `dotbot fw build` / `dotbot swarm fw build` "
-        "don't model the Makefile knob you need."
+        "Use this when `dotbot fw build` doesn't model the Makefile knob "
+        "you need."
     ),
 )
 @click.pass_context
@@ -49,11 +49,11 @@ def cmd(ctx):
     """Run `make` in the firmware repo. Examples:
 
     \b
-        dotbot make help
-        dotbot make list-targets
-        dotbot make BUILD_TARGET=dotbot-v3 BUILD_CONFIG=Debug
-        dotbot make BUILD_TARGET=dotbot-v3 PACKAGES_DIR_OPT="-packagesdir /opt/pkgs"
-        dotbot make docker BUILD_TARGET=sandbox-dotbot-v3
+        dotbot fw make help
+        dotbot fw make list-targets
+        dotbot fw make BUILD_TARGET=dotbot-v3 BUILD_CONFIG=Debug
+        dotbot fw make BUILD_TARGET=dotbot-v3 PACKAGES_DIR_OPT="-packagesdir /opt/pkgs"
+        dotbot fw make docker BUILD_TARGET=sandbox-dotbot-v3
     """
     repo = resolve_firmware_repo()
     segger = resolve_segger_dir()

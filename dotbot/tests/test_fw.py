@@ -457,7 +457,7 @@ def test_sandbox_build_prints_preamble(runner, fake_repo, fake_segger, capture_m
     assert "✓ Built" in result.output
 
 
-# ── `dotbot make` escape hatch ──────────────────────────────────────────
+# ── `dotbot fw make` escape hatch ───────────────────────────────────────
 
 
 from dotbot.cli.make import cmd as make_cmd  # noqa: E402
@@ -491,7 +491,7 @@ def test_dotbot_make_help_lists_examples(runner):
 def test_dotbot_make_forwards_args_verbatim(
     runner, fake_repo, fake_segger, capture_make_passthrough
 ):
-    """`dotbot make foo bar BAZ=qux` invokes `make foo bar BAZ=qux`."""
+    """`dotbot fw make foo bar BAZ=qux` invokes `make foo bar BAZ=qux`."""
     result = runner.invoke(
         make_cmd, ["help", "BUILD_TARGET=dotbot-v3", "PACKAGES_DIR_OPT=-p /opt"]
     )
@@ -536,7 +536,7 @@ def test_dotbot_make_propagates_make_exit_code(
 def test_fw_help_points_at_dotbot_make(runner):
     result = runner.invoke(fw_cmd, ["--help"])
     assert result.exit_code == 0
-    assert "dotbot make" in result.output
+    assert "dotbot fw make" in result.output
 
 
 # ── Helper-level tests ──────────────────────────────────────────────────

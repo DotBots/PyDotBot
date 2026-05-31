@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot fw` — firmware artifacts: build, fetch, list.
+"""`dotbot fw` — firmware artifacts: build, fetch, list, make.
 
 `fw` is the *artifacts* namespace — it produces or downloads firmware
 files. It never touches hardware: flashing a device lives under `fw`'s
@@ -15,6 +15,9 @@ sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
   the flat `<app>-<board>.hex` / `<app>-sandbox-<board>.bin` names.
 - `fetch` downloads a published release into `./artifacts/<version>/`.
 - `list` shows what's cached in `./artifacts/`.
+- `make` is the low-level escape hatch: it forwards arbitrary arguments
+  to `make` in the firmware repo (workspace-resolved SEGGER_DIR) for the
+  Makefile knobs `build` deliberately doesn't model.
 
 Only `artifacts` and `fetch` populate `./artifacts/`. The device-flash
 commands then auto-resolve their input, by *different* rules: `dotbot
@@ -56,7 +59,7 @@ _NOT_READY = (
         "Firmware artifacts: build (from source via SES), fetch (a release), "
         "list. Bare apps by default; `--sandbox` for TrustZone NS apps. "
         "Flashing lives under `dotbot device` (one board) and `dotbot swarm` "
-        "(the fleet). Need a Makefile knob? Use `dotbot make --help`."
+        "(the fleet). Need a Makefile knob? `dotbot fw make` forwards to `make`."
     ),
 )
 def cmd():
@@ -291,3 +294,11 @@ def new(name, template):  # pylint: disable=unused-argument
     """Scaffold a new firmware project (NOT IMPLEMENTED)."""
     click.echo(_NOT_READY.format(sub="new"), err=True)
     sys.exit(2)
+
+
+# The low-level Makefile escape hatch, mounted next to its high layer
+# `fw build`. Importing `make` here is cheap (no SES/firmware import at
+# module load), so it doesn't compromise the dispatcher's lazy loading.
+from dotbot.cli.make import cmd as _make_cmd  # noqa: E402
+
+cmd.add_command(_make_cmd)

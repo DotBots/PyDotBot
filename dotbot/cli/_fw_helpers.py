@@ -42,6 +42,8 @@ from typing import Iterable, Optional
 import click
 import toml
 
+from dotbot.firmware.boards import BOARDS
+
 # Glob used to discover SES installs on macOS. Picks the lexicographically
 # largest match (e.g. "Studio 8.30" beats "Studio 8.22a"), which is good
 # enough as a fallback when the user hasn't set SEGGER_DIR or written
@@ -53,26 +55,12 @@ _SEGGER_MACOS_GLOB = "/Applications/SEGGER/SEGGER Embedded Studio*"
 # CALIBRATION_PATH).
 _CONFIG_PATH = Path.home() / ".dotbot" / "config.toml"
 
-# BUILD_TARGET values handled by DotBot-firmware's Makefile (bare path).
-# Mirrors the explicit branches in the Makefile; an unrecognized target
-# falls through to the catch-all `find apps/` rule which produces opaque
-# SES errors, so we validate up-front.
-BARE_TARGETS = frozenset(
-    {
-        "dotbot-v1",
-        "dotbot-v2",
-        "dotbot-v3",
-        "nrf52833dk",
-        "nrf52840dk",
-        "nrf5340dk-app",
-        "nrf5340dk-net",
-        "sailbot-v1",
-        "freebot-v1.0",
-        "lh2-mini-mote",
-        "xgo-v1",
-        "xgo-v2",
-    }
-)
+# BUILD_TARGET / flashable board names. Single source of truth is the board
+# table in `dotbot.firmware.boards` (which also carries each board's nrfjprog
+# family + core) — so a valid build target and a flashable board can't drift
+# apart. An unrecognized target falls through to the Makefile's catch-all
+# `find apps/` rule (opaque SES errors), so we validate up-front.
+BARE_TARGETS = frozenset(BOARDS)
 
 # BUILD_TARGET = "sandbox-" + BOARD for the sandbox path. Boards
 # supported by the SES `.emProject` files at the DotBot-firmware root.

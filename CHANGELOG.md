@@ -13,25 +13,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   sim, testbed ops, calibration, demos, keyboard/joystick) under one
   command. Subcommand modules are loaded lazily so `dotbot --help` stays
   cheap.
-- `dotbot demo` discoverable launcher; `dotbot demo qr` runs the qrkey
-  phone-bridge demo.
+- `dotbot run demo` discoverable launcher; `dotbot run demo qr` runs the
+  qrkey phone-bridge demo.
 - `dotbot fw` mock surface (scaffold/build/flash subcommands; placeholder
   for the firmware-developer workflow).
 - **Vendored `dotbot-provision`** into `dotbot/provision/`. All five
   subcommands available as `dotbot testbed provision <fetch|flash|
   flash-hex|read-config|flash-bringup>`.
 - **Vendored `dotbot-lh2-calibration` (Python side)** into
-  `dotbot/calibration/`. Surfaced as `dotbot calibrate-lh2` with
+  `dotbot/calibration/`. Surfaced as `dotbot run lh2-calibration` with
   two subcommands:
   - `collect` — runs the Textual TUI (default — bare
-    `dotbot calibrate-lh2` invokes this for muscle memory)
+    `dotbot run lh2-calibration` invokes this for muscle memory)
   - `apply <path>` — write the saved calibration as a C header to
     `<path>` (replaces the previous `dotbot-calibration-exporter`;
     today the only consumer is the swarmit secure bootloader which
     `#include`s the file at compile time)
   The C firmware in the `dotbot-lh2-calibration` repo is unchanged.
   Future OTA / swarm-wide counterparts (`collect` over MQTT,
-  `apply` as OTA push) will live under `dotbot testbed
+  `apply` as OTA push) will live under `dotbot swarm
   calibrate-lh2`.
 - Calibration records are now saved as timestamped, schema-versioned
   TOML files (`~/.dotbot/calibration-<UTC timestamp>.toml`) carrying
@@ -54,6 +54,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking — CLI reorganized into four object-namespaces.** The top
+  level is now exactly `fw` (firmware artifacts), `device` (one cabled
+  device), `swarm` (the fleet), and `run` (host-side processes). The flat
+  process verbs moved under `run`: `dotbot controller` → `dotbot run
+  controller`, and likewise `gateway` / `sim` / `demo` / `keyboard` /
+  `joystick`; `dotbot calibrate-lh2` → `dotbot run lh2-calibration`. The
+  Makefile escape hatch moved from `dotbot make` to `dotbot fw make`.
+  `run` subcommands are still loaded lazily, so `dotbot run --help` stays
+  cheap.
 - The qrkey integration moved from `dotbot/qrkey.py` to
   `dotbot/examples/qrkey_demo/`. The demo is now a separate process that
   consumes the controller's REST API — the controller stays agnostic to
@@ -66,7 +75,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Removed
 
 - `dotbot-qrkey` console script — use `python -m dotbot.examples.qrkey_demo`
-  or `dotbot demo qr` instead.
+  or `dotbot run demo qr` instead.
 - `dotbot-edge-gateway` console script — the referenced module
   `dotbot.edge_gateway_app` never existed; the entry was silently broken.
 - `pin_code` tox env — referenced `dotbot/pin_code_ui/` which never
@@ -75,12 +84,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (folded into the `dotbot` package). The standalone PyPI packages are
   scheduled for deprecation releases that point users at `pip install
   dotbot[provision]` / `pip install dotbot[calibrate]`.
+- `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick` console
+  scripts — removed outright (no longer aliased). Use `dotbot run
+  controller` / `dotbot run keyboard` / `dotbot run joystick`.
 
 ### Deprecated
 
-- `dotbot-controller`, `dotbot-keyboard`, and `dotbot-joystick` console
-  scripts remain working as backwards-compat aliases for one deprecation
-  cycle. Prefer `dotbot <subcommand>` for new code.
 - The standalone `dotbot-provision` and `dotbot-lh2-calibration` PyPI
   packages will issue `DeprecationWarning` on their next release and
   point users at `pip install dotbot[provision]` /

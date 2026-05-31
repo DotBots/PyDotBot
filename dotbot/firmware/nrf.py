@@ -6,6 +6,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from .boards import is_multicore_family
+
 # Timings
 POLL_INTERVAL = 1.0
 TIMEOUT_JLINK_SEC = 120
@@ -255,6 +257,7 @@ def nrfjprog_program(
     nrfjprog,
     hex_path,
     network=False,
+    family="NRF53",
     verify=True,
     reset=True,
     chiperase=True,
@@ -263,13 +266,13 @@ def nrfjprog_program(
 ):
     if chiperase and sectorerase:
         raise ValueError("Use only one of chiperase or sectorerase.")
-    args = [nrfjprog, "-f", "NRF53"]
+    args = [nrfjprog, "-f", family]
     if snr:
         args += ["-s", str(snr)]
-    if network:
-        args += ["--coprocessor", "CP_NETWORK"]
-    else:
-        args += ["--coprocessor", "CP_APPLICATION"]
+    # --coprocessor only applies to multi-core families (the nRF5340); a
+    # single-core family (nRF52) has no coprocessor and rejects the flag.
+    if is_multicore_family(family):
+        args += ["--coprocessor", "CP_NETWORK" if network else "CP_APPLICATION"]
     args += ["--program", str(hex_path)]
     if verify:
         args += ["--verify"]
@@ -395,10 +398,15 @@ def flash_nrf_both_cores(
 def flash_nrf_one_core(
     app_hex: Path | None = None,
     net_hex: Path | None = None,
+    family: str = "NRF53",
     nrfjprog_opt: str | None = None,
     snr_opt: str | None = None,
 ):
-    """Flash only one core; no recover and no chiperase."""
+    """Flash only one core; no recover and no chiperase.
+
+    `family` is the nrfjprog `-f` value ("NRF53" / "NRF52"). On nRF52 there is
+    no network core, so `net_hex` and the per-core reset are nRF5340-only.
+    """
     if app_hex is None and net_hex is None:
         raise FileNotFoundError("Provide app_hex or net_hex.")
     if app_hex is not None and net_hex is not None:
@@ -422,11 +430,12 @@ def flash_nrf_one_core(
     print(f"[INFO] Using J-Link with serial number: {snr}")
 
     if app_hex is not None:
-        print("== Flashing nRF5340 application core with nrfjprog ==")
+        print(f"== Flashing {family} application core with nrfjprog ==")
         nrfjprog_program(
             nrfjprog,
             app_hex,
             network=False,
+            family=family,
             verify=True,
             reset=True,
             chiperase=False,
@@ -435,11 +444,12 @@ def flash_nrf_one_core(
         )
         print("[OK] Application core programmed.")
     else:
-        print("== Flashing nRF5340 network core with nrfjprog ==")
+        print(f"== Flashing {family} network core with nrfjprog ==")
         nrfjprog_program(
             nrfjprog,
             net_hex,
             network=True,
+            family=family,
             verify=True,
             reset=True,
             chiperase=False,
@@ -447,17 +457,24 @@ def flash_nrf_one_core(
             snr=snr,
         )
         print("[OK] Network core programmed.")
-    # reset both cores
     time.sleep(0.5)
-    nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_NETWORK")
-    nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_APPLICATION")
+    if is_multicore_family(family):
+        # reset every core
+        nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_NETWORK", family=family)
+        nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_APPLICATION", family=family)
+    else:
+        # single-core family: one reset, no --coprocessor
+        nrfjprog_reset_core(nrfjprog, snr=snr, core=None, family=family)
 
 
-def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION"):
-    args = [nrfjprog, "-f", "NRF53"]
+def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION", family="NRF53"):
+    args = [nrfjprog, "-f", family]
     if snr:
         args += ["-s", str(snr)]
-    args += ["--reset", "--coprocessor", core]
+    args += ["--reset"]
+    # --coprocessor is multi-core-only; a single-core family resets directly.
+    if is_multicore_family(family) and core:
+        args += ["--coprocessor", core]
     rc, out = run(args, timeout=120)
     if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
         raise RuntimeError("nrfjprog reset failed; see log above.")

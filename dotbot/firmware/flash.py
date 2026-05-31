@@ -613,17 +613,22 @@ def flash_role(
     )
 
 
-def flash_app_image(image: Path, *, sn_starting_digits: str | None = None) -> None:
-    """Flash a single application image to a provisioned device's app core.
+def flash_app_image(
+    image: Path, *, board: str = "dotbot-v3", sn_starting_digits: str | None = None
+) -> None:
+    """Flash a single firmware image to one cabled device (a whole-chip program).
 
-    Backend for `dotbot device flash <app|file>`. Accepts a `.hex`
-    (flashed as-is) or a `.bin` (converted at APP_FLASH_BASE_ADDR first).
-    The device must already carry the sandbox host (run
-    `dotbot device flash-sandbox-host` first); this writes only the NS
-    application slot via a sector-erase one-core program.
+    Backend for `dotbot device flash <app|file>`. Accepts a `.hex` (flashed
+    as-is) or a `.bin` (converted at APP_FLASH_BASE_ADDR first). `board`
+    selects the nrfjprog family + core via `boards.spec_for`: an nRF52 board
+    flashes its single core; on the nRF5340 a `*-net` board programs the
+    network core, otherwise the application core. No sandbox host required.
     """
+    from .boards import spec_for
+
     if not image.exists():
         raise click.ClickException(f"Firmware image not found: {image}")
+    spec = spec_for(board)
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
     else:
@@ -633,13 +638,16 @@ def flash_app_image(image: Path, *, sn_starting_digits: str | None = None) -> No
             "Unable to auto-select J-Link; provide --snr explicitly."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}")
-    app_hex = (
+    image_hex = (
         convert_bin_to_hex(image, APP_FLASH_BASE_ADDR)
         if image.suffix == ".bin"
         else image
     )
-    click.echo(f"[INFO] flashing app image: {app_hex}")
-    flash_nrf_one_core(app_hex=app_hex, nrfjprog_opt=None, snr_opt=snr)
+    click.echo(f"[INFO] flashing {board} ({spec.family}) image: {image_hex}")
+    if spec.coprocessor == "CP_NETWORK":
+        flash_nrf_one_core(net_hex=image_hex, family=spec.family, snr_opt=snr)
+    else:
+        flash_nrf_one_core(app_hex=image_hex, family=spec.family, snr_opt=snr)
     click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
 
 
