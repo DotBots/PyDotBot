@@ -50,7 +50,7 @@ _SUBCOMMANDS = (
     (
         "run",
         "dotbot.cli.run",
-        "Host-side processes: controller, gateway, sim, calibration, demos, teleop.",
+        "Host-side processes: controller, gateway, simulator, calibration, demos, teleop.",
     ),
 )
 

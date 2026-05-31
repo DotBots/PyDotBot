@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Unified `dotbot` CLI dispatcher that mounts every workflow (controller,
-  sim, testbed ops, calibration, demos, keyboard/joystick) under one
+  simulator, testbed ops, calibration, demos, keyboard/joystick) under one
   command. Subcommand modules are loaded lazily so `dotbot --help` stays
   cheap.
 - `dotbot run demo` discoverable launcher; `dotbot run demo qr` runs the
@@ -58,7 +58,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   level is now exactly `fw` (firmware artifacts), `device` (one cabled
   device), `swarm` (the fleet), and `run` (host-side processes). The flat
   process verbs moved under `run`: `dotbot controller` → `dotbot run
-  controller`, and likewise `gateway` / `sim` / `demo` / `keyboard` /
+  controller`, and likewise `gateway` / `simulator` / `demo` / `keyboard` /
   `joystick`; `dotbot calibrate-lh2` → `dotbot run lh2-calibration`. The
   Makefile escape hatch moved from `dotbot make` to `dotbot fw make`.
   `run` subcommands are still loaded lazily, so `dotbot run --help` stays

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI whose top level is four object-namespaces: `fw` (firmware artifacts: build/fetch/list/make), `device` (one cabled device: flash/info), `swarm` (the fleet over the air), and `run` (host-side processes you launch — `dotbot run controller`, `run gateway`, `run sim`, `run lh2-calibration`, `run demo`, `run keyboard`, `run joystick`), plus DotBot/SailBot simulators. The `dotbot` dispatcher is the only console script — there are no per-command `dotbot-*` binaries.
+Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI whose top level is four object-namespaces: `fw` (firmware artifacts: build/fetch/list/make), `device` (one cabled device: flash/info), `swarm` (the fleet over the air), and `run` (host-side processes you launch — `dotbot run controller`, `run gateway`, `run simulator`, `run lh2-calibration`, `run demo`, `run keyboard`, `run joystick`), plus DotBot/SailBot simulators. The `dotbot` dispatcher is the only console script — there are no per-command `dotbot-*` binaries.
 
 This is the most active repo in the ecosystem (187 commits in last 90 days as of 2026-05-05).
 
@@ -28,7 +28,7 @@ dotbot --help                    # unified dispatcher: fw / device / swarm / run
 dotbot fw --help                 # firmware artifacts: build / fetch / list / make
 dotbot device --help             # one cabled device: flash an app/role, read info
 dotbot swarm --help              # the fleet over the air (optional: pip install pydotbot[swarm])
-dotbot run --help                # host-side processes (controller, gateway, sim, ...)
+dotbot run --help                # host-side processes (controller, gateway, simulator, ...)
 dotbot run controller --help     # start the controller
 dotbot run lh2-calibration --help  # LH2 calibration (optional: pip install pydotbot[calibrate])
 dotbot run demo --list           # built-in research demos
