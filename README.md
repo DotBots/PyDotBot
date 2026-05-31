@@ -12,7 +12,7 @@ from a single `dotbot` CLI and web UI.**
 
 DotBots are small wireless wheeled robots built to operate in large swarms,
 for research and education. Developed by the [AIO team](https://aio.inria.fr/) at
-[Inria Paris](https://www.inria.fr/), and run routinely with ~100–200 bots —
+[Inria Paris](https://www.inria.fr/), and run routinely with ~100–200 bots,
 with one 725-bot campaign.
 
 ▶️ [Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
@@ -32,26 +32,26 @@ talk to it, and it drives the swarm through a gateway.
 **What you can do**
 
 - 🕹️ Drive one bot or a whole fleet from a **web UI** (live map + joystick) or your own **Python** code
-- 📡 Flash the swarm **over the air** — one command, hundreds of bots at once
+- 📡 Flash the swarm **over the air** - one command, hundreds of bots at once
 - 🛰️ Get real-world **(x, y) positions** with Lighthouse 2 localization
 - 🧪 Try it all with **zero hardware** using the built-in simulator
 - 🛠️ One `dotbot` CLI takes you from build → flash → run
 
-## Try it now — no hardware
+## Try it now - no hardware
 
 See the whole thing run with nothing but Python:
 
 ```bash
 pip install --pre pydotbot
-dotbot run sim -w   # opens the web UI at http://localhost:8000/PyDotBot/, driving a simulated swarm
+dotbot run simulator -w   # opens the web UI at http://localhost:8000/PyDotBot/, driving a simulated swarm
 ```
 
-Drive the simulated bots from the joystick + map — then script them from your own
+Drive the simulated bots from the joystick + map - then script them from your own
 code (below), or set up real hardware further down.
 
 ## Drive it from your own code
 
-The controller — real or simulated — exposes a REST + WebSocket API, so you can
+The controller - real or simulated - exposes a REST + WebSocket API, so you can
 command the swarm in a few lines of Python (only extra dependency:
 [`requests`](https://pypi.org/project/requests/)):
 
@@ -61,15 +61,15 @@ import requests, time
 BASE = "http://localhost:8000"
 bot = requests.get(f"{BASE}/controller/dotbots").json()[0]["address"]
 
-# roll forward for ~1 s — the motors stop after 200 ms, so keep sending
+# roll forward for ~1 s - the motors stop after 200 ms, so keep sending
 for _ in range(10):
     requests.put(f"{BASE}/controller/dotbots/{bot}/0/move_raw",
                  json={"left_x": 0, "left_y": 60, "right_x": 0, "right_y": 60})
     time.sleep(0.1)
 ```
 
-The full surface — every endpoint, the live WebSocket stream, and CSV data
-logging — is in the [REST / WebSocket reference][rest-doc] (or the
+The full surface - every endpoint, the live WebSocket stream, and CSV data
+logging - is in the [REST / WebSocket reference][rest-doc] (or the
 [MQTT bridge][mqtt-doc]). A higher-level Python SDK is planned; today you talk to
 the controller over REST/WebSocket/MQTT.
 
@@ -77,7 +77,7 @@ The firmware for the DotBots can be found [here][dotbot-firmware-repo].
 
 ## Prerequisites (for real hardware)
 
-Driving an already-provisioned swarm — or the simulator above — needs nothing but
+Driving an already-provisioned swarm - or the simulator above - needs nothing but
 Python. The tools below are only for building or cable-flashing firmware yourself.
 
 Software to install (as needed):
@@ -110,7 +110,7 @@ Commands:
   fw      Firmware artifacts (no hardware): build / fetch / list / make.
   device  One connected device (cable/probe): flash an app/role, read info.
   swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
-  run     Host-side processes: controller, gateway, sim, calibration, demos, teleop.
+  run     Host-side processes: controller, gateway, simulator, calibration, demos, teleop.
 ```
 
 Every command and flag is documented in the [CLI reference][cli-doc].
@@ -163,7 +163,7 @@ swarm_id = "1234"
 EOF
 ```
 
-> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm — replace
+> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm - replace
 > `conn` and `swarm_id` with your own broker and swarm id (your testbed admin
 > provides these).
 
@@ -207,7 +207,7 @@ Observe and control your swarm from a web interface:
 dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -w  # will open a webpage at http://localhost:8000/PyDotBot/
 ```
 
-Full walkthrough of fleet operations — status, OTA flash, start/stop, monitor —
+Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
 is in the [`swarm` reference][swarm-doc].
 
 ## Quickstart - Lighthouse 2 localization
@@ -226,15 +226,15 @@ dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
 dotbot swarm -c swarm-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
 ```
 
-Your bots now report their `(x, y)` location. The full setup — arena sizing,
-base-station placement, and troubleshooting — is in the
+Your bots now report their `(x, y)` location. The full setup - arena sizing,
+base-station placement, and troubleshooting - is in the
 [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
-Full command reference and guides — running the controller + web UI, the four
+Full command reference and guides - running the controller + web UI, the four
 CLI namespaces (`fw` / `device` / `swarm` / `run`), hardware, and LH2
-calibration — are in the [documentation][doc-link].
+calibration - are in the [documentation][doc-link].
 
 Some commands need optional runtime deps:
 

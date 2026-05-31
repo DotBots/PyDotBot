@@ -13,7 +13,7 @@ dotbot run --help        # the full list
 |---|---|
 | `controller` | Control plane: REST/WS API + web dashboard. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
-| `sim` | Standalone simulator (no hardware). |
+| `simulator` | Standalone simulator (no hardware). |
 | `lh2-calibration` | Lighthouse calibration: capture / apply, on one cabled board. |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
@@ -33,7 +33,7 @@ dotbot run controller --conn /dev/ttyACM0 -w
 | Flag | Meaning |
 |---|---|
 | `-n/--conn` | `mqtts://host:port`, serial path, or `simulator` |
-| `-s/--swarm-id` | hex swarm id — **required for MQTT**, ignored for serial/sim |
+| `-s/--swarm-id` | hex swarm id — **required for MQTT**, ignored for serial/simulator |
 | `-w/--webbrowser` | open the dashboard automatically |
 | `--csv-data-output` | record robot data to a CSV file |
 
@@ -54,13 +54,13 @@ dotbot run gateway                # autodetect port, print-only (no broker)
 > bridges a gateway board to MQTT. [`device flash-gateway`](device.md) is the
 > *firmware* you flash onto that board, once. Same word, different objects.
 
-## `sim` — standalone simulator
+## `simulator` — standalone simulator
 
 No hardware, no gateway. Exactly equivalent to `run controller --conn simulator`,
 so it shares the controller's flags and serves the same dashboard.
 
 ```bash
-dotbot run sim -w
+dotbot run simulator -w
 ```
 
 ## `lh2-calibration` — capture & apply

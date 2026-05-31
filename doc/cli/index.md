@@ -8,8 +8,8 @@ swarm
 run
 ```
 
-One CLI for the whole DotBot workflow: build firmware, flash one board, drive a
-fleet over the air, and launch the host-side processes that tie it together —
+One CLI for the whole DotBot workflow: build firmware, flash one board, control a
+whole swarm, and launch the host-side processes that tie it together -
 from one bot to a thousand.
 
 ```bash
@@ -31,7 +31,7 @@ dotbot --help
 
 ```text
 Do I have hardware?
-├── No  ─────────────────────────► fw    (build/fetch artifacts, sim under run)
+├── No  ─────────────────────────► fw    (build/fetch artifacts, simulator under run)
 └── Yes
     ├── One board on a cable ─────► device (flash app/role, read info)
     └── A fleet over the air ─────► swarm  (status, OTA flash, start/stop)

@@ -37,7 +37,7 @@ Windows), an MQTT broker (`mqtts://host:port`), or `simulator`.
 See `dotbot run controller --help` for the full list (logging, CSV export, map
 size, background map, simulator init state).
 
-`dotbot run sim` is shorthand for `dotbot run controller --conn simulator` — try
+`dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` — try
 the UI with no robot or gateway.
 
 ## Use a config file

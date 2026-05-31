@@ -46,7 +46,7 @@ EXPECTED_SUBCOMMANDS = {
 EXPECTED_RUN_SUBCOMMANDS = {
     "controller",
     "gateway",
-    "sim",
+    "simulator",
     "lh2-calibration",
     "demo",
     "keyboard",
@@ -65,9 +65,9 @@ _CROSS_PACKAGE_SUBS = {"swarm"}
 
 # `run` subcommands whose lazy import is hostile to an in-process headless
 # test: keyboard/joystick import pygame/pynput at module load;
-# controller/sim trigger dotbot.server's StaticFiles import-time mount.
+# controller/simulator trigger dotbot.server's StaticFiles import-time mount.
 _TELEOP_SUBS = {"keyboard", "joystick"}
-_FRONTEND_DEPENDENT = {"controller", "sim"}
+_FRONTEND_DEPENDENT = {"controller", "simulator"}
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def test_run_help_lists_every_process(runner):
     result = runner.invoke(cli, ["run", "--help"])
     assert result.exit_code == 0, result.output
     # Same as the root: assert against the rendered command list, not the
-    # prose (which contains "controller"/"gateway"/"sim"/"demo" as words).
+    # prose (which contains "controller"/"gateway"/"simulator"/"demo" as words).
     commands = result.output.split("Commands:", 1)[1]
     for name in EXPECTED_RUN_SUBCOMMANDS:
         assert name in commands, f"`run {name}` missing from rendered list"

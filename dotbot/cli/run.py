@@ -38,8 +38,8 @@ _RUN_SUBCOMMANDS = (
         "Host-side Mari gateway bridge (UART <-> MQTT).",
     ),
     (
-        "sim",
-        "dotbot.cli.sim",
+        "simulator",
+        "dotbot.cli.simulator",
         "Standalone simulator (≡ run controller --conn simulator).",
     ),
     (
