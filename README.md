@@ -6,25 +6,27 @@
 
 # PyDotBot
 
-**The control plane for [DotBot](http://www.dotbots.org) swarms — build firmware,
-flash a robot, and drive a fleet over the air, from one bot to a thousand, all
+**The control plane for [DotBot](http://www.dotbots.org) swarms - build firmware,
+flash a robot, and control a fleet over the air, from one bot to a thousand, all
 from a single `dotbot` CLI and web UI.**
 
-DotBots are small wireless wheeled robots built to operate in swarms of thousands,
-for research and education. Developed at [Inria](https://www.inria.fr/) — run at
-~100–200 bots routinely, with one 725-bot campaign.
+DotBots are small wireless wheeled robots built to operate in large swarms,
+for research and education. Developed by the [AIO team](https://aio.inria.fr/) at
+[Inria Paris](https://www.inria.fr/), and run routinely with ~100–200 bots —
+with one 725-bot campaign.
 
 ▶️ [Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
 
-PyDotBot is the control plane in the middle: your code, the web UI, and teleop
-drivers talk to it, and it drives the swarm through a gateway.
+PyDotBot is the control plane in the middle: your code, the web UI, and users 
+talk to it, and it drives the swarm through a gateway.
 
 ```text
 ┌───────────┐           ┌────────────┐               ┌─────────┐
 │  web UI / │           │            │               │         │
-│    CLI /  │──REST/WS─▶│ controller │──serial/MQTT─▶│ gateway │──radio──▶ 🤖🤖🤖 DotBot swarm
+│   CLI /   │──REST/WS─▶│ controller │──serial/MQTT─▶│ gateway │──radio─▶ 🤖🤖🤖 DotBot swarm
 │ your code │           │            │               │         │
 └───────────┘           └────────────┘               └─────────┘
+  ╰─────────── PyDotBot ───────────╯
 ```
 
 **What you can do**
@@ -37,7 +39,7 @@ drivers talk to it, and it drives the swarm through a gateway.
 
 ## Try it now — no hardware
 
-See the whole thing run with nothing but Python — no robot, no gateway, no SEGGER:
+See the whole thing run with nothing but Python:
 
 ```bash
 pip install --pre pydotbot
@@ -79,7 +81,7 @@ Driving an already-provisioned swarm — or the simulator above — needs nothin
 Python. The tools below are only for building or cable-flashing firmware yourself.
 
 Software to install (as needed):
-- Python ≥ 3.11 - ensure you have pip also installed
+- Python ≥ 3.11 - ensure you also have [pip](https://pip.pypa.io/en/stable/) available in your PATH
 - [nRF Command Line Tools](https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools) (`nrfjprog`), for commands such as `dotbot device flash`
 - [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/), for commands such as `dotbot fw build`
 
@@ -147,7 +149,7 @@ and driving it from the web UI ([controller guide][controller-doc]).
 
 ## Quickstart - a swarm
 
-### swarm setup
+### setup the swarm
 
 To operate as a swarm, we need to fetch some firmware, and setup a configuration file:
 
@@ -161,7 +163,7 @@ swarm_id = "1234"
 EOF
 ```
 
-> `argus.paris.inria.fr` is our Paris testbed and `1234` our swarm — replace
+> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm — replace
 > `conn` and `swarm_id` with your own broker and swarm id (your testbed admin
 > provides these).
 
@@ -183,7 +185,7 @@ Now, run the gateway:
 dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem0010500324491
 ```
 
-### swarm usage
+### use the swarm
 
 
 You can flash as many dotbots as you want, all at once! First, how about making them spinnnn 🔄 🔄
@@ -241,9 +243,6 @@ pip install --pre 'pydotbot[swarm]'      # swarmit (fleet orchestration)
 pip install --pre 'pydotbot[calibrate]'  # opencv-python + textual (LH2 calibration)
 pip install --pre 'pydotbot[all]'        # everything
 ```
-
-The `dotbot` dispatcher is the only console script — every workflow is a
-`dotbot <group> <verb>` subcommand; there are no `dotbot-*` binaries.
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
 [Troubleshooting][troubleshooting-doc].
