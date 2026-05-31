@@ -58,6 +58,8 @@ html_sourcelink_suffix = ""
 html_static_path = ["_static"]
 
 myst_enable_extensions = ["html_image"]
+# Generate slugged anchors for headings so `[text](#heading-slug)` links resolve.
+myst_heading_anchors = 3
 
 # Define the json_url for our version switcher.
 json_url = "https://pydotbot.readthedocs.io/en/latest/_static/switcher.json"
