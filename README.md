@@ -15,17 +15,9 @@ PyDotBot is the control plane in the middle: your code, the web UI, and teleop
 drivers talk to it, and it drives the swarm through a gateway.
 
 ```text
- web UI · keyboard · joystick · your Python code
-                  │  REST / WebSocket
-                  ▼
-          dotbot controller
-                  │  serial — or an MQTT broker,
-                  │  for large / remote swarms
-                  ▼
-          gateway  (nRF5340)
-                  │  Mari radio  (TSCH over BLE)
-                  ▼
-    🤖 🤖 🤖 🤖 🤖  …  a swarm of DotBots
+┌─────────────────────┐           ┌────────────┐               ┌─────────┐
+│ web UI · CLI · code │──REST/WS─▶│ controller │──serial/MQTT─▶│ gateway │──Mari radio─▶ 🤖🤖🤖  swarm of DotBots
+└─────────────────────┘           └────────────┘               └─────────┘
 ```
 
 ▶️ **See a swarm in action:**
