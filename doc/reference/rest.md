@@ -15,8 +15,8 @@ dotbot run controller --conn mqtts://broker:8883 --swarm-id 1234   # over MQTT
 ```
 
 The server listens on **port 8000** by default (`--controller-http-port` to
-change it). Interactive OpenAPI docs — schemas, payloads, and a "try it out"
-button — are served by the running app at:
+change it). Interactive OpenAPI docs - schemas, payloads, and a "try it out"
+button - are served by the running app at:
 
 ```
 http://localhost:8000/api
@@ -55,7 +55,7 @@ as JSON).
 
 Install [requests](https://pypi.org/project/requests/): `pip install requests`.
 
-**List DotBots** — `address` identifies a bot; `status` is `0` active, `1`
+**List DotBots** - `address` identifies a bot; `status` is `0` active, `1`
 inactive, `2` lost.
 
 ```py
@@ -74,7 +74,7 @@ requests.put(
 )
 ```
 
-**Drive the motors** — only `left_y` / `right_y` are used; values in `[-100,
+**Drive the motors** - only `left_y` / `right_y` are used; values in `[-100,
 100]`, and absolute values below ~50 won't overcome friction.
 
 ```py

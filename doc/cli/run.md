@@ -1,4 +1,4 @@
-# `dotbot run` — host-side processes
+# `dotbot run` - host-side processes
 
 `dotbot run` launches the things that run **on your computer**: the control
 plane, the gateway bridge, a simulator, calibration, demos, and teleop
@@ -19,7 +19,7 @@ dotbot run --help        # the full list
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
 
-## `controller` — the control plane + web UI
+## `controller` - the control plane + web UI
 
 Connect to a swarm and serve the dashboard at `http://localhost:8000/PyDotBot/`.
 `--conn` is one discriminated string: `mqtts://host:port`, a serial path, or
@@ -33,14 +33,14 @@ dotbot run controller --conn /dev/ttyACM0 -w
 | Flag | Meaning |
 |---|---|
 | `-n/--conn` | `mqtts://host:port`, serial path, or `simulator` |
-| `-s/--swarm-id` | hex swarm id — **required for MQTT**, ignored for serial/simulator |
+| `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
 | `-w/--webbrowser` | open the dashboard automatically |
 | `--csv-data-output` | record robot data to a CSV file |
 
 Full options and the dashboard tour live in
 [the controller guide](../guides/controller.md). See `dotbot run controller --help`.
 
-## `gateway` — UART ↔ MQTT bridge
+## `gateway` - UART ↔ MQTT bridge
 
 Runs wherever the gateway firmware is plugged in. With `--mqtt-url` it bridges
 serial frames to the broker; without it, it just prints what it receives.
@@ -54,7 +54,7 @@ dotbot run gateway                # autodetect port, print-only (no broker)
 > bridges a gateway board to MQTT. [`device flash-gateway`](device.md) is the
 > *firmware* you flash onto that board, once. Same word, different objects.
 
-## `simulator` — standalone simulator
+## `simulator` - standalone simulator
 
 No hardware, no gateway. Exactly equivalent to `run controller --conn simulator`,
 so it shares the controller's flags and serves the same dashboard.
@@ -63,7 +63,7 @@ so it shares the controller's flags and serves the same dashboard.
 dotbot run simulator -w
 ```
 
-## `lh2-calibration` — capture & apply
+## `lh2-calibration` - capture & apply
 
 Lighthouse v2 calibration against a single serial-attached board. `collect`
 opens a TUI to capture LH2 counts; `apply` writes the saved calibration out as
@@ -77,14 +77,14 @@ dotbot run lh2-calibration apply ./lh2_calibration.h
 See [the LH2 calibration guide](../guides/lh2-calibration.md). To push a
 calibration to the whole fleet over the air, use [`swarm calibrate-lh2`](swarm.md).
 
-## `demo` — built-in demos
+## `demo` - built-in demos
 
 ```bash
 dotbot run demo --list      # what's available
 dotbot run demo qr          # qrkey phone bridge
 ```
 
-## `keyboard` / `joystick` — teleop
+## `keyboard` / `joystick` - teleop
 
 Drive a DotBot live through a running controller (start one with
 `run controller` first). Both default to `localhost:8000`; pass `-d` to target a

@@ -1,8 +1,8 @@
-# `dotbot swarm` — operate the fleet over the air
+# `dotbot swarm` - operate the fleet over the air
 
 Run experiments across many robots at once. `dotbot swarm` drives the
 [SwarmIT](https://github.com/DotBots/swarmit) orchestration backend: it
-OTA-flashes a sandbox app to every bot, starts/stops it, and watches status —
+OTA-flashes a sandbox app to every bot, starts/stops it, and watches status -
 all wirelessly through a gateway.
 
 For one cabled board, use [`device`](device.md). To build the apps you flash,
@@ -21,7 +21,7 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 
 Each robot needs the SwarmIT sandbox-host firmware; the gateway is an
 nRF5340-DK running the Mari gateway firmware. Both are cabled flashes over
-USB-C (the DotBot v3 has an on-board programmer — no separate J-Link needed).
+USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
@@ -38,11 +38,11 @@ dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem...
 ```
 
 `run gateway` is the host *process*; `device flash-gateway` flashed the
-*firmware* — same word, different objects.
+*firmware* - same word, different objects.
 
 ## 3. Build the OTA payload
 
-The OTA payload is a **sandbox** app — a TrustZone non-secure `.bin`. Build it,
+The OTA payload is a **sandbox** app - a TrustZone non-secure `.bin`. Build it,
 or fetch a pre-compiled release:
 
 ```bash
@@ -52,7 +52,7 @@ dotbot fw fetch -f 0.8.0rc1            # or pull from a release into ./artifacts
 
 Sandbox apps include `dotbot`, `move`, `rgbled`, `spin`, `timer`. Artifact
 names look like `spin-sandbox-dotbot-v3.bin`. (Bare `.hex` apps are *not* OTA
-payloads — those are cabled via [`device flash`](device.md).)
+payloads - those are cabled via [`device flash`](device.md).)
 
 ## 4. Connect
 
@@ -62,7 +62,7 @@ The connection is given as global options *before* the subcommand, or in a
 | Option | Meaning |
 |---|---|
 | `-n`, `--conn`, `--connection` | one string: `mqtts://host:port` (broker) or `/dev/ttyACM0` (serial gateway) |
-| `-s`, `--swarm-id` | hex swarm id — **required for MQTT**, ignored for serial |
+| `-s`, `--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial |
 | `-c`, `--config-path` | a `.toml` carrying the same fields |
 | `-b`, `--baudrate` | serial baudrate (default `1000000`) |
 | `-d`, `--devices` | restrict to a comma-separated subset of addresses |
@@ -103,7 +103,7 @@ To replace a running experiment: `stop`, then `flash ... -ys`.
 
 ## 6. Push an LH2 calibration over the air
 
-Send a calibration (captured from one cabled bot — see
+Send a calibration (captured from one cabled bot - see
 [LH2 calibration](../guides/lh2-calibration.md)) to the whole fleet:
 
 ```bash
@@ -114,7 +114,7 @@ dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
 It accepts a `calibration-*.toml` or the legacy raw payload; the format is
 picked by file extension.
 
-## Two web servers — don't mix them up
+## Two web servers - don't mix them up
 
 | Command | What it serves | Default port |
 |---|---|---|

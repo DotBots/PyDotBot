@@ -12,10 +12,10 @@ Point the controller at a connection and open the web UI:
 # serial gateway plugged into your computer (no swarm-id needed)
 dotbot run controller --conn /dev/ttyACM0 -w
 
-# a swarm over MQTT (swarm-id required — the broker carries many swarms)
+# a swarm over MQTT (swarm-id required - the broker carries many swarms)
 dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -w
 
-# no hardware at all — pure software simulator
+# no hardware at all - pure software simulator
 dotbot run controller --conn simulator -w
 ```
 
@@ -37,7 +37,7 @@ Windows), an MQTT broker (`mqtts://host:port`), or `simulator`.
 See `dotbot run controller --help` for the full list (logging, CSV export, map
 size, background map, simulator init state).
 
-`dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` — try
+`dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` - try
 the UI with no robot or gateway.
 
 ## Use a config file
@@ -59,8 +59,8 @@ CLI flags override config-file values when both are given.
 At <http://localhost:8000/PyDotBot> the page lists every DotBot the controller
 sees. Select one to control it:
 
-- **Joystick** — a virtual joystick drives the selected bot.
-- **RGB LED** — pick a color and the bot's LED follows.
+- **Joystick** - a virtual joystick drives the selected bot.
+- **RGB LED** - pick a color and the bot's LED follows.
 - If you flashed Lighthouse 2 localization, bots report their `(x, y)` position
   on the map (see [LH2 calibration](lh2-calibration.md)).
 
@@ -72,5 +72,5 @@ being blocked. Open `about:config` (Ctrl + L, then type it), find
 
 ## Next steps
 
-- Flash robots and a gateway first — see [device flashing](../cli/device.md).
-- Operate the whole fleet over the air — see [swarm](../cli/swarm.md).
+- Flash robots and a gateway first - see [device flashing](../cli/device.md).
+- Operate the whole fleet over the air - see [swarm](../cli/swarm.md).

@@ -11,7 +11,7 @@ You do this once per physical setup (move a base station → recalibrate).
 ## Prerequisites
 
 - A DotBot v3 you can cable to your machine over USB-C (no external probe
-  needed — the v3 flashes over its on-board programmer).
+  needed - the v3 flashes over its on-board programmer).
 - Two LH2 base stations mounted ~2 m up, facing the arena.
 - A square marked on the floor with a known side length, plus the
   `[calibrate]` extra installed:
@@ -38,8 +38,8 @@ the square, in millimeters**:
 dotbot run lh2-calibration collect -p /dev/cu.usbmodem... -d 500
 ```
 
-Move the bot to each corner — Top left → Top right → Bottom left → Bottom right
-— pressing the matching button in the TUI at each. When all four are captured,
+Move the bot to each corner - Top left → Top right → Bottom left → Bottom right
+- pressing the matching button in the TUI at each. When all four are captured,
 save. The calibration is written under `~/.dotbot/` (a `calibration-<UTC>.toml`).
 
 Common `collect` flags:
@@ -47,13 +47,13 @@ Common `collect` flags:
 | Flag | Default | Meaning |
 |---|---|---|
 | `-p`, `--port` | auto-detect | Serial port of the calibration firmware. |
-| `-d`, `--distance` | — | Square side length, **in mm** (see sizing below). |
+| `-d`, `--distance` | - | Square side length, **in mm** (see sizing below). |
 | `-n`, `--extra-lh-num` | `0` | Extra base stations beyond the first (0–5). |
-| `--input-data` | — | Re-process a saved capture instead of capturing live. |
+| `--input-data` | - | Re-process a saved capture instead of capturing live. |
 
 See `dotbot run lh2-calibration collect --help` for the full list.
 
-**Sizing `-d`** — the usable arena is **5× the square side**, with the square
+**Sizing `-d`** - the usable arena is **5× the square side**, with the square
 centered (a `2·d` margin on every side):
 
 ```
@@ -93,7 +93,7 @@ dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
 ```
 
 `calibrate-lh2` accepts either a `calibration-*.toml` or the legacy raw
-`calibration.out` payload — the format is picked by file extension.
+`calibration.out` payload - the format is picked by file extension.
 
 Once pushed, the bots report positions, which show up live in the
 [controller](../cli/run.md) Web UI.
@@ -110,14 +110,14 @@ dotbot run lh2-calibration apply ./lh2_calibration.h
 
 The swarmit secure bootloader `#include`s this file; rebuild and reflash the
 bootloader for it to take effect. For already-running bots, prefer the OTA path
-in step 3 — no reflash needed.
+in step 3 - no reflash needed.
 
 ## Troubleshooting
 
-- **No counts in the TUI** — wrong `-p` port, or the bot can't see both base
+- **No counts in the TUI** - wrong `-p` port, or the bot can't see both base
   stations. Confirm line-of-sight and that the LEDs on the base stations are
   steady.
-- **Positions look skewed or mirrored** — the corners were captured out of
+- **Positions look skewed or mirrored** - the corners were captured out of
   order. Re-run `collect` and follow TL → TR → BL → BR exactly.
-- **Positions are scaled wrong** — `-d` didn't match the real square. It's in
+- **Positions are scaled wrong** - `-d` didn't match the real square. It's in
   millimeters, not centimeters.

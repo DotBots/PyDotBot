@@ -1,4 +1,4 @@
-# `dotbot fw` — firmware artifacts
+# `dotbot fw` - firmware artifacts
 
 Build, fetch, and inventory firmware **without touching hardware**. Flashing
 lives elsewhere: one cabled board → [`dotbot device`](device.md), the fleet
@@ -31,7 +31,7 @@ export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware
 **`build` vs `artifacts`**: both compile via SES. `build` stops once SES is
 done (output stays buried in the per-target `Output/` tree). `artifacts` goes
 one step further and copies a flat, predictably-named `<app>-<board>.hex` into
-`./artifacts/` — which is exactly where `dotbot device flash <app>` and the
+`./artifacts/` - which is exactly where `dotbot device flash <app>` and the
 swarm tools look. Reach for `artifacts` when you intend to flash; `build` when
 you only want to know it compiles.
 
@@ -80,7 +80,7 @@ bare targets, `dotbot fw targets --sandbox` for the sandbox set.
 
 Notes:
 - The gateway (`dotbot_gateway`) builds for the **DK** targets, not the DotBot
-  boards — it runs on a DK plugged into your computer.
+  boards - it runs on a DK plugged into your computer.
 - The nRF5340 radio lives on the **net core**, so a gateway needs two images:
   `dotbot_gateway` on `nrf5340dk-app` **and** `nrf5340_net` on `nrf5340dk-net`.
 
@@ -95,7 +95,7 @@ dotbot fw artifacts --app dotbot
 # Just confirm an app compiles (no collection)
 dotbot fw build --app sailbot -t nrf52840dk
 
-# Gateway for an nRF5340-DK — both cores
+# Gateway for an nRF5340-DK - both cores
 dotbot fw artifacts --app dotbot_gateway -t nrf5340dk-app
 dotbot fw artifacts --app nrf5340_net    -t nrf5340dk-net
 
@@ -109,7 +109,7 @@ dotbot fw fetch -f v1.0.0
 dotbot fw list
 ```
 
-## `make` — the escape hatch
+## `make` - the escape hatch
 
 `dotbot fw make` runs `make` inside your `DotBot-firmware` checkout with the
 workspace-resolved `SEGGER_DIR`, forwarding every argument verbatim. Use it
@@ -119,11 +119,11 @@ only when `build`/`artifacts` don't model the Makefile knob you need.
 dotbot fw make list-projects
 ```
 
-Do **not** run `make docker` — that's the CI path and crawls under emulation on
+Do **not** run `make docker` - that's the CI path and crawls under emulation on
 this machine.
 
 ## See also
 
-- [`dotbot device`](device.md) — flash an artifact onto one cabled board.
-- [`dotbot swarm`](swarm.md) — push a sandbox app to the fleet over the air.
-- [LH2 calibration](../guides/lh2-calibration.md) — the `lh2_calibration` app workflow.
+- [`dotbot device`](device.md) - flash an artifact onto one cabled board.
+- [`dotbot swarm`](swarm.md) - push a sandbox app to the fleet over the air.
+- [LH2 calibration](../guides/lh2-calibration.md) - the `lh2_calibration` app workflow.

@@ -1,7 +1,7 @@
-# `dotbot device` — flash one cabled board
+# `dotbot device` - flash one cabled board
 
 `dotbot device` programs **one board on your desk**, connected over a cable. It
-talks to the board's on-board programmer over the SWD/J-Link interface — no
+talks to the board's on-board programmer over the SWD/J-Link interface - no
 external probe needed for normal flashing. On the **DotBot v3** the programmer
 (a J-Link-OB / DAPLink behind an SWD mux) is reached over **USB-C**; on an
 nRF5340-DK over its micro-USB port. A separate J-Link is only required for
@@ -12,7 +12,7 @@ instead. To build the `.hex` first, see [`fw`](fw.md).
 
 ```{tip}
 **`device flash-gateway` flashes _firmware onto a board_.** The host-side
-UART↔MQTT bridge process is a different thing — that's [`run gateway`](run.md).
+UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md).
 ```
 
 ## Commands
@@ -22,7 +22,7 @@ UART↔MQTT bridge process is a different thing — that's [`run gateway`](run.m
 | `flash <app\|file>` | Whole-chip program one app (or a `.hex`/`.bin`) onto the board |
 | `flash-gateway` | Turn an nRF5340-DK into the swarm gateway (both cores + network id) |
 | `flash-sandbox-host` | Turn a DotBot v3 into a swarm sandbox host (bootloader + netcore + id) |
-| `flash-programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink) — needs a J-Link |
+| `flash-programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink) - needs a J-Link |
 | `info` | Read a board's provisioning state (chip id + network id) |
 
 ## Flash an app
@@ -51,7 +51,7 @@ dotbot device flash dotbot_gateway -b nrf52840dk -s 10
 ### nRF5340 = two cores
 
 The nRF5340's radio lives on the **net core**, so an app-core app also needs a
-net-core image. Build and flash each for its own target — the app image is
+net-core image. Build and flash each for its own target - the app image is
 `dotbot_gateway`, the net image is **`nrf5340_net`** (not `dotbot_gateway`):
 
 ```bash
@@ -92,7 +92,7 @@ dotbot device flash-sandbox-host -n 0100 -f 0.8.0rc1 -s 77
 | `-n, --network-id` | 16-bit hex net id (required) | 16-bit hex net id (required) |
 | `-f, --fw-version` | release to flash (required) | release to flash (required) |
 | `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
-| `-l, --calibration` | — | optional LH2 calibration file to bake in |
+| `-l, --calibration` | - | optional LH2 calibration file to bake in |
 
 A board flashed with `flash-sandbox-host` is what [`swarm flash`](swarm.md)
 targets to run sandboxed apps over the air.
@@ -103,7 +103,7 @@ targets to run sandboxed apps over the air.
 dotbot device info -s 77
 ```
 
-Reports the chip id and network identity. It never fails on a blank board — it
+Reports the chip id and network identity. It never fails on a blank board - it
 says *not provisioned* and how to fix it.
 
 ## flash-programmer
