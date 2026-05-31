@@ -16,28 +16,16 @@ from one bot to a thousand.
 dotbot --help
 ```
 
-## The mental model: three nouns + one verb
+## The four commands
 
-Everything in `dotbot` lives under four namespaces. Three name a **thing you
-manage** at a different scale; one names the **host processes you launch**.
+`dotbot` has four top-level commands — pick by what you're doing right now:
 
-| Namespace | What it is | Reach for it when… |
+| Command | What it does | Reach for it when… |
 |---|---|---|
-| [`fw`](fw.md) | Firmware **artifacts** — build / fetch / list. No hardware. | You want a `.hex`/`.bin` to flash later, or to see what builds. |
-| [`device`](device.md) | **One board** on a cable. Flash an app/role, read its info. | A DotBot or DK is plugged into your USB port right now. |
-| [`swarm`](swarm.md) | The **fleet**, over the air. Status, OTA flash, start/stop, monitor. | You're driving many provisioned bots through the gateway. |
-| [`run`](run.md) | **Host processes** you start on your computer. | You need the controller, gateway bridge, simulator, demos, or teleop. |
-
-Read it as a sentence: you **`fw`** an artifact, **`device`**-flash it onto one
-board, **`swarm`**-flash it across the fleet, and **`run`** the host processes
-that talk to them.
-
-```bash
-dotbot fw     --help   # firmware artifacts (no hardware)
-dotbot device --help   # one cabled board
-dotbot swarm  --help   # the fleet, over the air
-dotbot run    --help   # host-side processes
-```
+| [`fw`](fw.md) | Build, fetch, and list firmware files. No hardware needed. | You want a `.hex`/`.bin` to flash later, or to see what builds. |
+| [`device`](device.md) | Flash one cabled board and read its info. | A DotBot or DK is plugged into your USB port right now. |
+| [`swarm`](swarm.md) | Drive the whole fleet over the air — status, OTA flash, start/stop, monitor. | You're operating many provisioned bots through a gateway. |
+| [`run`](run.md) | Start host processes on your computer — controller, gateway bridge, simulator, demos, teleop. | You need the web UI, a gateway bridge, the simulator, or a demo. |
 
 ## Which one do I want?
 
