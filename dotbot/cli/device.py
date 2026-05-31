@@ -51,7 +51,10 @@ def _looks_like_path(value: str) -> bool:
     "-b",
     default="dotbot-v3",
     show_default=True,
-    help="Board the app targets (used to resolve <app>-<board> in ./artifacts/).",
+    help=(
+        "Target board: selects the chip family + core to flash (nRF52 vs "
+        "nRF5340 app/net) and resolves <app>-<board> in ./artifacts/."
+    ),
 )
 @click.option("--sandbox", is_flag=True, help="Resolve the sandbox-app flavor (.bin).")
 @click.option(
@@ -62,11 +65,12 @@ def _looks_like_path(value: str) -> bool:
     show_default=True,
 )
 def flash(app, sn_starting_digits, board, sandbox, config):
-    """Flash an application image to a provisioned device's app core.
+    """Flash a firmware image to one cabled device (whole-chip program).
 
-    APP is an app name (resolved against ./artifacts/, building from
-    source if needed) or an explicit `.hex`/`.bin` file path. The device
-    must already carry the sandbox host (`dotbot device flash-sandbox-host`).
+    APP is an app name (resolved against ./artifacts/, building from source
+    if needed) or an explicit `.hex`/`.bin` file path. `--board` selects the
+    chip family + core to program (see `dotbot fw targets`); no sandbox host
+    is required.
     """
     from dotbot.firmware.flash import flash_app_image
 
@@ -77,7 +81,7 @@ def flash(app, sn_starting_digits, board, sandbox, config):
             raise click.ClickException(f"Firmware image not found: {image}")
     else:
         image = resolve_app_artifact(app, board=board, config=config, sandbox=sandbox)
-    flash_app_image(image, sn_starting_digits=sn_starting_digits)
+    flash_app_image(image, board=board, sn_starting_digits=sn_starting_digits)
 
 
 def _fw_version_option(f):
