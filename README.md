@@ -159,61 +159,22 @@ dotbot swarm -c swarm-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26
 
 Now your bots should be reporting their `(x, y)` location!
 
-## More things you can do
+## Going further
 
-```
-dotbot run controller            # control plane + REST/WS + dashboard
-dotbot run gateway               # host-side UART <-> MQTT bridge
-dotbot run sim                   # ≡ run controller --conn simulator (no hardware)
-dotbot run lh2-calibration       # LH2 calibration workflow
-dotbot run demo qr               # built-in research demos
-dotbot run keyboard              # teleop a bot from the keyboard
-```
+Full command reference and guides — running the controller + web UI, the four
+CLI namespaces (`fw` / `device` / `swarm` / `run`), hardware, and LH2
+calibration — are in the [documentation][doc-link].
 
-Note the two "gateway"s the namespaces disambiguate: `dotbot device
-flash-gateway` flashes gateway *firmware* onto a board; `dotbot run
-gateway` runs the host-side bridge *process* that talks to it.
-
-Some subcommands need optional runtime deps:
-
-```
-pip install pydotbot[swarm]      # adds swarmit (fleet orchestration)
-pip install pydotbot[calibrate]  # adds opencv-python + textual (LH2 calibration TUI + exporter)
-pip install pydotbot[all]        # all of the above
-```
-
-Device flashing/provisioning (`dotbot device flash-…`) works out of the
-box. The LH2 calibration
-TUI/exporter (`dotbot run lh2-calibration`) keeps its heavyweight deps
-(textual / opencv-python) behind the `[calibrate]` extra so the core
-install stays lean.
-
-### Starting the controller
-
-Run `dotbot run controller --help` for the full flag list (`--conn`, MQTT,
-HTTP port, map size, etc.). By default the controller expects the serial
-port to be `/dev/ttyACM0` on Linux - use `--port` to override (e.g.
-`--port COM3` on Windows).
-
-With `--webbrowser`, a tab opens at
-[http://localhost:8000/PyDotBot](http://localhost:8000/PyDotBot). The
-page lists available DotBots, lets you select and control one, and
-exposes a virtual joystick and RGB LED control.
-
-Use `--config-path` for a TOML config file:
+Some commands need optional runtime deps:
 
 ```bash
-# Use settings from the config file
-dotbot run controller --config-path config_sample.toml
-# Use config file but override the connection (run a simulator instead)
-dotbot run controller --config-path config_sample.toml --conn simulator
+pip install --pre 'pydotbot[swarm]'      # swarmit (fleet orchestration)
+pip install --pre 'pydotbot[calibrate]'  # opencv-python + textual (LH2 calibration)
+pip install --pre 'pydotbot[all]'        # everything
 ```
 
-CLI flags override config-file values when both are provided.
-
 The `dotbot` dispatcher is the only console script — every workflow is a
-`dotbot <group> <verb>` subcommand. There are no per-command `dotbot-*`
-binaries.
+`dotbot <group> <verb>` subcommand; there are no `dotbot-*` binaries.
 
 **Firefox users:**
 If the webapp is not working, press `Ctrl + L`, type `about:config`,
