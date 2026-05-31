@@ -117,7 +117,12 @@ html_theme_options = {
 
 # -- Options for linkcheck ---------------------------------------------
 
-linkcheck_ignore = [r"http://localhost:\d+/"]
+linkcheck_ignore = [
+    r"http://localhost:\d+/",
+    # nordicsemi.com's WAF returns 403 to the linkcheck bot; the link is valid
+    # for humans (the nRF Command Line Tools download linked from the README).
+    r"https://www\.nordicsemi\.com/",
+]
 
 # -- Options for autosummary/autodoc output -----------------------------------
 autosummary_generate = True
