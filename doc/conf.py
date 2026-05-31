@@ -127,6 +127,9 @@ linkcheck_ignore = [
     # The README deep-links into this same docs site; those pages exist only
     # once this build is published, so linkcheck can't reach them yet.
     r"https://pydotbot\.readthedocs\.io/",
+    # YouTube (demo video + its thumbnail) bot-blocks the linkcheck crawler.
+    r"https://www\.youtube\.com/",
+    r"https://img\.youtube\.com/",
 ]
 
 # -- Options for autosummary/autodoc output -----------------------------------
