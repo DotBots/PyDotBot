@@ -20,6 +20,9 @@ Software to install (as needed):
 - [nRF Command Line Tools](https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools) (`nrfjprog`), for commands such as `dotbot device flash`
 - [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/), for commands such as `dotbot fw build`
 
+The nRF/SEGGER tools are only needed to build or cable-flash firmware yourself.
+Driving an already-provisioned swarm needs nothing but Python.
+
 Minimal hardware setup:
 - DotBot v3, as well as a USB-C cable and a barrel-jack charger (2.5 mm, 6–18 V, 5/10 A)
 - nRF5340-DK to use as gateway, as well as a micro-USB cable
@@ -47,6 +50,8 @@ Commands:
   swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
   run     Host-side processes: controller, gateway, sim, calibration, demos, teleop.
 ```
+
+Every command and flag is documented in the [CLI reference][cli-doc].
 
 ## Quickstart - one bot
 
@@ -76,6 +81,9 @@ and open the web UI:
 ```bash
 dotbot run controller --conn /dev/ttyACM0 -w  # serial gateway; no swarm-id needed
 ```
+
+More detail: building and flashing one board ([`fw`][fw-doc] / [`device`][device-doc])
+and driving it from the web UI ([controller guide][controller-doc]).
 
 ## Quickstart - a swarm
 
@@ -133,31 +141,28 @@ Observe and control your swarm from a web interface:
 dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -w  # will open a webpage at http://localhost:8000/PyDotBot/
 ```
 
+Full walkthrough of fleet operations — status, OTA flash, start/stop, monitor —
+is in the [`swarm` reference][swarm-doc].
+
 ## Quickstart - Lighthouse 2 localization
 
-Follow this section if you want your robots to have localization information.
-You will need at least one Lighthouse 2 base station.
-
-Note: this section needs the calibration extra — `pip install --pre 'pydotbot[calibrate]'`.
-
-### collect calibration
-
-Learn more about the calibration setup (guide TODO).
+Give your robots a real-world `(x, y)` position. You'll need at least one
+Lighthouse 2 base station and the calibration extra
+(`pip install --pre 'pydotbot[calibrate]'`).
 
 ```bash
-# flash the LH2-calibration capture firmware to a cabled dotbot, then collect:
+# 1. flash the capture firmware to a cabled dotbot and collect four corner points
 dotbot device flash lh2_calibration -s 77
-dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # collect data from a dotbot, use a square of side 20 cm
-```
+dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # square of side 20 cm
 
-Then, update the swarm with a new calibration:
-
-```bash
+# 2. push the resulting calibration to the fleet over the air
 dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
 dotbot swarm -c swarm-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
 ```
 
-Now your bots should be reporting their `(x, y)` location!
+Your bots now report their `(x, y)` location. The full setup — arena sizing,
+base-station placement, and troubleshooting — is in the
+[LH2 calibration guide][lh2-doc].
 
 ## Going further
 
@@ -176,9 +181,8 @@ pip install --pre 'pydotbot[all]'        # everything
 The `dotbot` dispatcher is the only console script — every workflow is a
 `dotbot <group> <verb>` subcommand; there are no `dotbot-*` binaries.
 
-**Firefox users:**
-If the webapp is not working, press `Ctrl + L`, type `about:config`,
-and set `network.http.http2.websockets` to `false`.
+Hitting a snag (e.g. the web UI not loading in Firefox)? See
+[Troubleshooting][troubleshooting-doc].
 
 ## Tests
 
@@ -203,3 +207,10 @@ See `LICENSE` in each component repository.
 [codecov-badge]: https://codecov.io/gh/DotBots/PyDotBot/branch/main/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/DotBots/PyDotBot
 [dotbot-firmware-repo]: https://github.com/DotBots/DotBot-firmware
+[cli-doc]: https://pydotbot.readthedocs.io/en/latest/cli/index.html
+[fw-doc]: https://pydotbot.readthedocs.io/en/latest/cli/fw.html
+[device-doc]: https://pydotbot.readthedocs.io/en/latest/cli/device.html
+[swarm-doc]: https://pydotbot.readthedocs.io/en/latest/cli/swarm.html
+[controller-doc]: https://pydotbot.readthedocs.io/en/latest/guides/controller.html
+[lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
+[troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
