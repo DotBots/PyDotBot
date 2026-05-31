@@ -124,6 +124,9 @@ linkcheck_ignore = [
     # nordicsemi.com's WAF returns 403 to the linkcheck bot; the link is valid
     # for humans (the nRF Command Line Tools download linked from the README).
     r"https://www\.nordicsemi\.com/",
+    # The README deep-links into this same docs site; those pages exist only
+    # once this build is published, so linkcheck can't reach them yet.
+    r"https://pydotbot\.readthedocs\.io/",
 ]
 
 # -- Options for autosummary/autodoc output -----------------------------------
