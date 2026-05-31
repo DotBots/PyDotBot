@@ -11,6 +11,27 @@ This package contains a complete environment for using [DotBots](http://www.dotb
 The DotBot is a small wireless wheeled robot, built to operate in swarms of
 thousands, for research and education.
 
+PyDotBot is the control plane in the middle: your code, the web UI, and teleop
+drivers talk to it, and it drives the swarm through a gateway.
+
+```text
+ web UI · keyboard · joystick · your Python code
+                  │  REST / WebSocket
+                  ▼
+          dotbot controller
+                  │  serial — or an MQTT broker,
+                  │  for large / remote swarms
+                  ▼
+          gateway  (nRF5340)
+                  │  Mari radio  (TSCH over BLE)
+                  ▼
+    🤖 🤖 🤖 🤖 🤖  …  a swarm of DotBots
+```
+
+▶️ **See a swarm in action:**
+
+[![Watch the DotBots demo](https://img.youtube.com/vi/pXGTLqafReU/hqdefault.jpg)](https://www.youtube.com/watch?v=pXGTLqafReU)
+
 The firmware for the DotBots can be found [here][dotbot-firmware-repo].
 
 ## Prerequisites
