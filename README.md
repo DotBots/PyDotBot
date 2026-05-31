@@ -13,10 +13,21 @@ thousands, for research and education.
 
 The firmware for the DotBots can be found [here][dotbot-firmware-repo].
 
+## Prerequisites
+
+Software to install (as needed):
+- Python ≥ 3.11 - ensure you have pip also installed
+- [nRF Command Line Tools](https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools) (`nrfjprog`), for commands such as `dotbot device flash`
+- [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/), for commands such as `dotbot fw build`
+
+Minimal hardware setup:
+- DotBot v3, as well as a USB-C cable and a barrel-jack charger (2.5 mm, 6–18 V, 5/10 A)
+- nRF5340-DK to use as gateway, as well as a micro-USB cable
+
 ## Install
 
 ```bash
-pip install --pre 'pydotbot[all]'   # --pre while 0.29 is in pre-release
+pip install --pre 'pydotbot[swarm]'   # --pre while 0.29 is in pre-release
 git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
 ```
 
@@ -26,9 +37,9 @@ git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBo
 $ dotbot --help
 Usage: dotbot [OPTIONS] COMMAND [ARGS]...
 
-  Control DotBots. Four namespaces: firmware artifacts (fw), one connected
-  device (device), the fleet over the air (swarm), and host-side processes
-  you launch (run).
+  One CLI for the whole DotBot workflow: build and flash firmware, program and
+  control a single robot, and run experiments over the air across a swarm -
+  from one bot to a thousand.
 
 Commands:
   fw      Firmware artifacts (no hardware): build / fetch / list / make.
@@ -74,9 +85,9 @@ To operate as a swarm, we need to fetch some firmware, and setup a configuration
 
 ```bash
 # pull the pre-compiled firmwares from a release
-dotbot fw fetch -f 0.8.0rc1
+dotbot fw fetch -f 0.8.0rc1  # or build yourself with: dotbot fw artifacts --sandbox
 # configure where to connect and which swarm
-cat > tb-config.toml <<'EOF'
+cat > swarm-config.toml <<'EOF'
 conn = "mqtts://argus.paris.inria.fr:8883"
 swarm_id = "1234"
 EOF
@@ -106,14 +117,14 @@ dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem00105
 You can flash as many dotbots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
 ```bash
-dotbot swarm -c tb-config.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
+dotbot swarm -c swarm-config.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
 ```
 
 Then, flash another experiment:
 
 ```bash
-dotbot swarm -c tb-config.toml stop  # ensure all robots are in bootloader
-dotbot swarm -c tb-config.toml flash ./artifacts/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
+dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
+dotbot swarm -c swarm-config.toml flash ./artifacts/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
 ```
 
 Observe and control your swarm from a web interface:
@@ -126,6 +137,8 @@ dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -
 
 Follow this section if you want your robots to have localization information.
 You will need at least one Lighthouse 2 base station.
+
+Note: this section needs the calibration extra — `pip install --pre 'pydotbot[calibrate]'`.
 
 ### collect calibration
 
@@ -140,8 +153,8 @@ dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # c
 Then, update the swarm with a new calibration:
 
 ```bash
-dotbot swarm -c tb-config.toml stop  # ensure all robots are in bootloader
-dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
+dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
+dotbot swarm -c swarm-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
 ```
 
 Now your bots should be reporting their `(x, y)` location!
