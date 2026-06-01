@@ -23,6 +23,7 @@ from dotbot.cli._artifacts import (
     ensure_nrfjprog,
     resolve_app_artifact,
 )
+from dotbot.cli._cfg import from_config
 
 
 @click.group(
@@ -58,13 +59,15 @@ def _looks_like_path(value: str) -> bool:
 )
 @click.option("--sandbox", is_flag=True, help="Resolve the sandbox-app flavor (.bin).")
 @click.option(
-    "--config",
-    "-c",
+    "--build-config",
+    "config",
     type=click.Choice(("Debug", "Release")),
     default="Release",
     show_default=True,
+    help="Build configuration (for auto-resolving the artifact).",
 )
-def flash(app, sn_starting_digits, board, sandbox, config):
+@click.pass_context
+def flash(ctx, app, sn_starting_digits, board, sandbox, config):
     """Flash a firmware image to one cabled device (whole-chip program).
 
     APP is an app name (resolved against ./artifacts/, building from source
@@ -74,6 +77,11 @@ def flash(app, sn_starting_digits, board, sandbox, config):
     """
     from dotbot.firmware.flash import flash_app_image
 
+    board = from_config(ctx, "board", "board", "device")
+    sn_starting_digits = from_config(
+        ctx, "sn_starting_digits", "sn_starting_digits", "device"
+    )
+    config = from_config(ctx, "config", "build_config", "device")
     ensure_nrfjprog()
     if _looks_like_path(app):
         image = Path(app)
@@ -104,7 +112,10 @@ def _sn_option(f):
 
 @cmd.command(name="flash-swarmit-sandbox")
 @click.option(
-    "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
+    "--network-id",
+    "-n",
+    default=None,
+    help="16-bit hex network id (e.g. 0100); defaults to your deployment's swarm_id.",
 )
 @click.option(
     "--calibration",
@@ -115,7 +126,10 @@ def _sn_option(f):
 )
 @_fw_version_option
 @_sn_option
-def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_digits):
+@click.pass_context
+def flash_swarmit_sandbox(
+    ctx, network_id, calibration_path, fw_version, sn_starting_digits
+):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
@@ -124,6 +138,12 @@ def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
+    network_id = from_config(ctx, "network_id", "swarm_id", None)
+    if network_id is None:
+        raise click.ClickException(
+            "no network id: pass -n/--network-id, or set swarm_id (or a "
+            "deployment) in your config."
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(network_id)
     flash_role(
@@ -138,11 +158,15 @@ def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_
 
 @cmd.command(name="flash-mari-gateway")
 @click.option(
-    "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
+    "--network-id",
+    "-n",
+    default=None,
+    help="16-bit hex network id (e.g. 0100); defaults to your deployment's swarm_id.",
 )
 @_fw_version_option
 @_sn_option
-def flash_mari_gateway(network_id, fw_version, sn_starting_digits):
+@click.pass_context
+def flash_mari_gateway(ctx, network_id, fw_version, sn_starting_digits):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -151,6 +175,12 @@ def flash_mari_gateway(network_id, fw_version, sn_starting_digits):
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
+    network_id = from_config(ctx, "network_id", "swarm_id", None)
+    if network_id is None:
+        raise click.ClickException(
+            "no network id: pass -n/--network-id, or set swarm_id (or a "
+            "deployment) in your config."
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(network_id)
     flash_role(

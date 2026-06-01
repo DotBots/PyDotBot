@@ -130,6 +130,10 @@ linkcheck_ignore = [
     # YouTube (demo video + its thumbnail) bot-blocks the linkcheck crawler.
     r"https://www\.youtube\.com/",
     r"https://img\.youtube\.com/",
+    # Badge services (shields.io, badge.fury.io) are decorative and
+    # intermittently time out or rate-limit the linkcheck bot.
+    r"https://img\.shields\.io/",
+    r"https://badge\.fury\.io/",
 ]
 
 # -- Options for autosummary/autodoc output -----------------------------------

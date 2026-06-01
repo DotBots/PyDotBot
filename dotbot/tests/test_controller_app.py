@@ -44,6 +44,34 @@ def test_main(run, version, _):
     assert "Welcome to the DotBots controller (version: unknown)." in result.output
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_uses_selected_deployment(controller, _asyncio_run, tmp_path):
+    """Through the root group: a selected deployment supplies `conn` so
+    `run controller` starts without a CLI `--conn` and consumes
+    `deployment.sim.conn = "simulator"`."""
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(
+        """
+default_deployment = "sim"
+
+[deployment.sim]
+conn = "simulator"
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    # The deployment's conn=simulator was consumed: no "no connection" error,
+    # and the adapter resolves to the simulator.
+    settings = controller.call_args.args[0]
+    assert settings.adapter == "dotbot-simulator"
+
+
 def test_main_without_conn_errors():
     """No `--conn` → a clear error listing the connection forms."""
     runner = CliRunner()

@@ -42,17 +42,22 @@ the UI with no robot or gateway.
 
 ## Use a config file
 
-Keep your connection settings in a TOML file instead of repeating flags:
+Save your connection once instead of repeating flags:
 
 ```bash
-# use settings from the config file
-dotbot run controller --config-path swarm-config.toml
+# save where to connect (writes ./dotbot.toml)
+dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
 
-# use the config file but override the connection (run a simulator instead)
-dotbot run controller --config-path swarm-config.toml --conn simulator
+# the controller picks it up automatically when run from here
+dotbot run controller
+
+# override the saved connection for one run (a simulator instead)
+dotbot run controller --conn simulator
 ```
 
-CLI flags override config-file values when both are given.
+CLI flags override config-file values when both are given. See the
+[configuration reference](../reference/configuration.md) for how the file is
+discovered and the full schema.
 
 ## The web UI
 

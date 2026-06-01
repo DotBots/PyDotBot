@@ -117,6 +117,114 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
     assert "calibration_path" not in calls["kw"]
 
 
+# ── network id defaults from the selected deployment's swarm_id ─────────
+
+
+def _write_cfg(tmp_path, text):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(text)
+    return path
+
+
+def test_flash_mari_gateway_net_id_from_deployment(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch
+):
+    """No -n + a selected deployment -> net_id derived from its swarm_id."""
+    from dotbot.cli.main import cli
+
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    cfg = _write_cfg(
+        tmp_path,
+        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+    )
+    result = runner.invoke(
+        cli,
+        ["-c", str(cfg), "device", "flash-mari-gateway", "-s", "10", "-f", "0.8.0rc1"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["role"] == "gateway"
+    assert calls["kw"]["net_id"] == (0x1234, "1234")
+
+
+def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch
+):
+    """An explicit -n beats the deployment's swarm_id."""
+    from dotbot.cli.main import cli
+
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    cfg = _write_cfg(
+        tmp_path,
+        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+    )
+    result = runner.invoke(
+        cli,
+        [
+            "-c",
+            str(cfg),
+            "device",
+            "flash-mari-gateway",
+            "-n",
+            "0099",
+            "-f",
+            "0.8.0rc1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["kw"]["net_id"] == (0x0099, "0099")
+
+
+def test_flash_mari_gateway_no_net_id_no_config_errors(runner, _no_nrfjprog_gate):
+    """No -n and no swarm_id/deployment -> a clean ClickException, not a crash."""
+    from dotbot.cli.main import cli
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["device", "flash-mari-gateway", "-f", "0.8.0rc1"])
+    assert result.exit_code != 0
+    assert "no network id" in result.output
+
+
+def test_flash_swarmit_sandbox_net_id_from_deployment(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch
+):
+    """flash-swarmit-sandbox also defaults net_id from the deployment's swarm_id."""
+    from dotbot.cli.main import cli
+
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    cfg = _write_cfg(
+        tmp_path,
+        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+    )
+    result = runner.invoke(
+        cli,
+        [
+            "-c",
+            str(cfg),
+            "device",
+            "flash-swarmit-sandbox",
+            "-s",
+            "10",
+            "-f",
+            "0.8.0rc1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["role"] == "dotbot-v3"
+    assert calls["kw"]["net_id"] == (0x1234, "1234")
+
+
 # ── device info: read-and-report, never fails on a blank board ──────────
 
 

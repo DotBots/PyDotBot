@@ -23,12 +23,17 @@ def lazy_subcommand(
     package: str,
     help: str,
     loader: Callable[[], click.Command],
+    transform: Optional[Callable[[click.Command], click.Command]] = None,
 ) -> click.Command:
     """Return a Click command that defers import until invocation.
 
     If `loader()` raises ImportError, we expose a stub group/command
     that prints a clean install hint and exits 1. The stub keeps the
     name visible in `dotbot --help` so missing extras are discoverable.
+
+    `transform`, when given, wraps the successfully loaded command — used to
+    inject behavior at the mount boundary (e.g. config-driven flag defaults).
+    It is not applied to the missing-extra stub.
     """
     try:
         cmd = loader()
@@ -37,10 +42,13 @@ def lazy_subcommand(
             name=name, extra=extra, package=package, help=help, error=str(exc)
         )
 
+    if transform is not None:
+        return transform(cmd)
+
     # Don't mutate cmd.name — the source package has its own tests that
     # assert on the original name. Click uses the lookup-key name from
     # the parent's `commands` dict for usage display, so the dispatcher
-    # still shows e.g. `Usage: dotbot testbed ...` correctly.
+    # still shows e.g. `Usage: dotbot deployment ...` correctly.
     return cmd
 
 

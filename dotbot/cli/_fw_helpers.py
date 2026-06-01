@@ -24,10 +24,9 @@ segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
 Resolution order (first match wins):
 - SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
   `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
-- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `<cwd>/DotBot-firmware/`.
-  Deliberately minimal — no parent walk-up, no `repos/` heuristics, no
-  config-file precedence. Either you `cd` to where your clone is, or
-  you point at it explicitly.
+- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `[fw].firmware_repo` in
+  config → `<cwd>/DotBot-firmware/`. No parent walk-up or `repos/` heuristics:
+  set the env var, persist the path in config, or `cd` to where your clone is.
 """
 
 import difflib
@@ -40,20 +39,14 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import click
-import toml
 
 from dotbot.firmware.boards import BOARDS
 
 # Glob used to discover SES installs on macOS. Picks the lexicographically
 # largest match (e.g. "Studio 8.30" beats "Studio 8.22a"), which is good
 # enough as a fallback when the user hasn't set SEGGER_DIR or written
-# `[fw].segger_dir` in `~/.dotbot/config.toml`.
+# `[fw].segger_dir` in their dotbot config.
 _SEGGER_MACOS_GLOB = "/Applications/SEGGER/SEGGER Embedded Studio*"
-
-# Per-user persistent config — shares the `~/.dotbot/` directory the
-# controller / calibration already use (see dotbot/controller.py's
-# CALIBRATION_PATH).
-_CONFIG_PATH = Path.home() / ".dotbot" / "config.toml"
 
 # BUILD_TARGET / flashable board names. Single source of truth is the board
 # table in `dotbot.firmware.boards` (which also carries each board's nrfjprog
@@ -73,24 +66,28 @@ DEFAULT_BARE_TARGET = "dotbot-v3"
 DEFAULT_SANDBOX_BOARD = "dotbot-v3"
 
 
-def load_config() -> dict:
-    """Read `~/.dotbot/config.toml`. Empty dict if missing.
-
-    Raises ClickException with the file path if the TOML is malformed,
-    so the user knows where to fix.
-    """
-    if not _CONFIG_PATH.is_file():
-        return {}
-    try:
-        return toml.load(_CONFIG_PATH)
-    except toml.TomlDecodeError as exc:
-        raise click.ClickException(f"Failed to parse {_CONFIG_PATH}: {exc}") from exc
-
-
 def _config_fw_value(key: str) -> Optional[str]:
-    """Read `[fw].<key>` from `~/.dotbot/config.toml`, or None."""
-    fw_section = load_config().get("fw") or {}
-    val = fw_section.get(key)
+    """Read `[fw].<key>` from the resolved unified config, or None.
+
+    Uses the config the root `dotbot` group already resolved onto the Click
+    context when one is active (so `-c`, the cwd `dotbot.toml`, the
+    `~/.dotbot/config.toml` fallback, and flag precedence all apply); for
+    direct (non-CLI) calls it discovers and loads the config fresh.
+    """
+    ctx = click.get_current_context(silent=True)
+    cfg = (
+        ctx.obj.get("config")
+        if (ctx is not None and isinstance(ctx.obj, dict))
+        else None
+    )
+    if cfg is None:
+        from dotbot import config as _config
+
+        try:
+            cfg, _ = _config.load_discovered()
+        except _config.ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+    val = getattr(cfg.fw, key, None)
     return str(val) if val else None
 
 
@@ -137,12 +134,12 @@ def resolve_segger_dir() -> Path:
 
 
 def resolve_firmware_repo() -> Path:
-    """DOTBOT_FIRMWARE_REPO env → ./DotBot-firmware/ → error.
+    """DOTBOT_FIRMWARE_REPO env → `[fw].firmware_repo` config → ./DotBot-firmware/ → error.
 
-    Deliberately minimal — no parent walk-up, no `repos/` heuristics,
-    no config-file precedence. Either the env var points somewhere
-    valid, or the user `cd`'d to the directory that contains a
-    sibling `DotBot-firmware/` clone.
+    Mirrors `resolve_segger_dir`: an env var wins, else the persisted
+    `[fw].firmware_repo` in `~/.dotbot/config.toml`, else the user `cd`'d to a
+    directory containing a sibling `DotBot-firmware/` clone. No parent walk-up
+    or `repos/` heuristics.
     """
     env = os.environ.get("DOTBOT_FIRMWARE_REPO")
     if env:
@@ -152,13 +149,22 @@ def resolve_firmware_repo() -> Path:
         raise click.ClickException(
             f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
         )
+    cfg = _config_fw_value("firmware_repo")
+    if cfg:
+        candidate = Path(cfg)
+        if (candidate / "Makefile").is_file():
+            return candidate
+        raise click.ClickException(
+            f"[fw].firmware_repo={cfg!r} does not contain a Makefile."
+        )
     candidate = Path.cwd() / "DotBot-firmware"
     if (candidate / "Makefile").is_file():
         return candidate
     raise click.ClickException(
         "Could not locate DotBot-firmware. Either:\n"
-        "  - `cd` to the directory containing your DotBot-firmware clone, or\n"
-        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware"
+        "  - `cd` to the directory containing your DotBot-firmware clone,\n"
+        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware, or\n"
+        '  - add to ~/.dotbot/config.toml:  [fw]\\n  firmware_repo = "/path/to/DotBot-firmware"'
     )
 
 

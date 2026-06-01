@@ -14,7 +14,7 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 1. provision (once)   device flash-mari-gateway + device flash-swarmit-sandbox
 2. host bridge        run gateway          (UART <-> MQTT)
 3. build the payload  fw artifacts --sandbox  (or fw fetch)
-4. operate            swarm -c config  flash | start | stop | status | monitor
+4. operate            swarm               flash | start | stop | status | monitor
 ```
 
 ## 1. Provision once
@@ -70,24 +70,24 @@ The connection is given as global options *before* the subcommand, or in a
 See `dotbot swarm --help` for the full list.
 
 ```bash
-cat > tb-config.toml <<'EOF'
-conn = "mqtts://argus.paris.inria.fr:8883"
-swarm_id = "1234"
-EOF
+dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
-If the broker needs auth, set `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS`.
+This writes `./dotbot.toml`; `dotbot swarm` discovers it from the current
+directory like the other `dotbot` commands (pass `--conn` / `--swarm-id` / `-c`
+to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
+`DOTBOT_MQTT_PASS`.
 
 ## 5. Operate the fleet
 
 ```bash
-dotbot swarm -c tb-config.toml status                                # who's out there + their state
-dotbot swarm -c tb-config.toml status -w                             # keep watching
-dotbot swarm -c tb-config.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys
-dotbot swarm -c tb-config.toml stop                                  # back to bootloader (before re-flashing)
-dotbot swarm -c tb-config.toml start                                 # (re)start the loaded app
-dotbot swarm -c tb-config.toml monitor                               # tail SWARMIT_EVENT_LOG from bots
-dotbot swarm -c tb-config.toml message "hello"                       # custom text to the bots
+dotbot swarm status                                # who's out there + their state
+dotbot swarm status -w                             # keep watching
+dotbot swarm flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys
+dotbot swarm stop                                  # back to bootloader (before re-flashing)
+dotbot swarm start                                 # (re)start the loaded app
+dotbot swarm monitor                               # tail SWARMIT_EVENT_LOG from bots
+dotbot swarm message "hello"                       # custom text to the bots
 ```
 
 To replace a running experiment: `stop`, then `flash ... -ys`.
@@ -107,8 +107,8 @@ Send a calibration (captured from one cabled bot - see
 [LH2 calibration](../guides/lh2-calibration.md)) to the whole fleet:
 
 ```bash
-dotbot swarm -c tb-config.toml stop
-dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm stop
+dotbot swarm calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
 ```
 
 It accepts a `calibration-*.toml` or the legacy raw payload; the format is
@@ -118,7 +118,7 @@ picked by file extension.
 
 | Command | What it serves | Default port |
 |---|---|---|
-| `dotbot run controller --conn ... --swarm-id ... -w` | drive/visualize Web UI + REST/WS | `8000` |
+| `dotbot run controller -w` | drive/visualize Web UI + REST/WS | `8000` |
 | `dotbot swarm serve` | SwarmIT FastAPI orchestration backend | `8001` |
 
 `dotbot swarm` auto-discovers a running `serve` daemon; pass `--no-server` to

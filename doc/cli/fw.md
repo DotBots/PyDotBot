@@ -15,6 +15,9 @@ Studio (SES). Point the CLI at the checkout (otherwise it looks for
 
 ```bash
 export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware
+# or persist it once in ~/.dotbot/config.toml:
+#   [fw]
+#   firmware_repo = "/path/to/DotBot-firmware"
 ```
 
 ## Which command do I want?
@@ -43,7 +46,7 @@ Both share the same build options:
 |---|---|
 | `-a, --app <app>` | Build one app (default: every app for the target) |
 | `-t, --target <target>` | Board/target (default: `dotbot-v3`) |
-| `-c, --config Debug\|Release` | Build config (default: `Release`) |
+| `--build-config Debug\|Release` | Build configuration (default: `Release`) |
 | `--sandbox` | TrustZone NS flavor → `sandbox-<board>`, emits `.bin` |
 | `--rebuild` | Force a full rebuild (default: incremental) |
 | `-v, --verbose` | Full SES output |

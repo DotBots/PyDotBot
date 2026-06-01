@@ -544,14 +544,18 @@ def test_fw_help_points_at_dotbot_make(runner):
 
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
-    """Point `~/.dotbot/` at a tmp dir so config tests don't see the
-    real user's `~/.dotbot/config.toml`."""
+    """Point the unified config's user file at a tmp dir and run in a clean
+    cwd, so fw config tests don't see the real `~/.dotbot/config.toml` or a
+    stray `dotbot.toml`."""
     home = tmp_path / "home"
     (home / ".dotbot").mkdir(parents=True)
     monkeypatch.setattr(
-        "dotbot.cli._fw_helpers._CONFIG_PATH",
+        "dotbot.config.USER_CONFIG_PATH",
         home / ".dotbot" / "config.toml",
     )
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
     return home
 
 
@@ -619,8 +623,10 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
     assert "~/.dotbot/config.toml" in msg
 
 
-def test_resolve_firmware_repo_finds_sibling_clone(tmp_path, monkeypatch):
-    """The one default lookup path: `<cwd>/DotBot-firmware/Makefile`."""
+def test_resolve_firmware_repo_finds_sibling_clone(
+    tmp_path, monkeypatch, isolated_home
+):
+    """The fallback lookup path: `<cwd>/DotBot-firmware/Makefile`."""
     repo = tmp_path / "DotBot-firmware"
     repo.mkdir()
     (repo / "Makefile").touch()
@@ -629,8 +635,8 @@ def test_resolve_firmware_repo_finds_sibling_clone(tmp_path, monkeypatch):
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch):
-    """Env var overrides the CWD-sibling default."""
+def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch, isolated_home):
+    """Env var overrides the config and the CWD-sibling default."""
     sibling = tmp_path / "DotBot-firmware"
     sibling.mkdir()
     (sibling / "Makefile").touch()
@@ -640,6 +646,19 @@ def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(elsewhere))
     assert _fw_helpers.resolve_firmware_repo() == elsewhere
+
+
+def test_resolve_firmware_repo_falls_back_to_config(
+    tmp_path, monkeypatch, isolated_home
+):
+    """No env var and no ./DotBot-firmware -> `[fw].firmware_repo` from config wins."""
+    repo = tmp_path / "fw-clone"
+    repo.mkdir()
+    (repo / "Makefile").touch()
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{repo.as_posix()}"\n')
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    monkeypatch.chdir(tmp_path)  # no ./DotBot-firmware here
+    assert _fw_helpers.resolve_firmware_repo() == repo
 
 
 def test_resolve_firmware_repo_errors_when_nothing_found(tmp_path, monkeypatch):
@@ -668,15 +687,12 @@ def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(
 
 
 def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
+    """A malformed config surfaces a clean error naming the file, not a traceback."""
     _write_config(isolated_home, "this is not [valid toml\n")
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
     with pytest.raises(click.ClickException) as excinfo:
-        _fw_helpers.load_config()
-    assert str(_fw_helpers._CONFIG_PATH) in str(excinfo.value)
-
-
-def test_missing_config_returns_empty_dict(isolated_home):
-    """No `~/.dotbot/config.toml` is the common case — must not error."""
-    assert _fw_helpers.load_config() == {}
+        _fw_helpers.resolve_segger_dir()
+    assert "config.toml" in str(excinfo.value)
 
 
 # ── Parity guard against silent drift ───────────────────────────────────

@@ -71,7 +71,7 @@ dotbot device flash nrf5340_net -b nrf5340dk-net -s 10
 | `-b, --board` | Target board → chip family + core (default `dotbot-v3`) |
 | `-s, --sn-starting-digits` | J-Link serial **prefix**, e.g. `77` (v3) or `10` (DK) |
 | `--sandbox` | Resolve the sandbox-app flavor (`.bin`) |
-| `-c, --config` | `Debug` \| `Release` (default `Release`) |
+| `--build-config` | `Debug` \| `Release` (default `Release`) |
 
 ## Flash a role
 

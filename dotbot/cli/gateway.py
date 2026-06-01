@@ -26,6 +26,9 @@ import time
 
 import click
 
+from dotbot.cli._cfg import from_config
+from dotbot.cli._conn import parse_connection
+
 
 def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gateway
     """Construct a MarilibEdge bridge and pump it until interrupted.
@@ -106,6 +109,15 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
     default=True,
     help="Print received frames to stdout (default: on).",
 )
-def cmd(port, mqtt_url, do_print):
+@click.pass_context
+def cmd(ctx, port, mqtt_url, do_print):
     """Run the gateway bridge."""
+    if mqtt_url is None:
+        # No --mqtt-url on the command line: fall back to the selected
+        # deployment's (or config's) connection, but only when it names an
+        # MQTT broker - a serial/simulator conn is not a broker to bridge to,
+        # so we leave mqtt_url None and keep the print-only behavior.
+        conn = from_config(ctx, "mqtt_url", "conn", "run")
+        if conn and parse_connection(conn).kind == "mqtt":
+            mqtt_url = conn
     _run_gateway(port, mqtt_url, do_print)

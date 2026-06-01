@@ -24,6 +24,7 @@ from dotbot import (
     SIMULATOR_INIT_STATE_DEFAULT,
     pydotbot_version,
 )
+from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
@@ -226,7 +227,9 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     type=click.Path(dir_okay=False),
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
+@click.pass_context
 def main(
+    ctx,
     conn,
     swarm_id,
     sim_is_dotbot,
@@ -251,6 +254,14 @@ def main(
     file_data = {}
     if config_path:
         file_data = toml.load(config_path)
+
+    # Unified config / selected deployment, slotted in above the legacy
+    # `--config-path` file. Resolves CLI > env > unified-config (run >
+    # deployment > top-level) for each key; falls through to the param
+    # default (None) when no root context is present, preserving the
+    # legacy `--config-path` fallback that follows.
+    conn = from_config(ctx, "conn", "conn", "run")
+    swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
