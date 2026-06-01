@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot config` - inspect the resolved configuration (read-only).
+"""`dotbot config` - scaffold and inspect the dotbot configuration.
 
-A management group (like `git config` / `kubectl config`) that answers
-"what config is `dotbot` actually using, and where did it come from?".
-Both subcommands read what the root group already stashed on the Click
-context (`ctx.obj`): the loaded `DotbotConfig`, its source path, and the
-selected deployment. Writing the file is deferred, so there is no `set` here.
+A management group (like `git config` / `kubectl config`): `init` writes a
+starter config file (optionally pre-filling `conn` / `swarm_id`); `path` and
+`show` are read-only inspectors over what the root group resolved onto the
+Click context (`ctx.obj`): the loaded `DotbotConfig`, its source path, and the
+selected deployment. There is no per-key `set` - edit the file, it is yours.
 """
 
 from pathlib import Path
@@ -17,18 +17,27 @@ import click
 
 from dotbot.config import USER_CONFIG_PATH
 
-# An annotated starter, written by `dotbot config init`. Everything is commented
-# so a freshly-created file loads as an empty (all-defaults) config; you
-# uncomment what you need. It doubles as schema-by-example.
-_STARTER_TEMPLATE = """\
+
+# An annotated starter, written by `dotbot config init`. With no `--conn` /
+# `--swarm-id` everything is commented, so a fresh file loads as an empty
+# (all-defaults) config; passing them fills the two top-level keys in place. It
+# doubles as schema-by-example.
+def _starter_template(conn: str | None = None, swarm_id: str | None = None) -> str:
+    conn_line = (
+        f'conn      = "{conn}"'
+        if conn
+        else '# conn      = "mqtts://broker:8883"   # broker URL, a serial path, or "simulator"'
+    )
+    swarm_line = f'swarm_id  = "{swarm_id}"' if swarm_id else '# swarm_id  = "0001"'
+    return f"""\
 # dotbot config. A value resolves:  CLI flag > env (DOTBOT_<SECTION>_<KEY>) >
 # this file > built-in default. Found as ./dotbot.toml (searched cwd-upward) or
-# ~/.dotbot/config.toml, or named with `dotbot -c PATH`. Everything below is
-# commented out - uncomment what you need, then run `dotbot config show`.
+# ~/.dotbot/config.toml, or named with `dotbot -c PATH`. Uncomment what you
+# need, then run `dotbot config show`.
 
 # --- shared defaults (any section or deployment can override these) ---------
-# conn      = "mqtts://broker:8883"   # broker URL, a serial path, or "simulator"
-# swarm_id  = "0001"
+{conn_line}
+{swarm_line}
 # log_level = "info"
 
 # --- named deployments: one per physical site; select with --deployment NAME,
@@ -71,21 +80,42 @@ def cmd():
     help="Write the user-level ~/.dotbot/config.toml instead of ./dotbot.toml.",
 )
 @click.option("--force", "-f", is_flag=True, help="Overwrite an existing file.")
-def init(global_, force):
+@click.option(
+    "--conn",
+    help="Pre-fill the shared connection (broker URL, serial path, or 'simulator').",
+)
+@click.option("--swarm-id", help="Pre-fill the shared swarm id.")
+def init(global_, force, conn, swarm_id):
     """Write an annotated starter config file you can edit.
 
     Defaults to ./dotbot.toml in the current directory; --global writes your
     user-level ~/.dotbot/config.toml. Refuses to overwrite unless --force.
+    `--conn` / `--swarm-id` fill those top-level keys (the rest stays
+    commented out for you to uncomment as needed).
     """
+    if conn is not None:
+        from dotbot.cli._conn import ConnError, parse_connection
+
+        try:
+            parse_connection(conn)
+        except ConnError as exc:
+            raise click.ClickException(f"invalid --conn: {exc}") from exc
+
     target = USER_CONFIG_PATH if global_ else Path.cwd() / "dotbot.toml"
     if target.exists() and not force:
         raise click.ClickException(
             f"{target} already exists. Pass --force to overwrite it."
         )
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_STARTER_TEMPLATE)
+    target.write_text(_starter_template(conn, swarm_id))
     click.echo(f"Wrote {target}")
-    click.echo("Uncomment what you need, then run `dotbot config show`.")
+    if conn or swarm_id:
+        filled = " and ".join(
+            label for label, val in (("conn", conn), ("swarm_id", swarm_id)) if val
+        )
+        click.echo(f"Set {filled}; review it, then run `dotbot config show`.")
+    else:
+        click.echo("Uncomment what you need, then run `dotbot config show`.")
 
 
 @cmd.command()

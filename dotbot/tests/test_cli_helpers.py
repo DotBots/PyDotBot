@@ -260,3 +260,32 @@ def test_config_show_without_config_hints_init(runner):
     with runner.isolated_filesystem():
         result = runner.invoke(cli, ["config", "show"])
     assert "config init" in result.output
+
+
+def test_config_init_prefills_conn_and_swarm_id(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["config", "init", "--conn", "mqtts://broker:8883", "--swarm-id", "0001"],
+        )
+        assert result.exit_code == 0, result.output
+        loaded = cfg.load_config(Path("dotbot.toml"))
+        assert loaded.conn == "mqtts://broker:8883"
+        assert loaded.swarm_id == "0001"
+
+
+def test_config_init_conn_only_leaves_swarm_id_unset(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--conn", "simulator"])
+        assert result.exit_code == 0, result.output
+        loaded = cfg.load_config(Path("dotbot.toml"))
+        assert loaded.conn == "simulator"
+        assert loaded.swarm_id is None
+
+
+def test_config_init_rejects_bad_conn(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--conn", "http://nope"])
+        assert result.exit_code != 0
+        assert "invalid --conn" in result.output
+        assert not Path("dotbot.toml").exists()
