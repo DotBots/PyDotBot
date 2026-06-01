@@ -96,6 +96,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `sandbox` | Build TrustZone sandbox apps (`.bin`) instead of bare apps. |
 | `build_config` | `Debug` or `Release`. |
 | `segger_dir` | SEGGER Embedded Studio install path. |
+| `firmware_repo` | Path to your `DotBot-firmware` clone (so `fw build`/`artifacts` find it without `cd` or `DOTBOT_FIRMWARE_REPO`). |
 
 `[device]` - one cabled device (`dotbot device`):
 

@@ -15,6 +15,9 @@ Studio (SES). Point the CLI at the checkout (otherwise it looks for
 
 ```bash
 export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware
+# or persist it once in ~/.dotbot/config.toml:
+#   [fw]
+#   firmware_repo = "/path/to/DotBot-firmware"
 ```
 
 ## Which command do I want?
