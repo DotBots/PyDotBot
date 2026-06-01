@@ -25,13 +25,14 @@ dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
 |---|---|---|
 | 1 | `-c PATH` / `--config PATH` | An explicit path on the command line. |
 | 2 | `DOTBOT_CONFIG` | An explicit path in the environment. |
-| 3 | `./dotbot.toml` | The nearest `dotbot.toml`, searching the cwd and its parents up to a `.git` boundary. |
+| 3 | `./dotbot.toml` | A `dotbot.toml` in the current directory (the cwd only - parent directories are not searched). |
 | 4 | `~/.dotbot/config.toml` | Your user-level file. |
 | 5 | (none) | Built-in defaults only. |
 
-The cwd-upward search (3) means a per-experiment `dotbot.toml` next to your
-notes "just works" while you're in that directory, and your personal file (4) is
-the fallback everywhere else.
+A `dotbot.toml` in your working directory (3) takes precedence over your
+personal file (4), so a per-experiment config wins while you work in that
+directory. Discovery looks only at the cwd - it does not walk up to parent
+directories, so the active config is always unambiguous.
 
 ```{admonition} User file not auto-loaded yet
 :class: note
