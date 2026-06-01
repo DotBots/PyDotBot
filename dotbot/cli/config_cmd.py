@@ -17,51 +17,27 @@ import click
 
 from dotbot.config import USER_CONFIG_PATH
 
+_CONFIG_DOCS_URL = (
+    "https://pydotbot.readthedocs.io/en/latest/reference/configuration.html"
+)
 
-# An annotated starter, written by `dotbot config init`. With no `--conn` /
-# `--swarm-id` everything is commented, so a fresh file loads as an empty
-# (all-defaults) config; passing them fills the two top-level keys in place. It
-# doubles as schema-by-example.
+
+# `dotbot config init` writes a *minimal* file: just the keys you pass, plus a
+# one-line pointer to the full reference. No wall of commented options - the
+# schema lives in the docs, not in everyone's config file.
 def _starter_template(conn: str | None = None, swarm_id: str | None = None) -> str:
-    conn_line = (
-        f'conn      = "{conn}"'
-        if conn
-        else '# conn      = "mqtts://broker:8883"   # broker URL, a serial path, or "simulator"'
+    header = (
+        f"# dotbot config. Options + examples: {_CONFIG_DOCS_URL}\n"
+        "# (MQTT credentials are env-only: DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.)\n"
     )
-    swarm_line = f'swarm_id  = "{swarm_id}"' if swarm_id else '# swarm_id  = "0001"'
-    return f"""\
-# dotbot config. A value resolves:  CLI flag > env (DOTBOT_<SECTION>_<KEY>) >
-# this file > built-in default. Found as ./dotbot.toml (searched cwd-upward) or
-# ~/.dotbot/config.toml, or named with `dotbot -c PATH`. Uncomment what you
-# need, then run `dotbot config show`.
-
-# --- shared defaults (any section or deployment can override these) ---------
-{conn_line}
-{swarm_line}
-# log_level = "info"
-
-# --- named deployments: one per physical site; select with --deployment NAME,
-#     DOTBOT_DEPLOYMENT, or default_deployment -------------------------------
-# default_deployment = "example"
-# [deployment.example]
-# conn     = "mqtts://broker.example:8883"
-# swarm_id = "0001"
-# location = "Example lab"            # descriptive
-# bots     = 100                      # descriptive
-
-# --- per-namespace defaults (mirror the fw / device / swarm / run commands) -
-# [fw]
-# board = "dotbot-v3"
-#
-# [device]
-# sn_starting_digits = "77"
-#
-# [run.controller]
-# http_port = 8000
-
-# MQTT credentials are read only from the environment, never this file:
-#   export DOTBOT_MQTT_USER=...  DOTBOT_MQTT_PASS=...
-"""
+    keys = []
+    if conn:
+        keys.append(f'conn = "{conn}"')
+    if swarm_id:
+        keys.append(f'swarm_id = "{swarm_id}"')
+    if keys:
+        return header + "\n" + "\n".join(keys) + "\n"
+    return header
 
 
 @click.group(
@@ -86,12 +62,12 @@ def cmd():
 )
 @click.option("--swarm-id", help="Pre-fill the shared swarm id.")
 def init(global_, force, conn, swarm_id):
-    """Write an annotated starter config file you can edit.
+    """Write a minimal starter config file you can edit.
 
     Defaults to ./dotbot.toml in the current directory; --global writes your
     user-level ~/.dotbot/config.toml. Refuses to overwrite unless --force.
-    `--conn` / `--swarm-id` fill those top-level keys (the rest stays
-    commented out for you to uncomment as needed).
+    `--conn` / `--swarm-id` pre-fill those top-level keys; the file otherwise
+    holds just a one-line pointer to the full reference (no wall of options).
     """
     if conn is not None:
         from dotbot.cli._conn import ConnError, parse_connection
@@ -115,7 +91,9 @@ def init(global_, force, conn, swarm_id):
         )
         click.echo(f"Set {filled}; review it, then run `dotbot config show`.")
     else:
-        click.echo("Uncomment what you need, then run `dotbot config show`.")
+        click.echo(
+            "Add your settings (see the link inside), then `dotbot config show`."
+        )
 
 
 @cmd.command()
