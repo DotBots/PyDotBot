@@ -23,6 +23,7 @@ from dotbot.cli._artifacts import (
     ensure_nrfjprog,
     resolve_app_artifact,
 )
+from dotbot.cli._cfg import from_config
 
 
 @click.group(
@@ -65,7 +66,8 @@ def _looks_like_path(value: str) -> bool:
     show_default=True,
     help="Build configuration (for auto-resolving the artifact).",
 )
-def flash(app, sn_starting_digits, board, sandbox, config):
+@click.pass_context
+def flash(ctx, app, sn_starting_digits, board, sandbox, config):
     """Flash a firmware image to one cabled device (whole-chip program).
 
     APP is an app name (resolved against ./artifacts/, building from source
@@ -75,6 +77,11 @@ def flash(app, sn_starting_digits, board, sandbox, config):
     """
     from dotbot.firmware.flash import flash_app_image
 
+    board = from_config(ctx, "board", "board", "device")
+    sn_starting_digits = from_config(
+        ctx, "sn_starting_digits", "sn_starting_digits", "device"
+    )
+    config = from_config(ctx, "config", "build_config", "device")
     ensure_nrfjprog()
     if _looks_like_path(app):
         image = Path(app)

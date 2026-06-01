@@ -33,6 +33,7 @@ from pathlib import Path
 import click
 
 from dotbot.cli._artifacts import artifacts_dir, echo_artifact_path
+from dotbot.cli._cfg import from_config
 from dotbot.cli._fw_helpers import (
     BARE_TARGETS,
     CONFIGS,
@@ -145,8 +146,12 @@ def _resolve_build_target(target: str, sandbox: bool) -> str:
     default=False,
     help="Show full SES `-verbose -echo` output.",
 )
-def build(target, project, config, sandbox, rebuild, verbose):
+@click.pass_context
+def build(ctx, target, project, config, sandbox, rebuild, verbose):
     """Build firmware from source (default target: dotbot-v3)."""
+    target = from_config(ctx, "target", "board", "fw")
+    config = from_config(ctx, "config", "build_config", "fw")
+    sandbox = from_config(ctx, "sandbox", "sandbox", "fw")
     build_target = _resolve_build_target(target, sandbox)
     flavor = "sandbox " if sandbox else ""
     apps_to_build = [project] if project else list_projects(build_target)
@@ -175,8 +180,12 @@ def build(target, project, config, sandbox, rebuild, verbose):
 @_config_option
 @_sandbox_option
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def clean(target, config, sandbox, verbose):
+@click.pass_context
+def clean(ctx, target, config, sandbox, verbose):
     """Clean SES build outputs (default target: dotbot-v3)."""
+    target = from_config(ctx, "target", "board", "fw")
+    config = from_config(ctx, "config", "build_config", "fw")
+    sandbox = from_config(ctx, "sandbox", "sandbox", "fw")
     build_target = _resolve_build_target(target, sandbox)
     click.echo(f"Cleaning {target} ({config})...", err=True)
     elapsed = run_make(build_target, config, make_targets=["clean"], quiet=not verbose)
@@ -211,10 +220,14 @@ def list_targets(sandbox):
     help="Print where the artifact lives without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
-def artifacts(target, project, config, sandbox, out_dir, print_path, verbose):
+@click.pass_context
+def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbose):
     """Build + collect artifacts into ./artifacts/ (default)."""
     import shutil
 
+    target = from_config(ctx, "target", "board", "fw")
+    config = from_config(ctx, "config", "build_config", "fw")
+    sandbox = from_config(ctx, "sandbox", "sandbox", "fw")
     build_target = _resolve_build_target(target, sandbox)
     if print_path:
         if not project:
