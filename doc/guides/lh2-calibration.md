@@ -88,8 +88,8 @@ Send the captured calibration over the air. Stop any running app first, then
 push the `.toml` (see [swarm](../cli/swarm.md) for the connection config):
 
 ```bash
-dotbot swarm -c tb-config.toml stop
-dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm -c dotbot.toml stop
+dotbot swarm -c dotbot.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
 ```
 
 `calibrate-lh2` accepts either a `calibration-*.toml` or the legacy raw

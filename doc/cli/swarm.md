@@ -70,24 +70,23 @@ The connection is given as global options *before* the subcommand, or in a
 See `dotbot swarm --help` for the full list.
 
 ```bash
-cat > tb-config.toml <<'EOF'
-conn = "mqtts://argus.paris.inria.fr:8883"
-swarm_id = "1234"
-EOF
+dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
-If the broker needs auth, set `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS`.
+This writes `./dotbot.toml`; `dotbot swarm` reads it via `-c` (and the other
+`dotbot` commands discover it on their own). If the broker needs auth, set
+`DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS`.
 
 ## 5. Operate the fleet
 
 ```bash
-dotbot swarm -c tb-config.toml status                                # who's out there + their state
-dotbot swarm -c tb-config.toml status -w                             # keep watching
-dotbot swarm -c tb-config.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys
-dotbot swarm -c tb-config.toml stop                                  # back to bootloader (before re-flashing)
-dotbot swarm -c tb-config.toml start                                 # (re)start the loaded app
-dotbot swarm -c tb-config.toml monitor                               # tail SWARMIT_EVENT_LOG from bots
-dotbot swarm -c tb-config.toml message "hello"                       # custom text to the bots
+dotbot swarm -c dotbot.toml status                                # who's out there + their state
+dotbot swarm -c dotbot.toml status -w                             # keep watching
+dotbot swarm -c dotbot.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys
+dotbot swarm -c dotbot.toml stop                                  # back to bootloader (before re-flashing)
+dotbot swarm -c dotbot.toml start                                 # (re)start the loaded app
+dotbot swarm -c dotbot.toml monitor                               # tail SWARMIT_EVENT_LOG from bots
+dotbot swarm -c dotbot.toml message "hello"                       # custom text to the bots
 ```
 
 To replace a running experiment: `stop`, then `flash ... -ys`.
@@ -107,8 +106,8 @@ Send a calibration (captured from one cabled bot - see
 [LH2 calibration](../guides/lh2-calibration.md)) to the whole fleet:
 
 ```bash
-dotbot swarm -c tb-config.toml stop
-dotbot swarm -c tb-config.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm -c dotbot.toml stop
+dotbot swarm -c dotbot.toml calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
 ```
 
 It accepts a `calibration-*.toml` or the legacy raw payload; the format is

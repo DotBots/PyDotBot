@@ -10,6 +10,13 @@ You never need a config file: every setting also has a flag and an env var. The
 file just makes a repeated setup (a broker URL, a board name, a swarm id) the
 default.
 
+Create one with `dotbot config init` (it writes a minimal `./dotbot.toml`);
+pass `--conn` / `--swarm-id` to pre-fill the two most common keys:
+
+```bash
+dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
+```
+
 ## Where the file comes from
 
 `dotbot` looks in this order and uses the first hit:
