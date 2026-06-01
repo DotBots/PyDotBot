@@ -27,7 +27,7 @@ pip install pydotbot                         # or `pip install -e .`
 dotbot --help                    # unified dispatcher: fw / device / swarm / run
 dotbot fw --help                 # firmware artifacts: build / fetch / list / make
 dotbot device --help             # one cabled device: flash an app/role, read info
-dotbot swarm --help              # the fleet over the air (optional: pip install pydotbot[swarm])
+dotbot swarm --help              # the fleet over the air (swarmit; in the base install)
 dotbot run --help                # host-side processes (controller, gateway, simulator, ...)
 dotbot run controller --help     # start the controller
 dotbot run lh2-calibration --help  # LH2 calibration (optional: pip install pydotbot[calibrate])
@@ -52,8 +52,9 @@ CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Wind
 - **`PyDotBot-utils`** — `pyproject.toml:49`; used by `utils/hooks/sdist.py:build_frontend`
 - **`DotBot-libs`** — checked out in CI to build `utils/control_loop` C library
 - **`DotBot-firmware`** — referenced only in README (flashing instructions); no code dep
-- **`swarmit`** — optional sibling package (`pyproject.toml`'s
-  `[testbed]` extra); imported lazily inside `dotbot/cli/testbed.py`.
+- **`swarmit`** — sibling package, a core dependency (`pyproject.toml`);
+  imported lazily inside `dotbot/cli/swarm.py`, which bridges the unified
+  config's `conn`/`swarm_id` into swarmit's flags at the mount boundary.
 - **`dotbot-provision`** — vendored into `dotbot/provision/` (Phase 2,
   2026-05). Standalone PyPI package scheduled for deprecation.
 - **`dotbot-lh2-calibration` (Python)** — vendored into
