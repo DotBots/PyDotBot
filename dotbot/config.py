@@ -236,6 +236,24 @@ def load_config(path: os.PathLike[str] | str | None) -> DotbotConfig:
         raise ConfigError(f"invalid config {path}:\n{exc}") from exc
 
 
+def load_config_text(text: str, *, source: str = "<text>") -> DotbotConfig:
+    """Validate a config TOML *string* (e.g. a fetched deployment fragment).
+
+    Same validation as `load_config`, against the same model, so a published
+    fragment is held to the identical schema (`extra='forbid'` -> a typo fails
+    loud) before anything touches the local file. `source` names the origin in
+    error messages.
+    """
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"invalid TOML from {source}: {exc}") from exc
+    try:
+        return DotbotConfig.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(f"invalid config from {source}:\n{exc}") from exc
+
+
 def load_discovered(
     explicit: os.PathLike[str] | str | None = None,
     *,
