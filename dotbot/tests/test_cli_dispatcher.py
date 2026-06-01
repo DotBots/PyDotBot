@@ -34,12 +34,15 @@ _FRONTEND_BUILD = os.path.join(
 _FRONTEND_PRESENT = os.path.isdir(_FRONTEND_BUILD)
 
 
-# The top level is exactly four object-namespaces.
+# The top level is the four object-namespaces plus the read-only
+# management commands (config, testbed).
 EXPECTED_SUBCOMMANDS = {
     "fw",
     "device",
     "swarm",
     "run",
+    "config",
+    "testbed",
 }
 
 # `run` groups the host-side processes (the former flat top-level verbs).
