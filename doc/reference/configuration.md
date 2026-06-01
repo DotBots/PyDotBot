@@ -1,0 +1,246 @@
+# Configuration
+
+`dotbot` reads one optional config file so you don't retype the same flags on
+every command. A value can come from a flag, an environment variable, the file,
+or a built-in default - the resolver merges them through a single precedence
+chain, so the file is just a place to park the defaults you'd otherwise pass by
+hand.
+
+You never need a config file: every setting also has a flag and an env var. The
+file just makes a repeated setup (a broker URL, a board name, a swarm id) the
+default.
+
+## Where the file comes from
+
+`dotbot` looks in this order and uses the first hit:
+
+| Order | Source | How |
+|---|---|---|
+| 1 | `-c PATH` / `--config PATH` | An explicit path on the command line. |
+| 2 | `DOTBOT_CONFIG` | An explicit path in the environment. |
+| 3 | `./dotbot.toml` | The nearest `dotbot.toml`, searching the cwd and its parents up to a `.git` boundary. |
+| 4 | `~/.dotbot/config.toml` | Your user-level file. |
+| 5 | (none) | Built-in defaults only. |
+
+The cwd-upward search (3) means a per-experiment `dotbot.toml` next to your
+notes "just works" while you're in that directory, and your personal file (4) is
+the fallback everywhere else.
+
+```{admonition} User file not auto-loaded yet
+:class: note
+While the firmware tooling still owns `~/.dotbot/config.toml`, the CLI does not
+auto-load it (only `-c`, `DOTBOT_CONFIG`, and a discovered `dotbot.toml` are
+picked up). Until that migration lands, point at your user file with
+`-c ~/.dotbot/config.toml` if you want it.
+```
+
+## Precedence
+
+For any single setting, the highest-priority source that has a value wins:
+
+```text
+CLI flag  >  env DOTBOT_<SECTION>_<KEY> (then shared DOTBOT_<KEY>)
+          >  file: section value > selected testbed > top-level
+          >  built-in default
+```
+
+Inside the file, a key set in its own section table beats the same key on the
+selected testbed, which beats a shared top-level key.
+
+**Worked example** - resolving the controller's broker URL (`conn`):
+
+| Source | Value | Wins? |
+|---|---|---|
+| `--conn mqtts://cli:8883` flag | `mqtts://cli:8883` | yes, flag is highest |
+| `DOTBOT_RUN_CONN` env | `mqtts://env:8883` | only if no flag |
+| `[run] conn` in the file | `mqtts://run:8883` | only if no flag/env |
+| `[testbed.inria] conn` (selected) | `mqtts://inria:8883` | only if `[run]` has no `conn` |
+| top-level `conn` | `mqtts://shared:8883` | only if nothing above is set |
+| built-in default | - | last resort |
+
+Env-var names are mechanical: a section key becomes `DOTBOT_<SECTION>_<KEY>`
+(e.g. `DOTBOT_FW_BOARD`, `DOTBOT_RUN_CONN`), and a shared top-level key becomes
+`DOTBOT_<KEY>` (e.g. `DOTBOT_CONN`, `DOTBOT_SWARM_ID`). A sectioned key also
+accepts the shared `DOTBOT_<KEY>` form as a fallback.
+
+## Top-level (shared) keys
+
+Set once at the top of the file; any section or testbed can override them.
+
+| Key | Meaning |
+|---|---|
+| `conn` | Default connection string (`mqtts://host:port`, a serial path, or `simulator`). |
+| `swarm_id` | Swarm id selecting the MQTT topic namespace. |
+| `log_level` | Logging verbosity. |
+| `artifacts_dir` | Where firmware artifacts are read/written. |
+| `default_testbed` | Name of the testbed to select when neither `--testbed` nor `DOTBOT_TESTBED` is given. |
+
+## Section tables
+
+The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
+`run`); a section key is the per-namespace default for the matching flag.
+
+`[fw]` - firmware-artifact builds (`dotbot fw`):
+
+| Key | Meaning |
+|---|---|
+| `board` | Target board, e.g. `dotbot-v3`. |
+| `sandbox` | Build TrustZone sandbox apps (`.bin`) instead of bare apps. |
+| `build_config` | `Debug` or `Release`. |
+| `segger_dir` | SEGGER Embedded Studio install path. |
+
+`[device]` - one cabled device (`dotbot device`):
+
+| Key | Meaning |
+|---|---|
+| `board` | Target board for flashing. |
+| `sn_starting_digits` | J-Link serial-number prefix selecting which probe. |
+| `build_config` | `Debug` or `Release`. |
+
+`[swarm]` - the fleet over the air (`dotbot swarm`):
+
+| Key | Meaning |
+|---|---|
+| `conn` | Connection string for the fleet link. |
+| `swarm_id` | Swarm id (topic namespace). |
+| `devices` | Device selection for fleet operations. |
+
+`[run]` plus `[run.controller]` and `[run.gateway]` - host processes
+(`dotbot run`):
+
+| Key | Meaning |
+|---|---|
+| `conn` | Connection string for `dotbot run`. |
+| `swarm_id` | Swarm id (topic namespace). |
+| `[run.controller] http_port` | REST/WebSocket port (default 8000). |
+| `[run.controller] map_size` | Controller map size. |
+| `[run.controller] background_map` | Background map image. |
+| `[run.controller] log_output` | Log output path. |
+| `[run.controller] csv_data_output` | CSV data output path. |
+| `[run.controller] webbrowser` | Open the web UI on start. |
+| `[run.controller] gw_address` | Gateway address. |
+| `[run.controller] simulator_init_state` | Initial simulator state. |
+| `[run.gateway] serial_port` | Gateway serial port. |
+| `[run.gateway] mqtt` | Gateway MQTT connection string. |
+
+Unknown keys are rejected: a typo in a section or key name fails loud rather
+than being silently ignored.
+
+## What a testbed is
+
+A **testbed** here means one physical deployment - one set of real DotBots
+behind one broker, in one place (e.g. the ~100-bot setup at Inria Paris, or a
+1000-bot campaign). You define each one as a `[testbed.<name>]` table and
+**select** it; you do not edit the file to switch between them.
+
+Select the active testbed with, in precedence order, `--testbed NAME`, the
+`DOTBOT_TESTBED` env var, or the top-level `default_testbed`. The selected
+testbed's keys slot into the file layer (above top-level, below sections), so an
+explicit flag or env var still overrides it. Selecting a name with no matching
+`[testbed.<name>]` table is an error that lists the defined testbeds.
+
+```{admonition} "the DotBot Testbed" vs "a testbed"
+:class: note
+**The DotBot Testbed** (capital T) is the whole platform - the swarm-robotics
+research system. **A testbed** in this file is one named physical deployment you
+target with `--testbed`. They are different scopes that happen to share a word.
+```
+
+A testbed is **not** the simulator. To drive simulated bots, set the connection
+to `simulator` (`--conn simulator`, or `conn = "simulator"`); that is a
+connection kind, not a testbed.
+
+A `[testbed.<name>]` table holds the deployment-binding keys plus descriptive
+metadata:
+
+| Key | Meaning |
+|---|---|
+| `conn` | Broker / link for this deployment. |
+| `swarm_id` | Swarm id for this deployment. |
+| `serial_port` | Default serial port for this deployment. |
+| `location` | Descriptive label (shown by `dotbot testbed list`). |
+| `bots` | Descriptive bot count. |
+
+## MQTT credentials are env-only
+
+MQTT username and password are read **only** from the environment:
+
+```bash
+export DOTBOT_MQTT_USER=alice
+export DOTBOT_MQTT_PASS=…
+```
+
+They are never file keys - don't put them in `dotbot.toml`, and don't commit
+them. Keep the broker URL in the file and the credentials in your environment
+(or a secret manager).
+
+## Inspecting the resolved config
+
+Two helpers show what `dotbot` actually resolved, so you don't have to trace the
+precedence chain by hand:
+
+| Command | Shows |
+|---|---|
+| `dotbot config show` | The merged, effective config and which file (if any) it came from. |
+| `dotbot testbed list` | The defined testbeds, their metadata, and which one is selected. |
+
+## Full example
+
+An annotated `dotbot.toml` exercising every layer:
+
+```toml
+# Top-level shared keys: every section and testbed inherits these unless it
+# sets its own value.
+default_testbed = "inria"                 # used when --testbed / DOTBOT_TESTBED unset
+conn            = "mqtts://broker.local:8883"
+swarm_id        = "0001"
+log_level       = "info"
+artifacts_dir   = "./artifacts"
+
+# A physical deployment. Select it with `--testbed inria`, DOTBOT_TESTBED, or
+# default_testbed above - don't edit this table to switch deployments.
+[testbed.inria]
+conn        = "mqtts://broker.inria.fr:8883"
+swarm_id    = "0001"
+serial_port = "/dev/ttyACM0"
+location    = "Inria Paris"               # descriptive, for `dotbot testbed list`
+bots        = 100                          # descriptive
+
+[testbed.limerick]
+conn     = "mqtts://broker.limerick:8883"
+swarm_id = "0002"
+location = "Limerick campaign"
+bots     = 725
+
+# Firmware-artifact builds (dotbot fw).
+[fw]
+board        = "dotbot-v3"
+sandbox      = false
+build_config = "Release"
+# segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.22a"
+
+# One cabled device (dotbot device).
+[device]
+board              = "dotbot-v3"
+sn_starting_digits = "77"                  # J-Link serial prefix
+build_config       = "Release"
+
+# The fleet over the air (dotbot swarm).
+[swarm]
+swarm_id = "0001"
+
+# Host-side processes (dotbot run).
+[run]
+conn = "mqtts://broker.local:8883"
+
+[run.controller]
+http_port      = 8000
+webbrowser     = true
+# background_map = "./map.png"
+
+[run.gateway]
+serial_port = "/dev/ttyACM0"
+
+# Note: MQTT credentials are env-only - DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.
+# Never a file key.
+```
