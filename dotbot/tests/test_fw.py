@@ -619,8 +619,10 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
     assert "~/.dotbot/config.toml" in msg
 
 
-def test_resolve_firmware_repo_finds_sibling_clone(tmp_path, monkeypatch):
-    """The one default lookup path: `<cwd>/DotBot-firmware/Makefile`."""
+def test_resolve_firmware_repo_finds_sibling_clone(
+    tmp_path, monkeypatch, isolated_home
+):
+    """The fallback lookup path: `<cwd>/DotBot-firmware/Makefile`."""
     repo = tmp_path / "DotBot-firmware"
     repo.mkdir()
     (repo / "Makefile").touch()
@@ -629,8 +631,8 @@ def test_resolve_firmware_repo_finds_sibling_clone(tmp_path, monkeypatch):
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch):
-    """Env var overrides the CWD-sibling default."""
+def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch, isolated_home):
+    """Env var overrides the config and the CWD-sibling default."""
     sibling = tmp_path / "DotBot-firmware"
     sibling.mkdir()
     (sibling / "Makefile").touch()
@@ -640,6 +642,19 @@ def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(elsewhere))
     assert _fw_helpers.resolve_firmware_repo() == elsewhere
+
+
+def test_resolve_firmware_repo_falls_back_to_config(
+    tmp_path, monkeypatch, isolated_home
+):
+    """No env var and no ./DotBot-firmware -> `[fw].firmware_repo` from config wins."""
+    repo = tmp_path / "fw-clone"
+    repo.mkdir()
+    (repo / "Makefile").touch()
+    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{repo.as_posix()}"\n')
+    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    monkeypatch.chdir(tmp_path)  # no ./DotBot-firmware here
+    assert _fw_helpers.resolve_firmware_repo() == repo
 
 
 def test_resolve_firmware_repo_errors_when_nothing_found(tmp_path, monkeypatch):

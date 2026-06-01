@@ -24,10 +24,9 @@ segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
 Resolution order (first match wins):
 - SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
   `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
-- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `<cwd>/DotBot-firmware/`.
-  Deliberately minimal — no parent walk-up, no `repos/` heuristics, no
-  config-file precedence. Either you `cd` to where your clone is, or
-  you point at it explicitly.
+- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `[fw].firmware_repo` in
+  config → `<cwd>/DotBot-firmware/`. No parent walk-up or `repos/` heuristics:
+  set the env var, persist the path in config, or `cd` to where your clone is.
 """
 
 import difflib
@@ -137,12 +136,12 @@ def resolve_segger_dir() -> Path:
 
 
 def resolve_firmware_repo() -> Path:
-    """DOTBOT_FIRMWARE_REPO env → ./DotBot-firmware/ → error.
+    """DOTBOT_FIRMWARE_REPO env → `[fw].firmware_repo` config → ./DotBot-firmware/ → error.
 
-    Deliberately minimal — no parent walk-up, no `repos/` heuristics,
-    no config-file precedence. Either the env var points somewhere
-    valid, or the user `cd`'d to the directory that contains a
-    sibling `DotBot-firmware/` clone.
+    Mirrors `resolve_segger_dir`: an env var wins, else the persisted
+    `[fw].firmware_repo` in `~/.dotbot/config.toml`, else the user `cd`'d to a
+    directory containing a sibling `DotBot-firmware/` clone. No parent walk-up
+    or `repos/` heuristics.
     """
     env = os.environ.get("DOTBOT_FIRMWARE_REPO")
     if env:
@@ -152,13 +151,22 @@ def resolve_firmware_repo() -> Path:
         raise click.ClickException(
             f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
         )
+    cfg = _config_fw_value("firmware_repo")
+    if cfg:
+        candidate = Path(cfg)
+        if (candidate / "Makefile").is_file():
+            return candidate
+        raise click.ClickException(
+            f"[fw].firmware_repo={cfg!r} does not contain a Makefile."
+        )
     candidate = Path.cwd() / "DotBot-firmware"
     if (candidate / "Makefile").is_file():
         return candidate
     raise click.ClickException(
         "Could not locate DotBot-firmware. Either:\n"
-        "  - `cd` to the directory containing your DotBot-firmware clone, or\n"
-        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware"
+        "  - `cd` to the directory containing your DotBot-firmware clone,\n"
+        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware, or\n"
+        '  - add to ~/.dotbot/config.toml:  [fw]\\n  firmware_repo = "/path/to/DotBot-firmware"'
     )
 
 
