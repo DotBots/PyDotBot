@@ -154,6 +154,28 @@ metadata:
 | `location` | Descriptive label (shown by `dotbot deployment list`). |
 | `bots` | Descriptive bot count. |
 
+## Managing deployments
+
+The `dotbot deployment` group inspects, switches, and fetches deployments:
+
+| Command | Does |
+|---|---|
+| `dotbot deployment list` | List defined deployments; mark the active one. |
+| `dotbot deployment show NAME` | Print one deployment's fields. |
+| `dotbot deployment use NAME` | Set NAME as `default_deployment`, written into your config file (comments preserved). |
+| `dotbot deployment fetch [SOURCE]` | Fetch published deployments and merge them into your config. |
+
+`fetch` takes a URL or a local file holding `[deployment.*]` tables; with no
+SOURCE it uses the built-in DotBots registry. It **merges**: a same-named
+deployment is replaced (you are asked first), and everything else in the file
+(other deployments, sections, comments) is left intact. Like `dotbot fw fetch`,
+it only acquires the deployment - select it afterwards with `dotbot deployment
+use` or `--deployment`. Useful flags: `--into project` (write the nearest
+`dotbot.toml` instead of `~/.dotbot/config.toml`), `--dry-run`, and `--yes`.
+
+Because MQTT credentials are env-only (below), a published deployment file is not
+secret - it carries only the broker URL, swarm id, and descriptive labels.
+
 ## MQTT credentials are env-only
 
 MQTT username and password are read **only** from the environment:
