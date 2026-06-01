@@ -64,10 +64,59 @@ _SUBCOMMANDS = (
         "across a swarm - from one bot to a thousand."
     ),
 )
+@click.option(
+    "-c",
+    "--config",
+    "config_path",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help=(
+        "Config file to use (default: the nearest ./dotbot.toml, searching up "
+        "from the cwd)."
+    ),
+)
+@click.option(
+    "--testbed",
+    "testbed_name",
+    default=None,
+    metavar="NAME",
+    help="Which configured testbed (deployment) to target; overrides default_testbed.",
+)
 @click.version_option(
     version=pydotbot_version(),
     prog_name="dotbot",
     message="%(prog)s %(version)s",
 )
-def cli():
-    pass
+@click.pass_context
+def cli(ctx, config_path, testbed_name):
+    """Load the unified config + select the testbed, then dispatch.
+
+    The resolved config and the selected testbed are stashed on the Click
+    context (`ctx.obj`) so each subcommand can read its defaults from them;
+    flags and env vars still override the file (see `dotbot.config`).
+
+    NOTE: the `~/.dotbot/config.toml` user-file fallback is intentionally NOT
+    auto-loaded yet (`include_user_file=False`) - that file is still owned by
+    the legacy `fw` segger_dir reader, and picks it up only once `fw` migrates
+    onto this resolver. For now config comes from `-c`, `DOTBOT_CONFIG`, or a
+    `dotbot.toml` discovered cwd-upward.
+    """
+    from dotbot.config import (
+        ConfigError,
+        discover_config_path,
+        load_config,
+        select_testbed,
+    )
+
+    ctx.ensure_object(dict)
+    try:
+        path = discover_config_path(config_path, include_user_file=False)
+        config = load_config(path)
+        testbed, testbed_resolved = select_testbed(config, cli_name=testbed_name)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    ctx.obj["config"] = config
+    ctx.obj["config_path"] = path
+    ctx.obj["testbed"] = testbed
+    ctx.obj["testbed_name"] = testbed_resolved

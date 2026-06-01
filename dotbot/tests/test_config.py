@@ -69,6 +69,19 @@ def test_discover_none(tmp_path, monkeypatch):
     assert cfg.discover_config_path(None, environ={}, start_dir=empty) is None
 
 
+def test_discover_user_file_skipped(tmp_path, monkeypatch):
+    # include_user_file=False ignores ~/.dotbot/config.toml (Phase-2 behavior).
+    user = tmp_path / "home.toml"
+    user.write_text("")
+    monkeypatch.setattr(cfg, "USER_CONFIG_PATH", user)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    got = cfg.discover_config_path(
+        None, environ={}, start_dir=empty, include_user_file=False
+    )
+    assert got is None
+
+
 # --- loading + validation ---------------------------------------------------
 
 

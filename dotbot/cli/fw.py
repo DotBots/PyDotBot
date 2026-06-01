@@ -97,13 +97,14 @@ def _project_option(f):
 
 
 def _config_option(f):
-    """Reusable `--config/-c` option for build/clean/artifacts."""
+    """Reusable `--build-config` option for build/clean/artifacts."""
     return click.option(
-        "--config",
-        "-c",
+        "--build-config",
+        "config",
         type=click.Choice(CONFIGS),
         default=DEFAULT_CONFIG,
         show_default=True,
+        help="Build configuration (Debug or Release).",
     )(f)
 
 

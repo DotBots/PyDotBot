@@ -184,6 +184,7 @@ def discover_config_path(
     *,
     environ: Mapping[str, str] = os.environ,
     start_dir: os.PathLike[str] | str | None = None,
+    include_user_file: bool = True,
 ) -> Path | None:
     """Find the config file to load, highest priority first.
 
@@ -191,7 +192,9 @@ def discover_config_path(
     2. `DOTBOT_CONFIG` env var (an explicit path by another name).
     3. The nearest `dotbot.toml`, searching the cwd and its parents (stopping at
        a `.git` boundary) - so a per-experiment config "just works".
-    4. The user file `~/.dotbot/config.toml`.
+    4. The user file `~/.dotbot/config.toml` (skipped when
+       `include_user_file=False` - used while the legacy `~/.dotbot/config.toml`
+       fw segger_dir reader still owns that file).
     5. None (caller uses built-in defaults).
     """
     if explicit:
@@ -208,7 +211,7 @@ def discover_config_path(
         if (directory / ".git").exists():
             break
 
-    if USER_CONFIG_PATH.is_file():
+    if include_user_file and USER_CONFIG_PATH.is_file():
         return USER_CONFIG_PATH
     return None
 

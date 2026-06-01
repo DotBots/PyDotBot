@@ -43,7 +43,7 @@ Both share the same build options:
 |---|---|
 | `-a, --app <app>` | Build one app (default: every app for the target) |
 | `-t, --target <target>` | Board/target (default: `dotbot-v3`) |
-| `-c, --config Debug\|Release` | Build config (default: `Release`) |
+| `--build-config Debug\|Release` | Build configuration (default: `Release`) |
 | `--sandbox` | TrustZone NS flavor → `sandbox-<board>`, emits `.bin` |
 | `--rebuild` | Force a full rebuild (default: incremental) |
 | `-v, --verbose` | Full SES output |

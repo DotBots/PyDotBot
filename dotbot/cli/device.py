@@ -58,11 +58,12 @@ def _looks_like_path(value: str) -> bool:
 )
 @click.option("--sandbox", is_flag=True, help="Resolve the sandbox-app flavor (.bin).")
 @click.option(
-    "--config",
-    "-c",
+    "--build-config",
+    "config",
     type=click.Choice(("Debug", "Release")),
     default="Release",
     show_default=True,
+    help="Build configuration (for auto-resolving the artifact).",
 )
 def flash(app, sn_starting_digits, board, sandbox, config):
     """Flash a firmware image to one cabled device (whole-chip program).
