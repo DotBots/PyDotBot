@@ -42,7 +42,7 @@ talk to it, and it drives the swarm through a gateway.
 See the whole thing run with nothing but Python:
 
 ```bash
-pip install --pre pydotbot
+pip install --pre pydotbot  # using 'pre' while we are at release candidate
 dotbot run simulator -w   # opens the web UI at http://localhost:8000/PyDotBot/, driving a simulated swarm
 ```
 
@@ -61,11 +61,13 @@ import requests, time
 BASE = "http://localhost:8000"
 bot = requests.get(f"{BASE}/controller/dotbots").json()[0]["address"]
 
-# roll forward for ~1 s - the motors stop after 200 ms, so keep sending
-for _ in range(10):
+# roll in a circle for ~5 s - left_y and right_y are the two wheel speeds
+for _ in range(50):
     requests.put(f"{BASE}/controller/dotbots/{bot}/0/move_raw",
-                 json={"left_x": 0, "left_y": 60, "right_x": 0, "right_y": 60})
+                 json={"left_x": 0, "left_y": 60, "right_x": 0, "right_y": 30})
     time.sleep(0.1)
+requests.put(f"{BASE}/controller/dotbots/{bot}/0/move_raw",
+             json={"left_x": 0, "left_y": 0, "right_x": 0, "right_y": 0})
 ```
 
 The full surface - every endpoint, the live WebSocket stream, and CSV data
@@ -92,7 +94,7 @@ Minimal hardware setup:
 ## Install
 
 ```bash
-pip install --pre pydotbot   # --pre while 0.29 is in pre-release; swarm ops included
+pip install --pre pydotbot   # --pre while 0.29 is in pre-release
 git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
 ```
 
@@ -120,10 +122,13 @@ Every command and flag is documented in the [CLI reference][cli-doc].
 Build and flash firmware for a single dotbot:
 
 ```bash
-# build the bare dotbot app into ./artifacts/ (needs SEGGER Embedded Studio)
+# build the bare dotbot apps into ./artifacts/ (needs SEGGER Embedded Studio)
+# two steps because the DotBot has two cores
 dotbot fw artifacts --app dotbot
+dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
 # cable-flash it to the bot whose J-Link serial starts with 77
-dotbot device flash dotbot -s 77
+dotbot device flash dotbot -s 77  # app core
+dotbot device flash nrf5340_net -b nrf5340dk-net -s 77  # network core
 ```
 
 Now, build and flash the gateway to connect to a robot.
@@ -132,7 +137,7 @@ computer; it bridges the robot's radio to USB serial.
 
 ```bash
 # build the gateway firmware for your DK board into ./artifacts/ (needs SEGGER Embedded Studio)
-dotbot fw artifacts --app dotbot_gateway -t nrf52840dk
+dotbot fw artifacts --app dotbot_gateway --target nrf52840dk
 # cable-flash it to the DK whose J-Link serial starts with 10
 dotbot device flash dotbot_gateway -b nrf52840dk -s 10
 ```
@@ -151,12 +156,9 @@ and driving it from the web UI ([controller guide][controller-doc]).
 
 ### setup the swarm
 
-To operate as a swarm, fetch the firmware and save your connection once:
+To operate as a swarm, set your swarm connection config:
 
 ```bash
-# pull the pre-compiled firmwares from a release
-dotbot fw fetch -f 0.8.0rc1  # or build yourself with: dotbot fw artifacts --sandbox
-# save where to connect and which swarm - the other commands here read it
 dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
@@ -170,6 +172,7 @@ We also need a more powerful gateway firmware. Let's flash both - the network
 id comes from your config:
 
 ```bash
+dotbot fw fetch -f 0.8.0rc1  # pull the pre-compiled firmwares from a release
 dotbot device flash-mari-gateway -s 10 -f 0.8.0rc1  # flash the gateway
 dotbot device flash-swarmit-sandbox -s 77 -f 0.8.0rc1  # the sandbox firmware - do this on each dotbot
 ```
@@ -184,7 +187,6 @@ dotbot run gateway -p /dev/cu.usbmodem0010500324491
 ```
 
 ### use the swarm
-
 
 You can flash as many dotbots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
