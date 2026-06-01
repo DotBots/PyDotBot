@@ -121,6 +121,7 @@ class FwSection(_Strict):
     sandbox: bool | None = None
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
+    firmware_repo: str | None = None  # path to the DotBot-firmware clone
 
 
 class DeviceSection(_Strict):
