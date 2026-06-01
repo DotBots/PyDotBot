@@ -35,8 +35,10 @@ directory. Discovery looks only at the cwd - it does not walk up to parent
 directories, so the active config is always unambiguous.
 
 `~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
-once and want everywhere - typically `[fw].segger_dir` and `[fw].firmware_repo`.
-Every command, including `dotbot fw`, reads through this same resolver.
+once and want everywhere - typically `[fw].segger_dir`, since the SES install
+path rarely changes. Per-project settings like `[fw].firmware_repo` belong in
+the project's `./dotbot.toml` instead. Every command, including `dotbot fw`,
+reads through this same resolver.
 
 ## Precedence
 
