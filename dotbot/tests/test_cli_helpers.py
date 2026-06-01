@@ -8,9 +8,12 @@ Read-only inspectors over the config the root group already resolved onto
 populated (a bare `runner.invoke(show)` would have `ctx.obj is None`).
 """
 
+from pathlib import Path
+
 import pytest
 from click.testing import CliRunner
 
+import dotbot.config as cfg
 from dotbot.cli.main import cli
 
 # A small config with two named deployments and a default selection.
@@ -146,9 +149,51 @@ def test_deployment_show_known(runner, tmp_path):
 
 
 def test_deployment_show_unknown_errors(runner, tmp_path):
-    cfg = _write(tmp_path)
-    result = runner.invoke(cli, ["-c", str(cfg), "deployment", "show", "nope"])
+    cfg_file = _write(tmp_path)
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "show", "nope"])
     assert result.exit_code != 0
     assert "nope" in result.output
     # Lists the defined deployments in the error.
     assert "inria" in result.output
+
+
+# --- config init ------------------------------------------------------------
+
+
+def test_config_init_writes_valid_starter(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init"])
+        assert result.exit_code == 0, result.output
+        written = Path("dotbot.toml")
+        assert written.is_file()
+        # The starter is all-commented, so it loads as a valid empty config.
+        loaded = cfg.load_config(written)
+        assert loaded.conn is None
+        assert loaded.deployment == {}
+
+
+def test_config_init_refuses_overwrite_without_force(runner):
+    with runner.isolated_filesystem():
+        assert runner.invoke(cli, ["config", "init"]).exit_code == 0
+        again = runner.invoke(cli, ["config", "init"])
+        assert again.exit_code != 0
+        assert "already exists" in again.output
+        forced = runner.invoke(cli, ["config", "init", "--force"])
+        assert forced.exit_code == 0, forced.output
+
+
+def test_config_init_global(runner, tmp_path, monkeypatch):
+    import dotbot.cli.config_cmd as ccmd
+
+    user = tmp_path / "home" / ".dotbot" / "config.toml"
+    monkeypatch.setattr(ccmd, "USER_CONFIG_PATH", user)
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--global"])
+    assert result.exit_code == 0, result.output
+    assert user.is_file()
+
+
+def test_config_show_without_config_hints_init(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "show"])
+    assert "config init" in result.output
