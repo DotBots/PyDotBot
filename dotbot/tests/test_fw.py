@@ -544,14 +544,18 @@ def test_fw_help_points_at_dotbot_make(runner):
 
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
-    """Point `~/.dotbot/` at a tmp dir so config tests don't see the
-    real user's `~/.dotbot/config.toml`."""
+    """Point the unified config's user file at a tmp dir and run in a clean
+    cwd, so fw config tests don't see the real `~/.dotbot/config.toml` or a
+    stray `dotbot.toml`."""
     home = tmp_path / "home"
     (home / ".dotbot").mkdir(parents=True)
     monkeypatch.setattr(
-        "dotbot.cli._fw_helpers._CONFIG_PATH",
+        "dotbot.config.USER_CONFIG_PATH",
         home / ".dotbot" / "config.toml",
     )
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
     return home
 
 
@@ -683,15 +687,12 @@ def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(
 
 
 def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
+    """A malformed config surfaces a clean error naming the file, not a traceback."""
     _write_config(isolated_home, "this is not [valid toml\n")
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
     with pytest.raises(click.ClickException) as excinfo:
-        _fw_helpers.load_config()
-    assert str(_fw_helpers._CONFIG_PATH) in str(excinfo.value)
-
-
-def test_missing_config_returns_empty_dict(isolated_home):
-    """No `~/.dotbot/config.toml` is the common case — must not error."""
-    assert _fw_helpers.load_config() == {}
+        _fw_helpers.resolve_segger_dir()
+    assert "config.toml" in str(excinfo.value)
 
 
 # ── Parity guard against silent drift ───────────────────────────────────

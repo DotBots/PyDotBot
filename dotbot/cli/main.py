@@ -107,11 +107,9 @@ def cli(ctx, config_path, deployment_name):
     context (`ctx.obj`) so each subcommand can read its defaults from them;
     flags and env vars still override the file (see `dotbot.config`).
 
-    NOTE: the `~/.dotbot/config.toml` user-file fallback is intentionally NOT
-    auto-loaded yet (`include_user_file=False`) - that file is still owned by
-    the legacy `fw` segger_dir reader, and picks it up only once `fw` migrates
-    onto this resolver. For now config comes from `-c`, `DOTBOT_CONFIG`, or a
-    `dotbot.toml` discovered cwd-upward.
+    Discovery order: `-c` / `DOTBOT_CONFIG` > a `dotbot.toml` in the cwd >
+    `~/.dotbot/config.toml` (the per-machine fallback). `fw` reads its `[fw]`
+    keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
     """
     from dotbot.config import (
         ConfigError,
@@ -122,7 +120,7 @@ def cli(ctx, config_path, deployment_name):
 
     ctx.ensure_object(dict)
     try:
-        path = discover_config_path(config_path, include_user_file=False)
+        path = discover_config_path(config_path)
         config = load_config(path)
         deployment, deployment_resolved = select_deployment(
             config, cli_name=deployment_name

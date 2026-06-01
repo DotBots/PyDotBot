@@ -39,20 +39,14 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import click
-import toml
 
 from dotbot.firmware.boards import BOARDS
 
 # Glob used to discover SES installs on macOS. Picks the lexicographically
 # largest match (e.g. "Studio 8.30" beats "Studio 8.22a"), which is good
 # enough as a fallback when the user hasn't set SEGGER_DIR or written
-# `[fw].segger_dir` in `~/.dotbot/config.toml`.
+# `[fw].segger_dir` in their dotbot config.
 _SEGGER_MACOS_GLOB = "/Applications/SEGGER/SEGGER Embedded Studio*"
-
-# Per-user persistent config — shares the `~/.dotbot/` directory the
-# controller / calibration already use (see dotbot/controller.py's
-# CALIBRATION_PATH).
-_CONFIG_PATH = Path.home() / ".dotbot" / "config.toml"
 
 # BUILD_TARGET / flashable board names. Single source of truth is the board
 # table in `dotbot.firmware.boards` (which also carries each board's nrfjprog
@@ -72,24 +66,28 @@ DEFAULT_BARE_TARGET = "dotbot-v3"
 DEFAULT_SANDBOX_BOARD = "dotbot-v3"
 
 
-def load_config() -> dict:
-    """Read `~/.dotbot/config.toml`. Empty dict if missing.
-
-    Raises ClickException with the file path if the TOML is malformed,
-    so the user knows where to fix.
-    """
-    if not _CONFIG_PATH.is_file():
-        return {}
-    try:
-        return toml.load(_CONFIG_PATH)
-    except toml.TomlDecodeError as exc:
-        raise click.ClickException(f"Failed to parse {_CONFIG_PATH}: {exc}") from exc
-
-
 def _config_fw_value(key: str) -> Optional[str]:
-    """Read `[fw].<key>` from `~/.dotbot/config.toml`, or None."""
-    fw_section = load_config().get("fw") or {}
-    val = fw_section.get(key)
+    """Read `[fw].<key>` from the resolved unified config, or None.
+
+    Uses the config the root `dotbot` group already resolved onto the Click
+    context when one is active (so `-c`, the cwd `dotbot.toml`, the
+    `~/.dotbot/config.toml` fallback, and flag precedence all apply); for
+    direct (non-CLI) calls it discovers and loads the config fresh.
+    """
+    ctx = click.get_current_context(silent=True)
+    cfg = (
+        ctx.obj.get("config")
+        if (ctx is not None and isinstance(ctx.obj, dict))
+        else None
+    )
+    if cfg is None:
+        from dotbot import config as _config
+
+        try:
+            cfg, _ = _config.load_discovered()
+        except _config.ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+    val = getattr(cfg.fw, key, None)
     return str(val) if val else None
 
 
