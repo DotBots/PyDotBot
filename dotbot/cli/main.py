@@ -83,8 +83,8 @@ _SUBCOMMANDS = (
     type=click.Path(dir_okay=False),
     default=None,
     help=(
-        "Config file to use (default: the nearest ./dotbot.toml, searching up "
-        "from the cwd)."
+        "Config file to use (default: a dotbot.toml in the current directory, "
+        "else ~/.dotbot/config.toml)."
     ),
 )
 @click.option(
