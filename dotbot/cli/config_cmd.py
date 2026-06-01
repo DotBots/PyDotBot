@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import tomlkit
 
 from dotbot.config import USER_CONFIG_PATH
 
@@ -108,30 +109,12 @@ def path(ctx):
         click.echo(str(config_path))
 
 
-def _dump_lines(prefix: str, value: Any) -> list[str]:
-    """Render `value` as `key = repr` lines, skipping None, recursing tables.
-
-    Pydantic sections become nested `[section]` / `[section.sub]` tables;
-    scalar fields print as `key = value` with the value quoted for strings.
-    """
-    lines: list[str] = []
-    nested: list[str] = []
-    for field, item in value.items():
-        if item is None or item == {}:
-            continue
-        if isinstance(item, dict):
-            header = f"{prefix}.{field}" if prefix else field
-            inner = _dump_lines(header, item)
-            if not inner:
-                continue
-            nested.append("")
-            nested.append(f"[{header}]")
-            nested.extend(inner)
-        elif isinstance(item, str):
-            lines.append(f"{field} = {item!r}")
-        else:
-            lines.append(f"{field} = {item}")
-    return lines + nested
+def _prune(value: Any) -> Any:
+    """Recursively drop None values and empty tables so only set keys remain."""
+    if isinstance(value, dict):
+        pruned = {k: _prune(v) for k, v in value.items() if v is not None}
+        return {k: v for k, v in pruned.items() if v != {}}
+    return value
 
 
 @cmd.command()
@@ -157,15 +140,14 @@ def show(ctx):
         click.echo("(no config loaded)")
         return
 
-    # exclude_none drops every unset Optional so the dump shows only what the
-    # file explicitly set (matches the resolver's "unset vs default" model).
-    data = config.model_dump(exclude_none=True)
-    lines = _dump_lines("", data)
-    if not lines:
+    # Prune unset Optionals so the dump shows only what the file explicitly set
+    # (matches the resolver's "unset vs default" model), then render via tomlkit
+    # so the output is real, round-trippable TOML.
+    data = _prune(config.model_dump())
+    if not data:
         if config_path is None:
             click.echo("No config file found. Create one with:  dotbot config init")
         else:
             click.echo("(the file sets nothing yet; all built-in defaults)")
         return
-    for line in lines:
-        click.echo(line)
+    click.echo(tomlkit.dumps(data).rstrip())
