@@ -92,7 +92,7 @@ Minimal hardware setup:
 ## Install
 
 ```bash
-pip install --pre 'pydotbot[swarm]'   # --pre while 0.29 is in pre-release
+pip install --pre pydotbot   # --pre while 0.29 is in pre-release; swarm ops included
 git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
 ```
 
@@ -237,12 +237,10 @@ Full command reference and guides - running the controller + web UI, the four
 CLI namespaces (`fw` / `device` / `swarm` / `run`), hardware, and LH2
 calibration - are in the [documentation][doc-link].
 
-Some commands need optional runtime deps:
+Swarm orchestration is in the base install. Only LH2 calibration needs an extra:
 
 ```bash
-pip install --pre 'pydotbot[swarm]'      # swarmit (fleet orchestration)
 pip install --pre 'pydotbot[calibrate]'  # opencv-python + textual (LH2 calibration)
-pip install --pre 'pydotbot[all]'        # everything
 ```
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
