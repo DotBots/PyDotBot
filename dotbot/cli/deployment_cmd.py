@@ -11,14 +11,32 @@ command rather than a hand edit. `list` / `show` are read-only inspectors.
 """
 
 import re
+import tomllib
 from pathlib import Path
 
 import click
+import httpx
+import tomlkit
+
+from dotbot.config import (
+    PROJECT_CONFIG_NAME,
+    USER_CONFIG_PATH,
+    ConfigError,
+    discover_config_path,
+    load_config_text,
+)
+
+# Where `deployment fetch` (no SOURCE) looks for the published registry. The
+# `/releases/latest/download/` path 302-redirects to the newest release asset,
+# so this URL is stable across republishes. Not published yet - Geovane owns it.
+_DEFAULT_REGISTRY_URL = (
+    "https://github.com/DotBots/deployments/releases/latest/download/deployments.toml"
+)
 
 
 @click.group(
     name="deployment",
-    help="List / show deployments; switch the default with `use`.",
+    help="List / show deployments; switch the default with `use`, fetch published ones.",
 )
 def cmd():
     pass
@@ -143,3 +161,138 @@ def use(ctx, name):
 
     _set_default_deployment(Path(config_path), name)
     click.echo(f"Set default deployment to {name!r} in {config_path}")
+
+
+def _read_source(source: str) -> str:
+    """Return the text of SOURCE - a local file path, or an http(s) URL."""
+    if Path(source).is_file():
+        return Path(source).read_text()
+    if source.startswith(("http://", "https://")):
+        try:
+            response = httpx.get(source, follow_redirects=True, timeout=30.0)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise click.ClickException(f"could not fetch {source}: {exc}") from exc
+        return response.text
+    raise click.ClickException(f"not a URL or an existing file: {source!r}")
+
+
+def _merge_target(into: str) -> Path:
+    """The file `fetch` writes into: the user config, or the project dotbot.toml."""
+    if into == "project":
+        found = discover_config_path(include_user_file=False)
+        return found if found is not None else Path.cwd() / PROJECT_CONFIG_NAME
+    return USER_CONFIG_PATH
+
+
+def _diff_deployments(target: Path, fetched: dict) -> list[tuple[str, str]]:
+    """Per-name status of fetched vs target: 'added' / 'changed' / 'same'."""
+    existing = {}
+    if target.is_file():
+        existing = tomllib.loads(target.read_text()).get("deployment", {})
+    changes = []
+    for name in sorted(fetched):
+        new_fields = fetched[name].model_dump(exclude_none=True)
+        old = existing.get(name)
+        if old is None:
+            changes.append((name, "added"))
+        elif old == new_fields:
+            changes.append((name, "same"))
+        else:
+            changes.append((name, "changed"))
+    return changes
+
+
+def _write_deployments(target: Path, fetched: dict, changes: list) -> None:
+    """Upsert the added/changed `[deployment.*]` tables, preserving everything else.
+
+    Uses tomlkit so a hand-edited target keeps its comments, other deployments,
+    and `[fw]`/`[device]`/`[swarm]`/`[run]` sections; only the named tables that
+    actually changed are replaced.
+    """
+    if target.is_file():
+        doc = tomlkit.parse(target.read_text())
+    else:
+        doc = tomlkit.document()
+        doc.add(
+            tomlkit.comment(
+                " DotBot deployments - managed by `dotbot deployment fetch`."
+            )
+        )
+    deployments = doc.get("deployment")
+    if deployments is None:
+        deployments = tomlkit.table(is_super_table=True)
+        doc["deployment"] = deployments
+
+    status_by_name = dict(changes)
+    for name in sorted(fetched):
+        if status_by_name.get(name) == "same":
+            continue
+        table = tomlkit.table()
+        for key, value in fetched[name].model_dump(exclude_none=True).items():
+            table[key] = value
+        deployments[name] = table
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(tomlkit.dumps(doc))
+
+
+@cmd.command()
+@click.argument("source", required=False)
+@click.option(
+    "--into",
+    type=click.Choice(["user", "project"]),
+    default="user",
+    help="Which file to write into (default: your ~/.dotbot/config.toml).",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would change; write nothing.")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Don't prompt before replacing an existing deployment.",
+)
+def fetch(source, into, dry_run, yes):
+    """Fetch published deployments and merge them into your config.
+
+    SOURCE is a URL or a local file holding `[deployment.*]` tables; with no
+    SOURCE the built-in DotBots registry is used. Existing deployments of the
+    same name are replaced (you are asked first); everything else in the file -
+    other deployments, sections, comments - is left intact. Like `fw fetch`,
+    this only acquires: select one with `dotbot deployment use` / `--deployment`.
+    """
+    source = source or _DEFAULT_REGISTRY_URL
+    text = _read_source(source)
+    try:
+        config = load_config_text(text, source=source)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    fetched = config.deployment
+    if not fetched:
+        raise click.ClickException(f"no [deployment.*] tables found in {source}")
+
+    target = _merge_target(into)
+    changes = _diff_deployments(target, fetched)
+
+    symbol = {"added": "+", "changed": "~", "same": "="}
+    for name, status in changes:
+        click.echo(f"  {symbol[status]} {name}")
+
+    if all(status == "same" for _, status in changes):
+        click.echo(f"Already up to date; {target} unchanged.")
+        return
+    if dry_run:
+        click.echo(f"(dry run; {target} unchanged)")
+        return
+
+    changed = [name for name, status in changes if status == "changed"]
+    if changed and not yes:
+        click.confirm(
+            f"This replaces {len(changed)} existing deployment(s) "
+            f"({', '.join(changed)}) in {target}. Continue?",
+            abort=True,
+        )
+
+    _write_deployments(target, fetched, changes)
+    written = sum(1 for _, status in changes if status != "same")
+    click.echo(f"Wrote {written} deployment(s) to {target}")
