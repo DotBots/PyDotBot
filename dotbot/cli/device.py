@@ -112,7 +112,10 @@ def _sn_option(f):
 
 @cmd.command(name="flash-swarmit-sandbox")
 @click.option(
-    "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
+    "--network-id",
+    "-n",
+    default=None,
+    help="16-bit hex network id (e.g. 0100); defaults to your deployment's swarm_id.",
 )
 @click.option(
     "--calibration",
@@ -123,7 +126,10 @@ def _sn_option(f):
 )
 @_fw_version_option
 @_sn_option
-def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_digits):
+@click.pass_context
+def flash_swarmit_sandbox(
+    ctx, network_id, calibration_path, fw_version, sn_starting_digits
+):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
@@ -132,6 +138,12 @@ def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
+    network_id = from_config(ctx, "network_id", "swarm_id", None)
+    if network_id is None:
+        raise click.ClickException(
+            "no network id: pass -n/--network-id, or set swarm_id (or a "
+            "deployment) in your config."
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(network_id)
     flash_role(
@@ -146,11 +158,15 @@ def flash_swarmit_sandbox(network_id, calibration_path, fw_version, sn_starting_
 
 @cmd.command(name="flash-mari-gateway")
 @click.option(
-    "--network-id", "-n", required=True, help="16-bit hex network id, e.g. 0100."
+    "--network-id",
+    "-n",
+    default=None,
+    help="16-bit hex network id (e.g. 0100); defaults to your deployment's swarm_id.",
 )
 @_fw_version_option
 @_sn_option
-def flash_mari_gateway(network_id, fw_version, sn_starting_digits):
+@click.pass_context
+def flash_mari_gateway(ctx, network_id, fw_version, sn_starting_digits):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -159,6 +175,12 @@ def flash_mari_gateway(network_id, fw_version, sn_starting_digits):
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
+    network_id = from_config(ctx, "network_id", "swarm_id", None)
+    if network_id is None:
+        raise click.ClickException(
+            "no network id: pass -n/--network-id, or set swarm_id (or a "
+            "deployment) in your config."
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(network_id)
     flash_role(
