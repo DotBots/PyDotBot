@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Phase-5 management commands: `dotbot config` + `dotbot testbed`.
+"""Phase-5 management commands: `dotbot config` + `dotbot deployment`.
 
 Read-only inspectors over the config the root group already resolved onto
 `ctx.obj`. Headless (CliRunner), invoked through the root so the context is
@@ -13,22 +13,22 @@ from click.testing import CliRunner
 
 from dotbot.cli.main import cli
 
-# A small config with two named testbeds and a default selection.
+# A small config with two named deployments and a default selection.
 _CONFIG = """\
-default_testbed = "inria"
+default_deployment = "inria"
 swarm_id = "0001"
 conn = "simulator"
 
 [fw]
 board = "dotbot-v3"
 
-[testbed.inria]
+[deployment.inria]
 conn = "simulator"
 swarm_id = "0001"
 location = "Inria Paris"
 bots = 100
 
-[testbed.laposte]
+[deployment.laposte]
 conn = "mqtts://broker.local:8883"
 location = "La Poste"
 bots = 1000
@@ -72,7 +72,7 @@ def test_config_show_with_config(runner, tmp_path):
     result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
     assert result.exit_code == 0, result.output
     assert str(cfg) in result.output
-    # The selected (default) testbed is reported.
+    # The selected (default) deployment is reported.
     assert "inria" in result.output
     # A top-level scalar and a nested section both render.
     assert "swarm_id" in result.output
@@ -93,20 +93,20 @@ def test_config_show_without_config(runner):
     with runner.isolated_filesystem():
         result = runner.invoke(cli, ["config", "show"])
     assert result.exit_code == 0, result.output
-    assert "(none)" in result.output  # no testbed selected
+    assert "(none)" in result.output  # no deployment selected
     assert "built-in defaults" in result.output
 
 
-# --- testbed list -----------------------------------------------------------
+# --- deployment list -----------------------------------------------------------
 
 
-def test_testbed_list_shows_names_and_active_marker(runner, tmp_path):
+def test_deployment_list_shows_names_and_active_marker(runner, tmp_path):
     cfg = _write(tmp_path)
-    result = runner.invoke(cli, ["-c", str(cfg), "testbed", "list"])
+    result = runner.invoke(cli, ["-c", str(cfg), "deployment", "list"])
     assert result.exit_code == 0, result.output
     assert "inria" in result.output
     assert "laposte" in result.output
-    # The active (default_testbed) one is marked with `*`.
+    # The active (default_deployment) one is marked with `*`.
     active_line = next(line for line in result.output.splitlines() if "inria" in line)
     assert active_line.lstrip().startswith("*")
     # Descriptive fields render.
@@ -114,41 +114,41 @@ def test_testbed_list_shows_names_and_active_marker(runner, tmp_path):
     assert "1000" in result.output
 
 
-def test_testbed_list_honors_testbed_flag(runner, tmp_path):
+def test_deployment_list_honors_deployment_flag(runner, tmp_path):
     cfg = _write(tmp_path)
     result = runner.invoke(
-        cli, ["-c", str(cfg), "--testbed", "laposte", "testbed", "list"]
+        cli, ["-c", str(cfg), "--deployment", "laposte", "deployment", "list"]
     )
     assert result.exit_code == 0, result.output
     active_line = next(line for line in result.output.splitlines() if "laposte" in line)
     assert active_line.lstrip().startswith("*")
 
 
-def test_testbed_list_empty(runner):
+def test_deployment_list_empty(runner):
     with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["testbed", "list"])
+        result = runner.invoke(cli, ["deployment", "list"])
     assert result.exit_code == 0, result.output
-    assert "no testbeds configured" in result.output.lower()
+    assert "no deployments configured" in result.output.lower()
 
 
-# --- testbed show -----------------------------------------------------------
+# --- deployment show -----------------------------------------------------------
 
 
-def test_testbed_show_known(runner, tmp_path):
+def test_deployment_show_known(runner, tmp_path):
     cfg = _write(tmp_path)
-    result = runner.invoke(cli, ["-c", str(cfg), "testbed", "show", "inria"])
+    result = runner.invoke(cli, ["-c", str(cfg), "deployment", "show", "inria"])
     assert result.exit_code == 0, result.output
     assert "inria" in result.output
     assert "Inria Paris" in result.output
     assert "conn" in result.output
-    # It is the active testbed.
+    # It is the active deployment.
     assert "active" in result.output
 
 
-def test_testbed_show_unknown_errors(runner, tmp_path):
+def test_deployment_show_unknown_errors(runner, tmp_path):
     cfg = _write(tmp_path)
-    result = runner.invoke(cli, ["-c", str(cfg), "testbed", "show", "nope"])
+    result = runner.invoke(cli, ["-c", str(cfg), "deployment", "show", "nope"])
     assert result.exit_code != 0
     assert "nope" in result.output
-    # Lists the defined testbeds in the error.
+    # Lists the defined deployments in the error.
     assert "inria" in result.output

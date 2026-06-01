@@ -40,12 +40,12 @@ For any single setting, the highest-priority source that has a value wins:
 
 ```text
 CLI flag  >  env DOTBOT_<SECTION>_<KEY> (then shared DOTBOT_<KEY>)
-          >  file: section value > selected testbed > top-level
+          >  file: section value > selected deployment > top-level
           >  built-in default
 ```
 
 Inside the file, a key set in its own section table beats the same key on the
-selected testbed, which beats a shared top-level key.
+selected deployment, which beats a shared top-level key.
 
 **Worked example** - resolving the controller's broker URL (`conn`):
 
@@ -54,7 +54,7 @@ selected testbed, which beats a shared top-level key.
 | `--conn mqtts://cli:8883` flag | `mqtts://cli:8883` | yes, flag is highest |
 | `DOTBOT_RUN_CONN` env | `mqtts://env:8883` | only if no flag |
 | `[run] conn` in the file | `mqtts://run:8883` | only if no flag/env |
-| `[testbed.inria] conn` (selected) | `mqtts://inria:8883` | only if `[run]` has no `conn` |
+| `[deployment.inria] conn` (selected) | `mqtts://inria:8883` | only if `[run]` has no `conn` |
 | top-level `conn` | `mqtts://shared:8883` | only if nothing above is set |
 | built-in default | - | last resort |
 
@@ -65,7 +65,7 @@ accepts the shared `DOTBOT_<KEY>` form as a fallback.
 
 ## Top-level (shared) keys
 
-Set once at the top of the file; any section or testbed can override them.
+Set once at the top of the file; any section or deployment can override them.
 
 | Key | Meaning |
 |---|---|
@@ -73,7 +73,7 @@ Set once at the top of the file; any section or testbed can override them.
 | `swarm_id` | Swarm id selecting the MQTT topic namespace. |
 | `log_level` | Logging verbosity. |
 | `artifacts_dir` | Where firmware artifacts are read/written. |
-| `default_testbed` | Name of the testbed to select when neither `--testbed` nor `DOTBOT_TESTBED` is given. |
+| `default_deployment` | Name of the deployment to select when neither `--deployment` nor `DOTBOT_DEPLOYMENT` is given. |
 
 ## Section tables
 
@@ -126,31 +126,24 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 Unknown keys are rejected: a typo in a section or key name fails loud rather
 than being silently ignored.
 
-## What a testbed is
+## What a deployment is
 
-A **testbed** here means one physical deployment - one set of real DotBots
+A **deployment** here means one physical deployment - one set of real DotBots
 behind one broker, in one place (e.g. the ~100-bot setup at Inria Paris, or a
-1000-bot campaign). You define each one as a `[testbed.<name>]` table and
+1000-bot campaign). You define each one as a `[deployment.<name>]` table and
 **select** it; you do not edit the file to switch between them.
 
-Select the active testbed with, in precedence order, `--testbed NAME`, the
-`DOTBOT_TESTBED` env var, or the top-level `default_testbed`. The selected
-testbed's keys slot into the file layer (above top-level, below sections), so an
+Select the active deployment with, in precedence order, `--deployment NAME`, the
+`DOTBOT_DEPLOYMENT` env var, or the top-level `default_deployment`. The selected
+deployment's keys slot into the file layer (above top-level, below sections), so an
 explicit flag or env var still overrides it. Selecting a name with no matching
-`[testbed.<name>]` table is an error that lists the defined testbeds.
+`[deployment.<name>]` table is an error that lists the defined deployments.
 
-```{admonition} "the DotBot Testbed" vs "a testbed"
-:class: note
-**The DotBot Testbed** (capital T) is the whole platform - the swarm-robotics
-research system. **A testbed** in this file is one named physical deployment you
-target with `--testbed`. They are different scopes that happen to share a word.
-```
-
-A testbed is **not** the simulator. To drive simulated bots, set the connection
+A deployment is **not** the simulator. To drive simulated bots, set the connection
 to `simulator` (`--conn simulator`, or `conn = "simulator"`); that is a
-connection kind, not a testbed.
+connection kind, not a deployment.
 
-A `[testbed.<name>]` table holds the deployment-binding keys plus descriptive
+A `[deployment.<name>]` table holds the deployment-binding keys plus descriptive
 metadata:
 
 | Key | Meaning |
@@ -158,7 +151,7 @@ metadata:
 | `conn` | Broker / link for this deployment. |
 | `swarm_id` | Swarm id for this deployment. |
 | `serial_port` | Default serial port for this deployment. |
-| `location` | Descriptive label (shown by `dotbot testbed list`). |
+| `location` | Descriptive label (shown by `dotbot deployment list`). |
 | `bots` | Descriptive bot count. |
 
 ## MQTT credentials are env-only
@@ -182,31 +175,31 @@ precedence chain by hand:
 | Command | Shows |
 |---|---|
 | `dotbot config show` | The merged, effective config and which file (if any) it came from. |
-| `dotbot testbed list` | The defined testbeds, their metadata, and which one is selected. |
+| `dotbot deployment list` | The defined deployments, their metadata, and which one is selected. |
 
 ## Full example
 
 An annotated `dotbot.toml` exercising every layer:
 
 ```toml
-# Top-level shared keys: every section and testbed inherits these unless it
+# Top-level shared keys: every section and deployment inherits these unless it
 # sets its own value.
-default_testbed = "inria"                 # used when --testbed / DOTBOT_TESTBED unset
+default_deployment = "inria"                 # used when --deployment / DOTBOT_DEPLOYMENT unset
 conn            = "mqtts://broker.local:8883"
 swarm_id        = "0001"
 log_level       = "info"
 artifacts_dir   = "./artifacts"
 
-# A physical deployment. Select it with `--testbed inria`, DOTBOT_TESTBED, or
-# default_testbed above - don't edit this table to switch deployments.
-[testbed.inria]
+# A physical deployment. Select it with `--deployment inria`, DOTBOT_DEPLOYMENT, or
+# default_deployment above - don't edit this table to switch deployments.
+[deployment.inria]
 conn        = "mqtts://broker.inria.fr:8883"
 swarm_id    = "0001"
 serial_port = "/dev/ttyACM0"
-location    = "Inria Paris"               # descriptive, for `dotbot testbed list`
+location    = "Inria Paris"               # descriptive, for `dotbot deployment list`
 bots        = 100                          # descriptive
 
-[testbed.limerick]
+[deployment.limerick]
 conn     = "mqtts://broker.limerick:8883"
 swarm_id = "0002"
 location = "Limerick campaign"

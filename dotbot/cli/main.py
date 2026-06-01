@@ -12,7 +12,7 @@ The top level is the four object-namespaces, each one *kind of thing*:
 
 Three are nouns (things you manage); `run` is the verb (the thing you do).
 Alongside them sit the read-only management commands - `config` (what
-config is in effect, and where it came from) and `testbed` (which
+config is in effect, and where it came from) and `deployment` (which
 deployments are defined, and which is active).
 
 Each group lives in its own module under `dotbot.cli.<name>` exposing a
@@ -60,9 +60,9 @@ _SUBCOMMANDS = (
         "Show the resolved config + where it came from.",
     ),
     (
-        "testbed",
-        "dotbot.cli.testbed_cmd",
-        "List / show configured testbeds (deployments).",
+        "deployment",
+        "dotbot.cli.deployment_cmd",
+        "List / show configured deployments.",
     ),
 )
 
@@ -88,11 +88,11 @@ _SUBCOMMANDS = (
     ),
 )
 @click.option(
-    "--testbed",
-    "testbed_name",
+    "--deployment",
+    "deployment_name",
     default=None,
     metavar="NAME",
-    help="Which configured testbed (deployment) to target; overrides default_testbed.",
+    help="Which configured deployment to target; overrides default_deployment.",
 )
 @click.version_option(
     version=pydotbot_version(),
@@ -100,10 +100,10 @@ _SUBCOMMANDS = (
     message="%(prog)s %(version)s",
 )
 @click.pass_context
-def cli(ctx, config_path, testbed_name):
-    """Load the unified config + select the testbed, then dispatch.
+def cli(ctx, config_path, deployment_name):
+    """Load the unified config + select the deployment, then dispatch.
 
-    The resolved config and the selected testbed are stashed on the Click
+    The resolved config and the selected deployment are stashed on the Click
     context (`ctx.obj`) so each subcommand can read its defaults from them;
     flags and env vars still override the file (see `dotbot.config`).
 
@@ -117,18 +117,20 @@ def cli(ctx, config_path, testbed_name):
         ConfigError,
         discover_config_path,
         load_config,
-        select_testbed,
+        select_deployment,
     )
 
     ctx.ensure_object(dict)
     try:
         path = discover_config_path(config_path, include_user_file=False)
         config = load_config(path)
-        testbed, testbed_resolved = select_testbed(config, cli_name=testbed_name)
+        deployment, deployment_resolved = select_deployment(
+            config, cli_name=deployment_name
+        )
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path
-    ctx.obj["testbed"] = testbed
-    ctx.obj["testbed_name"] = testbed_resolved
+    ctx.obj["deployment"] = deployment
+    ctx.obj["deployment_name"] = deployment_resolved

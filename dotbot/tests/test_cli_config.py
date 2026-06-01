@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Phase-2 wiring: the root `-c/--config` + `--testbed` flags, and the
+"""Phase-2 wiring: the root `-c/--config` + `--deployment` flags, and the
 `fw`/`device` `--config` -> `--build-config` rename. Headless (CliRunner)."""
 
 import pytest
@@ -25,7 +25,9 @@ def _write(tmp_path, text):
 
 
 def test_root_accepts_valid_config(runner, tmp_path):
-    cfg = _write(tmp_path, 'swarm_id = "0001"\n[testbed.inria]\nconn = "simulator"\n')
+    cfg = _write(
+        tmp_path, 'swarm_id = "0001"\n[deployment.inria]\nconn = "simulator"\n'
+    )
     result = runner.invoke(cli, ["-c", str(cfg), "fw", "--help"])
     assert result.exit_code == 0, result.output
 
@@ -42,17 +44,19 @@ def test_root_missing_config_errors(runner, tmp_path):
     assert result.exit_code != 0
 
 
-def test_root_selects_testbed(runner, tmp_path):
-    cfg = _write(tmp_path, '[testbed.inria]\nconn = "simulator"\n')
-    result = runner.invoke(cli, ["-c", str(cfg), "--testbed", "inria", "fw", "--help"])
+def test_root_selects_deployment(runner, tmp_path):
+    cfg = _write(tmp_path, '[deployment.inria]\nconn = "simulator"\n')
+    result = runner.invoke(
+        cli, ["-c", str(cfg), "--deployment", "inria", "fw", "--help"]
+    )
     assert result.exit_code == 0, result.output
 
 
-def test_root_unknown_testbed_errors(runner):
+def test_root_unknown_deployment_errors(runner):
     with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["--testbed", "nope", "fw", "--help"])
+        result = runner.invoke(cli, ["--deployment", "nope", "fw", "--help"])
     assert result.exit_code != 0
-    assert "testbed" in result.output.lower()
+    assert "deployment" in result.output.lower()
 
 
 def test_root_no_config_is_fine(runner):

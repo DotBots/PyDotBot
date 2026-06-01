@@ -4,7 +4,7 @@
 """Headless tests for the unified config resolver (dotbot/config.py).
 
 Pure {flags, env, file} -> resolved value; no hardware, no network. Covers the
-precedence chain, discovery order, testbed selection, and strict validation.
+precedence chain, discovery order, deployment selection, and strict validation.
 """
 
 import pytest
@@ -88,18 +88,18 @@ def test_discover_user_file_skipped(tmp_path, monkeypatch):
 def test_load_none_is_empty():
     config = cfg.load_config(None)
     assert config.conn is None
-    assert config.testbed == {}
+    assert config.deployment == {}
 
 
 def test_load_valid(tmp_path):
     path = tmp_path / "dotbot.toml"
     path.write_text(
         """
-default_testbed = "inria"
+default_deployment = "inria"
 conn = "mqtts://broker.local:8883"
 swarm_id = "0001"
 
-[testbed.inria]
+[deployment.inria]
 conn = "mqtts://broker.inria.fr:8883"
 swarm_id = "0001"
 location = "Inria Paris"
@@ -113,10 +113,10 @@ http_port = 8000
 """
     )
     config = cfg.load_config(path)
-    assert config.default_testbed == "inria"
+    assert config.default_deployment == "inria"
     assert config.fw.board == "dotbot-v3"
     assert config.run.controller.http_port == 8000
-    assert config.testbed["inria"].bots == 100
+    assert config.deployment["inria"].bots == 100
 
 
 def test_load_unknown_top_level_key_rejected(tmp_path):
@@ -143,12 +143,12 @@ def test_load_bad_conn_rejected(tmp_path):
 def test_load_accepts_valid_conn_forms(tmp_path):
     path = tmp_path / "dotbot.toml"
     path.write_text(
-        '[testbed.sim]\nconn = "simulator"\n'
-        '[testbed.cable]\nconn = "/dev/ttyACM0"\n'
-        '[testbed.mqtt]\nconn = "mqtts://h:8883"\n'
+        '[deployment.sim]\nconn = "simulator"\n'
+        '[deployment.cable]\nconn = "/dev/ttyACM0"\n'
+        '[deployment.mqtt]\nconn = "mqtts://h:8883"\n'
     )
     config = cfg.load_config(path)
-    assert set(config.testbed) == {"sim", "cable", "mqtt"}
+    assert set(config.deployment) == {"sim", "cable", "mqtt"}
 
 
 def test_load_bad_type_rejected(tmp_path):
@@ -158,49 +158,49 @@ def test_load_bad_type_rejected(tmp_path):
         cfg.load_config(path)
 
 
-# --- testbed selection ------------------------------------------------------
+# --- deployment selection ------------------------------------------------------
 
 
-def _two_testbeds():
+def _two_deployments():
     return cfg.DotbotConfig(
-        default_testbed="inria",
-        testbed={
-            "inria": cfg.Testbed(swarm_id="0001"),
-            "laposte": cfg.Testbed(swarm_id="002a"),
+        default_deployment="inria",
+        deployment={
+            "inria": cfg.Deployment(swarm_id="0001"),
+            "laposte": cfg.Deployment(swarm_id="002a"),
         },
     )
 
 
-def test_select_testbed_cli_beats_env_and_default():
-    config = _two_testbeds()
-    tb, name = cfg.select_testbed(
-        config, cli_name="laposte", environ={"DOTBOT_TESTBED": "inria"}
+def test_select_deployment_cli_beats_env_and_default():
+    config = _two_deployments()
+    tb, name = cfg.select_deployment(
+        config, cli_name="laposte", environ={"DOTBOT_DEPLOYMENT": "inria"}
     )
     assert name == "laposte"
     assert tb.swarm_id == "002a"
 
 
-def test_select_testbed_env_beats_default():
-    config = _two_testbeds()
-    _, name = cfg.select_testbed(config, environ={"DOTBOT_TESTBED": "laposte"})
+def test_select_deployment_env_beats_default():
+    config = _two_deployments()
+    _, name = cfg.select_deployment(config, environ={"DOTBOT_DEPLOYMENT": "laposte"})
     assert name == "laposte"
 
 
-def test_select_testbed_default():
-    config = _two_testbeds()
-    _, name = cfg.select_testbed(config, environ={})
+def test_select_deployment_default():
+    config = _two_deployments()
+    _, name = cfg.select_deployment(config, environ={})
     assert name == "inria"
 
 
-def test_select_testbed_none_when_unset():
+def test_select_deployment_none_when_unset():
     config = cfg.DotbotConfig()
-    assert cfg.select_testbed(config, environ={}) == (None, None)
+    assert cfg.select_deployment(config, environ={}) == (None, None)
 
 
-def test_select_testbed_unknown_raises():
-    config = _two_testbeds()
+def test_select_deployment_unknown_raises():
+    config = _two_deployments()
     with pytest.raises(cfg.ConfigError):
-        cfg.select_testbed(config, cli_name="nope", environ={})
+        cfg.select_deployment(config, cli_name="nope", environ={})
 
 
 # --- precedence resolution --------------------------------------------------
@@ -268,19 +268,24 @@ def test_resolve_section_beats_top_level():
     assert got == "section"
 
 
-def test_resolve_testbed_beats_top_level():
+def test_resolve_deployment_beats_top_level():
     config = cfg.DotbotConfig(conn="mqtts://top:8883")
-    tb = cfg.Testbed(conn="mqtts://inria:8883")
-    got = cfg.resolve("conn", config=config, testbed=tb, environ={}, default=None)
+    tb = cfg.Deployment(conn="mqtts://inria:8883")
+    got = cfg.resolve("conn", config=config, deployment=tb, environ={}, default=None)
     assert got == "mqtts://inria:8883"
 
 
-def test_resolve_section_beats_testbed():
-    # Documented order: section value > selected testbed > top-level.
+def test_resolve_section_beats_deployment():
+    # Documented order: section value > selected deployment > top-level.
     config = cfg.DotbotConfig(swarm=cfg.SwarmSection(swarm_id="section"))
-    tb = cfg.Testbed(swarm_id="testbed")
+    tb = cfg.Deployment(swarm_id="deployment")
     got = cfg.resolve(
-        "swarm_id", section="swarm", config=config, testbed=tb, environ={}, default="d"
+        "swarm_id",
+        section="swarm",
+        config=config,
+        deployment=tb,
+        environ={},
+        default="d",
     )
     assert got == "section"
 

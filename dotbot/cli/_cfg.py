@@ -26,7 +26,7 @@ def from_config(ctx: click.Context, param_name: str, key: str, section: str):
     `param_name` is the Click parameter name (what `ctx.params` keys on);
     `key` / `section` address the value in the config resolver. When the
     option was set on the command line we return it verbatim; otherwise we let
-    the resolver fall through config (section > testbed > top-level) and env,
+    the resolver fall through config (section > deployment > top-level) and env,
     using the option's current value as the built-in default.
     """
     value = ctx.params.get(param_name)
@@ -37,6 +37,6 @@ def from_config(ctx: click.Context, param_name: str, key: str, section: str):
         key,
         section=section,
         config=obj.get("config"),
-        testbed=obj.get("testbed"),
+        deployment=obj.get("deployment"),
         default=value,
     )

@@ -10,15 +10,15 @@ exhaustively unit-testable without hardware. The CLI layer (a later phase)
 feeds it the actual flags and `os.environ`.
 
 The file mirrors the four-namespace CLI: top-level shared keys plus `[fw]` /
-`[device]` / `[swarm]` / `[run]` tables, and `[testbed.<name>]` entries for the
+`[device]` / `[swarm]` / `[run]` tables, and `[deployment.<name>]` entries for the
 physical deployments you switch between.
 
 ```toml
-default_testbed = "inria"
-conn     = "mqtts://broker.local:8883"   # shared; sections/testbeds override
+default_deployment = "inria"
+conn     = "mqtts://broker.local:8883"   # shared; sections/deployments override
 swarm_id = "0001"
 
-[testbed.inria]                          # a named deployment - select, don't edit
+[deployment.inria]                          # a named deployment - select, don't edit
 conn = "mqtts://broker.inria.fr:8883"
 swarm_id = "0001"
 
@@ -32,10 +32,10 @@ http_port = 8000
 Precedence for any value, highest wins:
 
     CLI flag  >  env (DOTBOT_<SECTION>_<KEY>, then shared DOTBOT_<KEY>)
-              >  file (section value > selected testbed > top-level)
+              >  file (section value > selected deployment > top-level)
               >  built-in default
 
-The selected testbed (`--testbed` > `DOTBOT_TESTBED` > `default_testbed`)
+The selected deployment (`--deployment` > `DOTBOT_DEPLOYMENT` > `default_deployment`)
 resolves first and slots into the file layer; an explicit flag/env still beats
 it. Unknown keys are rejected (`extra='forbid'`) so a typo fails loud.
 """
@@ -66,7 +66,7 @@ PROJECT_CONFIG_NAME = "dotbot.toml"
 
 
 class ConfigError(Exception):
-    """A config file is malformed, has an unknown key, or names a missing testbed."""
+    """A config file is malformed, has an unknown key, or names a missing deployment."""
 
 
 def _check_conn(value: str | None) -> str | None:
@@ -102,17 +102,17 @@ class _Strict(BaseModel):
 # code (dotbot/__init__.py), not here.
 
 
-class Testbed(_Strict):
+class Deployment(_Strict):
     """One named physical deployment (Inria/100, La Poste/1000, ...).
 
     Holds only the environment-binding keys plus descriptive metadata. You
-    select a testbed; you never edit the file to switch.
+    select a deployment; you never edit the file to switch.
     """
 
     conn: Conn = None
     swarm_id: str | None = None
     serial_port: str | None = None
-    location: str | None = None  # descriptive, for `dotbot testbed list`
+    location: str | None = None  # descriptive, for `dotbot deployment list`
     bots: int | None = None  # descriptive
 
 
@@ -159,9 +159,9 @@ class RunSection(_Strict):
 
 
 class DotbotConfig(_Strict):
-    """The whole file: top-level shared keys + the four section tables + testbeds."""
+    """The whole file: top-level shared keys + the four section tables + deployments."""
 
-    default_testbed: str | None = None
+    default_deployment: str | None = None
     artifacts_dir: str | None = None
     log_level: str | None = None
     conn: Conn = None
@@ -172,8 +172,8 @@ class DotbotConfig(_Strict):
     swarm: SwarmSection = Field(default_factory=SwarmSection)
     run: RunSection = Field(default_factory=RunSection)
 
-    # `[testbed.<name>]` tables map to {name: Testbed}.
-    testbed: dict[str, Testbed] = Field(default_factory=dict)
+    # `[deployment.<name>]` tables map to {name: Deployment}.
+    deployment: dict[str, Deployment] = Field(default_factory=dict)
 
 
 # --- Discovery --------------------------------------------------------------
@@ -247,27 +247,27 @@ def load_discovered(
     return load_config(path), path
 
 
-# --- Testbed selection ------------------------------------------------------
+# --- Deployment selection ------------------------------------------------------
 
 
-def select_testbed(
+def select_deployment(
     config: DotbotConfig,
     *,
     cli_name: str | None = None,
     environ: Mapping[str, str] = os.environ,
-) -> tuple[Testbed | None, str | None]:
-    """Resolve the active testbed: `--testbed` > `DOTBOT_TESTBED` > default_testbed.
+) -> tuple[Deployment | None, str | None]:
+    """Resolve the active deployment: `--deployment` > `DOTBOT_DEPLOYMENT` > default_deployment.
 
-    Returns (testbed, name), or (None, None) if none is selected. Raises
-    `ConfigError` if the selected name has no `[testbed.<name>]` entry.
+    Returns (deployment, name), or (None, None) if none is selected. Raises
+    `ConfigError` if the selected name has no `[deployment.<name>]` entry.
     """
-    name = cli_name or environ.get("DOTBOT_TESTBED") or config.default_testbed
+    name = cli_name or environ.get("DOTBOT_DEPLOYMENT") or config.default_deployment
     if not name:
         return None, None
-    if name not in config.testbed:
-        known = ", ".join(sorted(config.testbed)) or "(none defined)"
-        raise ConfigError(f"unknown testbed {name!r}; defined testbeds: {known}")
-    return config.testbed[name], name
+    if name not in config.deployment:
+        known = ", ".join(sorted(config.deployment)) or "(none defined)"
+        raise ConfigError(f"unknown deployment {name!r}; defined deployments: {known}")
+    return config.deployment[name], name
 
 
 # --- Precedence resolution --------------------------------------------------
@@ -301,9 +301,9 @@ def _file_value(
     config: DotbotConfig | None,
     section: str | None,
     key: str,
-    testbed: Testbed | None,
+    deployment: Deployment | None,
 ) -> Any:
-    """The value this key has in the file layer: section > testbed > top-level."""
+    """The value this key has in the file layer: section > deployment > top-level."""
     if config is None:
         return None
     if section is not None:
@@ -311,8 +311,8 @@ def _file_value(
         value = getattr(section_obj, key, None)
         if value is not None:
             return value
-    if testbed is not None:
-        value = getattr(testbed, key, None)
+    if deployment is not None:
+        value = getattr(deployment, key, None)
         if value is not None:
             return value
     return getattr(config, key, None)
@@ -324,14 +324,14 @@ def resolve(
     section: str | None = None,
     flag: Any = None,
     config: DotbotConfig | None = None,
-    testbed: Testbed | None = None,
+    deployment: Deployment | None = None,
     default: Any = None,
     environ: Mapping[str, str] = os.environ,
 ) -> Any:
     """Resolve one setting through the full precedence chain.
 
     `flag` > env (`DOTBOT_<SECTION>_<KEY>`, then shared `DOTBOT_<KEY>`) >
-    file (section > testbed > top-level) > `default`.
+    file (section > deployment > top-level) > `default`.
 
     `section` is one of `SECTIONS` for a per-namespace key, or `None` for a
     top-level shared key (e.g. `conn`, `swarm_id`). Env values are coerced to
@@ -342,7 +342,7 @@ def resolve(
     for name in _env_candidates(section, key):
         if name in environ:
             return _coerce(environ[name], default)
-    file_value = _file_value(config, section, key, testbed)
+    file_value = _file_value(config, section, key, deployment)
     if file_value is not None:
         return file_value
     return default

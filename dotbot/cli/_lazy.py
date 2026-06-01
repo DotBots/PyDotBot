@@ -40,7 +40,7 @@ def lazy_subcommand(
     # Don't mutate cmd.name — the source package has its own tests that
     # assert on the original name. Click uses the lookup-key name from
     # the parent's `commands` dict for usage display, so the dispatcher
-    # still shows e.g. `Usage: dotbot testbed ...` correctly.
+    # still shows e.g. `Usage: dotbot deployment ...` correctly.
     return cmd
 
 

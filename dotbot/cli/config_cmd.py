@@ -7,7 +7,7 @@ A management group (like `git config` / `kubectl config`) that answers
 "what config is `dotbot` actually using, and where did it come from?".
 Both subcommands read what the root group already stashed on the Click
 context (`ctx.obj`): the loaded `DotbotConfig`, its source path, and the
-selected testbed. Writing the file is deferred, so there is no `set` here.
+selected deployment. Writing the file is deferred, so there is no `set` here.
 """
 
 from typing import Any
@@ -63,20 +63,20 @@ def _dump_lines(prefix: str, value: Any) -> list[str]:
 @cmd.command()
 @click.pass_context
 def show(ctx):
-    """Print the source path, the active testbed, and the loaded config.
+    """Print the source path, the active deployment, and the loaded config.
 
     None-valued fields are skipped so only what is actually set shows up.
     """
     obj = ctx.obj or {}
     config = obj.get("config")
     config_path = obj.get("config_path")
-    testbed_name = obj.get("testbed_name")
+    deployment_name = obj.get("deployment_name")
 
     source = (
         str(config_path) if config_path is not None else "(none; built-in defaults)"
     )
     click.echo(f"source:  {source}")
-    click.echo(f"testbed: {testbed_name or '(none)'}")
+    click.echo(f"deployment: {deployment_name or '(none)'}")
     click.echo("")
 
     if config is None:

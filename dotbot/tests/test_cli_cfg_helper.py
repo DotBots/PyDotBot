@@ -46,7 +46,7 @@ def test_flag_on_commandline_wins_over_config(runner):
     result = runner.invoke(
         _probe_command(),
         ["--board", "from-flag"],
-        obj={"config": cfg, "testbed": None},
+        obj={"config": cfg, "deployment": None},
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-flag"
@@ -58,7 +58,7 @@ def test_no_flag_falls_to_config(runner):
     result = runner.invoke(
         _probe_command(),
         [],
-        obj={"config": cfg, "testbed": None},
+        obj={"config": cfg, "deployment": None},
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-config"
@@ -82,7 +82,9 @@ def test_env_beats_config(runner, monkeypatch):
     """Env var (`DOTBOT_FW_BOARD`) beats the file layer, loses to the flag."""
     monkeypatch.setenv("DOTBOT_FW_BOARD", "from-env")
     cfg = DotbotConfig.model_validate({"fw": {"board": "from-config"}})
-    result = runner.invoke(_probe_command(), [], obj={"config": cfg, "testbed": None})
+    result = runner.invoke(
+        _probe_command(), [], obj={"config": cfg, "deployment": None}
+    )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-env"
 
@@ -110,7 +112,7 @@ def test_fw_artifacts_print_path_reflects_config_board(runner, fake_firmware_rep
     from_cfg = runner.invoke(
         fw_cmd,
         ["artifacts", "--print-path", "--app", "dotbot"],
-        obj={"config": cfg, "testbed": None},
+        obj={"config": cfg, "deployment": None},
     )
     assert from_cfg.exit_code == 0, from_cfg.output
     expected = str(
@@ -126,7 +128,7 @@ def test_fw_artifacts_print_path_reflects_config_board(runner, fake_firmware_rep
     overridden = runner.invoke(
         fw_cmd,
         ["artifacts", "--print-path", "--app", "dotbot", "-t", "dotbot-v3"],
-        obj={"config": cfg, "testbed": None},
+        obj={"config": cfg, "deployment": None},
     )
     assert overridden.exit_code == 0, overridden.output
     expected_override = str(
