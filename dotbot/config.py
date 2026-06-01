@@ -61,7 +61,7 @@ SECTIONS = ("fw", "device", "swarm", "run")
 # Where the user-level config lives. Geovane's call (2026-06-01): one dir,
 # shared with the calibration data under ~/.dotbot/ - no XDG split.
 USER_CONFIG_PATH = Path.home() / ".dotbot" / "config.toml"
-# Project-level config, discovered by walking up from the cwd.
+# Project-level config, discovered in the current directory only.
 PROJECT_CONFIG_NAME = "dotbot.toml"
 
 
@@ -190,8 +190,8 @@ def discover_config_path(
 
     1. `explicit` (the `-c/--config PATH` flag) wins outright.
     2. `DOTBOT_CONFIG` env var (an explicit path by another name).
-    3. The nearest `dotbot.toml`, searching the cwd and its parents (stopping at
-       a `.git` boundary) - so a per-experiment config "just works".
+    3. A `dotbot.toml` in the current directory (the cwd only - no walking up to
+       parent directories, so the active config is always unambiguous).
     4. The user file `~/.dotbot/config.toml` (skipped when
        `include_user_file=False` - used while the legacy `~/.dotbot/config.toml`
        fw segger_dir reader still owns that file).
@@ -204,12 +204,9 @@ def discover_config_path(
         return Path(env_path)
 
     start = Path(start_dir or Path.cwd()).resolve()
-    for directory in (start, *start.parents):
-        candidate = directory / PROJECT_CONFIG_NAME
-        if candidate.is_file():
-            return candidate
-        if (directory / ".git").exists():
-            break
+    candidate = start / PROJECT_CONFIG_NAME
+    if candidate.is_file():
+        return candidate
 
     if include_user_file and USER_CONFIG_PATH.is_file():
         return USER_CONFIG_PATH

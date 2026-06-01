@@ -31,26 +31,20 @@ def test_discover_env_var(tmp_path, monkeypatch):
     )
 
 
-def test_discover_project_cwd_upward(tmp_path):
-    root = tmp_path / "exp"
-    nested = root / "a" / "b"
-    nested.mkdir(parents=True)
-    project = root / cfg.PROJECT_CONFIG_NAME
+def test_discover_project_cwd_only(tmp_path):
+    # A dotbot.toml in the cwd is discovered.
+    project = tmp_path / cfg.PROJECT_CONFIG_NAME
     project.write_text("")
-    found = cfg.discover_config_path(None, environ={}, start_dir=nested)
-    assert found == project
+    assert cfg.discover_config_path(None, environ={}, start_dir=tmp_path) == project
 
 
-def test_discover_stops_at_git_boundary(tmp_path, monkeypatch):
-    # A dotbot.toml above a .git boundary must NOT be picked up.
-    outer = tmp_path / "outer"
-    repo = outer / "repo"
-    sub = repo / "sub"
-    sub.mkdir(parents=True)
-    (outer / cfg.PROJECT_CONFIG_NAME).write_text("")  # above the boundary
-    (repo / ".git").mkdir()
+def test_discover_ignores_parent_dirs(tmp_path, monkeypatch):
+    # A dotbot.toml in a PARENT is NOT discovered - the cwd only, no walking up.
+    (tmp_path / cfg.PROJECT_CONFIG_NAME).write_text("")
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
     monkeypatch.setattr(cfg, "USER_CONFIG_PATH", tmp_path / "nope.toml")
-    assert cfg.discover_config_path(None, environ={}, start_dir=sub) is None
+    assert cfg.discover_config_path(None, environ={}, start_dir=nested) is None
 
 
 def test_discover_user_fallback(tmp_path, monkeypatch):
