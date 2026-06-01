@@ -34,13 +34,9 @@ personal file (4), so a per-experiment config wins while you work in that
 directory. Discovery looks only at the cwd - it does not walk up to parent
 directories, so the active config is always unambiguous.
 
-```{admonition} User file not auto-loaded yet
-:class: note
-While the firmware tooling still owns `~/.dotbot/config.toml`, the CLI does not
-auto-load it (only `-c`, `DOTBOT_CONFIG`, and a discovered `dotbot.toml` are
-picked up). Until that migration lands, point at your user file with
-`-c ~/.dotbot/config.toml` if you want it.
-```
+`~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
+once and want everywhere - typically `[fw].segger_dir` and `[fw].firmware_repo`.
+Every command, including `dotbot fw`, reads through this same resolver.
 
 ## Precedence
 
