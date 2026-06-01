@@ -157,6 +157,69 @@ def test_deployment_show_unknown_errors(runner, tmp_path):
     assert "inria" in result.output
 
 
+# --- deployment use ----------------------------------------------------------
+
+
+def test_deployment_use_sets_default(runner, tmp_path):
+    # _CONFIG defaults to "inria"; switch it to "laposte".
+    cfg_file = _write(tmp_path)
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "use", "laposte"])
+    assert result.exit_code == 0, result.output
+    assert "laposte" in result.output
+    assert cfg.load_config(cfg_file).default_deployment == "laposte"
+
+
+def test_deployment_use_preserves_comments(runner, tmp_path):
+    text = (
+        "# my deployments\n"
+        '# default_deployment = "old"\n'
+        "\n"
+        "[deployment.inria]\n"
+        'conn = "simulator"\n'
+    )
+    cfg_file = _write(tmp_path, text)
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "use", "inria"])
+    assert result.exit_code == 0, result.output
+    written = cfg_file.read_text()
+    assert "# my deployments" in written  # comment survives
+    assert 'default_deployment = "inria"' in written
+    assert cfg.load_config(cfg_file).default_deployment == "inria"
+
+
+def test_deployment_use_inserts_when_absent(runner, tmp_path):
+    # No default_deployment line at all -> the key is inserted before the table.
+    text = '[deployment.inria]\nconn = "simulator"\n'
+    cfg_file = _write(tmp_path, text)
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "use", "inria"])
+    assert result.exit_code == 0, result.output
+    assert cfg.load_config(cfg_file).default_deployment == "inria"
+
+
+def test_deployment_use_unknown_leaves_file_untouched(runner, tmp_path):
+    cfg_file = _write(tmp_path)
+    before = cfg_file.read_text()
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "use", "nope"])
+    assert result.exit_code != 0
+    assert "nope" in result.output
+    assert "inria" in result.output  # lists known deployments
+    assert cfg_file.read_text() == before
+
+
+def test_deployment_use_without_config_hints_init(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["deployment", "use", "inria"])
+    assert result.exit_code != 0
+    assert "config init" in result.output
+
+
+def test_deployment_use_then_list_marks_it_active(runner, tmp_path):
+    cfg_file = _write(tmp_path)
+    runner.invoke(cli, ["-c", str(cfg_file), "deployment", "use", "laposte"])
+    result = runner.invoke(cli, ["-c", str(cfg_file), "deployment", "list"])
+    active_line = next(line for line in result.output.splitlines() if "laposte" in line)
+    assert active_line.lstrip().startswith("*")
+
+
 # --- config init ------------------------------------------------------------
 
 
