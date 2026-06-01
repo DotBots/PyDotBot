@@ -151,38 +151,36 @@ and driving it from the web UI ([controller guide][controller-doc]).
 
 ### setup the swarm
 
-To operate as a swarm, we need to fetch some firmware, and setup a configuration file:
+To operate as a swarm, fetch the firmware and save your connection once:
 
 ```bash
 # pull the pre-compiled firmwares from a release
 dotbot fw fetch -f 0.8.0rc1  # or build yourself with: dotbot fw artifacts --sandbox
-# configure where to connect and which swarm
-cat > swarm-config.toml <<'EOF'
-conn = "mqtts://argus.paris.inria.fr:8883"
-swarm_id = "1234"
-EOF
+# save where to connect and which swarm - the other commands here read it
+dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
-> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm - replace
-> `conn` and `swarm_id` with your own broker and swarm id (your testbed admin
-> provides these).
+> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm - pass
+> your own `--conn` and `--swarm-id` (your testbed admin provides these). This
+> writes `./dotbot.toml`; commands run from this directory pick it up, so you
+> don't repeat the flags. Full schema: the [configuration reference][config-doc].
 
 The swarm mode also requires a special "sandbox" firmware in each dotbot.
-We also need a more powerful gateway firmware.
-Let's flash both:
+We also need a more powerful gateway firmware. Let's flash both - the network
+id comes from your config:
 
 ```bash
-dotbot device flash-mari-gateway -n 1234 -s 10 -f 0.8.0rc1  # flash the gateway, setting its swarm id to 0x1234
-dotbot device flash-swarmit-sandbox -n 1234 -s 77 -f 0.8.0rc1  # flash the sandbox firmware - do this on each dotbot
+dotbot device flash-mari-gateway -s 10 -f 0.8.0rc1  # flash the gateway
+dotbot device flash-swarmit-sandbox -s 77 -f 0.8.0rc1  # the sandbox firmware - do this on each dotbot
 ```
 
 (`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch
 the release into `./artifacts/` if it isn't already there.)
 
-Now, run the gateway:
+Now, run the gateway (the broker comes from your config):
 
 ```bash
-dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem0010500324491
+dotbot run gateway -p /dev/cu.usbmodem0010500324491
 ```
 
 ### use the swarm
@@ -191,20 +189,23 @@ dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem00105
 You can flash as many dotbots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
 ```bash
-dotbot swarm -c swarm-config.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
+dotbot swarm -c dotbot.toml flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
 ```
+
+(`dotbot swarm` wraps swarmit, so it reads the same `dotbot.toml` via `-c`; the
+dotbot-native commands above discover it on their own.)
 
 Then, flash another experiment:
 
 ```bash
-dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
-dotbot swarm -c swarm-config.toml flash ./artifacts/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
+dotbot swarm -c dotbot.toml stop  # ensure all robots are in bootloader
+dotbot swarm -c dotbot.toml flash ./artifacts/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
 ```
 
 Observe and control your swarm from a web interface:
 
 ```bash
-dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -w  # will open a webpage at http://localhost:8000/PyDotBot/
+dotbot run controller -w  # will open a webpage at http://localhost:8000/PyDotBot/
 ```
 
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
@@ -222,8 +223,8 @@ dotbot device flash lh2_calibration -s 77
 dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # square of side 20 cm
 
 # 2. push the resulting calibration to the fleet over the air
-dotbot swarm -c swarm-config.toml stop  # ensure all robots are in bootloader
-dotbot swarm -c swarm-config.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
+dotbot swarm -c dotbot.toml stop  # ensure all robots are in bootloader
+dotbot swarm -c dotbot.toml calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
 ```
 
 Your bots now report their `(x, y)` location. The full setup - arena sizing,
@@ -274,6 +275,7 @@ See `LICENSE` in each component repository.
 [fw-doc]: https://pydotbot.readthedocs.io/en/latest/cli/fw.html
 [device-doc]: https://pydotbot.readthedocs.io/en/latest/cli/device.html
 [swarm-doc]: https://pydotbot.readthedocs.io/en/latest/cli/swarm.html
+[config-doc]: https://pydotbot.readthedocs.io/en/latest/reference/configuration.html
 [controller-doc]: https://pydotbot.readthedocs.io/en/latest/guides/controller.html
 [lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
 [troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
