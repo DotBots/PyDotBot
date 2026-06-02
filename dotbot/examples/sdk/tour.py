@@ -41,7 +41,9 @@ async def demo(swarm: Swarm) -> None:
         blue, red = bots[0], bots[1]
         blue.set_color("blue")
         red.set_color("red")
-        print(f"driving {blue.address[:8]} -> (300, 300)  and  {red.address[:8]} -> (1700, 1700) ...")
+        print(
+            f"driving {blue.address[:8]} -> (300, 300)  and  {red.address[:8]} -> (1700, 1700) ..."
+        )
         await asyncio.gather(blue.move_to(300, 300), red.move_to(1700, 1700))
         print("both arrived:")
         print("   ", blue)
