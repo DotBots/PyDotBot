@@ -61,7 +61,7 @@ host to the swarm radio.
 
 ```bash
 # flash the gateway role onto a DK (writes the network id + both cores)
-dotbot device flash-mari-gateway -n 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 -s 10
 
 # then run the host-side UART<->MQTT bridge
 dotbot run gateway
