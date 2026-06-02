@@ -113,9 +113,26 @@ Commands:
   device  One connected device (cable/probe): flash an app/role, read info.
   swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
   run     Host-side processes: controller, gateway, simulator, calibration, demos, teleop.
+  config  Show the resolved config and where it came from; scaffold one with init.
 ```
 
 Every command and flag is documented in the [CLI reference][cli-doc].
+
+## Configuration
+
+Most commands share a couple of settings - your gateway connection and swarm
+id. Keep them in one `dotbot.toml` instead of repeating flags:
+
+```bash
+dotbot config init --conn mqtts://broker:8883 --swarm-id 1234  # write ./dotbot.toml
+dotbot config show   # the resolved config + which file it came from
+dotbot config path   # just the file path
+```
+
+`dotbot` reads `./dotbot.toml` (current directory), falling back to
+`~/.dotbot/config.toml`; a `-c/--config FILE` flag or `DOTBOT_*` env vars
+override it for a single run. Full schema: the
+[configuration reference][config-doc].
 
 ## Quickstart - one bot
 
