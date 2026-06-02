@@ -4,15 +4,16 @@
 
 """The DotBot Swarm SDK.
 
-The value types (`Position`, the event classes, the link budget) are in place;
-the active objects (`Swarm`, `Bot`, `Fleet`, `Action`) and the connection
-backends land next, after which `from dotbot import Swarm` is wired at the
-package top level.
+`from dotbot.sdk import Swarm` (and, once wired, `from dotbot import Swarm`).
+v1 implements the `http(s)://` connection to a running `dotbot run controller`;
+the direct links and simulator backend land behind the same surface.
 """
 
 from __future__ import annotations
 
 from dotbot.protocol import ApplicationType, ControlModeType
+from dotbot.sdk.action import Action
+from dotbot.sdk.bot import Bot
 from dotbot.sdk.events import (
     BatteryUpdate,
     BotJoined,
@@ -21,10 +22,17 @@ from dotbot.sdk.events import (
     ModeChanged,
     PositionUpdate,
 )
+from dotbot.sdk.fleet import Fleet
 from dotbot.sdk.link import GatewayBudget, LinkProfile
 from dotbot.sdk.position import Position
+from dotbot.sdk.swarm import Swarm
 
 __all__ = [
+    # active objects
+    "Swarm",
+    "Bot",
+    "Fleet",
+    "Action",
     # re-exported enums (the SDK's vocabulary for application + control mode)
     "ApplicationType",
     "ControlModeType",
