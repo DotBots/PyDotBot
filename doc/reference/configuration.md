@@ -17,6 +17,9 @@ pass `--conn` / `--swarm-id` to pre-fill the two most common keys:
 dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
 ```
 
+This page is the file-format reference. For the `config` command itself
+(`init` / `show` / `path`), see [`dotbot config`](../cli/config.md).
+
 ## Where the file comes from
 
 `dotbot` looks in this order and uses the first hit:

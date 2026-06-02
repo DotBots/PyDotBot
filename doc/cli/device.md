@@ -90,15 +90,15 @@ named release into `./artifacts/` if it isn't cached.
 
 ```bash
 # nRF5340-DK → swarm gateway
-dotbot device flash-mari-gateway -n 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 -s 10
 
 # DotBot v3 → swarm sandbox host (the firmware that runs OTA apps)
-dotbot device flash-swarmit-sandbox -n 0100 -f 0.8.0rc1 -s 77
+dotbot device flash-swarmit-sandbox --swarm-id 0100 -f 0.8.0rc1 -s 77
 ```
 
 | Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
 |---|---|---|
-| `-n, --network-id` | 16-bit hex net id (required) | 16-bit hex net id (required) |
+| `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
 | `-f, --fw-version` | release to flash (required) | release to flash (required) |
 | `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
 | `-l, --calibration` | - | optional LH2 calibration file to bake in |

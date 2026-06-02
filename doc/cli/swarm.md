@@ -25,8 +25,8 @@ USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
-dotbot device flash-mari-gateway      -n 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
-dotbot device flash-swarmit-sandbox -n 1234 -s 77 -f 0.8.0rc1   # each bot -> sandbox host
+dotbot device flash-mari-gateway      --swarm-id 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
+dotbot device flash-swarmit-sandbox --swarm-id 1234 -s 77 -f 0.8.0rc1   # each bot -> sandbox host
 ```
 
 ## 2. Start the host bridge

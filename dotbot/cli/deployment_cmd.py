@@ -10,7 +10,6 @@ defined by a `[deployment.<name>]` table in the config file. You *select* one
 command rather than a hand edit. `list` / `show` are read-only inspectors.
 """
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -101,36 +100,16 @@ def show(ctx, name):
         click.echo(f"  {field}: {value}")
 
 
-# A `default_deployment = ...` line, active or commented-out, so `use` can
-# rewrite it in place and leave everything else (comments included) intact.
-_ACTIVE_DEFAULT_RE = re.compile(r"^\s*default_deployment\s*=")
-_ANY_DEFAULT_RE = re.compile(r"^\s*#?\s*default_deployment\s*=")
-
-
 def _set_default_deployment(path: Path, name: str) -> None:
     """Write `default_deployment = "<name>"` into `path`, preserving the rest.
 
-    Replaces the existing `default_deployment` line (an active one first, else
-    a commented-out one like the `config init` starter ships); when neither
-    exists, inserts the key before the first `[table]` header so it stays a
-    valid top-level TOML key.
+    tomlkit round-trips the document, so existing comments and structure stay
+    intact; it auto-places a new top-level key before the first `[table]` so the
+    result is valid TOML whether or not the key already existed.
     """
-    new_line = f'default_deployment = "{name}"'
-    lines = path.read_text().splitlines()
-
-    active = [i for i, line in enumerate(lines) if _ACTIVE_DEFAULT_RE.match(line)]
-    any_match = [i for i, line in enumerate(lines) if _ANY_DEFAULT_RE.match(line)]
-    target = active[0] if active else (any_match[0] if any_match else None)
-
-    if target is not None:
-        lines[target] = new_line
-    else:
-        insert_at = next(
-            (i for i, line in enumerate(lines) if line.lstrip().startswith("[")),
-            len(lines),
-        )
-        lines.insert(insert_at, new_line)
-    path.write_text("\n".join(lines) + "\n")
+    doc = tomlkit.parse(path.read_text())
+    doc["default_deployment"] = name
+    path.write_text(tomlkit.dumps(doc))
 
 
 @cmd.command()

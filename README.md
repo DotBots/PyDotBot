@@ -113,6 +113,7 @@ Commands:
   device  One connected device (cable/probe): flash an app/role, read info.
   swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
   run     Host-side processes: controller, gateway, simulator, calibration, demos, teleop.
+  config  Show the resolved config and where it came from; scaffold one with init.
 ```
 
 Every command and flag is documented in the [CLI reference][cli-doc].
