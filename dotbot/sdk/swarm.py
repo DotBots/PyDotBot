@@ -16,14 +16,25 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Callable, Iterator
+import time
+from typing import AsyncIterator, Callable, Iterator
 from urllib.parse import urlparse
 
-from dotbot.models import DotBotModel
+from dotbot.logger import LOGGER
+from dotbot.models import DotBotModel, DotBotStatus
 from dotbot.sdk._backend import HttpBackend
 from dotbot.sdk.bot import Bot
+from dotbot.sdk.events import (
+    BatteryUpdate,
+    BotJoined,
+    BotLeft,
+    Event,
+    ModeChanged,
+    PositionUpdate,
+)
 from dotbot.sdk.fleet import Fleet
 from dotbot.sdk.link import LinkProfile
+from dotbot.sdk.position import Position
 
 
 def _backend_for(conn: str):
@@ -47,6 +58,9 @@ class Swarm:
         self._backend = backend
         self._bots: dict[str, Bot] = {}
         self._tasks: set[asyncio.Task] = set()
+        self._handlers: dict[type, list[Callable]] = {}
+        self._event_queues: set[asyncio.Queue] = set()
+        self._positions_clamped = False
 
     @classmethod
     def connect(cls, conn: str) -> Swarm:
@@ -75,9 +89,28 @@ class Swarm:
             return
         bot = self._bots.get(model.address)
         if bot is None:
-            self._bots[model.address] = Bot(self, model)
-        else:
-            bot._apply(model)
+            bot = Bot(self, model)
+            self._bots[model.address] = bot
+            self._emit(BotJoined(bot.address, time.monotonic()))
+            return
+        before = (bot.position, bot.battery, bot.mode, bot._status)
+        bot._apply(model)
+        self._emit_changes(bot, *before)
+
+    def _emit_changes(self, bot, old_pos, old_battery, old_mode, old_status) -> None:
+        ts = time.monotonic()
+        if bot.position is not None and bot.position != old_pos:
+            self._emit(PositionUpdate(bot.address, ts, bot.position))
+        if (
+            bot.battery is not None
+            and old_battery is not None
+            and abs(bot.battery - old_battery) >= 0.05
+        ):
+            self._emit(BatteryUpdate(bot.address, ts, bot.battery))
+        if bot.mode != old_mode:
+            self._emit(ModeChanged(bot.address, ts, bot.mode))
+        if old_status == DotBotStatus.ACTIVE and bot._status != DotBotStatus.ACTIVE:
+            self._emit(BotLeft(bot.address, ts))
 
     def _on_reload(self) -> None:
         self._schedule(self._refetch())
@@ -127,6 +160,61 @@ class Swarm:
         # TODO: read GET /controller/link once the endpoint exists; until then
         # report a minimal Mari profile (host position rate, no gateway budget).
         return LinkProfile(kind=self._backend.kind, position_rate_hz=2.0, gateways=())
+
+    # ---- events + telemetry --------------------------------------------
+
+    def on(self, event_type: type[Event], callback: Callable[[Event], object]) -> None:
+        """Register `callback(event)` for an Event class (e.g.
+        `swarm.on(PositionUpdate, cb)`). The callback may be sync or async
+        (async is scheduled). Register on `Event` to receive every event."""
+        self._handlers.setdefault(event_type, []).append(callback)
+
+    def _emit(self, event: Event) -> None:
+        for event_type in (type(event), Event):
+            for callback in self._handlers.get(event_type, ()):
+                result = callback(event)
+                if asyncio.iscoroutine(result):
+                    self._schedule(result)
+        for queue in self._event_queues:
+            queue.put_nowait(event)
+
+    async def events(self) -> AsyncIterator[Event]:
+        """Async-iterate discrete events: `async for event in swarm.events():`."""
+        queue: asyncio.Queue = asyncio.Queue()
+        self._event_queues.add(queue)
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            self._event_queues.discard(queue)
+
+    async def positions(
+        self, *, rate_hz: float | None = None
+    ) -> AsyncIterator[dict[str, Position]]:
+        """Yield `{address: Position}` snapshots at a declared rate. `rate_hz`
+        None clamps to the link's host position rate; a higher request is
+        clamped with a one-time notice - you cannot sample faster than the link
+        reports."""
+        max_rate = self.link.position_rate_hz if self.link else None
+        if rate_hz is None:
+            rate_hz = max_rate or 2.0
+        elif max_rate and rate_hz > max_rate:
+            if not self._positions_clamped:
+                self._positions_clamped = True
+                LOGGER.warning(
+                    "positions rate clamped to link budget",
+                    requested_hz=rate_hz,
+                    link_hz=max_rate,
+                )
+            rate_hz = max_rate
+        period = 1.0 / rate_hz
+        while True:
+            yield {
+                address: bot.position
+                for address, bot in self._bots.items()
+                if bot.position is not None
+            }
+            await asyncio.sleep(period)
 
     async def close(self) -> None:
         for task in list(self._tasks):
