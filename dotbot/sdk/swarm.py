@@ -61,6 +61,7 @@ class Swarm:
         self._handlers: dict[type, list[Callable]] = {}
         self._event_queues: set[asyncio.Queue] = set()
         self._positions_clamped = False
+        self._tick_warned = False
 
     @classmethod
     def connect(cls, conn: str) -> Swarm:
@@ -215,6 +216,36 @@ class Swarm:
                 if bot.position is not None
             }
             await asyncio.sleep(period)
+
+    async def tick(self, rate_hz: float = 10) -> AsyncIterator[None]:
+        """Yield once per control cycle at `rate_hz`, paced (drift-corrected) for
+        budget-aware control loops. For swarm-wide per-bot commands, keep
+        `rate_hz` at or below the link bottleneck's per-bot command rate; a
+        higher rate is flagged once - you can issue commands faster than the link
+        drains them, but they queue."""
+        bottleneck = self.link.bottleneck if self.link else None
+        if (
+            bottleneck is not None
+            and rate_hz > bottleneck.per_bot_command_rate_hz
+            and not self._tick_warned
+        ):
+            self._tick_warned = True
+            LOGGER.warning(
+                "tick rate exceeds per-bot command budget",
+                requested_hz=rate_hz,
+                budget_hz=bottleneck.per_bot_command_rate_hz,
+            )
+        period = 1.0 / rate_hz
+        loop = asyncio.get_running_loop()
+        next_tick = loop.time()
+        while True:
+            yield
+            next_tick += period
+            delay = next_tick - loop.time()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            else:
+                next_tick = loop.time()  # body overran the period; resync
 
     async def close(self) -> None:
         for task in list(self._tasks):

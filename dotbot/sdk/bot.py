@@ -116,6 +116,17 @@ class Bot:
     def stop(self) -> None:
         self.move_raw(left=(0, 0), right=(0, 0))
 
+    def goto(self, x: float, y: float, *, threshold: int = 100) -> None:
+        """Fire-and-forget: set a single waypoint and return immediately,
+        without waiting for arrival. The streaming counterpart to move_to/follow
+        - for control loops (e.g. ORCA) that send a fresh target every tick. Use
+        move_to/follow when you want to await arrival."""
+        self._swarm._schedule(
+            self._swarm._backend.send_waypoints(
+                self.address, self.application, [(float(x), float(y))], threshold
+            )
+        )
+
     def move_to(self, x: float, y: float, *, speed: int = 50) -> Action:
         """Drive to a single point. Returns an Action; await it to wait for
         arrival."""
