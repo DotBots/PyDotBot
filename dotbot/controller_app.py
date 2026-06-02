@@ -226,6 +226,27 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     type=click.Path(dir_okay=False),
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
+@click.option(
+    "--bots",
+    "simulator_bots",
+    type=click.IntRange(1, 100),
+    default=None,
+    help="Simulator: spawn this many bots (1-100) in a generated --layout, instead of an init-state file.",
+)
+@click.option(
+    "--layout",
+    "simulator_layout",
+    type=click.Choice(["grid", "circle", "line", "random"]),
+    default=None,
+    help="Simulator: how --bots are arranged (default: grid).",
+)
+@click.option(
+    "--seed",
+    "simulator_seed",
+    type=int,
+    default=None,
+    help="Simulator: random seed for `--layout random`.",
+)
 @click.pass_context
 def main(
     ctx,
@@ -237,6 +258,9 @@ def main(
     map_size,
     background_map,
     simulator_init_state,
+    simulator_bots,
+    simulator_layout,
+    simulator_seed,
     headless,
     verbose,
     log_level,
@@ -285,7 +309,10 @@ def main(
     # None, so fold in any config value), offer to scaffold an editable
     # world file in the cwd. resolve_init_state_path then picks up the
     # freshly-written file (or the packaged world if declined/non-tty).
-    if conn_settings.get("adapter", "").endswith("simulator"):
+    if (
+        conn_settings.get("adapter", "").endswith("simulator")
+        and simulator_bots is None
+    ):
         _maybe_scaffold_sim_state(
             simulator_init_state or file_data.get("simulator_init_state")
         )
@@ -296,6 +323,9 @@ def main(
         "map_size": map_size,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
+        "simulator_bots": simulator_bots,
+        "simulator_layout": simulator_layout,
+        "simulator_seed": simulator_seed,
         "headless": True if headless else None,
         "verbose": verbose,
         "log_level": log_level,

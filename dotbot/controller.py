@@ -135,6 +135,9 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
+    simulator_bots: Optional[int] = None
+    simulator_layout: str = "grid"
+    simulator_seed: int = 0
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -699,6 +702,9 @@ class Controller:
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
+                bots=self.settings.simulator_bots,
+                layout=self.settings.simulator_layout,
+                seed=self.settings.simulator_seed,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

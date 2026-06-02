@@ -287,12 +287,22 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
     def __init__(
         self,
         simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
+        bots: int | None = None,
+        layout: str = "grid",
+        seed: int = 0,
     ):
         self.simulator_init_state = simulator_init_state
+        self.bots = bots
+        self.layout = layout
+        self.seed = seed
 
     def create_simulator(self, on_frame_received: callable):
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, self.simulator_init_state
+            on_frame_received,
+            self.simulator_init_state,
+            bots=self.bots,
+            layout=self.layout,
+            seed=self.seed,
         )
 
 

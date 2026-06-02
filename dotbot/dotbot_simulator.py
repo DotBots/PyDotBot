@@ -174,6 +174,19 @@ class InitStateToml(BaseModel):
     network: SimulatedNetworkSettings = SimulatedNetworkSettings()
 
 
+def generate_fleet(
+    n: int, layout: str = "grid", seed: int = 0
+) -> List[SimulatedDotBotSettings]:
+    """Build `n` simulated bots placed in a named layout, with sequential
+    auto-generated addresses. Backs `dotbot run simulator --bots N --layout`."""
+    from dotbot import patterns
+
+    return [
+        SimulatedDotBotSettings(address=f"{i + 1:016x}", pos_x=int(x), pos_y=int(y))
+        for i, (x, y) in enumerate(patterns.layout(n, layout, seed=seed))
+    ]
+
+
 class DotBotSimulator:
     """Simulator class for the dotbot."""
 
@@ -769,14 +782,24 @@ def resolve_init_state_path(path: str) -> str:
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, on_frame_received: Callable, simulator_init_state: str):
+    def __init__(
+        self,
+        on_frame_received: Callable,
+        simulator_init_state: str,
+        bots: int | None = None,
+        layout: str = "grid",
+        seed: int = 0,
+    ):
         self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
         self._stp_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
-        init_state = InitStateToml(
-            **toml.load(resolve_init_state_path(simulator_init_state))
-        )
+        if bots:
+            init_state = InitStateToml(dotbots=generate_fleet(bots, layout, seed))
+        else:
+            init_state = InitStateToml(
+                **toml.load(resolve_init_state_path(simulator_init_state))
+            )
         self._network = init_state.network
         self.dotbots = [
             DotBotSimulator(
