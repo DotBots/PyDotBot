@@ -203,7 +203,10 @@ class DotBotSimulator:
 
         self.pwm_left = 0
         self.pwm_right = 0
-        self.direction = settings.direction
+        # Map the "unset direction" sentinel to north (0), same as theta above;
+        # otherwise -1000 reaches the control loop as a bogus heading and the
+        # bot can never settle on a waypoint.
+        self.direction = settings.direction if settings.direction != -1000 else 0
 
         # Accumulated encoder deltas between control-loop calls (control runs at
         # SIMULATOR_UPDATE_INTERVAL_S, physics at SIMULATOR_STEP_DELTA_T — multiple
@@ -617,7 +620,7 @@ class DotBotSimulator:
             if frame is None:
                 break
             with self._lock:
-                if self.address == hex(frame.header.destination)[2:]:
+                if self.address == f"{frame.header.destination:016x}":
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
                         self.waypoint_index = 0
@@ -851,7 +854,7 @@ class DotBotSimulatorCommunicationInterface:
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
-        addr = hex(frame.header.source)[2:]
+        addr = f"{frame.header.source:016x}"
         index = self._address_to_index.get(addr, 0)
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
             self._mari.schedule_uplink(frame, index)
