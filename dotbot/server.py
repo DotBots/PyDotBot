@@ -364,4 +364,14 @@ async def ws_dotbots(websocket: WebSocket):
 
 # Mount static files after all routes are defined
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
-api.mount("/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot")
+if os.path.isdir(FRONTEND_DIR):
+    api.mount(
+        "/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot"
+    )
+else:
+    LOGGER.warning(
+        "Frontend build not found at %s; the web UI will be unavailable. "
+        "Install the published wheel (pip install --pre pydotbot) or build the "
+        "frontend: cd dotbot/frontend && npm install && npm run build",
+        FRONTEND_DIR,
+    )

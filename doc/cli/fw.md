@@ -10,15 +10,33 @@ non-secure (NS) flavor that runs inside the swarm sandbox host.
 ## Setup
 
 `dotbot fw` builds from a local `DotBot-firmware` checkout via SEGGER Embedded
-Studio (SES). Point the CLI at the checkout (otherwise it looks for
-`./DotBot-firmware/`); SES is auto-resolved.
+Studio (SES), so it needs to find both. The checkout defaults to
+`./DotBot-firmware/`; SES is auto-detected only on macOS (a standard
+`/Applications/SEGGER/` install), so on Linux/Windows builds fail with
+"SEGGER Embedded Studio ... wasn't found" until you point at it.
 
-```bash
-export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware
-# or persist it once in ~/.dotbot/config.toml:
-#   [fw]
-#   firmware_repo = "/path/to/DotBot-firmware"
+Your firmware checkout is per-project, so set it in the project's `./dotbot.toml`
+(or export `DOTBOT_FIRMWARE_REPO`):
+
+```toml
+# ./dotbot.toml  (per project)
+[fw]
+firmware_repo = "/path/to/DotBot-firmware"
 ```
+
+Your SES install rarely changes, so set it once per machine in
+`~/.dotbot/config.toml`:
+
+```toml
+# ~/.dotbot/config.toml  (once per machine)
+[fw]
+segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
+```
+
+> **First SES build needs the nRF + CMSIS_5 packages.** A fresh SES install has
+> no chip headers, so the build fails with `fatal error: 'nrf.h' file not found`.
+> In SES, open **Tools → Package Manager** and install the **nRF** and
+> **CMSIS_5** packages (`nrf.h` ships in the nRF one). One-time per SES install.
 
 ## Which command do I want?
 

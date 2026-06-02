@@ -31,6 +31,9 @@ own code - one bot, or a swarm of hundreds. Pick a starting point:
 - **Extend the platform** - every command and flag is in the
   [CLI reference](cli/index.md); the firmware flows live under [`fw`](cli/fw.md)
   and [`device`](cli/device.md).
+- **Before flashing hardware** - the simulator and driving an existing swarm
+  need only Python; building and cable-flashing firmware also need SES and the
+  nRF Command Line Tools (`nrfjprog`). See **Prerequisites** below before you start.
 ```
 
 ```{include} ../README.md

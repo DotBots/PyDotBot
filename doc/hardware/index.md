@@ -10,6 +10,16 @@ Three pieces make up a working setup:
 - **The gateway** - an nRF5340-DK that bridges your computer to the swarm over the air.
 - **A Lighthouse 2 base station** - for indoor localization (optional, per-experiment).
 
+## Cables and connectors
+
+What to have on hand (the two USB cables are the ones you'll reach for most):
+
+| Cable / connector | For |
+|---|---|
+| **USB-C to USB-A (or USB-C)** | Flash and power the DotBot v3 (its USB-C port, J2). |
+| **micro-USB to USB-A (or USB-C)** | The nRF5340-DK gateway's on-board J-Link. |
+| **Barrel-jack charger** (2.5 mm, 6-18 V) | Charges the DotBot v3 supercap (J4); free-roaming only. |
+
 ## DotBot v3 - the robot
 
 The robot has two connectors you'll use:

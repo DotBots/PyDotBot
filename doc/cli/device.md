@@ -15,6 +15,11 @@ instead. To build the `.hex` first, see [`fw`](fw.md).
 UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md).
 ```
 
+```{note}
+`dotbot device` drives **`nrfjprog`** (Nordic's nRF Command Line Tools), not
+`nrfutil` - install it and put its `bin/` on your `PATH` before flashing.
+```
+
 ## Commands
 
 | Command | What it does |
@@ -41,6 +46,10 @@ dotbot device flash dotbot -s 77
 `-b/--board` selects the **chip family and core** to program. The nrfjprog family
 and coprocessor are derived from it: nRF52 boards → `-f NRF52`, no coprocessor;
 nRF5340 → `-f NRF53` with `CP_APPLICATION`, or `CP_NETWORK` for a `*-net` board.
+
+`-b` only sets the family/core nrfjprog is *told* to program; the CLI doesn't
+read it back from the attached chip. Make sure the cabled board matches `-b` -
+e.g. don't flash an nRF53 image onto a connected nRF52 (or vice versa).
 
 ```bash
 # Gateway onto an nRF52840-DK (device flash picks -f NRF52 from the board)
