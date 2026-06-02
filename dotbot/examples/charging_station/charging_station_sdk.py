@@ -125,14 +125,10 @@ async def charging_station(swarm: Swarm) -> None:
     for bot in queue:
         print("   ", bot)
 
-    # cosmetic slice of phase 2: the queue head 'charges' (green) then disengages
-    head = queue[0]
-    head.set_color("green")
-    await asyncio.sleep(2.0)
-    head.move_raw(left=(0, -80), right=(0, -80))  # reverse off the charger
-    await asyncio.sleep(1.0)
-    head.stop()
-    print("done")
+    # the queue head sits at the charger; mark it 'charging' (green)
+    queue[0].set_color("green")
+    await asyncio.sleep(1.0)  # let the colour command flush before we exit
+    print("done - fleet parked in the charging queue")
 
 
 if __name__ == "__main__":
