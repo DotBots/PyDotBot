@@ -57,19 +57,21 @@ def test_flash_mari_gateway_rejects_calibration(runner):
     # Passing it is an unknown-option error.
     bad = runner.invoke(
         device_cmd,
-        ["flash-mari-gateway", "-n", "1234", "-f", "0.8.0rc1", "-l", "x.out"],
+        ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.8.0rc1", "-l", "x.out"],
     )
     assert bad.exit_code != 0
 
 
-def test_flash_swarmit_sandbox_requires_network_id_and_version(runner):
-    """-n and -f are both required for flash-swarmit-sandbox."""
+def test_flash_swarmit_sandbox_requires_swarm_id_and_version(runner):
+    """--swarm-id and -f are both required for flash-swarmit-sandbox."""
     assert (
         runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-f", "0.8.0rc1"]).exit_code
         != 0
     )
     assert (
-        runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-n", "1234"]).exit_code
+        runner.invoke(
+            device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "1234"]
+        ).exit_code
         != 0
     )
 
@@ -91,7 +93,7 @@ def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypat
     monkeypatch.setattr("dotbot.firmware.flash.flash_role", fake_flash_role)
     result = runner.invoke(
         device_cmd,
-        ["flash-swarmit-sandbox", "-n", "0100", "-f", "0.8.0rc1", "-s", "77"],
+        ["flash-swarmit-sandbox", "--swarm-id", "0100", "-f", "0.8.0rc1", "-s", "77"],
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "dotbot-v3"
@@ -109,7 +111,7 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
     result = runner.invoke(
-        device_cmd, ["flash-mari-gateway", "-n", "1234", "-f", "0.8.0rc1"]
+        device_cmd, ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.8.0rc1"]
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
@@ -117,7 +119,7 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
     assert "calibration_path" not in calls["kw"]
 
 
-# ── network id defaults from the selected deployment's swarm_id ─────────
+# ── swarm id defaults from the selected deployment's swarm_id ─────────
 
 
 def _write_cfg(tmp_path, text):
@@ -129,7 +131,7 @@ def _write_cfg(tmp_path, text):
 def test_flash_mari_gateway_net_id_from_deployment(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """No -n + a selected deployment -> net_id derived from its swarm_id."""
+    """No --swarm-id + a selected deployment -> net_id derived from its swarm_id."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -153,7 +155,7 @@ def test_flash_mari_gateway_net_id_from_deployment(
 def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """An explicit -n beats the deployment's swarm_id."""
+    """An explicit --swarm-id beats the deployment's swarm_id."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -172,7 +174,7 @@ def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
             str(cfg),
             "device",
             "flash-mari-gateway",
-            "-n",
+            "--swarm-id",
             "0099",
             "-f",
             "0.8.0rc1",
@@ -182,14 +184,14 @@ def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
     assert calls["kw"]["net_id"] == (0x0099, "0099")
 
 
-def test_flash_mari_gateway_no_net_id_no_config_errors(runner, _no_nrfjprog_gate):
-    """No -n and no swarm_id/deployment -> a clean ClickException, not a crash."""
+def test_flash_mari_gateway_no_swarm_id_no_config_errors(runner, _no_nrfjprog_gate):
+    """No --swarm-id and no swarm_id/deployment -> a clean ClickException, not a crash."""
     from dotbot.cli.main import cli
 
     with runner.isolated_filesystem():
         result = runner.invoke(cli, ["device", "flash-mari-gateway", "-f", "0.8.0rc1"])
     assert result.exit_code != 0
-    assert "no network id" in result.output
+    assert "no swarm id" in result.output
 
 
 def test_flash_swarmit_sandbox_net_id_from_deployment(
