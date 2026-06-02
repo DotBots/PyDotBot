@@ -6,6 +6,7 @@ fw
 device
 swarm
 run
+config
 ```
 
 One CLI for the whole DotBot workflow: build firmware, flash one board, control a
@@ -26,6 +27,9 @@ dotbot --help
 | [`device`](device.md) | Flash one cabled board and read its info. | A DotBot or DK is plugged into your USB port right now. |
 | [`swarm`](swarm.md) | Drive the whole fleet over the air - status, OTA flash, start/stop, monitor. | You're operating many provisioned bots through a gateway. |
 | [`run`](run.md) | Start host processes on your computer - controller, gateway bridge, simulator, demos, teleop. | You need the web UI, a gateway bridge, the simulator, or a demo. |
+
+Beyond the four namespaces, [`config`](config.md) scaffolds and inspects the
+shared `dotbot.toml` the other commands read their defaults from.
 
 ## Which one do I want?
 
@@ -60,6 +64,7 @@ A few signposts so the namespaces don't blur together:
 - [`device`](device.md) - flash and inspect one cabled board.
 - [`swarm`](swarm.md) - run experiments across the fleet.
 - [`run`](run.md) - launch the controller, gateway bridge, simulator, and demos.
+- [`config`](config.md) - scaffold and inspect the shared `dotbot.toml`.
 
 Two end-to-end walkthroughs put these together: [build and flash one
 board](device.md), and [operate a swarm over the air](swarm.md).
