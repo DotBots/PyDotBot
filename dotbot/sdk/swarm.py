@@ -248,8 +248,18 @@ class Swarm:
                 next_tick = loop.time()  # body overran the period; resync
 
     async def close(self) -> None:
-        for task in list(self._tasks):
-            task.cancel()
+        # Flush pending fire-and-forget commands (e.g. a final stop()) before
+        # tearing down, so they are not lost on shutdown - cancelling them would
+        # strand a bot mid-move. Bounded so a stuck async callback can't hang us.
+        pending = [t for t in self._tasks if not t.done()]
+        if pending:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True), timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                for task in pending:
+                    task.cancel()
         await self._backend.close()
 
     # ---- launcher -------------------------------------------------------
