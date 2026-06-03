@@ -55,6 +55,7 @@ CONFIG_MANIFEST_NAME = "config-manifest.json"
 LH2_MATRIX_BYTES = 3 * 3 * 4  # 3x3 int32 matrix
 LH2_MAX_HOMOGRAPHIES = 16
 RELEASE_BASE_URL = "https://github.com/DotBots/swarmit/releases/download"
+RELEASE_API_URL = "https://api.github.com/repos/DotBots/swarmit/releases"
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
@@ -138,6 +139,34 @@ def download_file(url: str, dest: Path) -> None:
 
     dest.write_bytes(data)
     click.echo(f"[OK  ] wrote {dest} ({len(data)} bytes)")
+
+
+def resolve_latest_version() -> str:
+    """Resolve the newest swarmit release tag, prereleases included.
+
+    Queries the GitHub releases API rather than ``/releases/latest``, which
+    excludes prereleases (the current newest, e.g. ``0.8.0rc2``, is one).
+    Unauthenticated; the 60 req/hour limit is fine for a CLI.
+    """
+    url = f"{RELEASE_API_URL}?per_page=1"
+    click.echo(f"[GET ] {url}")
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "dotbot"},
+    )
+    try:
+        with urllib.request.urlopen(request) as resp:
+            releases = json.load(resp)
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise click.ClickException(
+            f"Could not resolve the latest release ({exc}). "
+            "Pass an explicit version, e.g. -f 0.8.0rc2."
+        ) from exc
+    if not releases:
+        raise click.ClickException(
+            "No releases found for DotBots/swarmit; pass an explicit -f <version>."
+        )
+    return releases[0]["tag_name"]
 
 
 def convert_bin_to_hex(bin_path: Path, base_addr: int) -> Path:

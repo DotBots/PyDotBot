@@ -62,18 +62,14 @@ def test_flash_mari_gateway_rejects_calibration(runner):
     assert bad.exit_code != 0
 
 
-def test_flash_swarmit_sandbox_requires_swarm_id_and_version(runner):
-    """--swarm-id and -f are both required for flash-swarmit-sandbox."""
-    assert (
-        runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-f", "0.8.0rc1"]).exit_code
-        != 0
-    )
-    assert (
-        runner.invoke(
-            device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "1234"]
-        ).exit_code
-        != 0
-    )
+def test_flash_swarmit_sandbox_requires_swarm_id(runner):
+    """flash-swarmit-sandbox needs a swarm id (flag or config); -f is now
+    optional and defaults to the latest release (so no network in this test:
+    swarm_id is checked before the version resolves)."""
+    with runner.isolated_filesystem():
+        result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-f", "0.8.0rc1"])
+    assert result.exit_code != 0
+    assert "no swarm id" in result.output
 
 
 def test_flash_mari_gateway_help_disambiguates_from_bridge(runner):
@@ -370,3 +366,40 @@ def test_fetch_assets_still_fails_on_missing_system_image(tmp_path, monkeypatch)
     monkeypatch.setattr(flash, "download_file", fake_download)
     with pytest.raises(click.ClickException):
         flash.fetch_assets("0.0.0-nope", tmp_path)
+
+
+def test_resolve_latest_version_returns_newest_tag(monkeypatch):
+    """Returns the first (newest, prereleases included) tag from the API."""
+    import io
+    import json
+
+    import dotbot.firmware.flash as flash
+
+    payload = json.dumps([{"tag_name": "0.8.0rc2"}, {"tag_name": "0.8.0rc1"}]).encode()
+    monkeypatch.setattr(
+        flash.urllib.request, "urlopen", lambda req: io.BytesIO(payload)
+    )
+    assert flash.resolve_latest_version() == "0.8.0rc2"
+
+
+def test_resolve_latest_version_no_releases_errors(monkeypatch):
+    """An empty release list is a clear error, not an IndexError."""
+    import io
+
+    import dotbot.firmware.flash as flash
+
+    monkeypatch.setattr(flash.urllib.request, "urlopen", lambda req: io.BytesIO(b"[]"))
+    with pytest.raises(click.ClickException):
+        flash.resolve_latest_version()
+
+
+def test_resolve_latest_version_network_error_errors(monkeypatch):
+    """A network failure surfaces as a friendly ClickException."""
+    import dotbot.firmware.flash as flash
+
+    def boom(req):
+        raise flash.urllib.error.URLError("offline")
+
+    monkeypatch.setattr(flash.urllib.request, "urlopen", boom)
+    with pytest.raises(click.ClickException):
+        flash.resolve_latest_version()

@@ -263,7 +263,10 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
 
 @cmd.command()
 @click.option(
-    "--fw-version", "-f", required=True, help="Release version tag, or 'local'."
+    "--fw-version",
+    "-f",
+    default=None,
+    help="Release version tag (default: latest swarmit release), or 'local'.",
 )
 @click.option(
     "--local-root",
@@ -271,9 +274,16 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
     help="Root of a local DotBot-firmware/swarmit build (with --fw-version local).",
 )
 def fetch(fw_version, local_root):
-    """Download a released firmware set into ./artifacts/<version>/."""
-    from dotbot.firmware.flash import fetch_assets
+    """Download a released firmware set into ./artifacts/<version>/.
 
+    With no --fw-version, fetches the latest swarmit release (prereleases
+    included); the resolved tag is printed and used as the cache directory.
+    """
+    from dotbot.firmware.flash import fetch_assets, resolve_latest_version
+
+    if fw_version is None:
+        fw_version = resolve_latest_version()
+        click.echo(f"[INFO] latest swarmit release: {fw_version}")
     out = fetch_assets(fw_version, artifacts_dir(), local_root)
     echo_artifact_path(out, action="fetched into")
 

@@ -96,10 +96,10 @@ def _fw_version_option(f):
     return click.option(
         "--fw-version",
         "-f",
-        required=True,
+        default=None,
         help=(
-            "Release version to flash, e.g. 0.8.0rc1. Its binaries are "
-            "fetched into ./artifacts/ if not already cached."
+            "Release version to flash, e.g. 0.8.0rc2 (default: latest swarmit "
+            "release). Binaries are fetched into ./artifacts/ if not cached."
         ),
     )(f)
 
@@ -135,7 +135,11 @@ def flash_swarmit_sandbox(
     network identity. Auto-fetches the release if not already in
     ./artifacts/<version>/.
     """
-    from dotbot.firmware.flash import flash_role, normalize_network_id
+    from dotbot.firmware.flash import (
+        flash_role,
+        normalize_network_id,
+        resolve_latest_version,
+    )
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:
@@ -143,6 +147,9 @@ def flash_swarmit_sandbox(
             "no swarm id: pass --swarm-id, or set swarm_id (or a "
             "deployment) in your config."
         )
+    if fw_version is None:
+        fw_version = resolve_latest_version()
+        click.echo(f"[INFO] latest swarmit release: {fw_version}")
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(
@@ -171,7 +178,11 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
     identity. Auto-fetches the release if absent. (To run the host-side
     UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
-    from dotbot.firmware.flash import flash_role, normalize_network_id
+    from dotbot.firmware.flash import (
+        flash_role,
+        normalize_network_id,
+        resolve_latest_version,
+    )
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:
@@ -179,6 +190,9 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
             "no swarm id: pass --swarm-id, or set swarm_id (or a "
             "deployment) in your config."
         )
+    if fw_version is None:
+        fw_version = resolve_latest_version()
+        click.echo(f"[INFO] latest swarmit release: {fw_version}")
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(
