@@ -44,7 +44,7 @@ segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
 |---|---|
 | Compile an app, leave it in the SES `Output/` tree (path echoed) | `dotbot fw build` |
 | Compile **and** collect a flat `<app>-<board>.hex` into `./artifacts/` | `dotbot fw artifacts` |
-| Download a published release into `./artifacts/<version>/` | `dotbot fw fetch -f <version>` |
+| Download a published release (latest by default) into `./artifacts/<version>/` | `dotbot fw fetch [-f <version>]` |
 | List targets you can build | `dotbot fw targets [--sandbox]` |
 | List what's cached locally | `dotbot fw list` |
 | A Makefile knob the CLI doesn't model | `dotbot fw make <args…>` |
@@ -124,7 +124,8 @@ dotbot fw artifacts --app nrf5340_net    -t nrf5340dk-net
 dotbot fw artifacts --app spin -t dotbot-v3 --sandbox
 
 # Pull a published release instead of building → ./artifacts/<version>/
-dotbot fw fetch -f v1.0.0
+dotbot fw fetch            # latest swarmit release (prereleases included)
+dotbot fw fetch -f 0.8.0rc2  # or pin an explicit version
 
 # See what's cached
 dotbot fw list
