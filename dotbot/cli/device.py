@@ -99,8 +99,8 @@ def _fw_version_option(f):
         "-f",
         default=None,
         help=(
-            "Release version to flash, e.g. 0.8.0rc2 (default: latest swarmit "
-            f"release). Binaries are fetched into {DEFAULT_ARTIFACTS_DISPLAY}/ if not cached."
+            "Release version to flash, e.g. 0.8.0rc2 (default: the swarmit "
+            f"version pydotbot pins). Binaries are fetched into {DEFAULT_ARTIFACTS_DISPLAY}/ if not cached."
         ),
     )(f)
 
@@ -139,7 +139,7 @@ def flash_swarmit_sandbox(
     from dotbot.firmware.flash import (
         flash_role,
         normalize_network_id,
-        resolve_latest_version,
+        pinned_version,
     )
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -149,8 +149,10 @@ def flash_swarmit_sandbox(
             "deployment) in your config."
         )
     if fw_version is None:
-        fw_version = resolve_latest_version()
-        click.echo(f"No version specified, using the latest release: {fw_version}")
+        fw_version = pinned_version("swarmit")
+        click.echo(
+            f"No version specified, using the pinned swarmit version: {fw_version}"
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(
@@ -182,7 +184,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
     from dotbot.firmware.flash import (
         flash_role,
         normalize_network_id,
-        resolve_latest_version,
+        pinned_version,
     )
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -192,8 +194,10 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
             "deployment) in your config."
         )
     if fw_version is None:
-        fw_version = resolve_latest_version()
-        click.echo(f"No version specified, using the latest release: {fw_version}")
+        fw_version = pinned_version("swarmit")
+        click.echo(
+            f"No version specified, using the pinned swarmit version: {fw_version}"
+        )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(

@@ -100,6 +100,25 @@ def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypat
     assert calls["kw"]["sn_starting_digits"] == "77"
 
 
+def test_flash_swarmit_sandbox_defaults_to_pinned_version(
+    runner, _no_nrfjprog_gate, monkeypatch
+):
+    """With no -f, the role flash uses the pinned swarmit version (matching
+    `fw fetch`), not the latest release - and resolves it without the network."""
+    import dotbot.firmware.flash as flash
+
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    result = runner.invoke(
+        device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "0100", "-s", "77"]
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["kw"]["fw_version"] == flash.pinned_version("swarmit")
+
+
 def test_flash_mari_gateway_calls_engine_with_gateway_role(
     runner, _no_nrfjprog_gate, monkeypatch
 ):
