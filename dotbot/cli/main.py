@@ -128,6 +128,11 @@ def cli(ctx, config_path, deployment_name):
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    if path is not None:
+        click.echo(f"using config file at {path}", err=True)
+    else:
+        click.echo("no config file found; using built-in defaults", err=True)
+
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path
     ctx.obj["deployment"] = deployment
