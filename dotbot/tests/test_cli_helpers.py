@@ -87,8 +87,7 @@ def test_config_show_skips_none_values(runner, tmp_path):
     cfg = _write(tmp_path, 'swarm_id = "0001"\n')
     result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
     assert result.exit_code == 0, result.output
-    # `artifacts_dir`/`log_level` are unset (None) and must not appear.
-    assert "artifacts_dir" not in result.output
+    # `log_level` is unset (None) and must not appear.
     assert "log_level" not in result.output
 
 

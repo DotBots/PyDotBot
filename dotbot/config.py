@@ -163,7 +163,6 @@ class DotbotConfig(_Strict):
     """The whole file: top-level shared keys + the four section tables + deployments."""
 
     default_deployment: str | None = None
-    artifacts_dir: str | None = None
     log_level: str | None = None
     conn: Conn = None
     swarm_id: str | None = None
