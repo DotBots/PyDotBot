@@ -15,8 +15,8 @@ New here? DotBots are small wheeled robots you drive from your browser or your
 own code - one bot, or a swarm of hundreds. Pick a starting point:
 
 - **Try it with no hardware** - the simulator runs the full web UI with no bot
-  or gateway needed: `dotbot run simulator -w`. Then explore the
-  [web-UI guide](guides/controller.md).
+  or gateway needed: `dotbot run simulator -w`. See the
+  [simulator guide](guides/simulator.md).
 - **Get one bot moving** - build and cable-flash a single DotBot and gateway,
   then drive it from the browser. See the [one-bot guide](guides/one-bot.md).
 - **Run a swarm experiment** - provision and command many bots over the air.
