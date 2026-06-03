@@ -14,7 +14,7 @@ The DotBot v3 is an nRF5340, which has two cores - the application core (your
 app) and the network core (the radio) - so you build and flash two images:
 
 ```bash
-# build the bare dotbot apps into ./artifacts/ (needs SEGGER Embedded Studio)
+# build the bare dotbot apps into the cache (needs SEGGER Embedded Studio)
 dotbot fw artifacts --app dotbot
 dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
 # cable-flash to the bot whose J-Link serial starts with 77

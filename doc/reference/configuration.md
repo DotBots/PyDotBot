@@ -220,7 +220,7 @@ default_deployment = "inria"                 # used when --deployment / DOTBOT_D
 conn            = "mqtts://broker.local:8883"
 swarm_id        = "0001"
 log_level       = "info"
-artifacts_dir   = "./artifacts"
+artifacts_dir   = "~/.dotbot/artifacts"
 
 # A physical deployment. Select it with `--deployment inria`, DOTBOT_DEPLOYMENT, or
 # default_deployment above - don't edit this table to switch deployments.
