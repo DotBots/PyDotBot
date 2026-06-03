@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot run lh2-calibration` — LH2 calibration (serial side).
+"""`dotbot run lh2-calibration` - LH2 calibration.
 
-Native subgroup mounting the vendored `dotbot.calibration` package.
-Serial-attached, single-device operations. OTA / swarm-wide
-counterparts will live under `dotbot swarm calibrate-lh2`.
+Native subgroup mounting the vendored `dotbot.calibration` package, for
+single-device calibration over either transport.
 
 Subcommands:
 
@@ -14,6 +13,10 @@ Subcommands:
 - `apply <path>` — write the saved calibration as a C header to
                <path>. Today the only consumer is the swarmit secure
                bootloader (it #includes the file at compile time).
+
+Cable-free, over-the-air calibration of a DotBot in the arena lives under
+`dotbot swarm lh2-calibration` (it drives the fleet transport, not a serial
+DK).
 
 Calibration runtime deps (`opencv-python`, `textual`) live behind the
 `[calibrate]` extra; ImportError at subcommand invocation prints an
@@ -47,7 +50,7 @@ def _run_tui(ctx: click.Context) -> None:
 
 @click.group(
     name="lh2-calibration",
-    help="LH2 calibration: capture, apply, export (serial-side / single device).",
+    help="LH2 calibration for one serial-attached device: capture, apply.",
     invoke_without_command=True,
 )
 @click.pass_context
@@ -80,8 +83,8 @@ def _collect(ctx: click.Context) -> None:
     help=(
         "Write the saved calibration as a C header to PATH. Today the "
         "consumer is the swarmit secure bootloader (#includes the file "
-        "at compile time). OTA / runtime equivalents will live under "
-        "`dotbot swarm calibrate-lh2 apply`."
+        "at compile time). The over-the-air / runtime equivalent is "
+        "`dotbot swarm lh2-calibration push`."
     ),
 )
 @click.argument(
