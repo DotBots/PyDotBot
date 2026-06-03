@@ -10,6 +10,8 @@ the `device info` read-and-report contract (never fails on a blank
 board), and the friendly nrfjprog-missing error.
 """
 
+from pathlib import Path
+
 import click
 import pytest
 from click.testing import CliRunner
@@ -364,6 +366,7 @@ def test_fetch_assets_downloads_release_into_source_version_dir(tmp_path, monkey
     assert manifest["source"] == "swarmit"
     assert manifest["version"] == "0.8.0rc2"
     assert "bootloader-dotbot-v3.hex" in manifest["files"]
+    assert manifest["pydotbot"]  # provenance: which pydotbot fetched this
 
 
 def test_fetch_assets_unknown_source_errors(tmp_path):
@@ -450,3 +453,72 @@ def test_download_file_gives_up_on_non_transient(tmp_path, monkeypatch):
     with pytest.raises(click.ClickException):
         flash.download_file("http://x/missing.hex", tmp_path / "missing.hex", retries=3)
     assert sleeps == []  # never retried
+
+
+def test_pinned_version_dotbot_firmware_is_declared():
+    """DotBot-firmware (not a Python dep) pins to the declared constant."""
+    import dotbot.firmware.flash as flash
+
+    assert flash.pinned_version("dotbot-firmware") == flash.DOTBOT_FIRMWARE_VERSION
+
+
+def test_pinned_version_swarmit_from_installed_package():
+    """swarmit's firmware version is inferred from the installed package."""
+    import importlib.metadata as md
+
+    import dotbot.firmware.flash as flash
+
+    assert flash.pinned_version("swarmit") == md.version("swarmit")
+
+
+def test_pinned_version_unknown_source_errors():
+    """An unknown source is a clear error, not a KeyError."""
+    import dotbot.firmware.flash as flash
+
+    with pytest.raises(click.ClickException):
+        flash.pinned_version("not-a-source")
+
+
+def test_fetch_no_args_resolves_pinned_versions(monkeypatch):
+    """`dotbot fw fetch` with no flags fetches the pinned version per source,
+    not 'latest'."""
+    import dotbot.firmware.flash as flash
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(flash, "pinned_version", lambda src: f"PIN-{src}")
+    monkeypatch.setattr(
+        flash,
+        "fetch_assets",
+        lambda src, version, bin_dir, local_root=None: (
+            calls.append((src, version)) or Path(f"/x/{src}-{version}")
+        ),
+    )
+    res = CliRunner().invoke(fw_cmd, ["fetch"])
+    assert res.exit_code == 0, res.output
+    assert calls == [
+        ("swarmit", "PIN-swarmit"),
+        ("dotbot-firmware", "PIN-dotbot-firmware"),
+    ]
+    assert "latest" not in res.output  # the pinned path never says "latest"
+
+
+def test_fetch_explicit_version_overrides_pin(monkeypatch):
+    """-f <tag> with --source bypasses the pin and passes through verbatim."""
+    import dotbot.firmware.flash as flash
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    calls: list[tuple[str, str]] = []
+    pin_called: list[str] = []
+    monkeypatch.setattr(flash, "pinned_version", lambda src: pin_called.append(src))
+    monkeypatch.setattr(
+        flash,
+        "fetch_assets",
+        lambda src, version, bin_dir, local_root=None: (
+            calls.append((src, version)) or Path(f"/x/{src}-{version}")
+        ),
+    )
+    res = CliRunner().invoke(fw_cmd, ["fetch", "-S", "dotbot-firmware", "-f", "1.21.0"])
+    assert res.exit_code == 0, res.output
+    assert calls == [("dotbot-firmware", "1.21.0")]
+    assert pin_called == []  # explicit -f never consults the pin

@@ -66,6 +66,13 @@ RELEASE_SOURCES = {
     "dotbot-firmware": "DotBots/DotBot-firmware",
 }
 DEFAULT_FETCH_SOURCES = ("swarmit", "dotbot-firmware")
+# The DotBot-firmware release this pydotbot is built and tested against. Unlike
+# swarmit (a Python dependency, whose firmware release is tagged identically to
+# the package, so we read it from importlib.metadata), DotBot-firmware is not a
+# Python package - so the expected version is declared here and bumped
+# deliberately when pydotbot adopts a new release. `dotbot fw fetch` (no -f)
+# pulls exactly this; -f overrides it.
+DOTBOT_FIRMWARE_VERSION = "1.22.0rc1"
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
@@ -226,6 +233,32 @@ def resolve_release(source: str, fw_version: str) -> dict:
 def resolve_latest_version(source: str = "swarmit") -> str:
     """The newest release tag for ``source`` (prereleases included)."""
     return resolve_release(source, "latest")["tag_name"]
+
+
+def pinned_version(source: str) -> str:
+    """The exact firmware release this pydotbot pins for ``source``.
+
+    swarmit is a Python dependency whose firmware release is tagged identically
+    to the package, so its pin is read from the installed package. DotBot-firmware
+    is not a Python package, so its pin is the declared ``DOTBOT_FIRMWARE_VERSION``.
+    `dotbot fw fetch` (no -f) resolves to these; pass -f to override.
+    """
+    if source == "swarmit":
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _pkg_version
+
+        try:
+            return _pkg_version("swarmit")
+        except PackageNotFoundError as exc:
+            raise click.ClickException(
+                "Cannot infer the swarmit firmware version: the swarmit package "
+                "is not installed. Pass -f <version> explicitly."
+            ) from exc
+    if source == "dotbot-firmware":
+        return DOTBOT_FIRMWARE_VERSION
+    raise click.ClickException(
+        f"Unknown firmware source '{source}'. Known: {', '.join(RELEASE_SOURCES)}."
+    )
 
 
 def convert_bin_to_hex(bin_path: Path, base_addr: int) -> Path:
@@ -489,11 +522,14 @@ def _write_manifest(
     out_dir: Path, source: str, version: str, repo: str, files: list[str]
 ) -> None:
     """Record provenance next to the binaries (a cheap audit trail)."""
+    from dotbot import pydotbot_version
+
     manifest = {
         "source": source,
         "version": version,
         "repo": repo,
         "url": f"https://github.com/{repo}/releases/tag/{version}",
+        "pydotbot": pydotbot_version(),
         "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "files": sorted(files),
     }
