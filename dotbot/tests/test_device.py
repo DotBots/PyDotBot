@@ -16,6 +16,8 @@ import click
 import pytest
 from click.testing import CliRunner
 
+import dotbot.firmware.fetch as fetch
+import dotbot.firmware.flash as flash
 from dotbot.cli.device import _looks_like_path
 from dotbot.cli.device import cmd as device_cmd
 
@@ -105,7 +107,6 @@ def test_flash_swarmit_sandbox_defaults_to_pinned_version(
 ):
     """With no -f, the role flash uses the pinned swarmit version (matching
     `fw fetch`), not the latest release - and resolves it without the network."""
-    import dotbot.firmware.flash as flash
 
     calls = {}
     monkeypatch.setattr(
@@ -116,7 +117,7 @@ def test_flash_swarmit_sandbox_defaults_to_pinned_version(
         device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "0100", "-s", "77"]
     )
     assert result.exit_code == 0, result.output
-    assert calls["kw"]["fw_version"] == flash.pinned_version("swarmit")
+    assert calls["kw"]["fw_version"] == fetch.pinned_version("swarmit")
 
 
 def test_flash_mari_gateway_calls_engine_with_gateway_role(
@@ -349,7 +350,6 @@ def test_create_config_hex_appends_calibration(tmp_path):
 def test_intelhex_is_a_core_dependency():
     """intelhex was folded into core deps (the [provision] extra is gone),
     so config-hex building works on a default `pip install pydotbot`."""
-    import dotbot.firmware.flash as flash
 
     assert flash.IntelHex is not None
 
@@ -359,8 +359,6 @@ def test_fetch_assets_downloads_release_into_source_version_dir(tmp_path, monkey
     <source>-<version>/, skips .elf/.map, and writes a manifest."""
     import json as _json
 
-    import dotbot.firmware.flash as flash
-
     fake_release = {
         "tag_name": "0.8.0rc2",
         "assets": [
@@ -369,14 +367,14 @@ def test_fetch_assets_downloads_release_into_source_version_dir(tmp_path, monkey
             {"name": "bootloader-dotbot-v3.elf", "browser_download_url": "u3"},
         ],
     }
-    monkeypatch.setattr(flash, "resolve_release", lambda source, version: fake_release)
+    monkeypatch.setattr(fetch, "resolve_release", lambda source, version: fake_release)
 
     def fake_download(url, dest):
         dest.write_bytes(b"\x00")
         return 1
 
-    monkeypatch.setattr(flash, "download_file", fake_download)
-    out = flash.fetch_assets("swarmit", "latest", tmp_path)
+    monkeypatch.setattr(fetch, "download_file", fake_download)
+    out = fetch.fetch_assets("swarmit", "latest", tmp_path)
     assert out == tmp_path / "swarmit-0.8.0rc2"
     assert (out / "bootloader-dotbot-v3.hex").exists()
     assert (out / "netcore-nrf5340-net.hex").exists()
@@ -390,10 +388,9 @@ def test_fetch_assets_downloads_release_into_source_version_dir(tmp_path, monkey
 
 def test_fetch_assets_unknown_source_errors(tmp_path):
     """An unknown source is a clear error, not a KeyError."""
-    import dotbot.firmware.flash as flash
 
     with pytest.raises(click.ClickException):
-        flash.fetch_assets("not-a-source", "latest", tmp_path)
+        fetch.fetch_assets("not-a-source", "latest", tmp_path)
 
 
 def test_resolve_latest_version_returns_newest_tag(monkeypatch):
@@ -401,36 +398,31 @@ def test_resolve_latest_version_returns_newest_tag(monkeypatch):
     import io
     import json
 
-    import dotbot.firmware.flash as flash
-
     payload = json.dumps([{"tag_name": "0.8.0rc2"}, {"tag_name": "0.8.0rc1"}]).encode()
     monkeypatch.setattr(
-        flash.urllib.request, "urlopen", lambda req: io.BytesIO(payload)
+        fetch.urllib.request, "urlopen", lambda req: io.BytesIO(payload)
     )
-    assert flash.resolve_latest_version() == "0.8.0rc2"
+    assert fetch.resolve_latest_version() == "0.8.0rc2"
 
 
 def test_resolve_latest_version_no_releases_errors(monkeypatch):
     """An empty release list is a clear error, not an IndexError."""
     import io
 
-    import dotbot.firmware.flash as flash
-
-    monkeypatch.setattr(flash.urllib.request, "urlopen", lambda req: io.BytesIO(b"[]"))
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", lambda req: io.BytesIO(b"[]"))
     with pytest.raises(click.ClickException):
-        flash.resolve_latest_version()
+        fetch.resolve_latest_version()
 
 
 def test_resolve_latest_version_network_error_errors(monkeypatch):
     """A network failure surfaces as a friendly ClickException."""
-    import dotbot.firmware.flash as flash
 
     def boom(req):
-        raise flash.urllib.error.URLError("offline")
+        raise fetch.urllib.error.URLError("offline")
 
-    monkeypatch.setattr(flash.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", boom)
     with pytest.raises(click.ClickException):
-        flash.resolve_latest_version()
+        fetch.resolve_latest_version()
 
 
 def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
@@ -438,21 +430,19 @@ def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
     succeeds - one bad gateway shouldn't abort the whole fetch."""
     import io
 
-    import dotbot.firmware.flash as flash
-
     calls = {"n": 0}
 
     def flaky_urlopen(url):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise flash.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+            raise fetch.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
         return io.BytesIO(b"\xde\xad")
 
-    monkeypatch.setattr(flash.urllib.request, "urlopen", flaky_urlopen)
-    monkeypatch.setattr(flash.time, "sleep", lambda _delay: None)  # skip real backoff
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", flaky_urlopen)
+    monkeypatch.setattr(fetch.time, "sleep", lambda _delay: None)  # skip real backoff
 
     dest = tmp_path / "spin-dotbot-v3.hex"
-    size = flash.download_file("http://x/spin-dotbot-v3.hex", dest, retries=3)
+    size = fetch.download_file("http://x/spin-dotbot-v3.hex", dest, retries=3)
     assert size == 2
     assert dest.read_bytes() == b"\xde\xad"
     assert calls["n"] == 2  # one retry
@@ -460,17 +450,16 @@ def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
 
 def test_download_file_gives_up_on_non_transient(tmp_path, monkeypatch):
     """A 404 is not transient - it surfaces immediately, with no backoff."""
-    import dotbot.firmware.flash as flash
 
     def not_found(url):
-        raise flash.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        raise fetch.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
     sleeps: list[float] = []
-    monkeypatch.setattr(flash.urllib.request, "urlopen", not_found)
-    monkeypatch.setattr(flash.time, "sleep", lambda d: sleeps.append(d))
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", not_found)
+    monkeypatch.setattr(fetch.time, "sleep", lambda d: sleeps.append(d))
 
     with pytest.raises(click.ClickException):
-        flash.download_file("http://x/missing.hex", tmp_path / "missing.hex", retries=3)
+        fetch.download_file("http://x/missing.hex", tmp_path / "missing.hex", retries=3)
     assert sleeps == []  # never retried
 
 
@@ -478,50 +467,44 @@ def test_short_path_falls_back_to_absolute_across_drives(monkeypatch):
     """On Windows os.path.relpath raises ValueError when the path and cwd are
     on different drives (C: vs D:); _short_path must return the absolute path,
     not crash."""
-    import dotbot.firmware.flash as flash
 
     def boom(_p):
         raise ValueError("path is on mount 'C:', start on mount 'D:'")
 
-    monkeypatch.setattr(flash.os.path, "relpath", boom)
+    monkeypatch.setattr(fetch.os.path, "relpath", boom)
     p = Path("/x/swarmit-1.2.3")
-    assert flash._short_path(p) == str(p)
+    assert fetch._short_path(p) == str(p)
 
 
 def test_pinned_version_dotbot_firmware_is_declared():
     """DotBot-firmware (not a Python dep) pins to the declared constant."""
-    import dotbot.firmware.flash as flash
 
-    assert flash.pinned_version("dotbot-firmware") == flash.DOTBOT_FIRMWARE_VERSION
+    assert fetch.pinned_version("dotbot-firmware") == fetch.DOTBOT_FIRMWARE_VERSION
 
 
 def test_pinned_version_swarmit_from_installed_package():
     """swarmit's firmware version is inferred from the installed package."""
     import importlib.metadata as md
 
-    import dotbot.firmware.flash as flash
-
-    assert flash.pinned_version("swarmit") == md.version("swarmit")
+    assert fetch.pinned_version("swarmit") == md.version("swarmit")
 
 
 def test_pinned_version_unknown_source_errors():
     """An unknown source is a clear error, not a KeyError."""
-    import dotbot.firmware.flash as flash
 
     with pytest.raises(click.ClickException):
-        flash.pinned_version("not-a-source")
+        fetch.pinned_version("not-a-source")
 
 
 def test_fetch_no_args_resolves_pinned_versions(monkeypatch):
     """`dotbot fw fetch` with no flags fetches the pinned version per source,
     not 'latest'."""
-    import dotbot.firmware.flash as flash
     from dotbot.cli.fw import cmd as fw_cmd
 
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(flash, "pinned_version", lambda src: f"PIN-{src}")
+    monkeypatch.setattr(fetch, "pinned_version", lambda src: f"PIN-{src}")
     monkeypatch.setattr(
-        flash,
+        fetch,
         "fetch_assets",
         lambda src, version, bin_dir, local_root=None: (
             calls.append((src, version)) or Path(f"/x/{src}-{version}")
@@ -538,14 +521,13 @@ def test_fetch_no_args_resolves_pinned_versions(monkeypatch):
 
 def test_fetch_explicit_version_overrides_pin(monkeypatch):
     """-f <tag> with --source bypasses the pin and passes through verbatim."""
-    import dotbot.firmware.flash as flash
     from dotbot.cli.fw import cmd as fw_cmd
 
     calls: list[tuple[str, str]] = []
     pin_called: list[str] = []
-    monkeypatch.setattr(flash, "pinned_version", lambda src: pin_called.append(src))
+    monkeypatch.setattr(fetch, "pinned_version", lambda src: pin_called.append(src))
     monkeypatch.setattr(
-        flash,
+        fetch,
         "fetch_assets",
         lambda src, version, bin_dir, local_root=None: (
             calls.append((src, version)) or Path(f"/x/{src}-{version}")

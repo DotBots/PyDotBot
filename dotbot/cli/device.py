@@ -136,11 +136,8 @@ def flash_swarmit_sandbox(
     network identity. Auto-fetches the release if not already in
     ~/.dotbot/artifacts/swarmit-<version>/.
     """
-    from dotbot.firmware.flash import (
-        flash_role,
-        normalize_network_id,
-        pinned_version,
-    )
+    from dotbot.firmware.fetch import pinned_version
+    from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:
@@ -181,11 +178,8 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
     identity. Auto-fetches the release if absent. (To run the host-side
     UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
-    from dotbot.firmware.flash import (
-        flash_role,
-        normalize_network_id,
-        pinned_version,
-    )
+    from dotbot.firmware.fetch import pinned_version
+    from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:

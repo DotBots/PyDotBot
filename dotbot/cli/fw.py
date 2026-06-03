@@ -306,7 +306,7 @@ def fetch(source, fw_version, local_root):
     release or `-f <tag>` for a specific one.
     """
     from dotbot import pydotbot_version
-    from dotbot.firmware.flash import (
+    from dotbot.firmware.fetch import (
         DEFAULT_FETCH_SOURCES,
         _short_path,
         fetch_assets,
