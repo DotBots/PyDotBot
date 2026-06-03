@@ -100,7 +100,7 @@ dotbot device flash-swarmit-sandbox --swarm-id 0100 -f 0.8.0rc1 -s 77
 | Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
 |---|---|---|
 | `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
-| `-f, --fw-version` | release to flash (required) | release to flash (required) |
+| `-f, --fw-version` | release to flash (default: the pinned swarmit version) | release to flash (default: the pinned swarmit version) |
 | `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
 | `-l, --calibration` | - | optional LH2 calibration file to bake in |
 

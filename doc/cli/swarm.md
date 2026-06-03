@@ -83,7 +83,7 @@ to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
 ```bash
 dotbot swarm status                                # who's out there + their state
 dotbot swarm status -w                             # keep watching
-dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-*/spin-sandbox-dotbot-v3.bin -ys
+dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-local/spin-sandbox-dotbot-v3.bin -ys
 dotbot swarm stop                                  # back to bootloader (before re-flashing)
 dotbot swarm start                                 # (re)start the loaded app
 dotbot swarm monitor                               # tail SWARMIT_EVENT_LOG from bots
