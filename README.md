@@ -138,9 +138,9 @@ We also need a more powerful gateway firmware. Let's flash both - the network
 id comes from your config:
 
 ```bash
-dotbot fw fetch -f 0.8.0rc1  # pull the pre-compiled firmwares from a release
-dotbot device flash-mari-gateway -s 10 -f 0.8.0rc1  # flash the gateway
-dotbot device flash-swarmit-sandbox -s 77 -f 0.8.0rc1  # the sandbox firmware - do this on each dotbot
+dotbot fw fetch  # pull the latest pre-compiled firmwares from a release
+dotbot device flash-mari-gateway -s 10  # flash the gateway
+dotbot device flash-swarmit-sandbox -s 77  # the sandbox firmware - do this on each dotbot
 ```
 
 (`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch
