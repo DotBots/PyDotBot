@@ -283,9 +283,8 @@ def fetch(fw_version, local_root):
 
     if fw_version is None:
         fw_version = resolve_latest_version()
-        click.echo(f"[INFO] latest swarmit release: {fw_version}")
-    out = fetch_assets(fw_version, artifacts_dir(), local_root)
-    echo_artifact_path(out, action="fetched into")
+        click.echo(f"No version specified, fetching the latest release: {fw_version}")
+    fetch_assets(fw_version, artifacts_dir(), local_root)
 
 
 @cmd.command(name="list")

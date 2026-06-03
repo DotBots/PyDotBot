@@ -120,8 +120,22 @@ def resolve_fw_root(bin_dir: Path, fw_version: str) -> Path:
     return bin_dir / fw_version
 
 
-def download_file(url: str, dest: Path) -> None:
-    click.echo(f"[GET ] {url}")
+def _human_size(num_bytes: int) -> str:
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+
+
+def _short_path(path: Path) -> str:
+    """Path relative to the cwd when that's shorter, else absolute."""
+    rel = os.path.relpath(path)
+    return rel if not rel.startswith("..") else str(path)
+
+
+def download_file(url: str, dest: Path) -> int:
+    """Download ``url`` to ``dest``; return the number of bytes written."""
     try:
         with urllib.request.urlopen(url) as resp:
             status = getattr(resp, "status", 200)
@@ -138,7 +152,7 @@ def download_file(url: str, dest: Path) -> None:
         ) from exc
 
     dest.write_bytes(data)
-    click.echo(f"[OK  ] wrote {dest} ({len(data)} bytes)")
+    return len(data)
 
 
 def resolve_latest_version() -> str:
@@ -149,7 +163,6 @@ def resolve_latest_version() -> str:
     Unauthenticated; the 60 req/hour limit is fine for a CLI.
     """
     url = f"{RELEASE_API_URL}?per_page=1"
-    click.echo(f"[GET ] {url}")
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/vnd.github+json", "User-Agent": "dotbot"},
@@ -375,7 +388,6 @@ def fetch_assets(
 
     out_dir = resolve_fw_root(bin_dir, fw_version)
     out_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"[INFO] target dir: {out_dir.resolve()}")
 
     if fw_version == "local":
         local_root = local_root.expanduser().resolve()
@@ -424,21 +436,24 @@ def fetch_assets(
         "move-dotbot-v3.bin",
         "motors-dotbot-v3.bin",
     ]
+    click.echo(f"Fetching {fw_version} into {_short_path(out_dir)}")
     for name in assets:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
-        dest = out_dir / name
-        download_file(url, dest)
+        size = download_file(url, out_dir / name)
+        click.echo(f"  {name} ({_human_size(size)})")
+    skipped = 0
     for name in example_bins:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
-        dest = out_dir / name
         try:
-            download_file(url, dest)
-        except click.ClickException as exc:
-            click.echo(
-                f"[skip] optional sample app {name} not in release "
-                f"{fw_version} ({exc.format_message()})",
-                err=True,
-            )
+            size = download_file(url, out_dir / name)
+        except click.ClickException:
+            skipped += 1
+            continue
+        click.echo(f"  {name} ({_human_size(size)})")
+    if skipped:
+        click.echo(f"  ({skipped} optional sample app(s) not in this release)")
+    count = len(assets) + len(example_bins) - skipped
+    click.echo(f"Done: {count} file(s) in {_short_path(out_dir)}")
     return out_dir
 
 

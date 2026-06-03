@@ -149,7 +149,7 @@ def flash_swarmit_sandbox(
         )
     if fw_version is None:
         fw_version = resolve_latest_version()
-        click.echo(f"[INFO] latest swarmit release: {fw_version}")
+        click.echo(f"No version specified, using the latest release: {fw_version}")
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(
@@ -192,7 +192,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
         )
     if fw_version is None:
         fw_version = resolve_latest_version()
-        click.echo(f"[INFO] latest swarmit release: {fw_version}")
+        click.echo(f"No version specified, using the latest release: {fw_version}")
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(

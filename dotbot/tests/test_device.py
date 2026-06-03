@@ -346,8 +346,9 @@ def test_fetch_assets_skips_missing_optional_examples(tmp_path, monkeypatch):
         if name.endswith(".hex"):  # the 4 required system images
             dest.write_bytes(b"\x00")
             downloaded.append(name)
-        else:  # optional sample .bin → simulate a release 404
-            raise click.ClickException(f"HTTP Error 404: {name}")
+            return 1  # bytes written (download_file returns the size)
+        # optional sample .bin → simulate a release 404
+        raise click.ClickException(f"HTTP Error 404: {name}")
 
     monkeypatch.setattr(flash, "download_file", fake_download)
     out = flash.fetch_assets("0.8.0rc1", tmp_path)  # must not raise
