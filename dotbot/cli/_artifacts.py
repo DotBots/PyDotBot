@@ -3,9 +3,9 @@
 
 """Shared artifact-resolution + friendly-error helpers for `fw` / `device`.
 
-Owns the CWD-local ``./artifacts/`` convention, the absolute-path echo on
-every cache read/write (so running from a random directory never silently
-touches a relative path the user didn't name), the auto-resolve decision
+Owns the user-level ``~/.dotbot/artifacts/`` cache convention, the
+absolute-path echo on every cache read/write (so you always see where files
+landed, regardless of the directory you ran from), the auto-resolve decision
 tree used by ``dotbot device flash <app>`` (present → build → error), and
 the two centralized tool-missing messages (SES for builds, nrfjprog for
 device ops).
@@ -20,6 +20,14 @@ from pathlib import Path
 
 import click
 
+# Single source of truth for the default cache location, so changing it is a
+# one-line edit. `artifacts_dir()` is the behavioral path (env-overridable, ~
+# expanded, resolved); `DEFAULT_ARTIFACTS_DISPLAY` is the human-readable form
+# for help text. (Docstrings and the Markdown docs can't interpolate a
+# variable, so they spell the path out literally - keep them in sync by hand.)
+_DEFAULT_ARTIFACTS_PARTS = (".dotbot", "artifacts")
+DEFAULT_ARTIFACTS_DISPLAY = "~/" + "/".join(_DEFAULT_ARTIFACTS_PARTS)
+
 
 def artifacts_dir() -> Path:
     """The firmware cache: ``~/.dotbot/artifacts/`` by default.
@@ -29,7 +37,9 @@ def artifacts_dir() -> Path:
     the launch dir stays clean. Override with ``$DOTBOT_ARTIFACTS_DIR``.
     """
     override = os.environ.get("DOTBOT_ARTIFACTS_DIR")
-    base = Path(override) if override else Path.home() / ".dotbot" / "artifacts"
+    base = (
+        Path(override) if override else Path.home().joinpath(*_DEFAULT_ARTIFACTS_PARTS)
+    )
     return base.expanduser().resolve()
 
 
@@ -101,13 +111,13 @@ def resolve_app_artifact(
 ) -> Path:
     """Auto-resolve a single app's firmware artifact for cable-flashing.
 
-    Decision tree (npm-style): present in ``./artifacts/`` → build from
-    source → clear error pointing at build/fetch. An *explicit file path*
+    Decision tree (npm-style): present in ``~/.dotbot/artifacts/`` → build
+    from source → clear error pointing at build/fetch. An *explicit file path*
     is handled by the caller before this is reached.
 
-    - Flat ``./artifacts/<app>-<board>.hex`` (bare) or
-      ``./artifacts/<app>-sandbox-<board>.bin`` (sandbox), as produced by
-      `dotbot fw artifacts`.
+    - Flat ``<app>-<board>.hex`` (bare) or ``<app>-sandbox-<board>.bin``
+      (sandbox), as produced by `dotbot fw artifacts`, found across the
+      cache's ``<source>-<version>/`` and ``<source>-local/`` dirs.
     - Else, if a DotBot-firmware repo is locatable, build it (needs SES)
       and use the SES output path.
     - Else, a friendly error telling the user to build or fetch first.

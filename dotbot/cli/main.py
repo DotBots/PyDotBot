@@ -5,7 +5,7 @@
 
 The top level is the four object-namespaces, each one *kind of thing*:
 
-  fw      — firmware artifacts (files in ./artifacts/, no hardware)
+  fw      — firmware artifacts (cached in ~/.dotbot/artifacts/, no hardware)
   device  — one connected device (cable / probe)
   swarm   — the fleet (radio / OTA)
   run     — host-side processes (software you launch on your computer)
