@@ -147,7 +147,11 @@ def _human_size(num_bytes: int) -> str:
 
 def _short_path(path: Path) -> str:
     """Path relative to the cwd when that's shorter, else absolute."""
-    rel = os.path.relpath(path)
+    try:
+        rel = os.path.relpath(path)
+    except ValueError:
+        # Windows: path and cwd on different drives have no relative form.
+        return str(path)
     return rel if not rel.startswith("..") else str(path)
 
 

@@ -474,6 +474,20 @@ def test_download_file_gives_up_on_non_transient(tmp_path, monkeypatch):
     assert sleeps == []  # never retried
 
 
+def test_short_path_falls_back_to_absolute_across_drives(monkeypatch):
+    """On Windows os.path.relpath raises ValueError when the path and cwd are
+    on different drives (C: vs D:); _short_path must return the absolute path,
+    not crash."""
+    import dotbot.firmware.flash as flash
+
+    def boom(_p):
+        raise ValueError("path is on mount 'C:', start on mount 'D:'")
+
+    monkeypatch.setattr(flash.os.path, "relpath", boom)
+    p = Path("/x/swarmit-1.2.3")
+    assert flash._short_path(p) == str(p)
+
+
 def test_pinned_version_dotbot_firmware_is_declared():
     """DotBot-firmware (not a Python dep) pins to the declared constant."""
     import dotbot.firmware.flash as flash
