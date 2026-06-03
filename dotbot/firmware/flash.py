@@ -17,6 +17,7 @@ import shutil
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -428,12 +429,33 @@ def fetch_assets(
         raise click.ClickException(
             f"{source} release {tag} publishes no .hex/.bin assets."
         )
-    click.echo(f"Fetching {source} {tag} into {_short_path(out_dir)}")
-    names = []
-    for asset in assets:
-        size = download_file(asset["browser_download_url"], out_dir / asset["name"])
-        click.echo(f"  {asset['name']} ({_human_size(size)})")
-        names.append(asset["name"])
+    click.echo(
+        f"Fetching {source} {tag} ({len(assets)} files) into {_short_path(out_dir)}"
+    )
+    names: list[str] = []
+    errors: list[str] = []
+    # Downloads are I/O-bound, so a small thread pool overlaps them (urllib
+    # releases the GIL during the network read). Sources stay sequential.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_to_name = {
+            pool.submit(
+                download_file, asset["browser_download_url"], out_dir / asset["name"]
+            ): asset["name"]
+            for asset in assets
+        }
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                size = future.result()
+            except click.ClickException as exc:
+                errors.append(f"{name}: {exc.format_message()}")
+                continue
+            names.append(name)
+            click.echo(f"  {name} ({_human_size(size)})")
+    if errors:
+        raise click.ClickException(
+            f"{len(errors)} asset(s) failed to download:\n  " + "\n  ".join(errors)
+        )
     _write_manifest(out_dir, source, tag, RELEASE_SOURCES[source], names)
     click.echo(f"Done: {len(names)} file(s) in {_short_path(out_dir)}")
     return out_dir
