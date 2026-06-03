@@ -118,41 +118,6 @@ Commands:
 
 Every command and flag is documented in the [CLI reference][cli-doc].
 
-## Quickstart - one bot
-
-Build and flash firmware for a single dotbot:
-
-```bash
-# build the bare dotbot apps into ./artifacts/ (needs SEGGER Embedded Studio)
-# two steps because the DotBot has two cores
-dotbot fw artifacts --app dotbot
-dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
-# cable-flash it to the bot whose J-Link serial starts with 77
-dotbot device flash dotbot -s 77  # app core
-dotbot device flash nrf5340_net -b nrf5340dk-net -s 77  # network core
-```
-
-Now, build and flash the gateway to connect to a robot.
-The gateway is a dev board (e.g. an nRF52840-DK) plugged into your
-computer; it bridges the robot's radio to USB serial.
-
-```bash
-# build the gateway firmware for your DK board into ./artifacts/ (needs SEGGER Embedded Studio)
-dotbot fw artifacts --app dotbot_gateway --target nrf52840dk
-# cable-flash it to the DK whose J-Link serial starts with 10
-dotbot device flash dotbot_gateway -b nrf52840dk -s 10
-```
-
-With a gateway plugged into your computer, point the controller at it
-and open the web UI:
-
-```bash
-dotbot run controller --conn /dev/ttyACM0 -w  # serial gateway; no swarm-id needed
-```
-
-More detail: building and flashing one board ([`fw`][fw-doc] / [`device`][device-doc])
-and driving it from the web UI ([controller guide][controller-doc]).
-
 ## Quickstart - a swarm
 
 ### setup the swarm
@@ -214,31 +179,15 @@ dotbot run controller -w  # will open a webpage at http://localhost:8000/PyDotBo
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
 is in the [`swarm` reference][swarm-doc].
 
-## Quickstart - Lighthouse 2 localization
-
-Give your robots a real-world `(x, y)` position. You'll need at least one
-Lighthouse 2 base station and the calibration extra
-(`pip install --pre 'pydotbot[calibrate]'`).
-
-```bash
-# 1. flash the capture firmware to a cabled dotbot and collect four corner points
-dotbot device flash lh2_calibration -s 77
-dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # square of side 20 cm
-
-# 2. push the resulting calibration to the fleet over the air
-dotbot swarm stop  # ensure all robots are in bootloader
-dotbot swarm calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
-```
-
-Your bots now report their `(x, y)` location. The full setup - arena sizing,
-base-station placement, and troubleshooting - is in the
-[LH2 calibration guide][lh2-doc].
-
 ## Going further
 
-Full command reference and guides - running the controller + web UI, the four
-CLI namespaces (`fw` / `device` / `swarm` / `run`), hardware, and LH2
-calibration - are in the [documentation][doc-link].
+- **Drive a single bot** - build, flash, and control one DotBot end to end:
+  the [one-bot guide][one-bot-doc].
+- **Lighthouse 2 localization** - give your bots real-world `(x, y)` positions:
+  the [LH2 calibration guide][lh2-doc].
+- **Everything else** - the `dotbot` commands (`fw` / `device` / `swarm` / `run`,
+  plus `config`), the controller + web UI, and hardware notes are in the
+  [documentation][doc-link].
 
 Swarm orchestration is in the base install. Only LH2 calibration needs an extra:
 
@@ -278,6 +227,7 @@ See `LICENSE` in each component repository.
 [swarm-doc]: https://pydotbot.readthedocs.io/en/latest/cli/swarm.html
 [config-doc]: https://pydotbot.readthedocs.io/en/latest/reference/configuration.html
 [controller-doc]: https://pydotbot.readthedocs.io/en/latest/guides/controller.html
+[one-bot-doc]: https://pydotbot.readthedocs.io/en/latest/guides/one-bot.html
 [lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
 [troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
 [rest-doc]: https://pydotbot.readthedocs.io/en/latest/reference/rest.html
