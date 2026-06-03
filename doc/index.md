@@ -18,9 +18,7 @@ own code - one bot, or a swarm of hundreds. Pick a starting point:
   or gateway needed: `dotbot run simulator -w`. Then explore the
   [web-UI guide](guides/controller.md).
 - **Get one bot moving** - build and cable-flash a single DotBot and gateway,
-  then drive it from the browser. See the one-bot quickstart below
-  ([`fw`](cli/fw.md) / [`device`](cli/device.md) /
-  [controller guide](guides/controller.md)).
+  then drive it from the browser. See the [one-bot guide](guides/one-bot.md).
 - **Run a swarm experiment** - provision and command many bots over the air.
   The swarm quickstart below is the main path; then see [`swarm`](cli/swarm.md)
   and [LH2 localization](guides/lh2-calibration.md).
