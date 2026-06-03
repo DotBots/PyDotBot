@@ -296,7 +296,11 @@ def fetch(source, fw_version, local_root):
     swarm system images) and DotBot-firmware (bare + sandbox apps). The two
     version independently, so pinning a version with -f requires a --source.
     """
-    from dotbot.firmware.flash import DEFAULT_FETCH_SOURCES, fetch_assets
+    from dotbot.firmware.flash import (
+        DEFAULT_FETCH_SOURCES,
+        _short_path,
+        fetch_assets,
+    )
 
     if fw_version is not None and source is None:
         raise click.ClickException(
@@ -304,11 +308,15 @@ def fetch(source, fw_version, local_root):
             "version independently."
         )
     sources = [source] if source else list(DEFAULT_FETCH_SOURCES)
+    fetched: list[Path] = []
     for src in sources:
         version = fw_version or "latest"
         if version == "latest":
             click.echo(f"Fetching the latest {src} release...")
-        fetch_assets(src, version, artifacts_dir(), local_root)
+        fetched.append(fetch_assets(src, version, artifacts_dir(), local_root))
+    click.echo("\nDone. Firmware fetched into:")
+    for path in fetched:
+        click.echo(f"  {_short_path(path)}")
 
 
 @cmd.command(name="list")

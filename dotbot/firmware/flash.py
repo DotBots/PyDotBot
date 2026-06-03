@@ -482,7 +482,6 @@ def fetch_assets(
             f"{len(errors)} asset(s) failed to download:\n  " + "\n  ".join(errors)
         )
     _write_manifest(out_dir, source, tag, RELEASE_SOURCES[source], names)
-    click.echo(f"Done: {len(names)} file(s) in {_short_path(out_dir)}")
     return out_dir
 
 
