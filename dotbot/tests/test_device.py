@@ -333,40 +333,45 @@ def test_intelhex_is_a_core_dependency():
     assert flash.IntelHex is not None
 
 
-def test_fetch_assets_skips_missing_optional_examples(tmp_path, monkeypatch):
-    """A 404 on an optional sample .bin must NOT abort the fetch — the four
-    required system images still complete (so provisioning's auto-fetch works
-    even when the sample apps aren't on the release)."""
+def test_fetch_assets_downloads_release_into_source_version_dir(tmp_path, monkeypatch):
+    """fetch_assets pulls every .hex/.bin the release lists into
+    <source>-<version>/, skips .elf/.map, and writes a manifest."""
+    import json as _json
+
     import dotbot.firmware.flash as flash
 
-    downloaded = []
+    fake_release = {
+        "tag_name": "0.8.0rc2",
+        "assets": [
+            {"name": "bootloader-dotbot-v3.hex", "browser_download_url": "u1"},
+            {"name": "netcore-nrf5340-net.hex", "browser_download_url": "u2"},
+            {"name": "bootloader-dotbot-v3.elf", "browser_download_url": "u3"},
+        ],
+    }
+    monkeypatch.setattr(flash, "resolve_release", lambda source, version: fake_release)
 
     def fake_download(url, dest):
-        name = url.rsplit("/", 1)[-1]
-        if name.endswith(".hex"):  # the 4 required system images
-            dest.write_bytes(b"\x00")
-            downloaded.append(name)
-            return 1  # bytes written (download_file returns the size)
-        # optional sample .bin → simulate a release 404
-        raise click.ClickException(f"HTTP Error 404: {name}")
+        dest.write_bytes(b"\x00")
+        return 1
 
     monkeypatch.setattr(flash, "download_file", fake_download)
-    out = flash.fetch_assets("0.8.0rc1", tmp_path)  # must not raise
+    out = flash.fetch_assets("swarmit", "latest", tmp_path)
+    assert out == tmp_path / "swarmit-0.8.0rc2"
     assert (out / "bootloader-dotbot-v3.hex").exists()
     assert (out / "netcore-nrf5340-net.hex").exists()
-    assert sum(n.endswith(".hex") for n in downloaded) == 4
+    assert not (out / "bootloader-dotbot-v3.elf").exists()  # .elf skipped
+    manifest = _json.loads((out / "manifest.json").read_text())
+    assert manifest["source"] == "swarmit"
+    assert manifest["version"] == "0.8.0rc2"
+    assert "bootloader-dotbot-v3.hex" in manifest["files"]
 
 
-def test_fetch_assets_still_fails_on_missing_system_image(tmp_path, monkeypatch):
-    """A 404 on a REQUIRED system .hex stays fatal (bad version tag)."""
+def test_fetch_assets_unknown_source_errors(tmp_path):
+    """An unknown source is a clear error, not a KeyError."""
     import dotbot.firmware.flash as flash
 
-    def fake_download(url, dest):
-        raise click.ClickException("HTTP Error 404")
-
-    monkeypatch.setattr(flash, "download_file", fake_download)
     with pytest.raises(click.ClickException):
-        flash.fetch_assets("0.0.0-nope", tmp_path)
+        flash.fetch_assets("not-a-source", "latest", tmp_path)
 
 
 def test_resolve_latest_version_returns_newest_tag(monkeypatch):

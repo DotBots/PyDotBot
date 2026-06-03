@@ -15,19 +15,22 @@ functions, so importing it (e.g. for `device info`, which needs neither
 SES nor a firmware repo) stays cheap and side-effect-free.
 """
 
+import os
 from pathlib import Path
 
 import click
 
 
 def artifacts_dir() -> Path:
-    """The CWD-local ``./artifacts/`` directory, resolved absolute.
+    """The firmware cache: ``~/.dotbot/artifacts/`` by default.
 
-    The single source of truth for where build outputs land and fetched
-    releases are cached. Per-workspace (no global ``~/.dotbot/fw``), so
-    two checkouts never collide.
+    User-level and shared across working directories (like other tools cache
+    downloaded firmware), so you don't re-download a release per directory and
+    the launch dir stays clean. Override with ``$DOTBOT_ARTIFACTS_DIR``.
     """
-    return (Path.cwd() / "artifacts").resolve()
+    override = os.environ.get("DOTBOT_ARTIFACTS_DIR")
+    base = Path(override) if override else Path.home() / ".dotbot" / "artifacts"
+    return base.expanduser().resolve()
 
 
 def echo_artifact_path(path: Path, *, action: str = "using") -> None:
@@ -59,6 +62,36 @@ def ensure_nrfjprog() -> None:
         raise friendly_nrfjprog_error()
 
 
+def _find_in_cache(name: str) -> Path | None:
+    """Find a firmware file across the source-qualified cache dirs.
+
+    The cache holds ``<source>-<version>/`` (fetched releases) and
+    ``<source>-local[-link]/`` (built/linked) subdirs. Prefer a local build
+    (you're iterating on it), else the newest-versioned release dir.
+    """
+    root = artifacts_dir()
+    if not root.is_dir():
+        return None
+    local_hits: list[Path] = []
+    released_hits: list[Path] = []
+    for sub in sorted(root.iterdir()):
+        if not sub.is_dir():
+            continue
+        candidate = sub / name
+        if candidate.is_file():
+            if sub.name.endswith(("-local", "-local-link")):
+                local_hits.append(candidate)
+            else:
+                released_hits.append(candidate)
+    if local_hits:
+        return local_hits[0]
+    if released_hits:
+        # newest by dir name (a coarse version sort; good enough for picking
+        # the latest release of a given app)
+        return sorted(released_hits, key=lambda p: p.parent.name, reverse=True)[0]
+    return None
+
+
 def resolve_app_artifact(
     app: str,
     *,
@@ -80,8 +113,8 @@ def resolve_app_artifact(
     - Else, a friendly error telling the user to build or fetch first.
     """
     name = f"{app}-sandbox-{board}.bin" if sandbox else f"{app}-{board}.hex"
-    cached = artifacts_dir() / name
-    if cached.is_file():
+    cached = _find_in_cache(name)
+    if cached is not None:
         echo_artifact_path(cached, action="using")
         return cached
 
@@ -114,6 +147,6 @@ def resolve_app_artifact(
         "DotBot-firmware source to build from.\n"
         "  • `dotbot fw build "
         f"-a {app} -t {board}{' --sandbox' if sandbox else ''}` to build, or\n"
-        "  • `dotbot fw fetch -f <version>` to download a release, then retry, or\n"
-        "  • pass an explicit path: `dotbot device flash ./artifacts/<file>`."
+        "  • `dotbot fw fetch` to download the latest releases, then retry, or\n"
+        "  • pass an explicit path: `dotbot device flash <path-to-.hex>`."
     )

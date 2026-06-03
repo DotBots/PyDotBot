@@ -222,7 +222,12 @@ def list_targets(sandbox):
 @click.option("-v", "--verbose", is_flag=True, default=False)
 @click.pass_context
 def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbose):
-    """Build + collect artifacts into ./artifacts/ (default)."""
+    """Build + collect artifacts into the local cache (default).
+
+    Without --out, built apps land in the source-qualified
+    ``<cache>/dotbot-firmware-local/`` dir so `device flash <app>` finds them
+    alongside fetched releases.
+    """
     import shutil
 
     target = from_config(ctx, "target", "board", "fw")
@@ -237,7 +242,11 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
             )
         click.echo(str(artifact_path(build_target, project, config)))
         return
-    out = Path(out_dir).resolve() if out_dir else artifacts_dir()
+    out = (
+        Path(out_dir).resolve()
+        if out_dir
+        else artifacts_dir() / "dotbot-firmware-local"
+    )
     click.echo(
         f"Building + collecting artifacts for {target} ({config}) → {out}/...",
         err=True,
@@ -263,28 +272,43 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
 
 @cmd.command()
 @click.option(
+    "--source",
+    "-S",
+    type=click.Choice(list(("swarmit", "dotbot-firmware"))),
+    default=None,
+    help="Limit to one source (default: fetch the latest from all sources).",
+)
+@click.option(
     "--fw-version",
     "-f",
     default=None,
-    help="Release version tag (default: latest swarmit release), or 'local'.",
+    help="Release tag for --source (default: latest), or 'local'.",
 )
 @click.option(
     "--local-root",
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    help="Root of a local DotBot-firmware/swarmit build (with --fw-version local).",
+    help="Root of a local build tree (with --source <src> --fw-version local).",
 )
-def fetch(fw_version, local_root):
-    """Download a released firmware set into ./artifacts/<version>/.
+def fetch(source, fw_version, local_root):
+    """Download released firmware into ~/.dotbot/artifacts/<source>-<version>/.
 
-    With no --fw-version, fetches the latest swarmit release (prereleases
-    included); the resolved tag is printed and used as the cache directory.
+    With no flags, fetches the latest release from every source: swarmit (the
+    swarm system images) and DotBot-firmware (bare + sandbox apps). The two
+    version independently, so pinning a version with -f requires a --source.
     """
-    from dotbot.firmware.flash import fetch_assets, resolve_latest_version
+    from dotbot.firmware.flash import DEFAULT_FETCH_SOURCES, fetch_assets
 
-    if fw_version is None:
-        fw_version = resolve_latest_version()
-        click.echo(f"No version specified, fetching the latest release: {fw_version}")
-    fetch_assets(fw_version, artifacts_dir(), local_root)
+    if fw_version is not None and source is None:
+        raise click.ClickException(
+            "Pass --source with -f/--fw-version: swarmit and dotbot-firmware "
+            "version independently."
+        )
+    sources = [source] if source else list(DEFAULT_FETCH_SOURCES)
+    for src in sources:
+        version = fw_version or "latest"
+        if version == "latest":
+            click.echo(f"Fetching the latest {src} release...")
+        fetch_assets(src, version, artifacts_dir(), local_root)
 
 
 @cmd.command(name="list")
