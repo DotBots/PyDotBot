@@ -409,3 +409,44 @@ def test_resolve_latest_version_network_error_errors(monkeypatch):
     monkeypatch.setattr(flash.urllib.request, "urlopen", boom)
     with pytest.raises(click.ClickException):
         flash.resolve_latest_version()
+
+
+def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
+    """A sporadic 502 (GitHub's CDN under concurrent load) is retried, then
+    succeeds - one bad gateway shouldn't abort the whole fetch."""
+    import io
+
+    import dotbot.firmware.flash as flash
+
+    calls = {"n": 0}
+
+    def flaky_urlopen(url):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise flash.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+        return io.BytesIO(b"\xde\xad")
+
+    monkeypatch.setattr(flash.urllib.request, "urlopen", flaky_urlopen)
+    monkeypatch.setattr(flash.time, "sleep", lambda _delay: None)  # skip real backoff
+
+    dest = tmp_path / "spin-dotbot-v3.hex"
+    size = flash.download_file("http://x/spin-dotbot-v3.hex", dest, retries=3)
+    assert size == 2
+    assert dest.read_bytes() == b"\xde\xad"
+    assert calls["n"] == 2  # one retry
+
+
+def test_download_file_gives_up_on_non_transient(tmp_path, monkeypatch):
+    """A 404 is not transient - it surfaces immediately, with no backoff."""
+    import dotbot.firmware.flash as flash
+
+    def not_found(url):
+        raise flash.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(flash.urllib.request, "urlopen", not_found)
+    monkeypatch.setattr(flash.time, "sleep", lambda d: sleeps.append(d))
+
+    with pytest.raises(click.ClickException):
+        flash.download_file("http://x/missing.hex", tmp_path / "missing.hex", retries=3)
+    assert sleeps == []  # never retried

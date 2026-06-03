@@ -144,25 +144,48 @@ def _short_path(path: Path) -> str:
     return rel if not rel.startswith("..") else str(path)
 
 
-def download_file(url: str, dest: Path) -> int:
-    """Download ``url`` to ``dest``; return the number of bytes written."""
-    try:
-        with urllib.request.urlopen(url) as resp:
-            status = getattr(resp, "status", 200)
-            if status != 200:
-                raise click.ClickException(f"HTTP {status} while downloading {url}")
-            data = resp.read()
-    except urllib.error.HTTPError as exc:
-        raise click.ClickException(
-            f"HTTP error while downloading {url}: {exc}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise click.ClickException(
-            f"Network error while downloading {url}: {exc}"
-        ) from exc
+# Transient HTTP statuses worth retrying (GitHub's asset CDN 502s now and
+# then under concurrent load; 429 is rate-limiting).
+_RETRY_STATUS = {429, 500, 502, 503, 504}
 
-    dest.write_bytes(data)
-    return len(data)
+
+def download_file(url: str, dest: Path, *, retries: int = 3) -> int:
+    """Download ``url`` to ``dest``; return the number of bytes written.
+
+    Retries transient failures (connection errors and HTTP 429/5xx) with
+    exponential backoff - GitHub's CDN occasionally 502s under concurrent
+    downloads, and a sporadic failure shouldn't abort the whole fetch.
+    """
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(url) as resp:
+                status = getattr(resp, "status", 200)
+                if status != 200:
+                    raise click.ClickException(f"HTTP {status} while downloading {url}")
+                data = resp.read()
+            dest.write_bytes(data)
+            return len(data)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _RETRY_STATUS or attempt == retries:
+                raise click.ClickException(
+                    f"HTTP error while downloading {url}: {exc}"
+                ) from exc
+            reason = f"HTTP {exc.code}"
+        except urllib.error.URLError as exc:
+            if attempt == retries:
+                raise click.ClickException(
+                    f"Network error while downloading {url}: {exc}"
+                ) from exc
+            reason = str(exc.reason)
+        delay = 0.5 * (2**attempt)
+        click.echo(
+            f"  [retry] {url.rsplit('/', 1)[-1]} ({reason}); retrying in {delay:.1f}s",
+            err=True,
+        )
+        time.sleep(delay)
+    raise click.ClickException(  # pragma: no cover - loop always returns/raises
+        f"Failed to download {url} after {retries} retries."
+    )
 
 
 def _github_get(url: str):
@@ -436,7 +459,9 @@ def fetch_assets(
     errors: list[str] = []
     # Downloads are I/O-bound, so a small thread pool overlaps them (urllib
     # releases the GIL during the network read). Sources stay sequential.
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    # Kept modest: GitHub's asset CDN starts 502ing under heavier fan-out
+    # (download_file retries transient failures regardless).
+    with ThreadPoolExecutor(max_workers=4) as pool:
         future_to_name = {
             pool.submit(
                 download_file, asset["browser_download_url"], out_dir / asset["name"]
