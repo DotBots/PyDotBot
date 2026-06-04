@@ -140,16 +140,19 @@ is in the [`swarm` reference][swarm-doc].
 
 ### Calibrate positions (optional)
 
-Give the bots real-world `(x, y)` with Lighthouse 2 - calibrate one bot over the
-air, then push it to the fleet (needs the `[calibrate]` extra, below):
+Give the bots real-world `(x, y)` with Lighthouse 2 - capture once from any bot
+over the air, then push the result to the whole fleet (needs the `[calibrate]`
+extra, below):
 
 ```bash
-dotbot swarm stop                                              # the bot must be idle to capture
-dotbot swarm lh2-calibration collect --device <addr> -d 500 --push
+dotbot swarm stop                                              # bots must be idle to capture
+dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every bot
 ```
 
-`-d` is your reference square's side, in mm. Full walkthrough - arena sizing and
-the cabled alternative - is in the [LH2 calibration guide][lh2-doc].
+`-d` is your reference square's side, in mm (one bot's capture calibrates the
+whole arena). Full walkthrough - arena sizing and the cabled alternative - is in
+the [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
