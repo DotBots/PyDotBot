@@ -60,6 +60,19 @@ def _with_config_injection(swarmit_group):
     @click.pass_context
     def cmd(ctx, args):
         args = list(args)
+        # `lh2-calibration` is PyDotBot-native (the homography solve lives
+        # here, not in swarmit), so intercept it before the passthrough and
+        # hand off to our own group, carrying the resolved config along.
+        if args and args[0] == "lh2-calibration":
+            from dotbot.cli.swarm_lh2 import cmd as lh2_group
+
+            lh2_group.main(
+                args=args[1:],
+                prog_name="dotbot swarm lh2-calibration",
+                standalone_mode=True,
+                obj=ctx.obj,
+            )
+            return
         final = inject_config(args, ctx.obj) if args else args
         _run_swarmit(swarmit_group, final)
 

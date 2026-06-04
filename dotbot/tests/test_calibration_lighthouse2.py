@@ -61,6 +61,48 @@ def test_save_calibration_writes_toml_and_legacy_out(monkeypatch, tmp_path):
     assert payload == (tmp_path / "calibration.out").read_bytes()
 
 
+def test_save_calibration_tag_in_filename_and_metadata(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    mgr = LighthouseManager(extra_lh_num=0)
+    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
+    mgr.homographies = [_seed_homography(1.0)]
+
+    path = mgr.save_calibration(tag="office-2x2m")
+
+    assert path.name.startswith("calibration-office-2x2m-")
+    with open(path, "rb") as f:
+        parsed = tomllib.load(f)
+    assert parsed["metadata"]["tag"] == "office-2x2m"
+
+
+def test_save_calibration_sanitizes_and_omits_empty_tag(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    mgr = LighthouseManager(extra_lh_num=0)
+    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
+    mgr.homographies = [_seed_homography(1.0)]
+
+    # Unsafe characters collapse to dashes and the leading ".." is trimmed;
+    # the slug stays a single filename component inside ~/.dotbot.
+    path = mgr.save_calibration(tag="../lab room/A")
+    assert path.parent == tmp_path
+    assert path.name.startswith("calibration-lab-room-A-")
+
+    # A tag that reduces to nothing is treated as absent (no stray dashes).
+    path = mgr.save_calibration(tag="///")
+    assert path.name.startswith("calibration-2")  # the timestamp year
+    with open(path, "rb") as f:
+        assert "tag" not in tomllib.load(f)["metadata"]
+
+
+def test_slug_tag_rules():
+    assert lighthouse2._slug_tag("office-2x2m") == "office-2x2m"
+    assert lighthouse2._slug_tag("  a  b  ") == "a-b"
+    assert lighthouse2._slug_tag("a/b\\c:d") == "a-b-c-d"
+    assert lighthouse2._slug_tag("--keep_me.v2--") == "keep_me.v2"
+    assert lighthouse2._slug_tag("..") == ""
+    assert lighthouse2._slug_tag("***") == ""
+
+
 def test_load_calibration_prefers_newest_toml(monkeypatch, tmp_path):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     mgr = LighthouseManager(extra_lh_num=0)

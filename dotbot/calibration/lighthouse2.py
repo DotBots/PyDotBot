@@ -12,6 +12,7 @@ import dataclasses
 import datetime
 import math
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -189,6 +190,18 @@ def _build_calibration_payload(
     return bytes(payload)
 
 
+def _slug_tag(tag: str) -> str:
+    """Filename-safe slug for a free-form calibration tag.
+
+    Keeps ASCII letters, digits, dot, dash and underscore; collapses any
+    other run of characters to a single dash and trims dashes and dots off
+    the ends (so a tag like "../x" can't smuggle in a leading ".."). Returns
+    "" when nothing usable remains, so callers can treat the tag as absent.
+    The slug is safe to drop into both a filename and a TOML string.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", tag).strip("-.")
+
+
 def _parse_calibration_payload(payload: bytes) -> list[bytes]:
     """Inverse of `_build_calibration_payload`: yields the per-LH 36-byte
     matrix chunks. Used when loading from either TOML or legacy .out."""
@@ -364,13 +377,18 @@ class LighthouseManager:
             return _parse_calibration_payload(self.calibration_output_path.read_bytes())
         return []
 
-    def save_calibration(self) -> Path:
+    def save_calibration(self, tag: Optional[str] = None) -> Path:
         """Save the calibration as a timestamped TOML file (+ legacy .out).
 
         The TOML file is the new primary record: versioned, metadata-
         bearing, human-inspectable. The legacy `.out` file is also
         written so external consumers (swarmit OTA, dotbot-provision)
         keep working until they learn to read TOML.
+
+        `tag`, when given, is a free-form arena/setup label (e.g.
+        "office-2x2m"); a filename-safe slug of it is inserted into the
+        filename and recorded under `[metadata]` so the calibration stays
+        self-describing even after a rename.
 
         Returns the path of the TOML file just written, and also stores
         it on `self.last_saved_toml_path` so a caller that lost the
@@ -383,7 +401,14 @@ class LighthouseManager:
         # Filename-safe variant of ISO 8601: `:` is rejected on Windows
         # and a footgun on some Unix tools.
         ts_for_filename = now.strftime("%Y-%m-%dT%H-%M-%SZ")
-        toml_path = CALIBRATION_DIR / f"calibration-{ts_for_filename}.toml"
+        slug = _slug_tag(tag) if tag else ""
+        stem = (
+            f"calibration-{slug}-{ts_for_filename}"
+            if slug
+            else f"calibration-{ts_for_filename}"
+        )
+        toml_path = CALIBRATION_DIR / f"{stem}.toml"
+        tag_line = f'tag = "{slug}"\n' if slug else ""
         # Explicit UTF-8 — TOML is spec'd as UTF-8, and Path.write_text
         # defaults to the platform encoding (cp1252 on Windows), which
         # mangles any non-ASCII byte and breaks the tomllib reader.
@@ -394,6 +419,7 @@ class LighthouseManager:
             f'created_at = "{now.strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
             f"calibration_distance_mm = {int(self.calibration_distance)}\n"
             f"num_lh_stations = {1 + self.extra_lh_num}\n"
+            f"{tag_line}"
             "\n"
             "[calibration]\n"
             "# 1-byte homography count + N x 36-byte int32 LE matrices,\n"
