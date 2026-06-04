@@ -8,6 +8,7 @@ simulator
 one-bot
 controller
 lh2-calibration
+lh2-calibration-cabled
 ```
 
 - [Try it in the simulator](simulator.md) - run the full UI and script bots with
@@ -17,4 +18,6 @@ lh2-calibration
 - [Run the controller + web UI](controller.md) - drive and visualize a swarm
   from the browser.
 - [Lighthouse 2 localization](lh2-calibration.md) - give your bots real-world
-  `(x, y)` positions.
+  `(x, y)` positions, calibrated over the air.
+- [LH2 calibration over a cable](lh2-calibration-cabled.md) - the bench
+  alternative, for a single USB-connected bot.

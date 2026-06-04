@@ -138,25 +138,44 @@ dotbot run controller -w  # will open a webpage at http://localhost:8000/PyDotBo
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
 is in the [`swarm` reference][swarm-doc].
 
+### Calibrate positions (optional)
+
+Give the bots real-world `(x, y)` with Lighthouse 2 - calibrate one bot over the
+air, then push it to the fleet (needs the `[calibrate]` extra, below):
+
+```bash
+dotbot swarm stop                                              # the bot must be idle to capture
+dotbot swarm lh2-calibration collect --device <addr> -d 500 --push
+```
+
+`-d` is your reference square's side, in mm. Full walkthrough - arena sizing and
+the cabled alternative - is in the [LH2 calibration guide][lh2-doc].
+
 ## Going further
 
-- **Download the firmware repository**:
-```bash
-git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
-```
-- Install [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/), for commands such as `dotbot fw build`
-- **Drive a single bot** - build, flash, and control one DotBot end to end:
+- **Drive a single bot** end to end - build, flash, and control one DotBot:
   the [one-bot guide][one-bot-doc].
-- **Lighthouse 2 localization** - give your bots real-world `(x, y)` positions:
-  the [LH2 calibration guide][lh2-doc].
-- **Everything else** - the `dotbot` commands (`fw` / `device` / `swarm` / `run`,
-  plus `config`), the controller + web UI, and hardware notes are in the
+- **Position tracking with Lighthouse 2** - give the fleet real-world `(x, y)`,
+  calibrated over the air: the [LH2 calibration guide][lh2-doc] (a cabled
+  alternative is covered there too).
+- **The controller + web UI** - drive and visualize a swarm from the browser:
+  the [controller guide][controller-doc].
+- **Build firmware from source** instead of `dotbot fw fetch` - needs
+  [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/)
+  and a DotBot-firmware checkout:
+  ```bash
+  git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
+  export DOTBOT_FIRMWARE_REPO=$(pwd)/DotBot-firmware
+  ```
+  then `dotbot fw build` / `dotbot fw artifacts` (see [`fw`][fw-doc]).
+- **Everything else** - the full `dotbot` CLI (`fw` / `device` / `swarm` / `run`
+  + `config`), the REST/WS and MQTT surfaces, and hardware notes: the
   [documentation][doc-link].
 
-Swarm orchestration is in the base install. Only LH2 calibration needs an extra:
+Most of `dotbot` is in the base install; only LH2 calibration needs an extra:
 
 ```bash
-pip install --pre 'pydotbot[calibrate]'  # opencv-python + textual (LH2 calibration)
+pip install --pre 'pydotbot[calibrate]'   # opencv (the LH2 homography solve)
 ```
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
@@ -184,10 +203,8 @@ See `LICENSE` in each component repository.
 [license-link]: https://github.com/DotBots/pydotbot/blob/main/LICENSE.txt
 [codecov-badge]: https://codecov.io/gh/DotBots/PyDotBot/branch/main/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/DotBots/PyDotBot
-[dotbot-firmware-repo]: https://github.com/DotBots/DotBot-firmware
 [cli-doc]: https://pydotbot.readthedocs.io/en/latest/cli/index.html
 [fw-doc]: https://pydotbot.readthedocs.io/en/latest/cli/fw.html
-[device-doc]: https://pydotbot.readthedocs.io/en/latest/cli/device.html
 [swarm-doc]: https://pydotbot.readthedocs.io/en/latest/cli/swarm.html
 [config-doc]: https://pydotbot.readthedocs.io/en/latest/reference/configuration.html
 [simulator-doc]: https://pydotbot.readthedocs.io/en/latest/guides/simulator.html
@@ -195,5 +212,3 @@ See `LICENSE` in each component repository.
 [one-bot-doc]: https://pydotbot.readthedocs.io/en/latest/guides/one-bot.html
 [lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
 [troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
-[rest-doc]: https://pydotbot.readthedocs.io/en/latest/reference/rest.html
-[mqtt-doc]: https://pydotbot.readthedocs.io/en/latest/reference/mqtt.html

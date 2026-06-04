@@ -2,7 +2,7 @@
 
 Build and flash one DotBot and a gateway, cable them to your computer, and drive
 the bot from the web UI. This is the smallest real-hardware setup. For the
-no-hardware path, use the [simulator](controller.md) instead.
+no-hardware path, use the [simulator](simulator.md) instead.
 
 Building firmware needs SEGGER Embedded Studio and `nrfjprog` (see the README
 prerequisites). To skip building, fetch a pre-built release with `dotbot fw
@@ -49,4 +49,5 @@ Select the bot in the browser and steer it with the joystick. See the
 ## Next
 
 - Operate many bots over the air - the [`swarm`](../cli/swarm.md) reference.
-- Add real-world positions - [LH2 calibration](lh2-calibration.md).
+- Add real-world positions - [LH2 calibration over a cable](lh2-calibration-cabled.md)
+  (or [over the air](lh2-calibration.md) once you've provisioned a swarm).

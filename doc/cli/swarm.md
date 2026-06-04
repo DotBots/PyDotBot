@@ -101,18 +101,24 @@ To replace a running experiment: `stop`, then `flash ... -ys`.
 | `-t`, `--ota-timeout` | seconds per OTA ACK (default `0.7`) |
 | `-r`, `--ota-max-retries` | retries per OTA message (default `10`) |
 
-## 6. Push an LH2 calibration over the air
+## 6. LH2 calibration over the air
 
-Send a calibration (captured from one cabled bot - see
-[LH2 calibration](../guides/lh2-calibration.md)) to the whole fleet:
+Capture and push a Lighthouse-2 calibration for one DotBot without a cable,
+driving it over the swarm. The arena geometry and `-d` sizing live in the
+[LH2 calibration guide](../guides/lh2-calibration.md).
 
 ```bash
-dotbot swarm stop
-dotbot swarm calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm stop                                              # capture only runs in READY
+dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one bot -> solve -> save
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml   # apply to every ready bot
 ```
 
-It accepts a `calibration-*.toml` or the legacy raw payload; the format is
-picked by file extension.
+`collect` walks one bot through the four arena corners over the air, solves the
+homography, and saves it under `~/.dotbot/`. `push` (no `--device`) then sends
+that calibration to **every ready bot** - the arena shares one transform.
+(`collect --push` is a single-bot shortcut: it sends only to the captured bot.)
+`push` takes a `calibration-*.toml` or the legacy raw payload - the format is
+picked by file extension. Get the `--device` address from `dotbot swarm status`.
 
 ## Two web servers - don't mix them up
 

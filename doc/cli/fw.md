@@ -176,4 +176,4 @@ this machine.
 
 - [`dotbot device`](device.md) - flash an artifact onto one cabled board.
 - [`dotbot swarm`](swarm.md) - push a sandbox app to the fleet over the air.
-- [LH2 calibration](../guides/lh2-calibration.md) - the `lh2_calibration` app workflow.
+- [LH2 calibration (cabled)](../guides/lh2-calibration-cabled.md) - the `lh2_calibration` app workflow.
