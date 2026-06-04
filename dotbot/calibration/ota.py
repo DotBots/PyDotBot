@@ -69,7 +69,7 @@ class CaptureSession:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._reader, daemon=True)
 
-    def __enter__(self) -> "CaptureSession":
+    def __enter__(self) -> CaptureSession:
         self._thread.start()
         return self
 
