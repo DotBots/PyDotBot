@@ -19,6 +19,7 @@ from pathlib import Path
 import click
 
 from dotbot.cli._artifacts import (
+    DEFAULT_ARTIFACTS_DISPLAY,
     artifacts_dir,
     ensure_nrfjprog,
     resolve_app_artifact,
@@ -54,7 +55,7 @@ def _looks_like_path(value: str) -> bool:
     show_default=True,
     help=(
         "Target board: selects the chip family + core to flash (nRF52 vs "
-        "nRF5340 app/net) and resolves <app>-<board> in ./artifacts/."
+        f"nRF5340 app/net) and resolves <app>-<board> in {DEFAULT_ARTIFACTS_DISPLAY}/."
     ),
 )
 @click.option("--sandbox", is_flag=True, help="Resolve the sandbox-app flavor (.bin).")
@@ -70,7 +71,7 @@ def _looks_like_path(value: str) -> bool:
 def flash(ctx, app, sn_starting_digits, board, sandbox, config):
     """Flash a firmware image to one cabled device (whole-chip program).
 
-    APP is an app name (resolved against ./artifacts/, building from source
+    APP is an app name (resolved against ~/.dotbot/artifacts/, building from source
     if needed) or an explicit `.hex`/`.bin` file path. `--board` selects the
     chip family + core to program (see `dotbot fw targets`); no sandbox host
     is required.
@@ -96,10 +97,10 @@ def _fw_version_option(f):
     return click.option(
         "--fw-version",
         "-f",
-        required=True,
+        default=None,
         help=(
-            "Release version to flash, e.g. 0.8.0rc1. Its binaries are "
-            "fetched into ./artifacts/ if not already cached."
+            "Release version to flash, e.g. 0.8.0rc2 (default: the swarmit "
+            f"version pydotbot pins). Binaries are fetched into {DEFAULT_ARTIFACTS_DISPLAY}/ if not cached."
         ),
     )(f)
 
@@ -133,8 +134,9 @@ def flash_swarmit_sandbox(
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
     network identity. Auto-fetches the release if not already in
-    ./artifacts/<version>/.
+    ~/.dotbot/artifacts/swarmit-<version>/.
     """
+    from dotbot.firmware.fetch import pinned_version
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -142,6 +144,11 @@ def flash_swarmit_sandbox(
         raise click.ClickException(
             "no swarm id: pass --swarm-id, or set swarm_id (or a "
             "deployment) in your config."
+        )
+    if fw_version is None:
+        fw_version = pinned_version("swarmit")
+        click.echo(
+            f"No version specified, using the pinned swarmit version: {fw_version}"
         )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
@@ -171,6 +178,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
     identity. Auto-fetches the release if absent. (To run the host-side
     UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
+    from dotbot.firmware.fetch import pinned_version
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -178,6 +186,11 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
         raise click.ClickException(
             "no swarm id: pass --swarm-id, or set swarm_id (or a "
             "deployment) in your config."
+        )
+    if fw_version is None:
+        fw_version = pinned_version("swarmit")
+        click.echo(
+            f"No version specified, using the pinned swarmit version: {fw_version}"
         )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)

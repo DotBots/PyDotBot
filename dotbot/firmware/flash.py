@@ -1,26 +1,23 @@
 """DotBot firmware flashing + provisioning engine (no CLI).
 
-The hardware-facing engine behind `dotbot device` and `dotbot fw fetch`:
-fetch release assets, flash a role's system firmware + config page
-(`flash_role`), flash a single app image (`flash_app_image`), flash the
-debug-chip programmer (`flash_programmer`), and read back provisioning
-state (`read_config_report`). The Click surface lives in
-`dotbot/cli/device.py` and `dotbot/cli/fw.py`; this module is pure
-library code.
+The hardware-facing engine behind `dotbot device`: flash a role's system
+firmware + config page (`flash_role`), flash a single app image
+(`flash_app_image`), flash the debug-chip programmer (`flash_programmer`),
+and read back provisioning state (`read_config_report`). Release fetching
++ the artifact cache live next door in `fetch.py`; the Click surface lives
+in `dotbot/cli/device.py`. This module is pure library code.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 import click
 
+from .fetch import fetch_assets, resolve_fw_root
 from .nrf import (
     do_daplink,
     do_daplink_if,
@@ -54,7 +51,6 @@ CONFIG_MANIFEST_NAME = "config-manifest.json"
 # dotbot-lh2-calibration (1-byte count + N matrices of 3x3 int32 LE).
 LH2_MATRIX_BYTES = 3 * 3 * 4  # 3x3 int32 matrix
 LH2_MAX_HOMOGRAPHIES = 16
-RELEASE_BASE_URL = "https://github.com/DotBots/swarmit/releases/download"
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
@@ -113,31 +109,6 @@ def normalize_network_id(raw: str | None) -> tuple[int, str] | None:
     if not (0x0000 <= value <= 0xFFFF):
         raise click.ClickException("network_id must be 16-bit (0x0000..0xFFFF).")
     return value, f"{value:04X}"
-
-
-def resolve_fw_root(bin_dir: Path, fw_version: str) -> Path:
-    return bin_dir / fw_version
-
-
-def download_file(url: str, dest: Path) -> None:
-    click.echo(f"[GET ] {url}")
-    try:
-        with urllib.request.urlopen(url) as resp:
-            status = getattr(resp, "status", 200)
-            if status != 200:
-                raise click.ClickException(f"HTTP {status} while downloading {url}")
-            data = resp.read()
-    except urllib.error.HTTPError as exc:
-        raise click.ClickException(
-            f"HTTP error while downloading {url}: {exc}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise click.ClickException(
-            f"Network error while downloading {url}: {exc}"
-        ) from exc
-
-    dest.write_bytes(data)
-    click.echo(f"[OK  ] wrote {dest} ({len(data)} bytes)")
 
 
 def convert_bin_to_hex(bin_path: Path, base_addr: int) -> Path:
@@ -326,93 +297,6 @@ def manifest_matches(
     )
 
 
-def fetch_assets(
-    fw_version: str, bin_dir: Path, local_root: Path | None = None
-) -> Path:
-    """Download (or symlink, for --fw-version=local) the testbed firmware
-    assets into ``bin_dir/<fw_version>/`` and return that directory.
-
-    The single source of truth for "get the system firmware". Used by
-    `dotbot fw fetch` and by the auto-fetch hook in `flash_role`
-    (fetch-if-absent).
-    """
-    if fw_version == "local" and not local_root:
-        raise click.ClickException("--local-root is required when --fw-version=local.")
-    if fw_version != "local" and local_root:
-        click.echo(
-            "[WARN] --local-root ignored when --fw-version is not 'local'.",
-            err=True,
-        )
-
-    out_dir = resolve_fw_root(bin_dir, fw_version)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"[INFO] target dir: {out_dir.resolve()}")
-
-    if fw_version == "local":
-        local_root = local_root.expanduser().resolve()
-        mapping = {
-            "bootloader-dotbot-v3.hex": local_root
-            / "device/bootloader/Output/dotbot-v3/Debug/Exe/bootloader-dotbot-v3.hex",
-            "netcore-nrf5340-net.hex": local_root
-            / "device/network_core/Output/nrf5340-net/Debug/Exe/netcore-nrf5340-net.hex",
-            "03app_gateway_app-nrf5340-app.hex": local_root
-            / "mari/firmware/app/03app_gateway_app/Output/nrf5340-app/Debug/Exe/03app_gateway_app-nrf5340-app.hex",
-            "03app_gateway_net-nrf5340-net.hex": local_root
-            / "mari/firmware/app/03app_gateway_net/Output/nrf5340-net/Debug/Exe/03app_gateway_net-nrf5340-net.hex",
-        }
-
-        missing = [name for name, src in mapping.items() if not src.exists()]
-        if missing:
-            missing_list = ", ".join(missing)
-            raise click.ClickException(f"Missing local build artifacts: {missing_list}")
-
-        for name, src in mapping.items():
-            dest = out_dir / name
-            if dest.exists() or dest.is_symlink():
-                dest.unlink()
-            try:
-                os.symlink(src, dest)
-                click.echo(f"[LINK] {dest} -> {src}")
-            except OSError:
-                shutil.copy2(src, dest)
-                click.echo(f"[COPY] {dest} <- {src}")
-        return out_dir
-
-    assets = [
-        "bootloader-dotbot-v3.hex",
-        "netcore-nrf5340-net.hex",
-        "03app_gateway_app-nrf5340-app.hex",
-        "03app_gateway_net-nrf5340-net.hex",
-    ]
-    # Optional sample sandbox apps. These are built from DotBot-firmware's
-    # apps-sandbox/ and aren't guaranteed to be on every swarmit release, so
-    # a 404 here is expected, not fatal — the four system images above are
-    # all that provisioning (flash-swarmit-sandbox / flash-mari-gateway) needs.
-    example_bins = [
-        "dotbot-dotbot-v3.bin",
-        "spin-dotbot-v3.bin",
-        "rgbled-dotbot-v3.bin",
-        "move-dotbot-v3.bin",
-        "motors-dotbot-v3.bin",
-    ]
-    for name in assets:
-        url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
-        dest = out_dir / name
-        download_file(url, dest)
-    for name in example_bins:
-        url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
-        dest = out_dir / name
-        try:
-            download_file(url, dest)
-        except click.ClickException as exc:
-            click.echo(
-                f"[skip] optional sample app {name} not in release "
-                f"{fw_version} ({exc.format_message()})",
-                err=True,
-            )
-    return out_dir
-
-
 def flash_role(
     role: str,
     *,
@@ -480,14 +364,14 @@ def flash_role(
         calibration_hex = (bytes([count]) + matrices).hex()
         click.echo(f"[INFO] calibration: {count} matrices from {calibration_path}")
 
-    fw_root = resolve_fw_root(bin_dir, fw_version)
+    fw_root = resolve_fw_root(bin_dir, "swarmit", fw_version)
     # Auto-fetch: if the role's images aren't already present, pull the
-    # release into bin_dir/<fw_version>/ before flashing (npm-style).
+    # swarmit release into bin_dir/swarmit-<version>/ before flashing.
     pre_app = fw_root / assets["app"]
     pre_net = fw_root / assets["net"]
     if fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
         click.echo(f"[INFO] firmware {fw_version} not found in {fw_root}; fetching...")
-        fetch_assets(fw_version, bin_dir)
+        fetch_assets("swarmit", fw_version, bin_dir)
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
 

@@ -5,7 +5,7 @@
 
 The top level is the four object-namespaces, each one *kind of thing*:
 
-  fw      — firmware artifacts (files in ./artifacts/, no hardware)
+  fw      — firmware artifacts (cached in ~/.dotbot/artifacts/, no hardware)
   device  — one connected device (cable / probe)
   swarm   — the fleet (radio / OTA)
   run     — host-side processes (software you launch on your computer)
@@ -127,6 +127,11 @@ def cli(ctx, config_path, deployment_name):
         )
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
+
+    if path is not None:
+        click.echo(f"using config file at {path}", err=True)
+    else:
+        click.echo("no config file found; using built-in defaults", err=True)
 
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path

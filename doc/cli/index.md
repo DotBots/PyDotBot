@@ -46,8 +46,8 @@ Need a process running on my computer (UI, gateway bridge, demo)? ─► run
 A few signposts so the namespaces don't blur together:
 
 - **`fw` never touches hardware.** It only produces or lists artifacts in
-  `./artifacts/`. Flashing always happens under `device` (cabled) or `swarm`
-  (OTA).
+  `~/.dotbot/artifacts/`. Flashing always happens under `device` (cabled) or
+  `swarm` (OTA).
 - **Bare vs. sandbox artifacts.** `fw` builds bare apps (`.hex`) by default;
   `fw artifacts --sandbox` builds TrustZone apps (`.bin`) - the payload `swarm`
   flashes over the air.

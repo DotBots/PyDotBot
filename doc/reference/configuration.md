@@ -81,7 +81,6 @@ Set once at the top of the file; any section or deployment can override them.
 | `conn` | Default connection string (`mqtts://host:port`, a serial path, or `simulator`). |
 | `swarm_id` | Swarm id selecting the MQTT topic namespace. |
 | `log_level` | Logging verbosity. |
-| `artifacts_dir` | Where firmware artifacts are read/written. |
 | `default_deployment` | Name of the deployment to select when neither `--deployment` nor `DOTBOT_DEPLOYMENT` is given. |
 
 ## Section tables
@@ -220,7 +219,6 @@ default_deployment = "inria"                 # used when --deployment / DOTBOT_D
 conn            = "mqtts://broker.local:8883"
 swarm_id        = "0001"
 log_level       = "info"
-artifacts_dir   = "./artifacts"
 
 # A physical deployment. Select it with `--deployment inria`, DOTBOT_DEPLOYMENT, or
 # default_deployment above - don't edit this table to switch deployments.

@@ -6,19 +6,13 @@
 
 # PyDotBot
 
-**The control plane for [DotBot](http://www.dotbots.org) swarms - build firmware,
-flash a robot, and control a fleet over the air, from one bot to a thousand, all
-from a single `dotbot` CLI and web UI.**
+The control plane for the [DotBot](http://www.dotbots.org) - a small wireless
+wheeled robot built to operate in large swarms, for research and education.
 
-DotBots are small wireless wheeled robots built to operate in large swarms,
-for research and education. Developed by the [AIO team](https://aio.inria.fr/) at
-[Inria Paris](https://www.inria.fr/), and run routinely with ~100–200 bots,
-with one 725-bot campaign.
+PyDotBot allows you to flash a robot and control a whole fleet over the air,
+from one bot to a thousand.
 
-▶️ [Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
-
-PyDotBot is the control plane in the middle: your code, the web UI, and users
-talk to it, and it drives the swarm through a gateway.
+[▶️ Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
 
 ```text
 ┌───────────┐           ┌────────────┐               ┌─────────┐
@@ -37,125 +31,53 @@ talk to it, and it drives the swarm through a gateway.
 - 🧪 Try it all with **zero hardware** using the built-in simulator
 - 🛠️ One `dotbot` CLI takes you from build → flash → run
 
-## Try it now - no hardware
+## Install
 
-See the whole thing run with nothing but Python:
+PyDotBot is available on [PyPi](https://pypi.org/project/pydotbot/), install it with:
 
 ```bash
-pip install --pre pydotbot  # using 'pre' while we are at release candidate
-dotbot run simulator -w   # opens the web UI at http://localhost:8000/PyDotBot/, driving a simulated swarm
+pip install --pre pydotbot
 ```
 
-Drive the simulated bots from the joystick + map - then script them from your own
-code (below), or set up real hardware further down.
+Then, check your installation with `dotbot --version` and learn what's possible with `dotbot --help`.
 
-## Drive it from your own code
+Every command and flag is documented in the [CLI reference][cli-doc].
 
-The controller - real or simulated - exposes a REST + WebSocket API, so you can
-command the swarm in a few lines of Python (only extra dependency:
-[`requests`](https://pypi.org/project/requests/)):
+## Try the simulator
 
-```python
-import requests, time
+See the whole thing run with nothing but Python!
 
-BASE = "http://localhost:8000"
-bot = requests.get(f"{BASE}/controller/dotbots").json()[0]["address"]
+The command below will run a simulated swarm, which you can observe in a web UI at http://localhost:8000/PyDotBot/ :
 
-# roll in a circle for ~5 s - left_y and right_y are the two wheel speeds
-for _ in range(50):
-    requests.put(f"{BASE}/controller/dotbots/{bot}/0/move_raw",
-                 json={"left_x": 0, "left_y": 60, "right_x": 0, "right_y": 30})
-    time.sleep(0.1)
-requests.put(f"{BASE}/controller/dotbots/{bot}/0/move_raw",
-             json={"left_x": 0, "left_y": 0, "right_x": 0, "right_y": 0})
+```bash
+dotbot run simulator -w
 ```
 
-The full surface - every endpoint, the live WebSocket stream, and CSV data
-logging - is in the [REST / WebSocket reference][rest-doc] (or the
-[MQTT bridge][mqtt-doc]). A higher-level Python SDK is planned; today you talk to
-the controller over REST/WebSocket/MQTT.
+Drive the simulated bots from the UI, or run a bundled demo in a
+second terminal:
 
-The firmware for the DotBots can be found [here][dotbot-firmware-repo].
+```bash
+dotbot run demo circle   # drive one bot in a circle (the simplest demo)
+```
 
-## Prerequisites (for real hardware)
+Learn how to script the swarm from your own code, run the richer examples, and more - all with
+no hardware - in the [simulator guide][simulator-doc].
 
-Driving an already-provisioned swarm - or the simulator above - needs nothing but
-Python. The tools below are only for building or cable-flashing firmware yourself.
+## Deploy a real swarm
 
-Software to install (as needed):
-- Python ≥ 3.11 - ensure you also have [pip](https://pip.pypa.io/en/stable/) available in your PATH
-- [nRF Command Line Tools](https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools) (`nrfjprog`), for commands such as `dotbot device flash`
-- [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/), for commands such as `dotbot fw build`
+The DotBot is made to operate as a swarm, here is how you can deploy it on real robots.
+
+### Prerequisites
 
 Minimal hardware setup:
 - DotBot v3, as well as a USB-C cable and a barrel-jack charger (2.5 mm, 6–18 V, 5/10 A)
 - nRF5340-DK to use as gateway, as well as a micro-USB cable
 
-## Install
+Software to install (as needed):
+- Python ≥ 3.11 - ensure you also have [pip](https://pip.pypa.io/en/stable/) available in your PATH
+- [nRF Command Line Tools](https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools) (`nrfjprog`), for commands such as `dotbot device flash`
 
-```bash
-pip install --pre pydotbot   # --pre while 0.29 is in pre-release
-git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
-```
-
-## Usage
-
-```
-$ dotbot --help
-Usage: dotbot [OPTIONS] COMMAND [ARGS]...
-
-  One CLI for the whole DotBot workflow: build and flash firmware, program and
-  control a single robot, and run experiments over the air across a swarm -
-  from one bot to a thousand.
-
-Commands:
-  fw      Firmware artifacts (no hardware): build / fetch / list / make.
-  device  One connected device (cable/probe): flash an app/role, read info.
-  swarm   The fleet over the air: status, start/stop, OTA flash, monitor.
-  run     Host-side processes: controller, gateway, simulator, calibration, demos, teleop.
-  config  Show the resolved config and where it came from; scaffold one with init.
-```
-
-Every command and flag is documented in the [CLI reference][cli-doc].
-
-## Quickstart - one bot
-
-Build and flash firmware for a single dotbot:
-
-```bash
-# build the bare dotbot apps into ./artifacts/ (needs SEGGER Embedded Studio)
-# two steps because the DotBot has two cores
-dotbot fw artifacts --app dotbot
-dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
-# cable-flash it to the bot whose J-Link serial starts with 77
-dotbot device flash dotbot -s 77  # app core
-dotbot device flash nrf5340_net -b nrf5340dk-net -s 77  # network core
-```
-
-Now, build and flash the gateway to connect to a robot.
-The gateway is a dev board (e.g. an nRF52840-DK) plugged into your
-computer; it bridges the robot's radio to USB serial.
-
-```bash
-# build the gateway firmware for your DK board into ./artifacts/ (needs SEGGER Embedded Studio)
-dotbot fw artifacts --app dotbot_gateway --target nrf52840dk
-# cable-flash it to the DK whose J-Link serial starts with 10
-dotbot device flash dotbot_gateway -b nrf52840dk -s 10
-```
-
-With a gateway plugged into your computer, point the controller at it
-and open the web UI:
-
-```bash
-dotbot run controller --conn /dev/ttyACM0 -w  # serial gateway; no swarm-id needed
-```
-
-More detail: building and flashing one board ([`fw`][fw-doc] / [`device`][device-doc])
-and driving it from the web UI ([controller guide][controller-doc]).
-
-## Quickstart - a swarm
-
-### setup the swarm
+### Setup
 
 To operate as a swarm, set your swarm connection config:
 
@@ -173,13 +95,13 @@ We also need a more powerful gateway firmware. Let's flash both - the network
 id comes from your config:
 
 ```bash
-dotbot fw fetch -f 0.8.0rc1  # pull the pre-compiled firmwares from a release
-dotbot device flash-mari-gateway -s 10 -f 0.8.0rc1  # flash the gateway
-dotbot device flash-swarmit-sandbox -s 77 -f 0.8.0rc1  # the sandbox firmware - do this on each dotbot
+dotbot fw fetch  # pull the pinned pre-compiled firmwares (swarmit + dotbot-firmware)
+dotbot device flash-mari-gateway -s 10  # flash the gateway
+dotbot device flash-swarmit-sandbox -s 77  # the sandbox firmware - do this on each dotbot
 ```
 
 (`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch
-the release into `./artifacts/` if it isn't already there.)
+the firmware into `~/.dotbot/artifacts/` if it isn't already there.)
 
 Now, run the gateway (the broker comes from your config):
 
@@ -187,22 +109,24 @@ Now, run the gateway (the broker comes from your config):
 dotbot run gateway -p /dev/cu.usbmodem0010500324491
 ```
 
-### use the swarm
+### Deploy and control
 
 You can flash as many dotbots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
 ```bash
-dotbot swarm flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
+dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-1.22.0rc1/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
 ```
 
 (`dotbot swarm` reads the same `dotbot.toml` as the rest - pass `--conn` /
-`--swarm-id` to override it for one run.)
+`--swarm-id` to override it for one run. That path is the `dotbot-firmware`
+release `dotbot fw fetch` cached - run `dotbot fw list` to see the exact paths
+and versions on your machine.)
 
 Then, flash another experiment:
 
 ```bash
 dotbot swarm stop  # ensure all robots are in bootloader
-dotbot swarm flash ./artifacts/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
+dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-1.22.0rc1/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware allows bots to be remote-controlled
 ```
 
 Observe and control your swarm from a web interface:
@@ -214,36 +138,47 @@ dotbot run controller -w  # will open a webpage at http://localhost:8000/PyDotBo
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
 is in the [`swarm` reference][swarm-doc].
 
-## Quickstart - Lighthouse 2 localization
+### Calibrate positions (optional)
 
-Give your robots a real-world `(x, y)` position. You'll need at least one
-Lighthouse 2 base station and the calibration extra
-(`pip install --pre 'pydotbot[calibrate]'`).
+Give the bots real-world `(x, y)` with Lighthouse 2 - capture once from any bot
+over the air, then push the result to the whole fleet (needs the `[calibrate]`
+extra, below):
 
 ```bash
-# 1. flash the capture firmware to a cabled dotbot and collect four corner points
-dotbot device flash lh2_calibration -s 77
-dotbot run lh2-calibration collect -p /dev/tty.usbmodem0007745943981 -d 200  # square of side 20 cm
-
-# 2. push the resulting calibration to the fleet over the air
-dotbot swarm stop  # ensure all robots are in bootloader
-dotbot swarm calibrate-lh2 ~/.dotbot/calibration-2026-05-26T14-00-36Z.toml
+dotbot swarm stop                                              # bots must be idle to capture
+dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every bot
 ```
 
-Your bots now report their `(x, y)` location. The full setup - arena sizing,
-base-station placement, and troubleshooting - is in the
-[LH2 calibration guide][lh2-doc].
+`-d` is your reference square's side, in mm (one bot's capture calibrates the
+whole arena). Full walkthrough - arena sizing and the cabled alternative - is in
+the [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
-Full command reference and guides - running the controller + web UI, the four
-CLI namespaces (`fw` / `device` / `swarm` / `run`), hardware, and LH2
-calibration - are in the [documentation][doc-link].
+- **Drive a single bot** end to end - build, flash, and control one DotBot:
+  the [one-bot guide][one-bot-doc].
+- **Position tracking with Lighthouse 2** - give the fleet real-world `(x, y)`,
+  calibrated over the air: the [LH2 calibration guide][lh2-doc] (a cabled
+  alternative is covered there too).
+- **The controller + web UI** - drive and visualize a swarm from the browser:
+  the [controller guide][controller-doc].
+- **Build firmware from source** instead of `dotbot fw fetch` - needs
+  [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/)
+  and a DotBot-firmware checkout:
+  ```bash
+  git clone --recurse-submodules --branch develop https://github.com/DotBots/DotBot-firmware.git
+  export DOTBOT_FIRMWARE_REPO=$(pwd)/DotBot-firmware
+  ```
+  then `dotbot fw build` / `dotbot fw artifacts` (see [`fw`][fw-doc]).
+- **Everything else** - the full `dotbot` CLI (`fw` / `device` / `swarm` / `run`
+  + `config`), the REST/WS and MQTT surfaces, and hardware notes: the
+  [documentation][doc-link].
 
-Swarm orchestration is in the base install. Only LH2 calibration needs an extra:
+Most of `dotbot` is in the base install; only LH2 calibration needs an extra:
 
 ```bash
-pip install --pre 'pydotbot[calibrate]'  # opencv-python + textual (LH2 calibration)
+pip install --pre 'pydotbot[calibrate]'   # opencv (the LH2 homography solve)
 ```
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
@@ -271,14 +206,12 @@ See `LICENSE` in each component repository.
 [license-link]: https://github.com/DotBots/pydotbot/blob/main/LICENSE.txt
 [codecov-badge]: https://codecov.io/gh/DotBots/PyDotBot/branch/main/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/DotBots/PyDotBot
-[dotbot-firmware-repo]: https://github.com/DotBots/DotBot-firmware
 [cli-doc]: https://pydotbot.readthedocs.io/en/latest/cli/index.html
 [fw-doc]: https://pydotbot.readthedocs.io/en/latest/cli/fw.html
-[device-doc]: https://pydotbot.readthedocs.io/en/latest/cli/device.html
 [swarm-doc]: https://pydotbot.readthedocs.io/en/latest/cli/swarm.html
 [config-doc]: https://pydotbot.readthedocs.io/en/latest/reference/configuration.html
+[simulator-doc]: https://pydotbot.readthedocs.io/en/latest/guides/simulator.html
 [controller-doc]: https://pydotbot.readthedocs.io/en/latest/guides/controller.html
+[one-bot-doc]: https://pydotbot.readthedocs.io/en/latest/guides/one-bot.html
 [lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
 [troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
-[rest-doc]: https://pydotbot.readthedocs.io/en/latest/reference/rest.html
-[mqtt-doc]: https://pydotbot.readthedocs.io/en/latest/reference/mqtt.html

@@ -43,8 +43,8 @@ segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
 | Goal | Command |
 |---|---|
 | Compile an app, leave it in the SES `Output/` tree (path echoed) | `dotbot fw build` |
-| Compile **and** collect a flat `<app>-<board>.hex` into `./artifacts/` | `dotbot fw artifacts` |
-| Download a published release into `./artifacts/<version>/` | `dotbot fw fetch -f <version>` |
+| Compile **and** collect a flat `<app>-<board>.hex` into the cache | `dotbot fw artifacts` |
+| Download the pinned release(s) into `~/.dotbot/artifacts/<source>-<version>/` | `dotbot fw fetch [-S <source> -f <version>]` |
 | List targets you can build | `dotbot fw targets [--sandbox]` |
 | List what's cached locally | `dotbot fw list` |
 | A Makefile knob the CLI doesn't model | `dotbot fw make <args…>` |
@@ -52,9 +52,10 @@ segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
 **`build` vs `artifacts`**: both compile via SES. `build` stops once SES is
 done (output stays buried in the per-target `Output/` tree). `artifacts` goes
 one step further and copies a flat, predictably-named `<app>-<board>.hex` into
-`./artifacts/` - which is exactly where `dotbot device flash <app>` and the
-swarm tools look. Reach for `artifacts` when you intend to flash; `build` when
-you only want to know it compiles.
+the cache (`~/.dotbot/artifacts/dotbot-firmware-local/`) - which is exactly
+where `dotbot device flash <app>` and the swarm tools look. Reach for
+`artifacts` when you intend to flash; `build` when you only want to know it
+compiles.
 
 ## `build` / `artifacts` flags
 
@@ -69,8 +70,8 @@ Both share the same build options:
 | `--rebuild` | Force a full rebuild (default: incremental) |
 | `-v, --verbose` | Full SES output |
 
-`artifacts` adds `--out <dir>` (default `./artifacts/`) and `--print-path`
-(report where the artifact would land without building). See
+`artifacts` adds `--out <dir>` (default `~/.dotbot/artifacts/dotbot-firmware-local/`)
+and `--print-path` (report where the artifact would land without building). See
 `dotbot fw <cmd> --help` for the full list.
 
 > **Flag mismatch to remember:** `fw` selects a board with `--target/-t`, but
@@ -105,12 +106,40 @@ Notes:
 - The nRF5340 radio lives on the **net core**, so a gateway needs two images:
   `dotbot_gateway` on `nrf5340dk-app` **and** `nrf5340_net` on `nrf5340dk-net`.
 
+## `fetch` - pinned firmware
+
+`dotbot fw fetch` downloads prebuilt firmware from two release sources -
+**swarmit** (the swarm system images) and **DotBot-firmware** (the bare and
+sandbox apps) - into `~/.dotbot/artifacts/<source>-<version>/`, each with a
+`manifest.json` recording where it came from.
+
+With no flags it fetches the **exact versions this `dotbot` is pinned to**, so a
+given `dotbot` always pulls a known-good, reproducible set:
+
+- **swarmit** is also a Python dependency, so its firmware version is read from
+  the installed `swarmit` package.
+- **DotBot-firmware** is not a Python package, so the version `dotbot` is built
+  and tested against is declared in `dotbot` and bumped deliberately.
+
+Override per source when you need something else - the two version
+independently, so `-f` requires `-S`:
+
+```bash
+dotbot fw fetch                                # pinned versions, both sources
+dotbot fw fetch -S dotbot-firmware -f latest   # newest dotbot-firmware release
+dotbot fw fetch -S swarmit -f 0.8.0rc2         # a specific swarmit version
+```
+
+The cache is user-level and shared across projects (override the location with
+`$DOTBOT_ARTIFACTS_DIR`); `dotbot device flash` and the swarm tools resolve
+their input from it.
+
 ## Examples
 
 ```bash
 export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware
 
-# Bare DotBot app for a DotBot v3 → ./artifacts/dotbot-dotbot-v3.hex
+# Bare DotBot app for a DotBot v3 → ~/.dotbot/artifacts/dotbot-firmware-local/dotbot-dotbot-v3.hex
 dotbot fw artifacts --app dotbot
 
 # Just confirm an app compiles (no collection)
@@ -123,8 +152,8 @@ dotbot fw artifacts --app nrf5340_net    -t nrf5340dk-net
 # Sandbox (NS) "spin" app for a DotBot v3 → .bin, for OTA via swarm
 dotbot fw artifacts --app spin -t dotbot-v3 --sandbox
 
-# Pull a published release instead of building → ./artifacts/<version>/
-dotbot fw fetch -f v1.0.0
+# Download released firmware instead of building (see "fetch" above)
+dotbot fw fetch            # the versions this dotbot is pinned to (both sources)
 
 # See what's cached
 dotbot fw list
@@ -147,4 +176,4 @@ this machine.
 
 - [`dotbot device`](device.md) - flash an artifact onto one cabled board.
 - [`dotbot swarm`](swarm.md) - push a sandbox app to the fleet over the air.
-- [LH2 calibration](../guides/lh2-calibration.md) - the `lh2_calibration` app workflow.
+- [LH2 calibration (cabled)](../guides/lh2-calibration-cabled.md) - the `lh2_calibration` app workflow.

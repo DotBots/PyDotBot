@@ -9,22 +9,24 @@ sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
 
 - `build` compiles from source via SES (`emBuild`) in `DotBot-firmware`,
   leaving the result in the SES `Output/.../Exe/` tree and echoing that
-  path — it does *not* copy into `./artifacts/`. Bare apps by default;
+  path — it does *not* copy into the cache. Bare apps by default;
   `--sandbox` builds the TrustZone NS flavor (`sandbox-<board>`, `.bin`).
-- `artifacts` builds *and* collects the result into `./artifacts/`, with
-  the flat `<app>-<board>.hex` / `<app>-sandbox-<board>.bin` names.
-- `fetch` downloads a published release into `./artifacts/<version>/`.
-- `list` shows what's cached in `./artifacts/`.
+- `artifacts` builds *and* collects the result into the cache
+  (`~/.dotbot/artifacts/dotbot-firmware-local/`), with the flat
+  `<app>-<board>.hex` / `<app>-sandbox-<board>.bin` names.
+- `fetch` downloads the pinned release (or a `-f <tag>`/`latest`
+  override) into `~/.dotbot/artifacts/<source>-<version>/`.
+- `list` shows what's cached in `~/.dotbot/artifacts/`.
 - `make` is the low-level escape hatch: it forwards arbitrary arguments
   to `make` in the firmware repo (workspace-resolved SEGGER_DIR) for the
   Makefile knobs `build` deliberately doesn't model.
 
-Only `artifacts` and `fetch` populate `./artifacts/`. The device-flash
+Only `artifacts` and `fetch` populate the cache. The device-flash
 commands then auto-resolve their input, by *different* rules: `dotbot
-device flash <app>` resolves an app image present-in-`./artifacts/` →
+device flash <app>` resolves an app image present in `~/.dotbot/artifacts/` →
 build-from-source → error (it never fetches); `device flash-swarmit-sandbox`
-/ `flash-mari-gateway` resolve a release's system firmware
-present-in-`./artifacts/` → fetch (they never build).
+/ `flash-mari-gateway` resolve a release's system firmware present in
+`~/.dotbot/artifacts/` → fetch (they never build).
 """
 
 import sys
@@ -32,7 +34,11 @@ from pathlib import Path
 
 import click
 
-from dotbot.cli._artifacts import artifacts_dir, echo_artifact_path
+from dotbot.cli._artifacts import (
+    DEFAULT_ARTIFACTS_DISPLAY,
+    artifacts_dir,
+    echo_artifact_path,
+)
 from dotbot.cli._cfg import from_config
 from dotbot.cli._fw_helpers import (
     BARE_TARGETS,
@@ -211,7 +217,7 @@ def list_targets(sandbox):
     "out_dir",
     type=click.Path(file_okay=False, dir_okay=True),
     default=None,
-    help="Where to collect artifacts. Default: ./artifacts/ (your CWD).",
+    help=f"Where to collect artifacts. Default: {DEFAULT_ARTIFACTS_DISPLAY}/dotbot-firmware-local/.",
 )
 @click.option(
     "--print-path",
@@ -222,7 +228,12 @@ def list_targets(sandbox):
 @click.option("-v", "--verbose", is_flag=True, default=False)
 @click.pass_context
 def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbose):
-    """Build + collect artifacts into ./artifacts/ (default)."""
+    """Build + collect artifacts into the local cache (default).
+
+    Without --out, built apps land in the source-qualified
+    ``<cache>/dotbot-firmware-local/`` dir so `device flash <app>` finds them
+    alongside fetched releases.
+    """
     import shutil
 
     target = from_config(ctx, "target", "board", "fw")
@@ -237,7 +248,11 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
             )
         click.echo(str(artifact_path(build_target, project, config)))
         return
-    out = Path(out_dir).resolve() if out_dir else artifacts_dir()
+    out = (
+        Path(out_dir).resolve()
+        if out_dir
+        else artifacts_dir() / "dotbot-firmware-local"
+    )
     click.echo(
         f"Building + collecting artifacts for {target} ({config}) → {out}/...",
         err=True,
@@ -263,28 +278,73 @@ def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbos
 
 @cmd.command()
 @click.option(
-    "--fw-version", "-f", required=True, help="Release version tag, or 'local'."
+    "--source",
+    "-S",
+    type=click.Choice(list(("swarmit", "dotbot-firmware"))),
+    default=None,
+    help="Limit to one source (default: fetch the pinned version from all sources).",
+)
+@click.option(
+    "--fw-version",
+    "-f",
+    default=None,
+    help="Override the pinned version for --source: a release tag, 'latest', or 'local'.",
 )
 @click.option(
     "--local-root",
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-    help="Root of a local DotBot-firmware/swarmit build (with --fw-version local).",
+    help="Root of a local build tree (with --source <src> --fw-version local).",
 )
-def fetch(fw_version, local_root):
-    """Download a released firmware set into ./artifacts/<version>/."""
-    from dotbot.firmware.flash import fetch_assets
+def fetch(source, fw_version, local_root):
+    """Download firmware into ~/.dotbot/artifacts/<source>-<version>/.
 
-    out = fetch_assets(fw_version, artifacts_dir(), local_root)
-    echo_artifact_path(out, action="fetched into")
+    With no flags, fetches the exact release this pydotbot is pinned to, from
+    every source: swarmit (swarm system images, version inferred from the
+    installed swarmit package) and DotBot-firmware (bare + sandbox apps, the
+    version pydotbot is tested against). The two version independently, so
+    overriding with -f requires a --source - pass `-f latest` for the newest
+    release or `-f <tag>` for a specific one.
+    """
+    from dotbot import pydotbot_version
+    from dotbot.firmware.fetch import (
+        DEFAULT_FETCH_SOURCES,
+        _short_path,
+        fetch_assets,
+        pinned_version,
+    )
+
+    if fw_version is not None and source is None:
+        raise click.ClickException(
+            "Pass --source with -f/--fw-version: swarmit and dotbot-firmware "
+            "version independently."
+        )
+    sources = [source] if source else list(DEFAULT_FETCH_SOURCES)
+    fetched: list[Path] = []
+    for src in sources:
+        if fw_version is None:
+            version = pinned_version(src)
+            click.echo(
+                f"Fetching {src} {version} (pinned by pydotbot {pydotbot_version()})..."
+            )
+        else:
+            version = fw_version
+            if version == "latest":
+                click.echo(f"Fetching the latest {src} release...")
+        fetched.append(fetch_assets(src, version, artifacts_dir(), local_root))
+    click.echo("\nDone. Firmware fetched into:")
+    for path in fetched:
+        click.echo(f"  {_short_path(path)}")
 
 
 @cmd.command(name="list")
 def list_artifacts():
-    """List firmware artifacts cached in ./artifacts/."""
+    """List firmware artifacts cached in ~/.dotbot/artifacts/."""
     root = artifacts_dir()
     echo_artifact_path(root, action="listing")
     if not root.is_dir():
-        click.echo("(no ./artifacts/ yet — run `dotbot fw build` or `dotbot fw fetch`)")
+        click.echo(
+            "(nothing cached yet — run `dotbot fw fetch` or `dotbot fw artifacts`)"
+        )
         return
     found = sorted(
         p for p in root.rglob("*") if p.is_file() and p.suffix in (".hex", ".bin")

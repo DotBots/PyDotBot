@@ -32,8 +32,9 @@ UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md)
 
 ## Flash an app
 
-`flash` resolves `<app>` to `./artifacts/<app>-<board>.hex`, **building it if the
-file isn't there**; an explicit `.hex`/`.bin` path is flashed as-is.
+`flash` resolves `<app>` to a cached `<app>-<board>.hex` (under
+`~/.dotbot/artifacts/`), **building it if the file isn't there**; an explicit
+`.hex`/`.bin` path is flashed as-is.
 
 ```bash
 export DOTBOT_FIRMWARE_REPO=$(pwd)/repos/DotBot-firmware
@@ -86,7 +87,7 @@ dotbot device flash nrf5340_net -b nrf5340dk-net -s 10
 
 `flash-mari-gateway` and `flash-swarmit-sandbox` flash a **complete system firmware**
 (both cores) and write the **network identity** in one shot. They auto-fetch the
-named release into `./artifacts/` if it isn't cached.
+named release into `~/.dotbot/artifacts/` if it isn't cached.
 
 ```bash
 # nRF5340-DK → swarm gateway
@@ -99,7 +100,7 @@ dotbot device flash-swarmit-sandbox --swarm-id 0100 -f 0.8.0rc1 -s 77
 | Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
 |---|---|---|
 | `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
-| `-f, --fw-version` | release to flash (required) | release to flash (required) |
+| `-f, --fw-version` | release to flash (default: the pinned swarmit version) | release to flash (default: the pinned swarmit version) |
 | `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
 | `-l, --calibration` | - | optional LH2 calibration file to bake in |
 

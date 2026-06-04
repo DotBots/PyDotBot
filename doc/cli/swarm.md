@@ -46,8 +46,8 @@ The OTA payload is a **sandbox** app - a TrustZone non-secure `.bin`. Build it,
 or fetch a pre-compiled release:
 
 ```bash
-dotbot fw artifacts --sandbox          # builds -> ./artifacts/<app>-sandbox-<board>.bin
-dotbot fw fetch -f 0.8.0rc1            # or pull from a release into ./artifacts/<version>/
+dotbot fw artifacts --sandbox          # builds -> ~/.dotbot/artifacts/dotbot-firmware-local/<app>-sandbox-<board>.bin
+dotbot fw fetch                        # or pull the pinned releases into ~/.dotbot/artifacts/<source>-<version>/
 ```
 
 Sandbox apps include `dotbot`, `move`, `rgbled`, `spin`, `timer`. Artifact
@@ -83,7 +83,7 @@ to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
 ```bash
 dotbot swarm status                                # who's out there + their state
 dotbot swarm status -w                             # keep watching
-dotbot swarm flash ./artifacts/spin-sandbox-dotbot-v3.bin -ys
+dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-local/spin-sandbox-dotbot-v3.bin -ys
 dotbot swarm stop                                  # back to bootloader (before re-flashing)
 dotbot swarm start                                 # (re)start the loaded app
 dotbot swarm monitor                               # tail SWARMIT_EVENT_LOG from bots
@@ -101,18 +101,24 @@ To replace a running experiment: `stop`, then `flash ... -ys`.
 | `-t`, `--ota-timeout` | seconds per OTA ACK (default `0.7`) |
 | `-r`, `--ota-max-retries` | retries per OTA message (default `10`) |
 
-## 6. Push an LH2 calibration over the air
+## 6. LH2 calibration over the air
 
-Send a calibration (captured from one cabled bot - see
-[LH2 calibration](../guides/lh2-calibration.md)) to the whole fleet:
+Capture and push a Lighthouse-2 calibration for one DotBot without a cable,
+driving it over the swarm. The arena geometry and `-d` sizing live in the
+[LH2 calibration guide](../guides/lh2-calibration.md).
 
 ```bash
-dotbot swarm stop
-dotbot swarm calibrate-lh2 ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm stop                                              # capture only runs in READY
+dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one bot -> solve -> save
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml   # apply to every ready bot
 ```
 
-It accepts a `calibration-*.toml` or the legacy raw payload; the format is
-picked by file extension.
+`collect` walks one bot through the four arena corners over the air, solves the
+homography, and saves it under `~/.dotbot/`. `push` (no `--device`) then sends
+that calibration to **every ready bot** - the arena shares one transform.
+(`collect --push` is a single-bot shortcut: it sends only to the captured bot.)
+`push` takes a `calibration-*.toml` or the legacy raw payload - the format is
+picked by file extension. Get the `--device` address from `dotbot swarm status`.
 
 ## Two web servers - don't mix them up
 

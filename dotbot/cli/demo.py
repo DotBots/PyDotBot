@@ -12,6 +12,7 @@ and registering it below.
 
 import click
 
+from dotbot.examples.circle.circle import main as _circle_main
 from dotbot.examples.qrkey_demo.cli import main as _qrkey_main
 
 
@@ -43,4 +44,5 @@ def cmd(ctx, list_demos):
 # We pass `name=...` rather than mutating `_qrkey_main.name` so the
 # demo's own test suite (which imports the same Click command) stays
 # unaffected.
+cmd.add_command(_circle_main, name="circle")
 cmd.add_command(_qrkey_main, name="qr")

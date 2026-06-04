@@ -134,6 +134,10 @@ linkcheck_ignore = [
     # intermittently time out or rate-limit the linkcheck bot.
     r"https://img\.shields\.io/",
     r"https://badge\.fury\.io/",
+    # dotbots.org and segger.com return 403 to the linkcheck bot (WAF /
+    # user-agent block); both links are valid for humans.
+    r"https?://www\.dotbots\.org",
+    r"https://www\.segger\.com/",
 ]
 
 # -- Options for autosummary/autodoc output -----------------------------------
