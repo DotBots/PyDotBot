@@ -118,19 +118,20 @@ dotbot run gateway -p /dev/cu.usbmodem0010500324491
 You can flash as many DotBots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
 ```bash
-dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-1.22.0/spin-sandbox-dotbot-v3.bin -ys  # flash the whole fleet with a simple spinning app
+dotbot swarm flash spin -ys  # flash the whole fleet with a simple spinning app
 ```
 
 (`dotbot swarm` reads the same `dotbot.toml` as the rest - pass `--conn` /
-`--swarm-id` to override it for one run. That path is the `dotbot-firmware`
-release `dotbot fw fetch` cached - run `dotbot fw list` to see the exact paths
-and versions on your machine.)
+`--swarm-id` to override it for one run. `spin` is a bundled app name -
+`dotbot swarm flash --list` shows them all, and an explicit `.bin` path still
+works. Names resolve to what `dotbot fw fetch` cached; `dotbot fw list` shows
+the exact paths and versions on your machine.)
 
 Then, flash another experiment:
 
 ```bash
 dotbot swarm stop  # ensure all DotBots are in bootloader
-dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-1.22.0/dotbot-sandbox-dotbot-v3.bin -ys  # this firmware lets DotBots be remote-controlled
+dotbot swarm flash rc-car -ys  # this firmware lets DotBots be remote-controlled
 ```
 
 Observe and control your swarm from a web interface:
