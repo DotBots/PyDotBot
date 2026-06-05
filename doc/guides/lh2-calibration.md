@@ -36,7 +36,7 @@ dotbot swarm stop                                  # put the DotBots in READY
 dotbot swarm lh2-calibration collect \
     --device BC3D3C8A2A6F8E68 -d 500               # capture from one DotBot -> solve -> save
 dotbot swarm lh2-calibration push \
-    ~/.dotbot/calibration-<UTC>.toml               # apply to every ready DotBot
+    ~/.dotbot/calibrations/calibration-<UTC>.toml  # apply to every ready DotBot
 ```
 
 `collect` walks one DotBot through the four corners - **top-left -> top-right ->

@@ -41,7 +41,7 @@ export DOTBOT_FIRMWARE_REPO=$(pwd)/repos/DotBot-firmware
 
 # Build, then flash the bare DotBot app onto a DotBot v3 (board defaults to dotbot-v3)
 dotbot fw artifacts --app dotbot
-dotbot device flash dotbot -s 77
+dotbot device flash dotbot --probe 77
 ```
 
 `-b/--board` selects the **chip family and core** to program. The nrfjprog family
@@ -55,7 +55,7 @@ e.g. don't flash an nRF53 image onto a connected nRF52 (or vice versa).
 ```bash
 # Gateway onto an nRF52840-DK (device flash picks -f NRF52 from the board)
 dotbot fw artifacts --app dotbot_gateway -t nrf52840dk
-dotbot device flash dotbot_gateway -b nrf52840dk -s 10
+dotbot device flash dotbot_gateway -b nrf52840dk --probe 10
 ```
 
 ### nRF5340 = two cores
@@ -67,11 +67,11 @@ net-core image. Build and flash each for its own target - the app image is
 ```bash
 # App core
 dotbot fw artifacts --app dotbot_gateway -t nrf5340dk-app
-dotbot device flash dotbot_gateway -b nrf5340dk-app -s 10
+dotbot device flash dotbot_gateway -b nrf5340dk-app --probe 10
 
 # Net core (-b *-net routes to CP_NETWORK)
 dotbot fw artifacts --app nrf5340_net -t nrf5340dk-net
-dotbot device flash nrf5340_net -b nrf5340dk-net -s 10
+dotbot device flash nrf5340_net -b nrf5340dk-net --probe 10
 ```
 
 **`flash` flags** (see `dotbot device flash --help` for the full list):
@@ -79,7 +79,7 @@ dotbot device flash nrf5340_net -b nrf5340dk-net -s 10
 | Flag | Meaning |
 |---|---|
 | `-b, --board` | Target board → chip family + core (default `dotbot-v3`) |
-| `-s, --sn-starting-digits` | J-Link serial **prefix**, e.g. `77` (v3) or `10` (DK) |
+| `--probe` | J-Link serial **prefix**, e.g. `77` (v3) or `10` (DK); omit it when only one probe is attached |
 | `--sandbox` | Resolve the sandbox-app flavor (`.bin`) |
 | `--build-config` | `Debug` \| `Release` (default `Release`) |
 
@@ -91,17 +91,17 @@ named release into `~/.dotbot/artifacts/` if it isn't cached.
 
 ```bash
 # nRF5340-DK → swarm gateway
-dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
 
 # DotBot v3 → swarm sandbox host (the firmware that runs OTA apps)
-dotbot device flash-swarmit-sandbox --swarm-id 0100 -f 0.8.0rc1 -s 77
+dotbot device flash-swarmit-sandbox --swarm-id 0100 -f 0.8.0rc1 --probe 77
 ```
 
 | Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
 |---|---|---|
 | `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
 | `-f, --fw-version` | release to flash (default: the pinned swarmit version) | release to flash (default: the pinned swarmit version) |
-| `-s, --sn-starting-digits` | J-Link serial prefix | J-Link serial prefix |
+| `--probe` | J-Link serial prefix | J-Link serial prefix |
 | `-l, --calibration` | - | optional LH2 calibration file to bake in |
 
 A board flashed with `flash-swarmit-sandbox` is what [`swarm flash`](swarm.md)
@@ -110,7 +110,7 @@ targets to run sandboxed apps over the air.
 ## Inspect a board
 
 ```bash
-dotbot device info -s 77
+dotbot device info --probe 77
 ```
 
 Reports the chip id and network identity. It never fails on a blank board - it

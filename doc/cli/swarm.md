@@ -25,8 +25,8 @@ USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
-dotbot device flash-mari-gateway      --swarm-id 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
-dotbot device flash-swarmit-sandbox --swarm-id 1234 -s 77 -f 0.8.0rc1   # each DotBot -> sandbox host
+dotbot device flash-mari-gateway      --swarm-id 1234 --probe 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
+dotbot device flash-swarmit-sandbox --swarm-id 1234 --probe 77 -f 0.8.0rc1   # each DotBot -> sandbox host
 ```
 
 ## 2. Start the host bridge
@@ -53,6 +53,9 @@ dotbot fw fetch                        # or pull the pinned releases into ~/.dot
 Sandbox apps include `dotbot`, `move`, `rgbled`, `spin`, `timer`. Artifact
 names look like `spin-sandbox-dotbot-v3.bin`. (Bare `.hex` apps are *not* OTA
 payloads - those are cabled via [`device flash`](device.md).)
+
+The common demos have short names, so you rarely type a path - see
+[Flash by name](#flash-by-name) below.
 
 ## 4. Connect
 
@@ -83,7 +86,7 @@ to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
 ```bash
 dotbot swarm status                                # who's out there + their state
 dotbot swarm status -w                             # keep watching
-dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-local/spin-sandbox-dotbot-v3.bin -ys
+dotbot swarm flash spin -ys                        # flash a bundled demo by name
 dotbot swarm stop                                  # back to bootloader (before re-flashing)
 dotbot swarm start                                 # (re)start the loaded app
 dotbot swarm monitor                               # tail SWARMIT_EVENT_LOG from bots
@@ -92,10 +95,26 @@ dotbot swarm message "hello"                       # custom text to the bots
 
 To replace a running experiment: `stop`, then `flash ... -ys`.
 
+### Flash by name
+
+`swarm flash` takes either a bundled app **name** or an explicit `.hex`/`.bin`
+**path**. A name resolves to the matching `<app>-sandbox-dotbot-v3.bin` in your
+artifacts cache (run `dotbot fw fetch` first); a path is flashed as-is. List
+the names with `dotbot swarm flash --list`:
+
+| Name | Firmware | What it does |
+|---|---|---|
+| `rc-car` | `dotbot-sandbox-dotbot-v3.bin` | drive the DotBot from the UI / keyboard / joystick |
+| `spin` | `spin-sandbox-dotbot-v3.bin` | the DotBots spin in place |
+| `lights` | `rgbled-sandbox-dotbot-v3.bin` | the on-board RGB LED |
+
+For another board or an app outside this list, pass the full `.bin` path.
+
 ### `swarm flash` flags
 
 | Flag | Meaning |
 |---|---|
+| `--list` | print the bundled-app names and exit |
 | `-y`, `--yes` | flash without the confirmation prompt |
 | `-s`, `--start` | start the app once flashed |
 | `-t`, `--ota-timeout` | seconds per OTA ACK (default `0.7`) |
@@ -110,11 +129,11 @@ driving it over the swarm. The arena geometry and `-d` sizing live in the
 ```bash
 dotbot swarm stop                                              # capture only runs in READY
 dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one DotBot -> solve -> save
-dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml   # apply to every ready DotBot
+dotbot swarm lh2-calibration push ~/.dotbot/calibrations/calibration-<UTC>.toml   # apply to every ready DotBot
 ```
 
 `collect` walks one DotBot through the four arena corners over the air, solves the
-homography, and saves it under `~/.dotbot/`. `push` (no `--device`) then sends
+homography, and saves it under `~/.dotbot/calibrations/`. `push` (no `--device`) then sends
 that calibration to **every ready DotBot** - the arena shares one transform.
 (`collect --push` is a single-DotBot shortcut: it sends only to the captured DotBot.)
 `push` takes a `calibration-*.toml` or the legacy raw payload - the format is

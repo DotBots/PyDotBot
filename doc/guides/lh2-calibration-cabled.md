@@ -28,7 +28,7 @@ The `lh2_calibration` app streams raw LH2 counts over serial. Flash it to the
 cabled DotBot (see [device](../cli/device.md) for serial-prefix selection):
 
 ```bash
-dotbot device flash lh2_calibration -s 77      # board defaults to dotbot-v3
+dotbot device flash lh2_calibration --probe 77      # board defaults to dotbot-v3
 ```
 
 ## 2. Capture the four reference points
@@ -42,7 +42,7 @@ dotbot run lh2-calibration collect -p /dev/cu.usbmodem... -d 500
 
 Move the DotBot to each corner - Top left -> Top right -> Bottom left -> Bottom
 right - pressing the matching button in the TUI at each. When all four are
-captured, save. The calibration is written under `~/.dotbot/` (a
+captured, save. The calibration is written under `~/.dotbot/calibrations/` (a
 `calibration-<UTC>.toml`), the same place the over-the-air flow uses.
 
 | Flag | Default | Meaning |
@@ -61,7 +61,7 @@ over-the-air flow uses - stop any running app first):
 
 ```bash
 dotbot swarm stop
-dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml
+dotbot swarm lh2-calibration push ~/.dotbot/calibrations/calibration-<UTC>.toml
 ```
 
 ### Bake it into the bootloader (header path)

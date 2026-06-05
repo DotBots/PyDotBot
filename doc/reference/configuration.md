@@ -103,7 +103,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | Key | Meaning |
 |---|---|
 | `board` | Target board for flashing. |
-| `sn_starting_digits` | J-Link serial-number prefix selecting which probe. |
+| `probe` | J-Link serial-number prefix selecting which probe (the `--probe` flag). |
 | `build_config` | `Debug` or `Release`. |
 
 `[swarm]` - the fleet over the air (`dotbot swarm`):
@@ -244,9 +244,9 @@ build_config = "Release"
 
 # One cabled device (dotbot device).
 [device]
-board              = "dotbot-v3"
-sn_starting_digits = "77"                  # J-Link serial prefix
-build_config       = "Release"
+board        = "dotbot-v3"
+probe        = "77"                        # J-Link serial prefix
+build_config = "Release"
 
 # The fleet over the air (dotbot swarm).
 [swarm]

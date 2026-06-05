@@ -18,8 +18,8 @@ app) and the network core (the radio) - so you build and flash two images:
 dotbot fw artifacts --app dotbot
 dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
 # cable-flash to the DotBot whose J-Link serial starts with 77
-dotbot device flash dotbot -s 77                        # app core
-dotbot device flash nrf5340_net -b nrf5340dk-net -s 77  # network core
+dotbot device flash dotbot --probe 77                        # app core
+dotbot device flash nrf5340_net -b nrf5340dk-net --probe 77  # network core
 ```
 
 ## 2. Build and flash the gateway
@@ -30,7 +30,7 @@ bridges the DotBot's radio to USB serial.
 ```bash
 dotbot fw artifacts --app dotbot_gateway --target nrf52840dk
 # cable-flash to the DK whose J-Link serial starts with 10
-dotbot device flash dotbot_gateway -b nrf52840dk -s 10
+dotbot device flash dotbot_gateway -b nrf52840dk --probe 10
 ```
 
 ## 3. Drive it from the web UI

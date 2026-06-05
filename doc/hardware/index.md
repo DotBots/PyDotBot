@@ -36,7 +36,7 @@ flashing - just a USB-C cable. Plug it in and flash:
 
 ```bash
 # cabled flash of one DotBot (board defaults to dotbot-v3)
-dotbot device flash dotbot -s 77
+dotbot device flash dotbot --probe 77
 ```
 
 A standalone J-Link is only needed to re-flash the on-board programmer's *own*
@@ -61,7 +61,7 @@ host to the swarm radio.
 
 ```bash
 # flash the gateway role onto a DK (writes the network id + both cores)
-dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
 
 # then run the host-side UART<->MQTT bridge
 dotbot run gateway
