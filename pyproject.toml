@@ -23,7 +23,7 @@ path = "utils/hooks/sdist.py"
 
 [project]
 name = "pydotbot"
-version = "0.29.0rc3"
+version = "0.29.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
@@ -49,9 +49,9 @@ dependencies = [
     "websockets     >= 13.1.0",
     "gmqtt          >= 0.7.0",
     "intelhex       >= 2.3.0",
-    "marilib-pkg    >= 0.9.0rc3",
+    "marilib-pkg    >= 0.9.0",
     "pydotbot-utils >= 0.3.0",
-    "swarmit        >= 0.8.0rc3",
+    "swarmit        >= 0.8.0",
     "toml           >= 0.10.2",
     "tomlkit        >= 0.13.0",
 ]
