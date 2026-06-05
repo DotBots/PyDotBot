@@ -51,7 +51,7 @@ dependencies = [
     "intelhex       >= 2.3.0",
     "marilib-pkg    >= 0.9.0",
     "pydotbot-utils >= 0.3.0",
-    "swarmit        >= 0.8.0rc3",
+    "swarmit        >= 0.8.0",
     "toml           >= 0.10.2",
     "tomlkit        >= 0.13.0",
 ]
