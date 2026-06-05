@@ -29,6 +29,16 @@ if TYPE_CHECKING:
 # Hardware limit: a single waypoint command carries at most this many points.
 MAX_WAYPOINTS = 12
 
+# Motion-loop pacing. A bot reports its mode/position roughly once per position
+# report period (~0.5 s on Mari / the simulator advertisement). Resend no faster
+# than that, so a re-send can't rewind a bot that has already engaged its goal.
+_RESEND_PERIOD = 0.6  # s, between waypoint re-sends while not yet engaged
+_ARRIVAL_POLL = 0.2  # s, between arrival checks
+# A move that never arrives must not hang the script forever (a bot can be stuck,
+# lost, or chasing an unreachable goal). Past this budget the awaited Action
+# raises TimeoutError instead of blocking or falsely reporting success.
+DEFAULT_MOVE_TIMEOUT = 60.0  # s
+
 _COLORS: dict[str, tuple[int, int, int]] = {
     "red": (255, 0, 0),
     "green": (0, 255, 0),
@@ -127,39 +137,67 @@ class Bot:
             )
         )
 
-    def move_to(self, x: float, y: float, *, speed: int = 50) -> Action:
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        *,
+        threshold: int = 100,
+        timeout: float = DEFAULT_MOVE_TIMEOUT,
+    ) -> Action:
         """Drive to a single point. Returns an Action; await it to wait for
-        arrival."""
-        return self.follow([(x, y)])
+        arrival (it raises TimeoutError if the bot does not arrive in
+        `timeout` seconds)."""
+        return self.follow([(x, y)], threshold=threshold, timeout=timeout)
 
-    def follow(self, waypoints, *, threshold: int = 100) -> Action:
+    def follow(
+        self, waypoints, *, threshold: int = 100, timeout: float = DEFAULT_MOVE_TIMEOUT
+    ) -> Action:
         """Drive through a list of (x, y) waypoints. Returns an Action handle
         immediately; await it to wait until the bot reaches the last point.
-        Absorbs the <=12 chunking, resend-until-AUTO, and poll-until-arrival."""
-        return Action(
-            self._drive([(float(x), float(y)) for x, y in waypoints], threshold)
-        )
+        Absorbs the <=12 chunking and resend-until-engaged. Arrival is detected
+        by position, and a bot that never arrives raises TimeoutError rather
+        than hanging or reporting a false 'done'."""
+        points = [(float(x), float(y)) for x, y in waypoints]
+        task = self._swarm._schedule(self._drive(points, threshold, timeout))
+        return Action(task)
 
-    async def _drive(self, points: list[tuple[float, float]], threshold: int) -> None:
+    async def _drive(
+        self, points: list[tuple[float, float]], threshold: int, timeout: float
+    ) -> None:
+        deadline = asyncio.get_running_loop().time() + timeout
         for i in range(0, len(points), MAX_WAYPOINTS):
-            chunk = points[i : i + MAX_WAYPOINTS]
-            await self._send_until_auto(chunk, threshold)
-            await self._wait_until_arrived()
+            await self._follow_chunk(points[i : i + MAX_WAYPOINTS], threshold, deadline)
 
-    async def _send_until_auto(self, chunk, threshold: int) -> None:
-        """Send a waypoint batch, resending until the bot reports AUTO mode (so
-        a dropped command does not stall the run). Bounded so it can't spin
-        forever if the bot never engages."""
-        for _ in range(100):
-            await self._swarm._backend.send_waypoints(
-                self.address, self.application, chunk, threshold
-            )
-            await asyncio.sleep(0.3)
-            if self.mode == ControlModeType.AUTO:
+    async def _follow_chunk(
+        self, chunk: list[tuple[float, float]], threshold: int, deadline: float
+    ) -> None:
+        """Send a waypoint batch and wait until the bot is within `threshold` of
+        the final point. Sends once, then re-sends only while the bot has not
+        engaged (AUTO) and no faster than the report period, so a dropped command
+        can't stall the run but an engaged bot is never rewound. Raises
+        TimeoutError past `deadline` so the awaited Action surfaces a
+        stuck/unreachable bot instead of hanging or claiming false success."""
+        loop = asyncio.get_running_loop()
+        target = Position(*chunk[-1])
+        await self._swarm._backend.send_waypoints(
+            self.address, self.application, chunk, threshold
+        )
+        last_send = loop.time()
+        while True:
+            pos = self.position
+            if pos is not None and pos.distance_to(target) <= threshold:
                 return
-
-    async def _wait_until_arrived(self) -> None:
-        """Wait until the bot leaves AUTO (reached the final waypoint) or its
-        waypoint queue drains."""
-        while self.mode == ControlModeType.AUTO and self.waypoints:
-            await asyncio.sleep(0.2)
+            if loop.time() > deadline:
+                raise TimeoutError(
+                    f"{self.address} did not reach "
+                    f"({target.x:.0f}, {target.y:.0f}) within the move timeout"
+                )
+            if self.mode != ControlModeType.AUTO and (
+                loop.time() - last_send >= _RESEND_PERIOD
+            ):
+                await self._swarm._backend.send_waypoints(
+                    self.address, self.application, chunk, threshold
+                )
+                last_send = loop.time()
+            await asyncio.sleep(_ARRIVAL_POLL)

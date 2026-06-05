@@ -14,16 +14,17 @@ non-blocking actions across a fleet with `asyncio.gather(...)`.
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable
 
 
 class Action:
     """A running motion command. Awaitable; resolves when the bot arrives."""
 
-    def __init__(self, coro: Awaitable[None]):
-        # Scheduling here (not on await) is what makes the command fire
-        # immediately and lets several run concurrently under gather().
-        self._task = asyncio.ensure_future(coro)
+    def __init__(self, task: asyncio.Task):
+        # The task is created and tracked by the Swarm (via `_schedule`) so it
+        # fires immediately, runs concurrently under gather(), and is flushed on
+        # `Swarm.close()` rather than orphaned at shutdown. The Action just wraps
+        # it so callers can await arrival, cancel the wait, or poll done().
+        self._task = task
 
     def __await__(self):
         return self._task.__await__()
