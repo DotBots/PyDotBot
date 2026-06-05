@@ -9,7 +9,8 @@ transport. Two subcommands:
 
 - `collect` - walk one DotBot through the 4 arena corners, trigger a
               raw-count capture per corner over the air, solve the
-              homography, and save the calibration under ~/.dotbot/.
+              homography, and save the calibration under
+              ~/.dotbot/calibrations/.
 - `push <path>` - send a saved calibration to the DotBot over the air. A thin
               forward to swarmit's `calibrate-lh2`, which picks the payload
               format (legacy `.out` or `calibration-*.toml`) by extension.
