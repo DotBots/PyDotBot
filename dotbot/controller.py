@@ -129,7 +129,7 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     map_size: str = MAP_SIZE_DEFAULT
     background_map: str = ""
-    webbrowser: bool = False
+    webbrowser: bool = True
     verbose: bool = False
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
@@ -352,7 +352,7 @@ class Controller:
             dotbot.calibrated = self.dotbots[source].calibrated
         else:
             # reload if a new dotbot comes in
-            logger.info("New robot")
+            logger.info("New DotBot")
             notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
 
         if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
