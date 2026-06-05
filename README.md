@@ -86,10 +86,13 @@ To operate as a swarm, set your swarm connection config:
 dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
-> `argus.paris.inria.fr` is our Inria Paris broker and `1234` our swarm - pass
-> your own `--conn` and `--swarm-id` (your testbed admin provides these). This
-> writes `./dotbot.toml`; commands run from this directory pick it up, so you
-> don't repeat the flags. Full schema: the [configuration reference][config-doc].
+> `--conn` is your MQTT broker and `--swarm-id` a 16-bit hex id that identifies
+> your swarm. Running your own handful of DotBots? Pick any swarm
+> id - the example points `--conn` at our Inria Paris broker so it works out of
+> the box, but swap in your own broker once you have one. (On a shared testbed,
+> your admin gives you the broker and swarm id to use.) This writes
+> `./dotbot.toml`; commands run from this directory pick it up, so you don't
+> repeat the flags. Full schema: the [configuration reference][config-doc].
 
 The swarm mode also requires a special "sandbox" firmware in each dotbot.
 We also need a more powerful gateway firmware. Let's flash both - the network
@@ -141,27 +144,33 @@ is in the [`swarm` reference][swarm-doc].
 
 ### Calibrate positions (optional)
 
-Give the DotBots real-world `(x, y)` with Lighthouse 2 - capture once from any
-DotBot over the air, then push the result to the whole fleet. This needs the
-`[calibrate]` extra (opencv, for the homography solve):
+Give the DotBots real-world `(x, y)` with Lighthouse 2. It's a two-step flow:
+**collect** a calibration from one DotBot over the air, then **push** it to the
+whole fleet - a single DotBot's capture calibrates the shared arena. This needs
+the `[calibrate]` extra (opencv, for the homography solve):
 
 ```bash
 pip install 'pydotbot[calibrate]'
 ```
 
-Then capture and push:
+First, collect from one DotBot. Get its address from `dotbot swarm status` (the
+**Device Addr** column):
 
 ```bash
-dotbot swarm status                                           # find the Device Addr to capture from
+dotbot swarm status                                           # pick one Device Addr
 dotbot swarm stop                                             # DotBots must be idle to capture
 dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
-dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every DotBot
 ```
 
-`<addr>` is a DotBot's link-layer address - copy it from the `dotbot swarm
-status` **Device Addr** column. `-d` is your reference square's side, in mm (one
-DotBot's capture calibrates the whole arena). Full walkthrough - arena sizing
-and the cabled alternative - is in the [LH2 calibration guide][lh2-doc].
+`-d` is your reference square's side, in mm. This saves a
+`~/.dotbot/calibration-<UTC>.toml`. Then push that file to the whole fleet:
+
+```bash
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml
+```
+
+Full walkthrough - arena sizing and the cabled alternative - is in the
+[LH2 calibration guide][lh2-doc].
 
 ## Going further
 
