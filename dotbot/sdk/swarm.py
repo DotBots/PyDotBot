@@ -117,10 +117,16 @@ class Swarm:
         self._schedule(self._refetch())
 
     async def _refetch(self) -> None:
+        # A reload (e.g. a NEW_DOTBOT notification) is the real path by which a
+        # bot joins after connect; the per-bot UPDATE stream never carries the
+        # first sight of it. Emit BotJoined here so `swarm.on(BotJoined, ...)`
+        # actually fires for a mid-run join, not only for the initial fleet.
         for model in await self._backend.fetch_fleet():
             bot = self._bots.get(model.address)
             if bot is None:
-                self._bots[model.address] = Bot(self, model)
+                bot = Bot(self, model)
+                self._bots[model.address] = bot
+                self._emit(BotJoined(bot.address, time.monotonic()))
             else:
                 bot._apply(model)
 
