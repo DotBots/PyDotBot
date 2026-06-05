@@ -10,7 +10,7 @@ transport. Two subcommands:
 - `collect` - walk one DotBot through the 4 arena corners, trigger a
               raw-count capture per corner over the air, solve the
               homography, and save the calibration under ~/.dotbot/.
-- `push <path>` - send a saved calibration to the bot over the air. A thin
+- `push <path>` - send a saved calibration to the DotBot over the air. A thin
               forward to swarmit's `calibrate-lh2`, which picks the payload
               format (legacy `.out` or `calibration-*.toml`) by extension.
 
@@ -149,7 +149,7 @@ def cmd() -> None:
 @click.option(
     "--push",
     is_flag=True,
-    help="Send the computed calibration back to the bot over the air.",
+    help="Send the computed calibration back to the DotBot over the air.",
 )
 @click.pass_context
 def _collect(ctx, device, conn, swarm_id, distance, timeout, retries, tag, push):
@@ -196,7 +196,7 @@ def _collect(ctx, device, conn, swarm_id, distance, timeout, retries, tag, push)
             time.sleep(0.2)
             click.echo(
                 f"\nCollecting LH2 calibration from {device.upper()}.\n"
-                "Stop the bot's app first (capture only runs in READY).\n"
+                "Stop the DotBot's app first (capture only runs in READY).\n"
             )
             for corner in CORNERS:
                 click.prompt(
@@ -236,10 +236,10 @@ def _collect(ctx, device, conn, swarm_id, distance, timeout, retries, tag, push)
         if push:
             payload = manager.calibration_output_path.read_bytes()
             client.send_lh2_calibration(payload)
-            click.echo("Sent the calibration to the bot over the air.")
+            click.echo("Sent the calibration to the DotBot over the air.")
         else:
             click.echo(
-                "To send it to the bot over the air:\n"
+                "To send it to the DotBot over the air:\n"
                 f"  dotbot swarm lh2-calibration push {path}"
             )
 
@@ -247,7 +247,7 @@ def _collect(ctx, device, conn, swarm_id, distance, timeout, retries, tag, push)
 @cmd.command(
     name="push",
     help=(
-        "Send a saved LH2 calibration to the bot over the air. Forwards to "
+        "Send a saved LH2 calibration to the DotBot over the air. Forwards to "
         "swarmit's `calibrate-lh2`, which picks the payload format (legacy "
         "`.out` or `calibration-*.toml`) by file extension."
     ),

@@ -63,7 +63,8 @@ _NOT_READY = (
 @click.group(
     name="fw",
     help=(
-        "Firmware artifacts: build (from source via SES), fetch (a release), "
+        "Firmware artifacts: build (from source via SEGGER Embedded Studio), "
+        "fetch (a release), "
         "list. Bare apps by default; `--sandbox` for TrustZone NS apps. "
         "Flashing lives under `dotbot device` (one board) and `dotbot swarm` "
         "(the fleet). Need a Makefile knob? `dotbot fw make` forwards to `make`."
@@ -150,7 +151,7 @@ def _resolve_build_target(target: str, sandbox: bool) -> str:
     "--verbose",
     is_flag=True,
     default=False,
-    help="Show full SES `-verbose -echo` output.",
+    help="Show full SEGGER Embedded Studio `-verbose -echo` output.",
 )
 @click.pass_context
 def build(ctx, target, project, config, sandbox, rebuild, verbose):
@@ -188,7 +189,7 @@ def build(ctx, target, project, config, sandbox, rebuild, verbose):
 @click.option("-v", "--verbose", is_flag=True, default=False)
 @click.pass_context
 def clean(ctx, target, config, sandbox, verbose):
-    """Clean SES build outputs (default target: dotbot-v3)."""
+    """Clean SEGGER Embedded Studio build outputs (default target: dotbot-v3)."""
     target = from_config(ctx, "target", "board", "fw")
     config = from_config(ctx, "config", "build_config", "fw")
     sandbox = from_config(ctx, "sandbox", "sandbox", "fw")

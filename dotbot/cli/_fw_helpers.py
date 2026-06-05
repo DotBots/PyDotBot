@@ -273,7 +273,7 @@ def run_make(
     if not embuild.is_file():
         raise click.ClickException(
             f"emBuild not found at {embuild}. Check that SEGGER_DIR points "
-            f"at a real SES install."
+            f"at a real SEGGER Embedded Studio install."
         )
     cmd = ["make", f"BUILD_TARGET={target}", f"BUILD_CONFIG={config}"]
     if quiet:

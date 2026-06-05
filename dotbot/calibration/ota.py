@@ -129,6 +129,6 @@ class CaptureSession:
 
         raise TimeoutError(
             f"no LH{lh_index} sample from {self._device} after "
-            f"{retries + 1} attempt(s); is the bot in READY (app stopped) "
+            f"{retries + 1} attempt(s); is the DotBot in READY (app stopped) "
             f"and in view of the lighthouse?"
         )

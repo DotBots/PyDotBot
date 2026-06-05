@@ -249,7 +249,7 @@ def info(sn_starting_digits):
     if net_id == "unprovisioned":
         click.echo("config:    not provisioned (no swarm config on this device)")
         click.echo(
-            "  → run `dotbot device flash-swarmit-sandbox` (robot) or "
+            "  → run `dotbot device flash-swarmit-sandbox` (DotBot) or "
             "`flash-mari-gateway` (gateway) first."
         )
     else:

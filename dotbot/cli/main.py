@@ -72,8 +72,8 @@ _SUBCOMMANDS = (
     subcommands=_SUBCOMMANDS,
     help=(
         "One CLI for the whole DotBot workflow: build and flash firmware, "
-        "program and control a single robot, and run experiments over the air "
-        "across a swarm - from one bot to a thousand."
+        "program and control a single DotBot, and run experiments over the air "
+        "across a swarm - from one DotBot to a thousand."
     ),
 )
 @click.option(
