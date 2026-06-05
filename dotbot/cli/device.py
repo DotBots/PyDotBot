@@ -142,8 +142,10 @@ def flash_swarmit_sandbox(
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:
         raise click.ClickException(
-            "no swarm id: pass --swarm-id, or set swarm_id (or a "
-            "deployment) in your config."
+            "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
+            "--swarm-id 0100), or set swarm_id (or a deployment) in your "
+            "config. Note: -s / --sn-starting-digits is the J-Link serial "
+            "prefix, not the swarm id."
         )
     if fw_version is None:
         fw_version = pinned_version("swarmit")
@@ -184,8 +186,10 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
     if swarm_id is None:
         raise click.ClickException(
-            "no swarm id: pass --swarm-id, or set swarm_id (or a "
-            "deployment) in your config."
+            "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
+            "--swarm-id 0100), or set swarm_id (or a deployment) in your "
+            "config. Note: -s / --sn-starting-digits is the J-Link serial "
+            "prefix, not the swarm id."
         )
     if fw_version is None:
         fw_version = pinned_version("swarmit")
