@@ -374,7 +374,9 @@ class LighthouseManager:
         """
         toml_files = sorted(
             [
-                *(CALIBRATION_DIR / CALIBRATION_TOML_SUBDIR).glob(CALIBRATION_TOML_GLOB),
+                *(CALIBRATION_DIR / CALIBRATION_TOML_SUBDIR).glob(
+                    CALIBRATION_TOML_GLOB
+                ),
                 *CALIBRATION_DIR.glob(CALIBRATION_TOML_GLOB),
             ],
             key=lambda p: p.stat().st_mtime,
