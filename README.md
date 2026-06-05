@@ -100,8 +100,8 @@ id comes from your config:
 
 ```bash
 dotbot fw fetch  # pull the pinned pre-compiled firmwares (swarmit + dotbot-firmware)
-dotbot device flash-mari-gateway -s 10  # flash the gateway
-dotbot device flash-swarmit-sandbox -s 77  # the sandbox firmware - do this on each DotBot
+dotbot device flash-mari-gateway --probe 10  # flash the gateway
+dotbot device flash-swarmit-sandbox --probe 77  # the sandbox firmware - do this on each DotBot
 ```
 
 (`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch

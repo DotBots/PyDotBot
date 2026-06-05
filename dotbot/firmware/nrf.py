@@ -211,7 +211,10 @@ def pick_last_jlink_snr(nrfjprog_opt=None):
     print(f"[DEBUG] Found J-Link IDs: {ids}")
     if ids:
         return ids[-1]
-    raise RuntimeError("Unable to auto-select J-Link; provide --snr explicitly.")
+    raise RuntimeError(
+        "Unable to auto-select J-Link; pass --probe with the board's "
+        "J-Link serial-number prefix (e.g. --probe 77)."
+    )
 
 
 def pick_matching_jlink_snr(sn_starting_digits: str, nrfjprog_opt: str | None = None):

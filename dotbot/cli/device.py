@@ -45,9 +45,20 @@ def _looks_like_path(value: str) -> bool:
     )
 
 
+def _probe_option(f):
+    return click.option(
+        "--probe",
+        help=(
+            "Select the attached board by its J-Link serial-number prefix "
+            "(e.g. 77 = a DotBot, 10 = the DK). Omit it when only one probe "
+            "is attached."
+        ),
+    )(f)
+
+
 @cmd.command()
 @click.argument("app")
-@click.option("--sn-starting-digits", "-s", help="J-Link serial prefix, e.g. 77.")
+@_probe_option
 @click.option(
     "--board",
     "-b",
@@ -68,7 +79,7 @@ def _looks_like_path(value: str) -> bool:
     help="Build configuration (for auto-resolving the artifact).",
 )
 @click.pass_context
-def flash(ctx, app, sn_starting_digits, board, sandbox, config):
+def flash(ctx, app, probe, board, sandbox, config):
     """Flash a firmware image to one cabled device (whole-chip program).
 
     APP is an app name (resolved against ~/.dotbot/artifacts/, building from source
@@ -79,9 +90,7 @@ def flash(ctx, app, sn_starting_digits, board, sandbox, config):
     from dotbot.firmware.flash import flash_app_image
 
     board = from_config(ctx, "board", "board", "device")
-    sn_starting_digits = from_config(
-        ctx, "sn_starting_digits", "sn_starting_digits", "device"
-    )
+    probe = from_config(ctx, "probe", "probe", "device")
     config = from_config(ctx, "config", "build_config", "device")
     ensure_nrfjprog()
     if _looks_like_path(app):
@@ -90,7 +99,7 @@ def flash(ctx, app, sn_starting_digits, board, sandbox, config):
             raise click.ClickException(f"Firmware image not found: {image}")
     else:
         image = resolve_app_artifact(app, board=board, config=config, sandbox=sandbox)
-    flash_app_image(image, board=board, sn_starting_digits=sn_starting_digits)
+    flash_app_image(image, board=board, sn_starting_digits=probe)
 
 
 def _fw_version_option(f):
@@ -102,12 +111,6 @@ def _fw_version_option(f):
             "Release version to flash, e.g. 0.8.0rc2 (default: the swarmit "
             f"version pydotbot pins). Binaries are fetched into {DEFAULT_ARTIFACTS_DISPLAY}/ if not cached."
         ),
-    )(f)
-
-
-def _sn_option(f):
-    return click.option(
-        "--sn-starting-digits", "-s", help="J-Link serial prefix, e.g. 77."
     )(f)
 
 
@@ -125,11 +128,9 @@ def _sn_option(f):
     help="Optional LH2 calibration file to bake into the config page.",
 )
 @_fw_version_option
-@_sn_option
+@_probe_option
 @click.pass_context
-def flash_swarmit_sandbox(
-    ctx, swarm_id, calibration_path, fw_version, sn_starting_digits
-):
+def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
@@ -144,8 +145,7 @@ def flash_swarmit_sandbox(
         raise click.ClickException(
             "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
             "--swarm-id 0100), or set swarm_id (or a deployment) in your "
-            "config. Note: -s / --sn-starting-digits is the J-Link serial "
-            "prefix, not the swarm id."
+            "config."
         )
     if fw_version is None:
         fw_version = pinned_version("swarmit")
@@ -160,7 +160,7 @@ def flash_swarmit_sandbox(
         fw_version=fw_version,
         calibration_path=calibration_path,
         bin_dir=artifacts_dir(),
-        sn_starting_digits=sn_starting_digits,
+        sn_starting_digits=probe,
     )
 
 
@@ -171,9 +171,9 @@ def flash_swarmit_sandbox(
     help="16-bit hex swarm id (e.g. 0100); defaults to your config's swarm_id.",
 )
 @_fw_version_option
-@_sn_option
+@_probe_option
 @click.pass_context
-def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
+def flash_mari_gateway(ctx, swarm_id, fw_version, probe):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -188,8 +188,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
         raise click.ClickException(
             "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
             "--swarm-id 0100), or set swarm_id (or a deployment) in your "
-            "config. Note: -s / --sn-starting-digits is the J-Link serial "
-            "prefix, not the swarm id."
+            "config."
         )
     if fw_version is None:
         fw_version = pinned_version("swarmit")
@@ -203,7 +202,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, sn_starting_digits):
         net_id=net_id,
         fw_version=fw_version,
         bin_dir=artifacts_dir(),
-        sn_starting_digits=sn_starting_digits,
+        sn_starting_digits=probe,
     )
 
 
@@ -232,8 +231,8 @@ def flash_programmer(programmer_firmware, files_dir, probe_uid):
 
 
 @cmd.command()
-@_sn_option
-def info(sn_starting_digits):
+@_probe_option
+def info(probe):
     """Read a device's provisioning state (chip id + network identity).
 
     Never fails on a blank/unprovisioned board — reports 'not
@@ -243,7 +242,7 @@ def info(sn_starting_digits):
 
     ensure_nrfjprog()
     try:
-        net_id, device_id = read_config_report(sn_starting_digits)
+        net_id, device_id = read_config_report(probe)
     except RuntimeError as exc:
         raise click.ClickException(f"Could not read the device: {exc}") from exc
 

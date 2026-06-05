@@ -126,7 +126,7 @@ class FwSection(_Strict):
 
 class DeviceSection(_Strict):
     board: str | None = None
-    sn_starting_digits: str | None = None
+    probe: str | None = None
     build_config: str | None = None
 
 
