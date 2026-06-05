@@ -67,3 +67,11 @@ def test_no_firmware_token_passes_through(fake_cache):
     rest, handled = resolve_flash_args(["-y"])
     assert handled is False
     assert rest == ["-y"]
+
+
+def test_help_epilog_lists_bundled_names():
+    # The epilog (attached to swarmit's flash --help) names every bundled app.
+    epilog = _swarm_flash.flash_help_epilog()
+    for name in _swarm_flash.APP_CATALOG:
+        assert name in epilog
+    assert "--list" in epilog

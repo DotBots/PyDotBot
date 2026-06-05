@@ -79,6 +79,22 @@ def render_catalog() -> str:
     return "\n".join(lines)
 
 
+def flash_help_epilog() -> str:
+    """A two-line epilog appended to swarmit's `flash --help` output.
+
+    swarmit owns the `flash` command, so the bundled-name sugar isn't in its
+    native help. Attaching this as the command's epilog lets Click render the
+    names after the Options block (the `\\b` keeps the two lines unwrapped).
+    """
+    names = ", ".join(APP_CATALOG)
+    return (
+        "\b\n"
+        f"Examples: flash a bundled app by name ({names}), or an explicit "
+        ".hex/.bin path.\n"
+        "Run `dotbot swarm flash --list` to see what each bundled app flashes."
+    )
+
+
 def resolve_flash_args(rest: list[str]) -> tuple[list[str], bool]:
     """Rewrite the tokens after `flash` so a known app name becomes a .bin path.
 
@@ -106,7 +122,7 @@ def resolve_flash_args(rest: list[str]) -> tuple[list[str], bool]:
                 "isn't in the artifacts cache yet. Run `dotbot fw fetch` first."
             )
         rest[idx] = str(path)
-        click.echo(f"Flashing '{target}' ({path.name})", err=True)
+        click.echo(f"Flashing '{target}' -> {path}", err=True)
         return rest, False
 
     if _looks_like_path(target):
