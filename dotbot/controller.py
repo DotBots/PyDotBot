@@ -129,7 +129,7 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     map_size: str = MAP_SIZE_DEFAULT
     background_map: str = ""
-    webbrowser: bool = True
+    headless: bool = False
     verbose: bool = False
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
@@ -269,7 +269,7 @@ class Controller:
                 break
         url = f"http://localhost:{self.settings.controller_http_port}/PyDotBot"
         self.logger.debug("Using frontend URL", url=url)
-        if self.settings.webbrowser is True:
+        if not self.settings.headless:
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
 

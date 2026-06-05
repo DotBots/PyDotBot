@@ -296,7 +296,7 @@ def main(
         "map_size": map_size,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
-        "webbrowser": False if headless else None,
+        "headless": True if headless else None,
         "verbose": verbose,
         "log_level": log_level,
         "log_output": log_output,

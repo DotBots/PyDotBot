@@ -296,9 +296,9 @@ def test_resolve_env_coercion_int():
 
 def test_resolve_env_coercion_bool():
     got = cfg.resolve(
-        "webbrowser",
+        "headless",
         section="run",
-        environ={"DOTBOT_RUN_WEBBROWSER": "true"},
+        environ={"DOTBOT_RUN_HEADLESS": "true"},
         default=False,
     )
     assert got is True
