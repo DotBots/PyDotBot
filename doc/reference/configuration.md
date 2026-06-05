@@ -126,7 +126,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] background_map` | Background map image. |
 | `[run.controller] log_output` | Log output path. |
 | `[run.controller] csv_data_output` | CSV data output path. |
-| `[run.controller] webbrowser` | Open the web UI on start (default true; set false to stay headless). |
+| `[run.controller] headless` | Stay headless - don't open the web UI in a browser on start (default false; it's still served). |
 | `[run.controller] gw_address` | Gateway address. |
 | `[run.controller] simulator_init_state` | Initial simulator state. |
 | `[run.gateway] serial_port` | Gateway serial port. |
@@ -258,7 +258,7 @@ conn = "mqtts://broker.local:8883"
 
 [run.controller]
 http_port      = 8000
-webbrowser     = false   # default is true; set false to stay headless
+headless       = true    # default is false; set true to suppress the browser (still served)
 # background_map = "./map.png"
 
 [run.gateway]

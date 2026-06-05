@@ -124,7 +124,7 @@ picked by file extension. Get the `--device` address from `dotbot swarm status`.
 
 | Command | What it serves | Default port |
 |---|---|---|
-| `dotbot run controller -w` | drive/visualize Web UI + REST/WS | `8000` |
+| `dotbot run controller` | drive/visualize Web UI + REST/WS | `8000` |
 | `dotbot swarm serve` | SwarmIT FastAPI orchestration backend | `8001` |
 
 `dotbot swarm` auto-discovers a running `serve` daemon; pass `--no-server` to
