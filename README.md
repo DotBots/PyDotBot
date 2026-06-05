@@ -142,18 +142,26 @@ is in the [`swarm` reference][swarm-doc].
 ### Calibrate positions (optional)
 
 Give the DotBots real-world `(x, y)` with Lighthouse 2 - capture once from any
-DotBot over the air, then push the result to the whole fleet (needs the
-`[calibrate]` extra, below):
+DotBot over the air, then push the result to the whole fleet. This needs the
+`[calibrate]` extra (opencv, for the homography solve):
 
 ```bash
-dotbot swarm stop                                              # DotBots must be idle to capture
+pip install 'pydotbot[calibrate]'
+```
+
+Then capture and push:
+
+```bash
+dotbot swarm status                                           # find the Device Addr to capture from
+dotbot swarm stop                                             # DotBots must be idle to capture
 dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
 dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every DotBot
 ```
 
-`-d` is your reference square's side, in mm (one DotBot's capture calibrates the
-whole arena). Full walkthrough - arena sizing and the cabled alternative - is in
-the [LH2 calibration guide][lh2-doc].
+`<addr>` is a DotBot's link-layer address - copy it from the `dotbot swarm
+status` **Device Addr** column. `-d` is your reference square's side, in mm (one
+DotBot's capture calibrates the whole arena). Full walkthrough - arena sizing
+and the cabled alternative - is in the [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
@@ -175,12 +183,6 @@ the [LH2 calibration guide][lh2-doc].
 - **Everything else** - the full `dotbot` CLI (`fw` / `device` / `swarm` / `run`
   + `config`), the REST/WS and MQTT surfaces, and hardware notes: the
   [documentation][doc-link].
-
-Most of `dotbot` is in the base install; only LH2 calibration needs an extra:
-
-```bash
-pip install 'pydotbot[calibrate]'   # opencv (the LH2 homography solve)
-```
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
 [Troubleshooting][troubleshooting-doc].
