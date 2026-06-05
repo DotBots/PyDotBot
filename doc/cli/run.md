@@ -14,7 +14,7 @@ dotbot run --help        # the full list
 | `controller` | Control plane: REST/WS API + web dashboard. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
-| `lh2-calibration` | LH2 calibration on one cabled board (capture / apply); deployed bots use `swarm lh2-calibration`. |
+| `lh2-calibration` | LH2 calibration on one cabled board (capture / apply); deployed DotBots use `swarm lh2-calibration`. |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
@@ -26,16 +26,16 @@ Connect to a swarm and serve the dashboard at `http://localhost:8000/PyDotBot/`.
 `simulator`.
 
 ```bash
-dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234 -w
-dotbot run controller --conn /dev/ttyACM0 -w
+dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
+dotbot run controller --conn /dev/ttyACM0
 ```
 
 | Flag | Meaning |
 |---|---|
 | `-n/--conn` | `mqtts://host:port`, serial path, or `simulator` |
 | `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
-| `-w/--webbrowser` | open the dashboard automatically |
-| `--csv-data-output` | record robot data to a CSV file |
+| `--headless` | don't open the dashboard in a browser (it's still served) |
+| `--csv-data-output` | record DotBot data to a CSV file |
 
 Full options and the dashboard tour live in
 [the controller guide](../guides/controller.md). See `dotbot run controller --help`.
@@ -60,15 +60,15 @@ No hardware, no gateway. Exactly equivalent to `run controller --conn simulator`
 so it shares the controller's flags and serves the same dashboard.
 
 ```bash
-dotbot run simulator -w
+dotbot run simulator
 ```
 
 ## `lh2-calibration` - capture & apply (cabled)
 
 Lighthouse v2 calibration against a single serial-attached board. `collect`
 opens a TUI to capture LH2 counts; `apply` writes the saved calibration out as
-a C header. This is the cabled, bench path - for deployed bots, capture over the
-air with [`swarm lh2-calibration`](swarm.md) instead.
+a C header. This is the cabled, bench path - for deployed DotBots, capture over
+the air with [`swarm lh2-calibration`](swarm.md) instead.
 
 ```bash
 dotbot run lh2-calibration collect
@@ -90,7 +90,7 @@ dotbot run demo qr          # qrkey phone bridge
 
 Drive a DotBot live through a running controller (start one with
 `run controller` first). Both default to `localhost:8000`; pass `-d` to target a
-specific robot by hex address.
+specific DotBot by hex address.
 
 ```bash
 dotbot run keyboard

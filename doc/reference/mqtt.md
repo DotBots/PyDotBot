@@ -1,7 +1,7 @@
 # MQTT
 
 Talk to the swarm from any language that speaks MQTT - no Python, no SDK. This
-is the low-magic integration path: subscribe to bot state, publish commands, on
+is the low-magic integration path: subscribe to DotBot state, publish commands, on
 standard topics. For Python, the [REST API](rest.md) is usually simpler.
 
 ## How it works
@@ -30,23 +30,23 @@ base64 string derived from the current PIN code (see [Secured brokers](#secured-
 
 | Topic (under `/pydotbot/<secret-topic>`) | Direction | Purpose |
 |---|---|---|
-| `/command/<swarm-id>/<address>/<app>/<cmd>` | you publish | drive a bot (`move_raw`, `rgb_led`, `waypoints`, `clear_position_history`) |
+| `/command/<swarm-id>/<address>/<app>/<cmd>` | you publish | drive a DotBot (`move_raw`, `rgb_led`, `waypoints`, `clear_position_history`) |
 | `/notify` | you subscribe | controller state changes + position updates |
-| `/request` / `/reply/<id>` | request/reply | one-shot queries (e.g. list of bots, map size) |
+| `/request` / `/reply/<id>` | request/reply | one-shot queries (e.g. list of DotBots, map size) |
 
 Command-topic fields:
 
-- `<swarm-id>` - 4-hex swarm identifier (bots behind one gateway), e.g. `0000`.
+- `<swarm-id>` - 4-hex swarm identifier (DotBots behind one gateway), e.g. `0000`.
 - `<address>` - 16-hex DotBot address, e.g. `9903ef26257feb31`.
 - `<app>` - application type: `0` = DotBot, `1` = SailBot.
 - `<cmd>` - the command name (last segment).
 
-Get a bot's address and the swarm id from the controller's
+Get a DotBot's address and the swarm id from the controller's
 [REST API](rest.md) (`GET /controller/dotbots`).
 
 ## Send commands
 
-Payloads are JSON. Drive a bot forward and turn its LED red:
+Payloads are JSON. Drive a DotBot forward and turn its LED red:
 
 ```bash
 # move_raw - left_y / right_y drive the wheels, values in [-100, 100]
@@ -66,8 +66,8 @@ mosquitto_pub -h <broker> \
 mosquitto_sub -h <broker> -t '/pydotbot/<secret-topic>/notify' | jq
 ```
 
-Notifications carry a `cmd` field: `RELOAD` (refetch all bots), `UPDATE`
-(per-bot state delta, incl. LH2 position), `PIN_CODE_UPDATE` (the secret topic
+Notifications carry a `cmd` field: `RELOAD` (refetch all DotBots), `UPDATE`
+(per-DotBot state delta, incl. LH2 position), `PIN_CODE_UPDATE` (the secret topic
 and key are about to rotate - see below).
 
 ## Secured brokers

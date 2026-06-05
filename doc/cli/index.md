@@ -11,7 +11,7 @@ config
 
 One CLI for the whole DotBot workflow: build firmware, flash one board, control a
 whole swarm, and launch the host-side processes that tie it together -
-from one bot to a thousand.
+from one DotBot to a thousand.
 
 ```bash
 dotbot --help
@@ -25,7 +25,7 @@ dotbot --help
 |---|---|---|
 | [`fw`](fw.md) | Build, fetch, and list firmware files. No hardware needed. | You want a `.hex`/`.bin` to flash later, or to see what builds. |
 | [`device`](device.md) | Flash one cabled board and read its info. | A DotBot or DK is plugged into your USB port right now. |
-| [`swarm`](swarm.md) | Drive the whole fleet over the air - status, OTA flash, start/stop, monitor. | You're operating many provisioned bots through a gateway. |
+| [`swarm`](swarm.md) | Drive the whole fleet over the air - status, OTA flash, start/stop, monitor. | You're operating many provisioned DotBots through a gateway. |
 | [`run`](run.md) | Start host processes on your computer - controller, gateway bridge, simulator, demos, teleop. | You need the web UI, a gateway bridge, the simulator, or a demo. |
 
 Beyond the four namespaces, [`config`](config.md) scaffolds and inspects the

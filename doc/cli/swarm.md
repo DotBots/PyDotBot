@@ -1,8 +1,8 @@
 # `dotbot swarm` - operate the fleet over the air
 
-Run experiments across many robots at once. `dotbot swarm` drives the
+Run experiments across many DotBots at once. `dotbot swarm` drives the
 [SwarmIT](https://github.com/DotBots/swarmit) orchestration backend: it
-OTA-flashes a sandbox app to every bot, starts/stops it, and watches status -
+OTA-flashes a sandbox app to every DotBot, starts/stops it, and watches status -
 all wirelessly through a gateway.
 
 For one cabled board, use [`device`](device.md). To build the apps you flash,
@@ -19,14 +19,14 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 
 ## 1. Provision once
 
-Each robot needs the SwarmIT sandbox-host firmware; the gateway is an
+Each DotBot needs the SwarmIT sandbox-host firmware; the gateway is an
 nRF5340-DK running the Mari gateway firmware. Both are cabled flashes over
 USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
 dotbot device flash-mari-gateway      --swarm-id 1234 -s 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
-dotbot device flash-swarmit-sandbox --swarm-id 1234 -s 77 -f 0.8.0rc1   # each bot -> sandbox host
+dotbot device flash-swarmit-sandbox --swarm-id 1234 -s 77 -f 0.8.0rc1   # each DotBot -> sandbox host
 ```
 
 ## 2. Start the host bridge
@@ -109,14 +109,14 @@ driving it over the swarm. The arena geometry and `-d` sizing live in the
 
 ```bash
 dotbot swarm stop                                              # capture only runs in READY
-dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one bot -> solve -> save
-dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml   # apply to every ready bot
+dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one DotBot -> solve -> save
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml   # apply to every ready DotBot
 ```
 
-`collect` walks one bot through the four arena corners over the air, solves the
+`collect` walks one DotBot through the four arena corners over the air, solves the
 homography, and saves it under `~/.dotbot/`. `push` (no `--device`) then sends
-that calibration to **every ready bot** - the arena shares one transform.
-(`collect --push` is a single-bot shortcut: it sends only to the captured bot.)
+that calibration to **every ready DotBot** - the arena shares one transform.
+(`collect --push` is a single-DotBot shortcut: it sends only to the captured DotBot.)
 `push` takes a `calibration-*.toml` or the legacy raw payload - the format is
 picked by file extension. Get the `--device` address from `dotbot swarm status`.
 

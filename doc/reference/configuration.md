@@ -38,8 +38,8 @@ directory. Discovery looks only at the cwd - it does not walk up to parent
 directories, so the active config is always unambiguous.
 
 `~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
-once and want everywhere - typically `[fw].segger_dir`, since the SES install
-path rarely changes. Per-project settings like `[fw].firmware_repo` belong in
+once and want everywhere - typically `[fw].segger_dir`, since the SEGGER
+Embedded Studio install path rarely changes. Per-project settings like `[fw].firmware_repo` belong in
 the project's `./dotbot.toml` instead. Every command, including `dotbot fw`,
 reads through this same resolver.
 
@@ -126,7 +126,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] background_map` | Background map image. |
 | `[run.controller] log_output` | Log output path. |
 | `[run.controller] csv_data_output` | CSV data output path. |
-| `[run.controller] webbrowser` | Open the web UI on start. |
+| `[run.controller] webbrowser` | Open the web UI on start (default true; set false to stay headless). |
 | `[run.controller] gw_address` | Gateway address. |
 | `[run.controller] simulator_init_state` | Initial simulator state. |
 | `[run.gateway] serial_port` | Gateway serial port. |
@@ -138,8 +138,8 @@ than being silently ignored.
 ## What a deployment is
 
 A **deployment** here means one physical deployment - one set of real DotBots
-behind one broker, in one place (e.g. the ~100-bot setup at Inria Paris, or a
-1000-bot campaign). You define each one as a `[deployment.<name>]` table and
+behind one broker, in one place (e.g. the ~100-DotBot setup at Inria Paris, or a
+1000-DotBot campaign). You define each one as a `[deployment.<name>]` table and
 **select** it; you do not edit the file to switch between them.
 
 Select the active deployment with, in precedence order, `--deployment NAME`, the
@@ -148,7 +148,7 @@ deployment's keys slot into the file layer (above top-level, below sections), so
 explicit flag or env var still overrides it. Selecting a name with no matching
 `[deployment.<name>]` table is an error that lists the defined deployments.
 
-A deployment is **not** the simulator. To drive simulated bots, set the connection
+A deployment is **not** the simulator. To drive simulated DotBots, set the connection
 to `simulator` (`--conn simulator`, or `conn = "simulator"`); that is a
 connection kind, not a deployment.
 
@@ -161,7 +161,7 @@ metadata:
 | `swarm_id` | Swarm id for this deployment. |
 | `serial_port` | Default serial port for this deployment. |
 | `location` | Descriptive label (shown by `dotbot deployment list`). |
-| `bots` | Descriptive bot count. |
+| `bots` | Descriptive DotBot count. |
 
 ## Managing deployments
 
@@ -258,7 +258,7 @@ conn = "mqtts://broker.local:8883"
 
 [run.controller]
 http_port      = 8000
-webbrowser     = true
+webbrowser     = false   # default is true; set false to stay headless
 # background_map = "./map.png"
 
 [run.gateway]
