@@ -112,6 +112,8 @@ def cli(ctx, config_path, deployment_name):
     keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
     """
     from dotbot.config import (
+        PROJECT_CONFIG_NAME,
+        USER_CONFIG_PATH,
         ConfigError,
         discover_config_path,
         load_config,
@@ -131,7 +133,11 @@ def cli(ctx, config_path, deployment_name):
     if path is not None:
         click.echo(f"using config file at {path}", err=True)
     else:
-        click.echo("no config file found; using built-in defaults", err=True)
+        click.echo(
+            f"no config file found (looked for ./{PROJECT_CONFIG_NAME} and "
+            f"{USER_CONFIG_PATH}); using built-in defaults",
+            err=True,
+        )
 
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path
