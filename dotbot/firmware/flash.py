@@ -326,7 +326,8 @@ def flash_role(
         snr = pick_last_jlink_snr()
     if snr is None:
         raise click.ClickException(
-            "Unable to auto-select J-Link; provide --snr explicitly."
+            "Unable to auto-select J-Link; pass --probe with the board's "
+            "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}")
 
@@ -519,7 +520,8 @@ def flash_app_image(
         snr = pick_last_jlink_snr()
     if snr is None:
         raise click.ClickException(
-            "Unable to auto-select J-Link; provide --snr explicitly."
+            "Unable to auto-select J-Link; pass --probe with the board's "
+            "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}")
     image_hex = (
@@ -549,7 +551,8 @@ def read_config_report(sn_starting_digits: str | None = None) -> tuple[str, str]
         snr = pick_last_jlink_snr()
     if snr is None:
         raise click.ClickException(
-            "Unable to auto-select J-Link; provide --snr explicitly."
+            "Unable to auto-select J-Link; pass --probe with the board's "
+            "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}", err=True)
     return read_net_id(snr=snr), read_device_id(snr=snr)

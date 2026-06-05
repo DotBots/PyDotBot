@@ -93,7 +93,15 @@ def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypat
     monkeypatch.setattr("dotbot.firmware.flash.flash_role", fake_flash_role)
     result = runner.invoke(
         device_cmd,
-        ["flash-swarmit-sandbox", "--swarm-id", "0100", "-f", "0.8.0rc1", "-s", "77"],
+        [
+            "flash-swarmit-sandbox",
+            "--swarm-id",
+            "0100",
+            "-f",
+            "0.8.0rc1",
+            "--probe",
+            "77",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "dotbot-v3"
@@ -114,7 +122,7 @@ def test_flash_swarmit_sandbox_defaults_to_pinned_version(
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
     result = runner.invoke(
-        device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "0100", "-s", "77"]
+        device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "0100", "--probe", "77"]
     )
     assert result.exit_code == 0, result.output
     assert calls["kw"]["fw_version"] == fetch.pinned_version("swarmit")
@@ -163,7 +171,16 @@ def test_flash_mari_gateway_net_id_from_deployment(
     )
     result = runner.invoke(
         cli,
-        ["-c", str(cfg), "device", "flash-mari-gateway", "-s", "10", "-f", "0.8.0rc1"],
+        [
+            "-c",
+            str(cfg),
+            "device",
+            "flash-mari-gateway",
+            "--probe",
+            "10",
+            "-f",
+            "0.8.0rc1",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
@@ -234,7 +251,7 @@ def test_flash_swarmit_sandbox_net_id_from_deployment(
             str(cfg),
             "device",
             "flash-swarmit-sandbox",
-            "-s",
+            "--probe",
             "10",
             "-f",
             "0.8.0rc1",
@@ -253,7 +270,7 @@ def test_info_reports_provisioned(runner, _no_nrfjprog_gate, monkeypatch):
         "dotbot.firmware.flash.read_config_report",
         lambda sn=None: ("1234", "BDF2B04BC00D2725"),
     )
-    result = runner.invoke(device_cmd, ["info", "-s", "77"])
+    result = runner.invoke(device_cmd, ["info", "--probe", "77"])
     assert result.exit_code == 0, result.output
     assert "provisioned" in result.output
     assert "0x1234" in result.output

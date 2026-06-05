@@ -73,6 +73,19 @@ def _with_config_injection(swarmit_group):
                 obj=ctx.obj,
             )
             return
+        # `flash <name>` is PyDotBot sugar: resolve a bundled app name to its
+        # fetched .bin path before handing off (an explicit path passes
+        # through), and service `--list` without touching the transport.
+        if args and args[0] == "flash":
+            from dotbot.cli._swarm_flash import flash_help_epilog, resolve_flash_args
+
+            flash_cmd = swarmit_group.commands.get("flash")
+            if flash_cmd is not None and not flash_cmd.epilog:
+                flash_cmd.epilog = flash_help_epilog()
+            rest, handled = resolve_flash_args(args[1:])
+            if handled:
+                return
+            args = ["flash", *rest]
         final = inject_config(args, ctx.obj) if args else args
         _run_swarmit(swarmit_group, final)
 

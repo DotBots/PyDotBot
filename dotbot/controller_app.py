@@ -174,10 +174,9 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help=f"Controller HTTP port of the REST API. Defaults to '{CONTROLLER_HTTP_PORT_DEFAULT}'",
 )
 @click.option(
-    "-w",
-    "--webbrowser/--no-webbrowser",
-    default=None,
-    help="Open a web browser automatically",
+    "--headless",
+    is_flag=True,
+    help="Run without opening a web browser (the dashboard is still served).",
 )
 @click.option(
     "-v",
@@ -238,7 +237,7 @@ def main(
     map_size,
     background_map,
     simulator_init_state,
-    webbrowser,
+    headless,
     verbose,
     log_level,
     log_output,
@@ -297,7 +296,7 @@ def main(
         "map_size": map_size,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
-        "webbrowser": webbrowser,
+        "headless": True if headless else None,
         "verbose": verbose,
         "log_level": log_level,
         "log_output": log_output,

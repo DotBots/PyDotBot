@@ -34,6 +34,10 @@ CALIBRATION_SCHEMA_VERSION = 1
 # learn to read the new TOML format. Once they do, drop the .out write.
 CALIBRATION_LEGACY_OUT = "calibration.out"
 CALIBRATION_TOML_GLOB = "calibration-*.toml"
+# Timestamped TOML records live in this subdirectory of CALIBRATION_DIR so they
+# don't clutter ~/.dotbot itself. The loader still reads legacy files saved
+# directly in CALIBRATION_DIR (see load_calibration).
+CALIBRATION_TOML_SUBDIR = "calibrations"
 REFERENCE_POINTS_DEFAULT = [
     [0.4, 0.4],  # Top-left
     [0.6, 0.4],  # Top-right
@@ -242,8 +246,8 @@ class LighthouseManager:
         extra_lh_num: int = 0,
     ):
         Path.mkdir(CALIBRATION_DIR, exist_ok=True)
-        # Legacy path, kept for back-compat with external consumers.
-        # The primary record is now timestamped TOML files in CALIBRATION_DIR.
+        # Legacy path, kept for back-compat with external consumers. The primary
+        # record is now timestamped TOML files under CALIBRATION_DIR/calibrations.
         self.calibration_output_path = CALIBRATION_DIR / CALIBRATION_LEGACY_OUT
         self.calibration_distance = calibration_distance
         self.extra_lh_num = extra_lh_num
@@ -364,10 +368,17 @@ class LighthouseManager:
 
         Prefers the newest timestamped `calibration-*.toml`; falls back
         to the legacy binary `calibration.out` if no TOML files exist
-        (so setups predating the format change keep working).
+        (so setups predating the format change keep working). Looks in
+        both `CALIBRATION_DIR/calibrations` (new) and `CALIBRATION_DIR`
+        itself (where older files were saved flat).
         """
         toml_files = sorted(
-            CALIBRATION_DIR.glob(CALIBRATION_TOML_GLOB),
+            [
+                *(CALIBRATION_DIR / CALIBRATION_TOML_SUBDIR).glob(
+                    CALIBRATION_TOML_GLOB
+                ),
+                *CALIBRATION_DIR.glob(CALIBRATION_TOML_GLOB),
+            ],
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
@@ -407,7 +418,9 @@ class LighthouseManager:
             if slug
             else f"calibration-{ts_for_filename}"
         )
-        toml_path = CALIBRATION_DIR / f"{stem}.toml"
+        toml_dir = CALIBRATION_DIR / CALIBRATION_TOML_SUBDIR
+        toml_dir.mkdir(parents=True, exist_ok=True)
+        toml_path = toml_dir / f"{stem}.toml"
         tag_line = f'tag = "{slug}"\n' if slug else ""
         # Explicit UTF-8 — TOML is spec'd as UTF-8, and Path.write_text
         # defaults to the platform encoding (cp1252 on Windows), which

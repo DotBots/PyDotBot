@@ -42,7 +42,7 @@ def test_save_calibration_writes_toml_and_legacy_out(monkeypatch, tmp_path):
 
     mgr.save_calibration()
 
-    toml_files = list(tmp_path.glob("calibration-*.toml"))
+    toml_files = list((tmp_path / "calibrations").glob("calibration-*.toml"))
     assert len(toml_files) == 1, f"expected exactly one TOML file, got {toml_files}"
     assert (
         tmp_path / "calibration.out"
@@ -82,9 +82,9 @@ def test_save_calibration_sanitizes_and_omits_empty_tag(monkeypatch, tmp_path):
     mgr.homographies = [_seed_homography(1.0)]
 
     # Unsafe characters collapse to dashes and the leading ".." is trimmed;
-    # the slug stays a single filename component inside ~/.dotbot.
+    # the slug stays a single filename component inside ~/.dotbot/calibrations.
     path = mgr.save_calibration(tag="../lab room/A")
-    assert path.parent == tmp_path
+    assert path.parent == tmp_path / "calibrations"
     assert path.name.startswith("calibration-lab-room-A-")
 
     # A tag that reduces to nothing is treated as absent (no stray dashes).
@@ -110,7 +110,7 @@ def test_load_calibration_prefers_newest_toml(monkeypatch, tmp_path):
 
     mgr.homographies = [_seed_homography(3.0)]
     mgr.save_calibration()
-    first = list(tmp_path.glob("calibration-*.toml"))[0]
+    first = list((tmp_path / "calibrations").glob("calibration-*.toml"))[0]
     first.stat()  # touch to avoid mtime tie
     import os
     import time

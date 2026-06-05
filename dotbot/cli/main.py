@@ -72,8 +72,8 @@ _SUBCOMMANDS = (
     subcommands=_SUBCOMMANDS,
     help=(
         "One CLI for the whole DotBot workflow: build and flash firmware, "
-        "program and control a single robot, and run experiments over the air "
-        "across a swarm - from one bot to a thousand."
+        "program and control a single DotBot, and run experiments over the air "
+        "across a swarm - from one DotBot to a thousand."
     ),
 )
 @click.option(
@@ -112,6 +112,8 @@ def cli(ctx, config_path, deployment_name):
     keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
     """
     from dotbot.config import (
+        PROJECT_CONFIG_NAME,
+        USER_CONFIG_PATH,
         ConfigError,
         discover_config_path,
         load_config,
@@ -128,10 +130,18 @@ def cli(ctx, config_path, deployment_name):
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    if path is not None:
-        click.echo(f"using config file at {path}", err=True)
-    else:
-        click.echo("no config file found; using built-in defaults", err=True)
+    # The `config` group inspects config state itself (show/path) or scaffolds
+    # it (init), so the root-level "which config is in effect" echo is redundant
+    # there - and reads as a contradiction right before `config init` writes one.
+    if ctx.invoked_subcommand != "config":
+        if path is not None:
+            click.echo(f"using config file at {path}", err=True)
+        else:
+            click.echo(
+                f"no config file found (looked for ./{PROJECT_CONFIG_NAME} and "
+                f"{USER_CONFIG_PATH}); using built-in defaults",
+                err=True,
+            )
 
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path

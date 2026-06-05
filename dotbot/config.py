@@ -126,7 +126,7 @@ class FwSection(_Strict):
 
 class DeviceSection(_Strict):
     board: str | None = None
-    sn_starting_digits: str | None = None
+    probe: str | None = None
     build_config: str | None = None
 
 
@@ -142,7 +142,7 @@ class ControllerSection(_Strict):
     background_map: str | None = None
     log_output: str | None = None
     csv_data_output: str | None = None
-    webbrowser: bool | None = None
+    headless: bool | None = None
     gw_address: str | None = None
     simulator_init_state: str | None = None
 

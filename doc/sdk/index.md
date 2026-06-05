@@ -9,7 +9,7 @@ intend to build. The imports (`from dotbot import Swarm`) and every method
 (`Swarm.connect`, `Swarm.run`, `bot.move_to`, ...) are **aspirational**.
 
 To script the swarm **today**, use the CLI: start a controller with
-[`dotbot run controller`](../cli/run.md), then drive bots over its
+[`dotbot run controller`](../cli/run.md), then drive DotBots over its
 [REST](../reference/rest.md) / [WebSocket](../reference/rest.md) surface
 (or the [MQTT bridge](../reference/mqtt.md)).
 ```
@@ -19,7 +19,7 @@ To script the swarm **today**, use the CLI: start a controller with
 The SDK will be a thin Python wrapper over a running controller's REST/WS
 surface, so you write swarm logic in Python instead of hand-rolling HTTP and
 asyncio. You start a controller once (`dotbot run controller`), then a script
-connects to it and commands bots. The same script targets real hardware, the
+connects to it and commands DotBots. The same script targets real hardware, the
 simulator, or a remote testbed - the backend is chosen at run time, not in the
 code.
 
@@ -27,8 +27,8 @@ code.
 
 All three snippets are **aspirational** - they will not run until the SDK ships.
 
-**Connect and drive one bot** - connect to a local controller, grab a bot, set
-its color, move it:
+**Connect and drive one DotBot** - connect to a local controller, grab a DotBot,
+set its color, move it:
 
 ```python
 from dotbot import Swarm

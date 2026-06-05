@@ -20,14 +20,14 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 | **micro-USB to USB-A (or USB-C)** | The nRF5340-DK gateway's on-board J-Link. |
 | **Barrel-jack charger** (2.5 mm, 6-18 V) | Charges the DotBot v3 supercap (J4); free-roaming only. |
 
-## DotBot v3 - the robot
+## DotBot v3
 
-The robot has two connectors you'll use:
+The DotBot has two connectors you'll use:
 
 | Connector | What it's for |
 |---|---|
-| **USB-C (J2)** | Flash and program the bot. Also powers it while plugged in. |
-| **Barrel jack (J4)** | Charges the on-board supercapacitor (the bot's "battery"). |
+| **USB-C (J2)** | Flash and program the DotBot. Also powers it while plugged in. |
+| **Barrel jack (J4)** | Charges the on-board supercapacitor (the DotBot's "battery"). |
 
 **USB-C (J2) - flashing.** The DotBot v3 has an **on-board programmer** behind
 the USB-C port: a J-Link-OB / DAPLink debug chip plus an SWD mux that routes the
@@ -35,8 +35,8 @@ debug lines to the nRF5340. **You do not need a separate J-Link** for normal
 flashing - just a USB-C cable. Plug it in and flash:
 
 ```bash
-# cabled flash of one bot (board defaults to dotbot-v3)
-dotbot device flash dotbot -s 77
+# cabled flash of one DotBot (board defaults to dotbot-v3)
+dotbot device flash dotbot --probe 77
 ```
 
 A standalone J-Link is only needed to re-flash the on-board programmer's *own*
@@ -45,11 +45,11 @@ See [device](../cli/device.md) for the full flashing workflow.
 
 **Barrel jack (J4) - charging.** The barrel jack feeds the BQ24640 charger,
 which tops up the on-board supercapacitor (a ~240 F stack at 3.0 V max). The
-supercap is what runs the bot when it's untethered; expect short, fast charges
+supercap is what runs the DotBot when it's untethered; expect short, fast charges
 rather than a slow battery cycle.
 
 ```{note}
-The bot is powered whenever USB-C is connected, so you can flash and bench-test
+The DotBot is powered whenever USB-C is connected, so you can flash and bench-test
 without charging first. For free-roaming, charge via the barrel jack.
 ```
 
@@ -61,7 +61,7 @@ host to the swarm radio.
 
 ```bash
 # flash the gateway role onto a DK (writes the network id + both cores)
-dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 -s 10
+dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
 
 # then run the host-side UART<->MQTT bridge
 dotbot run gateway
@@ -76,7 +76,7 @@ start `10` (the `-s` prefix selects which probe to talk to). See
 For position tracking, the testbed uses **Valve Lighthouse 2** base stations.
 Each DotBot v3 carries an LH2 sensor shield (a TS4231 light-to-digital receiver
 with a photodiode) that decodes the base station's sweeping IR beams into a
-position. One base station illuminates the arena; the bots compute where they
+position. One base station illuminates the arena; the DotBots compute where they
 are from what they see.
 
 Once the optical setup is in place, calibrate it before relying on the

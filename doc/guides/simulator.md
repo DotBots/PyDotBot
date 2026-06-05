@@ -1,26 +1,26 @@
 # Try it in the simulator
 
-The simulator runs the **full controller and web UI with no hardware** - no bot,
-no gateway, no radio. It's the fastest way to see DotBot work, and because it
-exposes the exact same REST/WebSocket API as the real controller, code you write
-against the simulator runs unchanged against real robots.
+The simulator runs the **full controller and web UI with no hardware** - no
+DotBot, no gateway, no radio. It's the fastest way to see DotBot work, and
+because it exposes the exact same REST/WebSocket API as the real controller, code
+you write against the simulator runs unchanged against real DotBots.
 
 ## Start it
 
 ```bash
-dotbot run simulator -w
+dotbot run simulator
 ```
 
 This opens the web UI at <http://localhost:8000/PyDotBot/> driving a simulated
 swarm. `dotbot run simulator` is shorthand for
 `dotbot run controller --conn simulator`, so everything in the
-[controller + web UI guide](controller.md) applies. Drive the bots from the
+[controller + web UI guide](controller.md) applies. Drive the DotBots from the
 joystick and watch them on the map.
 
-## Drive one bot in a circle
+## Drive one DotBot in a circle
 
-The simplest demo - it grabs the first bot the controller sees and drives it in a
-circle. With the simulator running, in a second terminal:
+The simplest demo - it grabs the first DotBot the controller sees and drives it
+in a circle. With the simulator running, in a second terminal:
 
 ```bash
 dotbot run demo circle
@@ -59,7 +59,7 @@ dotbot run demo --list   # what's available
 dotbot run demo qr       # phone-as-joystick over QrKey
 ```
 
-Richer multi-bot scenarios - work-and-charge, charging-station, labyrinth, the
+Richer multi-DotBot scenarios - work-and-charge, charging-station, labyrinth, the
 naming game, motion shapes - live in `dotbot/examples/`, each with its own
 README and a simulator init state. They drive the controller over the same
 REST/WebSocket API shown above, so they run against the simulator or real

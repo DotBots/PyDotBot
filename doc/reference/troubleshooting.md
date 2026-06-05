@@ -26,7 +26,7 @@ plain source checkout, so a git clone (or a wheel-less install) has no
 `dotbot/frontend/build/`. The controller and its REST/WebSocket API still run -
 only the browser UI is unavailable. Fixes:
 
-- **From PyPI** - install the wheel, which bundles the UI: `pip install --pre pydotbot`.
+- **From PyPI** - install the wheel, which bundles the UI: `pip install pydotbot`.
 - **From a git checkout** - build the UI once: `cd dotbot/frontend && npm install && npm run build`.
 
 On a version without this check, the same cause surfaces as a startup crash,
