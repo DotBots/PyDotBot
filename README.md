@@ -9,8 +9,8 @@
 The control plane for the [DotBot](http://www.dotbots.org) - a small wireless
 wheeled robot built to operate in large swarms, for research and education.
 
-PyDotBot allows you to flash a robot and control a whole fleet over the air,
-from one bot to a thousand.
+PyDotBot allows you to flash a DotBot and control a whole fleet over the air,
+from one DotBot to a thousand.
 
 [▶️ Click to see a DotBot swarm in action](https://www.youtube.com/watch?v=pXGTLqafReU)
 
@@ -25,8 +25,8 @@ from one bot to a thousand.
 
 **What you can do**
 
-- 🕹️ Drive one bot or a whole fleet from a **web UI** (live map + joystick) or your own **Python** code
-- 📡 Flash the swarm **over the air** - one command, hundreds of bots at once
+- 🕹️ Drive one DotBot or a whole fleet from a **web UI** (live map + joystick) or your own **Python** code
+- 📡 Flash the swarm **over the air** - one command, hundreds of DotBots at once
 - 🛰️ Get real-world **(x, y) positions** with Lighthouse 2 localization
 - 🧪 Try it all with **zero hardware** using the built-in simulator
 - 🛠️ One `dotbot` CLI takes you from build → flash → run
@@ -36,7 +36,7 @@ from one bot to a thousand.
 PyDotBot is available on [PyPi](https://pypi.org/project/pydotbot/), install it with:
 
 ```bash
-pip install --pre pydotbot
+pip install pydotbot
 ```
 
 Then, check your installation with `dotbot --version` and learn what's possible with `dotbot --help`.
@@ -50,10 +50,11 @@ See the whole thing run with nothing but Python!
 The command below will run a simulated swarm, which you can observe in a web UI at http://localhost:8000/PyDotBot/ :
 
 ```bash
-dotbot run simulator -w
+dotbot run simulator
 ```
 
-Drive the simulated bots from the UI, or run a bundled demo in a
+The web UI opens automatically; pass `--headless` to suppress it (it's still
+served). Drive the simulated DotBots from the UI, or run a bundled demo in a
 second terminal:
 
 ```bash
@@ -132,7 +133,7 @@ dotbot swarm flash ~/.dotbot/artifacts/dotbot-firmware-1.22.0rc1/dotbot-sandbox-
 Observe and control your swarm from a web interface:
 
 ```bash
-dotbot run controller -w  # will open a webpage at http://localhost:8000/PyDotBot/
+dotbot run controller  # opens a webpage at http://localhost:8000/PyDotBot/
 ```
 
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -
@@ -140,23 +141,23 @@ is in the [`swarm` reference][swarm-doc].
 
 ### Calibrate positions (optional)
 
-Give the bots real-world `(x, y)` with Lighthouse 2 - capture once from any bot
-over the air, then push the result to the whole fleet (needs the `[calibrate]`
-extra, below):
+Give the DotBots real-world `(x, y)` with Lighthouse 2 - capture once from any
+DotBot over the air, then push the result to the whole fleet (needs the
+`[calibrate]` extra, below):
 
 ```bash
-dotbot swarm stop                                              # bots must be idle to capture
+dotbot swarm stop                                              # DotBots must be idle to capture
 dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
-dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every bot
+dotbot swarm lh2-calibration push ~/.dotbot/calibration-<UTC>.toml  # apply to every DotBot
 ```
 
-`-d` is your reference square's side, in mm (one bot's capture calibrates the
+`-d` is your reference square's side, in mm (one DotBot's capture calibrates the
 whole arena). Full walkthrough - arena sizing and the cabled alternative - is in
 the [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
-- **Drive a single bot** end to end - build, flash, and control one DotBot:
+- **Drive a single DotBot** end to end - build, flash, and control one DotBot:
   the [one-bot guide][one-bot-doc].
 - **Position tracking with Lighthouse 2** - give the fleet real-world `(x, y)`,
   calibrated over the air: the [LH2 calibration guide][lh2-doc] (a cabled
@@ -178,7 +179,7 @@ the [LH2 calibration guide][lh2-doc].
 Most of `dotbot` is in the base install; only LH2 calibration needs an extra:
 
 ```bash
-pip install --pre 'pydotbot[calibrate]'   # opencv (the LH2 homography solve)
+pip install 'pydotbot[calibrate]'   # opencv (the LH2 homography solve)
 ```
 
 Hitting a snag (e.g. the web UI not loading in Firefox)? See
