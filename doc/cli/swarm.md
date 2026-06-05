@@ -100,7 +100,8 @@ To replace a running experiment: `stop`, then `flash ... -ys`.
 `swarm flash` takes either a bundled app **name** or an explicit `.hex`/`.bin`
 **path**. A name resolves to the matching `<app>-sandbox-dotbot-v3.bin` in your
 artifacts cache (run `dotbot fw fetch` first); a path is flashed as-is. List
-the names with `dotbot swarm flash --list`:
+the names with `dotbot swarm flash --list` (they're also summarized at the foot
+of `dotbot swarm flash --help`):
 
 | Name | Firmware | What it does |
 |---|---|---|

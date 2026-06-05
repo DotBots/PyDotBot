@@ -118,7 +118,10 @@ dotbot run gateway -p /dev/cu.usbmodem0010500324491
 You can flash as many DotBots as you want, all at once! First, how about making them spinnnn 🔄 🔄
 
 ```bash
-dotbot swarm flash spin -ys  # flash the whole fleet with a simple spinning app
+# flash the whole fleet with a simple spinning app
+# the -ys flags confirms (y) the flash,
+# and tell the app to start (s) right away after flashing is done
+dotbot swarm flash spin -ys
 ```
 
 (`dotbot swarm` reads the same `dotbot.toml` as the rest - pass `--conn` /
@@ -158,7 +161,7 @@ First, collect from one DotBot. Get its address from `dotbot swarm status` (the
 **Device Addr** column):
 
 ```bash
-dotbot swarm status                                           # pick one Device Addr
+dotbot swarm status                                           # pick one Device Addr, e.g., BDF2B04BC00D2725
 dotbot swarm stop                                             # DotBots must be idle to capture
 dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
 ```
