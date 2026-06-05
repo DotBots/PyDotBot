@@ -122,6 +122,8 @@ class ControllerSettings:
     mqtt_host: str = MQTT_HOST_DEFAULT
     mqtt_port: int = MQTT_PORT_DEFAULT
     mqtt_use_tls: bool = False
+    mqtt_username: Optional[str] = None
+    mqtt_password: Optional[str] = None
     gw_address: str = GATEWAY_ADDRESS_DEFAULT
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
@@ -691,6 +693,8 @@ class Controller:
                 port=self.settings.mqtt_port,
                 use_tls=self.settings.mqtt_use_tls,
                 network_id=int(self.settings.network_id, 16),
+                username=self.settings.mqtt_username,
+                password=self.settings.mqtt_password,
             )
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(

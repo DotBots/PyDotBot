@@ -23,7 +23,7 @@ import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 from pydantic import BaseModel, Field, model_validator
 
-from dotbot import GATEWAY_ADDRESS_DEFAULT
+from dotbot import GATEWAY_ADDRESS_DEFAULT, SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
 
@@ -743,6 +743,29 @@ class MariNetworkSimulator:
                 self._cond.wait(timeout=wait)
 
 
+def packaged_init_state_path() -> Path:
+    """Absolute path to the default simulator world shipped in the package."""
+    return Path(__file__).with_name(SIMULATOR_INIT_STATE_DEFAULT)
+
+
+def resolve_init_state_path(path: str) -> str:
+    """Resolve the simulator init-state .toml to load.
+
+    An existing file — an explicit ``--simulator-init-state`` path, or a
+    ``simulator_init_state.toml`` in the working directory — is used as
+    given. When the default is requested and no such file is present,
+    fall back to the world shipped inside the package, so the no-hardware
+    path (``dotbot run simulator`` / ``--conn simulator``) works from any directory
+    and from a pip-installed wheel. An explicit path that does not exist
+    is returned unchanged so the caller gets a clear FileNotFoundError.
+    """
+    if Path(path).is_file():
+        return path
+    if path == SIMULATOR_INIT_STATE_DEFAULT:
+        return str(packaged_init_state_path())
+    return path
+
+
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
@@ -751,7 +774,9 @@ class DotBotSimulatorCommunicationInterface:
         self.on_frame_received = on_frame_received
         self._stp_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
-        init_state = InitStateToml(**toml.load(simulator_init_state))
+        init_state = InitStateToml(
+            **toml.load(resolve_init_state_path(simulator_init_state))
+        )
         self._network = init_state.network
         self.dotbots = [
             DotBotSimulator(

@@ -58,6 +58,8 @@ html_sourcelink_suffix = ""
 html_static_path = ["_static"]
 
 myst_enable_extensions = ["html_image"]
+# Generate slugged anchors for headings so `[text](#heading-slug)` links resolve.
+myst_heading_anchors = 3
 
 # Define the json_url for our version switcher.
 json_url = "https://pydotbot.readthedocs.io/en/latest/_static/switcher.json"
@@ -117,7 +119,26 @@ html_theme_options = {
 
 # -- Options for linkcheck ---------------------------------------------
 
-linkcheck_ignore = [r"http://localhost:\d+/"]
+linkcheck_ignore = [
+    r"http://localhost:\d+/",
+    # nordicsemi.com's WAF returns 403 to the linkcheck bot; the link is valid
+    # for humans (the nRF Command Line Tools download linked from the README).
+    r"https://www\.nordicsemi\.com/",
+    # The README deep-links into this same docs site; those pages exist only
+    # once this build is published, so linkcheck can't reach them yet.
+    r"https://pydotbot\.readthedocs\.io/",
+    # YouTube (demo video + its thumbnail) bot-blocks the linkcheck crawler.
+    r"https://www\.youtube\.com/",
+    r"https://img\.youtube\.com/",
+    # Badge services (shields.io, badge.fury.io) are decorative and
+    # intermittently time out or rate-limit the linkcheck bot.
+    r"https://img\.shields\.io/",
+    r"https://badge\.fury\.io/",
+    # dotbots.org and segger.com return 403 to the linkcheck bot (WAF /
+    # user-agent block); both links are valid for humans.
+    r"https?://www\.dotbots\.org",
+    r"https://www\.segger\.com/",
+]
 
 # -- Options for autosummary/autodoc output -----------------------------------
 autosummary_generate = True

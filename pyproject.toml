@@ -7,6 +7,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 include = [
     "dotbot/frontend/*",
+    "dotbot/*.toml",
     "*.py"
 ]
 exclude = [
@@ -22,7 +23,7 @@ path = "utils/hooks/sdist.py"
 
 [project]
 name = "pydotbot"
-version = "0.27.0"
+version = "0.29.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
@@ -30,6 +31,7 @@ authors = [
     { name="Said Alvarado-Marin", email="said-alexander.alvarado-marin@inria.fr" },
     { name="Mališa Vučinić", email="malisa.vucinic@inria.fr" },
     { name="Diego Badillo", email="diego.badillo@sansano.usm.cl" },
+    { name="Geovane Fedrecheski", email="geovane.fedrecheski@inria.fr" },
 ]
 dependencies = [
     "click          >= 8.1.7",
@@ -40,14 +42,18 @@ dependencies = [
     "pynput         >= 1.8.1",
     "pyserial       >= 3.5",
     "qrkey          >= 0.12.2",
+    "requests       >= 2.31.0",
     "rich           >= 14.0.0",
     "structlog      >= 24.4.0",
     "uvicorn        >= 0.32.0",
     "websockets     >= 13.1.0",
     "gmqtt          >= 0.7.0",
-    "marilib-pkg    >= 0.8.0",
+    "intelhex       >= 2.3.0",
+    "marilib-pkg    >= 0.9.0",
     "pydotbot-utils >= 0.3.0",
+    "swarmit        >= 0.8.0",
     "toml           >= 0.10.2",
+    "tomlkit        >= 0.13.0",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
@@ -67,13 +73,31 @@ classifiers = [
 "Bug Tracker" = "https://github.com/DotBots/PyDotBot/issues"
 
 [project.scripts]
-dotbot-controller = "dotbot.controller_app:main"
-dotbot-edge-gateway = "dotbot.edge_gateway_app:main"
-dotbot-keyboard = "dotbot.keyboard:main"
-dotbot-joystick = "dotbot.joystick:main"
-# dotbot-qrkey console script removed — the demo is now an example,
-# run via `python -m dotbot.examples.qrkey_demo`. See
-# dotbot/examples/qrkey_demo/README.md.
+# The unified dispatcher is the only console script. Every workflow is a
+# `dotbot <group> <verb>` subcommand — there are no per-command `dotbot-*`
+# binaries.
+dotbot = "dotbot.cli.main:cli"
+
+[project.optional-dependencies]
+# Optional subcommand backends. Keep the core install lean; opt in to
+# the bits you actually use.
+calibrate = [
+    "opencv-python    >= 4.12.0.88",
+    "textual          >= 6.4.0",
+]
+all = [
+    "opencv-python    >= 4.12.0.88",
+    "textual          >= 6.4.0",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "black",
+    "isort",
+    "pre-commit",
+]
 
 [tool.ruff]
 lint.select = ["E", "F"]

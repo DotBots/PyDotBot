@@ -56,8 +56,11 @@ class PayloadWithBytesFixedLengthTest(Payload):
     data: bytes = b""
 
 
-register_parser(0x81, PayloadWithBytesTest)
-register_parser(0x82, PayloadWithBytesFixedLengthTest)
+# Test-only payload types, deliberately clear of dotbot's real types (<= 0xfa)
+# and swarmit's (0x80-0xa1): both register into this shared dotbot_utils registry
+# and swarmit (a core dep) may be imported in the same process.
+register_parser(0xFB, PayloadWithBytesTest)
+register_parser(0xFC, PayloadWithBytesFixedLengthTest)
 
 
 @pytest.mark.parametrize(
@@ -235,20 +238,20 @@ def test_parse_header(bytes_, expected):
         ),
         pytest.param(
             b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
-            b"\x81"  # payload type
+            b"\xfb"  # payload type
             b"\x08"  # count
             b"abcdefgh",  # data
             Header(),
-            0x81,
+            0xFB,
             PayloadWithBytesTest(count=8, data=b"abcdefgh"),
             id="PayloadWithBytesTest",
         ),
         pytest.param(
             b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
-            b"\x82"  # payload type
+            b"\xfc"  # payload type
             b"abcdefgh",  # data
             Header(),
-            0x82,
+            0xFC,
             PayloadWithBytesFixedLengthTest(data=b"abcdefgh"),
             id="PayloadWithBytesFixedLengthTest",
         ),
@@ -491,7 +494,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                 ),
             ),
             b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
-            b"\x81"  # payload type
+            b"\xfb"  # payload type
             b"\x08"  # count
             b"abcdefgh",  # data
             id="PayloadWithBytesTest",
@@ -504,7 +507,7 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                 ),
             ),
             b"\x01\x10\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"  # header
-            b"\x82"  # payload type
+            b"\xfc"  # payload type
             b"abcdefgh",  # data
             id="PayloadWithBytesFixedLengthTest",
         ),
@@ -735,7 +738,7 @@ def test_payload_to_bytes(frame, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
-                " (28 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0x81 |\n"
+                " (28 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0xfb |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +------+--------------------+\n"
                 "                 | len. | data               |\n"
@@ -755,7 +758,7 @@ def test_payload_to_bytes(frame, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " CUSTOM_DATA     | ver. | type | dst                | src                | type |\n"
-                " (27 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0x82 |\n"
+                " (27 Bytes)      | 0x01 | 0x10 | 0xffffffffffffffff | 0x0000000000000000 | 0xfc |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
                 "                 +--------------------+\n"
                 "                 | data               |\n"

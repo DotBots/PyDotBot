@@ -194,7 +194,6 @@ async def test_controller_get_dotbots_query(query, length, controller):
     assert len(dotbots) == length
 
 
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_controller_sailbot_simulator():
     """Check controller called for sailbot simulator."""
 
@@ -211,11 +210,9 @@ def test_controller_sailbot_simulator():
         except asyncio.TimeoutError:
             pass
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_simulator())
+    asyncio.run(start_simulator())
 
 
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_controller_dotbot_simulator():
     """Check controller called for dotbot simulator."""
 
@@ -232,8 +229,7 @@ def test_controller_dotbot_simulator():
         except asyncio.TimeoutError:
             pass
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_simulator())
+    asyncio.run(start_simulator())
 
 
 @pytest.mark.parametrize(

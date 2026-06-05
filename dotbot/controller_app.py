@@ -8,67 +8,159 @@
 """Main module of the Dotbot controller command line tool."""
 
 import asyncio
+import os
+import shutil
 import sys
+from pathlib import Path
 
 import click
 import serial
 import toml
 
 from dotbot import (
-    CONTROLLER_ADAPTER_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
-    MQTT_HOST_DEFAULT,
-    MQTT_PORT_DEFAULT,
-    NETWORK_ID_DEFAULT,
-    SERIAL_BAUDRATE_DEFAULT,
-    SERIAL_PORT_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     pydotbot_version,
 )
+from dotbot.cli._cfg import from_config
+from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
+
+# Old transport/identity config keys replaced by `conn` / `swarm_id`.
+# Present-in-config triggers a warning and is dropped.
+_LEGACY_TOML_KEYS = {
+    "adapter",
+    "mqtt_host",
+    "mqtt_port",
+    "mqtt_use_tls",
+    "network_id",
+    "swarmit_network_id",
+    "port",
+    "baudrate",
+}
+
+
+def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
+    """Map `--conn` + `--swarm-id` into internal ControllerSettings fields.
+
+    The internal `adapter` enum (`cloud`/`edge`/`dotbot-simulator`/…) is
+    an implementation detail; the CLI only ever sees `--conn`. Broker
+    credentials come from the environment (`DOTBOT_MQTT_USER` /
+    `DOTBOT_MQTT_PASS`), never the URL or a flag.
+
+    Raises `click.ClickException` for a malformed `--conn` or a missing
+    `--swarm-id` on an mqtt connection.
+    """
+    if conn is None:
+        raise click.ClickException(
+            "no connection given. Pass --conn (-n) with one of:\n"
+            "  mqtts://host:port   (an MQTT broker; also needs --swarm-id)\n"
+            "  /dev/ttyACM0        (a serial gateway)\n"
+            "  simulator           (no hardware)"
+        )
+    try:
+        parsed = parse_connection(conn)
+    except ConnError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if needs_swarm_id(parsed) and not swarm_id:
+        raise click.ClickException(
+            f"--conn {conn} needs --swarm-id: the broker carries multiple "
+            "swarms; --swarm-id selects yours."
+        )
+
+    if parsed.kind == "mqtt":
+        settings = {
+            "adapter": "cloud",
+            "mqtt_host": parsed.host,
+            "mqtt_port": parsed.port,
+            "mqtt_use_tls": parsed.use_tls,
+            "mqtt_username": os.environ.get("DOTBOT_MQTT_USER"),
+            "mqtt_password": os.environ.get("DOTBOT_MQTT_PASS"),
+        }
+        if swarm_id:
+            settings["network_id"] = swarm_id
+        return settings
+    if parsed.kind == "serial":
+        settings = {"adapter": "edge", "port": parsed.serial_port}
+        if swarm_id:
+            settings["network_id"] = swarm_id
+        return settings
+    # simulator
+    return {"adapter": "dotbot-simulator" if sim_is_dotbot else "sailbot-simulator"}
+
+
+def _maybe_scaffold_sim_state(explicit_init_state):
+    """Offer to drop an editable example world in the current directory.
+
+    `explicit_init_state` is the path set via `--simulator-init-state` or
+    the config file, or None when unspecified (the default world). Fires
+    only when nothing was specified and no `simulator_init_state.toml` is
+    here. An interactive run gets a [Y/n] prompt; declining — or a
+    non-interactive run (CI, a pipe) — leaves the cwd untouched and the
+    simulator falls back to the packaged world, so it always starts.
+    Writing the file lets the operator edit the simulated swarm
+    (positions, count, Mari vs default mode).
+    """
+    if explicit_init_state is not None:
+        return  # a path was set via --simulator-init-state or config
+    if Path(SIMULATOR_INIT_STATE_DEFAULT).is_file():
+        return  # a cwd file already exists; it'll be used as-is
+    if not sys.stdin.isatty():
+        return  # non-interactive: silently use the packaged default
+
+    target = Path.cwd() / SIMULATOR_INIT_STATE_DEFAULT
+    if not click.confirm(
+        f"No {SIMULATOR_INIT_STATE_DEFAULT} in this directory. "
+        "Create an editable example here?",
+        default=True,
+    ):
+        return
+
+    from dotbot.dotbot_simulator import packaged_init_state_path
+
+    try:
+        shutil.copy(packaged_init_state_path(), target)
+    except OSError as exc:
+        click.echo(
+            f"Could not write {target}: {exc}; using the built-in world.",
+            err=True,
+        )
+        return
+    click.echo(f"Created {target} — edit it to customize the simulated swarm.")
 
 
 @click.command()
 @click.option(
-    "-a",
-    "--adapter",
-    type=click.Choice(
-        ["serial", "edge", "cloud", "dotbot-simulator", "sailbot-simulator"]
+    "-n",
+    "--conn",
+    "--connection",
+    "conn",
+    type=str,
+    help=(
+        "Connection to the swarm — one discriminated string: an MQTT "
+        "broker `mqtts://host:port`, a serial device path `/dev/ttyACM0`, "
+        "or `simulator`."
     ),
-    help=f"Controller interface adapter. Defaults to {CONTROLLER_ADAPTER_DEFAULT}",
 )
 @click.option(
-    "-p",
-    "--port",
+    "-s",
+    "--swarm-id",
+    "swarm_id",
     type=str,
-    help=f"Serial port used by 'serial' and 'edge' adapters. Defaults to '{SERIAL_PORT_DEFAULT}'",
+    help=(
+        "Swarm id in hex. Required for an mqtt connection (the broker "
+        "carries many swarms); ignored for serial/simulator."
+    ),
 )
 @click.option(
-    "-b",
-    "--baudrate",
-    type=int,
-    help=f"Serial baudrate used by 'serial' and 'edge' adapters. Defaults to {SERIAL_BAUDRATE_DEFAULT}",
-)
-@click.option(
-    "-H",
-    "--mqtt-host",
-    type=str,
-    help=f"MQTT host used by cloud adapter. Default: {MQTT_HOST_DEFAULT}.",
-)
-@click.option(
-    "-P",
-    "--mqtt-port",
-    type=int,
-    help=f"MQTT port used by cloud adapter. Default: {MQTT_PORT_DEFAULT}.",
-)
-@click.option(
-    "-T",
-    "--mqtt-use_tls/--no-mqtt-use_tls",
-    default=None,
-    help="Use TLS with MQTT (for cloud adapter).",
+    "--dotbot/--sailbot",
+    "sim_is_dotbot",
+    default=True,
+    help="With `--conn simulator`: which robot to simulate. Default: --dotbot.",
 )
 @click.option(
     "-g",
@@ -77,13 +169,6 @@ from dotbot.logger import setup_logging
     help=f"Gateway address in hex. Defaults to {GATEWAY_ADDRESS_DEFAULT:>0{16}}",
 )
 @click.option(
-    "-s",
-    "--network-id",
-    type=str,
-    help=f"Network ID in hex. Defaults to {NETWORK_ID_DEFAULT:>0{4}}",
-)
-@click.option(
-    "-c",
     "--controller-http-port",
     type=int,
     help=f"Controller HTTP port of the REST API. Defaults to '{CONTROLLER_HTTP_PORT_DEFAULT}'",
@@ -142,15 +227,13 @@ from dotbot.logger import setup_logging
     type=click.Path(dir_okay=False),
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
+@click.pass_context
 def main(
-    adapter,
-    port,
-    baudrate,
-    mqtt_host,
-    mqtt_port,
-    mqtt_use_tls,
+    ctx,
+    conn,
+    swarm_id,
+    sim_is_dotbot,
     gw_address,
-    network_id,
     controller_http_port,
     map_size,
     background_map,
@@ -166,16 +249,50 @@ def main(
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
-    # The priority order is CLI > ConfigFile (optional) > Defaults
+    # The priority order is CLI > ConfigFile (optional) > Defaults.
+    # The config file may carry `conn` / `swarm_id` too; CLI wins.
+    file_data = {}
+    if config_path:
+        file_data = toml.load(config_path)
+
+    # Unified config / selected deployment, slotted in above the legacy
+    # `--config-path` file. Resolves CLI > env > unified-config (run >
+    # deployment > top-level) for each key; falls through to the param
+    # default (None) when no root context is present, preserving the
+    # legacy `--config-path` fallback that follows.
+    conn = from_config(ctx, "conn", "conn", "run")
+    swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
+
+    conn = conn if conn is not None else file_data.get("conn")
+    swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
+
+    # Warn (and drop) legacy transport keys in a config file — they're
+    # superseded by `conn` / `swarm_id` and silently flowing them through
+    # would mask a stale config.
+    legacy = sorted(_LEGACY_TOML_KEYS & set(file_data))
+    if legacy:
+        click.echo(
+            f"warning: ignoring legacy config key(s) {legacy}; "
+            "use `conn` and `swarm_id` instead.",
+            err=True,
+        )
+
+    # Translate the single `--conn` connection string into the internal
+    # adapter + transport settings. The internal `adapter` enum stays an
+    # implementation detail — the CLI never exposes it.
+    conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
+
+    # For a simulator connection with no init-state set (CLI default is
+    # None, so fold in any config value), offer to scaffold an editable
+    # world file in the cwd. resolve_init_state_path then picks up the
+    # freshly-written file (or the packaged world if declined/non-tty).
+    if conn_settings.get("adapter", "").endswith("simulator"):
+        _maybe_scaffold_sim_state(
+            simulator_init_state or file_data.get("simulator_init_state")
+        )
+
     cli_args = {
-        "adapter": adapter,
-        "port": port,
-        "baudrate": baudrate,
-        "mqtt_host": mqtt_host,
-        "mqtt_port": mqtt_port,
-        "mqtt_use_tls": mqtt_use_tls,
         "gw_address": gw_address,
-        "network_id": network_id,
         "controller_http_port": controller_http_port,
         "map_size": map_size,
         "background_map": background_map,
@@ -187,11 +304,11 @@ def main(
         "csv_data_output": csv_data_output,
     }
 
-    data = {}
-    if config_path:
-        file_data = toml.load(config_path)
-        data.update(file_data)
-
+    # Settings precedence: defaults < config-file (non-conn/legacy keys) <
+    # conn translation < other CLI flags.
+    dropped = _LEGACY_TOML_KEYS | {"conn", "swarm_id"}
+    data = {k: v for k, v in file_data.items() if k not in dropped}
+    data.update(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
 
     controller_settings = ControllerSettings(**data)
