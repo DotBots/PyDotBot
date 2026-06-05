@@ -277,9 +277,14 @@ class Swarm:
         parser = argparse.ArgumentParser()
         parser.add_argument("--swarm-url", default=conn or "http://localhost:8000")
         parser.add_argument("--host", default=None)
-        parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--port", type=int, default=None)
         args, _ = parser.parse_known_args()
-        url = f"http://{args.host}:{args.port}" if args.host else args.swarm_url
+        # Honor --host and/or --port whenever either is given (so `--port 9000`
+        # alone works); otherwise fall back to --swarm-url.
+        if args.host is not None or args.port is not None:
+            url = f"http://{args.host or 'localhost'}:{args.port or 8000}"
+        else:
+            url = args.swarm_url
 
         async def _main() -> None:
             async with cls.connect(url) as swarm:
