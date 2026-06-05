@@ -130,14 +130,18 @@ def cli(ctx, config_path, deployment_name):
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    if path is not None:
-        click.echo(f"using config file at {path}", err=True)
-    else:
-        click.echo(
-            f"no config file found (looked for ./{PROJECT_CONFIG_NAME} and "
-            f"{USER_CONFIG_PATH}); using built-in defaults",
-            err=True,
-        )
+    # The `config` group inspects config state itself (show/path) or scaffolds
+    # it (init), so the root-level "which config is in effect" echo is redundant
+    # there - and reads as a contradiction right before `config init` writes one.
+    if ctx.invoked_subcommand != "config":
+        if path is not None:
+            click.echo(f"using config file at {path}", err=True)
+        else:
+            click.echo(
+                f"no config file found (looked for ./{PROJECT_CONFIG_NAME} and "
+                f"{USER_CONFIG_PATH}); using built-in defaults",
+                err=True,
+            )
 
     ctx.obj["config"] = config
     ctx.obj["config_path"] = path
