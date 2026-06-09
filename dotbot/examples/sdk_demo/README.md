@@ -48,10 +48,12 @@ amplitudes:
 | `tiny_circle` | each bot traces a small circle around its start | low-medium (small swept disc) |
 | `ripple_wiggle` | a wiggle wave: the centre ring rocks in place first, then each ring outward, lighting up as it goes | low (turns in place) |
 | `march` | the whole fleet translates as a block: right, up, left, back | medium (formation moves; mind the walls) |
+| `distribute` | spreads a clustered fleet into an even lattice across the arena (`--loop` to cluster then re-spread) | medium-high (bots cross the arena; clustering piles them up) |
 | `swarm_rotate` | the whole fleet rotates about its centroid | high (outer bots cross inner paths) |
 
 Each demo has a few constants at the top (speed, radius, step, angle) - tune
-those to your arena.
+those to your arena. `distribute` has a `MAP_SIZE` to match the controller's
+`-m <S>x<S>`.
 
 ## Before running on the real testbed
 
