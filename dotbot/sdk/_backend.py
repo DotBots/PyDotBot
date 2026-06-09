@@ -105,7 +105,9 @@ class HttpBackend:
         blue: int,
     ) -> None:
         await self._rest.send_rgb_led_command(
-            address, DotBotRgbLedCommandModel(red=red, green=green, blue=blue)
+            address,
+            DotBotRgbLedCommandModel(red=red, green=green, blue=blue),
+            application,
         )
 
     async def send_move_raw(
