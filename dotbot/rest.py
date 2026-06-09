@@ -96,7 +96,10 @@ class RestClient:
                 },
                 content=command.model_dump_json(),
             )
-        except httpx.ConnectError as exc:
+        except httpx.HTTPError as exc:
+            # Fire-and-forget: a transient transport failure (connection refused,
+            # server disconnected mid-burst, read timeout) must not crash the
+            # caller. Log and move on; waypoint/control loops re-send anyway.
             self._logger.warning(f"Failed to send command: {exc}")
             return
         if response.status_code != 200:
