@@ -34,6 +34,12 @@ _NOTIF_RELOAD = 1
 _NOTIF_UPDATE = 2
 _NOTIF_NEW_DOTBOT = 4
 
+# A single Mari gateway sustains roughly this many downlink command frames per
+# second. The SDK paces every outgoing command to it (see HttpBackend._pace) so
+# a swarm-wide broadcast - one command per bot - can't outrun the link or
+# overwhelm the controller as one burst.
+DEFAULT_DOWNLINK_HZ = 80.0
+
 
 class HttpBackend:
     """Connects to a controller over REST + the `ws/status` websocket."""
@@ -49,6 +55,13 @@ class HttpBackend:
         self._on_update: Callable[[dict], None] | None = None
         self._on_reload: Callable[[], None] | None = None
         self._closed = False
+        # Downlink pacing: a single reservation clock shared by every send, so
+        # concurrent commands (e.g. one per bot from swarm.all) drain at the
+        # gateway budget instead of bursting. GET /controller/link is still a
+        # TODO, so assume one gateway until it reports real ones.
+        self._downlink_hz = DEFAULT_DOWNLINK_HZ
+        self._send_lock = asyncio.Lock()
+        self._next_send = 0.0
 
     @property
     def _ws_url(self) -> str:
@@ -96,6 +109,23 @@ class HttpBackend:
     async def fetch_fleet(self) -> list[DotBotModel]:
         return await self._rest.fetch_dotbots()
 
+    async def _pace(self) -> None:
+        """Reserve the next downlink slot and wait for it, so concurrent sends
+        drain at `self._downlink_hz` instead of all at once. Each caller takes a
+        unique slot under the lock, then sleeps until it comes up - the actual
+        HTTP requests still overlap, but they start no faster than the budget."""
+        if self._downlink_hz <= 0:
+            return
+        interval = 1.0 / self._downlink_hz
+        async with self._send_lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            start = self._next_send if self._next_send > now else now
+            self._next_send = start + interval
+        delay = start - now
+        if delay > 0:
+            await asyncio.sleep(delay)
+
     async def send_rgb_led(
         self,
         address: str,
@@ -104,6 +134,7 @@ class HttpBackend:
         green: int,
         blue: int,
     ) -> None:
+        await self._pace()
         await self._rest.send_rgb_led_command(
             address,
             DotBotRgbLedCommandModel(red=red, green=green, blue=blue),
@@ -117,6 +148,7 @@ class HttpBackend:
         left: tuple[int, int],
         right: tuple[int, int],
     ) -> None:
+        await self._pace()
         await self._rest.send_move_raw_command(
             address,
             application,
@@ -132,6 +164,7 @@ class HttpBackend:
         points: list[tuple[float, float]],
         threshold: int,
     ) -> None:
+        await self._pace()
         await self._rest.send_waypoint_command(
             address,
             application,
