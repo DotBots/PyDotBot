@@ -191,15 +191,25 @@ def generate_fleet(
 ) -> List[SimulatedDotBotSettings]:
     """Build `n` simulated bots placed in a named layout, sized to `map_size`
     (so the fleet fills the whole map), with sequential auto-generated
-    addresses. Backs `dotbot run simulator --bots N --layout`."""
+    addresses. The `random` layout also gives each bot a random heading; the
+    structured layouts keep the default heading so rows/circles stay aligned.
+    Backs `dotbot run simulator --bots N --layout`."""
     from dotbot import patterns
 
     dims = _parse_map_size(map_size)
     kwargs = {"width": dims[0], "height": dims[1]} if dims else {}
-    return [
-        SimulatedDotBotSettings(address=f"{i + 1:016x}", pos_x=int(x), pos_y=int(y))
-        for i, (x, y) in enumerate(patterns.layout(n, layout, seed=seed, **kwargs))
-    ]
+    positions = patterns.layout(n, layout, seed=seed, **kwargs)
+    # Separate seeded stream so headings don't perturb the placement.
+    heading_rng = random.Random(seed + 7919) if layout == "random" else None
+    fleet = []
+    for i, (x, y) in enumerate(positions):
+        extra = {"direction": heading_rng.randrange(360)} if heading_rng else {}
+        fleet.append(
+            SimulatedDotBotSettings(
+                address=f"{i + 1:016x}", pos_x=int(x), pos_y=int(y), **extra
+            )
+        )
+    return fleet
 
 
 class DotBotSimulator:
