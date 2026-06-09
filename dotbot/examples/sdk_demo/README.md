@@ -46,7 +46,7 @@ amplitudes:
 | `wiggle` | every bot rocks side to side in place while a rainbow rolls across the fleet (`--loop` to repeat with a pause) | low (turns in place) |
 | `spin` | every bot spins in place, then stops | low (turns in place) |
 | `tiny_circle` | each bot traces a small circle around its start | low-medium (small swept disc) |
-| `ripple_pulse` | the moving cousin of `led_ripple`: light + a small outward hop ripple out from the centre, then ease home | low-medium (small radial hop, returns home) |
+| `ripple_wiggle` | a wiggle wave: the centre ring rocks in place first, then each ring outward, lighting up as it goes | low (turns in place) |
 | `march` | the whole fleet translates as a block: right, up, left, back | medium (formation moves; mind the walls) |
 | `swarm_rotate` | the whole fleet rotates about its centroid | high (outer bots cross inner paths) |
 
