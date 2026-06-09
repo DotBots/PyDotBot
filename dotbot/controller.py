@@ -705,6 +705,7 @@ class Controller:
                 bots=self.settings.simulator_bots,
                 layout=self.settings.simulator_layout,
                 seed=self.settings.simulator_seed,
+                map_size=self.settings.map_size,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()
