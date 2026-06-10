@@ -317,6 +317,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in api.controller.websockets:
             api.controller.websockets.remove(websocket)
+        api.controller._ws_send_locks.pop(id(websocket), None)
 
 
 @api.websocket("/controller/ws/dotbots")
