@@ -54,7 +54,13 @@ def _backend_for(conn: str):
 class Swarm:
     """The live swarm. Use `async with Swarm.connect(url) as swarm:`."""
 
-    def __init__(self, backend):
+    def __init__(
+        self,
+        backend,
+        *,
+        collision_avoidance: bool = False,
+        min_separation: float | None = None,
+    ):
         self._backend = backend
         self._bots: dict[str, Bot] = {}
         self._tasks: set[asyncio.Task] = set()
@@ -62,12 +68,44 @@ class Swarm:
         self._event_queues: set[asyncio.Queue] = set()
         self._positions_clamped = False
         self._tick_warned = False
+        self._shepherd = None
+        if collision_avoidance:
+            from dotbot.sdk._shepherd import Shepherd
+            from dotbot.sdk.avoid import DEFAULT_SAFE_RADIUS
+
+            self._shepherd = Shepherd(
+                self, min_separation or 2 * DEFAULT_SAFE_RADIUS
+            )
 
     @classmethod
-    def connect(cls, conn: str) -> Swarm:
+    def connect(
+        cls,
+        conn: str,
+        *,
+        collision_avoidance: bool = False,
+        min_separation: float | None = None,
+    ) -> Swarm:
         """Return a Swarm for `conn`. Enter it as an async context manager to
-        actually open the connection."""
-        return cls(_backend_for(conn))
+        actually open the connection.
+
+        With `collision_avoidance=True` every `goto` / `move_to` / `follow` is
+        shepherded through buffered-Voronoi-cell waypoints (positions only, no
+        extra hardware), so bots flow around each other and stay off the walls
+        instead of driving straight through occupied space. `min_separation`
+        is the enforced centre-to-centre distance in mm (default 300).
+        Separation is the guarantee; arrival stays best-effort - a goal that
+        is blocked or unreachable surfaces as the usual move timeout. `stop()`
+        and `move_raw()` always bypass the shepherd."""
+        return cls(
+            _backend_for(conn),
+            collision_avoidance=collision_avoidance,
+            min_separation=min_separation,
+        )
+
+    @property
+    def collision_avoidance(self) -> bool:
+        """Whether motion commands are shepherded around other bots."""
+        return self._shepherd is not None
 
     async def __aenter__(self) -> Swarm:
         await self._open()
@@ -258,6 +296,8 @@ class Swarm:
                 next_tick = loop.time()  # body overran the period; resync
 
     async def close(self) -> None:
+        if self._shepherd is not None:
+            await self._shepherd.close()
         # Flush pending fire-and-forget commands (e.g. a final stop()) before
         # tearing down, so they are not lost on shutdown - cancelling them would
         # strand a bot mid-move. Bounded so a stuck async callback can't hang us.
@@ -275,13 +315,26 @@ class Swarm:
     # ---- launcher -------------------------------------------------------
 
     @classmethod
-    def run(cls, fn: Callable, *, conn: str | None = None) -> None:
+    def run(
+        cls,
+        fn: Callable,
+        *,
+        conn: str | None = None,
+        collision_avoidance: bool = False,
+        min_separation: float | None = None,
+    ) -> None:
         """Parse argv (--swarm-url, or --host/--port), connect, run `fn(swarm)`,
-        and tear down on Ctrl-C. The zero-ceremony entry point for scripts."""
+        and tear down on Ctrl-C. The zero-ceremony entry point for scripts.
+
+        `collision_avoidance=True` (or the `--collision-avoidance` flag, so an
+        operator can force it on any script without editing it) shepherds all
+        motion commands around other bots and the arena walls - see
+        `Swarm.connect`."""
         parser = argparse.ArgumentParser()
         parser.add_argument("--swarm-url", default=conn or "http://localhost:8000")
         parser.add_argument("--host", default=None)
         parser.add_argument("--port", type=int, default=None)
+        parser.add_argument("--collision-avoidance", action="store_true")
         args, _ = parser.parse_known_args()
         # Honor --host and/or --port whenever either is given (so `--port 9000`
         # alone works); otherwise fall back to --swarm-url.
@@ -291,7 +344,11 @@ class Swarm:
             url = args.swarm_url
 
         async def _main() -> None:
-            async with cls.connect(url) as swarm:
+            async with cls.connect(
+                url,
+                collision_avoidance=collision_avoidance or args.collision_avoidance,
+                min_separation=min_separation,
+            ) as swarm:
                 await fn(swarm)
 
         try:

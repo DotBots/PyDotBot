@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dotbot.protocol import ApplicationType, ControlModeType
 from dotbot.sdk.action import Action
+from dotbot.sdk.avoid import bvc_waypoint, safe_hop
 from dotbot.sdk.bot import Bot
 from dotbot.sdk.events import (
     BatteryUpdate,
@@ -47,4 +48,8 @@ __all__ = [
     "PositionUpdate",
     "BatteryUpdate",
     "ModeChanged",
+    # collision avoidance (the composable low-level rung; the high-level rung
+    # is Swarm.connect(..., collision_avoidance=True))
+    "bvc_waypoint",
+    "safe_hop",
 ]

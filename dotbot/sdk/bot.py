@@ -116,7 +116,11 @@ class Bot:
     def move_raw(
         self, *, left: tuple[int, int] = (0, 0), right: tuple[int, int] = (0, 0)
     ) -> None:
-        """Direct per-wheel teleop (single-bot, high-rate). Fire-and-forget."""
+        """Direct per-wheel teleop (single-bot, high-rate). Fire-and-forget.
+        Always bypasses collision avoidance and cancels any shepherded goal -
+        explicit wheel control means you have taken over."""
+        if self._swarm._shepherd is not None:
+            self._swarm._shepherd.clear(self.address)
         self._swarm._schedule(
             self._swarm._backend.send_move_raw(
                 self.address, self.application, left, right
@@ -130,7 +134,12 @@ class Bot:
         """Fire-and-forget: set a single waypoint and return immediately,
         without waiting for arrival. The streaming counterpart to move_to/follow
         - for control loops (e.g. ORCA) that send a fresh target every tick. Use
-        move_to/follow when you want to await arrival."""
+        move_to/follow when you want to await arrival. With collision avoidance
+        on, the waypoint becomes the bot's shepherded goal instead of a direct
+        send."""
+        if self._swarm._shepherd is not None:
+            self._swarm._shepherd.set_goal(self.address, x, y, threshold)
+            return
         self._swarm._schedule(
             self._swarm._backend.send_waypoints(
                 self.address, self.application, [(float(x), float(y))], threshold
@@ -155,9 +164,11 @@ class Bot:
     ) -> Action:
         """Drive through a list of (x, y) waypoints. Returns an Action handle
         immediately; await it to wait until the bot reaches the last point.
-        Absorbs the <=12 chunking and resend-until-engaged. Arrival is detected
-        by position, and a bot that never arrives raises TimeoutError rather
-        than hanging or reporting a false 'done'."""
+        Absorbs the <=12 chunking and resend-until-engaged (with collision
+        avoidance on, the points instead become the bot's shepherded goals,
+        one at a time). Arrival is detected by position, and a bot that never
+        arrives raises TimeoutError rather than hanging or reporting a false
+        'done'."""
         points = [(float(x), float(y)) for x, y in waypoints]
         task = self._swarm._schedule(self._drive(points, threshold, timeout))
         return Action(task)
@@ -166,8 +177,32 @@ class Bot:
         self, points: list[tuple[float, float]], threshold: int, timeout: float
     ) -> None:
         deadline = asyncio.get_running_loop().time() + timeout
+        if self._swarm._shepherd is not None:
+            # Shepherded: each point becomes the bot's goal in turn; the
+            # shepherd streams the safe hops, we only watch for arrival.
+            for x, y in points:
+                self._swarm._shepherd.set_goal(self.address, x, y, threshold)
+                await self._await_arrival(Position(x, y), threshold, deadline)
+            return
         for i in range(0, len(points), MAX_WAYPOINTS):
             await self._follow_chunk(points[i : i + MAX_WAYPOINTS], threshold, deadline)
+
+    async def _await_arrival(
+        self, target: Position, threshold: int, deadline: float
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        while True:
+            pos = self.position
+            if pos is not None and pos.distance_to(target) <= threshold:
+                return
+            if loop.time() > deadline:
+                # Stop chasing an unreachable goal before surfacing the error.
+                self._swarm._shepherd.clear(self.address)
+                raise TimeoutError(
+                    f"{self.address} did not reach "
+                    f"({target.x:.0f}, {target.y:.0f}) within the move timeout"
+                )
+            await asyncio.sleep(_ARRIVAL_POLL)
 
     async def _follow_chunk(
         self, chunk: list[tuple[float, float]], threshold: int, deadline: float
