@@ -2,25 +2,20 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Spread a clustered swarm out without collisions, edge-first.
+"""Spread the swarm out by mutual repulsion - bots push apart, not through each
+other.
 
-The idea you sketched: the bots on the border move first (there is open space
-beyond them, nobody to hit), then the next layer out into the room they vacate,
-and so on. Two rules together make the whole bloom collision-free:
+Each round, every bot wants a small step directly *away* from whoever is
+crowding it (near bots weigh most), and the step shrinks each round so the
+fleet settles into an even spread. Every step is issued through the buffered
+Voronoi cell projection from _lib, so even bots that start overlapping (or get
+boxed in mid-bloom) separate cleanly instead of arcing through a neighbour -
+the repulsion field picks the direction, the BVC guarantees the safety.
 
-  1. every bot moves *straight outward* from the swarm centre, never sideways -
-     so the paths are radial spokes that never cross each other;
-  2. a bot's target radius grows with its current rank from the centre, so the
-     outermost bot ends up outermost - no bot ever overtakes the one ahead of it
-     on its spoke.
-
-Released in waves from the outside in, a clump blooms into an even disc and no
-bot drives into an occupied spot. Contrast `distribute`, which reaches a tidy
-grid but lets paths cross - this one is the collision-safe option for hardware.
-
-Best run from a clustered start (that is the case it is built for). With --loop
-it re-gathers the fleet first - a sim-only replay step that *does* crowd them -
-then blooms again.
+It works from any start - a tight clump blooms outward, an already-spread fleet
+just evens out its spacing - and reads the arena size from the controller, so
+it matches whatever `-m <W>x<H>` you launched with. With --loop it re-gathers
+the fleet into a tight (but touch-free) block and disperses again.
 
     python -m dotbot.examples.sdk_demo.disperse [--loop] [--swarm-url http://localhost:8000]
 """
@@ -28,94 +23,78 @@ then blooms again.
 import argparse
 import asyncio
 import math
-import random
 
-from dotbot.examples.sdk_demo._lib import centroid, hsv, settle
+from dotbot.examples.sdk_demo._lib import drive, hop_goto, pace_tick, safe_hop, settle
 from dotbot.sdk import Swarm
 
-MAP_SIZE = 2500  # arena side in mm; match `dotbot run controller ... -m <S>x<S>`
-MARGIN = 250  # keep targets this far from the walls
-WAVES = 6  # number of outside-in release waves
-WAVE_GAP = 1.3  # s between waves (let the border clear before the next layer)
-SETTLE_SECS = 5.0  # s of re-asserting targets so every bot reaches the disc
-HOLD = 2.5  # s to hold the spread
-REGATHER_SPREAD = 150  # mm clump radius for the --loop replay
+ROUNDS = 22  # repulsion iterations
+STEP0 = 160  # mm: desired step on the first round (anneals to ~0)
+TICK = 1.0  # s per round (paces the ~2 Hz position refresh and the link budget)
+GATHER_PITCH = 380  # mm grid pitch of the --loop re-gather block
 
 
-def _clamp(x: float, y: float) -> tuple:
-    lo, hi = MARGIN, MAP_SIZE - MARGIN
-    return (min(max(x, lo), hi), min(max(y, lo), hi))
+def _repulsion(me: str, positions: dict, step: float) -> tuple:
+    """Where `me` wants to go this round: `step` mm away from the net 1/d^2
+    pull of its neighbours (near bots dominate)."""
+    px, py = positions[me]
+    fx = fy = 0.0
+    for other, (qx, qy) in positions.items():
+        if other == me:
+            continue
+        dx, dy = px - qx, py - qy
+        d2 = max(dx * dx + dy * dy, 1.0)
+        fx += dx / d2
+        fy += dy / d2
+    mag = math.hypot(fx, fy)
+    if mag < 1e-9:
+        return (px, py)
+    return (px + fx / mag * step, py + fy / mag * step)
 
 
-def _disc_targets(bots: list, center) -> dict:
-    """Each bot keeps its bearing from the centre and is pushed out to a radius
-    set by its rank, filling an even disc that fits inside the arena. Rank order
-    is preserved, so every bot moves only outward and none overtakes another."""
-    n = len(bots)
-    radius = min(
-        center.x - MARGIN,
-        MAP_SIZE - MARGIN - center.x,
-        center.y - MARGIN,
-        MAP_SIZE - MARGIN - center.y,
-    )
-    radius = max(radius, 1.0)
-    ranked = sorted(bots, key=lambda b: b.position.distance_to(center))
-    out = {}
-    for k, b in enumerate(ranked):
-        ang = math.atan2(b.position.y - center.y, b.position.x - center.x)
-        r = radius * math.sqrt((k + 0.5) / n)
-        out[b.address] = _clamp(center.x + r * math.cos(ang), center.y + r * math.sin(ang))
-    return out
-
-
-async def _bloom(bots: list) -> None:
-    center = centroid(bots)
-    targets = _disc_targets(bots, center)
-    outward = sorted(bots, key=lambda b: b.position.distance_to(center), reverse=True)
-    size = max(1, math.ceil(len(outward) / WAVES))
-    released: list = []
-    for w in range(0, len(outward), size):
-        wave = outward[w : w + size]
-        for b in wave:
-            b.set_color(hsv(0.33 + 0.5 * w / len(outward)))  # outer green -> inner blue
-        released += wave
-        for b in released:  # re-assert every released bot (a dropped goto is retried)
-            b.goto(*targets[b.address])
-        await asyncio.sleep(WAVE_GAP)
-    loop = asyncio.get_running_loop()
-    end = loop.time() + SETTLE_SECS
-    while loop.time() < end:
+async def _disperse(bots: list, arena: tuple) -> None:
+    for r in range(ROUNDS):
+        step = STEP0 * (1 - r / ROUNDS)  # anneal so the fleet settles
+        positions = {b.address: (b.position.x, b.position.y) for b in bots if b.position}
         for b in bots:
-            b.goto(*targets[b.address])
-        await asyncio.sleep(1.0)
+            if b.address not in positions:
+                continue
+            want = _repulsion(b.address, positions, step)
+            px, py = positions[b.address]
+            hop_goto(b, safe_hop(b, positions, want, arena), px, py)
+        await asyncio.sleep(pace_tick(len(bots), TICK))
 
 
 async def disperse(swarm: Swarm) -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
-        "--loop", action="store_true", help="re-gather (sim replay) then bloom again"
+        "--loop", action="store_true", help="re-gather then disperse again"
     )
     opts, _ = parser.parse_known_args()
+
     bots = await settle(swarm)
     if not bots:
         return
+    w, h = await swarm.map_size()
+    print(f"arena {w}x{h} mm; dispersing {len(bots)} bots ...")
+
     try:
         while True:
-            print("blooming outward, edge-first (collision-free) ...")
-            await _bloom(bots)
-            await asyncio.sleep(HOLD)
+            swarm.all.set_color("cyan")
+            await _disperse(bots, (w, h))
+            await asyncio.sleep(1.5)
             if not opts.loop:
                 break
-            print("re-gathering to the centre (sim replay) ...")
+            print("re-gathering to the centre ...")
             swarm.all.set_color("red")
-            cx, cy = MAP_SIZE / 2, MAP_SIZE / 2
-            for _ in range(6):
-                for b in bots:
-                    b.goto(
-                        cx + random.uniform(-REGATHER_SPREAD, REGATHER_SPREAD),
-                        cy + random.uniform(-REGATHER_SPREAD, REGATHER_SPREAD),
-                    )
-                await asyncio.sleep(1.0)
+            cols = max(1, round(math.sqrt(len(bots))))
+            goals = {
+                b.address: (
+                    w / 2 + (k % cols - (cols - 1) / 2) * GATHER_PITCH,
+                    h / 2 + (k // cols - (cols - 1) / 2) * GATHER_PITCH,
+                )
+                for k, b in enumerate(bots)
+            }
+            await drive(bots, goals, (w, h))
     finally:
         swarm.all.stop()
         swarm.all.set_color("off")

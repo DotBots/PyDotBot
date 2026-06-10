@@ -2,18 +2,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Re-arrange a clustered swarm into an even distribution across the arena.
+"""Re-arrange the swarm into an even distribution across the arena.
 
 The algorithm: lay down N evenly spaced target points over the arena, assign
-each bot to the nearest still-free target (greedy - keeps total travel short and
-avoids long crossing paths), then drive everyone to their target at once. A
-clustered fleet fans out into a tidy, lightly jittered lattice.
+each bot to the nearest still-free target (greedy - keeps total travel short),
+then shepherd everyone there collision-free with the shared BVC drive() helper:
+each bot only ever steps inside its own buffered Voronoi cell, so paths that
+would cross simply flow around each other, like real robots have to.
 
-With --loop it gathers the fleet into a random cluster and then re-distributes,
-over and over, so you can watch the rearrangement from different starting clumps.
-
-Set MAP_SIZE to match the controller's arena, i.e. the `-m <S>x<S>` you launched
-it with (default 2500).
+With --loop it gathers the fleet into a compact block (spaced so the bots still
+fit without touching) and then re-distributes, over and over. The arena size is
+read from the controller, so it matches whatever `-m <W>x<H>` you launched
+with.
 
     python -m dotbot.examples.sdk_demo.distribute [--loop] [--swarm-url http://localhost:8000]
 """
@@ -23,49 +23,39 @@ import asyncio
 import math
 import random
 
-from dotbot.examples.sdk_demo._lib import settle
+from dotbot.examples.sdk_demo._lib import SAFE_RADIUS, WALL_MARGIN, drive, settle
 from dotbot.sdk import Swarm
 
-MAP_SIZE = 2500  # arena side in mm; match `dotbot run controller ... -m <S>x<S>`
-MARGIN = 250  # keep targets this far from the walls
 JITTER_MM = 40  # randomise targets a touch so the lattice looks organic
-CLUSTER_SPREAD = 250  # mm radius of the random clump in --loop mode
-SETTLE = 2.5  # s to hold each arrangement
-DRIVE_SECS = 14.0  # s spent driving to each arrangement
-DRIVE_TICK = 1.0  # s between target re-asserts (67 bots -> ~67 cmd/s, in budget)
+HOLD = 2.5  # s to hold each arrangement
+GATHER_PITCH = 2.4 * SAFE_RADIUS  # grid pitch of the --loop gather block
 
 
-def _clamp(p: tuple) -> tuple:
-    x, y = p
-    lo, hi = MARGIN, MAP_SIZE - MARGIN
-    return (min(max(x, lo), hi), min(max(y, lo), hi))
-
-
-def even_targets(n: int) -> list:
+def even_targets(n: int, w: float, h: float) -> list:
     """n points on an even, lightly jittered lattice filling the arena."""
-    lo, hi = MARGIN, MAP_SIZE - MARGIN
-    span = hi - lo
+    lo_x, hi_x = WALL_MARGIN, w - WALL_MARGIN
+    lo_y, hi_y = WALL_MARGIN, h - WALL_MARGIN
     rows = max(1, round(math.sqrt(n)))
     pts = []
     for r in range(rows):
         in_row = n // rows + (1 if r < n % rows else 0)
-        y = lo + (r + 0.5) * span / rows
+        y = lo_y + (r + 0.5) * (hi_y - lo_y) / rows
         for c in range(in_row):
-            x = lo + (c + 0.5) * span / in_row
+            x = lo_x + (c + 0.5) * (hi_x - lo_x) / in_row
             pts.append(
-                _clamp(
-                    (
-                        x + random.uniform(-JITTER_MM, JITTER_MM),
-                        y + random.uniform(-JITTER_MM, JITTER_MM),
-                    )
+                (
+                    min(max(x + random.uniform(-JITTER_MM, JITTER_MM), lo_x), hi_x),
+                    min(max(y + random.uniform(-JITTER_MM, JITTER_MM), lo_y), hi_y),
                 )
             )
     return pts
 
 
 def assign(bots: list, targets: list) -> dict:
-    """Greedy nearest assignment: pair up the closest free (bot, target) first,
-    which keeps total travel short and long crossing paths rare."""
+    """Assign each bot a target so that routes do not cross: greedy nearest
+    first, then 2-opt swaps minimising total *squared* distance - the squared
+    metric is what makes straight-line routes provably non-crossing, which is
+    most of the collision-avoidance battle won before anyone moves."""
     pairs = sorted(
         (bots[bi].position.distance_to(targets[ti]), bi, ti)
         for bi in range(len(bots))
@@ -80,57 +70,65 @@ def assign(bots: list, targets: list) -> dict:
         out[bots[bi].address] = targets[ti]
         bot_seen.add(bi)
         tgt_seen.add(ti)
+
+    pos = {b.address: (b.position.x, b.position.y) for b in bots}
+
+    def d2(a: str, t: tuple) -> float:
+        return (pos[a][0] - t[0]) ** 2 + (pos[a][1] - t[1]) ** 2
+
+    addrs = list(out)
+    improved = True
+    while improved:
+        improved = False
+        for i, a in enumerate(addrs):
+            for b in addrs[i + 1 :]:
+                if d2(a, out[b]) + d2(b, out[a]) < d2(a, out[a]) + d2(b, out[b]) - 1e-6:
+                    out[a], out[b] = out[b], out[a]
+                    improved = True
     return out
 
 
-async def _drive_all(bots: list, target_of: dict) -> None:
-    """Keep asserting each bot's target for DRIVE_SECS, re-sending it every tick.
-    A dropped command is simply retried next tick - robust under load - and the
-    demo never hangs waiting on a straggler to report arrival."""
-    loop = asyncio.get_running_loop()
-    end = loop.time() + DRIVE_SECS
-    while loop.time() < end:
-        for b in bots:
-            target = target_of.get(b.address)
-            if target is not None:
-                b.goto(*target)
-        await asyncio.sleep(DRIVE_TICK)
+def gather_targets(bots: list, w: float, h: float) -> list:
+    """A compact grid block at a random spot, spaced so the bots fit without
+    touching (pitch > 2*SAFE_RADIUS)."""
+    cols = max(1, round(math.sqrt(len(bots))))
+    rows_n = math.ceil(len(bots) / cols)
+    half_w = (cols - 1) / 2 * GATHER_PITCH
+    half_h = (rows_n - 1) / 2 * GATHER_PITCH
+    cx = random.uniform(WALL_MARGIN + half_w + 1, w - WALL_MARGIN - half_w - 1)
+    cy = random.uniform(WALL_MARGIN + half_h + 1, h - WALL_MARGIN - half_h - 1)
+    return [
+        (cx + (k % cols) * GATHER_PITCH - half_w, cy + (k // cols) * GATHER_PITCH - half_h)
+        for k in range(len(bots))
+    ]
 
 
 async def distribute(swarm: Swarm) -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
-        "--loop", action="store_true", help="cluster then re-distribute, repeatedly"
+        "--loop", action="store_true", help="gather then re-distribute, repeatedly"
     )
     opts, _ = parser.parse_known_args()
 
     bots = await settle(swarm)
     if not bots:
         return
+    w, h = await swarm.map_size()
+    print(f"arena {w}x{h} mm; distributing {len(bots)} bots ...")
 
     try:
         while True:
             print("distributing ...")
             swarm.all.set_color("green")
-            await _drive_all(bots, assign(bots, even_targets(len(bots))))
-            await asyncio.sleep(SETTLE)
+            arrived = await drive(bots, assign(bots, even_targets(len(bots), w, h)), (w, h))
+            print(f"{len(arrived)}/{len(bots)} arrived")
+            await asyncio.sleep(HOLD)
             if not opts.loop:
                 break
-            print("clustering ...")
+            print("gathering ...")
             swarm.all.set_color("red")
-            cx = random.uniform(MARGIN, MAP_SIZE - MARGIN)
-            cy = random.uniform(MARGIN, MAP_SIZE - MARGIN)
-            clump = {
-                b.address: _clamp(
-                    (
-                        cx + random.uniform(-CLUSTER_SPREAD, CLUSTER_SPREAD),
-                        cy + random.uniform(-CLUSTER_SPREAD, CLUSTER_SPREAD),
-                    )
-                )
-                for b in bots
-            }
-            await _drive_all(bots, clump)
-            await asyncio.sleep(SETTLE)
+            await drive(bots, assign(bots, gather_targets(bots, w, h)), (w, h))
+            await asyncio.sleep(HOLD)
     finally:
         swarm.all.stop()
         swarm.all.set_color("off")
