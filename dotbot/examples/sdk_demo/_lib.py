@@ -107,14 +107,18 @@ def pace_tick(n_bots: int, base: float = DRIVE_TICK) -> float:
     return max(base, n_bots / PLAN_BUDGET_HZ)
 
 
+MIN_HOP_THRESHOLD = 60  # mm: don't chase precision below the LH2 noise floor
+
+
 def hop_goto(bot, wp: tuple, px: float, py: float) -> None:
     """Send a shepherd hop, working around the firmware arrival rule: a
     waypoint within the threshold is "already reached" and moves nothing, so
-    short hops are sent with a small threshold (and micro-hops not at all)."""
+    short hops are sent with a scaled-down threshold - but never below the
+    LH2 noise floor, where a real bot circles a target it can't resolve."""
     hop = math.hypot(wp[0] - px, wp[1] - py)
-    if hop < 15:
+    if hop < MIN_HOP_THRESHOLD:
         return
-    threshold = 100 if hop >= 250 else max(20, int(hop * 0.5))
+    threshold = 100 if hop >= 250 else max(MIN_HOP_THRESHOLD, int(hop * 0.5))
     bot.goto(*wp, threshold=threshold)
 
 
@@ -157,6 +161,7 @@ async def drive(
     pending = {b.address for b in bots if b.address in goals}
     last_pos: dict = {}
     stuck: dict = {}
+    contact: dict = {}
     tick = pace_tick(len(pending), tick)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
@@ -168,11 +173,31 @@ async def drive(
             a = b.address
             if a not in pending or a not in positions:
                 continue
+            if not b.is_online:
+                continue  # crashed/lost: stop sending, keep it as an obstacle
             px, py = positions[a]
             gx, gy = goals[a]
             if math.hypot(gx - px, gy - py) <= arrive:
                 pending.discard(a)
                 continue
+            # Contact guard: pinned against a neighbour -> stop, don't grind.
+            nearest = min(
+                (
+                    math.hypot(qx - px, qy - py)
+                    for o, (qx, qy) in positions.items()
+                    if o != a
+                ),
+                default=float("inf"),
+            )
+            if nearest < 130:
+                contact[a] = contact.get(a, 0) + 1
+                if contact[a] >= 3:
+                    print(f"  contact stop {a[-4:]} (neighbour at {nearest:.0f} mm)")
+                    pending.discard(a)
+                    b.stop()
+                    continue
+            else:
+                contact.pop(a, None)
             if a in last_pos and math.hypot(px - last_pos[a][0], py - last_pos[a][1]) < 25:
                 stuck[a] = stuck.get(a, 0) + 1
             else:
