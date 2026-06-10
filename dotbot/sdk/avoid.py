@@ -55,6 +55,10 @@ def _clip_polygon(poly: list, ax: float, ay: float, c: float) -> list:
             out.append(cur)
         if cur_in != nxt_in:
             denom = ax * (nxt[0] - cur[0]) + ay * (nxt[1] - cur[1])
+            if abs(denom) < 1e-12:
+                # Degenerate edge (duplicate vertices or parallel to the clip
+                # line, e.g. from noisy duplicate positions): nothing to cut.
+                continue
             t = (c - ax * cur[0] - ay * cur[1]) / denom
             out.append((cur[0] + t * (nxt[0] - cur[0]), cur[1] + t * (nxt[1] - cur[1])))
     return out

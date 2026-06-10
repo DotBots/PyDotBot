@@ -109,3 +109,16 @@ def test_boxed_in_bot_stands_still():
     }
     wp = bvc_waypoint("A", pos, (2500.0, 1500.0), ARENA)
     assert dist(wp, pos["A"]) < 1e-6
+
+
+def test_duplicate_positions_do_not_crash():
+    # Real LH2 feeds can report two bots at the same coordinates; the clip
+    # must tolerate the degenerate geometry instead of dividing by zero.
+    pos = {
+        "A": (1500.0, 1500.0),
+        "B": (1700.0, 1500.0),
+        "C": (1700.0, 1500.0),  # duplicate of B
+        "D": (1500.0, 1700.0),
+    }
+    wp = bvc_waypoint("A", pos, (2500.0, 2500.0), ARENA)
+    assert math.isfinite(wp[0]) and math.isfinite(wp[1])
