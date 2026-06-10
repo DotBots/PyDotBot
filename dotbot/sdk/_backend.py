@@ -109,6 +109,11 @@ class HttpBackend:
     async def fetch_fleet(self) -> list[DotBotModel]:
         return await self._rest.fetch_dotbots()
 
+    async def fetch_map_size(self) -> tuple[int, int]:
+        """The controller's arena as (width, height) in millimetres."""
+        size = await self._rest.fetch_map_size()
+        return (size.width, size.height)
+
     async def _pace(self) -> None:
         """Reserve the next downlink slot and wait for it, so concurrent sends
         drain at `self._downlink_hz` instead of all at once. Each caller takes a

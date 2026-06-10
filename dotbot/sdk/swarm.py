@@ -162,6 +162,10 @@ class Swarm:
     def select(self, predicate: Callable[[Bot], bool]) -> Fleet:
         return Fleet(bot for bot in self._bots.values() if predicate(bot))
 
+    async def map_size(self) -> tuple[int, int]:
+        """The controller's arena size as (width, height) in millimetres."""
+        return await self._backend.fetch_map_size()
+
     @property
     def link(self) -> LinkProfile | None:
         # TODO: read GET /controller/link once the endpoint exists; until then
