@@ -122,3 +122,37 @@ def test_duplicate_positions_do_not_crash():
     }
     wp = bvc_waypoint("A", pos, (2500.0, 2500.0), ARENA)
     assert math.isfinite(wp[0]) and math.isfinite(wp[1])
+
+
+# ---- Bot position gating (real-LH2 tolerance) -------------------------------
+
+from dotbot.models import DotBotLH2Position, DotBotModel  # noqa: E402
+from dotbot.sdk.bot import Bot  # noqa: E402
+
+
+def _model(x=None, y=None, direction=0):
+    lh2 = None if x is None else DotBotLH2Position(x=x, y=y, z=0)
+    return DotBotModel(
+        address="aaaa", last_seen=0, lh2_position=lh2, direction=direction
+    )
+
+
+def test_zero_zero_fix_is_not_a_position():
+    bot = Bot(None, _model(0, 0, direction=-1000))
+    assert bot.position is None
+    assert bot.direction is None
+
+
+def test_glitch_jump_is_held_until_confirmed():
+    bot = Bot(None, _model(1000, 1000))
+    assert (bot.position.x, bot.position.y) == (1000, 1000)
+    bot._apply(_model(2500, 1000))  # implies an impossible speed
+    assert (bot.position.x, bot.position.y) == (1000, 1000)  # held
+    bot._apply(_model(2510, 1000))  # second consistent report: accepted
+    assert (bot.position.x, bot.position.y) == (2510, 1000)
+
+
+def test_lost_fix_keeps_last_known_position():
+    bot = Bot(None, _model(1000, 1000))
+    bot._apply(_model(0, 0, direction=-1000))  # fix lost mid-run
+    assert (bot.position.x, bot.position.y) == (1000, 1000)

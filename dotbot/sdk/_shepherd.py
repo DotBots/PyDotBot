@@ -36,6 +36,9 @@ _PLAN_BUDGET = 0.75  # fraction of the downlink budget a shepherd may consume
 _STUCK_MM = 25.0  # progress below this per tick counts as stalled
 _SIDESTEP = 350.0  # mm: detour length when stalled (right-hand rule; > the floor)
 _DETOUR_TICKS = 4  # commit to a detour this long, or it just oscillates
+_CONTACT_MM = 130.0  # closer than this to a neighbour counts as contact
+_CONTACT_TICKS = 3  # in contact this long while commanded -> stop, don't grind
+_MIN_HOP_THRESHOLD = 60  # mm: don't chase precision below the LH2 noise floor
 
 
 class Shepherd:
@@ -47,6 +50,7 @@ class Shepherd:
         self._goals: dict[str, tuple[float, float, int]] = {}
         self._stuck: dict[str, int] = {}
         self._detour: dict[str, tuple[float, float, int]] = {}  # (x, y, ticks left)
+        self._contact: dict[str, int] = {}
         self._last_pos: dict[str, tuple[float, float]] = {}
         self._task: asyncio.Task | None = None
         self._arena: tuple[float, float] | None = None
@@ -100,11 +104,39 @@ class Shepherd:
             bot = bots.get(address)
             if bot is None or address not in positions:
                 continue  # no fix yet; keep the goal pending
+            if not bot.is_online:
+                continue  # crashed/lost: stop sending, keep it as an obstacle
             gx, gy, threshold = self._goals[address]
             px, py = positions[address]
             if math.hypot(gx - px, gy - py) <= threshold:
                 self._goals.pop(address, None)  # arrived; the bot stops itself
                 continue
+            # Contact guard: a commanded bot pinned against a neighbour must
+            # stop pushing, not grind motors until someone notices.
+            nearest = min(
+                (
+                    math.hypot(qx - px, qy - py)
+                    for a, (qx, qy) in positions.items()
+                    if a != address
+                ),
+                default=float("inf"),
+            )
+            if nearest < _CONTACT_MM:
+                self._contact[address] = self._contact.get(address, 0) + 1
+                if self._contact[address] >= _CONTACT_TICKS:
+                    LOGGER.warning(
+                        "collision-avoidance contact stop",
+                        address=address,
+                        nearest_mm=int(nearest),
+                    )
+                    self._goals.pop(address, None)
+                    self._contact.pop(address, None)
+                    await self._swarm._backend.send_move_raw(
+                        address, bot.application, (0, 0), (0, 0)
+                    )
+                    continue
+            else:
+                self._contact.pop(address, None)
             goal = (gx, gy)
             patience = self._stuck.get(address, 0)
             detour = self._detour.get(address)
@@ -139,11 +171,12 @@ class Shepherd:
                 self._stuck[address] = 0
             self._last_pos[address] = (px, py)
             hop = math.hypot(wp[0] - px, wp[1] - py)
-            if hop < 15:
-                continue
+            if hop < _MIN_HOP_THRESHOLD:
+                continue  # below the LH2 noise floor; chasing it means spinning
             # A waypoint within the firmware threshold is "already reached"
-            # and moves nothing - scale the threshold down for short hops.
-            hop_threshold = 100 if hop >= 250 else max(20, int(hop * 0.5))
+            # and moves nothing - scale the threshold down for short hops, but
+            # never below the noise floor.
+            hop_threshold = 100 if hop >= 250 else max(_MIN_HOP_THRESHOLD, int(hop * 0.5))
             await self._swarm._backend.send_waypoints(
                 address, bot.application, [wp], hop_threshold
             )

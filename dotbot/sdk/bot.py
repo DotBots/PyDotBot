@@ -16,6 +16,7 @@ poll-until-arrival.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 from dotbot.models import DotBotModel, DotBotStatus
@@ -59,6 +60,9 @@ class Bot:
         self._swarm = swarm
         self.address: str = model.address
         self.application: ApplicationType = model.application
+        self._lh2 = None
+        self._lh2_ts = 0.0
+        self._lh2_candidate = None
         self._apply(model)
 
     def _apply(self, model: DotBotModel) -> None:
@@ -67,12 +71,47 @@ class Bot:
         self.application = model.application
         self._status: DotBotStatus = model.status
         self.mode: ControlModeType = model.mode
-        self.direction: int | None = model.direction
+        # -1000 is the firmware's "no heading yet" sentinel.
+        direction = model.direction
+        self.direction: int | None = (
+            None if direction is None or direction <= -1000 else direction
+        )
         self.battery: float | None = model.battery
-        self._lh2 = model.lh2_position
+        self._gate_position(model.lh2_position)
         self.waypoints = list(model.waypoints or [])
         self.waypoints_threshold: int = model.waypoints_threshold
         self.last_seen: float = model.last_seen
+
+    # Real LH2 feeds glitch: a fix can jump metres between two 2 Hz reports.
+    # Gate updates to a plausible speed; a jump is held as a candidate and
+    # accepted only when the next report lands near it (a real relocation).
+    _MAX_PLAUSIBLE_MM_S = 500.0
+    _CANDIDATE_CONFIRM_MM = 200.0
+
+    def _gate_position(self, new) -> None:
+        if new is not None and new.x == 0 and new.y == 0:
+            return  # the firmware's "no fix" sentinel; keep the last real fix
+        if new is None:
+            return
+        now = time.monotonic()
+        accepted = self._lh2
+        if accepted is None:
+            self._lh2, self._lh2_ts, self._lh2_candidate = new, now, None
+            return
+        dt = max(now - self._lh2_ts, 0.05)
+        jump = ((new.x - accepted.x) ** 2 + (new.y - accepted.y) ** 2) ** 0.5
+        candidate = getattr(self, "_lh2_candidate", None)
+        if jump / dt <= self._MAX_PLAUSIBLE_MM_S:
+            self._lh2, self._lh2_ts, self._lh2_candidate = new, now, None
+        elif (
+            candidate is not None
+            and ((new.x - candidate.x) ** 2 + (new.y - candidate.y) ** 2) ** 0.5
+            < self._CANDIDATE_CONFIRM_MM
+        ):
+            # Second consistent report from the new place: the bot really moved.
+            self._lh2, self._lh2_ts, self._lh2_candidate = new, now, None
+        else:
+            self._lh2_candidate = new  # hold the outlier; keep the last good fix
 
     # ---- read-only state ------------------------------------------------
 
