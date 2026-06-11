@@ -16,7 +16,7 @@ import asyncio
 import colorsys
 import math
 
-from dotbot.sdk import Position, Swarm, avoid
+from dotbot.swarm import Position, Swarm, avoid
 
 
 async def settle(swarm: Swarm, seconds: float = 1.5) -> list:
@@ -86,7 +86,7 @@ def hsv(h: float, s: float = 1.0, v: float = 1.0) -> tuple:
 #
 # Targets alone don't avoid collisions: a bot drives a straight-ish arc to its
 # waypoint regardless of who is in the way. The geometry that fixes this lives
-# in `dotbot.sdk.avoid` (the SDK's composable low-level rung; the built-in
+# in `dotbot.swarm.avoid` (the SDK's composable low-level rung; the built-in
 # counterpart is `Swarm.connect(..., collision_avoidance=True)`). These demos
 # drive it by hand through the drive() loop below, doubling as reference code
 # for anyone writing their own control loop.
@@ -131,7 +131,7 @@ def safe_hop(
     safe_radius: float = SAFE_RADIUS,
     yield_ok: bool = True,
 ) -> tuple:
-    """`dotbot.sdk.avoid.safe_hop` with the heading read off the live Bot."""
+    """`dotbot.swarm.avoid.safe_hop` with the heading read off the live Bot."""
     return avoid.safe_hop(
         bot.address,
         positions,

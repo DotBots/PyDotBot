@@ -6,7 +6,7 @@
 
 import math
 
-from dotbot.sdk.avoid import bvc_waypoint, safe_hop
+from dotbot.swarm.avoid import bvc_waypoint, safe_hop
 
 ARENA = (3000, 3000)
 
@@ -127,7 +127,7 @@ def test_duplicate_positions_do_not_crash():
 # ---- Bot position gating (real-LH2 tolerance) -------------------------------
 
 from dotbot.models import DotBotLH2Position, DotBotModel  # noqa: E402
-from dotbot.sdk.bot import Bot  # noqa: E402
+from dotbot.swarm.bot import Bot  # noqa: E402
 
 
 def _model(x=None, y=None, direction=0):

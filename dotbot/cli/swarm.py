@@ -50,6 +50,16 @@ def _with_config_injection(swarmit_group):
     `--help` and subcommand help flow straight through.
     """
 
+    # Bridge to the Python rung: `dotbot swarm` operates the fleet; *driving*
+    # it (motion, LEDs, positions) is the Swarm API's job. Say so where an
+    # operator looks first.
+    if not swarmit_group.epilog:
+        swarmit_group.epilog = (
+            "To drive the swarm from Python (motion, LEDs, positions), start a "
+            "controller (`dotbot run controller`) and use "
+            "`from dotbot.swarm import Swarm`."
+        )
+
     @click.command(
         name="swarm",
         help=_HELP,

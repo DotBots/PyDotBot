@@ -4,10 +4,10 @@
 
 """Public re-export of the SDK event types, so users write
 `from dotbot.events import BotJoined`. The definitions live in
-`dotbot.sdk.events`.
+`dotbot.swarm.events`.
 """
 
-from dotbot.sdk.events import (  # noqa: F401
+from dotbot.swarm.events import (  # noqa: F401
     BatteryUpdate,
     BotJoined,
     BotLeft,

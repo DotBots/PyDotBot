@@ -32,7 +32,7 @@ from dotbot.examples.common.orca import (
     compute_orca_velocity_for_agent,
 )
 from dotbot.examples.common.vec2 import Vec2
-from dotbot.sdk import Bot, Position, Swarm
+from dotbot.swarm import Bot, Position, Swarm
 
 THRESHOLD = 100  # mm, proximity to consider a goal reached
 DT = 0.2  # control-loop period (s) -> 5 Hz

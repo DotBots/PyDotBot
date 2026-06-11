@@ -10,7 +10,7 @@ poll-until-arrival loops, and the pydantic message towers are all absorbed by
 
 import asyncio
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 ROBOT1_WAYPOINTS = [
     (200, 680),

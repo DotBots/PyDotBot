@@ -22,9 +22,9 @@ from urllib.parse import urlparse
 
 from dotbot.logger import LOGGER
 from dotbot.models import DotBotModel, DotBotStatus
-from dotbot.sdk._backend import HttpBackend
-from dotbot.sdk.bot import Bot
-from dotbot.sdk.events import (
+from dotbot.swarm._backend import HttpBackend
+from dotbot.swarm.bot import Bot
+from dotbot.swarm.events import (
     BatteryUpdate,
     BotJoined,
     BotLeft,
@@ -32,9 +32,9 @@ from dotbot.sdk.events import (
     ModeChanged,
     PositionUpdate,
 )
-from dotbot.sdk.fleet import Fleet
-from dotbot.sdk.link import LinkProfile
-from dotbot.sdk.position import Position
+from dotbot.swarm.fleet import Fleet
+from dotbot.swarm.link import LinkProfile
+from dotbot.swarm.position import Position
 
 
 def _backend_for(conn: str):
@@ -70,8 +70,8 @@ class Swarm:
         self._tick_warned = False
         self._shepherd = None
         if collision_avoidance:
-            from dotbot.sdk._shepherd import Shepherd
-            from dotbot.sdk.avoid import DEFAULT_SAFE_RADIUS
+            from dotbot.swarm._shepherd import Shepherd
+            from dotbot.swarm.avoid import DEFAULT_SAFE_RADIUS
 
             self._shepherd = Shepherd(
                 self, min_separation or 2 * DEFAULT_SAFE_RADIUS

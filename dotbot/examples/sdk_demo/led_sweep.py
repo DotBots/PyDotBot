@@ -18,7 +18,7 @@ Set AXIS = "y" to sweep bottom-to-top instead.
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import hsv, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 AXIS = "x"  # "x": sweep left->right, "y": sweep bottom->top
 WAVELENGTHS = 1.5  # how many full rainbows span the field

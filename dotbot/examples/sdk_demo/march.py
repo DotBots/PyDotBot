@@ -17,7 +17,7 @@ that lags a leg never gets run over by a neighbour starting the next one.
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import WALL_MARGIN, drive, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 STEP = 250  # mm per leg (shrunk automatically to fit the arena)
 

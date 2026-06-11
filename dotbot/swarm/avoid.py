@@ -19,7 +19,7 @@ Two layers, by design:
   them as reference. Nothing here touches the network.
 - `Swarm.connect(..., collision_avoidance=True)` is the high-level rung: the
   SDK then routes every `goto` / `move_to` / `follow` through a shepherd that
-  streams these safe hops for you (see `dotbot.sdk._shepherd`). Its
+  streams these safe hops for you (see `dotbot.swarm._shepherd`). Its
   `min_separation` is the centre-to-centre distance between two bots, i.e.
   `min_separation = 2 * safe_radius` in the functions here.
 

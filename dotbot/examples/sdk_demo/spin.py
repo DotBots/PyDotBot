@@ -15,7 +15,7 @@ re-sent periodically so a real bot's command timeout never stalls the spin.
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 SPEED = 70  # wheel PWM magnitude, 0..100
 DURATION = 6.0  # seconds of spinning

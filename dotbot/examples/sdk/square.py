@@ -3,7 +3,7 @@
 python square.py [--swarm-url http://localhost:8000]
 """
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 CENTER_X, CENTER_Y = 1000, 1000
 HALF = 400  # half the side length, in mm

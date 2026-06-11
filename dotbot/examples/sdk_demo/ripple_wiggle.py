@@ -19,7 +19,7 @@ One sweep takes about N_RINGS * BEATS_PER_RING * BEAT seconds (~10 s by default)
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import centroid, hsv, make_rings, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 N_RINGS = 7
 SPEED = 70  # wheel PWM magnitude of each twist, 0..100

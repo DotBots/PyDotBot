@@ -25,7 +25,7 @@ import random
 from pathlib import Path
 
 from dotbot.examples.minimum_naming_game.controller import Controller
-from dotbot.sdk import Bot, Swarm
+from dotbot.swarm import Bot, Swarm
 
 COMM_RANGE = 250  # mm, a bot can hear neighbours within this radius
 RATE_HZ = 20  # naming-game steps per second

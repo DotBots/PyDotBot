@@ -18,7 +18,7 @@ import asyncio
 import math
 
 from dotbot.examples.sdk_demo._lib import SAFE_RADIUS, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 MAX_RADIUS = 120  # mm - never bigger than this, however sparse the fleet
 MIN_RADIUS = 40  # mm - below this a circle is not worth driving

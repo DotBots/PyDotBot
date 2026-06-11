@@ -41,7 +41,7 @@ from dotbot.examples.sdk_demo._lib import (
     safe_hop,
     settle,
 )
-from dotbot.sdk import Position, Swarm
+from dotbot.swarm import Position, Swarm
 
 TOTAL_ANGLE = 90  # degrees to rotate the whole formation
 DEG_TICK = 6  # degrees the formation advances per tick when nobody lags

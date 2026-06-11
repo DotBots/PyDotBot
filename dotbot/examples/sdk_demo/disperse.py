@@ -25,7 +25,7 @@ import asyncio
 import math
 
 from dotbot.examples.sdk_demo._lib import drive, hop_goto, pace_tick, safe_hop, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 ROUNDS = 22  # repulsion iterations
 STEP0 = 160  # mm: desired step on the first round (anneals to ~0)

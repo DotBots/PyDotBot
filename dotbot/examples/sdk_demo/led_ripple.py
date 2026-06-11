@@ -20,7 +20,7 @@ Set OUTWARD = False to ripple inward instead (edge first, then inner rings).
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import centroid, hsv, make_rings, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 N_RINGS = 7
 STEP_DELAY = 0.18  # seconds between successive rings (the wave speed)

@@ -3,7 +3,7 @@
 python shuttle.py [--swarm-url http://localhost:8000]
 """
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 LEFT = (400, 1000)
 RIGHT = (1600, 1000)

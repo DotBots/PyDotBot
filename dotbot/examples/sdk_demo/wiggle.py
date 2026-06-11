@@ -25,7 +25,7 @@ import argparse
 import asyncio
 
 from dotbot.examples.sdk_demo._lib import hsv, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 SPEED = 75  # wheel PWM magnitude of each twist, 0..100
 BEAT = 1.0  # seconds per twist (held until the next flip)

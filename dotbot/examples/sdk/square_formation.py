@@ -5,7 +5,7 @@ python square_formation.py [--swarm-url http://localhost:8000]
 
 import asyncio
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 CENTER_X, CENTER_Y = 1000, 1000
 HALF = 500  # half the side length, in mm

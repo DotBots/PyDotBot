@@ -8,7 +8,7 @@ When a Swarm is connected with collision avoidance on, `goto` / `move_to` /
 `follow` no longer send the user's waypoint to the bot directly. They register
 the waypoint as a *goal* here, and this loop streams safe intermediate hops
 toward it - each hop the goal projected into the bot's buffered Voronoi cell
-(see `dotbot.sdk.avoid`) - until the bot is within the goal's threshold. The
+(see `dotbot.swarm.avoid`) - until the bot is within the goal's threshold. The
 placement mirrors what Crazyswarm does on board and the Robotarium does on its
 server: a setpoint filter *under* the user's commands, so user code stays a
 plain "go there".
@@ -28,8 +28,8 @@ import asyncio
 import math
 
 from dotbot.logger import LOGGER
-from dotbot.sdk._backend import DEFAULT_DOWNLINK_HZ
-from dotbot.sdk.avoid import safe_hop
+from dotbot.swarm._backend import DEFAULT_DOWNLINK_HZ
+from dotbot.swarm.avoid import safe_hop
 
 _TICK = 1.0  # s between hop refreshes per bot, when the link allows it
 _PLAN_BUDGET = 0.75  # fraction of the downlink budget a shepherd may consume

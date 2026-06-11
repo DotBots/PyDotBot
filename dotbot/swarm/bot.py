@@ -21,11 +21,11 @@ from typing import TYPE_CHECKING
 
 from dotbot.models import DotBotModel, DotBotStatus
 from dotbot.protocol import ApplicationType, ControlModeType
-from dotbot.sdk.action import Action
-from dotbot.sdk.position import Position
+from dotbot.swarm.action import Action
+from dotbot.swarm.position import Position
 
 if TYPE_CHECKING:
-    from dotbot.sdk.swarm import Swarm
+    from dotbot.swarm.swarm import Swarm
 
 # Hardware limit: a single waypoint command carries at most this many points.
 MAX_WAYPOINTS = 12

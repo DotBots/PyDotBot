@@ -27,7 +27,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from dotbot.examples.minimum_naming_game.controller_with_motion import Controller
-from dotbot.sdk import Bot, Swarm
+from dotbot.swarm import Bot, Swarm
 
 COMM_RANGE = 250  # mm, a bot can hear neighbours within this radius
 MAX_SPEED = 300  # mm/s

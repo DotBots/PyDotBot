@@ -24,7 +24,7 @@ import math
 import random
 
 from dotbot.examples.sdk_demo._lib import SAFE_RADIUS, WALL_MARGIN, drive, settle
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 JITTER_MM = 40  # randomise targets a touch so the lattice looks organic
 HOLD = 2.5  # s to hold each arrangement

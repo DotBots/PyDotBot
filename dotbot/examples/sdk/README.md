@@ -1,7 +1,7 @@
 # Swarm SDK examples
 
 Small, self-contained examples built on the DotBot Swarm SDK
-(`from dotbot.sdk import Swarm`). Each is a few lines and produces a clear visual
+(`from dotbot.swarm import Swarm`). Each is a few lines and produces a clear visual
 on the dashboard - good for a first look at the SDK and for demos.
 
 ## Run

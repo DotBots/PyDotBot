@@ -13,7 +13,7 @@ the map while this script drives them.
 
 import asyncio
 
-from dotbot.sdk import ModeChanged, Swarm
+from dotbot.swarm import ModeChanged, Swarm
 
 
 async def demo(swarm: Swarm) -> None:

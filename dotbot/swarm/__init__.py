@@ -4,7 +4,7 @@
 
 """The DotBot Swarm SDK.
 
-`from dotbot.sdk import Swarm` (and, once wired, `from dotbot import Swarm`).
+`from dotbot.swarm import Swarm` (and, once wired, `from dotbot import Swarm`).
 v1 implements the `http(s)://` connection to a running `dotbot run controller`;
 the direct links and simulator backend land behind the same surface.
 """
@@ -12,10 +12,10 @@ the direct links and simulator backend land behind the same surface.
 from __future__ import annotations
 
 from dotbot.protocol import ApplicationType, ControlModeType
-from dotbot.sdk.action import Action
-from dotbot.sdk.avoid import bvc_waypoint, safe_hop
-from dotbot.sdk.bot import Bot
-from dotbot.sdk.events import (
+from dotbot.swarm.action import Action
+from dotbot.swarm.avoid import bvc_waypoint, safe_hop
+from dotbot.swarm.bot import Bot
+from dotbot.swarm.events import (
     BatteryUpdate,
     BotJoined,
     BotLeft,
@@ -23,10 +23,10 @@ from dotbot.sdk.events import (
     ModeChanged,
     PositionUpdate,
 )
-from dotbot.sdk.fleet import Fleet
-from dotbot.sdk.link import GatewayBudget, LinkProfile
-from dotbot.sdk.position import Position
-from dotbot.sdk.swarm import Swarm
+from dotbot.swarm.fleet import Fleet
+from dotbot.swarm.link import GatewayBudget, LinkProfile
+from dotbot.swarm.position import Position
+from dotbot.swarm.swarm import Swarm
 
 __all__ = [
     # active objects

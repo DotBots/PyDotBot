@@ -6,7 +6,7 @@ python circle_formation.py [--swarm-url http://localhost:8000]
 import asyncio
 import math
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 CENTER_X, CENTER_Y = 1000, 1000
 RADIUS = 600  # mm

@@ -29,7 +29,7 @@ from dotbot.examples.common.orca import (
 )
 from dotbot.examples.common.vec2 import Vec2
 from dotbot.examples.work_and_charge.controller import THRESHOLD, Controller
-from dotbot.sdk import Bot, Position, Swarm
+from dotbot.swarm import Bot, Position, Swarm
 
 DT = 0.2  # control-loop period (s) -> 5 Hz
 BOT_RADIUS = 60  # mm, used for collision avoidance

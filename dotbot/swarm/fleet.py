@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Iterable, Iterator
 
-from dotbot.sdk.bot import Bot
+from dotbot.swarm.bot import Bot
 
 
 class Fleet:

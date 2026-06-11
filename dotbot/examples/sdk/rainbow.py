@@ -5,7 +5,7 @@ python rainbow.py [--swarm-url http://localhost:8000]
 
 import asyncio
 
-from dotbot.sdk import Swarm
+from dotbot.swarm import Swarm
 
 PALETTE = ["red", "yellow", "green", "cyan", "blue", "magenta"]
 

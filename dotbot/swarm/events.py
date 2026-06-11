@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from dotbot.protocol import ControlModeType
-from dotbot.sdk.position import Position
+from dotbot.swarm.position import Position
 
 
 @dataclass(frozen=True, slots=True)
