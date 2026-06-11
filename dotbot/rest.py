@@ -70,13 +70,15 @@ class RestClient:
                 },
             )
         except httpx.ConnectError as exc:
+            # Propagate: falling through would hit `response` unbound, and a
+            # silently invented arena would be worse than a clear error.
             self._logger.warning(f"Failed to fetch map size: {exc}")
-        else:
-            if response.status_code != 200:
-                self._logger.warning(
-                    f"Failed to fetch map size: {response} {response.text}"
-                )
-                raise RuntimeError("Failed to fetch map size")
+            raise
+        if response.status_code != 200:
+            self._logger.warning(
+                f"Failed to fetch map size: {response} {response.text}"
+            )
+            raise RuntimeError("Failed to fetch map size")
         return DotBotMapSizeModel(**response.json())
 
     async def _send_command(self, address, application, resource, command):
