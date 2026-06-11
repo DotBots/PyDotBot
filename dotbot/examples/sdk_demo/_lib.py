@@ -30,9 +30,7 @@ async def settle(swarm: Swarm, seconds: float = 1.5) -> list:
 
 def positioned(swarm: Swarm) -> list:
     """The bots that currently have an LH2 fix, ordered by address."""
-    return sorted(
-        (b for b in swarm if b.position is not None), key=lambda b: b.address
-    )
+    return sorted((b for b in swarm if b.position is not None), key=lambda b: b.address)
 
 
 def centroid(bots: list) -> Position:
@@ -198,7 +196,10 @@ async def drive(
                     continue
             else:
                 contact.pop(a, None)
-            if a in last_pos and math.hypot(px - last_pos[a][0], py - last_pos[a][1]) < 25:
+            if (
+                a in last_pos
+                and math.hypot(px - last_pos[a][0], py - last_pos[a][1]) < 25
+            ):
                 stuck[a] = stuck.get(a, 0) + 1
             else:
                 stuck[a] = 0
@@ -210,8 +211,12 @@ async def drive(
                 goal = (px + uy * SIDESTEP, py - ux * SIDESTEP)
                 stuck[a] = 0
             wp = safe_hop(
-                b, positions, goal, arena,
-                safe_radius=safe_radius, yield_ok=patience < 2,
+                b,
+                positions,
+                goal,
+                arena,
+                safe_radius=safe_radius,
+                yield_ok=patience < 2,
             )
             hop_goto(b, wp, px, py)
             last_pos[a] = (px, py)
@@ -225,7 +230,9 @@ async def drive(
             if a in positions and a in goals:
                 px, py = positions[a]
                 d = math.hypot(goals[a][0] - px, goals[a][1] - py)
-                wp = safe_hop(by_addr[a], positions, goals[a], arena, safe_radius=safe_radius)
+                wp = safe_hop(
+                    by_addr[a], positions, goals[a], arena, safe_radius=safe_radius
+                )
                 hop = math.hypot(wp[0] - px, wp[1] - py)
                 direction = getattr(by_addr[a], "direction", None)
                 print(

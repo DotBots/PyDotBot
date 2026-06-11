@@ -73,9 +73,7 @@ class Swarm:
             from dotbot.swarm._shepherd import Shepherd
             from dotbot.swarm.avoid import DEFAULT_SAFE_RADIUS
 
-            self._shepherd = Shepherd(
-                self, min_separation or 2 * DEFAULT_SAFE_RADIUS
-            )
+            self._shepherd = Shepherd(self, min_separation or 2 * DEFAULT_SAFE_RADIUS)
 
     @classmethod
     def connect(

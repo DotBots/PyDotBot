@@ -160,7 +160,7 @@ def test_lost_fix_keeps_last_known_position():
 
 # ---- Swarm event semantics ---------------------------------------------------
 
-from dotbot.swarm.events import BatteryUpdate, PositionUpdate  # noqa: E402
+from dotbot.swarm.events import BatteryUpdate  # noqa: E402
 from dotbot.swarm.swarm import Swarm  # noqa: E402
 
 

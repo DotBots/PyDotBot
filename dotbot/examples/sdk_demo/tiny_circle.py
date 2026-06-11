@@ -67,9 +67,7 @@ async def tiny_circle(swarm: Swarm) -> None:
     print(f"{len(riders)} bots tracing circles (radii up to {MAX_RADIUS} mm) ...")
     swarm.all.set_color("cyan")
     try:
-        await asyncio.gather(
-            *(b.follow(circle(b, radii[b.address])) for b in riders)
-        )
+        await asyncio.gather(*(b.follow(circle(b, radii[b.address])) for b in riders))
     finally:
         swarm.all.stop()
         swarm.all.set_color("off")

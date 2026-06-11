@@ -190,7 +190,9 @@ class Shepherd:
             # A waypoint within the firmware threshold is "already reached"
             # and moves nothing - scale the threshold down for short hops, but
             # never below the noise floor.
-            hop_threshold = 100 if hop >= 250 else max(_MIN_HOP_THRESHOLD, int(hop * 0.5))
+            hop_threshold = (
+                100 if hop >= 250 else max(_MIN_HOP_THRESHOLD, int(hop * 0.5))
+            )
             sends.append(
                 self._swarm._backend.send_waypoints(
                     address, bot.application, [wp], hop_threshold

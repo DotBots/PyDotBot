@@ -98,7 +98,10 @@ def gather_targets(bots: list, w: float, h: float) -> list:
     cx = random.uniform(WALL_MARGIN + half_w + 1, w - WALL_MARGIN - half_w - 1)
     cy = random.uniform(WALL_MARGIN + half_h + 1, h - WALL_MARGIN - half_h - 1)
     return [
-        (cx + (k % cols) * GATHER_PITCH - half_w, cy + (k // cols) * GATHER_PITCH - half_h)
+        (
+            cx + (k % cols) * GATHER_PITCH - half_w,
+            cy + (k // cols) * GATHER_PITCH - half_h,
+        )
         for k in range(len(bots))
     ]
 
@@ -120,7 +123,9 @@ async def distribute(swarm: Swarm) -> None:
         while True:
             print("distributing ...")
             swarm.all.set_color("green")
-            arrived = await drive(bots, assign(bots, even_targets(len(bots), w, h)), (w, h))
+            arrived = await drive(
+                bots, assign(bots, even_targets(len(bots), w, h)), (w, h)
+            )
             print(f"{len(arrived)}/{len(bots)} arrived")
             await asyncio.sleep(HOLD)
             if not opts.loop:

@@ -54,7 +54,9 @@ def _repulsion(me: str, positions: dict, step: float) -> tuple:
 async def _disperse(bots: list, arena: tuple) -> None:
     for r in range(ROUNDS):
         step = STEP0 * (1 - r / ROUNDS)  # anneal so the fleet settles
-        positions = {b.address: (b.position.x, b.position.y) for b in bots if b.position}
+        positions = {
+            b.address: (b.position.x, b.position.y) for b in bots if b.position
+        }
         for b in bots:
             if b.address not in positions:
                 continue

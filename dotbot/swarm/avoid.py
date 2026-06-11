@@ -184,8 +184,13 @@ def safe_hop(
     """
     px, py = positions[me]
     wp = bvc_waypoint(
-        me, positions, goal, arena,
-        safe_radius=safe_radius, wall_margin=wall_margin, max_step=max_step,
+        me,
+        positions,
+        goal,
+        arena,
+        safe_radius=safe_radius,
+        wall_margin=wall_margin,
+        max_step=max_step,
     )
     if heading is None:
         return wp

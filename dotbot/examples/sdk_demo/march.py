@@ -14,8 +14,6 @@ that lags a leg never gets run over by a neighbour starting the next one.
     python -m dotbot.examples.sdk_demo.march [--swarm-url http://localhost:8000]
 """
 
-import asyncio
-
 from dotbot.examples.sdk_demo._lib import WALL_MARGIN, drive, settle
 from dotbot.swarm import Swarm
 
@@ -47,9 +45,7 @@ async def march(swarm: Swarm) -> None:
     swarm.all.set_color("yellow")
     try:
         for ox, oy in LEGS:
-            goals = {
-                a: (p.x + ox * step, p.y + oy * step) for a, p in home.items()
-            }
+            goals = {a: (p.x + ox * step, p.y + oy * step) for a, p in home.items()}
             await drive(bots, goals, (w, h), timeout=30.0)
     finally:
         swarm.all.stop()
