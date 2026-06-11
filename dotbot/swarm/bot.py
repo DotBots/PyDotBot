@@ -63,6 +63,8 @@ class Bot:
         self._lh2 = None
         self._lh2_ts = 0.0
         self._lh2_candidate = None
+        self._battery_emitted: float | None = None
+        self._moves: set[asyncio.Task] = set()
         self._apply(model)
 
     def _apply(self, model: DotBotModel) -> None:
@@ -156,8 +158,12 @@ class Bot:
         self, *, left: tuple[int, int] = (0, 0), right: tuple[int, int] = (0, 0)
     ) -> None:
         """Direct per-wheel teleop (single-bot, high-rate). Fire-and-forget.
-        Always bypasses collision avoidance and cancels any shepherded goal -
-        explicit wheel control means you have taken over."""
+        Always takes over: in-flight move_to/follow Actions are cancelled
+        (awaiting one raises CancelledError) and any shepherded goal is
+        cleared - otherwise the move's resend loop would re-engage the bot
+        moments after an operator stop."""
+        for task in list(self._moves):
+            task.cancel()
         if self._swarm._shepherd is not None:
             self._swarm._shepherd.clear(self.address)
         self._swarm._schedule(
@@ -210,6 +216,8 @@ class Bot:
         'done'."""
         points = [(float(x), float(y)) for x, y in waypoints]
         task = self._swarm._schedule(self._drive(points, threshold, timeout))
+        self._moves.add(task)
+        task.add_done_callback(self._moves.discard)
         return Action(task)
 
     async def _drive(
@@ -217,8 +225,14 @@ class Bot:
     ) -> None:
         deadline = asyncio.get_running_loop().time() + timeout
         if self._swarm._shepherd is not None:
+            from dotbot.swarm._shepherd import MIN_GOAL_THRESHOLD
+
             # Shepherded: each point becomes the bot's goal in turn; the
             # shepherd streams the safe hops, we only watch for arrival.
+            # Avoidance cannot place a bot more precisely than the LH2 noise
+            # floor, so sub-floor thresholds are clamped (here AND in the
+            # shepherd) instead of stalling forever short of the goal.
+            threshold = max(threshold, MIN_GOAL_THRESHOLD)
             for x, y in points:
                 self._swarm._shepherd.set_goal(self.address, x, y, threshold)
                 await self._await_arrival(Position(x, y), threshold, deadline)

@@ -156,3 +156,47 @@ def test_lost_fix_keeps_last_known_position():
     bot = Bot(None, _model(1000, 1000))
     bot._apply(_model(0, 0, direction=-1000))  # fix lost mid-run
     assert (bot.position.x, bot.position.y) == (1000, 1000)
+
+
+# ---- Swarm event semantics ---------------------------------------------------
+
+from dotbot.swarm.events import BatteryUpdate, PositionUpdate  # noqa: E402
+from dotbot.swarm.swarm import Swarm  # noqa: E402
+
+
+def _bat_model(battery):
+    return DotBotModel(address="aaaa", last_seen=0, battery=battery)
+
+
+def test_battery_update_compares_against_last_emitted():
+    swarm = Swarm(object())
+    bot = Bot(swarm, _bat_model(3.0))
+    swarm._bots[bot.address] = bot
+    got = []
+    swarm.on(BatteryUpdate, lambda e: got.append(e.battery))
+    # First report emits; then a slow drain in 0.01 V steps must emit again
+    # once the cumulative drop from the last *emitted* value reaches 0.05.
+    for v in (3.0, 2.99, 2.98, 2.97, 2.96, 2.95, 2.94):
+        before = (bot.position, bot.battery, bot.mode, bot._status)
+        bot._apply(_bat_model(v))
+        swarm._emit_changes(bot, *before)
+    assert got[0] == 3.0
+    assert len(got) >= 2  # the drain crossed the threshold exactly once
+    assert got[1] <= 2.95
+
+
+def test_raising_handler_does_not_break_other_handlers():
+    swarm = Swarm(object())
+    bot = Bot(swarm, _bat_model(3.0))
+    swarm._bots[bot.address] = bot
+    seen = []
+
+    def bad(_event):
+        raise RuntimeError("user bug")
+
+    swarm.on(BatteryUpdate, bad)
+    swarm.on(BatteryUpdate, lambda e: seen.append(e))
+    before = (bot.position, bot.battery, bot.mode, bot._status)
+    bot._apply(_bat_model(2.0))
+    swarm._emit_changes(bot, *before)  # must not raise
+    assert len(seen) == 1

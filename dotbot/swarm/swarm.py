@@ -140,11 +140,14 @@ class Swarm:
         ts = time.monotonic()
         if bot.position is not None and bot.position != old_pos:
             self._emit(PositionUpdate(bot.address, ts, bot.position))
-        if (
-            bot.battery is not None
-            and old_battery is not None
-            and abs(bot.battery - old_battery) >= 0.05
+        # Compare against the last *emitted* value, not the previous report: a
+        # battery drains a few mV per report, so per-report deltas never cross
+        # the threshold and a slow drain would otherwise never emit at all.
+        if bot.battery is not None and (
+            bot._battery_emitted is None
+            or abs(bot.battery - bot._battery_emitted) >= 0.05
         ):
+            bot._battery_emitted = bot.battery
             self._emit(BatteryUpdate(bot.address, ts, bot.battery))
         if bot.mode != old_mode:
             self._emit(ModeChanged(bot.address, ts, bot.mode))
@@ -170,11 +173,23 @@ class Swarm:
 
     def _schedule(self, coro) -> asyncio.Task:
         """Run a fire-and-forget command coroutine, keeping a reference so it is
-        not garbage-collected mid-flight."""
+        not garbage-collected mid-flight. Failures are logged - a dropped
+        fire-and-forget command should be visible, not a silent 'task exception
+        was never retrieved' at exit."""
         task = asyncio.ensure_future(coro)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._task_done)
         return task
+
+    def _task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None and not isinstance(exc, TimeoutError):
+            # TimeoutError is the awaited-Action contract, surfaced to the
+            # caller; everything else on a fire-and-forget task is logged here.
+            LOGGER.warning("background command failed", error=str(exc))
 
     # ---- collection protocol -------------------------------------------
 
@@ -221,7 +236,16 @@ class Swarm:
     def _emit(self, event: Event) -> None:
         for event_type in (type(event), Event):
             for callback in self._handlers.get(event_type, ()):
-                result = callback(event)
+                # A raising user handler must not propagate into the backend's
+                # ws read loop (it would silently drop and reconnect the
+                # websocket) nor starve the other subscribers.
+                try:
+                    result = callback(event)
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception(
+                        "event handler failed", event_type=type(event).__name__
+                    )
+                    continue
                 if asyncio.iscoroutine(result):
                     self._schedule(result)
         for queue in self._event_queues:

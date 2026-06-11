@@ -39,6 +39,11 @@ _DETOUR_TICKS = 4  # commit to a detour this long, or it just oscillates
 _CONTACT_MM = 130.0  # closer than this to a neighbour counts as contact
 _CONTACT_TICKS = 3  # in contact this long while commanded -> stop, don't grind
 _MIN_HOP_THRESHOLD = 60  # mm: don't chase precision below the LH2 noise floor
+# Shepherded goals cannot be resolved tighter than the noise floor either:
+# thresholds below this are clamped (in set_goal and in Bot._drive's arrival
+# watch) so a precision script arrives at the floor's accuracy instead of
+# timing out 60 mm short of its goal.
+MIN_GOAL_THRESHOLD = _MIN_HOP_THRESHOLD
 
 
 class Shepherd:
@@ -57,7 +62,7 @@ class Shepherd:
 
     def set_goal(self, address: str, x: float, y: float, threshold: int) -> None:
         """Register (or replace) a bot's goal and make sure the loop runs."""
-        self._goals[address] = (float(x), float(y), threshold)
+        self._goals[address] = (float(x), float(y), max(threshold, MIN_GOAL_THRESHOLD))
         self._stuck.pop(address, None)
         self._detour.pop(address, None)
         if self._task is None or self._task.done():
@@ -100,13 +105,20 @@ class Shepherd:
             for a, b in bots.items()
             if b.position is not None
         }
+        # Plan synchronously over the snapshot, then fire all sends together:
+        # awaiting per bot would make the tick cost sum(RTT) and let goal
+        # mutations (a concurrent stop()/goto()) interleave with the loop.
+        sends: list = []
         for address in list(self._goals):
             bot = bots.get(address)
             if bot is None or address not in positions:
                 continue  # no fix yet; keep the goal pending
             if not bot.is_online:
                 continue  # crashed/lost: stop sending, keep it as an obstacle
-            gx, gy, threshold = self._goals[address]
+            entry = self._goals.get(address)
+            if entry is None:
+                continue  # goal cleared since the snapshot
+            gx, gy, threshold = entry
             px, py = positions[address]
             if math.hypot(gx - px, gy - py) <= threshold:
                 self._goals.pop(address, None)  # arrived; the bot stops itself
@@ -131,8 +143,10 @@ class Shepherd:
                     )
                     self._goals.pop(address, None)
                     self._contact.pop(address, None)
-                    await self._swarm._backend.send_move_raw(
-                        address, bot.application, (0, 0), (0, 0)
+                    sends.append(
+                        self._swarm._backend.send_move_raw(
+                            address, bot.application, (0, 0), (0, 0)
+                        )
                     )
                     continue
             else:
@@ -177,6 +191,15 @@ class Shepherd:
             # and moves nothing - scale the threshold down for short hops, but
             # never below the noise floor.
             hop_threshold = 100 if hop >= 250 else max(_MIN_HOP_THRESHOLD, int(hop * 0.5))
-            await self._swarm._backend.send_waypoints(
-                address, bot.application, [wp], hop_threshold
+            sends.append(
+                self._swarm._backend.send_waypoints(
+                    address, bot.application, [wp], hop_threshold
+                )
             )
+        if sends:
+            # The backend's _pace staggers these at the downlink budget; a
+            # failed send must not abort the others.
+            results = await asyncio.gather(*sends, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    LOGGER.warning("shepherd send failed", error=str(result))
