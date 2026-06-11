@@ -573,6 +573,12 @@ class Controller:
         lock = self._ws_send_locks.setdefault(id(websocket), asyncio.Lock())
         try:
             async with lock:
+                if websocket not in self.websockets:
+                    # Dropped by a concurrent sender while we waited. Sends are
+                    # membership-gated, so popping the entry here is safe even
+                    # with senders still queued on the old lock object.
+                    self._ws_send_locks.pop(id(websocket), None)
+                    return
                 await websocket.send_text(msg)
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(
@@ -581,7 +587,9 @@ class Controller:
             )
             if websocket in self.websockets:
                 self.websockets.remove(websocket)
-            self._ws_send_locks.pop(id(websocket), None)
+            # The lock entry is NOT popped here: senders already queued on it
+            # must keep serializing through the same object. It is cleaned up
+            # on the websocket-disconnect path instead.
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
