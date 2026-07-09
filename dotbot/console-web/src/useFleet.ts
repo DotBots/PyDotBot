@@ -155,6 +155,14 @@ export function useFleet(): {
     };
   }, [reloadDotBots, rebuild]);
 
+  // Slow refresh for fields the WS does not push (mode/nav, status, waypoint
+  // clears): the controller only notifies telemetry deltas, so a bot's
+  // AUTO -> MANUAL arrival flip is invisible without an occasional refetch.
+  useEffect(() => {
+    const t = setInterval(reloadDotBots, 3000);
+    return () => clearInterval(t);
+  }, [reloadDotBots]);
+
   // SwarmIT status poll (read-only orchestration plane), 1 Hz.
   useEffect(() => {
     const tick = async () => {

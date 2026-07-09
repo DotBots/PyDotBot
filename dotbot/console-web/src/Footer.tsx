@@ -92,7 +92,11 @@ const ControlDock: React.FC<{
   const drivable = targets.filter((b) => b.drivable);
   const enabled = drivable.length > 0;
   const anyAuto = drivable.some((b) => b.nav === "auto");
-  const activeCount = drivable.reduce((a, b) => a + b.waypoints.length, 0);
+  // The controller stores [own-start, ...targets]; count the targets.
+  const activeCount = Math.max(
+    ...drivable.map((b) => (b.waypoints.length > 1 ? b.waypoints.length - 1 : b.waypoints.length)),
+    0,
+  );
   const wpCount = pending.length > 0 ? pending.length : anyAuto ? activeCount : 0;
   const single = !isGroup ? targets[0] : undefined;
 

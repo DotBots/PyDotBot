@@ -5,26 +5,13 @@ import { Footer } from "./Footer";
 import { GridView } from "./GridView";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
+import { DoneMission, TestbedRail } from "./TestbedRail";
 import { LH2Position } from "./types";
 import { useFleet } from "./useFleet";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
 type ViewKind = "map" | "list" | "grid";
-
-// Collapsed testbed rail (v1). Orchestration actions arrive with the
-// write-path iteration; until then the icons are visible but inert.
-const RAIL_ICONS: { glyph: string; title: string }[] = [
-  { glyph: "▱", title: "Open testbed (arrives with orchestration)" },
-  { glyph: "", title: "" }, // divider
-  { glyph: "⇩", title: "Flash (arrives with orchestration)" },
-  { glyph: "▶", title: "Start (arrives with orchestration)" },
-  { glyph: "■", title: "Stop (arrives with orchestration)" },
-  { glyph: "↻", title: "Reset (arrives with orchestration)" },
-  { glyph: "", title: "" }, // divider
-  { glyph: "☰", title: "Console (arrives with orchestration)" },
-  { glyph: "⋮", title: "Flash queue (arrives with orchestration)" },
-];
 
 export const App: React.FC = () => {
   const { bots, mapSize, wsUp } = useFleet();
@@ -116,6 +103,31 @@ export const App: React.FC = () => {
 
   const onClearQueue = useCallback(() => setPending([]), []);
   const onRemovePending = useCallback((i: number) => setPending((prev) => prev.filter((_, j) => j !== i)), []);
+
+  // Recently-completed missions: a bot flipping AUTO -> MANUAL just arrived.
+  const [doneMissions, setDoneMissions] = useState<DoneMission[]>([]);
+  const prevNavRef = useRef<Record<string, "drive" | "auto">>({});
+  React.useEffect(() => {
+    const prev = prevNavRef.current;
+    const arrived = bots.filter((b) => prev[b.id] === "auto" && b.nav === "drive");
+    if (arrived.length) {
+      const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      setDoneMissions((d) =>
+        [...arrived.map((b) => ({ key: `${b.id}-${Date.now()}`, id: b.id.slice(-4).toUpperCase(), t })), ...d].slice(0, 8),
+      );
+    }
+    prevNavRef.current = Object.fromEntries(bots.map((b) => [b.id, b.nav]));
+  }, [bots]);
+
+  const onStopMission = useCallback(
+    (ids: string[]) => {
+      bots
+        .filter((b) => ids.includes(b.id) && b.drivable)
+        .forEach((b) => putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {}));
+      showToast("Mission interrupted");
+    },
+    [bots, showToast],
+  );
 
   const layerRows: { key: keyof Layers; label: string }[] = [
     { key: "batteryBars", label: "Battery Bars" },
@@ -223,46 +235,16 @@ export const App: React.FC = () => {
 
       {/* Body row: testbed rail + view area */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
-        {/* collapsed testbed rail (shell; orchestration arrives later) */}
-        <div
-          style={{
-            flex: "none",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 7,
-            padding: "10px 6px",
-            background: "var(--surface)",
-            borderRight: "1px solid var(--hairline)",
-          }}
-        >
-          {RAIL_ICONS.map((ic, i) =>
-            ic.glyph === "" ? (
-              <div key={i} style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
-            ) : (
-              <div
-                key={i}
-                title={ic.title}
-                style={{
-                  width: 32,
-                  height: 32,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 7,
-                  background: "var(--elevated)",
-                  border: "1px solid var(--hairline)",
-                  cursor: "not-allowed",
-                  fontSize: 13,
-                  color: "var(--muted)",
-                  opacity: 0.6,
-                }}
-              >
-                {ic.glyph}
-              </div>
-            ),
-          )}
-        </div>
+        <TestbedRail
+          bots={bots}
+          selection={selection}
+          pending={pending}
+          doneMissions={doneMissions}
+          onSelectIds={(ids) => onSelect(ids, false)}
+          onGo={onGo}
+          onDiscardPlanned={onClearQueue}
+          onStopMission={onStopMission}
+        />
 
         {/* view area */}
         <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
