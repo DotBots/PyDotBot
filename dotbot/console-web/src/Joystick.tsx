@@ -17,8 +17,13 @@ function speeds(dx: number, dy: number): { left: number; right: number } {
   const py = (dy / R) * 100;
   const dir = (128 * py / 200) * -1;
   const angle = (128 * px) / 200;
-  let left = dir + angle;
-  let right = dir - angle;
+  // Sign verified against the simulator: right wheel faster turns the bot
+  // clockwise on the north-up map, so pad-right = turn right on screen.
+  // NOTE: the classic frontend used the opposite sign against real hardware -
+  // validate on a real DotBot (a mismatch here would point at a left/right
+  // label swap between dotbot_simulator.py and the firmware).
+  let left = dir - angle;
+  let right = dir + angle;
   if (left > 0) left += SPEED_OFFSET;
   if (left < 0) left -= SPEED_OFFSET;
   if (right > 0) right += SPEED_OFFSET;
@@ -134,7 +139,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
                 borderLeft: "5px solid transparent",
                 borderRight: "5px solid transparent",
                 borderBottom: "9px solid rgba(255,255,255,.92)",
-                transform: `translate(-50%, -50%) rotate(${single.heading}deg) translateY(-13px)`,
+                transform: `translate(-50%, -50%) rotate(${-single.heading}deg) translateY(-13px)`,
               }}
             />
           )}

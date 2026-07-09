@@ -48,7 +48,7 @@ interface MapViewProps {
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   onGeom: (g: ViewGeom) => void;
-  onSelect: (ids: string[], additive: boolean) => void;
+  onSelect: (ids: string[], mode: "replace" | "toggle" | "add") => void;
   onAddWaypoint: (p: LH2Position) => void;
 }
 
@@ -152,7 +152,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (panRef.current) {
       const moved = panRef.current.moved;
       panRef.current = null;
-      if (!moved) props.onSelect([], false); // plain click on empty canvas clears
+      if (!moved) props.onSelect([], "replace"); // plain click on empty canvas clears
       return;
     }
     if (!marqueeRef.current || !marquee) {
@@ -176,7 +176,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
         })
         .map((b) => b.id);
-      props.onSelect(hits, true);
+      props.onSelect(hits, "add");
     }
     marqueeRef.current = null;
     setMarquee(null);
@@ -337,7 +337,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         if (p) props.onAddWaypoint(p);
                         return;
                       }
-                      props.onSelect([b.id], e.shiftKey || e.metaKey || e.ctrlKey);
+                      props.onSelect([b.id], e.shiftKey || e.metaKey || e.ctrlKey ? "toggle" : "replace");
                     }}
                     onPointerEnter={() => setHoverId(b.id)}
                     onPointerLeave={() => setHoverId((h) => (h === b.id ? null : h))}
@@ -401,7 +401,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
                     />
-                    {/* heading pointer (state-colored, at the edge) */}
+                    {/* heading pointer (state-colored, at the edge). The
+                        controller reports direction as 0 = north (+y),
+                        positive COUNTERclockwise; CSS rotates clockwise in
+                        screen coords, so the angle is negated. */}
                     {b.heading !== null && (
                       <div
                         style={{
@@ -410,7 +413,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           top: "50%",
                           width: 0,
                           height: 0,
-                          transform: `translate(-50%, -50%) rotate(${b.heading}deg)`,
+                          transform: `translate(-50%, -50%) rotate(${-b.heading}deg)`,
                         }}
                       >
                         <div
