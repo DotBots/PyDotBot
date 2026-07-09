@@ -75,15 +75,25 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const [side, setSide] = useState(600);
   const onGeomRef = useRef(props.onGeom);
   onGeomRef.current = props.onGeom;
+  // Track the canvas size live (rail open/close, window resize): the arena
+  // keeps its margins instead of overflowing when the canvas shrinks.
   const measure = useCallback((el: HTMLDivElement | null) => {
     (wrapRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-    if (el) {
+  }, []);
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => {
       const r = el.getBoundingClientRect();
       const s = Math.max(200, Math.min(r.width, r.height) - 48);
       setSide(s);
       geomRef.current = { w: r.width, h: r.height, side: s };
       onGeomRef.current(geomRef.current);
-    }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // v1 coordinate convention: y grows NORTH (up); screen top = arena max-y.
