@@ -192,14 +192,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       onPointerDown={onCanvasDown}
       onPointerMove={onCanvasMove}
       onPointerUp={onCanvasUp}
-      onWheel={(e) =>
-        setCam((c) =>
-          clampCam(
-            { ...c, scale: Math.max(0.5, Math.min(4, c.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1))) },
-            geomRef.current,
-          ),
-        )
-      }
       style={{
         position: "relative",
         flex: 1,
