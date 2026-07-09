@@ -3,16 +3,16 @@ import React, { useEffect, useRef, useState } from "react";
 import { putMoveRaw } from "./api";
 import { UnifiedBot } from "./types";
 
-// Same differential-drive mapping as the classic frontend Joystick:
-// dir = -128*y/200, angle = 128*x/200, left = dir+angle, right = dir-angle,
-// +/- deadband offset, clamped to [-128, 127]. Published at 10 Hz while held
-// (the firmware's ~520 ms deadman stops motors when we stop publishing).
+// v1 drive pad: 64px rounded square, crosshair guides, LED-colored knob with
+// the bot's live heading pointer (single) or an accent knob with a xN count
+// (group). Differential-drive mapping matches the classic frontend:
+// dir = -128*y/200, angle = 128*x/200, +/- deadband offset, clamp [-128,127],
+// published at 10 Hz while held (firmware deadman stops motors on release).
 const SPEED_OFFSET = 30;
-const PAD = 64; // px, pad size
-const R = 22; // px, knob travel radius
+const PAD = 64;
+const R = 20; // knob travel radius, as in v1
 
 function speeds(dx: number, dy: number): { left: number; right: number } {
-  // Scale pad offsets to the reference 200 px frame of the original math.
   const px = (dx / R) * 100;
   const py = (dy / R) * 100;
   const dir = (128 * py / 200) * -1;
@@ -29,18 +29,25 @@ function speeds(dx: number, dy: number): { left: number; right: number } {
   };
 }
 
-interface JoystickProps {
+interface PadProps {
   targets: UnifiedBot[]; // drivable bots to drive together
+  disabled: boolean; // parent applies the gate style; this blocks input
 }
 
-export const Joystick: React.FC<JoystickProps> = ({ targets }) => {
+export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [active, setActive] = useState(false);
   const knobRef = useRef(knob);
   knobRef.current = knob;
   const targetsRef = useRef(targets);
   targetsRef.current = targets;
-  const enabled = targets.length > 0;
+
+  const single = targets.length === 1 ? targets[0] : null;
+  const led = single
+    ? single.led
+      ? `rgb(${single.led.red},${single.led.green},${single.led.blue})`
+      : "var(--s-Inactive)"
+    : null;
 
   useEffect(() => {
     if (!active) return;
@@ -54,6 +61,7 @@ export const Joystick: React.FC<JoystickProps> = ({ targets }) => {
   }, [active]);
 
   const stop = () => {
+    if (!active) return;
     setActive(false);
     setKnob({ x: 0, y: 0 });
     targetsRef.current.forEach((b) => {
@@ -76,7 +84,7 @@ export const Joystick: React.FC<JoystickProps> = ({ targets }) => {
   return (
     <div
       onPointerDown={(e) => {
-        if (!enabled) return;
+        if (disabled || targets.length === 0) return;
         setActive(true);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         move(e);
@@ -84,53 +92,74 @@ export const Joystick: React.FC<JoystickProps> = ({ targets }) => {
       onPointerMove={(e) => active && move(e)}
       onPointerUp={stop}
       onPointerCancel={stop}
-      title={enabled ? "Drag to drive" : "No drivable bot selected"}
+      title="Drag pad to drive"
       style={{
-        position: "relative",
         width: PAD,
         height: PAD,
-        borderRadius: "50%",
+        flex: "none",
+        borderRadius: 12,
         background: "var(--elevated)",
         border: `1px solid ${active ? "var(--accent)" : "var(--hairline)"}`,
-        opacity: enabled ? 1 : 0.4,
-        cursor: enabled ? "grab" : "not-allowed",
+        position: "relative",
         touchAction: "none",
-        flex: "none",
+        cursor: "grab",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: 6,
-          bottom: 6,
-          width: 1,
-          background: "var(--hairline)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: 6,
-          right: 6,
-          height: 1,
-          background: "var(--hairline)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: active ? "var(--accent)" : "var(--muted)",
-          boxShadow: "0 1px 4px rgba(0,0,0,.4)",
-        }}
-      />
+      {/* crosshair guides */}
+      <div style={{ position: "absolute", left: "50%", top: 9, bottom: 9, width: 1, transform: "translateX(-50%)", background: "var(--hairline)" }} />
+      <div style={{ position: "absolute", top: "50%", left: 9, right: 9, height: 1, transform: "translateY(-50%)", background: "var(--hairline)" }} />
+      {single ? (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            background: led!,
+            boxShadow: `0 0 0 1px rgba(0,0,0,.4), 0 0 12px ${led}`,
+            transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            transition: active ? "none" : "transform .15s ease",
+          }}
+        >
+          {single.heading !== null && (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                width: 0,
+                height: 0,
+                borderLeft: "5px solid transparent",
+                borderRight: "5px solid transparent",
+                borderBottom: "9px solid rgba(255,255,255,.92)",
+                transform: `translate(-50%, -50%) rotate(${single.heading}deg) translateY(-13px)`,
+              }}
+            />
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            color: "#fff",
+            font: "600 11px/30px var(--font-mono)",
+            textAlign: "center",
+            boxShadow: "0 0 10px rgba(228,3,46,.55)",
+            transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            transition: active ? "none" : "transform .15s ease",
+          }}
+        >
+          &times;{targets.length}
+        </div>
+      )}
     </div>
   );
 };

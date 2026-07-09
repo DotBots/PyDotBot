@@ -32,6 +32,7 @@ export interface PyDotBot {
   address: string;
   application: number; // ApplicationType: 0 = DotBot
   status: number; // 0 ACTIVE, 1 INACTIVE, 2 LOST
+  mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
   direction?: number;
   lh2_position?: LH2Position;
   position_history?: LH2Position[];
@@ -69,6 +70,7 @@ export interface UnifiedBot {
   deviceType: string;
   application: number;
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
+  nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
   waypoints: LH2Position[]; // active mission (as reported by the controller)
   trail: LH2Position[];
 }

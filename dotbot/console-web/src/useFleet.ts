@@ -56,6 +56,7 @@ function merge(
       // control plane and active. SwarmIT-only bots (e.g. sitting in the
       // bootloader) are not drivable.
       drivable: !!py && py.status === 0 && state === "Running",
+      nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
     });

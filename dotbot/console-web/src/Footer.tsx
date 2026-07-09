@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 
 import { putRgbLed } from "./api";
-import { Joystick } from "./Joystick";
-import { Camera } from "./MapView";
-import { Minimap, ViewGeom } from "./Minimap";
+import { Pad } from "./Joystick";
+import { Camera, ViewGeom } from "./MapView";
+import { Minimap } from "./Minimap";
 import { LH2Position, MapSize, STATE_ORDER, UnifiedBot } from "./types";
 
+// v1 swatch palette.
 const SWATCHES: [number, number, number][] = [
   [228, 3, 46],
   [255, 140, 0],
@@ -21,6 +22,15 @@ const SWATCHES: [number, number, number][] = [
 
 const label = { fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)" } as const;
 const mono = { fontFamily: "var(--font-mono)" } as const;
+// v1 gate style for non-drivable selections.
+const gateOff = { opacity: 0.32, pointerEvents: "none" as const, filter: "grayscale(.7)" };
+
+const ledCss = (b: UnifiedBot | undefined) =>
+  b?.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
+const batPct = (v: number) => Math.max(0, Math.min(1, (v - 2.0) / (4.2 - 2.0)));
+const batColor = (p: number) =>
+  p < 0.2 ? "var(--s-Stopping)" : p < 0.45 ? "var(--s-Programming)" : "var(--s-Running)";
+const short = (id: string) => id.slice(-4).toUpperCase();
 
 interface FooterProps {
   bots: UnifiedBot[];
@@ -32,17 +42,20 @@ interface FooterProps {
   geom: ViewGeom | null;
   onSelectState: (ids: string[]) => void;
   onGo: () => void;
-  onClearWaypoints: () => void;
+  onStopNav: () => void;
+  onClearQueue: () => void;
+  onRemovePending: (index: number) => void;
   onToast: (msg: string) => void;
 }
 
-const StateDot: React.FC<{ state: string }> = ({ state }) => (
+const StateDot: React.FC<{ state: string; glow?: boolean; size?: number }> = ({ state, glow, size = 9 }) => (
   <span
     style={{
-      width: 9,
-      height: 9,
+      width: size,
+      height: size,
       borderRadius: "50%",
       background: `var(--s-${state})`,
+      boxShadow: glow ? `0 0 6px var(--s-${state})` : undefined,
       display: "inline-block",
       flex: "none",
     }}
@@ -50,107 +63,177 @@ const StateDot: React.FC<{ state: string }> = ({ state }) => (
 );
 
 const BatteryBar: React.FC<{ volts: number }> = ({ volts }) => {
-  const pct = Math.max(0, Math.min(100, ((volts - 2.0) / (4.2 - 2.0)) * 100));
+  const pct = batPct(volts);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ width: 58, height: 6, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
-        <div
-          style={{
-            width: `${pct}%`,
-            height: "100%",
-            background: pct < 20 ? "var(--s-Stopping)" : pct < 45 ? "var(--s-Programming)" : "var(--s-Running)",
-          }}
-        />
+        <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: batColor(pct) }} />
       </div>
       <span style={{ ...mono, fontSize: 12 }}>{volts.toFixed(2)} V</span>
     </div>
   );
 };
 
-// The control dock: joystick + LED + waypoint actions, shared by the
-// one-selected and multi-selected panels (same dock, single vs group).
+// The control dock, per v1: pad + LED button + segmented waypoint group,
+// with popovers anchored above and everything gated when nothing is drivable.
 const ControlDock: React.FC<{
   targets: UnifiedBot[];
-  pending: number;
+  pending: LH2Position[];
+  isGroup: boolean;
+  selCount: number;
   onGo: () => void;
-  onClear: () => void;
+  onStopNav: () => void;
+  onClearQueue: () => void;
+  onRemovePending: (i: number) => void;
   onToast: (msg: string) => void;
-}> = ({ targets, pending, onGo, onClear, onToast }) => {
+}> = ({ targets, pending, isGroup, selCount, onGo, onStopNav, onClearQueue, onRemovePending, onToast }) => {
   const [ledOpen, setLedOpen] = useState(false);
+  const [wpOpen, setWpOpen] = useState(false);
   const drivable = targets.filter((b) => b.drivable);
-  const btn = {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "6px 12px",
-    borderRadius: 7,
-    cursor: "pointer",
-    background: "var(--elevated)",
+  const enabled = drivable.length > 0;
+  const anyAuto = drivable.some((b) => b.nav === "auto");
+  const activeCount = drivable.reduce((a, b) => a + b.waypoints.length, 0);
+  const wpCount = pending.length > 0 ? pending.length : anyAuto ? activeCount : 0;
+  const single = !isGroup ? targets[0] : undefined;
+
+  const hint = !enabled
+    ? isGroup
+      ? "⚠  Not drivable - no DBP in selection"
+      : `⚠  Not drivable - no DBP in currently running ${single?.state === "Running" ? "image" : single?.state.toLowerCase()}`
+    : anyAuto
+      ? `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
+      : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map to add waypoints${pending.length ? ` · ${pending.length} queued` : ""}`;
+
+  const popBase: React.CSSProperties = {
+    position: "absolute",
+    bottom: 72,
+    left: 0,
+    width: 212,
+    background: "var(--surface)",
     border: "1px solid var(--hairline)",
-    fontSize: 12,
-  } as const;
+    borderRadius: 10,
+    padding: 12,
+    boxShadow: "0 10px 30px rgba(0,0,0,.45)",
+    zIndex: 30,
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7, position: "relative", flex: "none" }}>
       <div style={label}>Control</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <Joystick targets={drivable} />
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={enabled ? undefined : gateOff}>
+          <Pad targets={drivable} disabled={!enabled} />
+        </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-          <div onClick={() => drivable.length && setLedOpen((v) => !v)} style={{ ...btn, opacity: drivable.length ? 1 : 0.4 }}>
+          {/* LED button */}
+          <div
+            onClick={() => enabled && setLedOpen((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "var(--elevated)",
+              border: "1px solid var(--hairline)",
+              cursor: "pointer",
+              fontSize: 12,
+              ...(enabled ? {} : gateOff),
+            }}
+          >
             <div
               style={{
-                width: 13,
-                height: 13,
-                borderRadius: "50%",
-                background: drivable[0]?.led
-                  ? `rgb(${drivable[0].led.red},${drivable[0].led.green},${drivable[0].led.blue})`
-                  : "var(--muted)",
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                background: single ? ledCss(single) : "var(--accent)",
+                boxShadow: `0 0 8px ${single ? ledCss(single) : "rgba(228,3,46,.5)"}`,
               }}
             />
-            <span>LED{targets.length > 1 ? " all" : ""}</span>
+            <span>LED{isGroup ? " all" : ""}</span>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          {/* waypoint group: [Waypoints · N][Go / Stop nav][Clear] */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "stretch",
+              background: "var(--elevated)",
+              border: `1px solid ${wpOpen ? "var(--accent)" : "var(--hairline)"}`,
+              borderRadius: 8,
+              overflow: "hidden",
+              ...(enabled ? {} : gateOff),
+            }}
+          >
             <div
-              onClick={() => pending > 0 && drivable.length && onGo()}
+              onClick={() => setWpOpen((v) => !v)}
               style={{
-                ...btn,
-                background: pending > 0 && drivable.length ? "var(--accent)" : "var(--elevated)",
-                color: pending > 0 && drivable.length ? "#fff" : "var(--muted)",
-                fontWeight: 600,
+                padding: "6px 11px",
+                cursor: "pointer",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+                background: wpOpen ? "rgba(228,3,46,.14)" : "transparent",
               }}
             >
-              &#9654; Go{pending > 0 ? ` (${pending})` : ""}
+              &#9678; Waypoints{wpCount ? ` · ${wpCount}` : ""}
             </div>
-            <div onClick={onClear} style={btn}>
-              Clear
-            </div>
+            {(pending.length > 0 || anyAuto) && (
+              <div
+                onClick={() => (anyAuto ? onStopNav() : onGo())}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "6px 11px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  borderLeft: "1px solid var(--hairline)",
+                  color: anyAuto ? "var(--text)" : "var(--accent)",
+                }}
+              >
+                {anyAuto ? "■ Stop nav" : "▶ Go"}
+              </div>
+            )}
+            {pending.length > 0 && (
+              <div
+                onClick={onClearQueue}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "6px 11px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                  borderLeft: "1px solid var(--hairline)",
+                  color: "var(--muted)",
+                }}
+              >
+                Clear
+              </div>
+            )}
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 10, color: "var(--muted)", maxWidth: 230 }}>
-        {drivable.length === 0
-          ? "Not drivable - no DBP-speaking firmware running."
-          : `⌥ Alt-click the map to queue waypoints · Go sends · joystick drives ${
-              drivable.length > 1 ? `${drivable.length} bots` : "the bot"
-            }.`}
-      </div>
-      {ledOpen && (
+      <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{hint}</div>
+
+      {/* click-away overlay */}
+      {(ledOpen || wpOpen) && (
         <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            left: 0,
-            marginBottom: 10,
-            background: "var(--surface)",
-            border: "1px solid var(--hairline)",
-            borderRadius: 10,
-            padding: 12,
-            boxShadow: "0 8px 30px rgba(0,0,0,.4)",
-            zIndex: 30,
+          style={{ position: "fixed", inset: 0, zIndex: 25 }}
+          onClick={() => {
+            setLedOpen(false);
+            setWpOpen(false);
           }}
-        >
-          <div style={{ ...label, marginBottom: 8 }}>
-            LED color{targets.length > 1 ? ` · ${drivable.length} bots` : ""}
-          </div>
+        />
+      )}
+
+      {/* LED popover */}
+      {ledOpen && (
+        <div style={{ ...popBase, width: 174 }}>
+          <div style={{ ...label, marginBottom: 8 }}>LED color{isGroup ? ` · ${drivable.length} bots` : ""}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
             {SWATCHES.map(([r, g, b], i) => (
               <div
@@ -163,16 +246,63 @@ const ControlDock: React.FC<{
                   setLedOpen(false);
                 }}
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: "50%",
-                  background: `rgb(${r},${g},${b})`,
+                  width: "100%",
+                  aspectRatio: 1,
+                  borderRadius: 6,
                   cursor: "pointer",
-                  border: "1px solid var(--hairline)",
+                  background: `rgb(${r},${g},${b})`,
+                  boxShadow: "0 0 0 1px rgba(255,255,255,.08)",
                 }}
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* waypoint queue popover */}
+      {wpOpen && (
+        <div style={popBase}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
+            <span style={label}>Waypoint queue</span>
+            {pending.length > 0 && (
+              <span onClick={onClearQueue} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
+                Clear all
+              </span>
+            )}
+          </div>
+          {pending.length > 0 ? (
+            <div style={{ overflow: "auto", maxHeight: 120 }}>
+              {pending.map((w, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    ...mono,
+                    fontSize: 11,
+                    padding: "3px 0",
+                    borderBottom: "1px solid var(--hairline)",
+                  }}
+                >
+                  <span style={{ color: "var(--muted)", minWidth: 12 }}>{i + 1}</span>
+                  <span>
+                    {Math.round(w.x)}, {Math.round(w.y)} mm
+                  </span>
+                  <span
+                    onClick={() => onRemovePending(i)}
+                    style={{ marginLeft: "auto", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 3px" }}
+                  >
+                    &times;
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -183,11 +313,7 @@ const Sep: React.FC = () => <div style={{ width: 1, height: 96, background: "var
 
 export const Footer: React.FC<FooterProps> = (props) => {
   const selected = props.bots.filter((b) => props.selection.has(b.id));
-
-  const rollup = STATE_ORDER.map((s) => ({
-    state: s,
-    ids: props.bots.filter((b) => b.state === s).map((b) => b.id),
-  })).filter((r) => r.ids.length > 0);
+  const one = selected.length === 1 ? selected[0] : undefined;
 
   return (
     <div
@@ -200,17 +326,10 @@ export const Footer: React.FC<FooterProps> = (props) => {
         borderTop: "1px solid var(--hairline)",
       }}
     >
-      {/* minimap */}
-      <Minimap
-        bots={props.bots}
-        mapSize={props.mapSize}
-        cam={props.cam}
-        setCam={props.setCam}
-        geom={props.geom}
-      />
+      <Minimap bots={props.bots} mapSize={props.mapSize} cam={props.cam} setCam={props.setCam} geom={props.geom} />
 
-      {/* fleet strip content */}
       <div style={{ flex: 1, background: "var(--surface)", position: "relative" }}>
+        {/* NONE: fleet rollup (all states, zero-count rows dimmed, per v1) */}
         {selected.length === 0 && (
           <div style={{ height: "100%", display: "flex", alignItems: "center", gap: 26, padding: "0 22px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -222,92 +341,138 @@ export const Footer: React.FC<FooterProps> = (props) => {
             </div>
             <Sep />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(120px, 1fr))", gap: "10px 26px" }}>
-              {rollup.map((r) => (
-                <div
-                  key={r.state}
-                  onClick={() => props.onSelectState(r.ids)}
-                  title="Select these bots"
-                  style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-                >
-                  <StateDot state={r.state} />
-                  <span style={{ ...mono, fontSize: 15, fontWeight: 600, minWidth: 20 }}>{r.ids.length}</span>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{r.state}</span>
-                </div>
-              ))}
+              {STATE_ORDER.map((s) => {
+                const ids = props.bots.filter((b) => b.state === s).map((b) => b.id);
+                return (
+                  <div
+                    key={s}
+                    onClick={() => ids.length && props.onSelectState(ids)}
+                    title={ids.length ? "Select these bots" : undefined}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 9,
+                      opacity: ids.length ? 1 : 0.4,
+                      cursor: ids.length ? "pointer" : "default",
+                    }}
+                  >
+                    <StateDot state={s} glow />
+                    <span style={{ ...mono, fontSize: 15, fontWeight: 600, minWidth: 20 }}>{ids.length}</span>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>{s}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {selected.length === 1 && (
+        {/* ONE: selected bot */}
+        {one && (
           <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 18px", gap: 16 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 130 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 140 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div
                   style={{
-                    width: 15,
-                    height: 15,
+                    width: 24,
+                    height: 24,
                     borderRadius: "50%",
-                    background: selected[0].led
-                      ? `rgb(${selected[0].led.red},${selected[0].led.green},${selected[0].led.blue})`
-                      : "var(--s-Inactive)",
-                    border: selected[0].drivable ? "2px solid rgba(255,255,255,.75)" : "2px solid transparent",
+                    background: ledCss(one),
+                    boxShadow: `0 0 0 1px rgba(0,0,0,.45), 0 0 12px ${ledCss(one)}`,
                   }}
                 />
-                <span style={{ ...mono, fontWeight: 600, fontSize: 20, lineHeight: 1.05 }}>{selected[0].id.slice(-4)}</span>
+                <span style={{ ...mono, fontWeight: 600, fontSize: 20, lineHeight: 1.05 }}>{short(one.id)}</span>
               </div>
-              <span style={{ ...mono, fontSize: 10, color: "var(--muted)" }}>{selected[0].id}</span>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>{selected[0].deviceType}</span>
+              <span style={{ ...mono, fontSize: 10, color: "var(--muted)" }}>{one.id.toUpperCase()}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{one.deviceType}</span>
+              <span style={{ ...mono, fontSize: 10, color: "var(--muted)" }}>{"—"}</span>
               <span
-                style={{ fontSize: 10, color: selected[0].drivable ? "var(--s-Running)" : "var(--muted)" }}
                 title="Drivable = the running firmware speaks DBP, so it accepts drive / LED / waypoint commands."
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  alignSelf: "flex-start",
+                  ...mono,
+                  fontSize: 9,
+                  letterSpacing: ".5px",
+                  padding: "2px 7px",
+                  borderRadius: 10,
+                  marginTop: 2,
+                  ...(one.drivable
+                    ? { background: "rgba(94,234,212,.14)", color: "#5eead4" }
+                    : { background: "var(--elevated)", color: "var(--muted)" }),
+                }}
               >
-                &#9678; {selected[0].drivable ? "drivable" : "not drivable"}
+                &#9678; {one.drivable ? "Drivable" : "Not drivable"}
               </span>
             </div>
             <Sep />
             <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 170 }}>
               <div style={label}>Status</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <StateDot state={selected[0].state} />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{selected[0].state}</span>
+                <StateDot state={one.state} glow />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{one.state}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <BatteryBar volts={selected[0].battery} />
+                <BatteryBar volts={one.battery} />
                 <span style={{ ...mono, fontSize: 11, color: "var(--muted)" }}>
-                  {selected[0].position ? `${Math.round(selected[0].position.x)}, ${Math.round(selected[0].position.y)}` : "-"}
+                  {one.position ? `${Math.round(one.position.x)}, ${Math.round(one.position.y)} mm` : "— unknown"}
                 </span>
               </div>
             </div>
             <Sep />
             <ControlDock
               targets={selected}
-              pending={props.pendingWaypoints.length}
+              pending={props.pendingWaypoints}
+              isGroup={false}
+              selCount={1}
               onGo={props.onGo}
-              onClear={props.onClearWaypoints}
+              onStopNav={props.onStopNav}
+              onClearQueue={props.onClearQueue}
+              onRemovePending={props.onRemovePending}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
           </div>
         )}
 
+        {/* MULTI */}
         {selected.length > 1 && (
           <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 18px", gap: 16 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 110 }}>
-              <span style={{ ...mono, fontSize: 24, fontWeight: 600, lineHeight: 1 }}>{selected.length}</span>
-              <span style={label}>selected</span>
-              <span onClick={() => props.onSelectState([])} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
-                Clear selection
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 120 }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  flex: "none",
+                  borderRadius: 11,
+                  background: "var(--elevated)",
+                  border: "1px solid var(--hairline)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  font: "600 15px/1 var(--font-mono)",
+                }}
+              >
+                &#9776;
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ ...mono, fontSize: 24, fontWeight: 600, lineHeight: 1 }}>{selected.length}</span>
+                <span style={label}>selected</span>
+                <span onClick={() => props.onSelectState([])} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
+                  Clear selection
+                </span>
+              </div>
             </div>
             <Sep />
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 170 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 150 }}>
               <div style={label}>Status</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", maxWidth: 300 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", alignContent: "center", maxWidth: 300 }}>
                 {STATE_ORDER.map((s) => {
                   const n = selected.filter((b) => b.state === s).length;
                   return n > 0 ? (
-                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <StateDot state={s} />
+                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <StateDot state={s} size={8} />
                       <span style={{ ...mono, fontSize: 14, fontWeight: 600 }}>{n}</span>
                       <span style={{ fontSize: 12, color: "var(--muted)" }}>{s}</span>
                     </div>
@@ -318,9 +483,13 @@ export const Footer: React.FC<FooterProps> = (props) => {
             <Sep />
             <ControlDock
               targets={selected}
-              pending={props.pendingWaypoints.length}
+              pending={props.pendingWaypoints}
+              isGroup
+              selCount={selected.length}
               onGo={props.onGo}
-              onClear={props.onClearWaypoints}
+              onStopNav={props.onStopNav}
+              onClearQueue={props.onClearQueue}
+              onRemovePending={props.onRemovePending}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
