@@ -76,9 +76,8 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
           style={{
             position: "relative",
             aspectRatio: `${mapSize.width} / ${mapSize.height}`,
+            height: "100%",
             maxWidth: "100%",
-            maxHeight: "100%",
-            flex: 1,
             background: "var(--canvas)",
             border: "1px solid var(--hairline)",
             borderRadius: 5,

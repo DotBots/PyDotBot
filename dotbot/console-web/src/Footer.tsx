@@ -313,7 +313,7 @@ const ControlDock: React.FC<{
   );
 };
 
-const Sep: React.FC = () => <div style={{ width: 1, height: 96, background: "var(--hairline)", flex: "none" }} />;
+const Sep: React.FC = () => <div style={{ width: 1, height: 116, background: "var(--hairline)", flex: "none" }} />;
 
 export const Footer: React.FC<FooterProps> = (props) => {
   const selected = props.bots.filter((b) => props.selection.has(b.id));
@@ -322,7 +322,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
   return (
     <div
       style={{
-        height: 128,
+        height: 166,
         flex: "none",
         display: "flex",
         gap: 1,

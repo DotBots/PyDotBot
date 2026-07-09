@@ -44,8 +44,7 @@ interface MapViewProps {
   mapSize: MapSize;
   selection: Set<string>;
   layers: Layers;
-  pendingWaypoints: LH2Position[]; // local queue, not yet sent
-  pendingLed: string | null; // css color of the queue's owner selection
+  plannedMissions: { waypoints: LH2Position[]; led: string | null }[]; // local queues, not yet sent
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   onGeom: (g: ViewGeom) => void;
@@ -278,14 +277,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               });
             })}
 
-          {/* pending (queued, not sent) waypoints for the current selection */}
+          {/* planned (queued, not sent) waypoints */}
           {props.layers.waypoints &&
-            props.pendingWaypoints.map((p, i) => {
+            props.plannedMissions.flatMap((m, mi) =>
+              m.waypoints.map((p, i) => {
               const q = pctPos(p);
-              const led = props.pendingLed ?? "var(--accent)";
+              const led = m.led ?? "var(--accent)";
               return (
                 <div
-                  key={`pend-${i}`}
+                  key={`pend-${mi}-${i}`}
                   style={{
                     position: "absolute",
                     left: `${q.left}%`,
@@ -301,7 +301,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   title={`waypoint ${i + 1}`}
                 />
               );
-            })}
+              }),
+            )}
 
           {/* bots (v1 glyph: state-colored body, LED pip, drive dot, chip label) */}
           {props.layers.dotBots &&
@@ -417,38 +418,26 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         />
                       </div>
                     )}
-                    {/* drive dot: white ring at center = drivable */}
+                    {/* drive dot: white ring at center = drivable; its FILL is
+                        the LED color (experiment: merges the v1 LED pip into the
+                        drive indicator - see design-feedback) */}
                     {b.drivable && (
                       <div
                         style={{
                           position: "absolute",
                           left: "50%",
                           top: "50%",
-                          width: 9,
-                          height: 9,
-                          margin: "-4.5px 0 0 -4.5px",
+                          width: 10,
+                          height: 10,
+                          margin: "-5px 0 0 -5px",
                           borderRadius: "50%",
+                          background: led,
                           border: "1.5px solid rgba(255,255,255,.95)",
-                          boxShadow: "0 0 3px rgba(0,0,0,.5)",
+                          boxShadow: `0 0 3px rgba(0,0,0,.5), 0 0 5px ${led}`,
                           zIndex: 7,
                         }}
                       />
                     )}
-                    {/* LED pip (top-right) */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        margin: "-13px 0 0 5px",
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: led,
-                        boxShadow: `0 0 0 1.5px var(--canvas), 0 0 4px ${led}`,
-                        zIndex: 8,
-                      }}
-                    />
                     {/* chip label: selected or hovered only */}
                     {(selected || hovered) && (
                       <div

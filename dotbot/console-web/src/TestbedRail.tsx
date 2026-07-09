@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-import { LH2Position, UnifiedBot } from "./types";
+import { PlannedMission, UnifiedBot } from "./types";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
 // Testbed tab (orchestration controls - disabled until the swarmit write path
@@ -26,11 +26,11 @@ interface Mission {
 interface TestbedRailProps {
   bots: UnifiedBot[];
   selection: Set<string>;
-  pending: LH2Position[];
+  planned: PlannedMission[];
   doneMissions: DoneMission[];
   onSelectIds: (ids: string[]) => void;
-  onGo: () => void;
-  onDiscardPlanned: () => void;
+  onGoMission: (key: string) => void;
+  onDiscardMission: (key: string) => void;
   onStopMission: (ids: string[]) => void;
 }
 
@@ -82,25 +82,23 @@ const topTabStyle = (active: boolean): React.CSSProperties => ({
   gap: 6,
 });
 
-export function deriveMissions(
-  bots: UnifiedBot[],
-  selection: Set<string>,
-  pending: LH2Position[],
-): Mission[] {
+export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): Mission[] {
   const missions: Mission[] = [];
-  // Planned: the local queue on the current drivable selection.
-  const drivableSel = bots.filter((b) => selection.has(b.id) && b.drivable);
-  if (pending.length > 0 && drivableSel.length > 0) {
+  const byId = new Map(bots.map((b) => [b.id, b]));
+  // Planned: local queues, bound to their bots at queue time.
+  planned.forEach((m) => {
+    const bs = m.ids.map((id) => byId.get(id)).filter(Boolean) as UnifiedBot[];
+    if (!bs.length) return;
     missions.push({
-      key: "planned",
-      ids: drivableSel.map((b) => b.id),
-      label: drivableSel.length === 1 ? short(drivableSel[0].id) : `${drivableSel.length} bots`,
-      count: drivableSel.length,
-      n: pending.length,
+      key: m.key,
+      ids: m.ids,
+      label: bs.length === 1 ? short(bs[0].id) : `${bs.length} bots`,
+      count: bs.length,
+      n: m.waypoints.length,
       phase: "planned",
-      dots: drivableSel.slice(0, 4).map(ledCss),
+      dots: bs.slice(0, 4).map(ledCss),
     });
-  }
+  });
   // Active: navigating bots, grouped by identical mission targets. The
   // controller prepends each bot's own start position to the list it stores,
   // so the shared mission is the TAIL - skip the first element when the list
@@ -139,7 +137,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
   const [top, setTop] = useState<"testbed" | "missions">(railParam === "missions" ? "missions" : "testbed");
   const [tab, setTab] = useState<"console" | "flash">("console");
 
-  const missions = deriveMissions(props.bots, props.selection, props.pending);
+  const missions = deriveMissions(props.bots, props.planned);
   const targetLabel = props.selection.size ? `${props.selection.size} selected` : "whole fleet";
   const orchTitle = "Arrives with orchestration (swarmit write path is read-only for now)";
 
@@ -403,7 +401,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                       <div
                         onClick={(e) => {
                           e.stopPropagation();
-                          props.onGo();
+                          props.onGoMission(m.key);
                         }}
                         style={{
                           display: "inline-flex",
@@ -423,7 +421,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (m.phase === "planned") props.onDiscardPlanned();
+                        if (m.phase === "planned") props.onDiscardMission(m.key);
                         else props.onStopMission(m.ids);
                       }}
                       title={m.phase === "active" ? "Interrupt & discard mission" : "Discard mission"}

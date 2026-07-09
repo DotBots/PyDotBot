@@ -79,3 +79,11 @@ export interface MapSize {
   width: number;
   height: number;
 }
+
+// A waypoint mission queued locally but not yet sent: bound to the bots that
+// were selected when its waypoints were dropped (survives deselection).
+export interface PlannedMission {
+  key: string; // sorted ids joined
+  ids: string[];
+  waypoints: LH2Position[];
+}

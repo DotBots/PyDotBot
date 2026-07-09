@@ -6,7 +6,7 @@ import { GridView } from "./GridView";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { DoneMission, TestbedRail } from "./TestbedRail";
-import { LH2Position } from "./types";
+import { LH2Position, PlannedMission } from "./types";
 import { useFleet } from "./useFleet";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
@@ -45,7 +45,8 @@ export const App: React.FC = () => {
     preselRef.current = true;
   }, [bots]);
 
-  const [pending, setPending] = useState<LH2Position[]>([]);
+  // Planned missions: local waypoint queues bound to bots at queue time.
+  const [planned, setPlanned] = useState<PlannedMission[]>([]);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
@@ -63,36 +64,55 @@ export const App: React.FC = () => {
       ids.forEach((id) => (next.has(id) ? next.delete(id) : next.add(id)));
       return next;
     });
-    if (!additive && ids.length === 0) setPending([]);
   }, []);
 
   const selectedBots = bots.filter((b) => selection.has(b.id));
   const drivableSelected = selectedBots.filter((b) => b.drivable);
-  const pendingLed =
-    drivableSelected.length > 0 && drivableSelected[0].led
-      ? `rgb(${drivableSelected[0].led.red},${drivableSelected[0].led.green},${drivableSelected[0].led.blue})`
-      : null;
+  const selKey = drivableSelected.map((b) => b.id).sort().join("-");
+  const selPlanned = planned.find((m) => m.key === selKey);
+  const pending = selPlanned?.waypoints ?? [];
 
   const onAddWaypoint = useCallback(
     (p: LH2Position) => {
       if (drivableSelected.length === 0) return;
-      setPending((prev) => [...prev, p]);
+      const ids = drivableSelected.map((b) => b.id).sort();
+      const key = ids.join("-");
+      setPlanned((prev) => {
+        const hit = prev.find((m) => m.key === key);
+        if (hit) return prev.map((m) => (m.key === key ? { ...m, waypoints: [...m.waypoints, p] } : m));
+        return [...prev, { key, ids, waypoints: [p] }];
+      });
     },
-    [drivableSelected.length],
+    [drivableSelected],
+  );
+
+  const sendMission = useCallback(
+    (m: PlannedMission) => {
+      const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
+      targets.forEach((b) => {
+        putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, m.waypoints).catch(() => {});
+      });
+      showToast(
+        `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
+          targets.length > 1 ? "s" : ""
+        }`,
+      );
+      setPlanned((prev) => prev.filter((x) => x.key !== m.key));
+    },
+    [bots, showToast],
   );
 
   const onGo = useCallback(() => {
-    if (pending.length === 0) return;
-    drivableSelected.forEach((b) => {
-      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, pending).catch(() => {});
-    });
-    showToast(
-      `${pending.length} waypoint${pending.length > 1 ? "s" : ""} sent to ${drivableSelected.length} bot${
-        drivableSelected.length > 1 ? "s" : ""
-      }`,
-    );
-    setPending([]);
-  }, [pending, drivableSelected, showToast]);
+    if (selPlanned) sendMission(selPlanned);
+  }, [selPlanned, sendMission]);
+
+  const onGoMission = useCallback(
+    (key: string) => {
+      const m = planned.find((x) => x.key === key);
+      if (m) sendMission(m);
+    },
+    [planned, sendMission],
+  );
 
   const onStopNav = useCallback(() => {
     drivableSelected.forEach((b) => {
@@ -101,8 +121,22 @@ export const App: React.FC = () => {
     if (drivableSelected.length > 0) showToast("Navigation stopped");
   }, [drivableSelected, showToast]);
 
-  const onClearQueue = useCallback(() => setPending([]), []);
-  const onRemovePending = useCallback((i: number) => setPending((prev) => prev.filter((_, j) => j !== i)), []);
+  const onClearQueue = useCallback(() => {
+    setPlanned((prev) => prev.filter((m) => m.key !== selKey));
+  }, [selKey]);
+  const onDiscardMission = useCallback((key: string) => {
+    setPlanned((prev) => prev.filter((m) => m.key !== key));
+  }, []);
+  const onRemovePending = useCallback(
+    (i: number) => {
+      setPlanned((prev) =>
+        prev
+          .map((m) => (m.key === selKey ? { ...m, waypoints: m.waypoints.filter((_, j) => j !== i) } : m))
+          .filter((m) => m.waypoints.length > 0),
+      );
+    },
+    [selKey],
+  );
 
   // Recently-completed missions: a bot flipping AUTO -> MANUAL just arrived.
   const [doneMissions, setDoneMissions] = useState<DoneMission[]>([]);
@@ -238,11 +272,11 @@ export const App: React.FC = () => {
         <TestbedRail
           bots={bots}
           selection={selection}
-          pending={pending}
+          planned={planned}
           doneMissions={doneMissions}
           onSelectIds={(ids) => onSelect(ids, false)}
-          onGo={onGo}
-          onDiscardPlanned={onClearQueue}
+          onGoMission={onGoMission}
+          onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
         />
 
@@ -254,8 +288,13 @@ export const App: React.FC = () => {
               mapSize={mapSize}
               selection={selection}
               layers={layers}
-              pendingWaypoints={pending}
-              pendingLed={pendingLed}
+              plannedMissions={planned.map((m) => {
+                const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
+                return {
+                  waypoints: m.waypoints,
+                  led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
+                };
+              })}
               cam={cam}
               setCam={setCam}
               onGeom={setGeom}
