@@ -5,33 +5,49 @@ import { UnifiedBot } from "./types";
 
 // v1 drive pad: 64px rounded square, crosshair guides, LED-colored knob with
 // the bot's live heading pointer (single) or an accent knob with a xN count
-// (group). Differential-drive mapping matches the classic frontend:
-// dir = -128*y/200, angle = 128*x/200, +/- deadband offset, clamp [-128,127],
-// published at 10 Hz while held (firmware deadman stops motors on release).
+// (group).
+//
+// Control model: SCREEN-relative steering. The pad vector is the direction
+// you want the bot to move on the (north-up) map; the pad closes the heading
+// loop itself at 10 Hz: steer = P * heading-error, throttle scales with
+// deflection and drops while the bot is badly misaligned. This replaces the
+// classic body-relative mapping (y = throttle along heading, x = yaw rate),
+// which felt erratic against the simulator's motion-derived heading.
+//
+// Caveat baked into the throttle floor: the controller derives heading from
+// MOTION (successive position fixes), so a bot spinning in place reports no
+// heading change - the loop always keeps some forward speed so the heading
+// stays observable.
 const SPEED_OFFSET = 30;
 const PAD = 64;
 const R = 20; // knob travel radius, as in v1
 
-function speeds(dx: number, dy: number): { left: number; right: number } {
-  const px = (dx / R) * 100;
-  const py = (dy / R) * 100;
-  const dir = (128 * py / 200) * -1;
-  const angle = (128 * px) / 200;
-  // Sign verified against the simulator: right wheel faster turns the bot
-  // clockwise on the north-up map, so pad-right = turn right on screen.
-  // NOTE: the classic frontend used the opposite sign against real hardware -
-  // validate on a real DotBot (a mismatch here would point at a left/right
-  // label swap between dotbot_simulator.py and the firmware).
-  let left = dir - angle;
-  let right = dir + angle;
+const clampPwm = (v: number) => Math.max(-128, Math.min(127, Math.trunc(v)));
+
+function steerTowards(bot: UnifiedBot, kx: number, ky: number): { left: number; right: number } {
+  const mag = Math.min(1, Math.hypot(kx, ky) / R);
+  if (mag < 0.12) return { left: 0, right: 0 };
+  // Desired motion direction in the controller's convention (0 = north/+y,
+  // positive CCW): dir = -atan2(ax, ay) with arena ax = kx, ay = -ky (screen
+  // y grows down, arena y grows up).
+  const desired = (-Math.atan2(kx, -ky) * 180) / Math.PI;
+  let error = bot.heading === null ? 0 : desired - bot.heading;
+  while (error > 180) error -= 360;
+  while (error < -180) error += 360;
+  // Throttle: floor keeps the heading observable; alignment factor slows the
+  // bot down while it still points the wrong way.
+  const align = Math.max(0, Math.cos((error * Math.PI) / 180));
+  const throttle = 25 + mag * 55 * align;
+  // Verified against the simulator: left channel faster = CCW on the
+  // north-up map = heading (CCW-positive) increases.
+  const steer = Math.max(-55, Math.min(55, error * 0.9));
+  let left = throttle + steer;
+  let right = throttle - steer;
   if (left > 0) left += SPEED_OFFSET;
   if (left < 0) left -= SPEED_OFFSET;
   if (right > 0) right += SPEED_OFFSET;
   if (right < 0) right -= SPEED_OFFSET;
-  return {
-    left: Math.max(-128, Math.min(127, Math.trunc(left))),
-    right: Math.max(-128, Math.min(127, Math.trunc(right))),
-  };
+  return { left: clampPwm(left), right: clampPwm(right) };
 }
 
 interface PadProps {
@@ -57,8 +73,8 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
   useEffect(() => {
     if (!active) return;
     const t = setInterval(() => {
-      const { left, right } = speeds(knobRef.current.x, knobRef.current.y);
       targetsRef.current.forEach((b) => {
+        const { left, right } = steerTowards(b, knobRef.current.x, knobRef.current.y);
         putMoveRaw(b.id, b.application, left, right).catch(() => {});
       });
     }, 100);
