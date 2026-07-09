@@ -17,7 +17,10 @@ type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
   const { bots, mapSize, wsUp } = useFleet();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // ?theme=dark|light presets the theme (handy for dev/screenshots).
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
+  );
   // ?view=map|list|grid opens a specific view (handy for dev/screenshots).
   const [view, setView] = useState<ViewKind>(() => {
     const v = new URLSearchParams(window.location.search).get("view");
