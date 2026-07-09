@@ -65,11 +65,13 @@ export const App: React.FC = () => {
     trails: false,
   });
 
-  const onSelect = useCallback((ids: string[], additive: boolean) => {
+  // replace = set selection to ids · toggle = flip each id · add = union (range select)
+  const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
     setSelection((prev) => {
-      if (!additive) return new Set(ids);
+      if (mode === "replace") return new Set(ids);
       const next = new Set(prev);
-      ids.forEach((id) => (next.has(id) ? next.delete(id) : next.add(id)));
+      if (mode === "add") ids.forEach((id) => next.add(id));
+      else ids.forEach((id) => (next.has(id) ? next.delete(id) : next.add(id)));
       return next;
     });
   }, []);
@@ -291,7 +293,7 @@ export const App: React.FC = () => {
           onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
           onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
           onReset={() => orch.act("reset", selection.size ? [...selection] : undefined)}
-          onSelectIds={(ids) => onSelect(ids, false)}
+          onSelectIds={(ids) => onSelect(ids, "replace")}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
@@ -476,7 +478,7 @@ export const App: React.FC = () => {
         cam={cam}
         setCam={setCam}
         geom={geom}
-        onSelectState={(ids) => onSelect(ids, false)}
+        onSelectState={(ids) => onSelect(ids, "replace")}
         onGo={onGo}
         onStopNav={onStopNav}
         onClearQueue={onClearQueue}

@@ -6,12 +6,33 @@ import { BatteryCell, FilterBar, LedDot, Pagination, useQueriedBots, useViewQuer
 interface GridViewProps {
   bots: UnifiedBot[];
   selection: Set<string>;
-  onSelect: (ids: string[], additive: boolean) => void;
+  onSelect: (ids: string[], mode: "replace" | "toggle" | "add") => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect }) => {
   const { q, setQ } = useViewQuery();
   const { rows, total, pages } = useQueriedBots(bots, q);
+  // File-manager selection: click = single, shift+click = range from the
+  // anchor in the current card order, cmd/ctrl = toggle.
+  const anchorRef = React.useRef<string | null>(null);
+  const cardClick = (e: React.MouseEvent, id: string) => {
+    if (e.shiftKey && anchorRef.current) {
+      const ids = rows.map((r) => r.id);
+      const a = ids.indexOf(anchorRef.current);
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        onSelect(ids.slice(Math.min(a, b), Math.max(a, b) + 1), "add");
+        return;
+      }
+    }
+    if (e.metaKey || e.ctrlKey) {
+      onSelect([id], "toggle");
+      anchorRef.current = id;
+      return;
+    }
+    onSelect([id], "replace");
+    anchorRef.current = id;
+  };
 
   return (
     <div
@@ -25,7 +46,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
         paddingTop: 58, // clear the floating view switcher
         background: "var(--canvas)",
       }}
-      onClick={() => onSelect([], false)}
+      onClick={() => onSelect([], "replace")}
     >
       <FilterBar q={q} setQ={setQ} total={total} />
       <div style={{ flex: 1, overflow: "auto" }}>
@@ -44,7 +65,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
                 key={b.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelect([b.id], e.shiftKey);
+                  cardClick(e, b.id);
                 }}
                 style={{
                   display: "flex",
