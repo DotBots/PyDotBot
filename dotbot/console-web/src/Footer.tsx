@@ -2,6 +2,8 @@ import React, { useState } from "react";
 
 import { putRgbLed } from "./api";
 import { Joystick } from "./Joystick";
+import { Camera } from "./MapView";
+import { Minimap, ViewGeom } from "./Minimap";
 import { LH2Position, MapSize, STATE_ORDER, UnifiedBot } from "./types";
 
 const SWATCHES: [number, number, number][] = [
@@ -25,9 +27,13 @@ interface FooterProps {
   mapSize: MapSize;
   selection: Set<string>;
   pendingWaypoints: LH2Position[];
+  cam: Camera;
+  setCam: React.Dispatch<React.SetStateAction<Camera>>;
+  geom: ViewGeom | null;
   onSelectState: (ids: string[]) => void;
   onGo: () => void;
   onClearWaypoints: () => void;
+  onToast: (msg: string) => void;
 }
 
 const StateDot: React.FC<{ state: string }> = ({ state }) => (
@@ -68,7 +74,8 @@ const ControlDock: React.FC<{
   pending: number;
   onGo: () => void;
   onClear: () => void;
-}> = ({ targets, pending, onGo, onClear }) => {
+  onToast: (msg: string) => void;
+}> = ({ targets, pending, onGo, onClear, onToast }) => {
   const [ledOpen, setLedOpen] = useState(false);
   const drivable = targets.filter((b) => b.drivable);
   const btn = {
@@ -152,6 +159,7 @@ const ControlDock: React.FC<{
                   drivable.forEach((bot) =>
                     putRgbLed(bot.id, bot.application, { red: r, green: g, blue: b }).catch(() => {}),
                   );
+                  onToast(`LED set on ${drivable.length} bot${drivable.length > 1 ? "s" : ""}`);
                   setLedOpen(false);
                 }}
                 style={{
@@ -192,6 +200,15 @@ export const Footer: React.FC<FooterProps> = (props) => {
         borderTop: "1px solid var(--hairline)",
       }}
     >
+      {/* minimap */}
+      <Minimap
+        bots={props.bots}
+        mapSize={props.mapSize}
+        cam={props.cam}
+        setCam={props.setCam}
+        geom={props.geom}
+      />
+
       {/* fleet strip content */}
       <div style={{ flex: 1, background: "var(--surface)", position: "relative" }}>
         {selected.length === 0 && (
@@ -267,6 +284,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
               pending={props.pendingWaypoints.length}
               onGo={props.onGo}
               onClear={props.onClearWaypoints}
+              onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
           </div>
@@ -303,6 +321,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
               pending={props.pendingWaypoints.length}
               onGo={props.onGo}
               onClear={props.onClearWaypoints}
+              onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
           </div>

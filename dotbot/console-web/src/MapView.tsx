@@ -9,27 +9,30 @@ export interface Layers {
   labels: boolean;
 }
 
+export interface Camera {
+  scale: number;
+  tx: number;
+  ty: number;
+}
+
 interface MapViewProps {
   bots: UnifiedBot[];
   mapSize: MapSize;
   selection: Set<string>;
   layers: Layers;
   pendingWaypoints: LH2Position[]; // local queue, not yet sent
+  cam: Camera;
+  setCam: React.Dispatch<React.SetStateAction<Camera>>;
+  onGeom: (g: { w: number; h: number; side: number }) => void;
   onSelect: (ids: string[], additive: boolean) => void;
   onAddWaypoint: (p: LH2Position) => void;
 }
 
 const BOT_R = 11; // px radius of the bot circle at zoom 1
 
-interface Camera {
-  scale: number;
-  tx: number;
-  ty: number;
-}
-
 export const MapView: React.FC<MapViewProps> = (props) => {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [cam, setCam] = useState<Camera>({ scale: 1, tx: 0, ty: 0 });
+  const { cam, setCam } = props;
   const [marquee, setMarquee] = useState<{
     x0: number;
     y0: number;
@@ -40,11 +43,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
   // The arena is drawn as a square of `side` px centered in the wrapper.
   const [side, setSide] = useState(600);
+  const onGeomRef = useRef(props.onGeom);
+  onGeomRef.current = props.onGeom;
   const measure = useCallback((el: HTMLDivElement | null) => {
     (wrapRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
     if (el) {
       const r = el.getBoundingClientRect();
-      setSide(Math.max(200, Math.min(r.width, r.height) - 48));
+      const s = Math.max(200, Math.min(r.width, r.height) - 48);
+      setSide(s);
+      onGeomRef.current({ w: r.width, h: r.height, side: s });
     }
   }, []);
 
@@ -136,6 +143,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       onPointerDown={onCanvasDown}
       onPointerMove={onCanvasMove}
       onPointerUp={onCanvasUp}
+      onWheel={(e) =>
+        setCam((c) => ({
+          ...c,
+          scale: Math.max(0.5, Math.min(4, c.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1))),
+        }))
+      }
       style={{
         position: "relative",
         flex: 1,

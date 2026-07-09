@@ -1,16 +1,35 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import { putWaypoints } from "./api";
 import { Footer } from "./Footer";
-import { Layers, MapView } from "./MapView";
+import { GridView } from "./GridView";
+import { ListView } from "./ListView";
+import { Camera, Layers, MapView } from "./MapView";
+import { ViewGeom } from "./Minimap";
 import { LH2Position } from "./types";
 import { useFleet } from "./useFleet";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
+type ViewKind = "map" | "list" | "grid";
+
 export const App: React.FC = () => {
   const { bots, mapSize, wsUp } = useFleet();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // ?view=map|list|grid opens a specific view (handy for dev/screenshots).
+  const [view, setView] = useState<ViewKind>(() => {
+    const v = new URLSearchParams(window.location.search).get("view");
+    return v === "list" || v === "grid" ? v : "map";
+  });
+  const [cam, setCam] = useState<Camera>({ scale: 1, tx: 0, ty: 0 });
+  const [geom, setGeom] = useState<ViewGeom | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2500);
+  }, []);
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const preselRef = React.useRef(false);
@@ -61,15 +80,21 @@ export const App: React.FC = () => {
     drivableSelected.forEach((b) => {
       putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, pending).catch(() => {});
     });
+    showToast(
+      `${pending.length} waypoint${pending.length > 1 ? "s" : ""} sent to ${drivableSelected.length} bot${
+        drivableSelected.length > 1 ? "s" : ""
+      }`,
+    );
     setPending([]);
-  }, [pending, drivableSelected]);
+  }, [pending, drivableSelected, showToast]);
 
   const onClearWaypoints = useCallback(() => {
     setPending([]);
     drivableSelected.forEach((b) => {
       putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {});
     });
-  }, [drivableSelected]);
+    if (drivableSelected.length > 0) showToast("Mission cleared");
+  }, [drivableSelected, showToast]);
 
   const layerRows: { key: keyof Layers; label: string }[] = [
     { key: "batteryBars", label: "Battery bars" },
@@ -165,37 +190,46 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Map area with view switcher + layers */}
+      {/* View area with switcher + layers */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
-        <MapView
-          bots={bots}
-          mapSize={mapSize}
-          selection={selection}
-          layers={layers}
-          pendingWaypoints={pending}
-          onSelect={onSelect}
-          onAddWaypoint={onAddWaypoint}
-        />
+        {view === "map" && (
+          <MapView
+            bots={bots}
+            mapSize={mapSize}
+            selection={selection}
+            layers={layers}
+            pendingWaypoints={pending}
+            cam={cam}
+            setCam={setCam}
+            onGeom={setGeom}
+            onSelect={onSelect}
+            onAddWaypoint={onAddWaypoint}
+          />
+        )}
+        {view === "list" && <ListView bots={bots} selection={selection} onSelect={onSelect} />}
+        {view === "grid" && <GridView bots={bots} selection={selection} onSelect={onSelect} />}
 
-        {/* switcher (Map wired; List/Grid land with the next iteration) */}
+        {/* shared view switcher */}
         <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "center", zIndex: 12 }}>
-          <div
-            onClick={() => setLayersOpen((v) => !v)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 11px",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 12,
-              background: layersOpen ? "var(--elevated)" : "var(--surface)",
-              border: "1px solid var(--hairline)",
-              boxShadow: "0 4px 16px rgba(0,0,0,.3)",
-            }}
-          >
-            &#9636; Layers
-          </div>
+          {view === "map" && (
+            <div
+              onClick={() => setLayersOpen((v) => !v)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 11px",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: 12,
+                background: layersOpen ? "var(--elevated)" : "var(--surface)",
+                border: "1px solid var(--hairline)",
+                boxShadow: "0 4px 16px rgba(0,0,0,.3)",
+              }}
+            >
+              &#9636; Layers
+            </div>
+          )}
           <div
             style={{
               display: "flex",
@@ -207,19 +241,19 @@ export const App: React.FC = () => {
               boxShadow: "0 4px 16px rgba(0,0,0,.3)",
             }}
           >
-            {["Map", "List", "Grid"].map((v, i) => (
+            {(["map", "list", "grid"] as ViewKind[]).map((v) => (
               <div
                 key={v}
-                title={i > 0 ? "Coming in the next iteration" : undefined}
+                onClick={() => setView(v)}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 6,
                   fontSize: 12,
-                  cursor: i === 0 ? "default" : "not-allowed",
-                  background: i === 0 ? "var(--accent)" : "transparent",
-                  color: i === 0 ? "#fff" : "var(--muted)",
-                  fontWeight: i === 0 ? 600 : 400,
-                  opacity: i === 0 ? 1 : 0.6,
+                  cursor: "pointer",
+                  background: view === v ? "var(--accent)" : "transparent",
+                  color: view === v ? "#fff" : "var(--muted)",
+                  fontWeight: view === v ? 600 : 400,
+                  textTransform: "capitalize",
                 }}
               >
                 {v}
@@ -229,7 +263,30 @@ export const App: React.FC = () => {
         </div>
 
         {/* layers panel */}
-        {layersOpen && (
+        {/* toast */}
+        {toast && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 16,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "var(--elevated)",
+              border: "1px solid var(--hairline)",
+              color: "var(--text)",
+              borderRadius: 8,
+              padding: "8px 16px",
+              fontSize: 12.5,
+              boxShadow: "0 8px 30px rgba(0,0,0,.4)",
+              zIndex: 30,
+              pointerEvents: "none",
+            }}
+          >
+            {toast}
+          </div>
+        )}
+
+        {layersOpen && view === "map" && (
           <div
             style={{
               position: "absolute",
@@ -286,9 +343,13 @@ export const App: React.FC = () => {
         mapSize={mapSize}
         selection={selection}
         pendingWaypoints={pending}
+        cam={cam}
+        setCam={setCam}
+        geom={geom}
         onSelectState={(ids) => onSelect(ids, false)}
         onGo={onGo}
         onClearWaypoints={onClearWaypoints}
+        onToast={showToast}
       />
     </div>
   );
