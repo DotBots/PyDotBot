@@ -8,6 +8,8 @@ import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import { LH2Position, PlannedMission } from "./types";
 import { useFleet } from "./useFleet";
+import { useOrchestration } from "./useOrchestration";
+import { FlashDialog } from "./FlashDialog";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
@@ -30,6 +32,9 @@ export const App: React.FC = () => {
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2500);
   }, []);
+
+  const orch = useOrchestration(showToast);
+  const [flashOpen, setFlashOpen] = useState(false);
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -274,6 +279,15 @@ export const App: React.FC = () => {
           selection={selection}
           planned={planned}
           doneMissions={doneMissions}
+          logs={orch.logs}
+          jobs={orch.jobs}
+          fleetPct={orch.fleetPct}
+          flashing={orch.flashing}
+          clearLogs={orch.clearLogs}
+          onFlashOpen={() => setFlashOpen(true)}
+          onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
+          onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
+          onReset={() => orch.act("reset", selection.size ? [...selection] : undefined)}
           onSelectIds={(ids) => onSelect(ids, false)}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
@@ -442,8 +456,17 @@ export const App: React.FC = () => {
         </div>
       </div>
 
+      <FlashDialog
+        open={flashOpen}
+        targetCount={selection.size || bots.length}
+        targetLabel={selection.size ? `${selection.size} selected` : "whole fleet"}
+        onClose={() => setFlashOpen(false)}
+        onFlash={(fw) => orch.flash(fw, selection.size ? [...selection] : undefined)}
+      />
+
       <Footer
         bots={bots}
+        flashQueue={orch.queue}
         mapSize={mapSize}
         selection={selection}
         pendingWaypoints={pending}

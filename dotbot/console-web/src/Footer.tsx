@@ -5,6 +5,7 @@ import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
 import { LH2Position, MapSize, STATE_ORDER, UnifiedBot } from "./types";
+import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
 const SWATCHES: [number, number, number][] = [
@@ -34,6 +35,7 @@ const short = (id: string) => id.slice(-4).toUpperCase();
 
 interface FooterProps {
   bots: UnifiedBot[];
+  flashQueue: Record<string, FlashJob>;
   mapSize: MapSize;
   selection: Set<string>;
   pendingWaypoints: LH2Position[];
@@ -417,6 +419,23 @@ export const Footer: React.FC<FooterProps> = (props) => {
                 <StateDot state={one.state} glow />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>{one.state}</span>
               </div>
+              {props.flashQueue[one.id] && !props.flashQueue[one.id].done && (
+                <div style={{ minWidth: 190 }}>
+                  <div style={{ ...mono, fontSize: 10, color: "var(--muted)", marginBottom: 3 }}>
+                    {props.flashQueue[one.id].acked} / {props.flashQueue[one.id].total} chunks
+                  </div>
+                  <div style={{ height: 5, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${Math.round((props.flashQueue[one.id].acked / Math.max(1, props.flashQueue[one.id].total)) * 100)}%`,
+                        background: "var(--s-Programming)",
+                        transition: "width .2s linear",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                 <BatteryBar volts={one.battery} />
                 <span style={{ ...mono, fontSize: 11, color: "var(--muted)" }}>

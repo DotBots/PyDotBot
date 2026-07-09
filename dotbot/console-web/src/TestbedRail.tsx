@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { PlannedMission, UnifiedBot } from "./types";
+import { FlashJob, LogRow } from "./useOrchestration";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
 // Testbed tab (orchestration controls - disabled until the swarmit write path
@@ -28,6 +29,15 @@ interface TestbedRailProps {
   selection: Set<string>;
   planned: PlannedMission[];
   doneMissions: DoneMission[];
+  logs: LogRow[];
+  jobs: FlashJob[];
+  fleetPct: number;
+  flashing: boolean;
+  clearLogs: () => void;
+  onFlashOpen: () => void;
+  onStart: () => void;
+  onStop: () => void;
+  onReset: () => void;
   onSelectIds: (ids: string[]) => void;
   onGoMission: (key: string) => void;
   onDiscardMission: (key: string) => void;
@@ -55,8 +65,7 @@ const railBtn = (accent: boolean): React.CSSProperties => ({
   color: accent ? "#fff" : "var(--text)",
   width: "100%",
   boxSizing: "border-box",
-  cursor: "not-allowed",
-  opacity: 0.55,
+  cursor: "pointer",
 });
 
 const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -139,7 +148,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
 
   const missions = deriveMissions(props.bots, props.planned);
   const targetLabel = props.selection.size ? `${props.selection.size} selected` : "whole fleet";
-  const orchTitle = "Arrives with orchestration (swarmit write path is read-only for now)";
 
   const ico: React.CSSProperties = {
     width: 32,
@@ -175,12 +183,12 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           </div>
           <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
           {[
-            { g: "⇩", t: `Flash - ${orchTitle}` },
-            { g: "▶", t: `Start - ${orchTitle}` },
-            { g: "■", t: `Stop - ${orchTitle}` },
-            { g: "↻", t: `Reset - ${orchTitle}` },
+            { g: "⇩", t: "Flash…", fn: props.onFlashOpen },
+            { g: "▶", t: "Start", fn: props.onStart },
+            { g: "■", t: "Stop", fn: props.onStop },
+            { g: "↻", t: "Reset", fn: props.onReset },
           ].map((x, i) => (
-            <div key={i} title={x.t} style={{ ...ico, cursor: "not-allowed", opacity: 0.55, color: "var(--muted)" }}>
+            <div key={i} title={x.t} onClick={x.fn} style={{ ...ico, cursor: "pointer" }}>
               {x.g}
             </div>
           ))}
@@ -283,19 +291,30 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                   Target&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{targetLabel}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  <div title={orchTitle} style={railBtn(true)}>
+                  <div onClick={props.onFlashOpen} style={railBtn(true)}>
                     &#8681;&nbsp;Flash&hellip;
                   </div>
-                  <div title={orchTitle} style={railBtn(false)}>
+                  <div onClick={props.onStart} style={railBtn(false)}>
                     &#9654;&nbsp;Start
                   </div>
-                  <div title={orchTitle} style={railBtn(false)}>
+                  <div onClick={props.onStop} style={railBtn(false)}>
                     &#9632;&nbsp;Stop
                   </div>
-                  <div title={orchTitle} style={railBtn(false)}>
+                  <div onClick={props.onReset} style={railBtn(false)}>
                     &#8635;&nbsp;Reset
                   </div>
                 </div>
+                {props.flashing && (
+                  <div style={{ marginTop: 2 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)", margin: "8px 0 4px" }}>
+                      <span>Flashing</span>
+                      <span style={{ color: "var(--s-Programming)" }}>{props.fleetPct}%</span>
+                    </div>
+                    <div style={{ height: 5, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${props.fleetPct}%`, background: "var(--s-Programming)", transition: "width .2s linear" }} />
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 2, padding: "8px 10px 0" }}>
                 <div onClick={() => setTab("console")} style={tabStyle(tab === "console")}>
@@ -311,19 +330,75 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                     <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--muted)" }}>
                       /events &middot; log_event
                     </span>
+                    <div style={{ flex: 1 }} />
+                    <span onClick={props.clearLogs} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
+                      Clear
+                    </span>
                   </div>
-                  <div style={{ flex: 1, overflow: "auto", padding: "0 12px 12px", minHeight: 0 }}>
-                    <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-                      Live testbed logs arrive with the orchestration iteration (swarmit <code>/events</code> SSE).
+                  <div style={{ flex: 1, overflow: "auto", padding: "0 12px 12px", minHeight: 0, display: "flex", flexDirection: "column-reverse" }}>
+                    <div>
+                      {props.logs.length === 0 && (
+                        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>No log events yet.</div>
+                      )}
+                      {props.logs.map((l) => (
+                        <div
+                          key={l.key}
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            padding: "3px 0",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 11,
+                            lineHeight: 1.5,
+                            color:
+                              l.level === "ok"
+                                ? "var(--s-Running)"
+                                : l.level === "warn"
+                                  ? "var(--s-Programming)"
+                                  : l.level === "err"
+                                    ? "var(--s-Stopping)"
+                                    : "var(--muted)",
+                          }}
+                        >
+                          <span style={{ color: "var(--muted)", flex: "none" }}>{l.t}</span>
+                          <span>{l.msg}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
               )}
               {tab === "flash" && (
                 <div style={{ flex: 1, overflow: "auto", padding: "8px 12px 12px", minHeight: 0 }}>
-                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-                    No active flash. Pick targets in any view (or none = whole fleet), then Flash&hellip;
-                  </div>
+                  {props.jobs.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+                      No active flash. Pick targets in any view (or none = whole fleet), then Flash&hellip;
+                    </div>
+                  ) : (
+                    props.jobs.map((j) => {
+                      const pct = j.total ? Math.round((j.acked / j.total) * 100) : 0;
+                      return (
+                        <div key={j.addr} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 11, marginBottom: 3 }}>
+                            <span>{short(j.addr)}</span>
+                            <span style={{ color: j.done ? "var(--s-Running)" : "var(--s-Programming)" }}>
+                              {j.done ? "done" : `${pct}%`}
+                            </span>
+                          </div>
+                          <div style={{ height: 5, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${pct}%`,
+                                background: j.done ? "var(--s-Running)" : "var(--s-Programming)",
+                                transition: "width .2s linear",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>
