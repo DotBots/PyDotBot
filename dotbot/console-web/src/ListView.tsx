@@ -38,6 +38,12 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
       anchorRef.current = id;
       return;
     }
+    // Plain click on the sole selected item deselects it.
+    if (selection.has(id) && selection.size === 1) {
+      onSelect([], "replace");
+      anchorRef.current = null;
+      return;
+    }
     onSelect([id], "replace");
     anchorRef.current = id;
   };
@@ -98,9 +104,10 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
       }}
       onClick={() => onSelect([], "replace")}
     >
-      <FilterBar q={q} setQ={setQ} total={total} />
+      <div onClick={(e) => e.stopPropagation()}>
+        <FilterBar q={q} setQ={setQ} total={total} />
+      </div>
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
           flex: 1,
           overflow: "auto",
@@ -113,20 +120,26 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
           <thead>
             <tr>
               <th style={{ ...th, width: 42, cursor: "default" }}>
-                <div onClick={toggleAll} style={checkBox(allVisibleSelected)}>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleAll();
+                  }}
+                  style={checkBox(allVisibleSelected)}
+                >
                   {allVisibleSelected ? "✓" : ""}
                 </div>
               </th>
-              <th style={th} onClick={() => sortBy("id")}>
+              <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("id"); }}>
                 ID{arrow("id")}
               </th>
-              <th style={th} onClick={() => sortBy("fw")}>
+              <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("fw"); }}>
                 Device{arrow("fw")}
               </th>
-              <th style={th} onClick={() => sortBy("battery")}>
+              <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("battery"); }}>
                 Battery{arrow("battery")}
               </th>
-              <th style={th} onClick={() => sortBy("state")}>
+              <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("state"); }}>
                 State{arrow("state")}
               </th>
             </tr>
@@ -137,7 +150,10 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
               return (
                 <tr
                   key={b.id}
-                  onClick={(e) => rowClick(e, b.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    rowClick(e, b.id);
+                  }}
                   style={{
                     cursor: "pointer",
                     background: checked ? "rgba(228,3,46,.07)" : "transparent",
@@ -188,7 +204,9 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
           </tbody>
         </table>
       </div>
-      <Pagination q={q} setQ={setQ} pages={pages} />
+      <div onClick={(e) => e.stopPropagation()}>
+        <Pagination q={q} setQ={setQ} pages={pages} />
+      </div>
     </div>
   );
 };

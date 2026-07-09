@@ -337,7 +337,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         if (p) props.onAddWaypoint(p);
                         return;
                       }
-                      props.onSelect([b.id], e.shiftKey || e.metaKey || e.ctrlKey ? "toggle" : "replace");
+                      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                        props.onSelect([b.id], "toggle");
+                      } else if (props.selection.has(b.id) && props.selection.size === 1) {
+                        props.onSelect([], "replace"); // click the sole selected bot again = deselect
+                      } else {
+                        props.onSelect([b.id], "replace");
+                      }
                     }}
                     onPointerEnter={() => setHoverId(b.id)}
                     onPointerLeave={() => setHoverId((h) => (h === b.id ? null : h))}

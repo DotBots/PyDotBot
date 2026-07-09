@@ -30,6 +30,12 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
       anchorRef.current = id;
       return;
     }
+    // Plain click on the sole selected item deselects it.
+    if (selection.has(id) && selection.size === 1) {
+      onSelect([], "replace");
+      anchorRef.current = null;
+      return;
+    }
     onSelect([id], "replace");
     anchorRef.current = id;
   };
@@ -48,7 +54,9 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
       }}
       onClick={() => onSelect([], "replace")}
     >
-      <FilterBar q={q} setQ={setQ} total={total} />
+      <div onClick={(e) => e.stopPropagation()}>
+        <FilterBar q={q} setQ={setQ} total={total} />
+      </div>
       <div style={{ flex: 1, overflow: "auto" }}>
         <div
           style={{
@@ -104,7 +112,9 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
           })}
         </div>
       </div>
-      <Pagination q={q} setQ={setQ} pages={pages} />
+      <div onClick={(e) => e.stopPropagation()}>
+        <Pagination q={q} setQ={setQ} pages={pages} />
+      </div>
     </div>
   );
 };
