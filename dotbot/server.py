@@ -14,13 +14,15 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
@@ -362,6 +364,55 @@ async def ws_dotbots(websocket: WebSocket):
         LOGGER.debug("WebSocket client disconnected")
 
 
+# Timeouts for the swarmit proxy: fail fast when the server is down, but
+# never time out reads - /events and /flash/stream are long-lived SSE.
+SWARMIT_PROXY_TIMEOUT = httpx.Timeout(5.0, read=None)
+
+
+@api.api_route(
+    path="/swarmit/{path:path}",
+    methods=["GET", "POST"],
+    include_in_schema=False,
+)
+async def swarmit_proxy(path: str, request: Request):
+    """Forward /swarmit/* to the configured swarmit server (same-origin for
+    the web console; the streaming body keeps SSE responses live)."""
+    base = api.controller.settings.swarmit_url.rstrip("/")
+    client = httpx.AsyncClient(timeout=SWARMIT_PROXY_TIMEOUT)
+    upstream_request = client.build_request(
+        method=request.method,
+        url=f"{base}/{path}",
+        params=request.query_params,
+        headers={
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() in ("content-type", "accept")
+        },
+        content=await request.body(),
+    )
+    try:
+        upstream = await client.send(upstream_request, stream=True)
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        LOGGER.debug("swarmit server unreachable", url=f"{base}/{path}", error=str(exc))
+        return Response(status_code=502, content=b"swarmit server unreachable")
+
+    async def cleanup():
+        await upstream.aclose()
+        await client.aclose()
+
+    return StreamingResponse(
+        upstream.aiter_raw(),
+        status_code=upstream.status_code,
+        headers={
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in ("content-type", "cache-control")
+        },
+        background=BackgroundTask(cleanup),
+    )
+
+
 # Mount static files after all routes are defined
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 if os.path.isdir(FRONTEND_DIR):
@@ -374,4 +425,18 @@ else:
         "Install the published wheel (pip install --pre pydotbot) or build the "
         "frontend: cd dotbot/frontend && npm install && npm run build",
         FRONTEND_DIR,
+    )
+
+# The unified console (map-first PyDotBot + swarmit UI), served side by side
+# with the classic frontend while it matures towards replacing it.
+CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
+if os.path.isdir(CONSOLE_DIR):
+    api.mount(
+        "/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console"
+    )
+else:
+    LOGGER.info(
+        "Console build not found at %s; /console will be unavailable. "
+        "Build it with: cd dotbot/console-web && npm install && npm run build",
+        CONSOLE_DIR,
     )

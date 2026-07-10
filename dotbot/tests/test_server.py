@@ -579,6 +579,109 @@ async def test_reverse_proxy_middleware_redirects_to_upstream(monkeypatch):
     assert response.headers["X-Upstream"] == "mock"
 
 
+class _MockByteStream(httpx.AsyncByteStream):
+    """Streamable body for MockTransport responses (a plain `content=` body
+    counts as already consumed, which the streaming proxy rejects)."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    async def __aiter__(self):
+        for chunk in self._chunks:
+            yield chunk
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_forwards(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://swarmit-host:9001/status")
+        return httpx.Response(
+            status_code=200,
+            stream=_MockByteStream([b'{"response": {}}']),
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.get("/swarmit/status")
+
+    assert response.status_code == 200
+    assert response.content == b'{"response": {}}'
+    assert response.headers["Content-Type"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_forwards_post_body(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://swarmit-host:9001/start")
+        assert request.method == "POST"
+        assert request.content == b'{"devices": []}'
+        assert request.headers["content-type"] == "application/json"
+        return httpx.Response(
+            status_code=200, stream=_MockByteStream([b'{"result": "ok"}'])
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.post(
+        "/swarmit/start",
+        content=b'{"devices": []}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b'{"result": "ok"}'
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_unreachable(monkeypatch):
+
+    async def mock_send_failed(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    transport = httpx.MockTransport(mock_send_failed)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.get("/swarmit/status")
+
+    assert response.status_code == 502
+    assert b"swarmit server unreachable" in response.content
+
+
 @pytest.mark.asyncio
 async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
