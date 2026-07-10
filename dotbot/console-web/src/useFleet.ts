@@ -12,7 +12,7 @@ import {
 
 const TRAIL_MAX = 200;
 
-function deriveState(
+export function deriveState(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
 ): BotState {
@@ -29,7 +29,7 @@ function deriveState(
   return "Inactive";
 }
 
-function merge(
+export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
 ): UnifiedBot[] {

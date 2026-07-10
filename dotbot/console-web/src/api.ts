@@ -88,6 +88,26 @@ export interface FlashEvent {
   message?: string;
 }
 
+// Split an SSE buffer into parsed `data:` payloads plus the trailing
+// incomplete remainder (kept for the next chunk). Malformed frames are
+// skipped.
+export function parseSseChunk<T>(buf: string): { events: T[]; rest: string } {
+  const events: T[] = [];
+  let idx;
+  while ((idx = buf.indexOf("\n\n")) >= 0) {
+    const frame = buf.slice(0, idx);
+    buf = buf.slice(idx + 2);
+    const line = frame.split("\n").find((l) => l.startsWith("data: "));
+    if (!line) continue;
+    try {
+      events.push(JSON.parse(line.slice(6)));
+    } catch {
+      /* skip malformed frame */
+    }
+  }
+  return { events, rest: buf };
+}
+
 // POST /flash/stream and feed each SSE event to the callback.
 export async function flashStream(
   firmwareB64: string,
@@ -110,18 +130,9 @@ export async function flashStream(
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf("\n\n")) >= 0) {
-      const frame = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      const line = frame.split("\n").find((l) => l.startsWith("data: "));
-      if (!line) continue;
-      try {
-        onEvent(JSON.parse(line.slice(6)));
-      } catch {
-        /* skip malformed frame */
-      }
-    }
+    const { events, rest } = parseSseChunk<FlashEvent>(buf);
+    buf = rest;
+    events.forEach(onEvent);
   }
 }
 

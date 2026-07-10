@@ -59,7 +59,7 @@ export interface SwarmitNode {
   pos_y: number;
 }
 
-// The merged per-bot object the UI binds to (see plans/unified-web-ui/reference.html).
+// The merged per-bot object the UI binds to (controller + swarmit joined by address).
 export interface UnifiedBot {
   id: string; // hex address, the join key
   state: BotState;
