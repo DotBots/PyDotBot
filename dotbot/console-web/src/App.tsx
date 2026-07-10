@@ -213,7 +213,7 @@ export const App: React.FC = () => {
       >
         <div style={{ fontWeight: 700, letterSpacing: ".3px", fontSize: 15 }}>DotBots</div>
         <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>dotbot.local:8000</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{window.location.host}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
           <div
             style={{

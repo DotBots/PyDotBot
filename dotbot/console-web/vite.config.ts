@@ -11,6 +11,9 @@ const controllerTarget =
 const swarmitTarget = process.env.SWARMIT_TARGET ?? "http://localhost:8001";
 
 export default defineConfig({
+  // Relative asset URLs: the production build is mounted at /console by the
+  // controller; the dev server stays at /. API paths are absolute either way.
+  base: "./",
   plugins: [react()],
   server: {
     port: 5173,
