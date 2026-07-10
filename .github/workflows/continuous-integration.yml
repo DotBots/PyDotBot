@@ -118,8 +118,37 @@ jobs:
         name: frontend
         path: ./dotbot/frontend/build
 
+  console:
+    name: check console
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up nodejs
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    - run: npm install
+      working-directory: ./dotbot/console-web
+    - run: npm run lint
+      working-directory: ./dotbot/console-web
+    - run: npm run typecheck
+      working-directory: ./dotbot/console-web
+    - run: npm run test
+      working-directory: ./dotbot/console-web
+    - run: npm run build
+      working-directory: ./dotbot/console-web
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        verbose: true
+    - name: Upload console build
+      uses: actions/upload-artifact@v4
+      with:
+        name: console
+        path: ./dotbot/console-web/dist
+
   package:
-    needs: [test, doc, frontend, control_loop]
+    needs: [test, doc, frontend, console, control_loop]
     name: build source package
     runs-on: ${{ matrix.os }}
     strategy:
