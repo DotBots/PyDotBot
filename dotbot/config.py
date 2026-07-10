@@ -145,6 +145,7 @@ class ControllerSection(_Strict):
     headless: bool | None = None
     gw_address: str | None = None
     simulator_init_state: str | None = None
+    swarmit_url: str | None = None
 
 
 class GatewaySection(_Strict):
@@ -292,11 +293,13 @@ def _env_candidates(section: str | None, key: str) -> tuple[str, ...]:
     """Env-var names to check, in priority order (Cargo's mechanical mapping).
 
     Sectioned key -> `DOTBOT_<SECTION>_<KEY>`, then the shared `DOTBOT_<KEY>`
-    alias. Top-level key -> just `DOTBOT_<KEY>`.
+    alias. Top-level key -> just `DOTBOT_<KEY>`. A nested section like
+    `run.controller` flattens its dots: `DOTBOT_RUN_CONTROLLER_<KEY>`.
     """
     key_part = key.upper().replace("-", "_")
     if section:
-        return (f"DOTBOT_{section.upper()}_{key_part}", f"DOTBOT_{key_part}")
+        section_part = section.upper().replace(".", "_")
+        return (f"DOTBOT_{section_part}_{key_part}", f"DOTBOT_{key_part}")
     return (f"DOTBOT_{key_part}",)
 
 
@@ -318,11 +321,17 @@ def _file_value(
     key: str,
     deployment: Deployment | None,
 ) -> Any:
-    """The value this key has in the file layer: section > deployment > top-level."""
+    """The value this key has in the file layer: section > deployment > top-level.
+
+    `section` may be nested (dot-separated, e.g. `run.controller`); each part
+    is walked with getattr.
+    """
     if config is None:
         return None
     if section is not None:
-        section_obj = getattr(config, section, None)
+        section_obj: Any = config
+        for part in section.split("."):
+            section_obj = getattr(section_obj, part, None)
         value = getattr(section_obj, key, None)
         if value is not None:
             return value
@@ -348,9 +357,10 @@ def resolve(
     `flag` > env (`DOTBOT_<SECTION>_<KEY>`, then shared `DOTBOT_<KEY>`) >
     file (section > deployment > top-level) > `default`.
 
-    `section` is one of `SECTIONS` for a per-namespace key, or `None` for a
-    top-level shared key (e.g. `conn`, `swarm_id`). Env values are coerced to
-    the type of `default`.
+    `section` is one of `SECTIONS` for a per-namespace key, a dotted path for
+    a nested table (e.g. `run.controller`), or `None` for a top-level shared
+    key (e.g. `conn`, `swarm_id`). Env values are coerced to the type of
+    `default`.
     """
     if flag is not None:
         return flag

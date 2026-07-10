@@ -17,6 +17,7 @@ MQTT_HOST_DEFAULT = "localhost"
 MQTT_PORT_DEFAULT = 1883
 MAP_SIZE_DEFAULT = "2000x2000"  # in mm unit
 SIMULATOR_INIT_STATE_DEFAULT = "simulator_init_state.toml"
+SWARMIT_URL_DEFAULT = "http://localhost:8001"  # swarmit server default port
 
 
 def pydotbot_version() -> str:

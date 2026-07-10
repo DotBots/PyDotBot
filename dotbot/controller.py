@@ -39,6 +39,7 @@ from dotbot import (
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
+    SWARMIT_URL_DEFAULT,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -135,6 +136,7 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
+    swarmit_url: str = SWARMIT_URL_DEFAULT
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
