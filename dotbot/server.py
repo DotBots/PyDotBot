@@ -431,9 +431,7 @@ else:
 # with the classic frontend while it matures towards replacing it.
 CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
 if os.path.isdir(CONSOLE_DIR):
-    api.mount(
-        "/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console"
-    )
+    api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
 else:
     LOGGER.info(
         "Console build not found at %s; /console will be unavailable. "
