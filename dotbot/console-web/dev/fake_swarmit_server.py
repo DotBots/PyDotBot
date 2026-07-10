@@ -56,14 +56,22 @@ def push_log(level: str, message: str) -> None:
     global _event_seq
     _event_seq += 1
     events.append(
-        {"id": _event_seq, "type": "log_event", "level": level, "message": message, "ts": time.time()}
+        {
+            "id": _event_seq,
+            "type": "log_event",
+            "level": level,
+            "message": message,
+            "ts": time.time(),
+        }
     )
     del events[:-200]
 
 
 def fetch_dotbots() -> list:
     try:
-        with urllib.request.urlopen(f"{settings['controller']}/controller/dotbots", timeout=2) as res:
+        with urllib.request.urlopen(
+            f"{settings['controller']}/controller/dotbots", timeout=2
+        ) as res:
             return json.loads(res.read())
     except Exception:
         return []
@@ -75,7 +83,10 @@ def known_devices() -> list:
 
 def state_of(addr: str) -> dict:
     if addr not in states:
-        states[addr] = {"status": "Bootloader" if addr in GHOSTS else "Running", "progress": None}
+        states[addr] = {
+            "status": "Bootloader" if addr in GHOSTS else "Running",
+            "progress": None,
+        }
     return states[addr]
 
 
@@ -138,7 +149,9 @@ async def transition(devices: list, via: str, to: str, delay: float) -> None:
 
 @app.post("/start")
 async def start(request: Request):
-    body = await request.json() if int(request.headers.get("content-length") or 0) else {}
+    body = (
+        await request.json() if int(request.headers.get("content-length") or 0) else {}
+    )
     devices = resolve_devices(body.get("devices"))
     for a in devices:
         state_of(a)["status"] = "Running"
@@ -148,7 +161,9 @@ async def start(request: Request):
 
 @app.post("/stop")
 async def stop(request: Request):
-    body = await request.json() if int(request.headers.get("content-length") or 0) else {}
+    body = (
+        await request.json() if int(request.headers.get("content-length") or 0) else {}
+    )
     devices = resolve_devices(body.get("devices"))
     push_log("warn", f"stopping · {len(devices)} device(s)")
     asyncio.create_task(transition(devices, "Stopping", "Bootloader", 1.2))
@@ -157,8 +172,12 @@ async def stop(request: Request):
 
 @app.post("/reset")
 async def reset(request: Request):
-    body = await request.json() if int(request.headers.get("content-length") or 0) else {}
-    devices = resolve_devices(body.get("devices") or list(body.get("locations", {}) or {}))
+    body = (
+        await request.json() if int(request.headers.get("content-length") or 0) else {}
+    )
+    devices = resolve_devices(
+        body.get("devices") or list(body.get("locations", {}) or {})
+    )
     push_log("warn", f"resetting · {len(devices)} device(s)")
     asyncio.create_task(transition(devices, "Resetting", "Bootloader", 1.6))
     return {"result": "ok", "devices": devices}
@@ -187,7 +206,9 @@ async def flash_events(devices: list, fw_len: int):
                 continue
             p = state_of(a)["progress"]
             p["acked"] = min(p["total"], p["acked"] + CHUNKS_PER_TICK)
-            yield _sse({"type": "chunk", "addr": a, "acked": p["acked"], "total": p["total"]})
+            yield _sse(
+                {"type": "chunk", "addr": a, "acked": p["acked"], "total": p["total"]}
+            )
             if p["acked"] >= p["total"]:
                 done.add(a)
                 st = state_of(a)
@@ -205,7 +226,13 @@ async def flash_events(devices: list, fw_len: int):
                     }
                 )
     push_log("ok", "flash complete · all devices")
-    yield _sse({"type": "complete", "all_success": True, "elapsed_s": TOTAL_CHUNKS / CHUNKS_PER_TICK * TICK_S})
+    yield _sse(
+        {
+            "type": "complete",
+            "all_success": True,
+            "elapsed_s": TOTAL_CHUNKS / CHUNKS_PER_TICK * TICK_S,
+        }
+    )
 
 
 @app.post("/flash/stream")
@@ -213,7 +240,9 @@ async def flash_stream(request: Request):
     body = await request.json()
     devices = resolve_devices(body.get("devices"))
     fw_len = len(body.get("firmware_b64", "")) * 3 // 4
-    return StreamingResponse(flash_events(devices, fw_len), media_type="text/event-stream")
+    return StreamingResponse(
+        flash_events(devices, fw_len), media_type="text/event-stream"
+    )
 
 
 @app.post("/flash")
