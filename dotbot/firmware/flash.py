@@ -28,6 +28,7 @@ from .nrf import (
     pick_matching_jlink_snr,
     read_device_id,
     read_net_id,
+    reset_device,
 )
 
 try:
@@ -496,20 +497,30 @@ def flash_role(
     else:
         click.echo(f"[INFO] using existing config hex: {config_hex}")
     click.echo()
-    flash_nrf_both_cores(app_hex, net_hex, nrfjprog_opt=None, snr_opt=snr)
-    flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr)
+    # Program every image first and reset once at the end. The two cores
+    # hand-shake over shared memory during bring-up, so they have to start
+    # together, and starting them before the config page is written boots the
+    # network core against an erased net_id.
+    flash_nrf_both_cores(app_hex, net_hex, nrfjprog_opt=None, snr_opt=snr, reset=False)
+    flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr, reset=False)
     if default_app_hex is not None:
         click.echo(f"[INFO] default app hex: {default_app_hex}")
-        flash_nrf_one_core(app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr)
+        flash_nrf_one_core(
+            app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr, reset=False
+        )
     elif device == "dotbot-v3":
         click.echo("[INFO] default app hex not found; skipping.")
     click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
     time.sleep(0.2)
+    readback_net_id = readback_device_id = None
     try:
         readback_net_id = read_net_id(snr=snr)
         readback_device_id = read_device_id(snr=snr)
     except RuntimeError as exc:
         click.echo(f"[WARN] readback failed: {exc}", err=True)
+    if readback_net_id is None or readback_device_id is None:
+        reset_device(snr=snr)
+        click.echo("[OK  ] device reset (CTRL-AP); it should join on its own")
         return
     click.echo("[INFO] readback values:")
     click.echo(f"[INFO] net_id: {readback_net_id}")
@@ -520,11 +531,10 @@ def flash_role(
     click.echo(
         f"[INFO] device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})"
     )
-    click.secho(
-        "[NOTE] you may need to press the reset button on the DotBot "
-        "for it to join the network",
-        fg="yellow",
-    )
+    # Reset last. Reading the config page back halts the network core, so a
+    # reset done any earlier leaves the device programmed but stopped.
+    reset_device(snr=snr)
+    click.echo("[OK  ] device reset (CTRL-AP); it should join on its own")
 
 
 def flash_app_image(
@@ -584,7 +594,17 @@ def read_config_report(sn_starting_digits: str | None = None) -> tuple[str, str]
             "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}", err=True)
-    return read_net_id(snr=snr), read_device_id(snr=snr)
+    try:
+        return read_net_id(snr=snr), read_device_id(snr=snr)
+    finally:
+        # Reading the config page attaches the debugger to the network core,
+        # which resets it. The application core does not notice, so the device
+        # is left alive but with no radio - indistinguishable from dead. Reset
+        # the whole device so both cores come back up together.
+        reset_device(snr=snr)
+        click.echo(
+            "[INFO] device reset (CTRL-AP) after the network-core read", err=True
+        )
 
 
 def flash_programmer(

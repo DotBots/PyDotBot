@@ -308,9 +308,12 @@ def read_device_id(snr: str | None = None) -> str:
             "/usr/bin/nrfjprog",
         ],
     )
+    # Read FICR.INFO.DEVICEID from the APPLICATION core. The same value is
+    # mirrored in the network core's FICR, but attaching the debugger to that
+    # coprocessor resets it, which kills the radio on a running bot; the
+    # application core reads back with no side effect.
     args = [nrfjprog, "-f", "NRF53"]
-    args += ["--coprocessor", "CP_NETWORK"]
-    args += ["--memrd", "0x01FF0204"]
+    args += ["--memrd", "0x00FF0204"]
     args += ["--n", "8"]
     if snr:
         args += ["-s", str(snr)]
@@ -319,6 +322,16 @@ def read_device_id(snr: str | None = None) -> str:
     if len(words) < 2:
         raise RuntimeError(f"Unexpected device ID output: {out.strip()}")
     return f"{words[1]}{words[0]}"
+
+
+#: Reading the swarmit config page means attaching to the network core, which
+#: resets it. A bot that was running loses its radio and looks dead until the
+#: whole device is reset, so callers must say they accept that.
+NET_CORE_READ_WARNING = (
+    "Reading the network id attaches the debugger to the network core, which "
+    "RESETS it. If this DotBot is running an experiment it will drop off the "
+    "network and stay off until the device is reset."
+)
 
 
 def read_net_id(snr: str | None = None) -> str:
@@ -350,9 +363,19 @@ def read_net_id(snr: str | None = None) -> str:
 
 
 def flash_nrf_both_cores(
-    app_hex: Path, net_hex: Path, nrfjprog_opt: str | None, snr_opt: str | None
+    app_hex: Path,
+    net_hex: Path,
+    nrfjprog_opt: str | None,
+    snr_opt: str | None,
+    reset: bool = True,
 ):
-    """Flash nRF5340 application and network cores with full recover + chiperase."""
+    """Flash nRF5340 application and network cores with full recover + chiperase.
+
+    ``reset=False`` leaves both cores halted so a caller that still has pages to
+    write (the config page, a default app) can program everything first and
+    reset once at the end. Resetting between writes would boot the cores against
+    a half-provisioned device.
+    """
     if not app_hex.exists():
         raise FileNotFoundError(f"App hex not found: {app_hex}")
     if not net_hex.exists():
@@ -373,29 +396,37 @@ def flash_nrf_both_cores(
 
     nrfjprog_recover(nrfjprog, snr=snr)
 
-    print("== Flashing nRF5340 application core with nrfjprog ==")
-    nrfjprog_program(
-        nrfjprog,
-        app_hex,
-        network=False,
-        verify=True,
-        reset=True,
-        chiperase=True,
-        snr=snr,
-    )
-    print("[OK] Application core programmed.")
-
+    # The network core is programmed first so the application core, which waits
+    # on it during bring-up, never boots against a blank peer. Neither program
+    # step resets: the two cores hand-shake over shared memory at startup, so
+    # they have to start together, which the CTRL-AP reset below does.
     print("== Flashing nRF5340 network core with nrfjprog ==")
     nrfjprog_program(
         nrfjprog,
         net_hex,
         network=True,
         verify=True,
-        reset=True,
+        reset=False,
         chiperase=True,
         snr=snr,
     )
     print("[OK] Network core programmed.")
+
+    print("== Flashing nRF5340 application core with nrfjprog ==")
+    nrfjprog_program(
+        nrfjprog,
+        app_hex,
+        network=False,
+        verify=True,
+        reset=False,
+        chiperase=True,
+        snr=snr,
+    )
+    print("[OK] Application core programmed.")
+
+    if reset:
+        nrfjprog_debugreset(nrfjprog, snr=snr)
+        print("[OK] Device reset (CTRL-AP).")
 
 
 def flash_nrf_one_core(
@@ -404,6 +435,7 @@ def flash_nrf_one_core(
     family: str = "NRF53",
     nrfjprog_opt: str | None = None,
     snr_opt: str | None = None,
+    reset: bool = True,
 ):
     """Flash only one core; no recover and no chiperase.
 
@@ -460,14 +492,62 @@ def flash_nrf_one_core(
             snr=snr,
         )
         print("[OK] Network core programmed.")
+    if not reset:
+        return
     time.sleep(0.5)
     if is_multicore_family(family):
-        # reset every core
-        nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_NETWORK", family=family)
-        nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_APPLICATION", family=family)
+        # One CTRL-AP reset for the whole device rather than a SysResetReq per
+        # core: the cores hand-shake over shared memory during bring-up, so
+        # restarting them one at a time strands whichever starts first, and the
+        # SwarmIT bootloader refuses SysResetReq outright (see
+        # nrfjprog_debugreset).
+        nrfjprog_debugreset(nrfjprog, snr=snr, family=family)
     else:
         # single-core family: one reset, no --coprocessor
         nrfjprog_reset_core(nrfjprog, snr=snr, core=None, family=family)
+
+
+def nrfjprog_debugreset(nrfjprog, snr=None, family="NRF53"):
+    """Reset the whole device through CTRL-AP.
+
+    `--reset` issues a SysResetReq, which firmware can refuse: the SwarmIT
+    bootloader sets `SCB_AIRCR.SYSRESETREQS` to keep non-secure code from
+    resetting the SoC, and the request is then dropped. A device flashed that
+    way keeps running its pre-flash state until someone presses the button.
+    CTRL-AP resets from the debug domain instead, so firmware cannot veto it.
+    """
+    args = [nrfjprog, "-f", family]
+    if snr:
+        args += ["-s", str(snr)]
+    args += ["--debugreset"]
+    rc, out = run(args, timeout=120)
+    if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
+        raise RuntimeError("nrfjprog debug reset failed; see log above.")
+
+
+def reset_device(snr=None, family="NRF53", nrfjprog_opt=None, settle: float = 2.0):
+    """CTRL-AP reset of the whole device, for callers that staged writes.
+
+    ``settle`` waits before resetting: a reset issued immediately after the last
+    programming step has been observed to leave the device down, while the same
+    reset a couple of seconds later brings it up.
+    """
+    nrfjprog = which_tool(
+        "nrfjprog.exe",
+        nrfjprog_opt,
+        candidates=["/usr/local/bin/nrfjprog", "/usr/bin/nrfjprog"],
+    )
+    if settle:
+        time.sleep(settle)
+    nrfjprog_debugreset(nrfjprog, snr=snr, family=family)
+    # A CTRL-AP reset can leave the core halted, which looks exactly like a dead
+    # board: programmed, reset, and never running. Start it explicitly. Best
+    # effort - if the core is already running this is a no-op that some tool
+    # versions report as an error.
+    args = [nrfjprog, "-f", family]
+    if snr:
+        args += ["-s", str(snr)]
+    run(args + ["--run"], timeout=60)
 
 
 def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION", family="NRF53"):
