@@ -297,6 +297,23 @@ def manifest_matches(
     )
 
 
+def describe_image(path: Path) -> str:
+    """``path``, plus the symlink target and its build time when it is a link.
+
+    ``-f local`` resolves to a directory of symlinks into a build tree, so the
+    path alone does not say which tree (or how stale a build) is about to be
+    flashed. Resolving it here means every flash reports its own provenance.
+    """
+    if not path.is_symlink():
+        return str(path)
+    target = Path(os.readlink(path))
+    try:
+        built = time.strftime("%Y-%m-%d %H:%M", time.localtime(target.stat().st_mtime))
+    except OSError:
+        return f"{path} -> {target} (BROKEN LINK)"
+    return f"{path}\n              -> {target} (built {built})"
+
+
 def flash_role(
     role: str,
     *,
@@ -447,8 +464,8 @@ def flash_role(
     click.echo(f"[INFO] device: {device}")
     click.echo(f"[INFO] fw_version: {fw_version}")
     click.echo(f"[INFO] network_id: 0x{net_id_hex}")
-    click.echo(f"[INFO] app hex: {app_hex}")
-    click.echo(f"[INFO] net hex: {net_hex}")
+    click.echo(f"[INFO] app hex: {describe_image(app_hex)}")
+    click.echo(f"[INFO] net hex: {describe_image(net_hex)}")
     click.echo(f"[INFO] config hex: {config_hex}")
 
     if not config_hex.exists():
