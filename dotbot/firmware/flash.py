@@ -594,7 +594,17 @@ def read_config_report(sn_starting_digits: str | None = None) -> tuple[str, str]
             "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}", err=True)
-    return read_net_id(snr=snr), read_device_id(snr=snr)
+    try:
+        return read_net_id(snr=snr), read_device_id(snr=snr)
+    finally:
+        # Reading the config page attaches the debugger to the network core,
+        # which resets it. The application core does not notice, so the device
+        # is left alive but with no radio - indistinguishable from dead. Reset
+        # the whole device so both cores come back up together.
+        reset_device(snr=snr)
+        click.echo(
+            "[INFO] device reset (CTRL-AP) after the network-core read", err=True
+        )
 
 
 def flash_programmer(

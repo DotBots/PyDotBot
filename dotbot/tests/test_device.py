@@ -270,7 +270,7 @@ def test_info_reports_provisioned(runner, _no_nrfjprog_gate, monkeypatch):
         "dotbot.firmware.flash.read_config_report",
         lambda sn=None: ("1234", "BDF2B04BC00D2725"),
     )
-    result = runner.invoke(device_cmd, ["info", "--probe", "77"])
+    result = runner.invoke(device_cmd, ["info", "--probe", "77", "-y"])
     assert result.exit_code == 0, result.output
     assert "provisioned" in result.output
     assert "0x1234" in result.output
@@ -285,7 +285,7 @@ def test_info_reports_unprovisioned_without_failing(
         "dotbot.firmware.flash.read_config_report",
         lambda sn=None: ("unprovisioned", "BDF2B04BC00D2725"),
     )
-    result = runner.invoke(device_cmd, ["info"])
+    result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code == 0, result.output
     assert "not provisioned" in result.output
     assert "flash-swarmit-sandbox" in result.output
@@ -296,15 +296,57 @@ def test_info_surfaces_comms_failure(runner, _no_nrfjprog_gate, monkeypatch):
         raise RuntimeError("no probe")
 
     monkeypatch.setattr("dotbot.firmware.flash.read_config_report", boom)
-    result = runner.invoke(device_cmd, ["info"])
+    result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code != 0
     assert "Could not read the device" in result.output
+
+
+def test_info_warns_and_aborts_without_confirmation(
+    runner, _no_nrfjprog_gate, monkeypatch
+):
+    """Reading the net id resets the device, so it must be confirmed."""
+    called = []
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.read_config_report",
+        lambda sn=None: called.append(sn) or ("1234", "BDF2B04BC00D2725"),
+    )
+    result = runner.invoke(device_cmd, ["info"], input="n\n")
+    assert result.exit_code != 0
+    assert "RESETS it" in result.output
+    assert not called, "device must not be touched when the user declines"
+
+
+def test_info_yes_flag_skips_the_prompt(runner, _no_nrfjprog_gate, monkeypatch):
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.read_config_report",
+        lambda sn=None: ("1234", "BDF2B04BC00D2725"),
+    )
+    result = runner.invoke(device_cmd, ["info", "-y"])
+    assert result.exit_code == 0, result.output
+    assert "Read it anyway?" not in result.output
+
+
+def test_read_device_id_does_not_touch_the_network_core(monkeypatch):
+    """The device id comes from the app core; the net-core read resets it."""
+    from dotbot.firmware import nrf
+
+    seen = {}
+
+    def fake_run_capture(args):
+        seen["args"] = args
+        return "0x00FF0204: 596212AE A23EFBCB\n"
+
+    monkeypatch.setattr(nrf, "run_capture", fake_run_capture)
+    monkeypatch.setattr(nrf, "which_tool", lambda *a, **k: "nrfjprog")
+    assert nrf.read_device_id(snr="770394359") == "A23EFBCB596212AE"
+    assert "CP_NETWORK" not in seen["args"]
+    assert "0x00FF0204" in seen["args"]
 
 
 def test_nrfjprog_missing_gives_friendly_error(runner, monkeypatch):
     """No nrfjprog → a clear install hint, not a stack trace."""
     monkeypatch.setattr("dotbot.firmware.nrf.nrfjprog_available", lambda: False)
-    result = runner.invoke(device_cmd, ["info"])
+    result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code != 0
     assert "nrfjprog" in result.output
 

@@ -308,9 +308,12 @@ def read_device_id(snr: str | None = None) -> str:
             "/usr/bin/nrfjprog",
         ],
     )
+    # Read FICR.INFO.DEVICEID from the APPLICATION core. The same value is
+    # mirrored in the network core's FICR, but attaching the debugger to that
+    # coprocessor resets it, which kills the radio on a running bot; the
+    # application core reads back with no side effect.
     args = [nrfjprog, "-f", "NRF53"]
-    args += ["--coprocessor", "CP_NETWORK"]
-    args += ["--memrd", "0x01FF0204"]
+    args += ["--memrd", "0x00FF0204"]
     args += ["--n", "8"]
     if snr:
         args += ["-s", str(snr)]
@@ -319,6 +322,16 @@ def read_device_id(snr: str | None = None) -> str:
     if len(words) < 2:
         raise RuntimeError(f"Unexpected device ID output: {out.strip()}")
     return f"{words[1]}{words[0]}"
+
+
+#: Reading the swarmit config page means attaching to the network core, which
+#: resets it. A bot that was running loses its radio and looks dead until the
+#: whole device is reset, so callers must say they accept that.
+NET_CORE_READ_WARNING = (
+    "Reading the network id attaches the debugger to the network core, which "
+    "RESETS it. If this DotBot is running an experiment it will drop off the "
+    "network and stay off until the device is reset."
+)
 
 
 def read_net_id(snr: str | None = None) -> str:

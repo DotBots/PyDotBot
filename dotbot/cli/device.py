@@ -251,15 +251,31 @@ def flash_programmer(programmer_firmware, files_dir, probe_uid):
 
 @cmd.command()
 @_probe_option
-def info(probe):
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip the confirmation prompt (the network id read resets the device).",
+)
+def info(probe, yes):
     """Read a device's provisioning state (chip id + network identity).
+
+    Reading the network id resets the device: the swarm config lives in the
+    network core's flash, and attaching the debugger there restarts that core.
+    On a DotBot mid-experiment that drops the radio until the device is reset,
+    so the command asks first. Pass -y to skip the prompt.
 
     Never fails on a blank/unprovisioned board — reports 'not
     provisioned' and how to fix it.
     """
     from dotbot.firmware.flash import read_config_report
+    from dotbot.firmware.nrf import NET_CORE_READ_WARNING
 
     ensure_nrfjprog()
+    if not yes:
+        click.secho(f"[WARN] {NET_CORE_READ_WARNING}", fg="yellow")
+        if not click.confirm("Read it anyway?", default=True):
+            raise click.ClickException("Aborted.")
     try:
         net_id, device_id = read_config_report(probe)
     except RuntimeError as exc:
