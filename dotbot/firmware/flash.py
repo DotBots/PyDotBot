@@ -297,6 +297,23 @@ def manifest_matches(
     )
 
 
+def describe_image(path: Path) -> str:
+    """``path``, plus the symlink target and its build time when it is a link.
+
+    ``-f local`` resolves to a directory of symlinks into a build tree, so the
+    path alone does not say which tree (or how stale a build) is about to be
+    flashed. Resolving it here means every flash reports its own provenance.
+    """
+    if not path.is_symlink():
+        return str(path)
+    target = Path(os.readlink(path))
+    try:
+        built = time.strftime("%Y-%m-%d %H:%M", time.localtime(target.stat().st_mtime))
+    except OSError:
+        return f"{path} -> {target} (BROKEN LINK)"
+    return f"{path}\n              -> {target} (built {built})"
+
+
 def flash_role(
     role: str,
     *,
@@ -306,6 +323,7 @@ def flash_role(
     bin_dir: Path = DEFAULT_BIN_DIR,
     sn_starting_digits: str | None = None,
     default_app_name: str | None = None,
+    local_root: Path | None = None,
 ) -> None:
     """Flash a device's role: system firmware bundle (app+net cores) + config.
 
@@ -316,9 +334,18 @@ def flash_role(
     net_id/device_id (never raises on readback failure). If the role's
     images are absent from ``bin_dir/<fw_version>/``, fetches the release
     first (the "run fetch under the hood" behaviour).
+
+    ``local_root`` (only with ``fw_version="local"``) re-points the local
+    symlinks at that build tree before flashing, so a one-liner can target a
+    worktree instead of whichever tree a previous `dotbot fw fetch` linked.
     """
     assets = DEVICE_ASSETS[role]
     net_id_val, net_id_hex = net_id
+
+    # Checked before the J-Link probe so a bad flag combination fails
+    # instantly rather than after hardware selection.
+    if local_root is not None and fw_version != "local":
+        raise click.ClickException("--local-root requires --fw-version local.")
 
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
@@ -370,7 +397,9 @@ def flash_role(
     # swarmit release into bin_dir/swarmit-<version>/ before flashing.
     pre_app = fw_root / assets["app"]
     pre_net = fw_root / assets["net"]
-    if fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
+    if fw_version == "local" and local_root is not None:
+        fetch_assets("swarmit", "local", bin_dir, local_root)
+    elif fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
         click.echo(f"[INFO] firmware {fw_version} not found in {fw_root}; fetching...")
         fetch_assets("swarmit", fw_version, bin_dir)
     if not fw_root.exists():
@@ -447,8 +476,8 @@ def flash_role(
     click.echo(f"[INFO] device: {device}")
     click.echo(f"[INFO] fw_version: {fw_version}")
     click.echo(f"[INFO] network_id: 0x{net_id_hex}")
-    click.echo(f"[INFO] app hex: {app_hex}")
-    click.echo(f"[INFO] net hex: {net_hex}")
+    click.echo(f"[INFO] app hex: {describe_image(app_hex)}")
+    click.echo(f"[INFO] net hex: {describe_image(net_hex)}")
     click.echo(f"[INFO] config hex: {config_hex}")
 
     if not config_hex.exists():

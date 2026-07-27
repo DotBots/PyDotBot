@@ -114,6 +114,19 @@ def _fw_version_option(f):
     )(f)
 
 
+def _local_root_option(f):
+    return click.option(
+        "--local-root",
+        type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
+        default=None,
+        help=(
+            "With -f local: root of the build tree to flash from (e.g. a "
+            "worktree). Re-links the local artifacts before flashing, so this "
+            "is `dotbot fw fetch -f local --local-root <path>` in one step."
+        ),
+    )(f)
+
+
 @cmd.command(name="flash-swarmit-sandbox")
 @click.option(
     "--swarm-id",
@@ -128,9 +141,12 @@ def _fw_version_option(f):
     help="Optional LH2 calibration file to bake into the config page.",
 )
 @_fw_version_option
+@_local_root_option
 @_probe_option
 @click.pass_context
-def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
+def flash_swarmit_sandbox(
+    ctx, swarm_id, calibration_path, fw_version, local_root, probe
+):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
@@ -161,6 +177,7 @@ def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
         calibration_path=calibration_path,
         bin_dir=artifacts_dir(),
         sn_starting_digits=probe,
+        local_root=local_root,
     )
 
 
@@ -171,9 +188,10 @@ def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
     help="16-bit hex swarm id (e.g. 0100); defaults to your config's swarm_id.",
 )
 @_fw_version_option
+@_local_root_option
 @_probe_option
 @click.pass_context
-def flash_mari_gateway(ctx, swarm_id, fw_version, probe):
+def flash_mari_gateway(ctx, swarm_id, fw_version, local_root, probe):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -203,6 +221,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, probe):
         fw_version=fw_version,
         bin_dir=artifacts_dir(),
         sn_starting_digits=probe,
+        local_root=local_root,
     )
 
 
