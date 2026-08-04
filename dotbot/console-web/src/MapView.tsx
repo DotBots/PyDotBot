@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
 import { LH2Position, MapSize, UnifiedBot } from "./types";
+import { useSmoothPositions } from "./useSmoothPositions";
 
 // Layer set mirrors the v1 design (Battery Bars / Waypoints / HotSpots /
 // DotBots / Real-scale bots); Trails is our addition on top.
@@ -71,6 +72,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
   const marqueeRef = useRef<{ additive: boolean } | null>(null);
   const geomRef = useRef<ViewGeom>({ w: 1000, h: 600, side: 600 });
+
+  const mapDiagonal = Math.hypot(props.mapSize.width, props.mapSize.height);
+  const smoothPositions = useSmoothPositions(props.bots, mapDiagonal);
 
   const [side, setSide] = useState(600);
   const onGeomRef = useRef(props.onGeom);
@@ -319,7 +323,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             props.bots
               .filter((b) => b.position)
               .map((b) => {
-                const q = pctPos(b.position!);
+                const q = pctPos(smoothPositions.get(b.id) ?? b.position!);
                 const selected = props.selection.has(b.id);
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
@@ -352,7 +356,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       left: `${q.left}%`,
                       top: `${q.top}%`,
                       transform: `translate(-50%, -50%) scale(${gscale})`,
-                      transition: "left .2s linear, top .2s linear",
                       cursor: "pointer",
                       zIndex: selected ? 6 : 2,
                       width: 0,
