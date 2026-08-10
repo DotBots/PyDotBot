@@ -22,11 +22,50 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 
 ## DotBot v3
 
+### Components
+| Component | Reference | Function |
+|---|---|---|
+| **VDD booster** | U8 | Boosts the supercap voltage to a stable 3.6 V system rail. |
+| **ON/OFF switch** | SW3 | Turns the DotBot on or off. |
+| **Reset button** | SW1 | Resets the nRF5340. |
+| **User button** | SW2 | General-purpose button. |
+| **MCU: nRF5340** | U1 | The brain of the DotBot. |
+| **Over-voltage protection** | U4 (ADCMP350) | Disconnects the input if the charging voltage is too high. |
+| **Vmotor switch** | U10 + Q10–Q12 | Gates the motors power. | 
+| **Vbumper booster** | U9 (TPS61022) + L2 | Boosts the bumper rail to 3.66 V. |
+| **Motor drivers** | U5, U6 (BDR6120H) | H-bridges converting MCU logic signals into motor current. |
+| **Wheels** | — | Two driven wheels, one per motor (left and right). |
+| **Bumper rails** | V_Bumper± | Contact rings at the front and rear, carrying the charging rail. |
+| **DotBot ID** |  —  |DotBot ID. |
+| **Lighthouse receiver** | D17 (BPW34S) + U12 (TS4231) | Detects the IR sweeps from the base stations and outputs them as digital signals. |
+| **Supercap charger** | U13 (BQ24640) + L3 |Charges the supercapacitor. |
+| **USB-C port** | J2 | Connects to the DAPLink probe, data only, no charging. |
+| **Add-on headers** | J16, J17 | Expose UART, I²C and SPI for expansion boards. |
+| **SWD mux** | U7 (TS3A27518E) | Routes the debug lines from the on-board programmer to the nRF5340. |
+| **Debug probe** | U2 (STM32F103) | Runs DAPLink; programs and debugs the nRF5340 over USB. |
+| **Motors** | M1, M2 (N20) | Drive the left and right wheels; each carries a quadrature encoder. |
+| **Status LEDs** | D19, D23, D24 + D18 | Indicate the robot's mode: bootloader, running, programming. |
+| **Supercapacitors** | J11 / J12  | Main energy storage. |
+| **Coin cell** | BT1 (CR2032, 3 V) | Enables the motors to be powered. |
+| **Supercap terminals** | J11 (V_Cap+), J12 (V_Cap−) | Connect the supercapacitors to the board. |
+| **Passive front wheel** | — | Ball caster: used for support. |
+| **Bumper connectors** | J7, J8, J14 (front) / J9, J10, J15 (rear) |  Connect the front and rear bumpers to the board. |
+| **Barrel jack** | J4 | Charges the supercapacitors. |
+<p align="center">
+  <img width="988" height="649" alt="image" src="https://github.com/user-attachments/assets/c2b05eac-a0ff-4369-bcc2-7ad947905142" /><br>
+  <b>Figure 1: DotBot front</b>
+</p>
+<p align="center">
+  <img width="1052" height="732" alt="image" src="https://github.com/user-attachments/assets/058f5a1c-5d77-4452-b8b0-d15a50b4189b" /><br>
+  <b>Figure 2: DotBot back</b>
+</p>
+
+### Connectors
 The DotBot has two connectors you'll use:
 
 | Connector | What it's for |
 |---|---|
-| **USB-C (J2)** | Flash and program the DotBot. Also powers it while plugged in. |
+| **USB-C (J2)** | Flash and program the DotBot. |
 | **Barrel jack (J4)** | Charges the on-board supercapacitor (the DotBot's "battery"). |
 
 **USB-C (J2) - flashing.** The DotBot v3 has an **on-board programmer** behind
