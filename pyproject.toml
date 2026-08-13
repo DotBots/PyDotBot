@@ -5,9 +5,12 @@ requires = [
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
+# Ship the whole `dotbot` package, not an enumeration of file types: the
+# package carries data files next to its code (Textual stylesheets, the
+# built frontend, example scene assets) and any allowlist that names
+# extensions drops the next one silently.
 include = [
-    "dotbot/frontend/*",
-    "dotbot/*.toml",
+    "/dotbot/",
     "*.py"
 ]
 exclude = [
