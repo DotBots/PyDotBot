@@ -21,9 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import serial
-import starlette
 import uvicorn
-import websockets
 from dotbot_utils.protocol import Frame, Payload
 from dotbot_utils.serial_interface import SerialInterfaceException
 from fastapi import WebSocket
@@ -135,6 +133,9 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
+    simulator_bots: Optional[int] = None
+    simulator_layout: str = "grid"
+    simulator_seed: int = 0
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -197,6 +198,7 @@ class Controller:
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
+        self._ws_send_locks = {}
         self.lh2_calibration: list[CalibrationHomography] = load_calibration()
         self.api = api
         self.map_size = DotBotMapSizeModel(
@@ -559,20 +561,35 @@ class Controller:
             asyncio.create_task(self.notify_clients(notification))
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
-        """Safely send a message to a websocket client."""
+        """Safely send a message to a websocket client.
+
+        Writes to one connection are serialized with a per-connection lock:
+        notify_clients tasks run concurrently (one per received frame), and
+        two coroutines writing/draining the same websocket trips an
+        AssertionError deep in the websockets protocol, which crashed the
+        controller on a busy real fleet. The broad except is deliberate for
+        the same reason - a failing client gets dropped, never the controller.
+        """
+        lock = self._ws_send_locks.setdefault(id(websocket), asyncio.Lock())
         try:
-            await websocket.send_text(msg)
-        except (
-            websockets.exceptions.ConnectionClosedError,
-            RuntimeError,
-            starlette.websockets.WebSocketDisconnect,
-        ) as exc:
+            async with lock:
+                if websocket not in self.websockets:
+                    # Dropped by a concurrent sender while we waited. Sends are
+                    # membership-gated, so popping the entry here is safe even
+                    # with senders still queued on the old lock object.
+                    self._ws_send_locks.pop(id(websocket), None)
+                    return
+                await websocket.send_text(msg)
+        except Exception as exc:  # noqa: BLE001
             self.logger.warning(
                 "Failed to send message to websocket client",
                 error=str(exc),
             )
             if websocket in self.websockets:
                 self.websockets.remove(websocket)
+            # The lock entry is NOT popped here: senders already queued on it
+            # must keep serializing through the same object. It is cleaned up
+            # on the websocket-disconnect path instead.
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
@@ -699,6 +716,10 @@ class Controller:
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
+                bots=self.settings.simulator_bots,
+                layout=self.settings.simulator_layout,
+                seed=self.settings.simulator_seed,
+                map_size=self.settings.map_size,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

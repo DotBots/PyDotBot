@@ -174,6 +174,44 @@ class InitStateToml(BaseModel):
     network: SimulatedNetworkSettings = SimulatedNetworkSettings()
 
 
+def _parse_map_size(map_size: str | None) -> tuple[int, int] | None:
+    """Parse a 'WIDTHxHEIGHT' map size (in mm) into (width, height), or None if
+    it can't be parsed (so the layout falls back to its default arena)."""
+    if not map_size:
+        return None
+    try:
+        width, height = map_size.lower().split("x")
+        return int(width), int(height)
+    except (ValueError, AttributeError):
+        return None
+
+
+def generate_fleet(
+    n: int, layout: str = "grid", seed: int = 0, map_size: str | None = None
+) -> List[SimulatedDotBotSettings]:
+    """Build `n` simulated bots placed in a named layout, sized to `map_size`
+    (so the fleet fills the whole map), with sequential auto-generated
+    addresses. The `random` layout also gives each bot a random heading; the
+    structured layouts keep the default heading so rows/circles stay aligned.
+    Backs `dotbot run simulator --bots N --layout`."""
+    from dotbot import patterns
+
+    dims = _parse_map_size(map_size)
+    kwargs = {"width": dims[0], "height": dims[1]} if dims else {}
+    positions = patterns.layout(n, layout, seed=seed, **kwargs)
+    # Separate seeded stream so headings don't perturb the placement.
+    heading_rng = random.Random(seed + 7919) if layout == "random" else None
+    fleet = []
+    for i, (x, y) in enumerate(positions):
+        extra = {"direction": heading_rng.randrange(360)} if heading_rng else {}
+        fleet.append(
+            SimulatedDotBotSettings(
+                address=f"{i + 1:016x}", pos_x=int(x), pos_y=int(y), **extra
+            )
+        )
+    return fleet
+
+
 class DotBotSimulator:
     """Simulator class for the dotbot."""
 
@@ -190,7 +228,10 @@ class DotBotSimulator:
 
         self.pwm_left = 0
         self.pwm_right = 0
-        self.direction = settings.direction
+        # Map the "unset direction" sentinel to north (0), same as theta above;
+        # otherwise -1000 reaches the control loop as a bogus heading and the
+        # bot can never settle on a waypoint.
+        self.direction = settings.direction if settings.direction != -1000 else 0
 
         # Accumulated encoder deltas between control-loop calls (control runs at
         # SIMULATOR_UPDATE_INTERVAL_S, physics at SIMULATOR_STEP_DELTA_T — multiple
@@ -604,7 +645,7 @@ class DotBotSimulator:
             if frame is None:
                 break
             with self._lock:
-                if self.address == hex(frame.header.destination)[2:]:
+                if self.address == f"{frame.header.destination:016x}":
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
                         self.waypoint_index = 0
@@ -769,14 +810,27 @@ def resolve_init_state_path(path: str) -> str:
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, on_frame_received: Callable, simulator_init_state: str):
+    def __init__(
+        self,
+        on_frame_received: Callable,
+        simulator_init_state: str,
+        bots: int | None = None,
+        layout: str = "grid",
+        seed: int = 0,
+        map_size: str | None = None,
+    ):
         self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
         self._stp_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
-        init_state = InitStateToml(
-            **toml.load(resolve_init_state_path(simulator_init_state))
-        )
+        if bots:
+            init_state = InitStateToml(
+                dotbots=generate_fleet(bots, layout, seed, map_size)
+            )
+        else:
+            init_state = InitStateToml(
+                **toml.load(resolve_init_state_path(simulator_init_state))
+            )
         self._network = init_state.network
         self.dotbots = [
             DotBotSimulator(
@@ -828,7 +882,7 @@ class DotBotSimulatorCommunicationInterface:
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
-        addr = hex(frame.header.source)[2:]
+        addr = f"{frame.header.source:016x}"
         index = self._address_to_index.get(addr, 0)
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
             self._mari.schedule_uplink(frame, index)

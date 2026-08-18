@@ -70,13 +70,15 @@ class RestClient:
                 },
             )
         except httpx.ConnectError as exc:
+            # Propagate: falling through would hit `response` unbound, and a
+            # silently invented arena would be worse than a clear error.
             self._logger.warning(f"Failed to fetch map size: {exc}")
-        else:
-            if response.status_code != 200:
-                self._logger.warning(
-                    f"Failed to fetch map size: {response} {response.text}"
-                )
-                raise RuntimeError("Failed to fetch map size")
+            raise
+        if response.status_code != 200:
+            self._logger.warning(
+                f"Failed to fetch map size: {response} {response.text}"
+            )
+            raise RuntimeError("Failed to fetch map size")
         return DotBotMapSizeModel(**response.json())
 
     async def _send_command(self, address, application, resource, command):
@@ -96,7 +98,10 @@ class RestClient:
                 },
                 content=command.model_dump_json(),
             )
-        except httpx.ConnectError as exc:
+        except httpx.HTTPError as exc:
+            # Fire-and-forget: a transient transport failure (connection refused,
+            # server disconnected mid-burst, read timeout) must not crash the
+            # caller. Log and move on; waypoint/control loops re-send anyway.
             self._logger.warning(f"Failed to send command: {exc}")
             return
         if response.status_code != 200:
@@ -111,9 +116,11 @@ class RestClient:
         """Send a move raw command to a DotBot."""
         await self._send_command(address, application, "move_raw", command)
 
-    async def send_rgb_led_command(self, address, command):
+    async def send_rgb_led_command(
+        self, address, command, application=ApplicationType.DotBot
+    ):
         """Send an RGB LED command to a DotBot."""
-        await self._send_command(address, ApplicationType.SailBot, "rgb_led", command)
+        await self._send_command(address, application, "rgb_led", command)
 
     async def send_waypoint_command(self, address, application, command):
         """Send an waypoint command to a DotBot."""
