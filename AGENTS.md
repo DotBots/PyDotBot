@@ -20,6 +20,31 @@ This is the most active repo in the ecosystem (187 commits in last 90 days as of
 - `dotbot/controller.py:1` — 737-line `Controller` class; central object
 - `dotbot/frontend/src/App.tsx` — React UI root
 
+## Controller surface (REST + WebSocket)
+
+`dotbot/server.py` exposes robot state **two ways, and both are in use** - they
+are not layered alternatives, and consumers pick one.
+
+- **Pushed** - `/controller/ws/status`, server to client. Every advertisement
+  carrying a new position sets `notification_cmd = UPDATE` in
+  `dotbot/controller.py`, which fires `notify_clients()` and sends a
+  `DotBotNotificationModel` to every connected socket. Its `data` is the full
+  `DotBotModel`, so `lh2_position`, `mode`, `status` and battery all ride along.
+  A `RELOAD` goes out when a robot appears or its status changes. This is what
+  keeps the React UI live without polling.
+- **Polled** - `GET /controller/dotbots`. What the Python examples use when they
+  batch waypoints and wait for "done".
+
+A second WebSocket runs the *other* way: **`/controller/ws/dotbots` is command
+ingress**, accepting RGB LED, `move_raw` and waypoint messages. One socket is
+state egress, the other is command ingress; do not describe "the WebSocket" as
+though there were one.
+
+**Arrival is inferred here, not reported by the robot.** The firmware advertises
+state every 500 ms and never announces "done"; the controller sees `mode` flip
+`AUTO` -> `MANUAL`, and that is the arrival signal. Anything waiting on a
+waypoint batch is watching that field, whether it polls or subscribes.
+
 ## Build / run / test
 
 ```bash
