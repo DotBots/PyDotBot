@@ -170,12 +170,33 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
   />
 );
 
+// Battery, on the same scale and thresholds the CLI uses (swarmit's
+// battery_level_color and its `V (%)` cell). The pack is a 3.0 V supercap, not
+// a 4.2 V LiPo: reading it on a LiPo scale showed a healthy 2.3 V bot as
+// nearly flat. Full voltage and the thresholds are hardware facts, so they
+// live here once and every battery readout goes through them.
+export const VOLTAGE_FULL_V = 2.9;
+export const VOLTAGE_WARNING_V = 1.5;
+const VOLTAGE_SCALE_V = 3.0; // 100% reference
+
+/** Percent 0..100, matching the CLI's `int(battery / 3000 * 100)`. */
+export function batteryPct(volts: number): number {
+  return Math.max(0, Math.min(100, Math.trunc((volts / VOLTAGE_SCALE_V) * 100)));
+}
+
+/** Bar colour, mirroring swarmit's cyan / green / red bands. */
+export function batteryColor(volts: number): string {
+  if (volts > VOLTAGE_FULL_V) return "var(--s-Full)";
+  if (volts > VOLTAGE_WARNING_V) return "var(--s-Running)";
+  return "var(--s-Stopping)";
+}
+
 export const BatteryCell: React.FC<{ volts: number; width?: number; fill?: boolean }> = ({
   volts,
   width = 54,
   fill = false,
 }) => {
-  const pct = Math.max(0, Math.min(100, ((volts - 2.0) / (4.2 - 2.0)) * 100));
+  const pct = batteryPct(volts);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, ...(fill ? { width: "100%" } : {}) }}>
       <div
@@ -191,7 +212,7 @@ export const BatteryCell: React.FC<{ volts: number; width?: number; fill?: boole
           style={{
             width: `${pct}%`,
             height: "100%",
-            background: pct < 20 ? "var(--s-Stopping)" : pct < 45 ? "var(--s-Programming)" : "var(--s-Running)",
+            background: batteryColor(volts),
           }}
         />
       </div>

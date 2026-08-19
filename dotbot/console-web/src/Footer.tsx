@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 
+import { batteryColor, batteryPct } from "./viewChrome";
+
 import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
@@ -28,9 +30,6 @@ const gateOff = { opacity: 0.32, pointerEvents: "none" as const, filter: "graysc
 
 const ledCss = (b: UnifiedBot | undefined) =>
   b?.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
-const batPct = (v: number) => Math.max(0, Math.min(1, (v - 2.0) / (4.2 - 2.0)));
-const batColor = (p: number) =>
-  p < 0.2 ? "var(--s-Stopping)" : p < 0.45 ? "var(--s-Programming)" : "var(--s-Running)";
 const short = (id: string) => id.slice(-4).toUpperCase();
 
 interface FooterProps {
@@ -65,11 +64,11 @@ const StateDot: React.FC<{ state: string; glow?: boolean; size?: number }> = ({ 
 );
 
 const BatteryBar: React.FC<{ volts: number }> = ({ volts }) => {
-  const pct = batPct(volts);
+  const pct = batteryPct(volts);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ width: 58, height: 6, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: batColor(pct) }} />
+        <div style={{ width: `${pct}%`, height: "100%", background: batteryColor(volts) }} />
       </div>
       <span style={{ ...mono, fontSize: 12 }}>{volts.toFixed(2)} V</span>
     </div>

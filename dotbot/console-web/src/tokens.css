@@ -12,6 +12,7 @@
 
   /* State colors are shared across themes: a color always means the same thing. */
   --s-Running: #22c55e;
+  --s-Full: #22d3ee;
   --s-Programming: #f59e0b;
   --s-Bootloader: #38bdf8;
   --s-Stopping: #ef4444;

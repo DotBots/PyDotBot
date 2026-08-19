@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { batteryColor, batteryPct } from "./viewChrome";
+
 import { LH2Position, MapSize, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 
@@ -60,10 +62,7 @@ const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
 
-const batColor = (pct: number) =>
-  pct < 0.2 ? "var(--s-Stopping)" : pct < 0.45 ? "var(--s-Programming)" : "var(--s-Running)";
 
-const batPct = (volts: number) => Math.max(0, Math.min(1, (volts - 2.0) / (4.2 - 2.0)));
 
 export const MapView: React.FC<MapViewProps> = (props) => {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -332,7 +331,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
                 const stc = `var(--s-${b.state})`;
-                const pct = batPct(b.battery);
+                const pct = batteryPct(b.battery);
                 const blink = b.state === "Programming" || b.state === "Resetting";
                 return (
                   <div
@@ -396,7 +395,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           borderRadius: 2,
                         }}
                       >
-                        <div style={{ height: "100%", width: `${Math.round(pct * 100)}%`, background: batColor(pct), borderRadius: 2 }} />
+                        <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b.battery), borderRadius: 2 }} />
                       </div>
                     )}
                     {/* body: state-colored circle */}
