@@ -365,9 +365,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       height: 0,
                     }}
                   >
-                    {/* last-reset badge, top-right of the glyph */}
-                    <div style={{ position: "absolute", left: 8, top: -12 }}>
-                      <ResetBadge bot={b} />
+                    {/* last-reset warning, centred over the glyph body */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
+                        zIndex: 3,
+                      }}
+                    >
+                      <ResetBadge bot={b} size={13} />
                     </div>
                     {/* selection rectangle */}
                     {selected && (

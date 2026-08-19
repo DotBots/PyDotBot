@@ -180,9 +180,13 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
 // only bot) and are deliberately crude - a bar with no band rather than a
 // confident wrong number.
 /** Pill text for the sandbox axis. A bot swarmit does not manage has none. */
-// Corner badge for a bot whose last reset was not routine. Deliberately not a
-// body colour: that already carries the sandbox state, and after a crash the
-// next thing you want to know is what state it came back in.
+// Warning mark for a bot whose last reset was not routine. Drawn as an SVG
+// triangle rather than the U+26A0 character, which macOS renders as a colour
+// emoji and would ignore the tier colour entirely.
+//
+// Sits over the glyph body rather than beside it: the body colour carries the
+// sandbox state, and this has to stay legible when real-scale mode shrinks the
+// glyph to a few pixels.
 //
 // Two tiers, swarmit's: "crashed" is loud because a fault latched, "hung" is
 // quiet because a sandbox app's only way to exit is to stop feeding the
@@ -190,23 +194,32 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
 export const ResetBadge: React.FC<{
   bot: UnifiedBot;
   size?: number;
-}> = ({ bot, size = 8 }) => {
+}> = ({ bot, size = 11 }) => {
   if (bot.severity === "normal") return null;
   const crashed = bot.severity === "crashed";
+  const color = crashed ? "var(--s-Stopping)" : "var(--muted)";
   return (
-    <span
-      title={`Last reset: ${bot.resetCause ?? bot.severity}`}
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
       style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
         flex: "none",
-        display: "inline-block",
-        background: crashed ? "var(--s-Stopping)" : "var(--muted)",
-        boxShadow: crashed ? "0 0 6px var(--s-Stopping)" : undefined,
-        border: "1px solid var(--surface)",
+        display: "block",
+        filter: crashed ? "drop-shadow(0 0 3px var(--s-Stopping))" : undefined,
       }}
-    />
+    >
+      <title>{`Last reset: ${bot.resetCause ?? bot.severity}`}</title>
+      <path
+        d="M8 1.4 15.2 14H0.8z"
+        fill={color}
+        stroke="var(--surface)"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      <rect x="7.1" y="6" width="1.8" height="4.2" rx=".9" fill="var(--surface)" />
+      <rect x="7.1" y="11" width="1.8" height="1.8" rx=".9" fill="var(--surface)" />
+    </svg>
   );
 };
 
