@@ -3,6 +3,7 @@ import React, { useCallback, useRef, useState } from "react";
 import { putWaypoints } from "./api";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
+import { Inspector } from "./Inspector";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { DoneMission, TestbedRail } from "./TestbedRail";
@@ -63,7 +64,9 @@ export const App: React.FC = () => {
     dotBots: true,
     trueScale: true,
     trails: false,
+    crashedOnly: false,
   });
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -76,6 +79,9 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  // One filter for all three views: "who crashed" is the same question whether
+  // you are looking at the map, the list or the grid.
+  const shownBots = layers.crashedOnly ? bots.filter((b) => b.crashed) : bots;
   const selectedBots = bots.filter((b) => selection.has(b.id));
   const drivableSelected = selectedBots.filter((b) => b.drivable);
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");
@@ -180,6 +186,7 @@ export const App: React.FC = () => {
     { key: "dotBots", label: "DotBots" },
     { key: "trueScale", label: "Real-scale bots" },
     { key: "trails", label: "Trails" },
+    { key: "crashedOnly", label: "Only crashed bots" },
   ];
 
   return (
@@ -303,7 +310,7 @@ export const App: React.FC = () => {
         <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
           {view === "map" && (
             <MapView
-              bots={bots}
+              bots={shownBots}
               mapSize={mapSize}
               selection={selection}
               layers={layers}
@@ -321,11 +328,28 @@ export const App: React.FC = () => {
               onAddWaypoint={onAddWaypoint}
             />
           )}
-          {view === "list" && <ListView bots={bots} selection={selection} onSelect={onSelect} />}
-          {view === "grid" && <GridView bots={bots} selection={selection} onSelect={onSelect} />}
+          {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
+          {view === "grid" && <GridView bots={shownBots} selection={selection} onSelect={onSelect} />}
 
           {/* shared view switcher */}
           <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "center", zIndex: 12 }}>
+            <div
+              onClick={() => setInspectorOpen((v) => !v)}
+              title="Show the full device info for the selection"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 11px",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: 12,
+                background: inspectorOpen ? "var(--elevated)" : "var(--surface)",
+                border: "1px solid var(--hairline)",
+              }}
+            >
+              &#9432;&nbsp;Info
+            </div>
             {view === "map" && (
               <div
                 onClick={() => setLayersOpen((v) => !v)}
@@ -459,6 +483,9 @@ export const App: React.FC = () => {
             </div>
           )}
         </div>
+        {inspectorOpen && (
+          <Inspector bots={selectedBots} onClose={() => setInspectorOpen(false)} />
+        )}
       </div>
 
       <FlashDialog

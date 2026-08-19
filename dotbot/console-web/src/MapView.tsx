@@ -11,6 +11,7 @@ export interface Layers {
   hotSpots: boolean;
   dotBots: boolean;
   trueScale: boolean;
+  crashedOnly: boolean;
   trails: boolean;
 }
 

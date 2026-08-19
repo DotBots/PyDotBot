@@ -24,6 +24,13 @@ const RR_WDT1 = 1 << 25;
 // with it. A crash outranks everything, because a stop racing a crash sets
 // both bits. Note this is NOT swarmit's boot_reason(), which orders SREQ
 // before LOCKUP for the Matter enum; format_reset_cause does the opposite.
+// A crash in swarmit's sense: a latched fault, the crash deadman (WDT0), or a
+// CPU lockup. This is the set an operator triages after a run.
+export function isCrashed(sw: SwarmitNode | undefined): boolean {
+  if (!sw || sw.reset_reason === undefined) return false;
+  return Boolean(sw.fault) || Boolean(sw.reset_reason & (RR_WDT0 | RR_LOCKUP));
+}
+
 export function resetCause(sw: SwarmitNode | undefined): string | null {
   if (!sw || sw.reset_reason === undefined) return null;
   const rr = sw.reset_reason;
@@ -88,6 +95,8 @@ export function merge(
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: resetCause(sw),
+      crashed: isCrashed(sw),
+      swarmit: sw ?? null,
     });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));

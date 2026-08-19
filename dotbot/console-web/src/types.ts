@@ -52,13 +52,20 @@ export interface WsNotification {
 
 // What a bot reports it is running, as carried in SwarmitNode.info.
 export interface SwarmitDeviceInfo {
+  info_version?: number;
   bl_version: string;
   net_version: string;
   boot_count: number;
   uptime_s: number;
+  image_state?: number;
+  image_result?: number;
+  image_size?: number;
   image_name: string;
   image_version: string;
   image_digest: string;
+  lh2_homography_count?: number;
+  lh2_flags?: number;
+  raw?: string; // hex of the device-info packet, only on /status
 }
 
 // SwarmIT /status record. Only the fields the console binds to are declared;
@@ -71,7 +78,13 @@ export interface SwarmitNode {
   pos_y: number;
   reset_reason?: number; // raw nRF RESETREAS
   fault?: number; // latched fault type, 0 = none
+  from_ns?: number; // the fault came from the non-secure world
   pc?: number; // program counter at the fault
+  lr?: number;
+  cfsr?: number; // configurable fault status
+  sfsr?: number; // secure fault status
+  last_updated_at?: number; // unix seconds
+  raw?: string; // hex of the status packet, only on /status
   info?: SwarmitDeviceInfo | null;
 }
 
@@ -91,6 +104,8 @@ export interface UnifiedBot {
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
+  crashed: boolean; // last reset was a fault, a crash deadman, or a lockup
+  swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 
 export interface MapSize {
