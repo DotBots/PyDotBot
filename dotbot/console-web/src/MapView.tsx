@@ -331,7 +331,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
                 const stc = `var(--s-${b.state})`;
-                const pct = batteryPct(b.battery);
+                const pct = batteryPct(b);
                 const blink = b.state === "Programming" || b.state === "Resetting";
                 return (
                   <div
@@ -395,7 +395,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           borderRadius: 2,
                         }}
                       >
-                        <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b.battery), borderRadius: 2 }} />
+                        <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b), borderRadius: 2 }} />
                       </div>
                     )}
                     {/* body: state-colored circle */}

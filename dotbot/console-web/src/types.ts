@@ -84,6 +84,8 @@ export interface SwarmitNode {
   fault?: number; // latched fault type, 0 = none
   reset_cause?: string; // swarmit's friendly label for the last reset
   fault_name?: string; // the latched FaultType's name
+  battery_pct?: number; // 0-100 on this robot's own battery profile
+  battery_level?: string; // full | ok | low, the bootloader's LED bands
   from_ns?: number; // the fault came from the non-secure world
   pc?: number; // program counter at the fault
   lr?: number;
@@ -111,6 +113,8 @@ export interface UnifiedBot {
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
   crashed: boolean; // last reset was a fault, a crash deadman, or a lockup
+  batteryPct: number | null; // served by swarmit; null for a bot it does not know
+  batteryLevel: string | null; // full | ok | low
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 

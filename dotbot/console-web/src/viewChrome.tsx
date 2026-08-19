@@ -170,33 +170,34 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
   />
 );
 
-// Battery, on the same scale and thresholds the CLI uses (swarmit's
-// battery_level_color and its `V (%)` cell). The pack is a 3.0 V supercap, not
-// a 4.2 V LiPo: reading it on a LiPo scale showed a healthy 2.3 V bot as
-// nearly flat. Full voltage and the thresholds are hardware facts, so they
-// live here once and every battery readout goes through them.
-export const VOLTAGE_FULL_V = 2.9;
-export const VOLTAGE_WARNING_V = 1.5;
-const VOLTAGE_SCALE_V = 3.0; // 100% reference
-
-/** Percent 0..100, matching the CLI's `int(battery / 3000 * 100)`. */
-export function batteryPct(volts: number): number {
-  return Math.max(0, Math.min(100, Math.trunc((volts / VOLTAGE_SCALE_V) * 100)));
+// Battery. The percentage and the band are computed by swarmit, per robot:
+// the v3 pack is a 3.0 V supercapacitor that browns out at 0.6 V, and reading
+// it on a naive voltage ratio showed a healthy 2.3 V bot as nearly flat. Those
+// numbers are robot facts and a v2 pack differs, so this renders what it is
+// told rather than keeping a second scale here.
+//
+// The fallbacks below only cover a bot swarmit does not know (a control-plane
+// only bot) and are deliberately crude - a bar with no band rather than a
+// confident wrong number.
+export function batteryPct(bot: { batteryPct: number | null; battery: number }): number {
+  if (bot.batteryPct !== null) return Math.max(0, Math.min(100, bot.batteryPct));
+  return Math.max(0, Math.min(100, Math.trunc((bot.battery / 3.0) * 100)));
 }
 
-/** Bar colour, mirroring swarmit's cyan / green / red bands. */
-export function batteryColor(volts: number): string {
-  if (volts > VOLTAGE_FULL_V) return "var(--s-Full)";
-  if (volts > VOLTAGE_WARNING_V) return "var(--s-Running)";
-  return "var(--s-Stopping)";
+export function batteryColor(bot: { batteryLevel: string | null }): string {
+  if (bot.batteryLevel === "full") return "var(--s-Full)";
+  if (bot.batteryLevel === "low") return "var(--s-Stopping)";
+  if (bot.batteryLevel === "ok") return "var(--s-Running)";
+  return "var(--muted)"; // unknown to swarmit: no band to show
 }
 
-export const BatteryCell: React.FC<{ volts: number; width?: number; fill?: boolean }> = ({
-  volts,
+export const BatteryCell: React.FC<{ bot: UnifiedBot; width?: number; fill?: boolean }> = ({
+  bot,
   width = 54,
   fill = false,
 }) => {
-  const pct = batteryPct(volts);
+  const volts = bot.battery;
+  const pct = batteryPct(bot);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, ...(fill ? { width: "100%" } : {}) }}>
       <div
@@ -212,7 +213,7 @@ export const BatteryCell: React.FC<{ volts: number; width?: number; fill?: boole
           style={{
             width: `${pct}%`,
             height: "100%",
-            background: batteryColor(volts),
+            background: batteryColor(bot),
           }}
         />
       </div>

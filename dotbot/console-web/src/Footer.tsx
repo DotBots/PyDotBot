@@ -63,12 +63,13 @@ const StateDot: React.FC<{ state: string; glow?: boolean; size?: number }> = ({ 
   />
 );
 
-const BatteryBar: React.FC<{ volts: number }> = ({ volts }) => {
-  const pct = batteryPct(volts);
+const BatteryBar: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
+  const volts = bot.battery;
+  const pct = batteryPct(bot);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ width: 58, height: 6, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: batteryColor(volts) }} />
+        <div style={{ width: `${pct}%`, height: "100%", background: batteryColor(bot) }} />
       </div>
       <span style={{ ...mono, fontSize: 12 }}>{volts.toFixed(2)} V</span>
     </div>
@@ -436,7 +437,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
                 </div>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <BatteryBar volts={one.battery} />
+                <BatteryBar bot={one} />
                 <span style={{ ...mono, fontSize: 11, color: "var(--muted)" }}>
                   {one.position ? `${Math.round(one.position.x)}, ${Math.round(one.position.y)} mm` : "— unknown"}
                 </span>

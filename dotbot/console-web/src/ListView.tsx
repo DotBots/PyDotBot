@@ -200,7 +200,7 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                     {b.image ?? "—"}
                   </td>
                   <td style={{ padding: "9px 12px" }}>
-                    <BatteryCell volts={b.battery} />
+                    <BatteryCell bot={b} />
                   </td>
                   <td style={{ padding: "9px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

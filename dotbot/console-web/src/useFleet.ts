@@ -76,6 +76,8 @@ export function merge(
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
       crashed: isCrashed(sw),
+      batteryPct: sw?.battery_pct ?? null,
+      batteryLevel: sw?.battery_level ?? null,
       swarmit: sw ?? null,
     });
   }

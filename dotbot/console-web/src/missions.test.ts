@@ -19,6 +19,8 @@ const bot = (id: string, over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   image: null,
   resetCause: null,
   crashed: false,
+  batteryPct: null,
+  batteryLevel: null,
   swarmit: null,
   ...over,
 });

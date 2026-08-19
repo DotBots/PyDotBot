@@ -103,7 +103,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>{b.state}</span>
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{b.id}</div>
-                <BatteryCell volts={b.battery} fill />
+                <BatteryCell bot={b} fill />
                 <div style={{ fontSize: 11, color: "var(--muted)" }}>
                   Device <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{b.deviceType}</span>
                 </div>
