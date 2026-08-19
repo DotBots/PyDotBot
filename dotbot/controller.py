@@ -15,7 +15,6 @@ import os
 import queue
 import time
 import webbrowser
-from binascii import hexlify
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -40,6 +39,7 @@ from dotbot import (
     SERIAL_PORT_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     SWARMIT_URL_DEFAULT,
+    addr_to_hex,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -315,7 +315,7 @@ class Controller:
             PayloadType.CMD_RGB_LED,
         ]:
             return
-        source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
+        source = addr_to_hex(int(frame.header.source))
         logger = self.logger.bind(
             source=source,
             payload_type=PayloadType(frame.packet.payload_type).name,
@@ -593,7 +593,7 @@ class Controller:
         if self.adapter is None:
             self.logger.warning("Adapter not started")
             return
-        dest_str = hexlify(destination.to_bytes(8, "big")).decode()
+        dest_str = addr_to_hex(destination)
         if dest_str not in self.dotbots:
             return
         self.adapter.send_payload(destination, payload=payload)

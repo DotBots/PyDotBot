@@ -9,6 +9,7 @@ from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot_utils.serial_interface import SerialInterface
 
+from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.models import (
@@ -261,3 +262,23 @@ def test_lh2_distance(last, new, result):
 )
 def test_gps_distance(last, new, result):
     assert gps_distance(last, new) == pytest.approx(result)
+
+
+@pytest.mark.parametrize(
+    "addr,expected",
+    [
+        (0x217B829760EBA3E0, "217B829760EBA3E0"),
+        (0x0, "0000000000000000"),
+        (0xFFFFFFFFFFFFFFFF, "FFFFFFFFFFFFFFFF"),
+        (0xABCDEF, "0000000000ABCDEF"),
+    ],
+)
+def test_addr_to_hex_is_uppercase_and_padded(addr, expected):
+    """Addresses render uppercase: swarmit joins the two planes on this string.
+
+    `binascii.hexlify` returns lowercase, so a plain hexlify here silently
+    produces a key that never matches the swarm side (nor
+    DOTBOT_ADDRESS_DEFAULT / GATEWAY_ADDRESS_DEFAULT, both written uppercase).
+    """
+    assert addr_to_hex(addr) == expected
+    assert addr_to_hex(addr) == addr_to_hex(addr).upper()
