@@ -926,9 +926,7 @@ async def test_connection_never_leaks_the_mqtt_credentials():
     ],
 )
 async def test_connection_reports_the_non_mqtt_adapters(adapter, expected):
-    api.controller.settings = ControllerSettings(
-        adapter=adapter, port="/dev/ttyACM0"
-    )
+    api.controller.settings = ControllerSettings(adapter=adapter, port="/dev/ttyACM0")
 
     result = await client.get("/controller/connection")
 
