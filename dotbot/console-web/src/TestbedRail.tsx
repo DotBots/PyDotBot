@@ -138,10 +138,11 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
 }
 
 export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
-  // ?rail=testbed|missions opens the panel on a tab (handy for dev/screenshots).
+  // The panel is open by default; ?rail=collapsed starts it as the icon strip,
+  // and ?rail=testbed|missions picks which tab is on top.
   const railParam = new URLSearchParams(window.location.search).get("rail");
   const [mode, setMode] = useState<"collapsed" | "panel">(
-    railParam === "testbed" || railParam === "missions" ? "panel" : "collapsed",
+    railParam === "collapsed" ? "collapsed" : "panel",
   );
   const [top, setTop] = useState<"testbed" | "missions">(railParam === "missions" ? "missions" : "testbed");
   const [tab, setTab] = useState<"console" | "flash">("console");

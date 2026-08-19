@@ -61,7 +61,7 @@ export const App: React.FC = () => {
     waypoints: true,
     hotSpots: false,
     dotBots: true,
-    trueScale: false,
+    trueScale: true,
     trails: false,
   });
 
