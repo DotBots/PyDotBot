@@ -230,7 +230,9 @@ export const Inspector: React.FC<{
 }> = ({ bots, onClose }) => (
   <div
     style={{
-      width: 300,
+      // Wide enough that a full version string ("bl   0.8.0rc3-87-gb8957de",
+      // the longest value here) fits the value column on one line.
+      width: 324,
       flex: "none",
       borderLeft: "1px solid var(--hairline)",
       background: "var(--surface)",
