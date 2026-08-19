@@ -84,6 +84,9 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
             overflow: "hidden",
             cursor: "grab",
             touchAction: "none",
+        // Drag surface: a pan or marquee would otherwise smear a text
+        // selection across the UI and race the browser's native drag.
+        userSelect: "none",
           }}
         >
           {bots

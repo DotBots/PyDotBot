@@ -213,6 +213,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         background: "var(--canvas)",
         cursor: panRef.current ? "grabbing" : "default",
         touchAction: "none",
+        // Drag surface: a pan or marquee would otherwise smear a text
+        // selection across the UI and race the browser's native drag.
+        userSelect: "none",
       }}
     >
       {/* camera layer */}

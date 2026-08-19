@@ -202,7 +202,6 @@ export const App: React.FC = () => {
         color: "var(--text)",
         fontFamily: "var(--font-ui)",
         fontSize: 13,
-        userSelect: "none",
       }}
     >
       {/* Title bar */}

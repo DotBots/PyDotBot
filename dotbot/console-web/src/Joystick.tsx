@@ -126,6 +126,9 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
         border: `1px solid ${active ? "var(--accent)" : "var(--hairline)"}`,
         position: "relative",
         touchAction: "none",
+        // Drag surface: a pan or marquee would otherwise smear a text
+        // selection across the UI and race the browser's native drag.
+        userSelect: "none",
         cursor: "grab",
       }}
     >
