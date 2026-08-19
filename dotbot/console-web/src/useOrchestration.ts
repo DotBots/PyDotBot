@@ -72,7 +72,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
 
   const flashingRef = useRef(false);
   const flash = useCallback(
-    (firmwareName: string, devices?: string[]) => {
+    (firmwareB64: string, firmwareName: string, devices?: string[]) => {
       if (flashingRef.current) {
         onToast("A flash is already in progress");
         return;
@@ -80,10 +80,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
       flashingRef.current = true;
       setFlashing(true);
       setQueue({});
-      // The fake accepts any payload; against a real server this is the
-      // base64 of the picked image file.
-      const b64 = btoa(firmwareName);
-      flashStream(b64, devices, (ev) => {
+      flashStream(firmwareB64, devices, (ev) => {
         if (ev.type === "flash_started" && ev.devices) {
           setQueue(
             Object.fromEntries(
@@ -102,11 +99,13 @@ export function useOrchestration(onToast: (msg: string) => void) {
           }));
         } else if (ev.type === "complete") {
           onToast(ev.all_success ? "Flash complete" : "Flash finished with failures");
+        } else if (ev.type === "warning") {
+          onToast(`Flash warning: ${ev.message ?? "unknown"}`);
         } else if (ev.type === "error") {
           onToast(`Flash error: ${ev.message ?? "unknown"}`);
         }
-      })
-        .catch(() => onToast("Flash stream failed"))
+      }, firmwareName)
+        .catch((e) => onToast(`Flash stream failed: ${e.message ?? e}`))
         .finally(() => {
           flashingRef.current = false;
           setFlashing(false);

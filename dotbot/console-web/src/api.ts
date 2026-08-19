@@ -77,7 +77,7 @@ export async function swarmitAction(
 }
 
 export interface FlashEvent {
-  type: "flash_started" | "chunk" | "device_done" | "complete" | "error";
+  type: "flash_started" | "chunk" | "device_done" | "complete" | "error" | "warning";
   addr?: string;
   acked?: number;
   total?: number;
@@ -108,20 +108,30 @@ export function parseSseChunk<T>(buf: string): { events: T[]; rest: string } {
   return { events, rest: buf };
 }
 
-// POST /flash/stream and feed each SSE event to the callback.
+// POST /flash/stream and feed each SSE event to the callback. `imageName` is
+// stored with the image and reported back by the bot, so it shows up in the
+// Image column once the flash lands.
 export async function flashStream(
   firmwareB64: string,
   devices: string[] | undefined,
   onEvent: (ev: FlashEvent) => void,
+  imageName = "",
 ): Promise<void> {
   const res = await fetch(`${SWARMIT}/flash/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       firmware_b64: firmwareB64,
+      image_name: imageName,
       ...(devices && devices.length ? { devices } : {}),
     }),
   });
+  // fetch only rejects on network failure, so a 4xx arrives here looking fine.
+  // Its body is JSON, which parses as zero SSE frames: without this the flash
+  // silently does nothing.
+  if (!res.ok) {
+    throw new Error(`flash refused: ${res.status} ${await res.text()}`);
+  }
   const reader = res.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();

@@ -466,7 +466,7 @@ export const App: React.FC = () => {
         targetCount={selection.size || bots.length}
         targetLabel={selection.size ? `${selection.size} selected` : "whole fleet"}
         onClose={() => setFlashOpen(false)}
-        onFlash={(fw) => orch.flash(fw, selection.size ? [...selection] : undefined)}
+        onFlash={(b64, name) => orch.flash(b64, name, selection.size ? [...selection] : undefined)}
       />
 
       <Footer

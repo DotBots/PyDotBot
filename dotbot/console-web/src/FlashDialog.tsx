@@ -1,19 +1,49 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
-// v1 flash dialog. The firmware list is static until a real artifact source
-// exists (dotbot fw registry / file upload against the real swarmit server).
-const FIRMWARES = ["app_v0.4.1.bin", "blink_demo.bin", "swarm_nav.bin", "line_follow.bin"];
+// v1 flash dialog, reading a real image off disk. swarmit takes the image as
+// base64 in the request body, so the file never touches the controller's
+// filesystem and any .bin the operator can see is flashable.
+
+// Base64 without blowing the argument limit on a multi-hundred-kB image, which
+// String.fromCharCode(...bytes) would do.
+export function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
 
 interface FlashDialogProps {
   open: boolean;
   targetCount: number;
   targetLabel: string;
   onClose: () => void;
-  onFlash: (firmware: string) => void;
+  onFlash: (firmwareB64: string, firmwareName: string) => void;
 }
 
 export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
-  const [fw, setFw] = useState(FIRMWARES[0]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<{ name: string; size: number; b64: string } | null>(null);
+  const [reading, setReading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setReading(true);
+    setError(null);
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      if (buf.length === 0) throw new Error("file is empty");
+      setFile({ name: f.name, size: buf.length, b64: toBase64(buf) });
+    } catch (e) {
+      setFile(null);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReading(false);
+    }
+  };
+
   if (!props.open) return null;
   return (
     <div
@@ -47,29 +77,43 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
         <div style={{ fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>
           Firmware image
         </div>
-        <select
-          value={fw}
-          onChange={(e) => setFw(e.target.value)}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".bin,application/octet-stream"
+          style={{ display: "none" }}
+          onChange={(e) => pick(e.target.files?.[0])}
+        />
+        <div
+          onClick={() => fileRef.current?.click()}
           style={{
             width: "100%",
+            boxSizing: "border-box",
             background: "var(--elevated)",
-            border: "1px solid var(--hairline)",
+            border: `1px dashed ${file ? "var(--accent)" : "var(--hairline)"}`,
             borderRadius: 8,
-            padding: "11px 12px",
-            color: "var(--text)",
+            padding: "14px 12px",
+            color: file ? "var(--text)" : "var(--muted)",
             fontFamily: "var(--font-mono)",
             fontSize: 13,
             outline: "none",
             cursor: "pointer",
-            marginBottom: 22,
+            marginBottom: error ? 8 : 22,
+            textAlign: "center",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          {FIRMWARES.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
+          {reading
+            ? "Reading..."
+            : file
+              ? `${file.name} · ${(file.size / 1024).toFixed(1)} kB`
+              : "Choose a .bin image..."}
+        </div>
+        {error && (
+          <div style={{ fontSize: 12, color: "var(--accent)", marginBottom: 14 }}>{error}</div>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <div
             onClick={props.onClose}
@@ -86,17 +130,20 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
           </div>
           <div
             onClick={() => {
-              props.onFlash(fw);
+              if (!file) return;
+              props.onFlash(file.b64, file.name);
               props.onClose();
             }}
+            title={file ? undefined : "Choose a firmware image first"}
             style={{
               padding: "9px 18px",
               borderRadius: 8,
-              cursor: "pointer",
+              cursor: file ? "pointer" : "not-allowed",
               fontSize: 13,
               fontWeight: 600,
-              background: "var(--accent)",
-              color: "#fff",
+              background: file ? "var(--accent)" : "var(--elevated)",
+              color: file ? "#fff" : "var(--muted)",
+              border: file ? "1px solid transparent" : "1px solid var(--hairline)",
             }}
           >
             Flash {props.targetCount} device(s)
