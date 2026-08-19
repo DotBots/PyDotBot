@@ -81,4 +81,32 @@ describe("infoText", () => {
     expect(crashed).toContain("cfsr");
     expect(crashed).toContain("pc              0x2000abcd");
   });
+
+  // A watchdog timeout raises no fault, so cfsr/sfsr are structurally zero.
+  // Printing them invites decoding a status that was never populated - the
+  // CLI suppresses them for exactly this case, and so must this.
+  it("hides the fault registers for a watchdog timeout, but keeps pc and lr", () => {
+    const hung = infoText(
+      bot({
+        crashed: true,
+        resetCause: "hung (watchdog0 pc=0x00010230)",
+        swarmit: node({
+          reset_reason: 0x02,
+          fault: 3, // WatchdogTimeout
+          fault_name: "WatchdogTimeout",
+          cfsr: 0,
+          sfsr: 0,
+          pc: 0x00010230,
+          lr: 0x0001022b,
+        }),
+      }),
+    );
+
+    expect(hung).not.toContain("cfsr");
+    expect(hung).not.toContain("sfsr");
+    // pc and lr are the whole answer for this failure mode.
+    expect(hung).toContain("pc              0x00010230");
+    expect(hung).toContain("lr              0x0001022b");
+    expect(hung).toContain("fault           WatchdogTimeout");
+  });
 });

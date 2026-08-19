@@ -31,6 +31,15 @@ export function formatLh2(bot: UnifiedBot): string {
 
 const hex32 = (v: number) => `0x${(v >>> 0).toString(16).padStart(8, "0")}`;
 
+// FaultType values that actually populate the fault status registers. A
+// watchdog timeout raises no fault, so cfsr/sfsr read zero and showing them
+// invites decoding a status that was never written. pc/lr are still the whole
+// answer there: they name where the app was stuck. Mirrors the CLI's rule.
+const FAULT_HARD = 1;
+const FAULT_SECURE = 2;
+const setsFaultRegisters = (fault: number) =>
+  fault === FAULT_HARD || fault === FAULT_SECURE;
+
 // The plain-text form, so one click hands over exactly what a bug report wants.
 export function infoText(bot: UnifiedBot): string {
   const sw = bot.swarmit;
@@ -64,8 +73,10 @@ export function infoText(bot: UnifiedBot): string {
     out.push(`  reset_reason    ${hex32(sw.reset_reason)}`);
     out.push(`  fault           ${sw.fault_name ?? sw.fault}`);
     if (sw.fault) {
-      out.push(`  cfsr            ${hex32(sw.cfsr ?? 0)}`);
-      out.push(`  sfsr            ${hex32(sw.sfsr ?? 0)}`);
+      if (setsFaultRegisters(sw.fault)) {
+        out.push(`  cfsr            ${hex32(sw.cfsr ?? 0)}`);
+        out.push(`  sfsr            ${hex32(sw.sfsr ?? 0)}`);
+      }
       out.push(`  pc              ${hex32(sw.pc ?? 0)}`);
       out.push(`  lr              ${hex32(sw.lr ?? 0)}`);
     }
@@ -181,8 +192,12 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
           <Row k="fault" v={sw.fault_name ?? String(sw.fault)} indent />
           {Boolean(sw.fault) && (
             <>
-              <Row k="cfsr" v={hex32(sw.cfsr ?? 0)} indent />
-              <Row k="sfsr" v={hex32(sw.sfsr ?? 0)} indent />
+              {setsFaultRegisters(sw.fault ?? 0) && (
+                <>
+                  <Row k="cfsr" v={hex32(sw.cfsr ?? 0)} indent />
+                  <Row k="sfsr" v={hex32(sw.sfsr ?? 0)} indent />
+                </>
+              )}
               <Row k="pc" v={hex32(sw.pc ?? 0)} indent />
               <Row k="lr" v={hex32(sw.lr ?? 0)} indent />
             </>
