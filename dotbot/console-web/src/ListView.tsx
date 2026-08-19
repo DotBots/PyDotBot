@@ -136,6 +136,9 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
               <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("fw"); }}>
                 Device{arrow("fw")}
               </th>
+              <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("image"); }}>
+                Image{arrow("image")}
+              </th>
               <th style={th} onClick={(e) => { e.stopPropagation(); sortBy("battery"); }}>
                 Battery{arrow("battery")}
               </th>
@@ -180,6 +183,21 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                   </td>
                   <td style={{ padding: "9px 12px", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted)" }}>
                     {b.deviceType}
+                  </td>
+                  <td
+                    title={b.image ?? "No device info reported for this bot"}
+                    style={{
+                      padding: "9px 12px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      maxWidth: 240,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.image ?? "—"}
                   </td>
                   <td style={{ padding: "9px 12px" }}>
                     <BatteryCell volts={b.battery} />

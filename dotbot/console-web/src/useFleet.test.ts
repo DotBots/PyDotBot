@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PyDotBot, SwarmitNode } from "./types";
-import { deriveState, merge } from "./useFleet";
+import { deriveState, merge, resetCause } from "./useFleet";
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -102,5 +102,40 @@ describe("merge", () => {
     expect(a.nav).toBe("auto");
     const [b] = merge({ b: py({ address: "b", mode: 0 }) }, {});
     expect(b.nav).toBe("drive");
+  });
+});
+
+describe("resetCause", () => {
+  const node = (over: Partial<SwarmitNode>): SwarmitNode => ({
+    device: "DotBotV3",
+    status: "Running",
+    battery: 3900,
+    pos_x: 0,
+    pos_y: 0,
+    ...over,
+  });
+
+  it("is unknown when the server sends no reset_reason", () => {
+    expect(resetCause(node({}))).toBeNull();
+    expect(resetCause(undefined)).toBeNull();
+  });
+
+  it("reads the common causes", () => {
+    expect(resetCause(node({ reset_reason: 0 }))).toBe("power-on");
+    expect(resetCause(node({ reset_reason: 1 << 0 }))).toBe("power-on");
+    expect(resetCause(node({ reset_reason: 1 << 3 }))).toBe("soft-reset");
+    expect(resetCause(node({ reset_reason: 1 << 4 }))).toBe("lockup");
+    expect(resetCause(node({ reset_reason: 1 << 25 }))).toBe("stopped");
+  });
+
+  it("lets a crash outrank a stop, since both bits can be set at once", () => {
+    expect(resetCause(node({ reset_reason: (1 << 1) | (1 << 25) }))).toBe("crashed");
+    expect(resetCause(node({ reset_reason: 0, fault: 3, pc: 0x2000abcd }))).toBe(
+      "crashed (pc=0x2000abcd)",
+    );
+  });
+
+  it("lets lockup win over a commanded reset, as format_reset_cause does", () => {
+    expect(resetCause(node({ reset_reason: (1 << 3) | (1 << 4) }))).toBe("lockup");
   });
 });

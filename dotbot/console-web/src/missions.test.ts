@@ -16,6 +16,8 @@ const bot = (id: string, over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   nav: "drive",
   waypoints: [],
   trail: [],
+  image: null,
+  resetCause: null,
   ...over,
 });
 

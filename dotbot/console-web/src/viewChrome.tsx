@@ -4,7 +4,7 @@ import { BotState, STATE_ORDER, UnifiedBot } from "./types";
 
 export const PAGE_SIZE = 50;
 
-export type SortKey = "id" | "fw" | "battery" | "state";
+export type SortKey = "id" | "fw" | "image" | "battery" | "state";
 
 export interface ViewQuery {
   search: string;
@@ -41,6 +41,8 @@ export function applyQuery(bots: UnifiedBot[], q: ViewQuery): { rows: UnifiedBot
         return dir * a.state.localeCompare(b.state);
       case "fw":
         return dir * a.deviceType.localeCompare(b.deviceType);
+      case "image":
+        return dir * (a.image ?? "").localeCompare(b.image ?? "");
       default:
         return dir * a.id.localeCompare(b.id);
     }

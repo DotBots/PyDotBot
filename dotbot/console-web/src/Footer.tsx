@@ -444,6 +444,29 @@ export const Footer: React.FC<FooterProps> = (props) => {
               </div>
             </div>
             <Sep />
+            {/* what the bot reports it is running, straight from swarmit /status */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 190 }}>
+              <div style={label}>Image</div>
+              <div
+                title={one.image ?? "No device info reported for this bot"}
+                style={{
+                  ...mono,
+                  fontSize: 11,
+                  color: one.image ? "var(--text)" : "var(--muted)",
+                  maxWidth: 230,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {one.image ?? "— unknown"}
+              </div>
+              <div style={label}>Last reset</div>
+              <div style={{ ...mono, fontSize: 11, color: one.resetCause ? "var(--text)" : "var(--muted)" }}>
+                {one.resetCause ?? "— unknown"}
+              </div>
+            </div>
+            <Sep />
             <ControlDock
               targets={selected}
               pending={props.pendingWaypoints}
