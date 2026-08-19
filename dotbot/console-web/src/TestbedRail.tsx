@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 
 import { PlannedMission, UnifiedBot } from "./types";
+import { FirmwareSection } from "./FirmwareSection";
+import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
@@ -34,7 +36,8 @@ interface TestbedRailProps {
   fleetPct: number;
   flashing: boolean;
   clearLogs: () => void;
-  onFlashOpen: () => void;
+  targetCount: number;
+  onFlash: (image: FirmwareFile) => void;
   onStart: () => void;
   onStop: () => void;
   onReset: () => void;
@@ -184,7 +187,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           </div>
           <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
           {[
-            { g: "⇩", t: "Flash…", fn: props.onFlashOpen },
             { g: "▶", t: "Start", fn: props.onStart },
             { g: "■", t: "Stop", fn: props.onStop },
             { g: "↻", t: "Reset", fn: props.onReset },
@@ -287,14 +289,18 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           {/* TESTBED tab */}
           {top === "testbed" && (
             <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+              <div style={{ flex: "none" }}>
+                <FirmwareSection
+                  targetCount={props.targetCount}
+                  flashing={props.flashing}
+                  onFlash={props.onFlash}
+                />
+              </div>
               <div style={{ flex: "none", padding: "10px 12px", borderBottom: "1px solid var(--hairline)" }}>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
                   Target&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{targetLabel}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  <div onClick={props.onFlashOpen} style={railBtn(true)}>
-                    &#8681;&nbsp;Flash&hellip;
-                  </div>
                   <div onClick={props.onStart} style={railBtn(false)}>
                     &#9654;&nbsp;Start
                   </div>

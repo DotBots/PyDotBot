@@ -14,7 +14,6 @@ import {
 } from "./types";
 import { useFleet } from "./useFleet";
 import { useOrchestration } from "./useOrchestration";
-import { FlashDialog } from "./FlashDialog";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
@@ -42,7 +41,6 @@ export const App: React.FC = () => {
   }, []);
 
   const orch = useOrchestration(showToast);
-  const [flashOpen, setFlashOpen] = useState(false);
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -314,7 +312,14 @@ export const App: React.FC = () => {
           fleetPct={orch.fleetPct}
           flashing={orch.flashing}
           clearLogs={orch.clearLogs}
-          onFlashOpen={() => setFlashOpen(true)}
+          targetCount={selection.size || bots.length}
+          onFlash={(image) =>
+            orch.flash(
+              image,
+              selection.size ? [...selection] : undefined,
+              window.localStorage.getItem("dotbot.console.startAfterFlash") === "1",
+            )
+          }
           onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
           onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
           onReset={() => orch.act("reset", selection.size ? [...selection] : undefined)}
@@ -505,14 +510,6 @@ export const App: React.FC = () => {
           <Inspector bots={selectedBots} onClose={() => setInspectorOpen(false)} />
         )}
       </div>
-
-      <FlashDialog
-        open={flashOpen}
-        targetCount={selection.size || bots.length}
-        targetLabel={selection.size ? `${selection.size} selected` : "whole fleet"}
-        onClose={() => setFlashOpen(false)}
-        onFlash={(b64, name) => orch.flash(b64, name, selection.size ? [...selection] : undefined)}
-      />
 
       <Footer
         bots={bots}

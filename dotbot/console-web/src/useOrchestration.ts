@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { flashStream, swarmitAction, swarmitEventsUrl } from "./api";
+import { FirmwareFile } from "./firmwareFile";
 import { remember } from "./firmwareHistory";
 
 export interface LogRow {
@@ -73,7 +74,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
 
   const flashingRef = useRef(false);
   const flash = useCallback(
-    (firmwareB64: string, firmwareName: string, devices?: string[]) => {
+    (image: FirmwareFile, devices?: string[], startAfter = false) => {
       if (flashingRef.current) {
         onToast("A flash is already in progress");
         return;
@@ -83,8 +84,11 @@ export function useOrchestration(onToast: (msg: string) => void) {
       setQueue({});
       // Recorded at send time, not on success: knowing what was pushed at a bot
       // matters most when the flash is what went wrong.
-      if (firmwareName) remember(firmwareName, firmwareB64, Date.now());
-      flashStream(firmwareB64, devices, (ev) => {
+      remember(image, Date.now());
+      // Only devices whose own device_done said success get started: a partial
+      // flash must not start the bots it failed on.
+      const flashed: string[] = [];
+      flashStream(image.b64, devices, (ev) => {
         if (ev.type === "flash_started" && ev.devices) {
           setQueue(
             Object.fromEntries(
@@ -97,18 +101,23 @@ export function useOrchestration(onToast: (msg: string) => void) {
             [ev.addr!]: { ...q[ev.addr!], acked: ev.acked ?? 0, total: ev.total ?? 0 },
           }));
         } else if (ev.type === "device_done" && ev.addr) {
+          if (ev.success) flashed.push(ev.addr);
           setQueue((q) => ({
             ...q,
             [ev.addr!]: { ...q[ev.addr!], done: true, success: ev.success },
           }));
         } else if (ev.type === "complete") {
           onToast(ev.all_success ? "Flash complete" : "Flash finished with failures");
+          if (startAfter) {
+            if (flashed.length) act("start", flashed);
+            else onToast("Nothing flashed successfully, not starting");
+          }
         } else if (ev.type === "warning") {
           onToast(`Flash warning: ${ev.message ?? "unknown"}`);
         } else if (ev.type === "error") {
           onToast(`Flash error: ${ev.message ?? "unknown"}`);
         }
-      }, firmwareName)
+      }, image.name)
         .catch((e) => onToast(`Flash stream failed: ${e.message ?? e}`))
         .finally(() => {
           flashingRef.current = false;
@@ -117,7 +126,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
           setTimeout(() => setQueue({}), 4000);
         });
     },
-    [onToast],
+    [act, onToast],
   );
 
   const jobs = Object.values(queue);
