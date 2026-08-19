@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { FirmwareEntry, load as loadHistory } from "./firmwareHistory";
+import { FirmwareEntry, decodedSize, load as loadHistory } from "./firmwareHistory";
 
 // v1 flash dialog, reading a real image off disk. swarmit takes the image as
 // base64 in the request body, so the file never touches the controller's
@@ -141,7 +141,7 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
         )}
         {history.length > 0 && (
           <>
-            <div style={{ ...labelStyle, marginBottom: 6 }}>Recently flashed</div>
+            <div style={{ ...labelStyle, marginBottom: 6 }}>Recently flashed &middot; click to reuse</div>
             <div
               style={{
                 maxHeight: 132,
@@ -151,36 +151,49 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
                 marginBottom: 22,
               }}
             >
-              {history.map((h) => (
-                <div
-                  key={`${h.name}-${h.ts}`}
-                  title={`${h.name} · ${new Date(h.ts).toLocaleString()}`}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "baseline",
-                    padding: "7px 10px",
-                    borderBottom: "1px solid var(--hairline)",
-                  }}
-                >
+              {history.map((h) => {
+                const picked = file?.b64 === h.b64;
+                return (
                   <div
+                    key={`${h.name}-${h.ts}`}
+                    onClick={() => {
+                      setError(null);
+                      setFile({ name: h.name, size: decodedSize(h.b64), b64: h.b64 });
+                    }}
+                    title={`Flash this again · ${new Date(h.ts).toLocaleString()}`}
                     style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                      color: h.name === file?.name ? "var(--text)" : "var(--muted)",
-                      flex: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "baseline",
+                      padding: "7px 10px",
+                      borderBottom: "1px solid var(--hairline)",
+                      cursor: "pointer",
+                      background: picked ? "var(--elevated)" : "transparent",
                     }}
                   >
-                    {h.name}
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                        color: picked ? "var(--accent)" : "var(--text)",
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {picked ? "\u25cf " : ""}
+                      {h.name}
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", flex: "none" }}>
+                      {(decodedSize(h.b64) / 1024).toFixed(1)} kB
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", flex: "none" }}>
+                      {relativeTime(h.ts)}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", flex: "none" }}>
-                    {relativeTime(h.ts)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

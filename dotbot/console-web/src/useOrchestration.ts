@@ -83,7 +83,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
       setQueue({});
       // Recorded at send time, not on success: knowing what was pushed at a bot
       // matters most when the flash is what went wrong.
-      if (firmwareName) remember(firmwareName, Date.now());
+      if (firmwareName) remember(firmwareName, firmwareB64, Date.now());
       flashStream(firmwareB64, devices, (ev) => {
         if (ev.type === "flash_started" && ev.devices) {
           setQueue(
