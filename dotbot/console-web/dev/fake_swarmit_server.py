@@ -98,6 +98,143 @@ def resolve_devices(payload_devices) -> list:
     return list(payload_devices)
 
 
+# --- device-info fixtures -----------------------------------------------------
+#
+# Shapes and vocabulary mirror swarmit's `_serialise_node` and the helpers it
+# calls (`format_reset_cause`, `reset_severity`, `battery_pct`, `lh2_summary`).
+# This file deliberately does NOT import swarmit: PyDotBot does not depend on
+# it, and a dev harness is not the place to add a cross-repo import. The cost
+# is that these tables have to be kept in step by hand if swarmit's wording
+# changes, which is the normal bargain for a fake.
+#
+# Everything is picked deterministically from the address, so a screenshot taken
+# twice looks the same.
+
+SANDBOX_FW = "0.8.0rc3-87-gb8957de"
+
+# (image_name, image_digest, image_size)
+IMAGES = [
+    ("dotbot-sandbox-dotbot-v3.bin", "c8a70af215722154", 6740),
+    ("spin-sandbox-dotbot-v3.bin", "5ff0e9023306b1eb", 2292),
+    ("move-sandbox-dotbot-v3.bin", "1b90c4de77a30265", 3128),
+    ("rgbled-sandbox-dotbot-v3.bin", "9d31fa07c25e4418", 1984),
+]
+
+# (reset_cause, reset_severity, reset_reason, fault, fault_name, pc, lr)
+# Chosen to exercise all three badge tiers. The "hung" entry is a real one: it
+# is what a finished `spin` reports, pc landing in its terminal while(1).
+RESETS = [
+    ("power-on", "normal", 0x00000000, 0, "NoFault", 0, 0),
+    ("soft-reset", "normal", 0x00000008, 0, "NoFault", 0, 0),
+    ("stopped", "normal", 0x02000000, 0, "NoFault", 0, 0),
+    ("lockup", "normal", 0x00000010, 0, "NoFault", 0, 0),
+    (
+        "hung (watchdog0 pc=0x00010230)",
+        "hung",
+        0x00000002,
+        3,
+        "WatchdogTimeout",
+        0x00010230,
+        0x0001022B,
+    ),
+    (
+        "crashed (watchdog0 HardFault pc=0x2000abcd)",
+        "crashed",
+        0x00000002,
+        1,
+        "HardFault",
+        0x2000ABCD,
+        0x2000AB41,
+    ),
+]
+
+# v3 pack: 3.0 V supercapacitor, brownout at 0.6 V, energy goes as V^2.
+V_MAX_MV, V_EMPTY_MV, V_FULL_MV, V_WARN_MV = 3000, 600, 2900, 1500
+
+
+def battery_fields(mv: int) -> dict:
+    num = mv**2 - V_EMPTY_MV**2
+    den = V_MAX_MV**2 - V_EMPTY_MV**2
+    pct = max(0, min(100, int(num / den * 100)))
+    level = "full" if mv > V_FULL_MV else "ok" if mv > V_WARN_MV else "low"
+    return {"battery_pct": pct, "battery_level": level}
+
+
+def _seed(addr: str) -> int:
+    return int(addr[-8:], 16)
+
+
+def device_info(addr: str) -> dict:
+    seed = _seed(addr)
+    name, digest, size = IMAGES[seed % len(IMAGES)]
+    # A minority are uncalibrated, which is the state an operator acts on.
+    homographies = 0 if seed % 9 == 0 else (2 if seed % 5 == 0 else 1)
+    flags = 0 if not homographies else 0b11
+    noun = "basestation" if homographies == 1 else "basestations"
+    summary = (
+        "uncalibrated"
+        if not homographies
+        else f"{homographies} {noun} (valid, from flash)"
+    )
+    return {
+        "info_version": 1,
+        "info_gen": 4,
+        "boot_count": 2 + seed % 30,
+        "uptime_s": 60 + seed % 9000,
+        "bl_version": SANDBOX_FW,
+        "net_version": SANDBOX_FW,
+        "image_state": 0,
+        "image_result": 1,
+        "image_state_name": "Idle",
+        "image_result_name": "Success",
+        "image_size": size,
+        "image_digest": digest,
+        "image_name": name,
+        "image_version": "",
+        "lh2_homography_count": homographies,
+        "lh2_flags": flags,
+        "lh2_summary": summary,
+        "raw": "8f0104" + f"{seed:08x}" * 4,
+    }
+
+
+def node(addr: str, status: str, battery_mv: int, x: int, y: int) -> dict:
+    """One /status entry, the full shape a real swarmit daemon serves."""
+    seed = _seed(addr)
+    # Weighted so most of the fleet is unremarkable and the badges mean
+    # something: about 5% of the fleet abnormal, split 2% a real fault and 3%
+    # a deliberate exit through the deadman. A badge on one bot in twenty is
+    # worth walking over to; a badge on one in five is wallpaper.
+    if seed % 50 == 0:
+        cause, severity, rr, fault, fault_name, pc, lr = RESETS[5]
+    elif seed % 33 == 0:
+        cause, severity, rr, fault, fault_name, pc, lr = RESETS[4]
+    else:
+        cause, severity, rr, fault, fault_name, pc, lr = RESETS[seed % 4]
+    return {
+        "device": "DotBotV3",
+        "status": status,
+        "battery": battery_mv,
+        "pos_x": x,
+        "pos_y": y,
+        "reset_reason": rr,
+        "fault": fault,
+        "fault_name": fault_name,
+        "reset_cause": cause,
+        "reset_severity": severity,
+        "from_ns": 1 if fault else 0,
+        "cfsr": 0x00008200 if fault == 1 else 0,
+        "sfsr": 0,
+        "pc": pc,
+        "lr": lr,
+        "raw": "8001" + f"{seed:08x}" * 3,
+        "last_updated_at": time.time(),
+        "info_gen": 4,
+        "info": device_info(addr),
+        **battery_fields(battery_mv),
+    }
+
+
 def _sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
@@ -107,24 +244,18 @@ def status():
     response = {}
     for bot in fetch_dotbots():
         addr = bot["address"]
-        st = state_of(addr)
         pos = bot.get("lh2_position") or {}
-        response[addr] = {
-            "device": "DotBotV3",
-            "status": st["status"],
-            "battery": int(float(bot.get("battery", 3.0)) * 1000),
-            "pos_x": int(pos.get("x", 0)),
-            "pos_y": int(pos.get("y", 0)),
-        }
+        response[addr] = node(
+            addr,
+            state_of(addr)["status"],
+            int(float(bot.get("battery", 3.0)) * 1000),
+            int(pos.get("x", 0)),
+            int(pos.get("y", 0)),
+        )
     for addr, pos in GHOSTS.items():
-        st = state_of(addr)
-        response[addr] = {
-            "device": "DotBotV3",
-            "status": st["status"],
-            "battery": 3900,
-            "pos_x": pos["pos_x"],
-            "pos_y": pos["pos_y"],
-        }
+        response[addr] = node(
+            addr, state_of(addr)["status"], 2450, pos["pos_x"], pos["pos_y"]
+        )
     return {"response": response}
 
 
@@ -270,7 +401,16 @@ async def sse_events(request: Request):
             now = time.time()
             if now - last_snapshot > 2.0:
                 last_snapshot = now
-                yield _sse({"type": "status", "response": status()["response"]})
+                # The real daemon drops the device-info hex from the stream:
+                # 310 characters per device twice a second is most of it, and
+                # only `info --raw` reads it. Mirror that, so a client tested
+                # here cannot come to depend on a field the real server
+                # withholds (swarmit testbed/webserver.py, _serialise_node).
+                snapshot = {
+                    addr: {**n, "info": {**n["info"], "raw": ""}}
+                    for addr, n in status()["response"].items()
+                }
+                yield _sse({"type": "status", "response": snapshot})
             await asyncio.sleep(0.3)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
