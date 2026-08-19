@@ -7,42 +7,42 @@ import { UnifiedBot } from "./types";
 // the bot's live heading pointer (single) or an accent knob with a xN count
 // (group).
 //
-// Control model: SCREEN-relative steering. The pad vector is the direction
-// you want the bot to move on the (north-up) map; the pad closes the heading
-// loop itself at 10 Hz: steer = P * heading-error, throttle scales with
-// deflection and drops while the bot is badly misaligned. This replaces the
-// classic body-relative mapping (y = throttle along heading, x = yaw rate),
-// which felt erratic against the simulator's motion-derived heading.
+// Control model: BODY-relative, open loop - the mapping the classic frontend
+// uses on real robots. Up/down is throttle along the bot's own heading,
+// left/right is a differential that yaws it. Deliberately not a closed loop on
+// reported heading: heading is derived from successive position fixes, so it
+// is null on any bot without a position source (an uncalibrated arena, LH2 out
+// of view), and a loop that cannot see heading cannot steer at all.
 //
-// Caveat baked into the throttle floor: the controller derives heading from
-// MOTION (successive position fixes), so a bot spinning in place reports no
-// heading change - the loop always keeps some forward speed so the heading
-// stays observable.
+// Signs follow the robot, not the map: dragging right speeds up the LEFT wheel,
+// which yaws the bot right (clockwise, so its CCW-positive `direction`
+// decreases).
+//
+// The knob travels R px for looks, but the command is scaled over CONTROL_R px
+// of pointer movement, which the pointer capture lets run outside the pad. The
+// two are separate on purpose: a 20px control throw gives a handful of usable
+// speed steps and is unusable, so the throw matches the classic pad's 100px
+// while the knob stays inside a 64px control.
+//
+// SPEED_OFFSET jumps the first non-zero step over the motors' stall band; the
+// firmware maps left_y/right_y linearly onto +/-100% with no deadband of its
+// own (apps-sandbox/dotbot/main.c).
 const SPEED_OFFSET = 30;
 const PAD = 64;
 const R = 20; // knob travel radius, as in v1
+const CONTROL_R = 100; // pointer travel for full command, as in the classic pad
+const FULL_SCALE = 64; // command at full deflection, before SPEED_OFFSET
+const DEADZONE = 3; // px of slop, so a click without a drag does not creep
 
 const clampPwm = (v: number) => Math.max(-128, Math.min(127, Math.trunc(v)));
 
-function steerTowards(bot: UnifiedBot, kx: number, ky: number): { left: number; right: number } {
-  const mag = Math.min(1, Math.hypot(kx, ky) / R);
-  if (mag < 0.12) return { left: 0, right: 0 };
-  // Desired motion direction in the controller's convention (0 = north/+y,
-  // positive CCW): dir = -atan2(ax, ay) with arena ax = kx, ay = -ky (screen
-  // y grows down, arena y grows up).
-  const desired = (-Math.atan2(kx, -ky) * 180) / Math.PI;
-  let error = bot.heading === null ? 0 : desired - bot.heading;
-  while (error > 180) error -= 360;
-  while (error < -180) error += 360;
-  // Throttle: floor keeps the heading observable; alignment factor slows the
-  // bot down while it still points the wrong way.
-  const align = Math.max(0, Math.cos((error * Math.PI) / 180));
-  const throttle = 25 + mag * 55 * align;
-  // Verified against the simulator: left channel faster = CCW on the
-  // north-up map = heading (CCW-positive) increases.
-  const steer = Math.max(-55, Math.min(55, error * 0.9));
-  let left = throttle + steer;
-  let right = throttle - steer;
+export function mixDrive(dx: number, dy: number): { left: number; right: number } {
+  if (Math.hypot(dx, dy) < DEADZONE) return { left: 0, right: 0 };
+  const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
+  const throttle = -clamp1(dy / CONTROL_R) * FULL_SCALE; // screen y grows down
+  const yaw = clamp1(dx / CONTROL_R) * FULL_SCALE;
+  let left = throttle + yaw;
+  let right = throttle - yaw;
   if (left > 0) left += SPEED_OFFSET;
   if (left < 0) left -= SPEED_OFFSET;
   if (right > 0) right += SPEED_OFFSET;
@@ -63,6 +63,9 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
   const targetsRef = useRef(targets);
   targetsRef.current = targets;
 
+  // The knob shows the same direction as the command, scaled to fit the pad.
+  const knobPx = { x: (knob.x / CONTROL_R) * R, y: (knob.y / CONTROL_R) * R };
+
   const single = targets.length === 1 ? targets[0] : null;
   const led = single
     ? single.led
@@ -73,8 +76,8 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
   useEffect(() => {
     if (!active) return;
     const t = setInterval(() => {
+      const { left, right } = mixDrive(knobRef.current.x, knobRef.current.y);
       targetsRef.current.forEach((b) => {
-        const { left, right } = steerTowards(b, knobRef.current.x, knobRef.current.y);
         putMoveRaw(b.id, b.application, left, right).catch(() => {});
       });
     }, 100);
@@ -95,9 +98,9 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
     let dx = e.clientX - (r.left + r.width / 2);
     let dy = e.clientY - (r.top + r.height / 2);
     const len = Math.hypot(dx, dy);
-    if (len > R) {
-      dx = (dx / len) * R;
-      dy = (dy / len) * R;
+    if (len > CONTROL_R) {
+      dx = (dx / len) * CONTROL_R;
+      dy = (dy / len) * CONTROL_R;
     }
     setKnob({ x: dx, y: dy });
   };
@@ -140,7 +143,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
             borderRadius: "50%",
             background: led!,
             boxShadow: `0 0 0 1px rgba(0,0,0,.4), 0 0 12px ${led}`,
-            transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            transform: `translate(calc(-50% + ${knobPx.x}px), calc(-50% + ${knobPx.y}px))`,
             transition: active ? "none" : "transform .15s ease",
           }}
         >
@@ -174,7 +177,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
             font: "600 11px/30px var(--font-mono)",
             textAlign: "center",
             boxShadow: "0 0 10px rgba(228,3,46,.55)",
-            transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            transform: `translate(calc(-50% + ${knobPx.x}px), calc(-50% + ${knobPx.y}px))`,
             transition: active ? "none" : "transform .15s ease",
           }}
         >
