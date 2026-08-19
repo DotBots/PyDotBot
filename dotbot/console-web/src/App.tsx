@@ -300,21 +300,6 @@ export const App: React.FC = () => {
             </div>
           ))}
         </div>
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 6,
-            color: "var(--muted)",
-            cursor: "pointer",
-            fontSize: 15,
-          }}
-        >
-          &#10005;
-        </div>
       </div>
 
       {/* Body row: testbed rail + view area */}
