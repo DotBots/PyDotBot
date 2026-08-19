@@ -1,4 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
+import { FirmwareEntry, load as loadHistory } from "./firmwareHistory";
 
 // v1 flash dialog, reading a real image off disk. swarmit takes the image as
 // base64 in the request body, so the file never touches the controller's
@@ -14,6 +16,23 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+export function relativeTime(ts: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: ".5px",
+  textTransform: "uppercase",
+  color: "var(--muted)",
+};
+
 interface FlashDialogProps {
   open: boolean;
   targetCount: number;
@@ -27,6 +46,12 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
   const [file, setFile] = useState<{ name: string; size: number; b64: string } | null>(null);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<FirmwareEntry[]>([]);
+
+  // Re-read on open: another tab may have flashed since this one last looked.
+  useEffect(() => {
+    if (props.open) setHistory(loadHistory());
+  }, [props.open]);
 
   const pick = async (f: File | undefined) => {
     if (!f) return;
@@ -113,6 +138,51 @@ export const FlashDialog: React.FC<FlashDialogProps> = (props) => {
         </div>
         {error && (
           <div style={{ fontSize: 12, color: "var(--accent)", marginBottom: 14 }}>{error}</div>
+        )}
+        {history.length > 0 && (
+          <>
+            <div style={{ ...labelStyle, marginBottom: 6 }}>Recently flashed</div>
+            <div
+              style={{
+                maxHeight: 132,
+                overflowY: "auto",
+                border: "1px solid var(--hairline)",
+                borderRadius: 8,
+                marginBottom: 22,
+              }}
+            >
+              {history.map((h) => (
+                <div
+                  key={`${h.name}-${h.ts}`}
+                  title={`${h.name} · ${new Date(h.ts).toLocaleString()}`}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "baseline",
+                    padding: "7px 10px",
+                    borderBottom: "1px solid var(--hairline)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                      color: h.name === file?.name ? "var(--text)" : "var(--muted)",
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {h.name}
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", flex: "none" }}>
+                    {relativeTime(h.ts)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <div

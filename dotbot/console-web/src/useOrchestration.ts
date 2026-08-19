@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { flashStream, swarmitAction, swarmitEventsUrl } from "./api";
+import { remember } from "./firmwareHistory";
 
 export interface LogRow {
   key: string;
@@ -80,6 +81,9 @@ export function useOrchestration(onToast: (msg: string) => void) {
       flashingRef.current = true;
       setFlashing(true);
       setQueue({});
+      // Recorded at send time, not on success: knowing what was pushed at a bot
+      // matters most when the flash is what went wrong.
+      if (firmwareName) remember(firmwareName, Date.now());
       flashStream(firmwareB64, devices, (ev) => {
         if (ev.type === "flash_started" && ev.devices) {
           setQueue(
