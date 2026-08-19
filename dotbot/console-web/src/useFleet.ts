@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { controllerWsUrl, fetchDotBots, fetchMapSize, fetchSwarmitStatus } from "./api";
 import {
   BotState,
+  LinkState,
   MapSize,
   PyDotBot,
+  STATE_ORDER,
   SwarmitNode,
   UnifiedBot,
   WsNotification,
@@ -26,21 +28,21 @@ export function isCrashed(sw: SwarmitNode | undefined): boolean {
 }
 
 
-export function deriveState(
-  py: PyDotBot | undefined,
-  sw: SwarmitNode | undefined,
-): BotState {
-  if (py && py.status !== 0) return "Inactive"; // control plane says INACTIVE/LOST
-  if (sw) {
-    const s = sw.status as BotState;
-    return (
-      ["Running", "Programming", "Bootloader", "Stopping", "Resetting"] as BotState[]
-    ).includes(s)
-      ? s
-      : "Inactive";
-  }
-  if (py) return "Running"; // control plane only (bare-mode bot): active = running
-  return "Inactive";
+// The sandbox lifecycle, from swarmit alone. A bot swarmit does not know has
+// no sandbox state; saying "Running" for it would claim a sandbox it lacks.
+export function deriveState(sw: SwarmitNode | undefined): BotState | null {
+  if (!sw) return null;
+  return STATE_ORDER.includes(sw.status as BotState)
+    ? (sw.status as BotState)
+    : null;
+}
+
+// Whether the control plane still hears the bot, from PyDotBot alone.
+// "unknown" is a bot swarmit reports but PyDotBot has never seen.
+export function deriveLink(py: PyDotBot | undefined): LinkState {
+  if (!py) return "unknown";
+  if (py.status === 0) return "active";
+  return py.status === 2 ? "lost" : "inactive";
 }
 
 export function merge(
@@ -52,10 +54,12 @@ export function merge(
   for (const id of ids) {
     const py = pyBots[id];
     const sw = swNodes[id];
-    const state = deriveState(py, sw);
+    const state = deriveState(sw);
+    const link = deriveLink(py);
     out.push({
       id,
       state,
+      link,
       position:
         py?.lh2_position ?? (sw ? { x: sw.pos_x, y: sw.pos_y } : null),
       heading:
@@ -66,10 +70,10 @@ export function merge(
       led: py?.rgb_led ?? null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
-      // Drivable = a DBP-speaking image is running: the bot is known to the
-      // control plane and active. SwarmIT-only bots (e.g. sitting in the
-      // bootloader) are not drivable.
-      drivable: !!py && py.status === 0 && state === "Running",
+      // Drivable = a DBP-speaking image is running. The control plane must be
+      // hearing the bot, and either its sandbox is Running or it has no
+      // sandbox at all (a bare-mode bot swarmit does not manage).
+      drivable: link === "active" && (state === null || state === "Running"),
       nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],

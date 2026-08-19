@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 
-import { batteryColor, batteryPct } from "./viewChrome";
+import { batteryColor, batteryPct, stateColor, stateLabel } from "./viewChrome";
 
 import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { LH2Position, MapSize, STATE_ORDER, UnifiedBot } from "./types";
+import { BotState, LH2Position, LINK_LABEL, MapSize, STATE_ORDER, UnifiedBot } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -49,19 +49,28 @@ interface FooterProps {
   onToast: (msg: string) => void;
 }
 
-const StateDot: React.FC<{ state: string; glow?: boolean; size?: number }> = ({ state, glow, size = 9 }) => (
+const StateDot: React.FC<{ state: BotState | null; glow?: boolean; size?: number }> = ({ state, glow, size = 9 }) => (
   <span
     style={{
       width: size,
       height: size,
       borderRadius: "50%",
-      background: `var(--s-${state})`,
-      boxShadow: glow ? `0 0 6px var(--s-${state})` : undefined,
+      background: stateColor(state),
+      boxShadow: glow ? `0 0 6px ${stateColor(state)}` : undefined,
       display: "inline-block",
       flex: "none",
     }}
   />
 );
+
+// The two axes fail differently, so the hint names which one is blocking.
+function notDrivableReason(one: UnifiedBot | null | undefined): string {
+  if (!one) return "nothing selected";
+  if (one.link === "unknown") return "not on the control plane";
+  if (one.link !== "active") return `the control plane is not hearing it (${one.link})`;
+  if (one.state && one.state !== "Running") return `its sandbox is ${one.state.toLowerCase()}, not running`;
+  return "no DBP in the running image";
+}
 
 const BatteryBar: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
   const volts = bot.battery;
@@ -105,7 +114,7 @@ const ControlDock: React.FC<{
   const hint = !enabled
     ? isGroup
       ? "⚠  Not drivable - no DBP in selection"
-      : `⚠  Not drivable - no DBP in currently running ${single?.state === "Running" ? "image" : single?.state.toLowerCase()}`
+      : `⚠  Not drivable - ${notDrivableReason(single)}`
     : anyAuto
       ? `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
       : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map to add waypoints${pending.length ? ` · ${pending.length} queued` : ""}`;
@@ -417,7 +426,15 @@ export const Footer: React.FC<FooterProps> = (props) => {
               <div style={label}>Status</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <StateDot state={one.state} glow />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{one.state}</span>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{stateLabel(one.state)}</span>
+                {one.link !== "active" && (
+                  <span
+                    title="The control plane is not hearing this bot; the sandbox state above is the last one SwarmIT reported."
+                    style={{ ...mono, fontSize: 9, letterSpacing: ".5px", color: "var(--muted)", border: "1px solid var(--hairline)", borderRadius: 5, padding: "1px 5px" }}
+                  >
+                    {LINK_LABEL[one.link].toUpperCase()}
+                  </span>
+                )}
               </div>
               {props.flashQueue[one.id] && !props.flashQueue[one.id].done && (
                 <div style={{ minWidth: 190 }}>

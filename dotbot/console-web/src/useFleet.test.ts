@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PyDotBot, SwarmitNode } from "./types";
-import { deriveState, isCrashed, merge } from "./useFleet";
+import { deriveLink, deriveState, isCrashed, merge } from "./useFleet";
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -19,36 +19,57 @@ const sw = (over: Partial<SwarmitNode> = {}): SwarmitNode => ({
   ...over,
 });
 
-describe("deriveState", () => {
-  it("control-plane INACTIVE/LOST wins over the swarmit state", () => {
-    expect(deriveState(py({ status: 1 }), sw())).toBe("Inactive");
-    expect(deriveState(py({ status: 2 }), sw({ status: "Programming" }))).toBe(
-      "Inactive",
-    );
-  });
-
-  it("passes swarmit lifecycle states through", () => {
-    for (const s of [
-      "Running",
-      "Programming",
-      "Bootloader",
-      "Stopping",
-      "Resetting",
-    ]) {
-      expect(deriveState(py(), sw({ status: s }))).toBe(s);
+describe("deriveState (the sandbox axis)", () => {
+  it("reports only what swarmit says, ignoring the control plane", () => {
+    // The two axes are independent: a bot can be mid-Programming and unheard
+    // at the same time, and the old single state hid the sandbox in that case.
+    expect(deriveState(sw({ status: "Programming" }))).toBe("Programming");
+    for (const s of ["Running", "Programming", "Bootloader", "Stopping", "Resetting"]) {
+      expect(deriveState(sw({ status: s }))).toBe(s);
     }
   });
 
-  it("maps an unknown swarmit state to Inactive", () => {
-    expect(deriveState(py(), sw({ status: "Off" }))).toBe("Inactive");
+  it("has no sandbox state for a bot swarmit does not know", () => {
+    // Saying "Running" here claimed a sandbox a bare-mode bot does not have.
+    expect(deriveState(undefined)).toBeNull();
   });
 
-  it("control-plane-only active bot is Running", () => {
-    expect(deriveState(py(), undefined)).toBe("Running");
+  it("does not invent a state for a lifecycle value it does not know", () => {
+    expect(deriveState(sw({ status: "Off" }))).toBeNull();
+  });
+});
+
+describe("deriveLink (the control-plane axis)", () => {
+  it("maps PyDotBot's DotBotStatus", () => {
+    expect(deriveLink(py({ status: 0 }))).toBe("active");
+    expect(deriveLink(py({ status: 1 }))).toBe("inactive");
+    expect(deriveLink(py({ status: 2 }))).toBe("lost");
   });
 
-  it("no data at all is Inactive", () => {
-    expect(deriveState(undefined, undefined)).toBe("Inactive");
+  it("is unknown for a bot the control plane has never seen", () => {
+    expect(deriveLink(undefined)).toBe("unknown");
+  });
+});
+
+describe("the two axes stay independent", () => {
+  it("keeps the sandbox state on a bot the control plane has lost", () => {
+    const [b] = merge({ aaaa: py({ address: "aaaa", status: 2 }) }, { aaaa: sw({ status: "Programming" }) });
+    expect(b.state).toBe("Programming");
+    expect(b.link).toBe("lost");
+    expect(b.drivable).toBe(false);
+  });
+
+  it("drives a bare-mode bot that has no sandbox at all", () => {
+    const [b] = merge({ aaaa: py({ address: "aaaa", status: 0 }) }, {});
+    expect(b.state).toBeNull();
+    expect(b.link).toBe("active");
+    expect(b.drivable).toBe(true);
+  });
+
+  it("will not drive a swarmit bot the control plane cannot reach", () => {
+    const [b] = merge({}, { aaaa: sw({ status: "Running" }) });
+    expect(b.link).toBe("unknown");
+    expect(b.drivable).toBe(false);
   });
 });
 

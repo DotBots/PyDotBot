@@ -1,15 +1,7 @@
 import React from "react";
 
 import { UnifiedBot } from "./types";
-import {
-  BatteryCell,
-  FilterBar,
-  LedDot,
-  Pagination,
-  SortKey,
-  useQueriedBots,
-  useViewQuery,
-} from "./viewChrome";
+import { BatteryCell, FilterBar, LedDot, Pagination, SortKey, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
 interface ListViewProps {
   bots: UnifiedBot[];
@@ -209,7 +201,7 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                           width: 9,
                           height: 9,
                           borderRadius: "50%",
-                          background: `var(--s-${b.state})`,
+                          background: stateColor(b.state),
                           display: "inline-block",
                         }}
                       />

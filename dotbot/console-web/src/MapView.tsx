@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
-import { batteryColor, batteryPct } from "./viewChrome";
+import { batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { LH2Position, MapSize, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
@@ -330,7 +330,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const selected = props.selection.has(b.id);
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
-                const stc = `var(--s-${b.state})`;
+                const stc = stateColor(b.state);
                 const pct = batteryPct(b);
                 const blink = b.state === "Programming" || b.state === "Resetting";
                 return (

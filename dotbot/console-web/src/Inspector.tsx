@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 
-import { UnifiedBot } from "./types";
+import { stateLabel } from "./viewChrome";
+
+import { LINK_LABEL, UnifiedBot } from "./types";
 
 // Right-side inspector: the low-level layer next to the map's high-level one.
 // Renders what `dotbot swarm info` prints, from the same /status payload, and
@@ -35,7 +37,8 @@ export function infoText(bot: UnifiedBot): string {
   const info = sw?.info;
   const out: string[] = [bot.id];
   out.push(`Type              ${bot.deviceType}`);
-  out.push(`Status            ${bot.state}`);
+  out.push(`Sandbox           ${stateLabel(bot.state)}`);
+  out.push(`Control plane     ${LINK_LABEL[bot.link]}`);
   out.push(`Battery           ${bot.battery.toFixed(2)}V`);
   out.push(
     `Position          ${bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}`,
@@ -141,7 +144,8 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
       </div>
 
       <Row k="Type" v={bot.deviceType} />
-      <Row k="Status" v={bot.state} />
+      <Row k="Sandbox" v={stateLabel(bot.state)} />
+      <Row k="Control plane" v={LINK_LABEL[bot.link]} />
       <Row k="Battery" v={`${bot.battery.toFixed(2)}V`} />
       <Row
         k="Position"

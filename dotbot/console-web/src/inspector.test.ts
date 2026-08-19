@@ -6,6 +6,7 @@ import { SwarmitNode, UnifiedBot } from "./types";
 const bot = (over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   id: "217B829760EBA3E0",
   state: "Running",
+  link: "active",
   position: { x: 1552, y: 267 },
   heading: null,
   battery: 2.58,

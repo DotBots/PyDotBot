@@ -1,7 +1,7 @@
 import React from "react";
 
 import { UnifiedBot } from "./types";
-import { BatteryCell, FilterBar, LedDot, Pagination, useQueriedBots, useViewQuery } from "./viewChrome";
+import { BatteryCell, FilterBar, LedDot, Pagination, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
 interface GridViewProps {
   bots: UnifiedBot[];
@@ -96,7 +96,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
                       width: 9,
                       height: 9,
                       borderRadius: "50%",
-                      background: `var(--s-${b.state})`,
+                      background: stateColor(b.state),
                       display: "inline-block",
                     }}
                   />

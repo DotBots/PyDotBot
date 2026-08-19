@@ -6,6 +6,7 @@ import { PlannedMission, UnifiedBot } from "./types";
 const bot = (id: string, over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   id,
   state: "Running",
+  link: "active",
   position: { x: 0, y: 0 },
   heading: null,
   battery: 3.9,

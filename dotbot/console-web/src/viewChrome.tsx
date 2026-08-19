@@ -38,7 +38,7 @@ export function applyQuery(bots: UnifiedBot[], q: ViewQuery): { rows: UnifiedBot
       case "battery":
         return dir * (a.battery - b.battery);
       case "state":
-        return dir * a.state.localeCompare(b.state);
+        return dir * stateLabel(a.state).localeCompare(stateLabel(b.state));
       case "fw":
         return dir * a.deviceType.localeCompare(b.deviceType);
       case "image":
@@ -179,6 +179,16 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
 // The fallbacks below only cover a bot swarmit does not know (a control-plane
 // only bot) and are deliberately crude - a bar with no band rather than a
 // confident wrong number.
+/** Pill text for the sandbox axis. A bot swarmit does not manage has none. */
+export function stateLabel(state: BotState | null): string {
+  return state ?? "No sandbox";
+}
+
+/** Colour for the sandbox axis; muted when there is no sandbox to colour. */
+export function stateColor(state: BotState | null): string {
+  return state ? `var(--s-${state})` : "var(--muted)";
+}
+
 export function batteryPct(bot: { batteryPct: number | null; battery: number }): number {
   if (bot.batteryPct !== null) return Math.max(0, Math.min(100, bot.batteryPct));
   return Math.max(0, Math.min(100, Math.trunc((bot.battery / 3.0) * 100)));

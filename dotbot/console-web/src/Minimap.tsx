@@ -1,5 +1,7 @@
 import React, { useRef } from "react";
 
+import { stateColor } from "./viewChrome";
+
 import { Camera, clampCam, ViewGeom } from "./MapView";
 import { MapSize, UnifiedBot } from "./types";
 
@@ -102,8 +104,8 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
                   height: 5,
                   borderRadius: "50%",
                   transform: "translate(-50%, -50%)",
-                  background: `var(--s-${b.state})`,
-                  boxShadow: `0 0 4px var(--s-${b.state})`,
+                  background: stateColor(b.state),
+                  boxShadow: `0 0 4px ${stateColor(b.state)}`,
                 }}
               />
             ))}

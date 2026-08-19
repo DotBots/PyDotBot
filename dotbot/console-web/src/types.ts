@@ -1,11 +1,21 @@
-// SwarmIT node lifecycle states, plus UI-derived Inactive.
+// Two independent axes, kept apart on purpose.
+//
+// BotState is the SwarmIT sandbox lifecycle, swarmit's vocabulary verbatim. It
+// says what the TrustZone sandbox is doing. A bot swarmit does not know (one
+// running bare, with no sandbox) has no value here at all, which is why the
+// merged object carries `state: BotState | null` rather than inventing one.
+//
+// LinkState is PyDotBot's DotBotStatus: whether the control plane is still
+// hearing the bot. Orthogonal to the sandbox - a bot can be mid-Programming
+// and unheard at the same time, and collapsing the two lost exactly that.
 export type BotState =
   | "Running"
   | "Programming"
   | "Bootloader"
   | "Stopping"
-  | "Resetting"
-  | "Inactive";
+  | "Resetting";
+
+export type LinkState = "active" | "inactive" | "lost" | "unknown";
 
 export const STATE_ORDER: BotState[] = [
   "Running",
@@ -13,8 +23,14 @@ export const STATE_ORDER: BotState[] = [
   "Bootloader",
   "Stopping",
   "Resetting",
-  "Inactive",
 ];
+
+export const LINK_LABEL: Record<LinkState, string> = {
+  active: "Live",
+  inactive: "Inactive",
+  lost: "Lost",
+  unknown: "Not on the control plane",
+};
 
 // PyDotBot REST/WS shapes (subset the console consumes).
 export interface LH2Position {
@@ -99,7 +115,8 @@ export interface SwarmitNode {
 // The merged per-bot object the UI binds to (controller + swarmit joined by address).
 export interface UnifiedBot {
   id: string; // hex address, the join key
-  state: BotState;
+  state: BotState | null; // null: swarmit does not know this bot (no sandbox)
+  link: LinkState;
   position: LH2Position | null; // arena mm
   heading: number | null; // degrees
   battery: number; // volts
