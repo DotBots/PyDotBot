@@ -322,7 +322,6 @@ export const App: React.FC = () => {
           }
           onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
           onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
-          onReset={() => orch.act("reset", selection.size ? [...selection] : undefined)}
           onSelectIds={(ids) => onSelect(ids, "replace")}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}

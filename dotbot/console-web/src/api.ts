@@ -83,7 +83,7 @@ export function controllerWsUrl(): string {
 // --- SwarmIT orchestration (write path; same contract as the real server) ---
 
 export async function swarmitAction(
-  action: "start" | "stop" | "reset",
+  action: "start" | "stop",
   devices?: string[],
 ): Promise<void> {
   await fetch(`${SWARMIT}/${action}`, {

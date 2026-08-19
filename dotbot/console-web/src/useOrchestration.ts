@@ -20,7 +20,12 @@ export interface FlashJob {
 }
 
 // Orchestration plane: live log feed (swarmit /events SSE) + flash queue
-// (driven by /flash/stream chunk events) + the start/stop/reset actions.
+// (driven by /flash/stream chunk events) + the start/stop actions.
+//
+// No reset: swarmit's /reset takes {locations: {addr: {pos_x, pos_y}}}, one
+// per ready device, and the bootloader's handler stores the position but never
+// triggers the SoC reset (the line is commented out in the netcore), so there
+// is nothing here that could work.
 export function useOrchestration(onToast: (msg: string) => void) {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [queue, setQueue] = useState<Record<string, FlashJob>>({});
@@ -63,7 +68,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
   const clearLogs = useCallback(() => setLogs([]), []);
 
   const act = useCallback(
-    (action: "start" | "stop" | "reset", devices?: string[]) => {
+    (action: "start" | "stop", devices?: string[]) => {
       const target = devices && devices.length ? `${devices.length} device(s)` : "whole fleet";
       swarmitAction(action, devices)
         .then(() => onToast(`${action[0].toUpperCase()}${action.slice(1)} sent · ${target}`))

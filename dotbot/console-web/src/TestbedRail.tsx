@@ -40,7 +40,6 @@ interface TestbedRailProps {
   onFlash: (image: FirmwareFile) => void;
   onStart: () => void;
   onStop: () => void;
-  onReset: () => void;
   onSelectIds: (ids: string[]) => void;
   onGoMission: (key: string) => void;
   onDiscardMission: (key: string) => void;
@@ -189,7 +188,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           {[
             { g: "▶", t: "Start", fn: props.onStart },
             { g: "■", t: "Stop", fn: props.onStop },
-            { g: "↻", t: "Reset", fn: props.onReset },
           ].map((x, i) => (
             <div key={i} title={x.t} onClick={x.fn} style={{ ...ico, cursor: "pointer" }}>
               {x.g}
@@ -300,15 +298,12 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
                   Target&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{targetLabel}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                   <div onClick={props.onStart} style={railBtn(false)}>
                     &#9654;&nbsp;Start
                   </div>
                   <div onClick={props.onStop} style={railBtn(false)}>
                     &#9632;&nbsp;Stop
-                  </div>
-                  <div onClick={props.onReset} style={railBtn(false)}>
-                    &#8635;&nbsp;Reset
                   </div>
                 </div>
                 {props.flashing && (
