@@ -50,6 +50,7 @@ jobs:
         matrix.node-version == 20
       uses: codecov/codecov-action@v4
       with:
+        flags: python
         verbose: true
 
   control_loop:
@@ -111,6 +112,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
+        flags: frontend
         verbose: true
     - name: Upload frontend build
       uses: actions/upload-artifact@v4
@@ -140,6 +142,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
+        flags: console
         verbose: true
     - name: Upload console build
       uses: actions/upload-artifact@v4
