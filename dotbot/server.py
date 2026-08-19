@@ -30,6 +30,7 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotBackgroundMapModel,
+    DotBotConnectionModel,
     DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -291,6 +292,30 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
 async def map_size():
     """Map size HTTP GET handler."""
     return api.controller.map_size
+
+
+@api.get(
+    path="/controller/connection",
+    response_model=DotBotConnectionModel,
+    summary="Return how the controller reaches the swarm",
+    tags=["controller"],
+)
+async def connection():
+    """Connection HTTP GET handler."""
+    settings = api.controller.settings
+    if settings.adapter == "cloud":
+        scheme = "mqtts" if settings.mqtt_use_tls else "mqtt"
+        conn = f"{scheme}://{settings.mqtt_host}:{settings.mqtt_port}"
+    elif settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+        conn = "simulator"
+    else:
+        conn = settings.port
+    return DotBotConnectionModel(
+        adapter=settings.adapter,
+        connection=conn,
+        swarm_id=settings.network_id,
+        gw_address=settings.gw_address,
+    )
 
 
 @api.get(

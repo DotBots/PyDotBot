@@ -88,6 +88,20 @@ class DotBotMapSizeModel(BaseModel):
     height: int  # in mm unit
 
 
+class DotBotConnectionModel(BaseModel):
+    """How the controller reaches the swarm, for display in a UI.
+
+    A curated view, not the settings object: the same settings carry
+    `mqtt_username` / `mqtt_password`, and this is served to any browser that
+    can reach the controller.
+    """
+
+    adapter: str  # edge | cloud | dotbot-simulator | sailbot-simulator | serial
+    connection: str  # display form: mqtt(s)://host:port, a device path, or simulator
+    swarm_id: str  # hex network id
+    gw_address: str
+
+
 class DotBotBackgroundMapModel(BaseModel):
     """Background map model."""
 
