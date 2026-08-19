@@ -240,7 +240,7 @@ export const App: React.FC = () => {
               {conn.connection}
             </span>
             <span
-              title="Swarm id (Mari network id)"
+              title="Swarm id (the Mari network id) - the field to quote when reporting a problem"
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 10,
@@ -250,7 +250,7 @@ export const App: React.FC = () => {
                 padding: "1px 6px",
               }}
             >
-              swarm {conn.swarm_id}
+              swarm id {conn.swarm_id}
             </span>
           </>
         )}
