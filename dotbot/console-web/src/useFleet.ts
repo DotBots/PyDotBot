@@ -14,22 +14,14 @@ import {
 
 const TRAIL_MAX = 200;
 
-// nRF RESETREAS bits, mirroring swarmit's RESET_REASON_FLAGS. Only the crash
-// predicate needs them: the readable label is served by swarmit, which is
-// where the branch order that produces it lives.
-const RR_WDT0 = 1 << 1;
-const RR_LOCKUP = 1 << 4;
-
-// A crash in swarmit's sense: a latched fault, the crash deadman (WDT0), or a
-// CPU lockup. This is the set an operator triages after a run.
-export function isCrashed(sw: SwarmitNode | undefined): boolean {
-  if (!sw || sw.reset_reason === undefined) return false;
-  return Boolean(sw.fault) || Boolean(sw.reset_reason & (RR_WDT0 | RR_LOCKUP));
+// swarmit tiers the last reset itself (crashed / hung / normal); the console
+// styles by that rather than re-deriving the bit tests, so the badge and the
+// sentence beside it cannot disagree.
+export function severityOf(sw: SwarmitNode | undefined): UnifiedBot["severity"] {
+  const s = sw?.reset_severity;
+  return s === "crashed" || s === "hung" ? s : "normal";
 }
 
-
-// The sandbox lifecycle, from swarmit alone. A bot swarmit does not know has
-// no sandbox state; saying "Running" for it would claim a sandbox it lacks.
 export function deriveState(sw: SwarmitNode | undefined): BotState | null {
   if (!sw) return null;
   return STATE_ORDER.includes(sw.status as BotState)
@@ -79,7 +71,7 @@ export function merge(
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
-      crashed: isCrashed(sw),
+      severity: severityOf(sw),
       batteryPct: sw?.battery_pct ?? null,
       batteryLevel: sw?.battery_level ?? null,
       swarmit: sw ?? null,

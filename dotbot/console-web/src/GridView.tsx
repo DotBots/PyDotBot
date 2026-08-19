@@ -1,7 +1,7 @@
 import React from "react";
 
 import { UnifiedBot } from "./types";
-import { BatteryCell, FilterBar, LedDot, Pagination, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
+import { BatteryCell, FilterBar, LedDot, Pagination, ResetBadge, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
 interface GridViewProps {
   bots: UnifiedBot[];
@@ -89,6 +89,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <LedDot bot={b} />
+                  <ResetBadge bot={b} />
                   <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 14 }}>{b.id.slice(-4)}</span>
                   <div style={{ flex: 1 }} />
                   <span

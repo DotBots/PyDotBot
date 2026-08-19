@@ -19,7 +19,7 @@ const bot = (over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   trail: [],
   image: null,
   resetCause: null,
-  crashed: false,
+  severity: "normal",
   batteryPct: null,
   batteryLevel: null,
   swarmit: null,
@@ -76,7 +76,7 @@ describe("infoText", () => {
     const clean = infoText(bot({ swarmit: node({ reset_reason: 0, fault: 0 }) }));
     expect(clean).not.toContain("cfsr");
     const crashed = infoText(
-      bot({ crashed: true, swarmit: node({ reset_reason: 2, fault: 1, pc: 0x2000abcd }) }),
+      bot({ severity: "crashed", swarmit: node({ reset_reason: 2, fault: 1, pc: 0x2000abcd }) }),
     );
     expect(crashed).toContain("cfsr");
     expect(crashed).toContain("pc              0x2000abcd");
@@ -88,7 +88,7 @@ describe("infoText", () => {
   it("hides the fault registers for a watchdog timeout, but keeps pc and lr", () => {
     const hung = infoText(
       bot({
-        crashed: true,
+        severity: "hung",
         resetCause: "hung (watchdog0 pc=0x00010230)",
         swarmit: node({
           reset_reason: 0x02,

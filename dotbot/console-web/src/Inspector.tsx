@@ -187,7 +187,7 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
       {sw?.reset_reason !== undefined && (
         <>
           <div style={{ height: 8 }} />
-          <Row k="Last reset" v={bot.resetCause ?? "unknown"} accent={bot.crashed} />
+          <Row k="Last reset" v={bot.resetCause ?? "unknown"} accent={bot.severity === "crashed"} />
           <Row k="reset_reason" v={hex32(sw.reset_reason)} indent />
           <Row k="fault" v={sw.fault_name ?? String(sw.fault)} indent />
           {Boolean(sw.fault) && (

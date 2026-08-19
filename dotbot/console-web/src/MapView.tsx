@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
-import { batteryColor, batteryPct, stateColor } from "./viewChrome";
+import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { LH2Position, MapSize, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
@@ -365,6 +365,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       height: 0,
                     }}
                   >
+                    {/* last-reset badge, top-right of the glyph */}
+                    <div style={{ position: "absolute", left: 8, top: -12 }}>
+                      <ResetBadge bot={b} />
+                    </div>
                     {/* selection rectangle */}
                     {selected && (
                       <div

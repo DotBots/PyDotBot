@@ -100,6 +100,7 @@ export interface SwarmitNode {
   fault?: number; // latched fault type, 0 = none
   reset_cause?: string; // swarmit's friendly label for the last reset
   fault_name?: string; // the latched FaultType's name
+  reset_severity?: string; // crashed | hung | normal, swarmit's own tiering
   battery_pct?: number; // 0-100 on this robot's own battery profile
   battery_level?: string; // full | ok | low, the bootloader's LED bands
   from_ns?: number; // the fault came from the non-secure world
@@ -129,7 +130,10 @@ export interface UnifiedBot {
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
-  crashed: boolean; // last reset was a fault, a crash deadman, or a lockup
+  // How much attention the last reset deserves, straight from swarmit.
+  // "hung" is its own tier: a sandbox app has no clean exit, so a normal
+  // completion latches WatchdogTimeout and must not read as a crash.
+  severity: "crashed" | "hung" | "normal";
   batteryPct: number | null; // served by swarmit; null for a bot it does not know
   batteryLevel: string | null; // full | ok | low
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector

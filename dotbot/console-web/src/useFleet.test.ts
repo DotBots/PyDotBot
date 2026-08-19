@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PyDotBot, SwarmitNode } from "./types";
-import { deriveLink, deriveState, isCrashed, merge } from "./useFleet";
+import { deriveLink, deriveState, merge, severityOf } from "./useFleet";
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -126,7 +126,7 @@ describe("merge", () => {
   });
 });
 
-describe("isCrashed", () => {
+describe("severityOf", () => {
   const node = (over: Partial<SwarmitNode>): SwarmitNode => ({
     device: "DotBotV3",
     status: "Running",
@@ -136,21 +136,16 @@ describe("isCrashed", () => {
     ...over,
   });
 
-  it("is false when the server reported no reset_reason", () => {
-    expect(isCrashed(undefined)).toBe(false);
-    expect(isCrashed(node({}))).toBe(false);
+  it("renders swarmit's tier rather than re-deriving it", () => {
+    expect(severityOf(node({ reset_severity: "crashed" }))).toBe("crashed");
+    expect(severityOf(node({ reset_severity: "hung" }))).toBe("hung");
+    expect(severityOf(node({ reset_severity: "normal" }))).toBe("normal");
   });
 
-  it("counts a fault, the crash deadman and a lockup", () => {
-    expect(isCrashed(node({ reset_reason: 0, fault: 1 }))).toBe(true);
-    expect(isCrashed(node({ reset_reason: 1 << 1 }))).toBe(true);
-    expect(isCrashed(node({ reset_reason: 1 << 4 }))).toBe(true);
-  });
-
-  it("leaves an ordinary boot alone", () => {
-    expect(isCrashed(node({ reset_reason: 0 }))).toBe(false);
-    expect(isCrashed(node({ reset_reason: 1 << 3 }))).toBe(false); // soft-reset
-    expect(isCrashed(node({ reset_reason: 1 << 25 }))).toBe(false); // stopped
+  it("is normal when swarmit said nothing, so a badge needs evidence", () => {
+    expect(severityOf(undefined)).toBe("normal");
+    expect(severityOf(node({}))).toBe("normal");
+    expect(severityOf(node({ reset_severity: "something-new" }))).toBe("normal");
   });
 });
 

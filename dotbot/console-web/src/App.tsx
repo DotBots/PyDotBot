@@ -89,7 +89,9 @@ export const App: React.FC = () => {
 
   // One filter for all three views: "who crashed" is the same question whether
   // you are looking at the map, the list or the grid.
-  const shownBots = layers.crashedOnly ? bots.filter((b) => b.crashed) : bots;
+  const shownBots = layers.crashedOnly
+    ? bots.filter((b) => b.severity === "crashed")
+    : bots;
   const selectedBots = bots.filter((b) => selection.has(b.id));
   const drivableSelected = selectedBots.filter((b) => b.drivable);
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");

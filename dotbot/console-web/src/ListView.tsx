@@ -1,7 +1,7 @@
 import React from "react";
 
 import { UnifiedBot } from "./types";
-import { BatteryCell, FilterBar, LedDot, Pagination, SortKey, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
+import { BatteryCell, FilterBar, LedDot, Pagination, ResetBadge, SortKey, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
 interface ListViewProps {
   bots: UnifiedBot[];
@@ -170,6 +170,7 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                   <td style={{ padding: "9px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                       <LedDot bot={b} />
+                      <ResetBadge bot={b} />
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{b.id}</span>
                     </div>
                   </td>
