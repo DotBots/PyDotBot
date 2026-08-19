@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PyDotBot, SwarmitNode } from "./types";
-import { deriveState, merge, resetCause } from "./useFleet";
+import { deriveState, isCrashed, merge } from "./useFleet";
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -105,7 +105,7 @@ describe("merge", () => {
   });
 });
 
-describe("resetCause", () => {
+describe("isCrashed", () => {
   const node = (over: Partial<SwarmitNode>): SwarmitNode => ({
     device: "DotBotV3",
     status: "Running",
@@ -115,27 +115,29 @@ describe("resetCause", () => {
     ...over,
   });
 
-  it("is unknown when the server sends no reset_reason", () => {
-    expect(resetCause(node({}))).toBeNull();
-    expect(resetCause(undefined)).toBeNull();
+  it("is false when the server reported no reset_reason", () => {
+    expect(isCrashed(undefined)).toBe(false);
+    expect(isCrashed(node({}))).toBe(false);
   });
 
-  it("reads the common causes", () => {
-    expect(resetCause(node({ reset_reason: 0 }))).toBe("power-on");
-    expect(resetCause(node({ reset_reason: 1 << 0 }))).toBe("power-on");
-    expect(resetCause(node({ reset_reason: 1 << 3 }))).toBe("soft-reset");
-    expect(resetCause(node({ reset_reason: 1 << 4 }))).toBe("lockup");
-    expect(resetCause(node({ reset_reason: 1 << 25 }))).toBe("stopped");
+  it("counts a fault, the crash deadman and a lockup", () => {
+    expect(isCrashed(node({ reset_reason: 0, fault: 1 }))).toBe(true);
+    expect(isCrashed(node({ reset_reason: 1 << 1 }))).toBe(true);
+    expect(isCrashed(node({ reset_reason: 1 << 4 }))).toBe(true);
   });
 
-  it("lets a crash outrank a stop, since both bits can be set at once", () => {
-    expect(resetCause(node({ reset_reason: (1 << 1) | (1 << 25) }))).toBe("crashed");
-    expect(resetCause(node({ reset_reason: 0, fault: 3, pc: 0x2000abcd }))).toBe(
-      "crashed (pc=0x2000abcd)",
-    );
+  it("leaves an ordinary boot alone", () => {
+    expect(isCrashed(node({ reset_reason: 0 }))).toBe(false);
+    expect(isCrashed(node({ reset_reason: 1 << 3 }))).toBe(false); // soft-reset
+    expect(isCrashed(node({ reset_reason: 1 << 25 }))).toBe(false); // stopped
   });
+});
 
-  it("lets lockup win over a commanded reset, as format_reset_cause does", () => {
-    expect(resetCause(node({ reset_reason: (1 << 3) | (1 << 4) }))).toBe("lockup");
+describe("merge takes the reset label from the server", () => {
+  it("passes reset_cause through and reports it missing rather than guessing", () => {
+    const [a] = merge({}, { A: { device: "DotBotV3", status: "Running", battery: 3900, pos_x: 0, pos_y: 0, reset_cause: "stopped" } });
+    expect(a.resetCause).toBe("stopped");
+    const [b] = merge({}, { B: { device: "DotBotV3", status: "Running", battery: 3900, pos_x: 0, pos_y: 0 } });
+    expect(b.resetCause).toBeNull();
   });
 });

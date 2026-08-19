@@ -65,6 +65,10 @@ export interface SwarmitDeviceInfo {
   image_digest: string;
   lh2_homography_count?: number;
   lh2_flags?: number;
+  // Display strings swarmit computes; the console renders them verbatim.
+  lh2_summary?: string;
+  image_state_name?: string;
+  image_result_name?: string;
   raw?: string; // hex of the device-info packet, only on /status
 }
 
@@ -78,6 +82,8 @@ export interface SwarmitNode {
   pos_y: number;
   reset_reason?: number; // raw nRF RESETREAS
   fault?: number; // latched fault type, 0 = none
+  reset_cause?: string; // swarmit's friendly label for the last reset
+  fault_name?: string; // the latched FaultType's name
   from_ns?: number; // the fault came from the non-secure world
   pc?: number; // program counter at the fault
   lr?: number;

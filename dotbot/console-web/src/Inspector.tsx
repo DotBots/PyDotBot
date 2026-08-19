@@ -7,22 +7,9 @@ import { UnifiedBot } from "./types";
 // stacks one card per selected bot the way that command prints one panel per
 // device. Everything is plain text in normal flow, so it selects and copies.
 //
-// The enum vocabularies below mirror swarmit's (testbed/protocol.py). They are
-// a copy and will drift; the durable fix is for /status to carry the display
-// strings swarmit already computes (lh2_summary, format_reset_cause).
-const FAULTS = ["NoFault", "HardFault", "SecureFault", "WatchdogTimeout"];
-const IMAGE_STATE = ["Idle", "Downloading", "Downloaded", "Updating"];
-const IMAGE_RESULT: Record<number, string> = {
-  0: "Initial",
-  1: "Success",
-  2: "NotEnoughFlash",
-  4: "ConnectionLost",
-  5: "IntegrityCheckFailure",
-  8: "UpdateFailed",
-};
-const LH2_FLAG_VALID = 1 << 0;
-const LH2_FLAG_FROM_FLASH = 1 << 1;
-
+// swarmit serves the display strings it computes (reset_cause, fault_name,
+// image_*_name, lh2_summary), so this renders them rather than keeping a
+// second copy of the vocabulary in TypeScript.
 export function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -33,18 +20,11 @@ export function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
-// Mirrors DeviceInfo.lh2_summary: a bot that never answered and one reporting
-// zero homographies are different facts, and are acted on differently.
+// swarmit distinguishes a device that never answered from one reporting zero
+// homographies: one is re-provisioned, the other is a fetch that has not
+// landed. The server words both; absence here means the former.
 export function formatLh2(bot: UnifiedBot): string {
-  const info = bot.swarmit?.info;
-  if (!info) return "unknown (no device info)";
-  const count = info.lh2_homography_count ?? 0;
-  if (!count) return "uncalibrated";
-  const flags: string[] = [];
-  if ((info.lh2_flags ?? 0) & LH2_FLAG_VALID) flags.push("valid");
-  if ((info.lh2_flags ?? 0) & LH2_FLAG_FROM_FLASH) flags.push("from flash");
-  const noun = count === 1 ? "basestation" : "basestations";
-  return `${count} ${noun}${flags.length ? ` (${flags.join(", ")})` : ""}`;
+  return bot.swarmit?.info?.lh2_summary ?? "unknown (no device info)";
 }
 
 const hex32 = (v: number) => `0x${(v >>> 0).toString(16).padStart(8, "0")}`;
@@ -66,9 +46,7 @@ export function infoText(bot: UnifiedBot): string {
     out.push(`  digest          ${info.image_digest}`);
     out.push(`  size            ${info.image_size ?? 0} B`);
     out.push(
-      `  state           ${IMAGE_STATE[info.image_state ?? 0] ?? info.image_state} / ${
-        IMAGE_RESULT[info.image_result ?? 0] ?? info.image_result
-      }`,
+      `  state           ${info.image_state_name ?? info.image_state} / ${info.image_result_name ?? info.image_result}`,
     );
     out.push("");
     out.push(`Sandbox fw        bootloader  ${info.bl_version}`);
@@ -81,7 +59,7 @@ export function infoText(bot: UnifiedBot): string {
     out.push("");
     out.push(`Last reset        ${bot.resetCause}`);
     out.push(`  reset_reason    ${hex32(sw.reset_reason)}`);
-    out.push(`  fault           ${FAULTS[sw.fault ?? 0] ?? sw.fault}`);
+    out.push(`  fault           ${sw.fault_name ?? sw.fault}`);
     if (sw.fault) {
       out.push(`  cfsr            ${hex32(sw.cfsr ?? 0)}`);
       out.push(`  sfsr            ${hex32(sw.sfsr ?? 0)}`);
@@ -178,9 +156,7 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
           <Row k="size" v={`${info.image_size ?? 0} B`} indent />
           <Row
             k="state"
-            v={`${IMAGE_STATE[info.image_state ?? 0] ?? info.image_state} / ${
-              IMAGE_RESULT[info.image_result ?? 0] ?? info.image_result
-            }`}
+            v={`${info.image_state_name ?? info.image_state} / ${info.image_result_name ?? info.image_result}`}
             indent
           />
           <div style={{ height: 8 }} />
@@ -198,7 +174,7 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
           <div style={{ height: 8 }} />
           <Row k="Last reset" v={bot.resetCause ?? "unknown"} accent={bot.crashed} />
           <Row k="reset_reason" v={hex32(sw.reset_reason)} indent />
-          <Row k="fault" v={FAULTS[sw.fault ?? 0] ?? String(sw.fault)} indent />
+          <Row k="fault" v={sw.fault_name ?? String(sw.fault)} indent />
           {Boolean(sw.fault) && (
             <>
               <Row k="cfsr" v={hex32(sw.cfsr ?? 0)} indent />

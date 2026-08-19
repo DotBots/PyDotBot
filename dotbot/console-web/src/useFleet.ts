@@ -12,18 +12,12 @@ import {
 
 const TRAIL_MAX = 200;
 
-// nRF RESETREAS bits, mirroring swarmit's RESET_REASON_FLAGS.
-const RR_PIN = 1 << 0;
+// nRF RESETREAS bits, mirroring swarmit's RESET_REASON_FLAGS. Only the crash
+// predicate needs them: the readable label is served by swarmit, which is
+// where the branch order that produces it lives.
 const RR_WDT0 = 1 << 1;
-const RR_SREQ = 1 << 3;
 const RR_LOCKUP = 1 << 4;
-const RR_WDT1 = 1 << 25;
 
-// Friendly label for a node's last reset, mirroring swarmit's
-// format_reset_cause (testbed/controller.py) - keep the branch order in step
-// with it. A crash outranks everything, because a stop racing a crash sets
-// both bits. Note this is NOT swarmit's boot_reason(), which orders SREQ
-// before LOCKUP for the Matter enum; format_reset_cause does the opposite.
 // A crash in swarmit's sense: a latched fault, the crash deadman (WDT0), or a
 // CPU lockup. This is the set an operator triages after a run.
 export function isCrashed(sw: SwarmitNode | undefined): boolean {
@@ -31,20 +25,6 @@ export function isCrashed(sw: SwarmitNode | undefined): boolean {
   return Boolean(sw.fault) || Boolean(sw.reset_reason & (RR_WDT0 | RR_LOCKUP));
 }
 
-export function resetCause(sw: SwarmitNode | undefined): string | null {
-  if (!sw || sw.reset_reason === undefined) return null;
-  const rr = sw.reset_reason;
-  const fault = sw.fault ?? 0;
-  if (fault || rr & RR_WDT0) {
-    const pc = (sw.pc ?? 0).toString(16).padStart(8, "0");
-    return fault ? `crashed (pc=0x${pc})` : "crashed";
-  }
-  if (rr & RR_WDT1) return "stopped";
-  if (rr & RR_LOCKUP) return "lockup";
-  if (rr === 0 || rr & RR_PIN) return "power-on";
-  if (rr & RR_SREQ) return "soft-reset";
-  return `0x${rr.toString(16).padStart(8, "0")}`;
-}
 
 export function deriveState(
   py: PyDotBot | undefined,
@@ -94,7 +74,7 @@ export function merge(
       waypoints: py?.waypoints ?? [],
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
-      resetCause: resetCause(sw),
+      resetCause: sw?.reset_cause ?? null,
       crashed: isCrashed(sw),
       swarmit: sw ?? null,
     });

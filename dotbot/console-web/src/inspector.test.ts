@@ -48,15 +48,12 @@ describe("formatLh2", () => {
     expect(formatLh2(bot({ swarmit: node({ info: null }) }))).toBe("unknown (no device info)");
   });
 
-  it("reads the homography count and flags", () => {
+  it("renders the summary swarmit computed, verbatim", () => {
     const info = { bl_version: "", net_version: "", boot_count: 0, uptime_s: 0, image_name: "", image_version: "", image_digest: "" };
     const withInfo = (over: object) => bot({ swarmit: node({ info: { ...info, ...over } }) });
-    expect(formatLh2(withInfo({ lh2_homography_count: 0 }))).toBe("uncalibrated");
-    expect(formatLh2(withInfo({ lh2_homography_count: 1, lh2_flags: 3 }))).toBe(
-      "1 basestation (valid, from flash)",
-    );
-    expect(formatLh2(withInfo({ lh2_homography_count: 2, lh2_flags: 1 }))).toBe(
-      "2 basestations (valid)",
+    expect(formatLh2(withInfo({ lh2_summary: "uncalibrated" }))).toBe("uncalibrated");
+    expect(formatLh2(withInfo({ lh2_summary: "2 basestations (valid, from flash)" }))).toBe(
+      "2 basestations (valid, from flash)",
     );
   });
 });
@@ -64,7 +61,7 @@ describe("formatLh2", () => {
 describe("infoText", () => {
   it("is plain text carrying the identity and the reset cause", () => {
     const t = infoText(
-      bot({ resetCause: "stopped", swarmit: node({ reset_reason: 1 << 25, fault: 0 }) }),
+      bot({ resetCause: "stopped", swarmit: node({ reset_reason: 1 << 25, fault: 0, fault_name: "NoFault" }) }),
     );
     expect(t.split("\n")[0]).toBe("217B829760EBA3E0");
     expect(t).toContain("Last reset        stopped");
