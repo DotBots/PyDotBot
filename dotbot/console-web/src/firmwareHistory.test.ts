@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { buildTime } from "./FirmwareSection";
-import * as controlPlane from "./controlPlane";
 import { decodedSize, toBase64 } from "./firmwareFile";
 import {
   FirmwareEntry,
@@ -111,25 +110,6 @@ describe("pinning", () => {
   it("survives a corrupt store rather than throwing", () => {
     store["dotbot.console.firmwareHistory.v3"] = "{not json";
     expect(load()).toEqual([]);
-  });
-});
-
-describe("control plane image", () => {
-  it("holds one image and reads it back", () => {
-    expect(controlPlane.load()).toBeNull();
-    controlPlane.save(img("dotbot-sandbox.bin", "ZZZZ", 42));
-    expect(controlPlane.load()).toEqual(img("dotbot-sandbox.bin", "ZZZZ", 42));
-  });
-
-  it("clears", () => {
-    controlPlane.save(img("a.bin"));
-    controlPlane.save(null);
-    expect(controlPlane.load()).toBeNull();
-  });
-
-  it("ignores a malformed record", () => {
-    store["dotbot.console.controlPlaneImage.v1"] = JSON.stringify({ name: "x" });
-    expect(controlPlane.load()).toBeNull();
   });
 });
 

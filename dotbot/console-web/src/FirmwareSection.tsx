@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import * as controlPlane from "./controlPlane";
 import { FirmwareFile, decodedSize, readFirmwareFile } from "./firmwareFile";
 import {
   FirmwareEntry,
@@ -8,15 +7,13 @@ import {
   togglePin as togglePinIn,
 } from "./firmwareHistory";
 
-// Firmware block at the top of the Testbed tab. Two independent slots:
+// Firmware block at the top of the Testbed tab: one picker, one list, one
+// flash button.
 //
-// - the control-plane image, a setting rather than a choice. One slot, set
-//   once, its own one-click flash. It is the image that speaks DBP, so
-//   flashing it is how a bot becomes drivable again.
-// - the other image, whatever is being tested, with the recent list.
-//
-// Two flash buttons rather than one shared one, on purpose: it is what makes
-// the control-plane path a single click instead of arm-then-flash.
+// There is deliberately no separate slot for the control-plane image. Pinning
+// keeps it at the top of the list, which is the same affordance doing the same
+// job - a dedicated slot showed the same file twice and put two competing red
+// buttons in a 340px rail.
 
 const label: React.CSSProperties = {
   fontSize: 9,
@@ -75,18 +72,15 @@ interface Props {
 
 export const FirmwareSection: React.FC<Props> = (props) => {
   const [open, setOpen] = useState(true);
-  const [cp, setCp] = useState<FirmwareFile | null>(null);
   const [armed, setArmed] = useState<FirmwareFile | null>(null);
   const [history, setHistory] = useState<FirmwareEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [startAfter, setStartAfter] = useState(
     () => window.localStorage.getItem("dotbot.console.startAfterFlash") === "1",
   );
-  const cpRef = useRef<HTMLInputElement>(null);
-  const otherRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setCp(controlPlane.load());
     setHistory(loadHistory());
   }, []);
 
@@ -97,13 +91,11 @@ export const FirmwareSection: React.FC<Props> = (props) => {
     );
   }, [startAfter]);
 
-  const pick = async (f: File | undefined, dest: "cp" | "other") => {
+  const pick = async (f: File | undefined) => {
     if (!f) return;
     setError(null);
     try {
-      const image = await readFirmwareFile(f);
-      if (dest === "cp") setCp(controlPlane.save(image));
-      else setArmed(image);
+      setArmed(await readFirmwareFile(f));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -147,42 +139,15 @@ export const FirmwareSection: React.FC<Props> = (props) => {
 
       {open && (
         <div style={{ marginTop: 10 }}>
-          {/* --- control plane: a setting, not a choice --- */}
-          <div style={{ ...label, marginBottom: 5 }}>Control plane image</div>
           <input
-            ref={cpRef}
+            ref={fileRef}
             type="file"
             accept=".bin,application/octet-stream"
             style={{ display: "none" }}
-            onChange={(e) => pick(e.target.files?.[0], "cp")}
+            onChange={(e) => pick(e.target.files?.[0])}
           />
           <div
-            onClick={() => cpRef.current?.click()}
-            title={cp ? "Click to change the control-plane image" : "Set the image that speaks DBP"}
-            style={{ ...pickerBtn, textAlign: cp ? "left" : "center", borderStyle: cp ? "solid" : "dashed" }}
-          >
-            {cp ? row(cp.name, cp.b64, cp.lastModified) : "Set control-plane image…"}
-          </div>
-          <div
-            onClick={() => flash(cp)}
-            style={{ ...flashBtn(Boolean(cp) && !props.flashing && props.targetCount > 0), marginTop: 6 }}
-          >
-            &#9889;&nbsp;Flash control plane
-          </div>
-
-          <div style={{ height: 14 }} />
-
-          {/* --- other image: a choice, with history --- */}
-          <div style={{ ...label, marginBottom: 5 }}>Other image</div>
-          <input
-            ref={otherRef}
-            type="file"
-            accept=".bin,application/octet-stream"
-            style={{ display: "none" }}
-            onChange={(e) => pick(e.target.files?.[0], "other")}
-          />
-          <div
-            onClick={() => otherRef.current?.click()}
+            onClick={() => fileRef.current?.click()}
             style={{ ...pickerBtn, textAlign: armed ? "left" : "center", borderStyle: armed ? "solid" : "dashed" }}
           >
             {armed ? row(armed.name, armed.b64, armed.lastModified) : "Choose a .bin file…"}
@@ -190,9 +155,7 @@ export const FirmwareSection: React.FC<Props> = (props) => {
 
           {history.length > 0 && (
             <>
-              <div style={{ ...label, margin: "8px 0 4px" }}>
-                Recently flashed &middot; snapshots
-              </div>
+              <div style={{ ...label, margin: "8px 0 4px" }}>Recent</div>
               <div
                 style={{
                   maxHeight: 108,

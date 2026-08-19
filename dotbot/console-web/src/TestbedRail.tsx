@@ -300,7 +300,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
                   Target&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{targetLabel}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                   <div onClick={props.onStart} style={railBtn(false)}>
                     &#9654;&nbsp;Start
                   </div>
