@@ -1,4 +1,11 @@
-import { LH2Position, MapSize, PyDotBot, RgbLed, SwarmitNode } from "./types";
+import {
+  ControllerConnection,
+  LH2Position,
+  MapSize,
+  PyDotBot,
+  RgbLed,
+  SwarmitNode,
+} from "./types";
 
 // Same-origin in dev thanks to the vite proxy (see vite.config.ts).
 const CONTROLLER = "/controller";
@@ -12,6 +19,16 @@ export async function fetchDotBots(): Promise<PyDotBot[]> {
 export async function fetchMapSize(): Promise<MapSize> {
   const res = await fetch(`${CONTROLLER}/map_size`);
   return res.json();
+}
+
+export async function fetchConnection(): Promise<ControllerConnection | null> {
+  try {
+    const res = await fetch(`${CONTROLLER}/connection`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null; // an older controller has no such route; the bar just omits it
+  }
 }
 
 export async function fetchSwarmitStatus(): Promise<Record<string, SwarmitNode>> {

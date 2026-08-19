@@ -1,13 +1,17 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { putWaypoints } from "./api";
+import { fetchConnection, putWaypoints } from "./api";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
 import { Inspector } from "./Inspector";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { DoneMission, TestbedRail } from "./TestbedRail";
-import { LH2Position, PlannedMission } from "./types";
+import {
+  ControllerConnection,
+  LH2Position,
+  PlannedMission,
+} from "./types";
 import { useFleet } from "./useFleet";
 import { useOrchestration } from "./useOrchestration";
 import { FlashDialog } from "./FlashDialog";
@@ -67,6 +71,12 @@ export const App: React.FC = () => {
     crashedOnly: false,
   });
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [conn, setConn] = useState<ControllerConnection | null>(null);
+
+  // Fetched once: the controller cannot change transport without restarting.
+  useEffect(() => {
+    fetchConnection().then(setConn);
+  }, []);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -220,6 +230,30 @@ export const App: React.FC = () => {
         <div style={{ fontWeight: 700, letterSpacing: ".3px", fontSize: 15 }}>DotBots</div>
         <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{window.location.host}</span>
+        {conn && (
+          <>
+            <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
+            <span
+              title={`Controller adapter: ${conn.adapter} · gateway ${conn.gw_address}`}
+              style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}
+            >
+              {conn.connection}
+            </span>
+            <span
+              title="Swarm id (Mari network id)"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--muted)",
+                border: "1px solid var(--hairline)",
+                borderRadius: 5,
+                padding: "1px 6px",
+              }}
+            >
+              swarm {conn.swarm_id}
+            </span>
+          </>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
           <div
             style={{

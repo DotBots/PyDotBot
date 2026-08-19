@@ -108,6 +108,14 @@ export interface UnifiedBot {
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 
+// GET /controller/connection - how the controller reaches the swarm.
+export interface ControllerConnection {
+  adapter: string;
+  connection: string;
+  swarm_id: string;
+  gw_address: string;
+}
+
 export interface MapSize {
   width: number;
   height: number;
