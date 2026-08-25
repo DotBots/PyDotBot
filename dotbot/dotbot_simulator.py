@@ -607,7 +607,7 @@ class DotBotSimulator:
             if frame is None:
                 break
             with self._lock:
-                if self.address == hex(frame.header.destination)[2:]:
+                if self.address == addr_to_hex(int(frame.header.destination)):
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
                         self.waypoint_index = 0
@@ -831,7 +831,7 @@ class DotBotSimulatorCommunicationInterface:
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
-        addr = hex(frame.header.source)[2:]
+        addr = addr_to_hex(int(frame.header.source))
         index = self._address_to_index.get(addr, 0)
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
             self._mari.schedule_uplink(frame, index)

@@ -26,6 +26,7 @@ import time
 
 import click
 
+from dotbot import addr_to_hex
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import parse_connection
 
@@ -46,7 +47,7 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
     def on_event(event, event_data):
         if do_print and event == EdgeEvent.NODE_DATA:
             click.echo(
-                f"<- {event_data.header.source:016x}: {event_data.payload.hex()}"
+                f"<- {addr_to_hex(event_data.header.source)}: {event_data.payload.hex()}"
             )
 
     mqtt_interface = None
