@@ -18,6 +18,7 @@ import serial
 import toml
 
 from dotbot import (
+    CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
@@ -228,6 +229,16 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
 @click.option(
+    "--controller-http-host",
+    type=str,
+    help=(
+        "Interface the REST/WS API binds to. Defaults to "
+        f"'{CONTROLLER_HTTP_HOST_DEFAULT}' (loopback). Use '0.0.0.0' to reach "
+        "it from another machine - the API is unauthenticated, so only do that "
+        "on a network you trust."
+    ),
+)
+@click.option(
     "--swarmit-url",
     type=str,
     help=(
@@ -243,6 +254,7 @@ def main(
     sim_is_dotbot,
     gw_address,
     controller_http_port,
+    controller_http_host,
     map_size,
     background_map,
     simulator_init_state,
@@ -304,6 +316,7 @@ def main(
     cli_args = {
         "gw_address": gw_address,
         "controller_http_port": controller_http_port,
+        "controller_http_host": controller_http_host,
         "map_size": map_size,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,

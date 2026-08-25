@@ -948,3 +948,16 @@ def test_the_controller_opens_the_console_when_it_is_built(tmp_path, monkeypatch
 
     console.mkdir()
     assert server.default_ui_path() == "/console"
+
+
+def test_the_api_binds_loopback_unless_asked_otherwise():
+    """The REST/WS API is unauthenticated, so it is not on the LAN by default."""
+    from dotbot.controller import ControllerSettings
+
+    default = ControllerSettings(gw_address="78", network_id="0")
+    assert default.controller_http_host == "127.0.0.1"
+
+    wide = ControllerSettings(
+        gw_address="78", network_id="0", controller_http_host="0.0.0.0"
+    )
+    assert wide.controller_http_host == "0.0.0.0"

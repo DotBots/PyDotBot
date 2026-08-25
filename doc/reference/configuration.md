@@ -122,6 +122,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `conn` | Connection string for `dotbot run`. |
 | `swarm_id` | Swarm id (topic namespace). |
 | `[run.controller] http_port` | REST/WebSocket port (default 8000). |
+| `[run.controller] http_host` | Interface the REST/WebSocket API binds to (default `127.0.0.1`). `0.0.0.0` exposes it to the network; the API is unauthenticated. |
 | `[run.controller] map_size` | Controller map size. |
 | `[run.controller] background_map` | Background map image. |
 | `[run.controller] log_output` | Log output path. |

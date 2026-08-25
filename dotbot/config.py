@@ -138,6 +138,7 @@ class SwarmSection(_Strict):
 
 class ControllerSection(_Strict):
     http_port: int | None = None
+    http_host: str | None = None
     map_size: str | None = None
     background_map: str | None = None
     log_output: str | None = None

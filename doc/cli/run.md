@@ -38,6 +38,7 @@ dotbot run controller --conn /dev/ttyACM0
 |---|---|
 | `-n/--conn` | `mqtts://host:port`, serial path, or `simulator` |
 | `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
+| `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
 | `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |

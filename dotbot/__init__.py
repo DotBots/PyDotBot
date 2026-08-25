@@ -13,6 +13,10 @@ NETWORK_ID_DEFAULT = "0000"
 CONTROLLER_HTTP_PROTOCOL_DEFAULT = "http"
 CONTROLLER_HTTP_HOSTNAME_DEFAULT = "localhost"
 CONTROLLER_HTTP_PORT_DEFAULT = 8000
+# Loopback by default: the REST/WS API is unauthenticated and, since the
+# controller proxies /swarmit/*, binding wider also republishes the swarmit
+# server at the controller's reachability.
+CONTROLLER_HTTP_HOST_DEFAULT = "127.0.0.1"
 CONTROLLER_ADAPTER_DEFAULT = "serial"
 MQTT_HOST_DEFAULT = "localhost"
 MQTT_PORT_DEFAULT = 1883

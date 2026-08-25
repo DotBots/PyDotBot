@@ -29,6 +29,7 @@ from fastapi import WebSocket
 
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
+    CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
@@ -128,6 +129,7 @@ class ControllerSettings:
     gw_address: str = GATEWAY_ADDRESS_DEFAULT
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
+    controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     map_size: str = MAP_SIZE_DEFAULT
     background_map: str = ""
     headless: bool = False
@@ -670,9 +672,16 @@ class Controller:
     async def web(self):
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
+        host = self.settings.controller_http_host
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            logger.warning(
+                "Serving the API beyond loopback; it has no authentication, "
+                "and /swarmit/* reaches the swarmit server from here too",
+                host=host,
+            )
         config = uvicorn.Config(
             api,
-            host="0.0.0.0",
+            host=host,
             port=self.settings.controller_http_port,
             log_level="critical",
         )

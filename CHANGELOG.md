@@ -54,6 +54,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking - the controller binds loopback by default.** `dotbot run
+  controller` served the REST/WebSocket API on `0.0.0.0`, putting an
+  unauthenticated API on every interface; the new `/swarmit/*` proxy would
+  republish the swarmit server the same way. It now binds `127.0.0.1`. To reach
+  it from another machine pass `--controller-http-host 0.0.0.0`, set
+  `[run.controller] http_host`, or `DOTBOT_RUN_CONTROLLER_HTTP_HOST`; binding
+  beyond loopback logs a warning.
 - **`dotbot run controller` now opens the unified web console** at `/console`
   instead of the classic dashboard at `/PyDotBot`. The classic UI is still
   served and still carries the qrkey demo, the REST demo and the SailBot
