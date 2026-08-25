@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { LH2Position, MapSize, UnifiedBot } from "./types";
@@ -56,7 +57,6 @@ interface MapViewProps {
   onAddWaypoint: (p: LH2Position) => void;
 }
 
-const BOT_R = 11; // px radius of the bot circle at zoom 1 (22px glyph, as in v1)
 const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
 
 const ledCss = (b: UnifiedBot) =>
@@ -196,7 +196,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
   // Real-scale layer: glyphs scale to the actual DotBot footprint.
   const gscale = props.layers.trueScale
-    ? Math.max(0.2, (side * (REAL_BOT_MM / props.mapSize.width)) / (BOT_R * 2))
+    ? Math.max(0.2, (side * (REAL_BOT_MM / props.mapSize.width)) / BOT_GLYPH_SPAN)
     : 1;
 
   return (
@@ -384,9 +384,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           position: "absolute",
                           left: "50%",
                           top: "50%",
-                          width: 36,
-                          height: 36,
-                          margin: "-18px 0 0 -18px",
+                          width: 44,
+                          height: 44,
+                          margin: "-22px 0 0 -22px",
                           border: "1.5px solid var(--accent)",
                           borderRadius: 3,
                           boxShadow: "0 0 0 3px rgba(228,3,46,.14)",
@@ -399,7 +399,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: -19,
+                          top: -24,
                           transform: "translateX(-50%)",
                           width: 28,
                           height: 3,
@@ -410,51 +410,18 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b), borderRadius: 2 }} />
                       </div>
                     )}
-                    {/* body: state-colored circle */}
+                    {/* body and heading are one glyph: it rotates as a piece */}
                     <div
                       style={{
                         position: "absolute",
                         left: "50%",
                         top: "50%",
-                        margin: `-${BOT_R}px 0 0 -${BOT_R}px`,
-                        width: BOT_R * 2,
-                        height: BOT_R * 2,
-                        borderRadius: "50%",
-                        background: stc,
-                        boxShadow: "0 0 0 1px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.45)",
+                        transform: "translate(-50%, -50%)",
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
-                    />
-                    {/* heading pointer (state-colored, at the edge). The
-                        controller reports direction as 0 = north (+y),
-                        positive COUNTERclockwise; CSS rotates clockwise in
-                        screen coords, so the angle is negated. */}
-                    {b.heading !== null && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: "50%",
-                          width: 0,
-                          height: 0,
-                          transform: `translate(-50%, -50%) rotate(${-b.heading}deg)`,
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: -6,
-                            top: -24,
-                            width: 0,
-                            height: 0,
-                            borderLeft: "6px solid transparent",
-                            borderRight: "6px solid transparent",
-                            borderBottom: `12px solid ${stc}`,
-                            filter: "drop-shadow(0 0 2px rgba(0,0,0,.4))",
-                          }}
-                        />
-                      </div>
-                    )}
+                    >
+                      <BotGlyph color={stc} heading={b.heading} size={BOT_GLYPH_BOX} />
+                    </div>
                     {/* drive dot: white ring at center = drivable; its FILL is
                         the LED color (experiment: merges the v1 LED pip into the
                         drive indicator - see design-feedback) */}
@@ -481,7 +448,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: 22,
+                          top: 21,
                           transform: "translateX(-50%)",
                           font: "600 9px/1 var(--font-mono)",
                           letterSpacing: ".5px",
