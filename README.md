@@ -47,14 +47,19 @@ Every command and flag is documented in the [CLI reference][cli-doc].
 
 See the whole thing run with nothing but Python!
 
-The command below will run a simulated swarm, which you can observe in a web UI at http://localhost:8000/PyDotBot/ :
+The command below will run a simulated swarm, which you can observe in the web console at http://localhost:8000/console/ :
 
 ```bash
 dotbot run simulator
 ```
 
-The web UI opens automatically; pass `--headless` to suppress it (it's still
-served). Drive the simulated DotBots from the UI, or run a bundled demo in a
+The console opens automatically; pass `--headless` to suppress it (it's still
+served). It is one map-first UI for both driving the fleet and orchestrating the
+testbed - firmware flashing, start/stop and live events - when a swarmit server
+is reachable. The classic UI remains at `/PyDotBot`; it is where the qrkey demo,
+the REST demo and the SailBot views live.
+
+Drive the simulated DotBots from the console, or run a bundled demo in a
 second terminal:
 
 ```bash
@@ -140,7 +145,7 @@ dotbot swarm flash rc-car -ys  # this firmware lets DotBots be remote-controlled
 Observe and control your swarm from a web interface:
 
 ```bash
-dotbot run controller  # opens a webpage at http://localhost:8000/PyDotBot/
+dotbot run controller  # opens the console at http://localhost:8000/console/
 ```
 
 Full walkthrough of fleet operations - status, OTA flash, start/stop, monitor -

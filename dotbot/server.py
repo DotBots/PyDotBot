@@ -452,8 +452,9 @@ else:
         FRONTEND_DIR,
     )
 
-# The unified console (map-first PyDotBot + swarmit UI), served side by side
-# with the classic frontend while it matures towards replacing it.
+# The unified console (map-first PyDotBot + swarmit UI). This is the UI the
+# controller opens; the classic frontend stays mounted at /PyDotBot, which is
+# where the qrkey demo, the REST demo and the SailBot views live.
 CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
 if os.path.isdir(CONSOLE_DIR):
     api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
@@ -463,3 +464,12 @@ else:
         "Build it with: cd dotbot/console-web && npm install && npm run build",
         CONSOLE_DIR,
     )
+
+
+def default_ui_path() -> str | None:
+    """Path the controller opens on start, or None when no UI is built."""
+    if os.path.isdir(CONSOLE_DIR):
+        return "/console"
+    if os.path.isdir(FRONTEND_DIR):
+        return "/PyDotBot"
+    return None

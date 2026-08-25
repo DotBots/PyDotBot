@@ -70,7 +70,7 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.server import api
+from dotbot.server import api, default_ui_path
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -269,7 +269,11 @@ class Controller:
             else:
                 writer.close()
                 break
-        url = f"http://localhost:{self.settings.controller_http_port}/PyDotBot"
+        ui_path = default_ui_path()
+        if ui_path is None:
+            self.logger.warning("No web UI is built, not opening a browser")
+            return
+        url = f"http://localhost:{self.settings.controller_http_port}{ui_path}"
         self.logger.debug("Using frontend URL", url=url)
         if not self.settings.headless:
             self.logger.info("Opening webbrowser", url=url)

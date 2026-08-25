@@ -129,6 +129,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] headless` | Stay headless - don't open the web UI in a browser on start (default false; it's still served). |
 | `[run.controller] gw_address` | Gateway address. |
 | `[run.controller] simulator_init_state` | Initial simulator state. |
+| `[run.controller] swarmit_url` | swarmit server the console's orchestration panel talks to, proxied at `/swarmit/*` (default `http://localhost:8001`, which matches `swarmit serve`). |
 | `[run.gateway] serial_port` | Gateway serial port. |
 | `[run.gateway] mqtt` | Gateway MQTT connection string. |
 

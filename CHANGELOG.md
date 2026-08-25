@@ -54,6 +54,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **`dotbot run controller` now opens the unified web console** at `/console`
+  instead of the classic dashboard at `/PyDotBot`. The classic UI is still
+  served and still carries the qrkey demo, the REST demo and the SailBot
+  views. If only one of the two is built, that one is opened; if neither is,
+  the controller serves the API and says so rather than opening a dead tab.
 - **Device addresses are rendered uppercase everywhere**, through a single
   `dotbot.addr_to_hex()` helper, and are matched case-sensitively. The address
   is the join key between the control plane and swarmit, which already

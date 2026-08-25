@@ -931,3 +931,20 @@ async def test_connection_reports_the_non_mqtt_adapters(adapter, expected):
     result = await client.get("/controller/connection")
 
     assert result.json()["connection"] == expected
+
+
+def test_the_controller_opens_the_console_when_it_is_built(tmp_path, monkeypatch):
+    """The console is the default UI; the classic frontend is the fallback."""
+    import dotbot.server as server
+
+    console, classic = tmp_path / "console", tmp_path / "classic"
+
+    monkeypatch.setattr(server, "CONSOLE_DIR", str(console))
+    monkeypatch.setattr(server, "FRONTEND_DIR", str(classic))
+    assert server.default_ui_path() is None
+
+    classic.mkdir()
+    assert server.default_ui_path() == "/PyDotBot"
+
+    console.mkdir()
+    assert server.default_ui_path() == "/console"
