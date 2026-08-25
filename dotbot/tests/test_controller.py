@@ -204,6 +204,7 @@ def test_controller_sailbot_simulator():
             network_id="0",
             gw_address="78",
             controller_http_port=8002,
+            headless=True,
         )
         controller = Controller(settings)
         try:
@@ -223,6 +224,7 @@ def test_controller_dotbot_simulator():
             network_id="0",
             gw_address="78",
             controller_http_port=8001,
+            headless=True,
         )
         controller = Controller(settings)
         try:
