@@ -37,7 +37,8 @@ base64 string derived from the current PIN code (see [Secured brokers](#secured-
 Command-topic fields:
 
 - `<swarm-id>` - 4-hex swarm identifier (DotBots behind one gateway), e.g. `0000`.
-- `<address>` - 16-hex DotBot address, e.g. `9903ef26257feb31`.
+- `<address>` - 16-hex DotBot address, e.g. `9903EF26257FEB31`. Uppercase, and
+  matched case-sensitively: a lowercase address reaches no DotBot.
 - `<app>` - application type: `0` = DotBot, `1` = SailBot.
 - `<cmd>` - the command name (last segment).
 
@@ -51,12 +52,12 @@ Payloads are JSON. Drive a DotBot forward and turn its LED red:
 ```bash
 # move_raw - left_y / right_y drive the wheels, values in [-100, 100]
 mosquitto_pub -h <broker> \
-  -t '/pydotbot/<secret-topic>/command/0000/9903ef26257feb31/0/move_raw' \
+  -t '/pydotbot/<secret-topic>/command/0000/9903EF26257FEB31/0/move_raw' \
   -m '{"left_x": 0, "left_y": 80, "right_x": 0, "right_y": 80}'
 
 # rgb_led - 0..255 per channel
 mosquitto_pub -h <broker> \
-  -t '/pydotbot/<secret-topic>/command/0000/9903ef26257feb31/0/rgb_led' \
+  -t '/pydotbot/<secret-topic>/command/0000/9903EF26257FEB31/0/rgb_led' \
   -m '{"red": 255, "green": 0, "blue": 0}'
 ```
 

@@ -54,6 +54,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Device addresses are rendered uppercase everywhere**, through a single
+  `dotbot.addr_to_hex()` helper, and are matched case-sensitively. The address
+  is the join key between the control plane and swarmit, which already
+  uppercased it, so the two now agree; `DOTBOT_ADDRESS_DEFAULT` and
+  `GATEWAY_ADDRESS_DEFAULT` were already written this way. Consequences:
+  a lowercase address in a REST path or MQTT topic now reaches no DotBot,
+  and a `--csv-data-output` file spanning the upgrade holds both cases for
+  the same robot (re-normalise with `df.address.str.upper()` before grouping).
+  `-d/--dotbot-address` on `dotbot run joystick` / `keyboard` accepts either
+  case and normalises.
 - **Breaking — CLI reorganized into four object-namespaces.** The top
   level is now exactly `fw` (firmware artifacts), `device` (one cabled
   device), `swarm` (the fleet), and `run` (host-side processes). The flat

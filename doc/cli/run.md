@@ -94,7 +94,7 @@ specific DotBot by hex address.
 
 ```bash
 dotbot run keyboard
-dotbot run joystick -j 0 -d 1234567890abcdef
+dotbot run joystick -j 0 -d 1234567890ABCDEF
 ```
 
 See `dotbot run keyboard --help` / `dotbot run joystick --help` for the host,
