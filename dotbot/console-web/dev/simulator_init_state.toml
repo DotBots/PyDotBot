@@ -1,0 +1,47 @@
+# Demo fleet for console development. Run the simulator from this directory
+# (it picks up ./simulator_init_state.toml) or copy this file next to it.
+
+[network]
+pdr = 100
+
+[[dotbots]]
+address = "BADCAFE111111111"
+calibrated = 0xff
+pos_x = 400
+pos_y = 350
+direction = 45
+
+[[dotbots]]
+address = "DEADBEEF22222222"
+calibrated = 0xff
+pos_x = 1500
+pos_y = 250
+direction = 180
+
+[[dotbots]]
+address = "B0B0F00D33333333"
+calibrated = 0xff
+pos_x = 1500
+pos_y = 1500
+direction = 270
+
+[[dotbots]]
+address = "CAFEBABE44444444"
+calibrated = 0xff
+pos_x = 600
+pos_y = 1200
+direction = 90
+
+[[dotbots]]
+address = "FACEFEED55555555"
+calibrated = 0xff
+pos_x = 1000
+pos_y = 800
+direction = 0
+
+[[dotbots]]
+address = "ABAD1DEA66666666"
+calibrated = 0xff
+pos_x = 250
+pos_y = 900
+direction = 135

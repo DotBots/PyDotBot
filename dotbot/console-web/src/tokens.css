@@ -1,0 +1,55 @@
+/* Design tokens - the single source of truth for every color in the console.
+   Swap values here to re-theme; components must reference tokens only. */
+:root {
+  --canvas: #14161b;
+  --surface: #1e222b;
+  --elevated: #2a2f3a;
+  --grid: #2c313c;
+  --text: #e6e9ef;
+  --muted: #9aa4b2;
+  --accent: #e4032e;
+  --hairline: rgba(255, 255, 255, 0.07);
+
+  /* State colors are shared across themes: a color always means the same thing. */
+  --s-Running: #22c55e;
+  --s-Full: #22d3ee;
+  --s-Programming: #f59e0b;
+  --s-Bootloader: #38bdf8;
+  --s-Stopping: #ef4444;
+  --s-Resetting: #a855f7;
+  --s-Inactive: #6b7280;
+
+  --font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+[data-theme="light"] {
+  --canvas: #f4f6fa;
+  --surface: #ffffff;
+  --elevated: #eef1f6;
+  --grid: #dbe1ea;
+  --text: #0f172a;
+  --muted: #5b6577;
+  --hairline: rgba(0, 0, 0, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+@keyframes dbBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}

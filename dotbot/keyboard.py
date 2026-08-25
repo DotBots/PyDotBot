@@ -117,7 +117,7 @@ class KeyboardController:
         """Initializes the keyboard controller."""
         self.client = client
         self.dotbots = []
-        self.dotbot_address = dotbot_address
+        self.dotbot_address = dotbot_address.upper()
         self.application = APPLICATION_TYPE_MAP[application]
         self.previous_speeds = (0, 0)
         self.active_keys = []
@@ -135,7 +135,9 @@ class KeyboardController:
                 self._logger.info("No active DotBot")
                 return
         elif _selected_dotbot not in [dotbot["address"] for dotbot in self.dotbots]:
-            self._logger.info("Active DotBot not available")
+            self._logger.warning(
+                "Requested DotBot not available", address=_selected_dotbot
+            )
             return
         return _selected_dotbot
 

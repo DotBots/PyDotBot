@@ -67,7 +67,7 @@ print(requests.get("http://localhost:8000/controller/dotbots").json())
 
 ```py
 import requests
-addr = "9903ef26257feb31"   # from the list above
+addr = "9903EF26257FEB31"  # uppercase; the address is matched case-sensitively
 requests.put(
     f"http://localhost:8000/controller/dotbots/{addr}/0/rgb_led",
     json={"red": 255, "green": 0, "blue": 0},
@@ -79,7 +79,7 @@ requests.put(
 
 ```py
 import requests
-addr = "9903ef26257feb31"
+addr = "9903EF26257FEB31"
 requests.put(
     f"http://localhost:8000/controller/dotbots/{addr}/0/move_raw",
     json={"left_x": 0, "left_y": 60, "right_x": 0, "right_y": 60},

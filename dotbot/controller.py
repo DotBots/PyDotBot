@@ -15,7 +15,6 @@ import os
 import queue
 import time
 import webbrowser
-from binascii import hexlify
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -30,6 +29,7 @@ from fastapi import WebSocket
 
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
+    CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
@@ -39,6 +39,8 @@ from dotbot import (
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
+    SWARMIT_URL_DEFAULT,
+    addr_to_hex,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -69,7 +71,7 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.server import api
+from dotbot.server import api, default_ui_path
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -127,6 +129,7 @@ class ControllerSettings:
     gw_address: str = GATEWAY_ADDRESS_DEFAULT
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
+    controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     map_size: str = MAP_SIZE_DEFAULT
     background_map: str = ""
     headless: bool = False
@@ -135,6 +138,7 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
+    swarmit_url: str = SWARMIT_URL_DEFAULT
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -267,7 +271,11 @@ class Controller:
             else:
                 writer.close()
                 break
-        url = f"http://localhost:{self.settings.controller_http_port}/PyDotBot"
+        ui_path = default_ui_path()
+        if ui_path is None:
+            self.logger.warning("No web UI is built, not opening a browser")
+            return
+        url = f"http://localhost:{self.settings.controller_http_port}{ui_path}"
         self.logger.debug("Using frontend URL", url=url)
         if not self.settings.headless:
             self.logger.info("Opening webbrowser", url=url)
@@ -313,7 +321,7 @@ class Controller:
             PayloadType.CMD_RGB_LED,
         ]:
             return
-        source = hexlify(int(frame.header.source).to_bytes(8, "big")).decode()
+        source = addr_to_hex(int(frame.header.source))
         logger = self.logger.bind(
             source=source,
             payload_type=PayloadType(frame.packet.payload_type).name,
@@ -591,7 +599,7 @@ class Controller:
         if self.adapter is None:
             self.logger.warning("Adapter not started")
             return
-        dest_str = hexlify(destination.to_bytes(8, "big")).decode()
+        dest_str = addr_to_hex(destination)
         if dest_str not in self.dotbots:
             return
         self.adapter.send_payload(destination, payload=payload)
@@ -664,9 +672,16 @@ class Controller:
     async def web(self):
         """Starts the web server application."""
         logger = LOGGER.bind(context=__name__)
+        host = self.settings.controller_http_host
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            logger.warning(
+                "Serving the API beyond loopback; it has no authentication, "
+                "and /swarmit/* reaches the swarmit server from here too",
+                host=host,
+            )
         config = uvicorn.Config(
             api,
-            host="0.0.0.0",
+            host=host,
             port=self.settings.controller_http_port,
             log_level="critical",
         )

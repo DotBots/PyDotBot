@@ -309,3 +309,50 @@ def test_resolve_bad_int_env_raises():
         cfg.resolve(
             "http_port", section="run", environ={"DOTBOT_HTTP_PORT": "x"}, default=8000
         )
+
+
+def test_resolve_nested_section_from_file():
+    config = cfg.DotbotConfig(
+        run=cfg.RunSection(
+            controller=cfg.ControllerSection(swarmit_url="http://lab:9001")
+        )
+    )
+    got = cfg.resolve(
+        "swarmit_url",
+        section="run.controller",
+        config=config,
+        environ={},
+        default="http://localhost:8001",
+    )
+    assert got == "http://lab:9001"
+
+
+def test_resolve_nested_section_env_name():
+    got = cfg.resolve(
+        "swarmit_url",
+        section="run.controller",
+        environ={"DOTBOT_RUN_CONTROLLER_SWARMIT_URL": "http://env:9001"},
+        default="http://localhost:8001",
+    )
+    assert got == "http://env:9001"
+
+
+def test_resolve_nested_section_shared_env_alias():
+    got = cfg.resolve(
+        "swarmit_url",
+        section="run.controller",
+        environ={"DOTBOT_SWARMIT_URL": "http://env:9001"},
+        default="http://localhost:8001",
+    )
+    assert got == "http://env:9001"
+
+
+def test_resolve_nested_section_missing_falls_to_default():
+    got = cfg.resolve(
+        "swarmit_url",
+        section="run.controller",
+        config=cfg.DotbotConfig(),
+        environ={},
+        default="http://localhost:8001",
+    )
+    assert got == "http://localhost:8001"

@@ -17,7 +17,7 @@ from typing import Callable
 from dotbot_utils.protocol import Frame, Header, Packet
 from numpy import clip
 
-from dotbot import GATEWAY_ADDRESS_DEFAULT
+from dotbot import GATEWAY_ADDRESS_DEFAULT, addr_to_hex
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
     ApplicationType,
@@ -348,7 +348,7 @@ class SailBotSimulator:
             return
         frame = Frame.from_bytes(bytes_)
 
-        if self.address == hex(frame.header.destination)[2:]:
+        if self.address == addr_to_hex(int(frame.header.destination)):
             if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                 self.rudder_slider = (
                     frame.packet.payload.left_x - 256

@@ -15,7 +15,13 @@ include = [
 ]
 exclude = [
     "dotbot/frontend/node_modules",
+    "dotbot/console-web/node_modules",
     "utils/"
+]
+# The console build output is gitignored (dist/); artifacts overrides the
+# VCS-ignore so the built app ships in the packages.
+artifacts = [
+    "dotbot/console-web/dist",
 ]
 
 [tool.hatch.metadata]

@@ -1,0 +1,161 @@
+// Two independent axes, kept apart on purpose.
+//
+// BotState is the SwarmIT sandbox lifecycle, swarmit's vocabulary verbatim. It
+// says what the TrustZone sandbox is doing. A bot swarmit does not know (one
+// running bare, with no sandbox) has no value here at all, which is why the
+// merged object carries `state: BotState | null` rather than inventing one.
+//
+// LinkState is PyDotBot's DotBotStatus: whether the control plane is still
+// hearing the bot. Orthogonal to the sandbox - a bot can be mid-Programming
+// and unheard at the same time, and collapsing the two lost exactly that.
+export type BotState =
+  | "Running"
+  | "Programming"
+  | "Bootloader"
+  | "Stopping"
+  | "Resetting";
+
+export type LinkState = "active" | "inactive" | "lost" | "unknown";
+
+export const STATE_ORDER: BotState[] = [
+  "Running",
+  "Programming",
+  "Bootloader",
+  "Stopping",
+  "Resetting",
+];
+
+export const LINK_LABEL: Record<LinkState, string> = {
+  active: "Live",
+  inactive: "Inactive",
+  lost: "Lost",
+  unknown: "Not on the control plane",
+};
+
+// PyDotBot REST/WS shapes (subset the console consumes).
+export interface LH2Position {
+  x: number;
+  y: number;
+}
+
+export interface RgbLed {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+export interface PyDotBot {
+  address: string;
+  application: number; // ApplicationType: 0 = DotBot
+  status: number; // 0 ACTIVE, 1 INACTIVE, 2 LOST
+  mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
+  direction?: number;
+  lh2_position?: LH2Position;
+  position_history?: LH2Position[];
+  waypoints?: LH2Position[];
+  waypoints_threshold?: number;
+  rgb_led?: RgbLed;
+  battery?: number; // volts
+  calibrated?: number;
+}
+
+export interface WsNotification {
+  cmd: number; // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT
+  data?: Partial<PyDotBot> & {
+    lh2_waypoints?: LH2Position[];
+  };
+}
+
+// What a bot reports it is running, as carried in SwarmitNode.info.
+export interface SwarmitDeviceInfo {
+  info_version?: number;
+  bl_version: string;
+  net_version: string;
+  boot_count: number;
+  uptime_s: number;
+  image_state?: number;
+  image_result?: number;
+  image_size?: number;
+  image_name: string;
+  image_version: string;
+  image_digest: string;
+  lh2_homography_count?: number;
+  lh2_flags?: number;
+  // Display strings swarmit computes; the console renders them verbatim.
+  lh2_summary?: string;
+  image_state_name?: string;
+  image_result_name?: string;
+  raw?: string; // hex of the device-info packet, only on /status
+}
+
+// SwarmIT /status record. Only the fields the console binds to are declared;
+// the server sends the full NodeStatus and the extras are ignored.
+export interface SwarmitNode {
+  device: string;
+  status: string; // Bootloader | Running | Stopping | Resetting | Programming
+  battery: number; // millivolts
+  pos_x: number;
+  pos_y: number;
+  reset_reason?: number; // raw nRF RESETREAS
+  fault?: number; // latched fault type, 0 = none
+  reset_cause?: string; // swarmit's friendly label for the last reset
+  fault_name?: string; // the latched FaultType's name
+  reset_severity?: string; // crashed | hung | normal, swarmit's own tiering
+  battery_pct?: number; // 0-100 on this robot's own battery profile
+  battery_level?: string; // full | ok | low, the bootloader's LED bands
+  from_ns?: number; // the fault came from the non-secure world
+  pc?: number; // program counter at the fault
+  lr?: number;
+  cfsr?: number; // configurable fault status
+  sfsr?: number; // secure fault status
+  last_updated_at?: number; // unix seconds
+  raw?: string; // hex of the status packet, only on /status
+  info?: SwarmitDeviceInfo | null;
+}
+
+// The merged per-bot object the UI binds to (controller + swarmit joined by address).
+export interface UnifiedBot {
+  id: string; // hex address, the join key
+  state: BotState | null; // null: swarmit does not know this bot (no sandbox)
+  link: LinkState;
+  position: LH2Position | null; // arena mm
+  heading: number | null; // degrees
+  battery: number; // volts
+  led: RgbLed | null;
+  deviceType: string;
+  application: number;
+  drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
+  nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
+  waypoints: LH2Position[]; // active mission (as reported by the controller)
+  trail: LH2Position[];
+  image: string | null; // firmware image the bot reports running
+  resetCause: string | null; // why it last booted, swarmit's vocabulary
+  // How much attention the last reset deserves, straight from swarmit.
+  // "hung" is its own tier: a sandbox app has no clean exit, so a normal
+  // completion latches WatchdogTimeout and must not read as a crash.
+  severity: "crashed" | "hung" | "normal";
+  batteryPct: number | null; // served by swarmit; null for a bot it does not know
+  batteryLevel: string | null; // full | ok | low
+  swarmit: SwarmitNode | null; // the orchestration record, for the inspector
+}
+
+// GET /controller/connection - how the controller reaches the swarm.
+export interface ControllerConnection {
+  adapter: string;
+  connection: string;
+  swarm_id: string;
+  gw_address: string;
+}
+
+export interface MapSize {
+  width: number;
+  height: number;
+}
+
+// A waypoint mission queued locally but not yet sent: bound to the bots that
+// were selected when its waypoints were dropped (survives deselection).
+export interface PlannedMission {
+  key: string; // sorted ids joined
+  ids: string[];
+  waypoints: LH2Position[];
+}

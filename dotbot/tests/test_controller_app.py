@@ -72,6 +72,51 @@ conn = "simulator"
     assert settings.adapter == "dotbot-simulator"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_swarmit_url_flag(controller, _asyncio_run):
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["--conn", "simulator", "--swarmit-url", "http://lab:9001"]
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.swarmit_url == "http://lab:9001"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_swarmit_url_from_unified_config(
+    controller, _asyncio_run, tmp_path
+):
+    """`[run.controller] swarmit_url` in dotbot.toml reaches the settings;
+    without it the built-in default applies."""
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(
+        """
+conn = "simulator"
+
+[run.controller]
+swarmit_url = "http://lab:9001"
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.swarmit_url == "http://lab:9001"
+
+    result = runner.invoke(main, ["--conn", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.swarmit_url == "http://localhost:8001"
+
+
 def test_main_without_conn_errors():
     """No `--conn` → a clear error listing the connection forms."""
     runner = CliRunner()

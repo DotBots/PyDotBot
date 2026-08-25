@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
+from dotbot.controller import ControllerSettings
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -579,6 +580,109 @@ async def test_reverse_proxy_middleware_redirects_to_upstream(monkeypatch):
     assert response.headers["X-Upstream"] == "mock"
 
 
+class _MockByteStream(httpx.AsyncByteStream):
+    """Streamable body for MockTransport responses (a plain `content=` body
+    counts as already consumed, which the streaming proxy rejects)."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    async def __aiter__(self):
+        for chunk in self._chunks:
+            yield chunk
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_forwards(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://swarmit-host:9001/status")
+        return httpx.Response(
+            status_code=200,
+            stream=_MockByteStream([b'{"response": {}}']),
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.get("/swarmit/status")
+
+    assert response.status_code == 200
+    assert response.content == b'{"response": {}}'
+    assert response.headers["Content-Type"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_forwards_post_body(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://swarmit-host:9001/start")
+        assert request.method == "POST"
+        assert request.content == b'{"devices": []}'
+        assert request.headers["content-type"] == "application/json"
+        return httpx.Response(
+            status_code=200, stream=_MockByteStream([b'{"result": "ok"}'])
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.post(
+        "/swarmit/start",
+        content=b'{"devices": []}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b'{"result": "ok"}'
+
+
+@pytest.mark.asyncio
+async def test_swarmit_proxy_unreachable(monkeypatch):
+
+    async def mock_send_failed(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    transport = httpx.MockTransport(mock_send_failed)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.swarmit_url = "http://swarmit-host:9001"
+
+    client = TestClient(api)
+    response = client.get("/swarmit/status")
+
+    assert response.status_code == 502
+    assert b"swarmit server unreachable" in response.content
+
+
 @pytest.mark.asyncio
 async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
@@ -771,3 +875,89 @@ def test_ws_invalid_message_validation_error():
     assert isinstance(response["details"], list)
 
     api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_connection_reports_an_mqtt_endpoint():
+    api.controller.settings = ControllerSettings(
+        adapter="cloud",
+        mqtt_host="argus.example.org",
+        mqtt_port=8883,
+        mqtt_use_tls=True,
+        network_id="A000",
+        gw_address="0000000000000000",
+    )
+
+    result = await client.get("/controller/connection")
+
+    assert result.status_code == 200
+    assert result.json() == {
+        "adapter": "cloud",
+        "connection": "mqtts://argus.example.org:8883",
+        "swarm_id": "A000",
+        "gw_address": "0000000000000000",
+    }
+
+
+@pytest.mark.asyncio
+async def test_connection_never_leaks_the_mqtt_credentials():
+    """The route is reachable by any browser that can reach the controller."""
+    api.controller.settings = ControllerSettings(
+        adapter="cloud",
+        mqtt_host="broker.example.org",
+        mqtt_username="operator",
+        mqtt_password="hunter2",
+    )
+
+    body = (await client.get("/controller/connection")).text
+
+    assert "operator" not in body
+    assert "hunter2" not in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "adapter,expected",
+    [
+        ("dotbot-simulator", "simulator"),
+        ("sailbot-simulator", "simulator"),
+        ("edge", "/dev/ttyACM0"),
+        ("serial", "/dev/ttyACM0"),
+    ],
+)
+async def test_connection_reports_the_non_mqtt_adapters(adapter, expected):
+    api.controller.settings = ControllerSettings(adapter=adapter, port="/dev/ttyACM0")
+
+    result = await client.get("/controller/connection")
+
+    assert result.json()["connection"] == expected
+
+
+def test_the_controller_opens_the_console_when_it_is_built(tmp_path, monkeypatch):
+    """The console is the default UI; the classic frontend is the fallback."""
+    import dotbot.server as server
+
+    console, classic = tmp_path / "console", tmp_path / "classic"
+
+    monkeypatch.setattr(server, "CONSOLE_DIR", str(console))
+    monkeypatch.setattr(server, "FRONTEND_DIR", str(classic))
+    assert server.default_ui_path() is None
+
+    classic.mkdir()
+    assert server.default_ui_path() == "/PyDotBot"
+
+    console.mkdir()
+    assert server.default_ui_path() == "/console"
+
+
+def test_the_api_binds_loopback_unless_asked_otherwise():
+    """The REST/WS API is unauthenticated, so it is not on the LAN by default."""
+    from dotbot.controller import ControllerSettings
+
+    default = ControllerSettings(gw_address="78", network_id="0")
+    assert default.controller_http_host == "127.0.0.1"
+
+    wide = ControllerSettings(
+        gw_address="78", network_id="0", controller_http_host="0.0.0.0"
+    )
+    assert wide.controller_http_host == "0.0.0.0"

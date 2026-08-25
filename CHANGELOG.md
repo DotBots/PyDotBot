@@ -54,6 +54,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking - the controller binds loopback by default.** `dotbot run
+  controller` served the REST/WebSocket API on `0.0.0.0`, putting an
+  unauthenticated API on every interface; the new `/swarmit/*` proxy would
+  republish the swarmit server the same way. It now binds `127.0.0.1`. To reach
+  it from another machine pass `--controller-http-host 0.0.0.0`, set
+  `[run.controller] http_host`, or `DOTBOT_RUN_CONTROLLER_HTTP_HOST`; binding
+  beyond loopback logs a warning.
+- **`dotbot run controller` now opens the unified web console** at `/console`
+  instead of the classic dashboard at `/PyDotBot`. The classic UI is still
+  served and still carries the qrkey demo, the REST demo and the SailBot
+  views. If only one of the two is built, that one is opened; if neither is,
+  the controller serves the API and says so rather than opening a dead tab.
+- **Device addresses are rendered uppercase everywhere**, through a single
+  `dotbot.addr_to_hex()` helper, and are matched case-sensitively. The address
+  is the join key between the control plane and swarmit, which already
+  uppercased it, so the two now agree; `DOTBOT_ADDRESS_DEFAULT` and
+  `GATEWAY_ADDRESS_DEFAULT` were already written this way. Consequences:
+  a lowercase address in a REST path or MQTT topic now reaches no DotBot,
+  and a `--csv-data-output` file spanning the upgrade holds both cases for
+  the same robot (re-normalise with `df.address.str.upper()` before grouping).
+  `-d/--dotbot-address` on `dotbot run joystick` / `keyboard` accepts either
+  case and normalises.
 - **Breaking — CLI reorganized into four object-namespaces.** The top
   level is now exactly `fw` (firmware artifacts), `device` (one cabled
   device), `swarm` (the fleet), and `run` (host-side processes). The flat

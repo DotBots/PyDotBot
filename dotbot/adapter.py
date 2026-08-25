@@ -119,9 +119,9 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug(f"Node joined: {event_data.address:016x}")
+                LOGGER.debug(f"Node joined: {event_data.address:016X}")
             elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug(f"Node left: {event_data.address:016x}")
+                LOGGER.debug(f"Node left: {event_data.address:016X}")
             elif event == EdgeEvent.NODE_DATA:
                 if event_data.header.next_proto != NextProto.DOTBOT_APP:
                     return
@@ -183,9 +183,9 @@ class MarilibCloudAdapter(GatewayAdapterBase):
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug(f"Node joined: {event_data.address:016x}")
+                LOGGER.debug(f"Node joined: {event_data.address:016X}")
             elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug(f"Node left: {event_data.address:016x}")
+                LOGGER.debug(f"Node left: {event_data.address:016X}")
             elif event == EdgeEvent.NODE_DATA:
                 if event_data.header.next_proto != NextProto.DOTBOT_APP:
                     return

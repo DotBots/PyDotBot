@@ -12,7 +12,6 @@ import queue
 import random
 import threading
 import time
-from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
 from math import atan2, cos, pi, sin, sqrt
@@ -23,7 +22,11 @@ import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 from pydantic import BaseModel, Field, model_validator
 
-from dotbot import GATEWAY_ADDRESS_DEFAULT, SIMULATOR_INIT_STATE_DEFAULT
+from dotbot import (
+    GATEWAY_ADDRESS_DEFAULT,
+    SIMULATOR_INIT_STATE_DEFAULT,
+    addr_to_hex,
+)
 from dotbot.logger import LOGGER
 from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
 
@@ -114,7 +117,7 @@ class SimulatedNetworkSettings(BaseModel):
 
 
 def _random_address() -> str:
-    return f"{random.getrandbits(64):016x}"
+    return f"{random.getrandbits(64):016X}"
 
 
 class SimulatedDotBotSettings(BaseModel):
@@ -178,7 +181,7 @@ class DotBotSimulator:
     """Simulator class for the dotbot."""
 
     def __init__(self, settings: SimulatedDotBotSettings, tx_queue: queue.Queue):
-        self.address = settings.address.lower()
+        self.address = settings.address.upper()
         self.pos_x = settings.pos_x
         self.pos_y = settings.pos_y
         self.theta = settings.direction * -1 if settings.direction != -1000 else 0
@@ -604,7 +607,7 @@ class DotBotSimulator:
             if frame is None:
                 break
             with self._lock:
-                if self.address == hex(frame.header.destination)[2:]:
+                if self.address == addr_to_hex(int(frame.header.destination)):
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
                         self.waypoint_index = 0
@@ -828,14 +831,14 @@ class DotBotSimulatorCommunicationInterface:
 
     def handle_dotbot_frame(self, frame):
         """Send bytes to the fake serial, similar to the real gateway."""
-        addr = hex(frame.header.source)[2:]
+        addr = addr_to_hex(int(frame.header.source))
         index = self._address_to_index.get(addr, 0)
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
             self._mari.schedule_uplink(frame, index)
             return
         if not self._packet_delivered(self._network.pdr):
             self.logger.info(
-                f"Packet from DotBot {hexlify(int(frame.header.source).to_bytes(8, 'big')).decode()} lost in simulation"
+                f"Packet from DotBot {addr_to_hex(int(frame.header.source))} lost in simulation"
             )
             return
         self.on_frame_received(frame)

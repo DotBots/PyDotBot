@@ -1,17 +1,49 @@
-# Codecov config — split project-level (long-term) from patch-level
-# (per-PR) policy. Project-level keeps the long-term floor honest;
-# patch-level is informational because vendoring / refactor PRs can
-# legitimately ship diffs with low instantaneous coverage even when
-# the project total stays healthy.
+# Codecov config — the gate belongs on the Python control plane, not on the
+# two web apps.
+#
+# Coverage arrives from three uploads (pytest, the classic frontend's vitest,
+# the console's vitest). Untagged they merge into one project total, so adding
+# a few thousand lines of thinly-covered TS drags the number down and fails a
+# PR that did nothing to the Python. Flags keep the three apart.
+#
+# The web apps are reported but never block: their vitest suites cover the pure
+# logic (state merge, mission grouping, SSE parsing, the drive mixing) and
+# deliberately not the rendering, so their absolute number is low by design and
+# says little about whether a change is safe.
+
+flags:
+  python:
+    paths:
+      - dotbot/
+      - utils/
+    carryforward: true
+  frontend:
+    paths:
+      - dotbot/frontend/
+    carryforward: true
+  console:
+    paths:
+      - dotbot/console-web/
+    carryforward: true
 
 coverage:
   status:
     project:
-      default:
+      # No unflagged aggregate status: that is the one that mixed the three.
+      default: false
+      python:
+        flags:
+          - python
         # Compare against main's current coverage. Allow tiny dips
         # (rounding / one-off branches) without flapping CI.
         target: auto
         threshold: 1%
+      web:
+        flags:
+          - frontend
+          - console
+        # Reported in the PR comment, never a CI gate.
+        informational: true
     patch:
       default:
         # Report patch coverage but don't fail CI on it. Reviewers can

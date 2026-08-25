@@ -9,6 +9,7 @@
 *.log
 *.egg-info/
 .coverage
+coverage/
 .tox/
 dist/
 node_modules/

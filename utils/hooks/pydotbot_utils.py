@@ -23,3 +23,14 @@ def build_frontend(root):
         print("Building React frontend application...")
         subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=frontend_dir, check=True)
         subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=frontend_dir, check=True)
+
+
+def build_console(root):
+    """Builds the console web application."""
+    console_dir = os.path.join(root, "dotbot", "console-web")
+    os.makedirs(os.path.join(console_dir, "dist"), exist_ok=True)
+
+    if sys.platform != "win32":
+        print("Building console web application...")
+        subprocess.run(shlex.split(NPM_INSTALL_CMD), cwd=console_dir, check=True)
+        subprocess.run(shlex.split(NPM_BUILD_CMD), cwd=console_dir, check=True)

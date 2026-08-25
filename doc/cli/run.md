@@ -19,9 +19,13 @@ dotbot run --help        # the full list
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
 
-## `controller` - the control plane + web UI
+## `controller` - the control plane + web console
 
-Connect to a swarm and serve the dashboard at `http://localhost:8000/PyDotBot/`.
+Connect to a swarm and serve the console at `http://localhost:8000/console/`.
+The console is one map-first UI for driving the fleet and, when a swarmit server
+is reachable, orchestrating the testbed. The classic dashboard stays served at
+`/PyDotBot`, which is where the qrkey demo, the REST demo and the SailBot views
+live.
 `--conn` is one discriminated string: `mqtts://host:port`, a serial path, or
 `simulator`.
 
@@ -34,8 +38,10 @@ dotbot run controller --conn /dev/ttyACM0
 |---|---|
 | `-n/--conn` | `mqtts://host:port`, serial path, or `simulator` |
 | `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
-| `--headless` | don't open the dashboard in a browser (it's still served) |
+| `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
+| `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file |
+| `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
 
 Full options and the dashboard tour live in
 [the controller guide](../guides/controller.md). See `dotbot run controller --help`.
@@ -57,7 +63,7 @@ dotbot run gateway                # autodetect port, print-only (no broker)
 ## `simulator` - standalone simulator
 
 No hardware, no gateway. Exactly equivalent to `run controller --conn simulator`,
-so it shares the controller's flags and serves the same dashboard.
+so it shares the controller's flags and serves the same console.
 
 ```bash
 dotbot run simulator
@@ -94,7 +100,7 @@ specific DotBot by hex address.
 
 ```bash
 dotbot run keyboard
-dotbot run joystick -j 0 -d 1234567890abcdef
+dotbot run joystick -j 0 -d 1234567890ABCDEF
 ```
 
 See `dotbot run keyboard --help` / `dotbot run joystick --help` for the host,

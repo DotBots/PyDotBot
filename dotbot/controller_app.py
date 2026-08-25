@@ -18,10 +18,12 @@ import serial
 import toml
 
 from dotbot import (
+    CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
+    SWARMIT_URL_DEFAULT,
     pydotbot_version,
 )
 from dotbot.cli._cfg import from_config
@@ -226,6 +228,24 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     type=click.Path(dir_okay=False),
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
+@click.option(
+    "--controller-http-host",
+    type=str,
+    help=(
+        "Interface the REST/WS API binds to. Defaults to "
+        f"'{CONTROLLER_HTTP_HOST_DEFAULT}' (loopback). Use '0.0.0.0' to reach "
+        "it from another machine - the API is unauthenticated, so only do that "
+        "on a network you trust."
+    ),
+)
+@click.option(
+    "--swarmit-url",
+    type=str,
+    help=(
+        "Base URL of the swarmit server the controller proxies /swarmit/* "
+        f"requests to (for the web console). Defaults to '{SWARMIT_URL_DEFAULT}'."
+    ),
+)
 @click.pass_context
 def main(
     ctx,
@@ -234,9 +254,11 @@ def main(
     sim_is_dotbot,
     gw_address,
     controller_http_port,
+    controller_http_host,
     map_size,
     background_map,
     simulator_init_state,
+    swarmit_url,
     headless,
     verbose,
     log_level,
@@ -261,6 +283,7 @@ def main(
     # legacy `--config-path` fallback that follows.
     conn = from_config(ctx, "conn", "conn", "run")
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
+    swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -293,9 +316,11 @@ def main(
     cli_args = {
         "gw_address": gw_address,
         "controller_http_port": controller_http_port,
+        "controller_http_host": controller_http_host,
         "map_size": map_size,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
+        "swarmit_url": swarmit_url,
         "headless": True if headless else None,
         "verbose": verbose,
         "log_level": log_level,

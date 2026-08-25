@@ -14,13 +14,15 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
@@ -28,6 +30,7 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotBackgroundMapModel,
+    DotBotConnectionModel,
     DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -292,6 +295,30 @@ async def map_size():
 
 
 @api.get(
+    path="/controller/connection",
+    response_model=DotBotConnectionModel,
+    summary="Return how the controller reaches the swarm",
+    tags=["controller"],
+)
+async def connection():
+    """Connection HTTP GET handler."""
+    settings = api.controller.settings
+    if settings.adapter == "cloud":
+        scheme = "mqtts" if settings.mqtt_use_tls else "mqtt"
+        conn = f"{scheme}://{settings.mqtt_host}:{settings.mqtt_port}"
+    elif settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+        conn = "simulator"
+    else:
+        conn = settings.port
+    return DotBotConnectionModel(
+        adapter=settings.adapter,
+        connection=conn,
+        swarm_id=settings.network_id,
+        gw_address=settings.gw_address,
+    )
+
+
+@api.get(
     path="/controller/background_map",
     response_model=DotBotBackgroundMapModel,
     summary="Return the background map of the controller",
@@ -362,6 +389,55 @@ async def ws_dotbots(websocket: WebSocket):
         LOGGER.debug("WebSocket client disconnected")
 
 
+# Timeouts for the swarmit proxy: fail fast when the server is down, but
+# never time out reads - /events and /flash/stream are long-lived SSE.
+SWARMIT_PROXY_TIMEOUT = httpx.Timeout(5.0, read=None)
+
+
+@api.api_route(
+    path="/swarmit/{path:path}",
+    methods=["GET", "POST"],
+    include_in_schema=False,
+)
+async def swarmit_proxy(path: str, request: Request):
+    """Forward /swarmit/* to the configured swarmit server (same-origin for
+    the web console; the streaming body keeps SSE responses live)."""
+    base = api.controller.settings.swarmit_url.rstrip("/")
+    client = httpx.AsyncClient(timeout=SWARMIT_PROXY_TIMEOUT)
+    upstream_request = client.build_request(
+        method=request.method,
+        url=f"{base}/{path}",
+        params=request.query_params,
+        headers={
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() in ("content-type", "accept")
+        },
+        content=await request.body(),
+    )
+    try:
+        upstream = await client.send(upstream_request, stream=True)
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        LOGGER.debug("swarmit server unreachable", url=f"{base}/{path}", error=str(exc))
+        return Response(status_code=502, content=b"swarmit server unreachable")
+
+    async def cleanup():
+        await upstream.aclose()
+        await client.aclose()
+
+    return StreamingResponse(
+        upstream.aiter_raw(),
+        status_code=upstream.status_code,
+        headers={
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in ("content-type", "cache-control")
+        },
+        background=BackgroundTask(cleanup),
+    )
+
+
 # Mount static files after all routes are defined
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 if os.path.isdir(FRONTEND_DIR):
@@ -375,3 +451,25 @@ else:
         "frontend: cd dotbot/frontend && npm install && npm run build",
         FRONTEND_DIR,
     )
+
+# The unified console (map-first PyDotBot + swarmit UI). This is the UI the
+# controller opens; the classic frontend stays mounted at /PyDotBot, which is
+# where the qrkey demo, the REST demo and the SailBot views live.
+CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
+if os.path.isdir(CONSOLE_DIR):
+    api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
+else:
+    LOGGER.info(
+        "Console build not found at %s; /console will be unavailable. "
+        "Build it with: cd dotbot/console-web && npm install && npm run build",
+        CONSOLE_DIR,
+    )
+
+
+def default_ui_path() -> str | None:
+    """Path the controller opens on start, or None when no UI is built."""
+    if os.path.isdir(CONSOLE_DIR):
+        return "/console"
+    if os.path.isdir(FRONTEND_DIR):
+        return "/PyDotBot"
+    return None
