@@ -459,7 +459,7 @@ CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
 if os.path.isdir(CONSOLE_DIR):
     api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
 else:
-    LOGGER.info(
+    LOGGER.warning(
         "Console build not found at %s; /console will be unavailable. "
         "Build it with: cd dotbot/console-web && npm install && npm run build",
         CONSOLE_DIR,

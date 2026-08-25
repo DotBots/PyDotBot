@@ -9,6 +9,7 @@
   --muted: #9aa4b2;
   --accent: #e4032e;
   --hairline: rgba(255, 255, 255, 0.07);
+  --tyre: #4a5160;
 
   /* State colors are shared across themes: a color always means the same thing. */
   --s-Running: #22c55e;
@@ -31,6 +32,7 @@
   --text: #0f172a;
   --muted: #5b6577;
   --hairline: rgba(0, 0, 0, 0.07);
+  --tyre: #5a6270;
 }
 
 * {
