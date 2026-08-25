@@ -92,6 +92,16 @@ describe("merge", () => {
     expect(b.position).toEqual({ x: 100, y: 200 });
   });
 
+  // swarmit reports (0, 0) for a bot it has never located, and a real fix
+  // cannot land on the origin - drawing it puts the whole uncalibrated fleet
+  // in one arena corner and reads as a real cluster.
+  it("does not treat swarmit's (0, 0) no-fix sentinel as a position", () => {
+    const [a] = merge({}, { a: sw({ pos_x: 0, pos_y: 0 }) });
+    expect(a.position).toBeNull();
+    const [b] = merge({}, { b: sw({ pos_x: 0, pos_y: 400 }) });
+    expect(b.position).toEqual({ x: 0, y: 400 });
+  });
+
   it("treats direction -1000 (unknown) as no heading", () => {
     const [a] = merge({ a: py({ address: "a", direction: -1000 }) }, {});
     expect(a.heading).toBeNull();

@@ -144,6 +144,12 @@ export const FirmwareSection: React.FC<Props> = (props) => {
             type="file"
             accept=".bin,application/octet-stream"
             style={{ display: "none" }}
+            // Clearing the value first makes re-picking the same path fire a
+            // change event, so a rebuilt image is re-read instead of flashing
+            // the bytes captured the first time it was chosen.
+            onClick={(e) => {
+              (e.currentTarget as HTMLInputElement).value = "";
+            }}
             onChange={(e) => pick(e.target.files?.[0])}
           />
           <div

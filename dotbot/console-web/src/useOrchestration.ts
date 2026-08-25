@@ -103,13 +103,21 @@ export function useOrchestration(onToast: (msg: string) => void) {
         } else if (ev.type === "chunk" && ev.addr) {
           setQueue((q) => ({
             ...q,
-            [ev.addr!]: { ...q[ev.addr!], acked: ev.acked ?? 0, total: ev.total ?? 0 },
+            [ev.addr!]: {
+              ...(q[ev.addr!] ?? { addr: ev.addr!, done: false }),
+              acked: ev.acked ?? 0,
+              total: ev.total ?? 0,
+            },
           }));
         } else if (ev.type === "device_done" && ev.addr) {
           if (ev.success) flashed.push(ev.addr);
           setQueue((q) => ({
             ...q,
-            [ev.addr!]: { ...q[ev.addr!], done: true, success: ev.success },
+            [ev.addr!]: {
+              ...(q[ev.addr!] ?? { addr: ev.addr!, acked: 0, total: 0 }),
+              done: true,
+              success: ev.success,
+            },
           }));
         } else if (ev.type === "complete") {
           onToast(ev.all_success ? "Flash complete" : "Flash finished with failures");

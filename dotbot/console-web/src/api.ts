@@ -86,11 +86,16 @@ export async function swarmitAction(
   action: "start" | "stop",
   devices?: string[],
 ): Promise<void> {
-  await fetch(`${SWARMIT}/${action}`, {
+  const res = await fetch(`${SWARMIT}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(devices && devices.length ? { devices } : {}),
   });
+  // fetch resolves on any status, so without this a 502 from an absent swarmit
+  // server toasts as a sent command.
+  if (!res.ok) {
+    throw new Error(`${action} refused: ${res.status} ${await res.text()}`);
+  }
 }
 
 export interface FlashEvent {

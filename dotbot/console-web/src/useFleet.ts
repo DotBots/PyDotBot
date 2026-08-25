@@ -52,8 +52,13 @@ export function merge(
       id,
       state,
       link,
+      // swarmit reports (0, 0) for a bot it has never located, and the arena
+      // never contains the origin, so drawing it would invent a position.
       position:
-        py?.lh2_position ?? (sw ? { x: sw.pos_x, y: sw.pos_y } : null),
+        py?.lh2_position ??
+        (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)
+          ? { x: sw.pos_x, y: sw.pos_y }
+          : null),
       heading:
         py?.direction !== undefined && py.direction !== -1000
           ? py.direction
