@@ -6,6 +6,7 @@ import { GridView } from "./GridView";
 import { Inspector } from "./Inspector";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
+import { MrtaToggle } from "./MrtaToggle";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   ControllerConnection,
@@ -13,6 +14,7 @@ import {
   PlannedMission,
 } from "./types";
 import { useFleet } from "./useFleet";
+import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
@@ -41,6 +43,7 @@ export const App: React.FC = () => {
   }, []);
 
   const orch = useOrchestration(showToast);
+  const mrta = useMrta();
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -270,6 +273,7 @@ export const App: React.FC = () => {
           <span style={{ fontSize: 11, color: "var(--muted)" }}>&middot; {bots.length} bots</span>
         </div>
         <div style={{ flex: 1 }} />
+        <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />
         {/* theme: Dark | Light segmented (v1) */}
         <div
           style={{

@@ -6,10 +6,12 @@ import {
   RgbLed,
   SwarmitNode,
 } from "./types";
+import { MRTA_UNAVAILABLE, MrtaStatus, parseStatus } from "./mrta";
 
 // Same-origin in dev thanks to the vite proxy (see vite.config.ts).
 const CONTROLLER = "/controller";
 const SWARMIT = "/swarmit";
+const MRTA = "/mrta";
 
 export async function fetchDotBots(): Promise<PyDotBot[]> {
   const res = await fetch(`${CONTROLLER}/dotbots`);
@@ -170,4 +172,35 @@ export async function flashStream(
 
 export function swarmitEventsUrl(): string {
   return `${SWARMIT}/events`;
+}
+
+// MRTA mode lives behind the controller's /mrta proxy, and is expected to be
+// absent: an unreachable server, a 404 on a controller without the route and a
+// 502 from the proxy all mean the same thing to the console - no MRTA - so
+// they collapse into MRTA_UNAVAILABLE instead of surfacing as errors.
+export async function fetchMrtaStatus(): Promise<MrtaStatus> {
+  try {
+    const res = await fetch(`${MRTA}/status`);
+    if (!res.ok) return MRTA_UNAVAILABLE;
+    return parseStatus(await res.json());
+  } catch {
+    return MRTA_UNAVAILABLE;
+  }
+}
+
+// Returns the status the server reports after accepting the change, or null if
+// it refused or could not be reached. Null is not an error state here: the
+// poll is the source of truth and corrects the optimistic label a tick later.
+export async function postMrtaMode(on: boolean): Promise<MrtaStatus | null> {
+  try {
+    const res = await fetch(`${MRTA}/mode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
+    });
+    if (!res.ok) return null;
+    return parseStatus(await res.json());
+  } catch {
+    return null;
+  }
 }
