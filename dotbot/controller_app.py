@@ -22,6 +22,7 @@ from dotbot import (
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     MAP_SIZE_DEFAULT,
+    MRTA_URL_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     SWARMIT_URL_DEFAULT,
     pydotbot_version,
@@ -246,6 +247,15 @@ def _maybe_scaffold_sim_state(explicit_init_state):
         f"requests to (for the web console). Defaults to '{SWARMIT_URL_DEFAULT}'."
     ),
 )
+@click.option(
+    "--mrta-url",
+    type=str,
+    help=(
+        "Base URL of the MRTA mode server (dotbot-logistics) the controller "
+        "proxies /mrta/* requests to (for the web console's MRTA toggle). "
+        f"Defaults to '{MRTA_URL_DEFAULT}'."
+    ),
+)
 @click.pass_context
 def main(
     ctx,
@@ -259,6 +269,7 @@ def main(
     background_map,
     simulator_init_state,
     swarmit_url,
+    mrta_url,
     headless,
     verbose,
     log_level,
@@ -284,6 +295,7 @@ def main(
     conn = from_config(ctx, "conn", "conn", "run")
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
     swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
+    mrta_url = from_config(ctx, "mrta_url", "mrta_url", "run.controller")
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -321,6 +333,7 @@ def main(
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,
+        "mrta_url": mrta_url,
         "headless": True if headless else None,
         "verbose": verbose,
         "log_level": log_level,

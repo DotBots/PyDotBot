@@ -42,6 +42,7 @@ dotbot run controller --conn /dev/ttyACM0
 | `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
+| `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
 
 Full options and the dashboard tour live in
 [the controller guide](../guides/controller.md). See `dotbot run controller --help`.

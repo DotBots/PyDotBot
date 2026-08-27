@@ -147,6 +147,7 @@ class ControllerSection(_Strict):
     gw_address: str | None = None
     simulator_init_state: str | None = None
     swarmit_url: str | None = None
+    mrta_url: str | None = None
 
 
 class GatewaySection(_Strict):
