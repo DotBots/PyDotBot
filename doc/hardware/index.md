@@ -36,7 +36,7 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 | **Motor drivers** | U5, U6 (BDR6120H) | H-bridges converting MCU logic signals into motor current. |
 | **Wheels** | — | Two driven wheels, one per motor (left and right). |
 | **Bumper rails** | V_Bumper± | Contact rings at the front and rear, carrying the charging rail. |
-| **DotBot ID** |  —  |DotBot ID. |
+| **DotBot ID** |  —  |DotBot ID (last 6 digits). |
 | **Lighthouse receiver** | D17 (BPW34S) + U12 (TS4231) | Detects the IR sweeps from the base stations and outputs them as digital signals. |
 | **Supercap charger** | U13 (BQ24640) + L3 |Charges the supercapacitor. |
 | **USB-C port** | J2 | Connects to the DAPLink probe, data only, no charging. |
@@ -46,17 +46,19 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 | **Motors** | M1, M2 (N20) | Drive the left and right wheels; each carries a quadrature encoder. |
 | **Status LEDs** | D19, D23, D24 + D18 | Indicate the robot's mode: bootloader, running, programming. |
 | **Supercapacitors** | J11 / J12  | Main energy storage. |
-| **Coin cell** | BT1 (CR2032, 3 V) | Enables the motors to be powered. |
+| **Coin cell** | BT1 (CR2032, 3 V) | Enables the motors to be powered; optional in DotBot V3 build >= 1.3 (but needed in build <= 1.2) |
 | **Supercap terminals** | J11 (V_Cap+), J12 (V_Cap−) | Connect the supercapacitors to the board. |
 | **Passive front wheel** | — | Ball caster: used for support. |
 | **Bumper connectors** | J7, J8, J14 (front) / J9, J10, J15 (rear) |  Connect the front and rear bumpers to the board. |
 | **Barrel jack** | J4 | Charges the supercapacitors. |
 <p align="center">
-  <img width="988" height="649" alt="image" src="https://github.com/user-attachments/assets/c2b05eac-a0ff-4369-bcc2-7ad947905142" /><br>
+ <img width="1256" height="834" alt="image" src="https://github.com/user-attachments/assets/aedbbe38-2032-4eed-b2f0-c43fff9aaa7a" />
+<br>
   <b>Figure 1: DotBot front</b>
 </p>
 <p align="center">
-  <img width="1052" height="732" alt="image" src="https://github.com/user-attachments/assets/058f5a1c-5d77-4452-b8b0-d15a50b4189b" /><br>
+  <img width="1093" height="732" alt="image" src="https://github.com/user-attachments/assets/f3996c54-3f0a-41d5-bd5a-701a79ca4a65" />
+<br>
   <b>Figure 2: DotBot back</b>
 </p>
 
