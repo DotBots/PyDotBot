@@ -1,14 +1,16 @@
 # Console manual test guide
 
-Start the stack (three terminals, from the workspace root, venv active):
+Start the stack (three terminals, from this checkout's root, venv active).
+`PYTHONPATH=.` makes the simulator run from this checkout rather than whichever
+one is pip-installed; the vite dev server compiles `src/` directly either way.
 
 ```bash
-PYTHONPATH=repos/wt-PyDotBot-unified-web-ui dotbot run simulator --headless \
-  --simulator-init-state repos/wt-PyDotBot-unified-web-ui/dotbot/console-web/dev/simulator_init_state.toml
+PYTHONPATH=. dotbot run simulator --headless \
+  --simulator-init-state dotbot/console-web/dev/simulator_init_state.toml
 
-python repos/wt-PyDotBot-unified-web-ui/dotbot/console-web/dev/fake_swarmit_server.py
+python dotbot/console-web/dev/fake_swarmit_server.py
 
-npm --prefix repos/wt-PyDotBot-unified-web-ui/dotbot/console-web run start
+npm --prefix dotbot/console-web run start
 ```
 
 Open http://localhost:5173. Handy URL params: `?sel=1111` (preselect),

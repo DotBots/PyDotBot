@@ -422,4 +422,12 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
     settings["controller"] = args.controller
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    # /events streams until the client goes away, so waiting for connections
+    # to close on shutdown means Ctrl-C never returns.
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=args.port,
+        log_level="warning",
+        timeout_graceful_shutdown=0,
+    )
