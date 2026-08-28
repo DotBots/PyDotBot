@@ -31,7 +31,7 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 | **User button** | SW2 | General-purpose button. |
 | **MCU: nRF5340** | U1 | The brain of the DotBot. |
 | **Over-voltage protection** | U4 (ADCMP350) | Disconnects the input if the charging voltage is too high. |
-| **Vmotor switch** | U10 + Q10–Q12 | Gates the motors power. | 
+| **Vmotor switch** | U10 + Q10–Q12 | Gates the motors power. |
 | **Vbumper booster** | U9 (TPS61022) + L2 | Boosts the bumper rail to 3.66 V. |
 | **Motor drivers** | U5, U6 (BDR6120H) | H-bridges converting MCU logic signals into motor current. |
 | **Wheels** | — | Two driven wheels, one per motor (left and right). |
