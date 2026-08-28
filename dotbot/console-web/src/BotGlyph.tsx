@@ -1,10 +1,11 @@
 import React from "react";
 
+import { headingToGlyphRotation } from "./arenaFrame";
+
 // The map marker, traced from the DotBot v3 board outline: one PCB, wide at the
 // front and narrower between the wheels, with the tyres outboard of the narrow
-// section. Geometry is authored in a 32-unit box centred on the bot with -y
-// along its heading, so one unit is size/32 px and every number below scales
-// with the size prop.
+// section. Geometry is authored nose-up in a 32-unit box centred on the bot, so
+// one unit is size/32 px and every number below scales with the size prop.
 export const BOT_GLYPH_BOX = 48;
 
 // What the robot itself spans inside that box - 25 of the 32 units - for
@@ -20,7 +21,7 @@ const TREAD_Y = [2.2, 5.3, 8.4];
 
 interface BotGlyphProps {
   color: string;
-  heading: number | null; // degrees, 0 = north (+y), positive counterclockwise
+  heading: number | null; // degrees, 0 = +y, positive clockwise in the arena frame
   size?: number;
 }
 
@@ -33,8 +34,8 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ color, heading, size = BOT_G
       display: "block",
       overflow: "visible",
       filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
-      // CSS rotates clockwise in screen coords, so the angle is negated.
-      transform: heading === null ? undefined : `rotate(${-heading}deg)`,
+      transform:
+        heading === null ? undefined : `rotate(${headingToGlyphRotation(heading)}deg)`,
     }}
   >
     {heading === null ? (
