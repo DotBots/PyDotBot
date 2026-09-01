@@ -35,6 +35,7 @@ from dotbot import (
     MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
+    MRTA_URL_DEFAULT,
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
@@ -139,6 +140,7 @@ class ControllerSettings:
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     swarmit_url: str = SWARMIT_URL_DEFAULT
+    mrta_url: str = MRTA_URL_DEFAULT
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -676,7 +678,7 @@ class Controller:
         if host not in ("127.0.0.1", "localhost", "::1"):
             logger.warning(
                 "Serving the API beyond loopback; it has no authentication, "
-                "and /swarmit/* reaches the swarmit server from here too",
+                "and /swarmit/* and /mrta/* reach their servers from here too",
                 host=host,
             )
         config = uvicorn.Config(

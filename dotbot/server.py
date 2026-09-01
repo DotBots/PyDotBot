@@ -438,6 +438,51 @@ async def swarmit_proxy(path: str, request: Request):
     )
 
 
+# The MRTA mode server (dotbot-logistics) is optional and usually absent, so
+# a plain short timeout: the console reads any failure - a 404 on a
+# controller without this route, a 502 here, a timeout - as "MRTA N/A". No
+# streaming: /mrta/status and /mrta/mode are small JSON.
+MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
+
+
+@api.api_route(
+    path="/mrta/{path:path}",
+    methods=["GET", "POST"],
+    include_in_schema=False,
+)
+async def mrta_proxy(path: str, request: Request):
+    """Forward /mrta/* to the configured MRTA mode server (same-origin for
+    the web console, exactly like ``/swarmit/*``). The /mrta prefix is dropped."""
+    base = api.controller.settings.mrta_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=MRTA_PROXY_TIMEOUT) as client:
+        try:
+            upstream = await client.request(
+                method=request.method,
+                url=f"{base}/{path}",
+                params=request.query_params,
+                headers={
+                    k: v
+                    for k, v in request.headers.items()
+                    if k.lower() in ("content-type", "accept")
+                },
+                content=await request.body(),
+            )
+        except httpx.HTTPError as exc:
+            LOGGER.debug(
+                "MRTA server unreachable", url=f"{base}/{path}", error=str(exc)
+            )
+            return Response(status_code=502, content=b"MRTA mode server unreachable")
+    return Response(
+        status_code=upstream.status_code,
+        content=upstream.content,
+        headers={
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in ("content-type", "cache-control")
+        },
+    )
+
+
 # Mount static files after all routes are defined
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
 if os.path.isdir(FRONTEND_DIR):
