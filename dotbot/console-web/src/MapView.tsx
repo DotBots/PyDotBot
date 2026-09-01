@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { arenaToFraction, fractionToArena } from "./arenaFrame";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
@@ -100,11 +101,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     return () => ro.disconnect();
   }, []);
 
-  // v1 coordinate convention: y grows NORTH (up); screen top = arena max-y.
-  const pctPos = (p: LH2Position) => ({
-    left: (p.x / props.mapSize.width) * 100,
-    top: (1 - p.y / props.mapSize.height) * 100,
-  });
+  const pctPos = (p: LH2Position) => {
+    const { fx, fy } = arenaToFraction(p, props.mapSize);
+    return { left: fx * 100, top: fy * 100 };
+  };
 
   const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
@@ -116,8 +116,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const uy = (clientY - cy - cam.ty) / cam.scale + r.height / 2;
     const ax = ux - (r.width - side) / 2;
     const ay = uy - (r.height - side) / 2;
-    const x = (ax / side) * props.mapSize.width;
-    const y = (1 - ay / side) * props.mapSize.height;
+    const { x, y } = fractionToArena(ax / side, ay / side, props.mapSize);
     if (x < 0 || y < 0 || x > props.mapSize.width || y > props.mapSize.height) return null;
     return { x: Math.round(x), y: Math.round(y) };
   };
@@ -253,7 +252,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   <polyline
                     key={b.id}
                     points={b.trail
-                      .map((p) => `${(p.x / props.mapSize.width) * side},${(1 - p.y / props.mapSize.height) * side}`)
+                      .map((p) => {
+                        const { fx, fy } = arenaToFraction(p, props.mapSize);
+                        return `${fx * side},${fy * side}`;
+                      })
                       .join(" ")}
                     fill="none"
                     stroke={ledCss(b)}

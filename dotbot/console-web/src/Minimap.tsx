@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 
+import { arenaToFraction } from "./arenaFrame";
 import { stateColor } from "./viewChrome";
 
 import { Camera, clampCam, ViewGeom } from "./MapView";
@@ -98,8 +99,8 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
                 key={b.id}
                 style={{
                   position: "absolute",
-                  left: `${(b.position!.x / mapSize.width) * 100}%`,
-                  top: `${(1 - b.position!.y / mapSize.height) * 100}%`,
+                  left: `${arenaToFraction(b.position!, mapSize).fx * 100}%`,
+                  top: `${arenaToFraction(b.position!, mapSize).fy * 100}%`,
                   width: 5,
                   height: 5,
                   borderRadius: "50%",

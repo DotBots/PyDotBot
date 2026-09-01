@@ -684,6 +684,9 @@ class Controller:
             host=host,
             port=self.settings.controller_http_port,
             log_level="critical",
+            # The status WebSocket stays open for as long as a browser tab is,
+            # so a graceful shutdown that waits for connections never returns.
+            timeout_graceful_shutdown=0,
         )
         server = uvicorn.Server(config)
 

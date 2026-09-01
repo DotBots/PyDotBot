@@ -4,9 +4,9 @@
 """`dotbot swarm` — fleet operations over the air (status/start/stop/flash/...).
 
 Mounts the upstream `swarmit` Click group as the `dotbot swarm` parent:
-operators get `status|start|stop|flash|monitor|reset|message|calibrate-lh2|
-serve` with their existing flags. `swarm` is strictly the *many-devices,
-over-the-radio* namespace.
+operators get `status|start|stop|flash|monitor|reset|message|serve` with their
+existing flags, plus the PyDotBot-native `lh2-calibration collect|push`.
+`swarm` is strictly the *many-devices, over-the-radio* namespace.
 
 Single-device, cabled operations moved out: firmware-artifact build/fetch/
 list live under `dotbot fw`, and per-device flashing/inspection (including
@@ -26,7 +26,7 @@ from dotbot.cli._swarm_inject import inject_config
 
 _HELP = (
     "Fleet ops over the air: status, start/stop, OTA-flash, monitor, "
-    "reset, calibrate-lh2. Wraps swarmit."
+    "reset, lh2-calibration. Wraps swarmit."
 )
 
 

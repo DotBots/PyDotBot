@@ -37,8 +37,8 @@ L = 78  # distance between the two wheels in mm
 
 # Encoder model: counts per mm of wheel travel (must match C-side DB_MM_PER_COUNT)
 # mm_per_count = pi * D / (CPR * R)
-ENCODER_CPR = 12  # counts per motor shaft revolution
-MM_PER_COUNT = (pi * D) / (ENCODER_CPR * R)  # ~0.2618 mm/count
+ENCODER_CPR = 28  # counts per motor shaft revolution (7 PPR decoded x4)
+MM_PER_COUNT = (pi * D) / (ENCODER_CPR * R)  # ~0.0987 mm/count
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
