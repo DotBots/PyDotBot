@@ -30,8 +30,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-CONNECT_S = 3.0   # roughly what connect() costs while it waits for min_bots
-STOP_S = 2.5      # stop flag -> join the tick thread -> clear every waypoint
+CONNECT_S = 3.0  # roughly what connect() costs while it waits for min_bots
+STOP_S = 2.5  # stop flag -> join the tick thread -> clear every waypoint
 
 app = FastAPI()
 app.add_middleware(
@@ -60,7 +60,9 @@ async def go_on() -> None:
     if n < 2:
         # What MRTAConnectionError looks like from the console: back to off,
         # with the reason where the tooltip can show it.
-        STATE.update(state="off", bots=None, detail=f"only {n} DotBot(s) localised (min: 2)")
+        STATE.update(
+            state="off", bots=None, detail=f"only {n} DotBot(s) localised (min: 2)"
+        )
         return
     STATE.update(state="on", bots=n, detail=None)
 
@@ -82,7 +84,9 @@ async def mode(request: Request):
     if STATE["state"] in ("connecting", "stopping"):
         return JSONResponse({"detail": "already transitioning"}, status_code=409)
     if want_on and STATE["state"] == "off":
-        STATE.update(state="connecting", detail="building a PIBT session from the current fleet")
+        STATE.update(
+            state="connecting", detail="building a PIBT session from the current fleet"
+        )
         asyncio.create_task(go_on())
     elif not want_on and STATE["state"] == "on":
         STATE.update(state="stopping", detail="stopping the bots")

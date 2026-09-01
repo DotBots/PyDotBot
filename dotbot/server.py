@@ -468,7 +468,9 @@ async def mrta_proxy(path: str, request: Request):
                 content=await request.body(),
             )
         except httpx.HTTPError as exc:
-            LOGGER.debug("MRTA server unreachable", url=f"{base}/{path}", error=str(exc))
+            LOGGER.debug(
+                "MRTA server unreachable", url=f"{base}/{path}", error=str(exc)
+            )
             return Response(status_code=502, content=b"MRTA mode server unreachable")
     return Response(
         status_code=upstream.status_code,
