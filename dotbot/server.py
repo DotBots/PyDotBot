@@ -452,7 +452,7 @@ MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 )
 async def mrta_proxy(path: str, request: Request):
     """Forward /mrta/* to the configured MRTA mode server (same-origin for
-    the web console, exactly like /swarmit/*). The /mrta prefix is dropped."""
+    the web console, exactly like ``/swarmit/*``). The /mrta prefix is dropped."""
     base = api.controller.settings.mrta_url.rstrip("/")
     async with httpx.AsyncClient(timeout=MRTA_PROXY_TIMEOUT) as client:
         try:
