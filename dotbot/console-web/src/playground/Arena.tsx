@@ -3,14 +3,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { clampCamera, fitCamera, panBy, screenToArena, zoomAt, type Camera } from "./camera";
 import {
   addGoal,
+  endGoalGesture,
+  endRectGesture,
   goalAt,
   moveGoal,
   newId,
   normalizeRect,
-  pruneRects,
   rectHandleAt,
-  removeGoal,
-  removeRect,
   replaceRect,
   resizeRect,
   type RectHandle,
@@ -69,6 +68,8 @@ interface EditDrag {
   handle: RectHandle | null;
   /** The fixed corner while a new rectangle is being drawn. */
   origin: Vec2 | null;
+  /** The press created what it holds, so its release must not delete it. */
+  created: boolean;
   moved: boolean;
   startX: number;
   startY: number;
@@ -158,9 +159,19 @@ export const Arena: React.FC<ArenaProps> = (props) => {
     // A dev hook the measurement harness reads; harmless everywhere else.
     const stats = ((
       window as unknown as {
-        __playgroundStats?: { frames: number; bots: number; poses: Float32Array };
+        __playgroundStats?: {
+          frames: number;
+          bots: number;
+          poses: Float32Array;
+          overlay: OverlayItem[];
+        };
       }
-    ).__playgroundStats ??= { frames: 0, bots: 0, poses: new Float32Array(0) });
+    ).__playgroundStats ??= {
+      frames: 0,
+      bots: 0,
+      poses: new Float32Array(0),
+      overlay: [],
+    });
 
     let raf = 0;
     let frames = 0;
@@ -200,6 +211,7 @@ export const Arena: React.FC<ArenaProps> = (props) => {
         stats.frames++;
         stats.bots = p.hues.current.length;
         stats.poses = p.poses.current;
+        stats.overlay = p.overlay ?? [];
       }
 
       const now = performance.now();
@@ -260,6 +272,7 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       index: hit,
       handle: null,
       origin: null,
+      created: hit < 0,
       moved: false,
       startX: p.x,
       startY: p.y,
@@ -281,6 +294,7 @@ export const Arena: React.FC<ArenaProps> = (props) => {
         index: next.length - 1,
         handle: "se",
         origin: at,
+        created: true,
         moved: false,
         startX: p.x,
         startY: p.y,
@@ -288,7 +302,15 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       props.onRects?.(next, false);
       return;
     }
-    editRef.current = { index, handle, origin: null, moved: false, startX: p.x, startY: p.y };
+    editRef.current = {
+      index,
+      handle,
+      origin: null,
+      created: false,
+      moved: false,
+      startX: p.x,
+      startY: p.y,
+    };
   };
 
   const moveEdit = (p: { x: number; y: number }, at: Vec2) => {
@@ -315,15 +337,11 @@ export const Arena: React.FC<ArenaProps> = (props) => {
     editRef.current = null;
     if (edit === null) return;
     if (props.inputMode === "goals") {
-      // A press that did not travel is a click, and a click on a pin removes it.
-      const next = !edit.moved && edit.index >= 0 ? removeGoal(goals(), edit.index) : goals();
-      props.onGoals?.(next, true);
+      props.onGoals?.(endGoalGesture(goals(), edit), true);
       return;
     }
     if (props.inputMode !== "rects") return;
-    const clicked = !edit.moved && edit.index >= 0 && edit.origin === null;
-    const next = pruneRects(clicked ? removeRect(rects(), edit.index) : rects());
-    props.onRects?.(next, true);
+    props.onRects?.(endRectGesture(rects(), edit), true);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {

@@ -134,3 +134,32 @@ export function removeRect(rects: RectShape[], index: number): RectShape[] {
 export function pruneRects(rects: RectShape[], minMm = RECT_MIN_MM): RectShape[] {
   return rects.filter((r) => r.w >= minMm && r.h >= minMm);
 }
+
+/** What one press did, which is what decides what its release means. */
+export interface Gesture {
+  /** The pin or rectangle the press grabbed, or -1. */
+  index: number;
+  /** The press travelled further than the click slop. */
+  moved: boolean;
+  /** The press created what it is holding, rather than grabbing it. */
+  created: boolean;
+}
+
+/**
+ * The pins after a release. A click on an existing pin removes it; a click
+ * that placed one keeps it, and so does any drag.
+ */
+export function endGoalGesture(goals: Goal[], gesture: Gesture): Goal[] {
+  const clicked = !gesture.moved && !gesture.created && gesture.index >= 0;
+  return clicked ? removeGoal(goals, gesture.index) : goals;
+}
+
+/** The rectangles after a release, on the same rule, minus any sliver. */
+export function endRectGesture(
+  rects: RectShape[],
+  gesture: Gesture,
+  minMm = RECT_MIN_MM,
+): RectShape[] {
+  const clicked = !gesture.moved && !gesture.created && gesture.index >= 0;
+  return pruneRects(clicked ? removeRect(rects, gesture.index) : rects, minMm);
+}

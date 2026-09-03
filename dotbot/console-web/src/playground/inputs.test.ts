@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   addGoal,
+  endGoalGesture,
+  endRectGesture,
   goalAt,
   moveGoal,
   normalizeRect,
@@ -104,5 +106,38 @@ describe("rects", () => {
   it("drops the slivers a stray click leaves behind", () => {
     const kept = pruneRects([...rects, { id: 2, x: 0, y: 0, w: 3, h: 900 }]);
     expect(kept).toEqual(rects);
+  });
+});
+
+describe("what a release means", () => {
+  const press = { index: 0, moved: false, created: false };
+
+  it("removes the pin a click landed on", () => {
+    expect(endGoalGesture(pins, press)).toEqual([pins[1]]);
+  });
+
+  it("keeps the pin the same click placed", () => {
+    // The press that placed a pin also grabs it, so without this the pin
+    // would be gone by the time the button came back up.
+    expect(endGoalGesture(pins, { ...press, created: true })).toEqual(pins);
+  });
+
+  it("keeps a pin that was dragged rather than clicked", () => {
+    expect(endGoalGesture(pins, { ...press, moved: true })).toEqual(pins);
+  });
+
+  it("keeps everything when the press grabbed nothing", () => {
+    expect(endGoalGesture(pins, { ...press, index: -1 })).toEqual(pins);
+  });
+
+  it("removes the rectangle a click landed on and keeps a drawn one", () => {
+    expect(endRectGesture(rects, press)).toEqual([]);
+    const drawn = [...rects, { id: 2, x: 0, y: 0, w: 500, h: 500 }];
+    expect(endRectGesture(drawn, { index: 1, moved: true, created: true })).toEqual(drawn);
+  });
+
+  it("drops a sliver drawn by a shift-click that never moved", () => {
+    const sliver = [{ id: 9, x: 0, y: 0, w: 0, h: 0 }];
+    expect(endRectGesture(sliver, { index: 0, moved: false, created: true })).toEqual([]);
   });
 });
