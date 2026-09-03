@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { fetchConnection, putMoveRaw } from "../api";
 import { mixDrive } from "../Joystick";
 import { Arena, type InputMode } from "./Arena";
-import { BUILTINS, initialValuesByApp, SAMPLE_APPS } from "./announcements";
+import { BUILTINS, initialValues, initialValuesByApp, SAMPLE_APPS } from "./announcements";
+import { PlainMqttBus } from "./bus";
+import { ControllerFeed, type WorldHandle } from "./controllerWorld";
 import { Controls } from "./Controls";
+import { announceFilter, appNameFromTopic, appTopics, applyAnnouncement } from "./discovery";
 import { nearestBotIndex } from "./pick";
 import { phoneUrl } from "./qr";
 import { QrCard } from "./QrCard";
@@ -17,6 +21,17 @@ import type { RatePreset } from "./fakeWorld.worker";
 
 /** The controller's default map size, until the page reads /controller/map_size. */
 const CONTROLLER_ARENA_MM = 2000;
+
+/** Websockets listener the broker carries, qrkey's convention. */
+const BROKER_WS_PORT = 1884;
+
+/** Pointer samples are capped here; a mouse move fires far faster. */
+const POINTER_HZ = 20;
+
+/** Wheel commands to the controller are capped here. */
+const DRIVE_HZ = 10;
+
+const EMPTY = new Float32Array(0);
 
 const NEEDS: Record<WorldKind, string> = {
   fake: "needs: nothing. The swarm runs in this page.",
@@ -80,46 +95,155 @@ export const Playground: React.FC = () => {
     params.get("world") === "controller" ? "controller" : "fake",
   );
   const mobile = useMediaQuery(MOBILE_QUERY);
+  const onController = world === "controller";
 
-  // The rail: built-ins first, then whatever announced itself. Phase 1's apps
-  // are a hard-coded sample; the shape is the announcement schema.
-  const apps = useMemo(() => [...BUILTINS, ...SAMPLE_APPS], []);
-  const [selected, setSelected] = useState(() => {
-    const wanted = params.get("app");
-    return apps.some((a) => a.name === wanted) ? wanted! : "showcase";
-  });
-  const app = apps.find((a) => a.name === selected) ?? apps[0];
+  // One id per open page, stamped on every input, so a script can tell two
+  // phones apart.
+  const clientId = useMemo(() => `pg-${Math.random().toString(36).slice(2, 10)}`, []);
+  const brokerUrl = useMemo(
+    () => params.get("broker") ?? `ws://${window.location.hostname}:${BROKER_WS_PORT}/mqtt`,
+    [params],
+  );
+
+  // --- the two worlds -------------------------------------------------------
 
   const [values, setValues] = useState<Record<string, ControlValues>>(() => {
-    const v = initialValuesByApp(apps);
+    const v = initialValuesByApp([...BUILTINS, ...SAMPLE_APPS]);
     const n = Number(params.get("n"));
     if (Number.isFinite(n) && n > 0) v.showcase.bots = Math.max(10, Math.min(1000, Math.round(n)));
     return v;
   });
 
   const showcase = values.showcase;
-  const botCount = Number(showcase.bots);
+  const fakeCount = Number(showcase.bots);
   const placement = String(showcase.placement) as "grid" | "random";
   const rate = String(showcase.rate) as RatePreset;
 
-  const fake = useFakeWorld(world === "fake", botCount, placement);
-  const side = world === "fake" ? fake.side : CONTROLLER_ARENA_MM;
+  const fake = useFakeWorld(!onController, fakeCount, placement);
+
+  const poseRef = useRef<Float32Array>(EMPTY);
+  const hueRef = useRef<Float32Array>(EMPTY);
+  const movingRef = useRef(false);
+  const versionRef = useRef(0);
+  const addressRef = useRef<string[]>([]);
+  const applicationRef = useRef<number[]>([]);
+  const controller: WorldHandle = useMemo(
+    () => ({
+      poses: poseRef,
+      hues: hueRef,
+      moving: movingRef,
+      version: versionRef,
+      addresses: addressRef,
+      applications: applicationRef,
+    }),
+    [],
+  );
+
+  const [controllerCount, setControllerCount] = useState(0);
+  const [controllerSide, setControllerSide] = useState(CONTROLLER_ARENA_MM);
+  const onFleet = useCallback((count: number, mapSide: number) => {
+    setControllerCount((c) => (c === count ? c : count));
+    setControllerSide((s) => (s === mapSide ? s : mapSide));
+  }, []);
+
+  const poses = onController ? controller.poses : fake.poses;
+  const hues = onController ? controller.hues : fake.hues;
+  const moving = onController ? controller.moving : fake.moving;
+  const version = onController ? controller.version : fake.version;
+  const side = onController ? controllerSide : fake.side;
+  const botsSeen = onController ? controllerCount : fake.count;
+
+  // --- discovery ------------------------------------------------------------
+
+  const [swarm, setSwarm] = useState<string | null>(null);
+  const [brokerUp, setBrokerUp] = useState(false);
+  const [running, setRunning] = useState<AppAnnouncement[]>([]);
+  const busRef = useRef<PlainMqttBus | null>(null);
+
+  useEffect(() => {
+    if (!onController) return;
+    let cancelled = false;
+    fetchConnection().then((conn) => {
+      if (!cancelled) setSwarm(conn?.swarm_id ?? "0000");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onController]);
+
+  useEffect(() => {
+    if (!onController || swarm === null) return;
+    const bus = new PlainMqttBus(brokerUrl, clientId);
+    busRef.current = bus;
+    bus.onStateChange(setBrokerUp);
+    const off = bus.subscribe(announceFilter(swarm), (payload, topic) => {
+      const name = appNameFromTopic(topic, swarm);
+      if (name !== null) setRunning((apps) => applyAnnouncement(apps, name, payload));
+    });
+    return () => {
+      off();
+      bus.close();
+      busRef.current = null;
+      setBrokerUp(false);
+      setRunning([]);
+    };
+  }, [onController, swarm, brokerUrl, clientId]);
+
+  // The fake world's apps are the page's own; a controller world lists what
+  // actually announced itself on the broker.
+  const apps = useMemo(
+    () => [...BUILTINS, ...(onController ? running : SAMPLE_APPS)],
+    [onController, running],
+  );
+
+  const [selected, setSelected] = useState(() => params.get("app") ?? "showcase");
+  const app = apps.find((a) => a.name === selected) ?? apps[0];
+
+  // A demo that just announced itself arrives with no values yet.
+  useEffect(() => {
+    setValues((current) => {
+      const missing = apps.filter((a) => current[a.name] === undefined);
+      if (missing.length === 0) return current;
+      const next = { ...current };
+      for (const a of missing) next[a.name] = initialValues(a);
+      return next;
+    });
+  }, [apps]);
+
+  // A demo whose will fired takes the selection with it.
+  useEffect(() => {
+    if (!apps.some((a) => a.name === selected)) setSelected(apps[0].name);
+  }, [apps, selected]);
+
+  // --- input ----------------------------------------------------------------
 
   const [fps, setFps] = useState(0);
   const [driven, setDriven] = useState(0);
   const [picking, setPicking] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
+  const driveCount = onController ? controllerCount : fakeCount;
+
   useEffect(() => fake.setRate(rate), [fake, rate]);
 
   const follow = values.follow;
   useEffect(() => {
+    if (follow === undefined) return;
     fake.setTuning({
       speedPct: Number(follow.speed),
       spread: Number(follow.spread),
       wanderWhenIdle: Boolean(follow.wander),
     });
-  }, [fake, follow.speed, follow.spread, follow.wander]);
+  }, [fake, follow]);
+
+  const publish = useCallback(
+    (message: Record<string, unknown>) => {
+      const bus = busRef.current;
+      if (bus === null || swarm === null || app.builtin) return;
+      bus.publish(appTopics(swarm, app.name).in, { ...message, client: clientId });
+    },
+    [app.builtin, app.name, swarm, clientId],
+  );
 
   // Only the selected app receives the map's input. Pick mode borrows it for
   // one tap, so the map cannot be driving and choosing at the same time.
@@ -153,43 +277,65 @@ export const Playground: React.FC = () => {
 
   const onPick = useCallback(
     (p: Vec2) => {
-      const hit = nearestBotIndex(fake.poses.current, p);
+      const hit = nearestBotIndex(poses.current, p);
       if (hit >= 0) {
         setDriven(hit);
         setPicking(false);
       }
     },
-    [fake],
+    [poses],
   );
 
+  const pointerSentAt = useRef(0);
   const onPointer = useCallback(
     (p: Vec2 | null) => {
-      if (inputMode === "pointer") fake.setTarget(p);
+      if (inputMode !== "pointer") return;
+      fake.setTarget(p);
+      const now = performance.now();
+      // The leave is what tells a script the pointer is gone, so it is never
+      // the sample the rate limiter drops.
+      if (p !== null && now - pointerSentAt.current < 1000 / POINTER_HZ) return;
+      pointerSentAt.current = now;
+      publish({ kind: "pointer", at: p === null ? null : { x: p.x, y: p.y } });
     },
-    [fake, inputMode],
+    [fake, inputMode, publish],
   );
 
   const drivenRef = useRef(driven);
   drivenRef.current = driven;
+  const driveSentAt = useRef(0);
   const onDrive = useCallback(
     (dx: number, dy: number) => {
       const { left, right } = mixDrive(dx, dy);
-      fake.setDrive(drivenRef.current, left, right);
+      if (!onController) {
+        fake.setDrive(drivenRef.current, left, right);
+        return;
+      }
+      const now = performance.now();
+      const stopping = left === 0 && right === 0;
+      if (!stopping && now - driveSentAt.current < 1000 / DRIVE_HZ) return;
+      driveSentAt.current = now;
+      const address = controller.addresses.current[drivenRef.current];
+      if (address === undefined) return;
+      putMoveRaw(address, controller.applications.current[drivenRef.current] ?? 0, left, right);
     },
-    [fake],
+    [controller, fake, onController],
   );
 
   const setValue = useCallback(
-    (id: string, value: number | boolean | string) =>
-      setValues((v) => ({ ...v, [selected]: { ...v[selected], [id]: value } })),
-    [selected],
+    (id: string, value: number | boolean | string) => {
+      setValues((v) => ({ ...v, [selected]: { ...v[selected], [id]: value } }));
+      publish({ kind: "control", id, value });
+    },
+    [publish, selected],
   );
 
   const onAction = useCallback(
     (id: string) => {
       if (selected === "showcase" && id === "reseed") fake.reseed();
+      else publish({ kind: "control", id, value: true });
     },
-    [fake, selected],
+    [fake, publish, selected],
   );
 
   // Keys 1-9 select rail entries, unless a field has the keyboard.
@@ -205,21 +351,25 @@ export const Playground: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [apps]);
 
-  const botsSeen = world === "fake" ? fake.count : 0;
+  // --- chrome ---------------------------------------------------------------
 
   // What the QR carries. A phone that scans it lands on the world the big
   // screen is showing; an app that takes no map input would leave the visitor
   // with nothing to do, so those fall back to Drive.
   const phoneLink = phoneUrl(window.location.href, {
     world,
-    n: world === "fake" ? String(botCount) : undefined,
+    n: onController ? undefined : String(fakeCount),
     app: app.inputs.length > 0 ? app.name : "drive",
+    broker: params.get("broker") ?? undefined,
   });
+
+  const step = (delta: number) =>
+    setDriven((d) => (driveCount > 0 ? (d + delta + driveCount) % driveCount : 0));
 
   const botPicker = (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <button onClick={() => setDriven((d) => (d - 1 + botCount) % botCount)} style={stepStyle}>
+        <button onClick={() => step(-1)} style={stepStyle}>
           &#8249;
         </button>
         <span
@@ -233,11 +383,11 @@ export const Playground: React.FC = () => {
         >
           bot {driven}
         </span>
-        <button onClick={() => setDriven((d) => (d + 1) % botCount)} style={stepStyle}>
+        <button onClick={() => step(1)} style={stepStyle}>
           &#8250;
         </button>
         <button
-          onClick={() => setDriven(Math.floor(Math.random() * botCount))}
+          onClick={() => setDriven(Math.floor(Math.random() * Math.max(1, driveCount)))}
           style={{ ...stepStyle, width: "auto", padding: "0 9px" }}
         >
           any
@@ -272,7 +422,7 @@ export const Playground: React.FC = () => {
     <>
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{panelTitle}</div>
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 14 }}>
-        {app.builtin ? "built in" : `dotbot/apps/${app.name}`}
+        {app.builtin ? "built in" : `dotbot/${swarm ?? "?"}/apps/${app.name}`}
       </div>
       <Controls
         controls={app.controls}
@@ -324,13 +474,13 @@ export const Playground: React.FC = () => {
 
   const arena = (
     <Arena
-      poses={fake.poses}
-      hues={fake.hues}
-      moving={fake.moving}
-      version={fake.version}
+      poses={poses}
+      hues={hues}
+      moving={moving}
+      version={version}
       side={side}
       driven={drives ? driven : -1}
-      inputMode={world === "fake" ? inputMode : "none"}
+      inputMode={inputMode}
       onPointer={onPointer}
       onDrive={onDrive}
       onPick={onPick}
@@ -355,6 +505,8 @@ export const Playground: React.FC = () => {
         fontSize: 13,
       }}
     >
+      {onController && <ControllerFeed handle={controller} onFleet={onFleet} />}
+
       {/* Top bar */}
       <div
         style={{
@@ -403,6 +555,17 @@ export const Playground: React.FC = () => {
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
           {fps} fps
         </span>
+        {onController && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: brokerUp ? "var(--s-Running)" : "var(--muted)",
+            }}
+          >
+            broker {brokerUp ? "ok" : "down"}
+          </span>
+        )}
         <button onClick={() => setShowQr((v) => !v)} title="The phone URL, as a QR" style={stepStyle}>
           QR
         </button>
@@ -463,6 +626,11 @@ export const Playground: React.FC = () => {
             {apps.filter((a) => a.builtin).map((a) => railEntry(a, apps.indexOf(a)))}
             <div style={{ ...sectionLabel, marginTop: 14 }}>running</div>
             {apps.filter((a) => !a.builtin).map((a) => railEntry(a, apps.indexOf(a)))}
+            {apps.every((a) => a.builtin) && (
+              <div style={{ fontSize: 11, color: "var(--muted)", padding: "2px 9px" }}>
+                nothing announced
+              </div>
+            )}
           </div>
         )}
 

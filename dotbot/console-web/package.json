@@ -12,6 +12,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
+    "mqtt": "5.15.2",
     "qrcode-generator": "2.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
