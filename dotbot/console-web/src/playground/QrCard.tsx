@@ -1,7 +1,7 @@
 import qrcode from "qrcode-generator";
 import React, { useEffect, useRef } from "react";
 
-import { isLoopbackHost } from "./qr";
+import { isLoopbackHost, loopbackHint } from "./qr";
 
 // The overlay behind the QR button: the phone URL as a scannable code, the
 // same URL as text under it, and a warning when the URL only resolves here.
@@ -50,6 +50,7 @@ const QrCanvas: React.FC<{ url: string }> = ({ url }) => {
 
 export const QrCard: React.FC<{ url: string; onClose: () => void }> = ({ url, onClose }) => {
   const loopback = isLoopbackHost(new URL(url).hostname);
+  const hint = loopbackHint(window.location.pathname);
   return (
     <div
       onClick={onClose}
@@ -94,9 +95,9 @@ export const QrCard: React.FC<{ url: string; onClose: () => void }> = ({ url, on
         </div>
         {loopback && (
           <div style={{ fontSize: 12, color: "var(--accent)" }}>
-            This URL only resolves on this machine, so a phone cannot open it. Start vite with{" "}
-            <code style={{ fontFamily: "var(--font-mono)" }}>--host</code> and reload the page on
-            the address it prints.
+            {hint.lead}
+            <code style={{ fontFamily: "var(--font-mono)" }}>{hint.flag}</code>
+            {hint.tail}
           </div>
         )}
       </div>
