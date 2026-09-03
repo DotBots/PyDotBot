@@ -1,0 +1,15 @@
+/* The map is something a finger rests on and drags across, so a drag must not
+   start a text selection or raise the iOS long-press callout. Fields keep
+   their own selection: a person still has to be able to edit what they typed. */
+.pg-root {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.pg-root input,
+.pg-root textarea,
+.pg-root select {
+  user-select: text;
+  -webkit-user-select: text;
+}

@@ -196,6 +196,9 @@ export const Arena: React.FC<ArenaProps> = (props) => {
 
   const onPointerDown = (e: React.PointerEvent) => {
     const p = local(e);
+    // A finger going down on the map is an input, never the start of a
+    // selection or a long-press callout.
+    if (e.pointerType === "touch") e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     activeRef.current.set(e.pointerId, p);
 

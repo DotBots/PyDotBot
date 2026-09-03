@@ -274,6 +274,7 @@ export const Playground: React.FC = () => {
 
   return (
     <div
+      className="pg-root"
       data-theme={theme}
       style={{
         height: "100vh",
