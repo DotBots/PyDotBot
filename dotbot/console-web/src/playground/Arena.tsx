@@ -112,8 +112,11 @@ export const Arena: React.FC<ArenaProps> = (props) => {
   // has changed; a snapshot or a gesture wakes it.
   useEffect(() => {
     // A dev hook the measurement harness reads; harmless everywhere else.
-    const stats = ((window as unknown as { __playgroundStats?: { frames: number; bots: number } })
-      .__playgroundStats ??= { frames: 0, bots: 0 });
+    const stats = ((
+      window as unknown as {
+        __playgroundStats?: { frames: number; bots: number; poses: Float32Array };
+      }
+    ).__playgroundStats ??= { frames: 0, bots: 0, poses: new Float32Array(0) });
 
     let raf = 0;
     let frames = 0;
@@ -148,6 +151,7 @@ export const Arena: React.FC<ArenaProps> = (props) => {
         frames++;
         stats.frames++;
         stats.bots = p.hues.current.length;
+        stats.poses = p.poses.current;
       }
 
       const now = performance.now();

@@ -134,30 +134,38 @@ export const ControllerFeed: React.FC<FeedProps> = ({ handle, onFleet }) => {
   const motions = useRef<Map<string, Motion>>(new Map());
   const raf = useRef(0);
 
-  // Writes every bot's interpolated pose once per frame and stops when the
-  // last glide has landed, which is what lets the canvas loop sleep. A fresh
-  // snapshot restarts it.
+  // Fills the drawn poses from the glides and says whether any is still in
+  // flight. The drawn array is the only one the canvas ever sees: the raw
+  // fixes stay inside the motions, so no frame can show them.
+  const sample = useCallback(
+    (now: number): boolean => {
+      const poses = handle.poses.current;
+      let live = false;
+      handle.addresses.current.forEach((id, i) => {
+        const m = motions.current.get(id);
+        if (!m) return;
+        const s = sampleMotion(m, now);
+        poses[i * 3] = s.x;
+        poses[i * 3 + 1] = s.y;
+        poses[i * 3 + 2] = s.heading;
+        live = live || s.live;
+      });
+      handle.version.current++;
+      return live;
+    },
+    [handle],
+  );
+
+  // Runs once per frame while a glide is in flight and stops when the last
+  // one lands, which is what lets the canvas loop sleep.
   const frame = useCallback(() => {
-    const now = performance.now();
-    const poses = handle.poses.current;
-    let live = false;
-    handle.addresses.current.forEach((id, i) => {
-      const m = motions.current.get(id);
-      if (!m) return;
-      const s = sampleMotion(m, now);
-      poses[i * 3] = s.x;
-      poses[i * 3 + 1] = s.y;
-      poses[i * 3 + 2] = s.heading;
-      live = live || s.live;
-    });
-    handle.version.current++;
-    if (live) {
+    if (sample(performance.now())) {
       raf.current = requestAnimationFrame(frame);
     } else {
       raf.current = 0;
       handle.moving.current = false;
     }
-  }, [handle]);
+  }, [handle, sample]);
 
   useEffect(() => {
     const now = performance.now();
@@ -167,15 +175,17 @@ export const ControllerFeed: React.FC<FeedProps> = ({ handle, onFleet }) => {
       now,
       Math.hypot(mapSize.width, mapSize.height),
     );
-    const { poses, hues, addresses, applications } = fleetToPoses(bots);
-    handle.poses.current = poses;
+    const { hues, addresses, applications } = fleetToPoses(bots);
+    if (handle.poses.current.length !== addresses.length * 3) {
+      handle.poses.current = new Float32Array(addresses.length * 3);
+    }
     handle.hues.current = hues;
     handle.addresses.current = addresses;
     handle.applications.current = applications;
     handle.moving.current = true;
     onFleet(addresses.length, Math.max(mapSize.width, mapSize.height));
-    if (raf.current === 0) raf.current = requestAnimationFrame(frame);
-  }, [bots, mapSize, handle, onFleet, frame]);
+    if (sample(now) && raf.current === 0) raf.current = requestAnimationFrame(frame);
+  }, [bots, mapSize, handle, onFleet, frame, sample]);
 
   useEffect(
     () => () => {
