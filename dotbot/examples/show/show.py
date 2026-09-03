@@ -32,8 +32,10 @@ FIGURES = ["ring", "double ring", "spiral", "pulse", "wave"]
 #: bot on it, so a keyframe is as fast as a moving figure can be driven.
 KEYFRAME_S = 1.0
 
-#: Radians the phase advances per second at 100% tempo.
-PHASE_RATE = 0.6
+#: Radians the phase advances per second at 100% tempo. A bot drives at a
+#: couple of hundred mm/s, so a figure that turns much faster than this is one
+#: the swarm can only trail.
+PHASE_RATE = 0.12
 
 #: Waypoint threshold, mm. Looser than a formation demo would like, but a bot
 #: that keeps hunting its slot never gets to the next keyframe.
@@ -142,6 +144,7 @@ class Choreography:
         self.playing = True
         self._slots: Dict[str, int] = {}
         self._for: Tuple[str, int] = ("", 0)
+        self._hue: Dict[str, float] = {}
 
     def slots(
         self,
@@ -156,7 +159,22 @@ class Choreography:
         order = assign_targets(positions, points)
         self._slots = {a: int(i) for a, i in zip(addresses, order)}
         self._for = (figure, len(addresses))
+        self._hue.clear()
         return self._slots
+
+    def needs_led(self, address: str, hue: float, step: float = 8.0) -> bool:
+        """
+        Whether this bot's LED is far enough off to be worth a command.
+
+        Every bot lit every keyframe is a command per bot per second on top
+        of the waypoints, and most of those repaint a colour nobody can tell
+        from the one already showing.
+        """
+        was = self._hue.get(address)
+        if was is not None and abs((hue - was + 180) % 360 - 180) < step:
+            return False
+        self._hue[address] = hue
+        return True
 
 
 async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
@@ -193,7 +211,8 @@ async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
             app.controller.waypoints(
                 bot.address, [Point(target[0], target[1])], threshold=ARRIVE_MM
             )
-            app.controller.rgb_led(bot.address, *rgb(hues[slot]))
+            if show.needs_led(bot.address, hues[slot]):
+                app.controller.rgb_led(bot.address, *rgb(hues[slot]))
 
         app.publish_overlay(figure_overlay(figure, points))
         app.publish_status(
