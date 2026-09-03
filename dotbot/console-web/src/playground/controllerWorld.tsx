@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 
 import type { RgbLed, UnifiedBot } from "../types";
 import { useFleet } from "../useFleet";
+import { nextPosState, positionAt, type PosState } from "../useSmoothPositions";
 
 // The controller world: the same fleet the console draws, in the arrays the
 // playground renderer wants. The merge, the WebSocket and the reconnect loop
@@ -18,9 +19,6 @@ export interface WorldHandle {
   /** Each bot's ApplicationType, which its REST path carries. */
   applications: React.MutableRefObject<number[]>;
 }
-
-/** A fleet is idle once nothing has arrived for this long, in ms. */
-const IDLE_AFTER_MS = 1200;
 
 /** LED hue, 0..360. Grey and unlit LEDs have none, so the address supplies one. */
 export function hueOf(led: RgbLed | null, address: string): number {
@@ -73,6 +71,54 @@ export function fleetToPoses(bots: UnifiedBot[]): {
   return { poses, hues, addresses, applications };
 }
 
+/** One bot between two fixes: the glide it is on and the heading arc it turns through. */
+export interface Motion {
+  pos: PosState;
+  headingFrom: number;
+  headingTo: number;
+}
+
+/** Shortest signed arc from one heading to another, in degrees. */
+export function headingArc(from: number, to: number): number {
+  return ((((to - from) % 360) + 540) % 360) - 180;
+}
+
+/** Where a bot is drawn at `now`, and whether it is still mid-glide. */
+export function sampleMotion(
+  m: Motion,
+  now: number,
+): { x: number; y: number; heading: number; live: boolean } {
+  const { x, y } = positionAt(m.pos, now);
+  const t = m.pos.duration > 0 ? Math.min(1, (now - m.pos.t0) / m.pos.duration) : 1;
+  return { x, y, heading: m.headingFrom + headingArc(m.headingFrom, m.headingTo) * t, live: t < 1 };
+}
+
+/**
+ * Folds the fleet's latest fixes into per-bot motions. A first fix places the
+ * bot instantly; each later one starts a glide from wherever it was drawn
+ * last, timed by the console's rule in useSmoothPositions. Bots without a
+ * position are dropped.
+ */
+export function foldMotion(
+  prev: Map<string, Motion>,
+  bots: UnifiedBot[],
+  now: number,
+  mapDiagonal: number,
+): Map<string, Motion> {
+  const next = new Map<string, Motion>();
+  for (const b of bots) {
+    if (b.position === null) continue;
+    const was = prev.get(b.id);
+    const heading = b.heading ?? 0;
+    next.set(b.id, {
+      pos: nextPosState(was?.pos, b.position, now, mapDiagonal),
+      headingFrom: was ? sampleMotion(was, now).heading : heading,
+      headingTo: heading,
+    });
+  }
+  return next;
+}
+
 interface FeedProps {
   handle: WorldHandle;
   onFleet: (count: number, side: number) => void;
@@ -85,28 +131,58 @@ interface FeedProps {
  */
 export const ControllerFeed: React.FC<FeedProps> = ({ handle, onFleet }) => {
   const { bots, mapSize } = useFleet();
-  const seenAt = useRef(0);
+  const motions = useRef<Map<string, Motion>>(new Map());
+  const raf = useRef(0);
+
+  // Writes every bot's interpolated pose once per frame and stops when the
+  // last glide has landed, which is what lets the canvas loop sleep. A fresh
+  // snapshot restarts it.
+  const frame = useCallback(() => {
+    const now = performance.now();
+    const poses = handle.poses.current;
+    let live = false;
+    handle.addresses.current.forEach((id, i) => {
+      const m = motions.current.get(id);
+      if (!m) return;
+      const s = sampleMotion(m, now);
+      poses[i * 3] = s.x;
+      poses[i * 3 + 1] = s.y;
+      poses[i * 3 + 2] = s.heading;
+      live = live || s.live;
+    });
+    handle.version.current++;
+    if (live) {
+      raf.current = requestAnimationFrame(frame);
+    } else {
+      raf.current = 0;
+      handle.moving.current = false;
+    }
+  }, [handle]);
 
   useEffect(() => {
+    const now = performance.now();
+    motions.current = foldMotion(
+      motions.current,
+      bots,
+      now,
+      Math.hypot(mapSize.width, mapSize.height),
+    );
     const { poses, hues, addresses, applications } = fleetToPoses(bots);
     handle.poses.current = poses;
     handle.hues.current = hues;
     handle.addresses.current = addresses;
     handle.applications.current = applications;
     handle.moving.current = true;
-    handle.version.current++;
-    seenAt.current = Date.now();
     onFleet(addresses.length, Math.max(mapSize.width, mapSize.height));
-  }, [bots, mapSize, handle, onFleet]);
+    if (raf.current === 0) raf.current = requestAnimationFrame(frame);
+  }, [bots, mapSize, handle, onFleet, frame]);
 
-  // A still fleet must let the render loop sleep, which it only does once
-  // `moving` goes false.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (Date.now() - seenAt.current > IDLE_AFTER_MS) handle.moving.current = false;
-    }, 400);
-    return () => clearInterval(timer);
-  }, [handle]);
+  useEffect(
+    () => () => {
+      if (raf.current !== 0) cancelAnimationFrame(raf.current);
+    },
+    [],
+  );
 
   return null;
 };

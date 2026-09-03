@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fleetToPoses, hueOf } from "./controllerWorld";
+import { fleetToPoses, foldMotion, hueOf, sampleMotion } from "./controllerWorld";
 import type { UnifiedBot } from "../types";
 
 function bot(over: Partial<UnifiedBot>): UnifiedBot {
@@ -72,5 +72,39 @@ describe("fleetToPoses", () => {
   it("faces a bot with no heading yet along the arena's zero", () => {
     const { poses } = fleetToPoses([bot({ heading: null })]);
     expect(poses[2]).toBe(0);
+  });
+});
+
+describe("foldMotion and sampleMotion", () => {
+  const DIAG = 2828;
+  const fleet = (x: number, heading: number) => [bot({ id: "AA", position: { x, y: 0 }, heading })];
+
+  it("places a first fix instantly", () => {
+    const m = foldMotion(new Map(), fleet(100, 45), 0, DIAG);
+    expect(sampleMotion(m.get("AA")!, 0)).toEqual({ x: 100, y: 0, heading: 45, live: false });
+  });
+
+  it("glides from the last drawn spot to the next fix over the update interval", () => {
+    let m = foldMotion(new Map(), fleet(0, 0), 0, DIAG);
+    m = foldMotion(m, fleet(100, 0), 100, DIAG);
+    expect(sampleMotion(m.get("AA")!, 150)).toMatchObject({ x: 50, live: true });
+    expect(sampleMotion(m.get("AA")!, 200)).toMatchObject({ x: 100, live: false });
+  });
+
+  it("turns through the short arc between headings", () => {
+    let m = foldMotion(new Map(), fleet(0, 350), 0, DIAG);
+    m = foldMotion(m, fleet(100, 10), 100, DIAG);
+    const mid = sampleMotion(m.get("AA")!, 150).heading;
+    expect(((mid % 360) + 360) % 360).toBeCloseTo(0);
+  });
+
+  it("drops a bot that lost its position", () => {
+    const m = foldMotion(
+      foldMotion(new Map(), fleet(0, 0), 0, DIAG),
+      [bot({ id: "AA", position: null })],
+      100,
+      DIAG,
+    );
+    expect(m.size).toBe(0);
   });
 });
