@@ -16,7 +16,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
+import click
 import httpx
+import numpy as np
 import websockets
 from gmqtt import Client as MQTTClient
 from gmqtt import Message as MQTTMessage
@@ -118,6 +120,92 @@ def text_field(
     return decl
 
 
+# ------------------------------------------------------------------ overlays
+
+
+def overlay_point(
+    x: float,
+    y: float,
+    *,
+    r: Optional[float] = None,
+    label: Optional[str] = None,
+    color: Optional[str] = None,
+) -> Dict[str, Any]:
+    """A ring on the arena. `color` is a role the page maps to a token."""
+    item: Dict[str, Any] = {"type": "point", "x": round(x, 1), "y": round(y, 1)}
+    if r is not None:
+        item["r"] = round(r, 1)
+    if label is not None:
+        item["label"] = label
+    if color is not None:
+        item["color"] = color
+    return item
+
+
+def overlay_polyline(
+    points: Sequence[Point], *, closed: bool = False, color: Optional[str] = None
+) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "type": "polyline",
+        "points": [{"x": round(p.x, 1), "y": round(p.y, 1)} for p in points],
+    }
+    if closed:
+        item["closed"] = True
+    if color is not None:
+        item["color"] = color
+    return item
+
+
+def overlay_rect(
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    *,
+    label: Optional[str] = None,
+    fill: bool = False,
+    color: Optional[str] = None,
+) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "type": "rect",
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "w": round(w, 1),
+        "h": round(h, 1),
+    }
+    if label is not None:
+        item["label"] = label
+    if fill:
+        item["fill"] = True
+    if color is not None:
+        item["color"] = color
+    return item
+
+
+def overlay_label(
+    x: float, y: float, text: str, *, color: Optional[str] = None
+) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "type": "label",
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "text": text,
+    }
+    if color is not None:
+        item["color"] = color
+    return item
+
+
+def overlay_badge(
+    address: str, text: str, *, color: Optional[str] = None
+) -> Dict[str, Any]:
+    """A ring and a word on one bot, which the page finds by address."""
+    item: Dict[str, Any] = {"type": "badge", "address": address, "text": text}
+    if color is not None:
+        item["color"] = color
+    return item
+
+
 @dataclass
 class Announcement:
     """What a script publishes, retained, on `dotbot/<swarm>/apps/<name>`."""
@@ -179,19 +267,83 @@ class PointerSample:
 
 
 @dataclass(frozen=True)
+class Rect:
+    """An axis-aligned region in arena mm, width and height positive."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+    @property
+    def area(self) -> float:
+        return self.w * self.h
+
+    @property
+    def center(self) -> Point:
+        return Point(self.x + self.w / 2, self.y + self.h / 2)
+
+
+@dataclass(frozen=True)
 class ControlChange:
     client: str
     id: str
     value: Any
 
 
+@dataclass(frozen=True)
+class Action:
+    """A button press, which carries no value."""
+
+    client: str
+    id: str
+
+
+@dataclass(frozen=True)
+class GoalsInput:
+    """Every pin on the map, in the order they were placed."""
+
+    client: str
+    points: List[Point]
+
+
+@dataclass(frozen=True)
+class RectsInput:
+    """Every rectangle on the map."""
+
+    client: str
+    rects: List[Rect]
+
+
+@dataclass(frozen=True)
+class TextInput:
+    client: str
+    text: str
+
+
+def _point(raw: Any) -> Optional[Point]:
+    try:
+        return Point(float(raw["x"]), float(raw["y"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _rect(raw: Any) -> Optional[Rect]:
+    try:
+        return Rect(
+            float(raw["x"]), float(raw["y"]), float(raw["w"]), float(raw["h"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def parse_input(payload: Any) -> Any:
     """
     One message off the `/in` topic, as the object a callback wants.
 
-    Pointer samples and control changes come back typed; every other declared
-    input kind comes back as the plain dict it arrived as, so a demo can read
-    a kind this helper does not model yet. Junk returns None.
+    Every kind the page sends comes back typed; anything else comes back as
+    the plain dict it arrived as, so a demo can read a kind this helper does
+    not model yet. Junk returns None.
     """
     if isinstance(payload, (bytes, bytearray, str)):
         try:
@@ -206,21 +358,106 @@ def parse_input(payload: Any) -> Any:
         at = payload.get("at")
         if at is None:
             return PointerSample(client=client, at=None)
-        try:
-            return PointerSample(
-                client=client, at=Point(float(at["x"]), float(at["y"]))
-            )
-        except (KeyError, TypeError, ValueError):
-            return None
+        point = _point(at)
+        return None if point is None else PointerSample(client=client, at=point)
     if kind == "control":
         if "id" not in payload:
             return None
         return ControlChange(
             client=client, id=str(payload["id"]), value=payload.get("value")
         )
+    if kind == "action":
+        if "id" not in payload:
+            return None
+        return Action(client=client, id=str(payload["id"]))
+    if kind == "goals":
+        raw = payload.get("points")
+        if not isinstance(raw, list):
+            return None
+        points = [_point(p) for p in raw]
+        if any(p is None for p in points):
+            return None
+        return GoalsInput(client=client, points=[p for p in points if p is not None])
+    if kind == "rects":
+        raw = payload.get("rects")
+        if not isinstance(raw, list):
+            return None
+        rects = [_rect(r) for r in raw]
+        if any(r is None for r in rects):
+            return None
+        return RectsInput(client=client, rects=[r for r in rects if r is not None])
+    if kind == "text":
+        text = payload.get("text")
+        return None if not isinstance(text, str) else TextInput(client=client, text=text)
     if kind is None:
         return None
     return payload
+
+
+# ------------------------------------------------------------- assignment
+
+
+def _greedy(cost: np.ndarray) -> np.ndarray:
+    """Nearest pair first, then the nearest of what is left, until none is."""
+    rows, columns = cost.shape
+    work = cost.astype(float, copy=True)
+    assign = np.zeros(rows, dtype=int)
+    for _ in range(rows):
+        row, column = divmod(int(np.argmin(work)), columns)
+        assign[row] = column
+        work[row, :] = np.inf
+        work[:, column] = np.inf
+    return assign
+
+
+def _swap_passes(cost: np.ndarray, assign: np.ndarray, max_passes: int) -> np.ndarray:
+    """
+    Exchange the targets of two bots while that shortens the pair.
+
+    Greedy leaves crossings behind - the bot picked early takes a target a
+    later one was much closer to - and every such crossing is one exchange
+    away from being gone.
+    """
+    n = len(assign)
+    rows = np.arange(n)
+    for _ in range(max_passes):
+        held = cost[rows, assign]
+        swapped = cost[:, assign]
+        gain = np.triu(held[:, None] + held[None, :] - swapped - swapped.T, 1)
+        pairs = np.argwhere(gain > 1e-9)
+        if len(pairs) == 0:
+            break
+        # At most n/2 exchanges can apply in one pass, so only the best n
+        # candidates are worth walking.
+        best = np.argsort(-gain[pairs[:, 0], pairs[:, 1]])[:n]
+        moved = np.zeros(n, dtype=bool)
+        for i, j in pairs[best]:
+            if moved[i] or moved[j]:
+                continue
+            assign[i], assign[j] = assign[j], assign[i]
+            moved[i] = moved[j] = True
+    return assign
+
+
+def assign_targets(
+    sources: Any, targets: Any, *, max_passes: int = 8
+) -> np.ndarray:
+    """
+    One distinct target per source, by squared distance.
+
+    Greedy nearest-first followed by swap passes: not optimal, but within a
+    few percent of it and fast enough to run every time the swarm is
+    re-aimed. Returns a target index per source, in source order. There must
+    be at least as many targets as sources.
+    """
+    src = np.asarray(sources, dtype=float).reshape(-1, 2)
+    dst = np.asarray(targets, dtype=float).reshape(-1, 2)
+    if len(src) == 0:
+        return np.zeros(0, dtype=int)
+    if len(dst) < len(src):
+        raise ValueError(f"{len(src)} sources need {len(src)} targets, got {len(dst)}")
+    cost = ((src[:, None, :] - dst[None, :, :]) ** 2).sum(axis=2)
+    return _swap_passes(cost, _greedy(cost), max_passes)
 
 
 # ------------------------------------------------------------ controller side
@@ -235,6 +472,8 @@ class Bot:
     y: float
     heading: float
     application: int = APPLICATION_DOTBOT
+    #: Last reported battery voltage, volts.
+    battery: float = 0.0
 
 
 class CommandQueue:
@@ -331,6 +570,7 @@ class ControllerClient:
         if position is None and bot is None:
             return
         heading = raw.get("direction")
+        battery = raw.get("battery")
         self.bots[address] = Bot(
             address=address,
             x=float(position["x"]) if position else bot.x,
@@ -342,6 +582,11 @@ class ControllerClient:
                 else (bot.heading if bot else 0.0)
             ),
             application=int(raw.get("application", APPLICATION_DOTBOT)),
+            battery=(
+                float(battery)
+                if battery is not None
+                else (bot.battery if bot else 0.0)
+            ),
         )
 
     async def _listen(self) -> None:
@@ -370,6 +615,7 @@ class ControllerClient:
             "lh2_position": {"x": bot.x, "y": bot.y},
             "direction": bot.heading,
             "application": bot.application,
+            "battery": bot.battery,
         }
 
     async def _flush(self) -> None:
@@ -441,12 +687,20 @@ class PlaygroundApp:
         self.swarm = swarm
         self.values: Dict[str, Any] = announcement.defaults()
         self.pointer: Optional[PointerSample] = None
+        #: The latest of each map input, so a loop can read it like a value.
+        self.goals: List[Point] = []
+        self.rects: List[Rect] = []
+        self.text: str = ""
         self.controller = ControllerClient(controller, command_rate_hz=command_rate_hz)
         self._broker = urlparse(broker if "://" in broker else f"mqtt://{broker}")
         self._client: Optional[MQTTClient] = None
         self._client_id = f"playground-{announcement.name}-{uuid.uuid4().hex[:8]}"
         self._on_pointer: List[Callable[[PointerSample], None]] = []
         self._on_control: List[Callable[[ControlChange], None]] = []
+        self._on_action: List[Callable[[Action], None]] = []
+        self._on_goals: List[Callable[[GoalsInput], None]] = []
+        self._on_rects: List[Callable[[RectsInput], None]] = []
+        self._on_text: List[Callable[[TextInput], None]] = []
         self._on_input: List[Callable[[Dict[str, Any]], None]] = []
 
     @property
@@ -464,6 +718,18 @@ class PlaygroundApp:
 
     def on_control(self, callback: Callable[[ControlChange], None]) -> None:
         self._on_control.append(callback)
+
+    def on_action(self, callback: Callable[[Action], None]) -> None:
+        self._on_action.append(callback)
+
+    def on_goals(self, callback: Callable[[GoalsInput], None]) -> None:
+        self._on_goals.append(callback)
+
+    def on_rects(self, callback: Callable[[RectsInput], None]) -> None:
+        self._on_rects.append(callback)
+
+    def on_text(self, callback: Callable[[TextInput], None]) -> None:
+        self._on_text.append(callback)
 
     def on_input(self, callback: Callable[[Dict[str, Any]], None]) -> None:
         """Every input kind this helper does not model, as a plain dict."""
@@ -530,12 +796,76 @@ class PlaygroundApp:
             return
         if isinstance(parsed, PointerSample):
             self.pointer = parsed
-            for callback in self._on_pointer:
-                callback(parsed)
+            self._fire(self._on_pointer, parsed)
         elif isinstance(parsed, ControlChange):
             self.values[parsed.id] = parsed.value
-            for callback in self._on_control:
-                callback(parsed)
+            self._fire(self._on_control, parsed)
+        elif isinstance(parsed, Action):
+            self._fire(self._on_action, parsed)
+        elif isinstance(parsed, GoalsInput):
+            self.goals = parsed.points
+            self._fire(self._on_goals, parsed)
+        elif isinstance(parsed, RectsInput):
+            self.rects = parsed.rects
+            self._fire(self._on_rects, parsed)
+        elif isinstance(parsed, TextInput):
+            self.text = parsed.text
+            self._fire(self._on_text, parsed)
         else:
-            for callback in self._on_input:
-                callback(parsed)
+            self._fire(self._on_input, parsed)
+
+    @staticmethod
+    def _fire(callbacks: Sequence[Callable[[Any], None]], value: Any) -> None:
+        for callback in callbacks:
+            callback(value)
+
+
+# ------------------------------------------------------------- the launcher
+
+
+def demo_command(func: Callable[..., None]) -> Any:
+    """The three options every demo takes, declared once."""
+    func = click.option(
+        "--rate",
+        default=5.0,
+        show_default=True,
+        help="Command rate per bot, in hertz.",
+    )(func)
+    func = click.option(
+        "--controller",
+        default=DEFAULT_CONTROLLER,
+        show_default=True,
+        help="Controller base URL.",
+    )(func)
+    func = click.option(
+        "--broker", default=DEFAULT_BROKER, show_default=True, help="MQTT broker URL."
+    )(func)
+    return click.command()(func)
+
+
+def serve(
+    announcement: Announcement,
+    drive: Callable[[PlaygroundApp], Any],
+    *,
+    broker: str = DEFAULT_BROKER,
+    controller: str = DEFAULT_CONTROLLER,
+    rate: float = 5.0,
+) -> None:
+    """Announce the demo, run its loop until interrupted, then leave the rail."""
+
+    async def main() -> None:
+        app = PlaygroundApp(
+            announcement, broker=broker, controller=controller, command_rate_hz=rate
+        )
+        await app.start()
+        announce, _, _ = app.topics
+        click.echo(f"{announcement.name} announced on {announce}, driving {controller}")
+        try:
+            await drive(app)
+        finally:
+            await app.stop()
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

@@ -11,14 +11,12 @@ import random
 from math import hypot
 from typing import Dict, List, Optional, Sequence, Tuple
 
-import click
-
 from dotbot.examples.common.playground import (
-    DEFAULT_BROKER,
-    DEFAULT_CONTROLLER,
     Announcement,
     PlaygroundApp,
     Point,
+    demo_command,
+    serve,
     slider,
     toggle,
 )
@@ -187,38 +185,16 @@ async def drive(app: PlaygroundApp, period: float = 0.2) -> None:
             app.publish_status(f"idle, {len(bots)} bots")
 
 
-async def main(broker: str, controller: str, rate: float) -> None:
-    app = PlaygroundApp(
-        ANNOUNCEMENT, broker=broker, controller=controller, command_rate_hz=rate
-    )
-    await app.start()
-    announce, _, _ = app.topics
-    click.echo(f"follow announced on {announce}, driving {controller}")
-    try:
-        await drive(app, period=1.0 / max(0.1, rate))
-    finally:
-        await app.stop()
-
-
-@click.command()
-@click.option(
-    "--broker", default=DEFAULT_BROKER, show_default=True, help="MQTT broker URL."
-)
-@click.option(
-    "--controller",
-    default=DEFAULT_CONTROLLER,
-    show_default=True,
-    help="Controller base URL.",
-)
-@click.option(
-    "--rate", default=5.0, show_default=True, help="Command rate per bot, in hertz."
-)
+@demo_command
 def cli(broker: str, controller: str, rate: float) -> None:
     """Drive the swarm after the playground's pointer."""
-    try:
-        asyncio.run(main(broker, controller, rate))
-    except KeyboardInterrupt:
-        pass
+    serve(
+        ANNOUNCEMENT,
+        lambda app: drive(app, period=1.0 / max(0.1, rate)),
+        broker=broker,
+        controller=controller,
+        rate=rate,
+    )
 
 
 if __name__ == "__main__":
