@@ -4,6 +4,7 @@ import { mixDrive } from "../Joystick";
 import { Arena, type InputMode } from "./Arena";
 import { BUILTINS, initialValuesByApp, SAMPLE_APPS } from "./announcements";
 import { Controls } from "./Controls";
+import { nearestBotIndex } from "./pick";
 import { useFakeWorld } from "./useFakeWorld";
 import type { AppAnnouncement, ControlValues, Vec2, WorldKind } from "./types";
 import type { RatePreset } from "./fakeWorld.worker";
@@ -104,6 +105,7 @@ export const Playground: React.FC = () => {
 
   const [fps, setFps] = useState(0);
   const [driven, setDriven] = useState(0);
+  const [picking, setPicking] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
   useEffect(() => fake.setRate(rate), [fake, rate]);
@@ -117,17 +119,46 @@ export const Playground: React.FC = () => {
     });
   }, [fake, follow.speed, follow.spread, follow.wander]);
 
-  // Only the selected app receives the map's input.
+  // Only the selected app receives the map's input. Pick mode borrows it for
+  // one tap, so the map cannot be driving and choosing at the same time.
+  const drives = app.inputs.includes("drive");
   const inputMode: InputMode = app.inputs.includes("pointer")
     ? "pointer"
-    : app.inputs.includes("drive")
-      ? "drive"
+    : drives
+      ? picking
+        ? "pick"
+        : "drive"
       : "none";
 
   useEffect(() => {
     if (inputMode !== "pointer") fake.setTarget(null);
     if (inputMode !== "drive") fake.setDrive(-1, 0, 0);
   }, [fake, inputMode]);
+
+  // Pick mode is a state the person is standing in, so Escape leaves it.
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicking(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picking]);
+
+  useEffect(() => {
+    if (!drives) setPicking(false);
+  }, [drives]);
+
+  const onPick = useCallback(
+    (p: Vec2) => {
+      const hit = nearestBotIndex(fake.poses.current, p);
+      if (hit >= 0) {
+        setDriven(hit);
+        setPicking(false);
+      }
+    },
+    [fake],
+  );
 
   const onPointer = useCallback(
     (p: Vec2 | null) => {
@@ -175,36 +206,60 @@ export const Playground: React.FC = () => {
   const botsSeen = world === "fake" ? fake.count : 0;
 
   const botPicker = (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      <button onClick={() => setDriven((d) => (d - 1 + botCount) % botCount)} style={stepStyle}>
-        &#8249;
-      </button>
-      <span
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <button onClick={() => setDriven((d) => (d - 1 + botCount) % botCount)} style={stepStyle}>
+          &#8249;
+        </button>
+        <span
+          style={{
+            flex: 1,
+            textAlign: "center",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "var(--text)",
+          }}
+        >
+          bot {driven}
+        </span>
+        <button onClick={() => setDriven((d) => (d + 1) % botCount)} style={stepStyle}>
+          &#8250;
+        </button>
+        <button
+          onClick={() => setDriven(Math.floor(Math.random() * botCount))}
+          style={{ ...stepStyle, width: "auto", padding: "0 9px" }}
+        >
+          any
+        </button>
+      </div>
+      <button
+        onClick={() => setPicking((v) => !v)}
         style={{
-          flex: 1,
-          textAlign: "center",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          color: "var(--text)",
+          ...stepStyle,
+          width: "100%",
+          padding: "0 9px",
+          background: picking ? "var(--accent)" : "var(--elevated)",
+          color: picking ? "#fff" : "var(--text)",
+          borderColor: picking ? "var(--accent)" : "var(--hairline)",
         }}
       >
-        bot {driven}
-      </span>
-      <button onClick={() => setDriven((d) => (d + 1) % botCount)} style={stepStyle}>
-        &#8250;
-      </button>
-      <button
-        onClick={() => setDriven(Math.floor(Math.random() * botCount))}
-        style={{ ...stepStyle, width: "auto", padding: "0 9px" }}
-      >
-        any
+        {picking ? "Tap a bot on the map" : "Select bot"}
       </button>
     </div>
   );
 
+  // Drive has no script to write a hint, so the page says which of its two
+  // modes the map is in and which bot the stick will move.
+  const driveTitle = picking ? "Pick a bot" : `Driving bot ${driven}`;
+  const driveHint = picking
+    ? "Tap a bot on the map to drive it. Escape, or the button again, cancels."
+    : `Hold the stick on the map to drive bot ${driven}. Two fingers pan.`;
+  const panelTitle = drives ? driveTitle : app.title;
+  const hintLine = drives ? driveHint : app.hint;
+
   const panel = (
     <>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{app.title}</div>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{panelTitle}</div>
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 14 }}>
         {app.builtin ? "built in" : `dotbot/apps/${app.name}`}
       </div>
@@ -263,10 +318,11 @@ export const Playground: React.FC = () => {
       moving={fake.moving}
       version={fake.version}
       side={side}
-      driven={inputMode === "drive" ? driven : -1}
+      driven={drives ? driven : -1}
       inputMode={world === "fake" ? inputMode : "none"}
       onPointer={onPointer}
       onDrive={onDrive}
+      onPick={onPick}
       onFps={setFps}
       theme={theme}
     />
@@ -431,7 +487,7 @@ export const Playground: React.FC = () => {
           textOverflow: "ellipsis",
         }}
       >
-        {app.hint}
+        {hintLine}
       </div>
 
       {showQr && (

@@ -12,7 +12,7 @@ import type { Vec2 } from "./types";
 // the app's input, pan is space-drag or two fingers, zoom is the wheel or a
 // pinch.
 
-export type InputMode = "pointer" | "drive" | "none";
+export type InputMode = "pointer" | "drive" | "pick" | "none";
 
 interface ArenaProps {
   poses: React.MutableRefObject<Float32Array>;
@@ -24,6 +24,8 @@ interface ArenaProps {
   inputMode: InputMode;
   onPointer: (p: Vec2 | null) => void;
   onDrive: (dx: number, dy: number) => void;
+  /** Arena mm of a tap while the page is in pick mode. */
+  onPick: (p: Vec2) => void;
   onFps: (fps: number) => void;
   theme: "dark" | "light";
 }
@@ -228,6 +230,8 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       dirtyRef.current = true;
     } else if (props.inputMode === "drive") {
       setStick({ ox: p.x, oy: p.y, dx: 0, dy: 0 });
+    } else if (props.inputMode === "pick") {
+      props.onPick(screenToArena(camRef.current, p.x, p.y));
     }
   };
 
