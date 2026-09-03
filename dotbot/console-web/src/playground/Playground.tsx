@@ -5,6 +5,8 @@ import { Arena, type InputMode } from "./Arena";
 import { BUILTINS, initialValuesByApp, SAMPLE_APPS } from "./announcements";
 import { Controls } from "./Controls";
 import { nearestBotIndex } from "./pick";
+import { phoneUrl } from "./qr";
+import { QrCard } from "./QrCard";
 import { useFakeWorld } from "./useFakeWorld";
 import type { AppAnnouncement, ControlValues, Vec2, WorldKind } from "./types";
 import type { RatePreset } from "./fakeWorld.worker";
@@ -204,6 +206,15 @@ export const Playground: React.FC = () => {
   }, [apps]);
 
   const botsSeen = world === "fake" ? fake.count : 0;
+
+  // What the QR carries. A phone that scans it lands on the world the big
+  // screen is showing; an app that takes no map input would leave the visitor
+  // with nothing to do, so those fall back to Drive.
+  const phoneLink = phoneUrl(window.location.href, {
+    world,
+    n: world === "fake" ? String(botCount) : undefined,
+    app: app.inputs.length > 0 ? app.name : "drive",
+  });
 
   const botPicker = (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -490,47 +501,7 @@ export const Playground: React.FC = () => {
         {hintLine}
       </div>
 
-      {showQr && (
-        <div
-          onClick={() => setShowQr(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            background: "rgba(0,0,0,.55)",
-          }}
-        >
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--hairline)",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 340,
-              lineHeight: 1.55,
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Open this on a phone</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
-              The QR carries this URL plus the broker address and the swarm id, which the page
-              reads from the controller. Until the broker is wired up, type the URL by hand:
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                wordBreak: "break-all",
-                background: "var(--elevated)",
-                borderRadius: 7,
-                padding: 9,
-              }}
-            >
-              {window.location.href}
-            </div>
-          </div>
-        </div>
-      )}
+      {showQr && <QrCard url={phoneLink} onClose={() => setShowQr(false)} />}
     </div>
   );
 };
