@@ -2,9 +2,10 @@ import { headingToGlyphRotation } from "../arenaFrame";
 import { BOARD, TREADS, TYRES } from "../BotGlyph";
 import { arenaToScreen, type Camera } from "./camera";
 import { BOT_FOOTPRINT_MM } from "./fakeWorld";
+import type { Goal, OverlayColor, OverlayItem, RectShape } from "./types";
 
-// The arena, the bots and the pointer, on one canvas. React owns the chrome
-// and never re-renders while the swarm moves.
+// The arena, the bots, the overlays and the pointer, on one canvas. React owns
+// the chrome and never re-renders while the swarm moves.
 
 /** Token values pulled from the DOM once per theme, never per frame. */
 export interface Palette {
@@ -15,6 +16,9 @@ export interface Palette {
   accent: string;
   tyre: string;
   muted: string;
+  good: string;
+  warn: string;
+  info: string;
 }
 
 export function readPalette(el: HTMLElement): Palette {
@@ -28,7 +32,26 @@ export function readPalette(el: HTMLElement): Palette {
     accent: v("--accent"),
     tyre: v("--tyre"),
     muted: v("--muted"),
+    good: v("--s-Running"),
+    warn: v("--s-Programming"),
+    info: v("--s-Full"),
   };
+}
+
+/** An overlay colour role as a token value. */
+export function overlayColor(palette: Palette, role: OverlayColor | undefined): string {
+  switch (role) {
+    case "muted":
+      return palette.muted;
+    case "good":
+      return palette.good;
+    case "warn":
+      return palette.warn;
+    case "info":
+      return palette.info;
+    default:
+      return palette.accent;
+  }
 }
 
 /** The glyph is authored in a 32-unit box whose robot spans 25 of them. */
@@ -70,6 +93,14 @@ export interface Scene {
   dpr: number;
   width: number;
   height: number;
+  /** What the selected app published on its /out topic. */
+  overlay?: OverlayItem[];
+  /** Bot addresses in pose order, which a badge is keyed by. */
+  addresses?: string[];
+  /** Pins the map is collecting for a `goals` app. */
+  goals?: Goal[];
+  /** Rectangles the map is collecting for a `rects` app. */
+  rects?: RectShape[];
 }
 
 export function drawScene(ctx: CanvasRenderingContext2D, s: Scene): void {
@@ -78,7 +109,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, s: Scene): void {
   ctx.fillRect(0, 0, s.width, s.height);
 
   drawArena(ctx, s);
+  if (s.overlay && s.overlay.length > 0) drawOverlay(ctx, s);
   drawBots(ctx, s);
+  if (s.overlay && s.overlay.length > 0) drawBadges(ctx, s);
+  if (s.rects && s.rects.length > 0) drawEditRects(ctx, s);
+  if (s.goals && s.goals.length > 0) drawEditGoals(ctx, s);
   if (s.pointer) drawPointer(ctx, s);
 }
 
@@ -183,6 +218,166 @@ function markDriven(ctx: CanvasRenderingContext2D, s: Scene, px: number) {
   ctx.strokeStyle = s.palette.accent;
   ctx.lineWidth = 2;
   ctx.stroke();
+}
+
+/** Ghost pins, paths, regions and labels, under the bots. */
+function drawOverlay(ctx: CanvasRenderingContext2D, s: Scene) {
+  ctx.save();
+  ctx.lineJoin = "round";
+  for (const item of s.overlay!) {
+    const stroke = overlayColor(s.palette, item.color);
+    switch (item.type) {
+      case "point": {
+        const { sx, sy } = arenaToScreen(s.cam, item.x, item.y);
+        const r = Math.max(3, (item.r ?? BOT_FOOTPRINT_MM / 2) * s.cam.scale);
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = stroke;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        if (item.label) text(ctx, s, item.label, sx, sy - r - 4, stroke);
+        break;
+      }
+      case "polyline": {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        item.points.forEach((p, i) => {
+          const { sx, sy } = arenaToScreen(s.cam, p.x, p.y);
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        });
+        if (item.closed) ctx.closePath();
+        ctx.stroke();
+        break;
+      }
+      case "rect": {
+        const { sx, sy } = arenaToScreen(s.cam, item.x, item.y);
+        const w = item.w * s.cam.scale;
+        const h = item.h * s.cam.scale;
+        if (item.fill) {
+          ctx.globalAlpha = 0.12;
+          ctx.fillStyle = stroke;
+          ctx.fillRect(sx, sy, w, h);
+          ctx.globalAlpha = 1;
+        }
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sx, sy, w, h);
+        if (item.label) text(ctx, s, item.label, sx + w / 2, sy - 4, stroke);
+        break;
+      }
+      case "label": {
+        const { sx, sy } = arenaToScreen(s.cam, item.x, item.y);
+        text(ctx, s, item.text, sx, sy, stroke);
+        break;
+      }
+      case "badge":
+        break;
+    }
+  }
+  ctx.restore();
+}
+
+/** Per-bot badges, over the bots, so a marked bot is findable in a blob. */
+function drawBadges(ctx: CanvasRenderingContext2D, s: Scene) {
+  const badges = s.overlay!.filter((i) => i.type === "badge");
+  if (badges.length === 0 || !s.addresses) return;
+  const index = new Map(s.addresses.map((a, i) => [a, i]));
+  const r = Math.max(7, (BOT_FOOTPRINT_MM * s.cam.scale) / 1.6);
+  ctx.save();
+  for (const badge of badges) {
+    if (badge.type !== "badge") continue;
+    const i = index.get(badge.address);
+    if (i === undefined || i * 3 + 1 >= s.poses.length) continue;
+    const { sx, sy } = arenaToScreen(s.cam, s.poses[i * 3], s.poses[i * 3 + 1]);
+    const color = overlayColor(s.palette, badge.color);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    if (badge.text) text(ctx, s, badge.text, sx, sy - r - 3, color);
+  }
+  ctx.restore();
+}
+
+/** The pins the page itself is holding, before any script echoes them back. */
+function drawEditGoals(ctx: CanvasRenderingContext2D, s: Scene) {
+  ctx.save();
+  ctx.strokeStyle = s.palette.accent;
+  ctx.fillStyle = s.palette.accent;
+  const r = Math.max(5, (BOT_FOOTPRINT_MM / 2) * s.cam.scale);
+  s.goals!.forEach((g, i) => {
+    const { sx, sy } = arenaToScreen(s.cam, g.x, g.y);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, s, String(i + 1), sx, sy - r - 4, s.palette.accent);
+  });
+  ctx.restore();
+}
+
+function drawEditRects(ctx: CanvasRenderingContext2D, s: Scene) {
+  ctx.save();
+  ctx.strokeStyle = s.palette.accent;
+  ctx.fillStyle = s.palette.accent;
+  ctx.lineWidth = 1.5;
+  for (const r of s.rects!) {
+    const { sx, sy } = arenaToScreen(s.cam, r.x, r.y);
+    const w = r.w * s.cam.scale;
+    const h = r.h * s.cam.scale;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(sx, sy, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeRect(sx, sy, w, h);
+    // Corner ticks say where the resize handles are without a hover state.
+    const t = 7;
+    ctx.beginPath();
+    for (const [cx, cy] of [
+      [sx, sy],
+      [sx + w, sy],
+      [sx, sy + h],
+      [sx + w, sy + h],
+    ]) {
+      ctx.moveTo(cx - t / 2, cy);
+      ctx.lineTo(cx + t / 2, cy);
+      ctx.moveTo(cx, cy - t / 2);
+      ctx.lineTo(cx, cy + t / 2);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** One line of overlay text, centred on `sx` and sitting above `sy`. */
+function text(
+  ctx: CanvasRenderingContext2D,
+  s: Scene,
+  value: string,
+  sx: number,
+  sy: number,
+  color: string,
+) {
+  ctx.font = "600 11px var(--font-mono), monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const width = ctx.measureText(value).width;
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = s.palette.canvas;
+  ctx.fillRect(sx - width / 2 - 3, sy - 12, width + 6, 13);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color;
+  ctx.fillText(value, sx, sy);
 }
 
 function drawPointer(ctx: CanvasRenderingContext2D, s: Scene) {

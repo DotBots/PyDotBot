@@ -16,20 +16,25 @@ describe("the sample rail", () => {
     expect(new Set(ALL.map((a) => a.name)).size).toBe(ALL.length);
   });
 
-  // The draft exists to be looked at, and a control type nothing declares is a
-  // control type nobody sees.
-  it("exercises every control type the panel can render", () => {
+  // A sample the panel cannot render is a sample nobody sees.
+  it("declares only control types the panel renders", () => {
     const types = new Set(ALL.flatMap((a) => a.controls.map((c) => c.type)));
-    for (const t of ["slider", "toggle", "button", "select", "text", "botpicker"]) {
-      expect(types).toContain(t);
+    for (const t of types) {
+      expect(["slider", "toggle", "button", "select", "text", "botpicker"]).toContain(t);
     }
   });
 
-  it("gives a background app no inputs and no controls", () => {
+  it("gives a background app controls but no inputs", () => {
     const charging = SAMPLE_APPS.find((a) => a.name === "charging")!;
     expect(charging.inputs).toEqual([]);
-    expect(charging.controls).toEqual([]);
     expect(charging.overlay).toBe(true);
+    expect(charging.controls.map((c) => c.id)).toEqual(["threshold", "charge"]);
+  });
+
+  it("gives each map input to exactly one app, so the rail never has two claimants", () => {
+    for (const kind of ["pointer", "goals", "rects", "text"]) {
+      expect(ALL.filter((a) => a.inputs.includes(kind as never))).toHaveLength(1);
+    }
   });
 
   it("declares the pointer only on follow, which is what claims the map", () => {

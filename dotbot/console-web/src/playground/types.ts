@@ -42,6 +42,48 @@ export interface AppAnnouncement {
 /** The current value of every control of one app, keyed by control id. */
 export type ControlValues = Record<string, number | boolean | string>;
 
+/**
+ * A colour named by role, which the renderer resolves against tokens.css. A
+ * script never names a colour, so the page stays theme-correct.
+ */
+export type OverlayColor = "accent" | "muted" | "good" | "warn" | "info";
+
+/** What a script can ask the canvas to draw, in arena mm. */
+export type OverlayItem =
+  | { type: "point"; x: number; y: number; r?: number; label?: string; color?: OverlayColor }
+  | { type: "polyline"; points: Vec2[]; closed?: boolean; color?: OverlayColor }
+  | {
+      type: "rect";
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      label?: string;
+      fill?: boolean;
+      color?: OverlayColor;
+    }
+  | { type: "label"; x: number; y: number; text: string; color?: OverlayColor }
+  | { type: "badge"; address: string; text: string; color?: OverlayColor };
+
+/** One message off an app's /out topic. */
+export type OutMessage =
+  | { kind: "overlay"; items: OverlayItem[] }
+  | { kind: "status"; text: string };
+
+/** A pin the map collects for a `goals` app. */
+export interface Goal extends Vec2 {
+  id: number;
+}
+
+/** A rectangle the map collects for a `rects` app, in arena mm. */
+export interface RectShape {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** Arena mm, the frame arenaFrame.ts states. */
 export interface Vec2 {
   x: number;

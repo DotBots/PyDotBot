@@ -1,9 +1,23 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { clampCamera, fitCamera, panBy, screenToArena, zoomAt, type Camera } from "./camera";
+import {
+  addGoal,
+  goalAt,
+  moveGoal,
+  newId,
+  normalizeRect,
+  pruneRects,
+  rectHandleAt,
+  removeGoal,
+  removeRect,
+  replaceRect,
+  resizeRect,
+  type RectHandle,
+} from "./inputs";
 import { drawScene, readPalette, type Palette } from "./renderer";
 import { Thumbstick } from "./Thumbstick";
-import type { Vec2 } from "./types";
+import type { Goal, OverlayItem, RectShape, Vec2 } from "./types";
 
 // The map. It owns the canvas, the camera and every gesture; React re-renders
 // it only when the chrome around it changes.
@@ -12,7 +26,10 @@ import type { Vec2 } from "./types";
 // the app's input, pan is space-drag or two fingers, zoom is the wheel or a
 // pinch.
 
-export type InputMode = "pointer" | "drive" | "pick" | "none";
+export type InputMode = "pointer" | "drive" | "pick" | "goals" | "rects" | "none";
+
+/** Screen px a press may travel and still count as a click, not a drag. */
+const CLICK_SLOP_PX = 4;
 
 interface ArenaProps {
   poses: React.MutableRefObject<Float32Array>;
@@ -28,6 +45,15 @@ interface ArenaProps {
   onPick: (p: Vec2) => void;
   onFps: (fps: number) => void;
   theme: "dark" | "light";
+  /** What the selected app published on its /out topic. */
+  overlay?: OverlayItem[];
+  /** Bot addresses in pose order, which an overlay badge is keyed by. */
+  addresses?: React.MutableRefObject<string[]>;
+  goals?: Goal[];
+  rects?: RectShape[];
+  /** `done` marks the end of a gesture, so the caller can send the final set. */
+  onGoals?: (next: Goal[], done: boolean) => void;
+  onRects?: (next: RectShape[], done: boolean) => void;
 }
 
 interface StickState {
@@ -35,6 +61,17 @@ interface StickState {
   oy: number;
   dx: number;
   dy: number;
+}
+
+/** The pin or rectangle a press grabbed, until the press ends. */
+interface EditDrag {
+  index: number;
+  handle: RectHandle | null;
+  /** The fixed corner while a new rectangle is being drawn. */
+  origin: Vec2 | null;
+  moved: boolean;
+  startX: number;
+  startY: number;
 }
 
 export const Arena: React.FC<ArenaProps> = (props) => {
@@ -52,6 +89,7 @@ export const Arena: React.FC<ArenaProps> = (props) => {
   const activeRef = useRef(new Map<number, { x: number; y: number }>());
   const modeRef = useRef<"idle" | "app" | "pan" | "pinch">("idle");
   const gestureRef = useRef({ lastX: 0, lastY: 0, dist: 0 });
+  const editRef = useRef<EditDrag | null>(null);
 
   // Space is the pan modifier, so it must be known before the drag starts.
   useEffect(() => {
@@ -74,6 +112,12 @@ export const Arena: React.FC<ArenaProps> = (props) => {
     if (boxRef.current) paletteRef.current = readPalette(boxRef.current);
     dirtyRef.current = true;
   }, [props.theme]);
+
+  // An overlay or an edited set changes what one frame shows; it is not the
+  // world moving, so it marks the canvas dirty rather than waking the loop.
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [props.overlay, props.goals, props.rects]);
 
   const refit = useCallback(() => {
     const { w, h } = sizeRef.current;
@@ -147,6 +191,10 @@ export const Arena: React.FC<ArenaProps> = (props) => {
           dpr,
           width: w,
           height: h,
+          overlay: p.overlay,
+          addresses: p.addresses?.current,
+          goals: p.goals,
+          rects: p.rects,
         });
         frames++;
         stats.frames++;
@@ -198,6 +246,84 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       setStick(null);
       props.onDrive(0, 0);
     }
+    endEdit();
+  };
+
+  // --- pins and rectangles --------------------------------------------------
+
+  const goals = () => props.goals ?? [];
+  const rects = () => props.rects ?? [];
+
+  const startGoals = (p: { x: number; y: number }, at: Vec2, additive: boolean) => {
+    const hit = goalAt(goals(), at);
+    editRef.current = {
+      index: hit,
+      handle: null,
+      origin: null,
+      moved: false,
+      startX: p.x,
+      startY: p.y,
+    };
+    if (hit < 0) {
+      const next = addGoal(goals(), at, additive);
+      editRef.current.index = next.length - 1;
+      props.onGoals?.(next, false);
+    }
+  };
+
+  const startRects = (p: { x: number; y: number }, at: Vec2, additive: boolean) => {
+    const { index, handle } = rectHandleAt(rects(), at);
+    const drawing = handle === null || handle === "inside" ? additive : false;
+    if (drawing) {
+      const rect: RectShape = { id: newId(), x: at.x, y: at.y, w: 0, h: 0 };
+      const next = [...rects(), rect];
+      editRef.current = {
+        index: next.length - 1,
+        handle: "se",
+        origin: at,
+        moved: false,
+        startX: p.x,
+        startY: p.y,
+      };
+      props.onRects?.(next, false);
+      return;
+    }
+    editRef.current = { index, handle, origin: null, moved: false, startX: p.x, startY: p.y };
+  };
+
+  const moveEdit = (p: { x: number; y: number }, at: Vec2) => {
+    const edit = editRef.current;
+    if (edit === null) return;
+    if (Math.hypot(p.x - edit.startX, p.y - edit.startY) > CLICK_SLOP_PX) edit.moved = true;
+    if (!edit.moved) return;
+    if (props.inputMode === "goals") {
+      if (edit.index >= 0) props.onGoals?.(moveGoal(goals(), edit.index, at), false);
+      return;
+    }
+    if (edit.index < 0 || edit.handle === null) return;
+    const current = rects()[edit.index];
+    if (current === undefined) return;
+    const shaped =
+      edit.origin !== null
+        ? { ...current, ...normalizeRect(edit.origin, at) }
+        : resizeRect(current, edit.handle, at);
+    props.onRects?.(replaceRect(rects(), edit.index, shaped), false);
+  };
+
+  const endEdit = () => {
+    const edit = editRef.current;
+    editRef.current = null;
+    if (edit === null) return;
+    if (props.inputMode === "goals") {
+      // A press that did not travel is a click, and a click on a pin removes it.
+      const next = !edit.moved && edit.index >= 0 ? removeGoal(goals(), edit.index) : goals();
+      props.onGoals?.(next, true);
+      return;
+    }
+    if (props.inputMode !== "rects") return;
+    const clicked = !edit.moved && edit.index >= 0 && edit.origin === null;
+    const next = pruneRects(clicked ? removeRect(rects(), edit.index) : rects());
+    props.onRects?.(next, true);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -227,15 +353,19 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       return;
     }
     modeRef.current = "app";
+    const at = screenToArena(camRef.current, p.x, p.y);
     if (props.inputMode === "pointer") {
-      const a = screenToArena(camRef.current, p.x, p.y);
-      pointerRef.current = a;
-      props.onPointer(a);
+      pointerRef.current = at;
+      props.onPointer(at);
       dirtyRef.current = true;
     } else if (props.inputMode === "drive") {
       setStick({ ox: p.x, oy: p.y, dx: 0, dy: 0 });
     } else if (props.inputMode === "pick") {
-      props.onPick(screenToArena(camRef.current, p.x, p.y));
+      props.onPick(at);
+    } else if (props.inputMode === "goals") {
+      startGoals(p, at, e.shiftKey);
+    } else if (props.inputMode === "rects") {
+      startRects(p, at, e.shiftKey);
     }
   };
 
@@ -293,6 +423,9 @@ export const Arena: React.FC<ArenaProps> = (props) => {
       const dy = p.y - stick.oy;
       setStick({ ...stick, dx, dy });
       props.onDrive(dx, dy);
+    } else if (props.inputMode === "goals" || props.inputMode === "rects") {
+      moveEdit(p, screenToArena(camRef.current, p.x, p.y));
+      dirtyRef.current = true;
     }
   };
 

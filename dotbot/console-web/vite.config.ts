@@ -49,6 +49,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // A .tsx test renders a component to static markup, which needs no DOM.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

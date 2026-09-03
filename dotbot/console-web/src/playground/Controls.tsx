@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 import { controlLabel } from "./announcements";
 import type { ControlDecl, ControlValues } from "./types";
@@ -35,6 +35,43 @@ const buttonStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
+/**
+ * The widget an app that declares the `text` input gets: a field the person
+ * types into and one Go, sent on either. It is an input, not a control, so it
+ * goes out as `{kind: "text"}` rather than a control change per keystroke.
+ */
+export const TextInput: React.FC<{ onSend: (text: string) => void; label?: string }> = ({
+  onSend,
+  label = "Text",
+}) => {
+  const [text, setText] = useState("");
+  const send = () => {
+    if (text.trim() !== "") onSend(text);
+  };
+  return (
+    <div style={rowStyle}>
+      <div style={labelStyle}>
+        <span>{label}</span>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          type="text"
+          aria-label={label}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") send();
+          }}
+          style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+        />
+        <button onClick={send} style={{ ...buttonStyle, width: "auto", padding: "6px 12px" }}>
+          Go
+        </button>
+      </div>
+    </div>
+  );
+};
+
 interface ControlsProps {
   controls: ControlDecl[];
   values: ControlValues;
@@ -42,6 +79,8 @@ interface ControlsProps {
   onAction: (id: string) => void;
   /** Rendered in place of a `botpicker` control, which needs live bots. */
   botPicker?: React.ReactNode;
+  /** What the panel says when the app declared no controls. */
+  emptyNote?: string;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -50,12 +89,11 @@ export const Controls: React.FC<ControlsProps> = ({
   onChange,
   onAction,
   botPicker,
+  emptyNote = "No controls declared.",
 }) => {
   if (controls.length === 0) {
     return (
-      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-        No controls declared. This app only draws.
-      </div>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{emptyNote}</div>
     );
   }
   return (

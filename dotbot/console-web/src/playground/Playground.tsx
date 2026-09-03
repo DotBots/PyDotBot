@@ -6,13 +6,30 @@ import { Arena, type InputMode } from "./Arena";
 import { BUILTINS, initialValues, initialValuesByApp, SAMPLE_APPS } from "./announcements";
 import { PlainMqttBus } from "./bus";
 import { ControllerFeed, type WorldHandle } from "./controllerWorld";
-import { Controls } from "./Controls";
+import { Controls, TextInput } from "./Controls";
 import { announceFilter, appNameFromTopic, appTopics, applyAnnouncement } from "./discovery";
+import {
+  actionMessage,
+  controlMessage,
+  goalsMessage,
+  pointerMessage,
+  rectsMessage,
+  textMessage,
+} from "./messages";
+import { parseOut } from "./overlay";
 import { nearestBotIndex } from "./pick";
 import { phoneUrl } from "./qr";
 import { QrCard } from "./QrCard";
 import { useFakeWorld } from "./useFakeWorld";
-import type { AppAnnouncement, ControlValues, Vec2, WorldKind } from "./types";
+import type {
+  AppAnnouncement,
+  ControlValues,
+  Goal,
+  OverlayItem,
+  RectShape,
+  Vec2,
+  WorldKind,
+} from "./types";
 import type { RatePreset } from "./fakeWorld.worker";
 
 // The Playground page: a canvas, a rail of what is running, a panel of the
@@ -250,11 +267,15 @@ export const Playground: React.FC = () => {
   const drives = app.inputs.includes("drive");
   const inputMode: InputMode = app.inputs.includes("pointer")
     ? "pointer"
-    : drives
-      ? picking
-        ? "pick"
-        : "drive"
-      : "none";
+    : app.inputs.includes("goals")
+      ? "goals"
+      : app.inputs.includes("rects")
+        ? "rects"
+        : drives
+          ? picking
+            ? "pick"
+            : "drive"
+          : "none";
 
   useEffect(() => {
     if (inputMode !== "pointer") fake.setTarget(null);
@@ -286,6 +307,33 @@ export const Playground: React.FC = () => {
     [poses],
   );
 
+  // --- what the selected app draws and collects -----------------------------
+
+  const [overlay, setOverlay] = useState<OverlayItem[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [rects, setRects] = useState<RectShape[]>([]);
+
+  // The overlay belongs to the app it came from, so a change of selection
+  // clears it rather than leaving the previous app's pins on the canvas.
+  useEffect(() => {
+    setOverlay([]);
+    setStatus(null);
+    setGoals([]);
+    setRects([]);
+  }, [selected]);
+
+  useEffect(() => {
+    const bus = busRef.current;
+    if (bus === null || swarm === null || app.builtin) return;
+    return bus.subscribe(appTopics(swarm, app.name).out, (payload) => {
+      const message = parseOut(payload);
+      if (message === null) return;
+      if (message.kind === "overlay") setOverlay(message.items);
+      else setStatus(message.text);
+    });
+  }, [app.builtin, app.name, swarm, brokerUp]);
+
   const pointerSentAt = useRef(0);
   const onPointer = useCallback(
     (p: Vec2 | null) => {
@@ -296,7 +344,7 @@ export const Playground: React.FC = () => {
       // the sample the rate limiter drops.
       if (p !== null && now - pointerSentAt.current < 1000 / POINTER_HZ) return;
       pointerSentAt.current = now;
-      publish({ kind: "pointer", at: p === null ? null : { x: p.x, y: p.y } });
+      publish(pointerMessage(p));
     },
     [fake, inputMode, publish],
   );
@@ -322,10 +370,41 @@ export const Playground: React.FC = () => {
     [controller, fake, onController],
   );
 
+  // A drag fires far faster than a script needs, but the set it ends on is
+  // the one that must arrive, so the end of a gesture is never rate limited.
+  const setSentAt = useRef(0);
+  const publishSet = useCallback(
+    (message: Record<string, unknown>, done: boolean) => {
+      const now = performance.now();
+      if (!done && now - setSentAt.current < 1000 / POINTER_HZ) return;
+      setSentAt.current = now;
+      publish(message);
+    },
+    [publish],
+  );
+
+  const onGoals = useCallback(
+    (next: Goal[], done: boolean) => {
+      setGoals(next);
+      publishSet(goalsMessage(next), done);
+    },
+    [publishSet],
+  );
+
+  const onRects = useCallback(
+    (next: RectShape[], done: boolean) => {
+      setRects(next);
+      publishSet(rectsMessage(next), done);
+    },
+    [publishSet],
+  );
+
+  const onText = useCallback((text: string) => publish(textMessage(text)), [publish]);
+
   const setValue = useCallback(
     (id: string, value: number | boolean | string) => {
       setValues((v) => ({ ...v, [selected]: { ...v[selected], [id]: value } }));
-      publish({ kind: "control", id, value });
+      publish(controlMessage(id, value));
     },
     [publish, selected],
   );
@@ -333,7 +412,7 @@ export const Playground: React.FC = () => {
   const onAction = useCallback(
     (id: string) => {
       if (selected === "showcase" && id === "reseed") fake.reseed();
-      else publish({ kind: "control", id, value: true });
+      else publish(actionMessage(id));
     },
     [fake, publish, selected],
   );
@@ -424,13 +503,24 @@ export const Playground: React.FC = () => {
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 14 }}>
         {app.builtin ? "built in" : `dotbot/${swarm ?? "?"}/apps/${app.name}`}
       </div>
+      {app.inputs.includes("text") && <TextInput onSend={onText} />}
       <Controls
         controls={app.controls}
         values={values[app.name] ?? {}}
         onChange={setValue}
         onAction={onAction}
         botPicker={botPicker}
+        emptyNote={
+          app.inputs.length === 0
+            ? "No controls declared. This app only draws."
+            : "No controls declared. The map is the input."
+        }
       />
+      {status !== null && (
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+          {status}
+        </div>
+      )}
     </>
   );
 
@@ -486,6 +576,12 @@ export const Playground: React.FC = () => {
       onPick={onPick}
       onFps={setFps}
       theme={theme}
+      overlay={overlay}
+      addresses={onController ? controller.addresses : undefined}
+      goals={goals}
+      rects={rects}
+      onGoals={onGoals}
+      onRects={onRects}
     />
   );
 
