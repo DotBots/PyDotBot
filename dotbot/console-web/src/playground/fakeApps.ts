@@ -283,19 +283,18 @@ export class AppRunner {
       const px = pads[pad * 2];
       const py = pads[pad * 2 + 1];
       const docked = this.since.get(i);
-      if (docked === undefined) {
-        world.targets[i * 2] = px;
-        world.targets[i * 2 + 1] = py;
-        world.hasTarget[i] = 1;
-        const dx = world.x[i] - px;
-        const dy = world.y[i] - py;
-        if (dx * dx + dy * dy <= PAD_RADIUS_MM * PAD_RADIUS_MM) this.since.set(i, now);
-      } else if (now - docked >= this.charging.dwell) {
+      if (docked !== undefined && now - docked >= this.charging.dwell) {
         this.release(world, i, now);
-      } else {
-        world.held[i] = 1;
-        world.hasTarget[i] = 0;
+        continue;
       }
+      world.targets[i * 2] = px;
+      world.targets[i * 2 + 1] = py;
+      world.hasTarget[i] = 1;
+      const distance = Math.hypot(world.x[i] - px, world.y[i] - py);
+      // The dwell starts at the pad's edge, as the demo's script has it, but
+      // the bot carries on to the middle of it and parks there.
+      if (docked === undefined && distance <= PAD_RADIUS_MM) this.since.set(i, now);
+      if (distance <= world.arriveMm) world.held[i] = 1;
     }
     // A world that was reseeded is a smaller one; a pad cannot stay claimed by
     // a bot that no longer exists.
