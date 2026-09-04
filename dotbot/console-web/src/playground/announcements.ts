@@ -23,6 +23,7 @@ export const SHOWCASE: AppAnnouncement = {
     { id: "bots", type: "slider", label: "Bots", min: 10, max: 1000, step: 10, value: 200 },
     { id: "placement", type: "select", label: "Start", options: ["grid", "random"], value: "grid" },
     { id: "rate", type: "select", label: "Update rate", options: ["frame", "mari"], value: "frame" },
+    { id: "drain", type: "slider", label: "Battery drain", min: 1, max: 20, step: 1, value: 1, unit: "x" },
     { id: "reseed", type: "button", label: "Scatter again" },
   ],
   overlay: false,
@@ -34,9 +35,21 @@ export const SHOWCASE: AppAnnouncement = {
 
 export const BUILTINS: AppAnnouncement[] = [DRIVE, SHOWCASE];
 
-// Standing in for what the broker will carry from phase 2 on. The shapes are
-// the announcement schema verbatim, so the chrome being judged here is the
-// chrome real announcements will get.
+/** The arrival radius every demo that holds a formation declares, mm. */
+const arriveSlider = (value: number): ControlDecl => ({
+  id: "arrive",
+  type: "slider",
+  label: "Arrival radius",
+  min: 20,
+  max: 150,
+  step: 5,
+  value,
+  unit: "mm",
+});
+
+// What the demos in dotbot/examples/ announce, declaration for declaration.
+// The fake world renders and runs these; a controller world replaces them with
+// what the scripts themselves publish, and the two must agree.
 export const SAMPLE_APPS: AppAnnouncement[] = [
   {
     name: "follow",
@@ -60,6 +73,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
     inputs: ["goals"],
     controls: [
       { id: "radius", type: "slider", label: "Ring radius", min: 100, max: 900, step: 20, value: 320, unit: "mm" },
+      arriveSlider(40),
     ],
     overlay: true,
     positions: false,
@@ -71,7 +85,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
     title: "Regions",
     hint: "Shift-drag a rectangle. The swarm splits across the regions by area.",
     inputs: ["rects"],
-    controls: [],
+    controls: [arriveSlider(40)],
     overlay: true,
     positions: false,
     protected: false,
@@ -92,6 +106,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
       },
       { id: "tempo", type: "slider", label: "Tempo", min: 10, max: 200, step: 5, value: 100, unit: "%" },
       { id: "play", type: "button", label: "Play / pause" },
+      arriveSlider(100),
     ],
     overlay: true,
     positions: false,
@@ -105,6 +120,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
     inputs: ["text"],
     controls: [
       { id: "size", type: "slider", label: "Height", min: 200, max: 1600, step: 50, value: 700, unit: "mm" },
+      arriveSlider(40),
     ],
     overlay: true,
     positions: false,

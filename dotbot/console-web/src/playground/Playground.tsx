@@ -8,6 +8,8 @@ import { PlainMqttBus } from "./bus";
 import { ControllerFeed, type WorldHandle } from "./controllerWorld";
 import { Controls, TextInput } from "./Controls";
 import { announceFilter, appNameFromTopic, appTopics, applyAnnouncement } from "./discovery";
+import type { FakeAppSpec } from "./fakeApps";
+import { BOT_FOOTPRINT_MM } from "./fakeWorld";
 import {
   actionMessage,
   controlMessage,
@@ -21,6 +23,7 @@ import { nearestBotIndex } from "./pick";
 import { phoneUrl } from "./qr";
 import { QrCard } from "./QrCard";
 import { useFakeWorld } from "./useFakeWorld";
+import { rasterWord } from "./wordRaster";
 import type {
   AppAnnouncement,
   ControlValues,
@@ -56,6 +59,9 @@ const NEEDS: Record<WorldKind, string> = {
 };
 
 const MOBILE_QUERY = "(max-width: 700px)";
+
+/** No word typed yet, which is also what a change of app goes back to. */
+const NO_WORD: { text: string; ink: Vec2[] } = { text: "", ink: [] };
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -122,12 +128,28 @@ export const Playground: React.FC = () => {
     [params],
   );
 
+  // --- what the selected app draws and collects -----------------------------
+
+  const [overlay, setOverlay] = useState<OverlayItem[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [rects, setRects] = useState<RectShape[]>([]);
+
+  const onOut = useCallback((payload: unknown) => {
+    const message = parseOut(payload);
+    if (message === null) return;
+    if (message.kind === "overlay") setOverlay(message.items);
+    else setStatus(message.text);
+  }, []);
+
   // --- the two worlds -------------------------------------------------------
 
   const [values, setValues] = useState<Record<string, ControlValues>>(() => {
     const v = initialValuesByApp([...BUILTINS, ...SAMPLE_APPS]);
     const n = Number(params.get("n"));
     if (Number.isFinite(n) && n > 0) v.showcase.bots = Math.max(10, Math.min(1000, Math.round(n)));
+    const drain = Number(params.get("drain"));
+    if (Number.isFinite(drain) && drain > 0) v.showcase.drain = Math.min(20, Math.round(drain));
     return v;
   });
 
@@ -136,7 +158,7 @@ export const Playground: React.FC = () => {
   const placement = String(showcase.placement) as "grid" | "random";
   const rate = String(showcase.rate) as RatePreset;
 
-  const fake = useFakeWorld(!onController, fakeCount, placement);
+  const fake = useFakeWorld(!onController, fakeCount, placement, onOut);
 
   const poseRef = useRef<Float32Array>(EMPTY);
   const hueRef = useRef<Float32Array>(EMPTY);
@@ -250,8 +272,9 @@ export const Playground: React.FC = () => {
       speedPct: Number(follow.speed),
       spread: Number(follow.spread),
       wanderWhenIdle: Boolean(follow.wander),
+      drainScale: Number(showcase.drain ?? 1),
     });
-  }, [fake, follow]);
+  }, [fake, follow, showcase.drain]);
 
   const publish = useCallback(
     (message: Record<string, unknown>) => {
@@ -307,12 +330,57 @@ export const Playground: React.FC = () => {
     [poses],
   );
 
-  // --- what the selected app draws and collects -----------------------------
+  // --- the apps, when there is no script to run them -------------------------
 
-  const [overlay, setOverlay] = useState<OverlayItem[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [rects, setRects] = useState<RectShape[]>([]);
+  // In the controller world a script owns the behaviour and the page only
+  // forwards input; in the fake world the same five demos run in the worker,
+  // driven by what the map and the panel collected.
+  const [word, setWord] = useState(NO_WORD);
+  const [playing, setPlaying] = useState(true);
+
+  const spec: FakeAppSpec = useMemo(() => {
+    const v = values[app.name] ?? {};
+    const arrive = Number(v.arrive ?? 40);
+    switch (app.name) {
+      case "goals":
+        return {
+          kind: "goals",
+          pins: goals.map((g) => ({ x: g.x, y: g.y })),
+          radius: Number(v.radius ?? 320),
+          arrive,
+        };
+      case "region":
+        return { kind: "region", rects: rects.map(({ x, y, w, h }) => ({ x, y, w, h })), arrive };
+      case "show":
+        return {
+          kind: "show",
+          figure: String(v.figure ?? "ring"),
+          tempo: Number(v.tempo ?? 100),
+          playing,
+          arrive,
+        };
+      case "letters":
+        return { kind: "letters", word: word.text, ink: word.ink, arrive };
+      default:
+        return { kind: "none" };
+    }
+  }, [app.name, values, goals, rects, word, playing]);
+
+  useEffect(() => {
+    if (!onController) fake.setApp(spec);
+  }, [fake, onController, spec]);
+
+  // Charging is a background app: it runs whether or not it is selected, and
+  // selecting it is only what puts its pads and badges on the canvas.
+  const chargingValues = values.charging;
+  useEffect(() => {
+    if (onController || chargingValues === undefined) return;
+    fake.setCharging({
+      threshold: Number(chargingValues.threshold),
+      dwell: Number(chargingValues.charge),
+      selected: selected === "charging",
+    });
+  }, [fake, onController, chargingValues, selected]);
 
   // The overlay belongs to the app it came from, so a change of selection
   // clears it rather than leaving the previous app's pins on the canvas.
@@ -321,18 +389,14 @@ export const Playground: React.FC = () => {
     setStatus(null);
     setGoals([]);
     setRects([]);
+    setWord(NO_WORD);
   }, [selected]);
 
   useEffect(() => {
     const bus = busRef.current;
     if (bus === null || swarm === null || app.builtin) return;
-    return bus.subscribe(appTopics(swarm, app.name).out, (payload) => {
-      const message = parseOut(payload);
-      if (message === null) return;
-      if (message.kind === "overlay") setOverlay(message.items);
-      else setStatus(message.text);
-    });
-  }, [app.builtin, app.name, swarm, brokerUp]);
+    return bus.subscribe(appTopics(swarm, app.name).out, onOut);
+  }, [app.builtin, app.name, swarm, brokerUp, onOut]);
 
   const pointerSentAt = useRef(0);
   const onPointer = useCallback(
@@ -399,7 +463,25 @@ export const Playground: React.FC = () => {
     [publishSet],
   );
 
-  const onText = useCallback((text: string) => publish(textMessage(text)), [publish]);
+  // The word is rasterised here rather than in the worker: the mask comes from
+  // the browser's text rendering, and only the page's thread has fonts.
+  const onText = useCallback(
+    (text: string) => {
+      publish(textMessage(text));
+      if (onController) return;
+      const points = rasterWord(text, {
+        budget: fakeCount,
+        heightMm: Number(values.letters?.size ?? 700),
+        arenaW: fake.side,
+        arenaH: fake.side,
+        minSpacingMm: 2 * BOT_FOOTPRINT_MM,
+      });
+      const ink: Vec2[] = [];
+      for (let i = 0; i < points.length; i += 2) ink.push({ x: points[i], y: points[i + 1] });
+      setWord({ text, ink });
+    },
+    [fake.side, fakeCount, onController, publish, values.letters],
+  );
 
   const setValue = useCallback(
     (id: string, value: number | boolean | string) => {
@@ -412,9 +494,10 @@ export const Playground: React.FC = () => {
   const onAction = useCallback(
     (id: string) => {
       if (selected === "showcase" && id === "reseed") fake.reseed();
+      else if (!onController && selected === "show" && id === "play") setPlaying((p) => !p);
       else publish(actionMessage(id));
     },
-    [fake, publish, selected],
+    [fake, onController, publish, selected],
   );
 
   // Keys 1-9 select rail entries, unless a field has the keyboard.
@@ -577,7 +660,7 @@ export const Playground: React.FC = () => {
       onFps={setFps}
       theme={theme}
       overlay={overlay}
-      addresses={onController ? controller.addresses : undefined}
+      addresses={onController ? controller.addresses : fake.addresses}
       goals={goals}
       rects={rects}
       onGoals={onGoals}

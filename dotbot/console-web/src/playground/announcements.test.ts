@@ -40,6 +40,33 @@ describe("the sample rail", () => {
   it("declares the pointer only on follow, which is what claims the map", () => {
     expect(ALL.filter((a) => a.inputs.includes("pointer")).map((a) => a.name)).toEqual(["follow"]);
   });
+
+  // These have to read the same as what the Python demos announce, or the two
+  // worlds render a different panel for the same app.
+  it("gives every demo that holds a formation the arrival radius the script declares", () => {
+    for (const [name, value] of [
+      ["goals", 40],
+      ["region", 40],
+      ["show", 100],
+      ["letters", 40],
+    ] as const) {
+      const control = SAMPLE_APPS.find((a) => a.name === name)!.controls.find(
+        (c) => c.id === "arrive",
+      );
+      expect(control).toMatchObject({ type: "slider", min: 20, max: 150, step: 5, value, unit: "mm" });
+    }
+  });
+
+  it("declares each demo's controls in the order its script does", () => {
+    const ids = (name: string) =>
+      SAMPLE_APPS.find((a) => a.name === name)!.controls.map((c) => c.id);
+    expect(ids("follow")).toEqual(["speed", "spread", "wander"]);
+    expect(ids("goals")).toEqual(["radius", "arrive"]);
+    expect(ids("region")).toEqual(["arrive"]);
+    expect(ids("show")).toEqual(["figure", "tempo", "play", "arrive"]);
+    expect(ids("letters")).toEqual(["size", "arrive"]);
+    expect(ids("charging")).toEqual(["threshold", "charge"]);
+  });
 });
 
 describe("initialValues", () => {
