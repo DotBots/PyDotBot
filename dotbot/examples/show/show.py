@@ -23,6 +23,7 @@ from dotbot.examples.common.playground import (
     select,
     serve,
     slider,
+    toggle,
 )
 from dotbot.examples.common.raster import clamp_to_arena, ring_points
 
@@ -50,6 +51,7 @@ ANNOUNCEMENT = Announcement(
         select("figure", FIGURES, "ring", label="Figure"),
         slider("tempo", 10, 800, 100, step=5, label="Tempo", unit="%"),
         button("play", label="Play / pause"),
+        toggle("guides", True, label="Show guides"),
         slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm"),
     ],
     overlay=True,
@@ -215,7 +217,9 @@ async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
             if show.needs_led(bot.address, hues[slot]):
                 app.controller.rgb_led(bot.address, *rgb(hues[slot]))
 
-        app.publish_overlay(figure_overlay(figure, points))
+        app.publish_overlay(
+            figure_overlay(figure, points) if bool(app.values.get("guides", True)) else []
+        )
         app.publish_status(
             f"{figure}, {'playing' if show.playing else 'paused'}, {len(bots)} bots"
         )
