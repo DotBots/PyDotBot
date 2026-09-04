@@ -1,0 +1,607 @@
+# 100 simulated DotBots on a 10 x 10 grid in the middle of a 6 m arena, for the
+# playground demos. Pass it with the simulator's arena to match:
+#
+#   dotbot run simulator -m 6000x6000 --simulator-init-state dotbot/examples/common/fleet_100.toml
+
+[network]
+pdr = 100
+
+[[dotbots]]
+address = "F1EE700000000001"
+pos_x = 1650
+pos_y = 1650
+direction = 0
+
+[[dotbots]]
+address = "F1EE700000000002"
+pos_x = 1950
+pos_y = 1650
+direction = 53
+
+[[dotbots]]
+address = "F1EE700000000003"
+pos_x = 2250
+pos_y = 1650
+direction = 106
+
+[[dotbots]]
+address = "F1EE700000000004"
+pos_x = 2550
+pos_y = 1650
+direction = 159
+
+[[dotbots]]
+address = "F1EE700000000005"
+pos_x = 2850
+pos_y = 1650
+direction = 212
+
+[[dotbots]]
+address = "F1EE700000000006"
+pos_x = 3150
+pos_y = 1650
+direction = 265
+
+[[dotbots]]
+address = "F1EE700000000007"
+pos_x = 3450
+pos_y = 1650
+direction = 318
+
+[[dotbots]]
+address = "F1EE700000000008"
+pos_x = 3750
+pos_y = 1650
+direction = 11
+
+[[dotbots]]
+address = "F1EE700000000009"
+pos_x = 4050
+pos_y = 1650
+direction = 64
+
+[[dotbots]]
+address = "F1EE700000000010"
+pos_x = 4350
+pos_y = 1650
+direction = 117
+
+[[dotbots]]
+address = "F1EE700000000011"
+pos_x = 1650
+pos_y = 1950
+direction = 37
+
+[[dotbots]]
+address = "F1EE700000000012"
+pos_x = 1950
+pos_y = 1950
+direction = 90
+
+[[dotbots]]
+address = "F1EE700000000013"
+pos_x = 2250
+pos_y = 1950
+direction = 143
+
+[[dotbots]]
+address = "F1EE700000000014"
+pos_x = 2550
+pos_y = 1950
+direction = 196
+
+[[dotbots]]
+address = "F1EE700000000015"
+pos_x = 2850
+pos_y = 1950
+direction = 249
+
+[[dotbots]]
+address = "F1EE700000000016"
+pos_x = 3150
+pos_y = 1950
+direction = 302
+
+[[dotbots]]
+address = "F1EE700000000017"
+pos_x = 3450
+pos_y = 1950
+direction = 355
+
+[[dotbots]]
+address = "F1EE700000000018"
+pos_x = 3750
+pos_y = 1950
+direction = 48
+
+[[dotbots]]
+address = "F1EE700000000019"
+pos_x = 4050
+pos_y = 1950
+direction = 101
+
+[[dotbots]]
+address = "F1EE700000000020"
+pos_x = 4350
+pos_y = 1950
+direction = 154
+
+[[dotbots]]
+address = "F1EE700000000021"
+pos_x = 1650
+pos_y = 2250
+direction = 74
+
+[[dotbots]]
+address = "F1EE700000000022"
+pos_x = 1950
+pos_y = 2250
+direction = 127
+
+[[dotbots]]
+address = "F1EE700000000023"
+pos_x = 2250
+pos_y = 2250
+direction = 180
+
+[[dotbots]]
+address = "F1EE700000000024"
+pos_x = 2550
+pos_y = 2250
+direction = 233
+
+[[dotbots]]
+address = "F1EE700000000025"
+pos_x = 2850
+pos_y = 2250
+direction = 286
+
+[[dotbots]]
+address = "F1EE700000000026"
+pos_x = 3150
+pos_y = 2250
+direction = 339
+
+[[dotbots]]
+address = "F1EE700000000027"
+pos_x = 3450
+pos_y = 2250
+direction = 32
+
+[[dotbots]]
+address = "F1EE700000000028"
+pos_x = 3750
+pos_y = 2250
+direction = 85
+
+[[dotbots]]
+address = "F1EE700000000029"
+pos_x = 4050
+pos_y = 2250
+direction = 138
+
+[[dotbots]]
+address = "F1EE700000000030"
+pos_x = 4350
+pos_y = 2250
+direction = 191
+
+[[dotbots]]
+address = "F1EE700000000031"
+pos_x = 1650
+pos_y = 2550
+direction = 111
+
+[[dotbots]]
+address = "F1EE700000000032"
+pos_x = 1950
+pos_y = 2550
+direction = 164
+
+[[dotbots]]
+address = "F1EE700000000033"
+pos_x = 2250
+pos_y = 2550
+direction = 217
+
+[[dotbots]]
+address = "F1EE700000000034"
+pos_x = 2550
+pos_y = 2550
+direction = 270
+
+[[dotbots]]
+address = "F1EE700000000035"
+pos_x = 2850
+pos_y = 2550
+direction = 323
+
+[[dotbots]]
+address = "F1EE700000000036"
+pos_x = 3150
+pos_y = 2550
+direction = 16
+
+[[dotbots]]
+address = "F1EE700000000037"
+pos_x = 3450
+pos_y = 2550
+direction = 69
+
+[[dotbots]]
+address = "F1EE700000000038"
+pos_x = 3750
+pos_y = 2550
+direction = 122
+
+[[dotbots]]
+address = "F1EE700000000039"
+pos_x = 4050
+pos_y = 2550
+direction = 175
+
+[[dotbots]]
+address = "F1EE700000000040"
+pos_x = 4350
+pos_y = 2550
+direction = 228
+
+[[dotbots]]
+address = "F1EE700000000041"
+pos_x = 1650
+pos_y = 2850
+direction = 148
+
+[[dotbots]]
+address = "F1EE700000000042"
+pos_x = 1950
+pos_y = 2850
+direction = 201
+
+[[dotbots]]
+address = "F1EE700000000043"
+pos_x = 2250
+pos_y = 2850
+direction = 254
+
+[[dotbots]]
+address = "F1EE700000000044"
+pos_x = 2550
+pos_y = 2850
+direction = 307
+
+[[dotbots]]
+address = "F1EE700000000045"
+pos_x = 2850
+pos_y = 2850
+direction = 0
+
+[[dotbots]]
+address = "F1EE700000000046"
+pos_x = 3150
+pos_y = 2850
+direction = 53
+
+[[dotbots]]
+address = "F1EE700000000047"
+pos_x = 3450
+pos_y = 2850
+direction = 106
+
+[[dotbots]]
+address = "F1EE700000000048"
+pos_x = 3750
+pos_y = 2850
+direction = 159
+
+[[dotbots]]
+address = "F1EE700000000049"
+pos_x = 4050
+pos_y = 2850
+direction = 212
+
+[[dotbots]]
+address = "F1EE700000000050"
+pos_x = 4350
+pos_y = 2850
+direction = 265
+
+[[dotbots]]
+address = "F1EE700000000051"
+pos_x = 1650
+pos_y = 3150
+direction = 185
+
+[[dotbots]]
+address = "F1EE700000000052"
+pos_x = 1950
+pos_y = 3150
+direction = 238
+
+[[dotbots]]
+address = "F1EE700000000053"
+pos_x = 2250
+pos_y = 3150
+direction = 291
+
+[[dotbots]]
+address = "F1EE700000000054"
+pos_x = 2550
+pos_y = 3150
+direction = 344
+
+[[dotbots]]
+address = "F1EE700000000055"
+pos_x = 2850
+pos_y = 3150
+direction = 37
+
+[[dotbots]]
+address = "F1EE700000000056"
+pos_x = 3150
+pos_y = 3150
+direction = 90
+
+[[dotbots]]
+address = "F1EE700000000057"
+pos_x = 3450
+pos_y = 3150
+direction = 143
+
+[[dotbots]]
+address = "F1EE700000000058"
+pos_x = 3750
+pos_y = 3150
+direction = 196
+
+[[dotbots]]
+address = "F1EE700000000059"
+pos_x = 4050
+pos_y = 3150
+direction = 249
+
+[[dotbots]]
+address = "F1EE700000000060"
+pos_x = 4350
+pos_y = 3150
+direction = 302
+
+[[dotbots]]
+address = "F1EE700000000061"
+pos_x = 1650
+pos_y = 3450
+direction = 222
+
+[[dotbots]]
+address = "F1EE700000000062"
+pos_x = 1950
+pos_y = 3450
+direction = 275
+
+[[dotbots]]
+address = "F1EE700000000063"
+pos_x = 2250
+pos_y = 3450
+direction = 328
+
+[[dotbots]]
+address = "F1EE700000000064"
+pos_x = 2550
+pos_y = 3450
+direction = 21
+
+[[dotbots]]
+address = "F1EE700000000065"
+pos_x = 2850
+pos_y = 3450
+direction = 74
+
+[[dotbots]]
+address = "F1EE700000000066"
+pos_x = 3150
+pos_y = 3450
+direction = 127
+
+[[dotbots]]
+address = "F1EE700000000067"
+pos_x = 3450
+pos_y = 3450
+direction = 180
+
+[[dotbots]]
+address = "F1EE700000000068"
+pos_x = 3750
+pos_y = 3450
+direction = 233
+
+[[dotbots]]
+address = "F1EE700000000069"
+pos_x = 4050
+pos_y = 3450
+direction = 286
+
+[[dotbots]]
+address = "F1EE700000000070"
+pos_x = 4350
+pos_y = 3450
+direction = 339
+
+[[dotbots]]
+address = "F1EE700000000071"
+pos_x = 1650
+pos_y = 3750
+direction = 259
+
+[[dotbots]]
+address = "F1EE700000000072"
+pos_x = 1950
+pos_y = 3750
+direction = 312
+
+[[dotbots]]
+address = "F1EE700000000073"
+pos_x = 2250
+pos_y = 3750
+direction = 5
+
+[[dotbots]]
+address = "F1EE700000000074"
+pos_x = 2550
+pos_y = 3750
+direction = 58
+
+[[dotbots]]
+address = "F1EE700000000075"
+pos_x = 2850
+pos_y = 3750
+direction = 111
+
+[[dotbots]]
+address = "F1EE700000000076"
+pos_x = 3150
+pos_y = 3750
+direction = 164
+
+[[dotbots]]
+address = "F1EE700000000077"
+pos_x = 3450
+pos_y = 3750
+direction = 217
+
+[[dotbots]]
+address = "F1EE700000000078"
+pos_x = 3750
+pos_y = 3750
+direction = 270
+
+[[dotbots]]
+address = "F1EE700000000079"
+pos_x = 4050
+pos_y = 3750
+direction = 323
+
+[[dotbots]]
+address = "F1EE700000000080"
+pos_x = 4350
+pos_y = 3750
+direction = 16
+
+[[dotbots]]
+address = "F1EE700000000081"
+pos_x = 1650
+pos_y = 4050
+direction = 296
+
+[[dotbots]]
+address = "F1EE700000000082"
+pos_x = 1950
+pos_y = 4050
+direction = 349
+
+[[dotbots]]
+address = "F1EE700000000083"
+pos_x = 2250
+pos_y = 4050
+direction = 42
+
+[[dotbots]]
+address = "F1EE700000000084"
+pos_x = 2550
+pos_y = 4050
+direction = 95
+
+[[dotbots]]
+address = "F1EE700000000085"
+pos_x = 2850
+pos_y = 4050
+direction = 148
+
+[[dotbots]]
+address = "F1EE700000000086"
+pos_x = 3150
+pos_y = 4050
+direction = 201
+
+[[dotbots]]
+address = "F1EE700000000087"
+pos_x = 3450
+pos_y = 4050
+direction = 254
+
+[[dotbots]]
+address = "F1EE700000000088"
+pos_x = 3750
+pos_y = 4050
+direction = 307
+
+[[dotbots]]
+address = "F1EE700000000089"
+pos_x = 4050
+pos_y = 4050
+direction = 0
+
+[[dotbots]]
+address = "F1EE700000000090"
+pos_x = 4350
+pos_y = 4050
+direction = 53
+
+[[dotbots]]
+address = "F1EE700000000091"
+pos_x = 1650
+pos_y = 4350
+direction = 333
+
+[[dotbots]]
+address = "F1EE700000000092"
+pos_x = 1950
+pos_y = 4350
+direction = 26
+
+[[dotbots]]
+address = "F1EE700000000093"
+pos_x = 2250
+pos_y = 4350
+direction = 79
+
+[[dotbots]]
+address = "F1EE700000000094"
+pos_x = 2550
+pos_y = 4350
+direction = 132
+
+[[dotbots]]
+address = "F1EE700000000095"
+pos_x = 2850
+pos_y = 4350
+direction = 185
+
+[[dotbots]]
+address = "F1EE700000000096"
+pos_x = 3150
+pos_y = 4350
+direction = 238
+
+[[dotbots]]
+address = "F1EE700000000097"
+pos_x = 3450
+pos_y = 4350
+direction = 291
+
+[[dotbots]]
+address = "F1EE700000000098"
+pos_x = 3750
+pos_y = 4350
+direction = 344
+
+[[dotbots]]
+address = "F1EE700000000099"
+pos_x = 4050
+pos_y = 4350
+direction = 37
+
+[[dotbots]]
+address = "F1EE700000000100"
+pos_x = 4350
+pos_y = 4350
+direction = 90
