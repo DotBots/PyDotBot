@@ -48,7 +48,7 @@ ANNOUNCEMENT = Announcement(
     inputs=[],
     controls=[
         select("figure", FIGURES, "ring", label="Figure"),
-        slider("tempo", 10, 200, 100, step=5, label="Tempo", unit="%"),
+        slider("tempo", 10, 800, 100, step=5, label="Tempo", unit="%"),
         button("play", label="Play / pause"),
         slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm"),
     ],
