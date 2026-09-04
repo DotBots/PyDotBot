@@ -19,7 +19,7 @@ export const Thumbstick: React.FC<ThumbstickProps> = ({ ox, oy, dx, dy }) => {
   const len = Math.hypot(dx, dy);
   const k = len > THUMBSTICK_RING ? THUMBSTICK_RING / len : 1;
   return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+    <div className="pg-stick" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       <div
         style={{
           position: "absolute",
