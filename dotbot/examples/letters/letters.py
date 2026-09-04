@@ -11,7 +11,6 @@ word needs an arena of a few metres to stay legible.
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List
 
 import numpy as np
 
@@ -56,12 +55,12 @@ class Word:
     def __init__(self) -> None:
         self.text = ""
         #: Keyed by address: a bot that joins later has no target and waits.
-        self.targets: Dict[str, Point] = {}
+        self.targets: dict[str, Point] = {}
         #: The word's own points, which are what the ghost pins show.
         self.ink: np.ndarray = np.zeros((0, 2))
 
     def plan(
-        self, text: str, addresses: List[str], positions: np.ndarray, app: PlaygroundApp
+        self, text: str, addresses: list[str], positions: np.ndarray, app: PlaygroundApp
     ) -> None:
         """Rasterise, park the spares in a ring, and assign the lot."""
         arena = app.controller.map_size
@@ -85,7 +84,7 @@ class Word:
 async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
     """The loop: on a new word, publish the ghost pins, then drive to them."""
     word = Word()
-    pending: List[str] = []
+    pending: list[str] = []
     app.on_text(lambda message: pending.append(message.text))
 
     while True:
@@ -116,7 +115,11 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         for bot in bots:
             target = word.targets.get(bot.address)
             if target is not None:
-                app.controller.waypoints(bot.address, [target], threshold=int(app.values.get("arrive", ARRIVE_MM)))
+                app.controller.waypoints(
+                    bot.address,
+                    [target],
+                    threshold=int(app.values.get("arrive", ARRIVE_MM)),
+                )
 
 
 @demo_command

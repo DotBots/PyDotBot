@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Sequence
 from urllib.parse import urlparse
 
 import click
@@ -46,12 +46,12 @@ def slider(
     maximum: float,
     value: float,
     *,
-    step: Optional[float] = None,
-    label: Optional[str] = None,
-    unit: Optional[str] = None,
-) -> Dict[str, Any]:
+    step: float | None = None,
+    label: str | None = None,
+    unit: str | None = None,
+) -> dict[str, Any]:
     """A slider control, in the announcement's schema."""
-    decl: Dict[str, Any] = {
+    decl: dict[str, Any] = {
         "id": control_id,
         "type": "slider",
         "min": minimum,
@@ -67,19 +67,17 @@ def slider(
     return decl
 
 
-def toggle(
-    control_id: str, value: bool, *, label: Optional[str] = None
-) -> Dict[str, Any]:
+def toggle(control_id: str, value: bool, *, label: str | None = None) -> dict[str, Any]:
     """A toggle control."""
-    decl: Dict[str, Any] = {"id": control_id, "type": "toggle", "value": value}
+    decl: dict[str, Any] = {"id": control_id, "type": "toggle", "value": value}
     if label is not None:
         decl["label"] = label
     return decl
 
 
-def button(control_id: str, *, label: Optional[str] = None) -> Dict[str, Any]:
+def button(control_id: str, *, label: str | None = None) -> dict[str, Any]:
     """A button control, which sends one input and carries no value."""
-    decl: Dict[str, Any] = {"id": control_id, "type": "button"}
+    decl: dict[str, Any] = {"id": control_id, "type": "button"}
     if label is not None:
         decl["label"] = label
     return decl
@@ -90,10 +88,10 @@ def select(
     options: Sequence[str],
     value: str,
     *,
-    label: Optional[str] = None,
-) -> Dict[str, Any]:
+    label: str | None = None,
+) -> dict[str, Any]:
     """A select control."""
-    decl: Dict[str, Any] = {
+    decl: dict[str, Any] = {
         "id": control_id,
         "type": "select",
         "options": list(options),
@@ -108,11 +106,11 @@ def text_field(
     control_id: str,
     *,
     value: str = "",
-    placeholder: Optional[str] = None,
-    label: Optional[str] = None,
-) -> Dict[str, Any]:
+    placeholder: str | None = None,
+    label: str | None = None,
+) -> dict[str, Any]:
     """A text control."""
-    decl: Dict[str, Any] = {"id": control_id, "type": "text", "value": value}
+    decl: dict[str, Any] = {"id": control_id, "type": "text", "value": value}
     if placeholder is not None:
         decl["placeholder"] = placeholder
     if label is not None:
@@ -127,12 +125,12 @@ def overlay_point(
     x: float,
     y: float,
     *,
-    r: Optional[float] = None,
-    label: Optional[str] = None,
-    color: Optional[str] = None,
-) -> Dict[str, Any]:
+    r: float | None = None,
+    label: str | None = None,
+    color: str | None = None,
+) -> dict[str, Any]:
     """A ring on the arena. `color` is a role the page maps to a token."""
-    item: Dict[str, Any] = {"type": "point", "x": round(x, 1), "y": round(y, 1)}
+    item: dict[str, Any] = {"type": "point", "x": round(x, 1), "y": round(y, 1)}
     if r is not None:
         item["r"] = round(r, 1)
     if label is not None:
@@ -143,9 +141,9 @@ def overlay_point(
 
 
 def overlay_polyline(
-    points: Sequence[Point], *, closed: bool = False, color: Optional[str] = None
-) -> Dict[str, Any]:
-    item: Dict[str, Any] = {
+    points: Sequence[Point], *, closed: bool = False, color: str | None = None
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "type": "polyline",
         "points": [{"x": round(p.x, 1), "y": round(p.y, 1)} for p in points],
     }
@@ -162,11 +160,11 @@ def overlay_rect(
     w: float,
     h: float,
     *,
-    label: Optional[str] = None,
+    label: str | None = None,
     fill: bool = False,
-    color: Optional[str] = None,
-) -> Dict[str, Any]:
-    item: Dict[str, Any] = {
+    color: str | None = None,
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "type": "rect",
         "x": round(x, 1),
         "y": round(y, 1),
@@ -183,9 +181,9 @@ def overlay_rect(
 
 
 def overlay_label(
-    x: float, y: float, text: str, *, color: Optional[str] = None
-) -> Dict[str, Any]:
-    item: Dict[str, Any] = {
+    x: float, y: float, text: str, *, color: str | None = None
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "type": "label",
         "x": round(x, 1),
         "y": round(y, 1),
@@ -197,10 +195,10 @@ def overlay_label(
 
 
 def overlay_badge(
-    address: str, text: str, *, color: Optional[str] = None
-) -> Dict[str, Any]:
+    address: str, text: str, *, color: str | None = None
+) -> dict[str, Any]:
     """A ring and a word on one bot, which the page finds by address."""
-    item: Dict[str, Any] = {"type": "badge", "address": address, "text": text}
+    item: dict[str, Any] = {"type": "badge", "address": address, "text": text}
     if color is not None:
         item["color"] = color
     return item
@@ -213,25 +211,25 @@ class Announcement:
     name: str
     title: str
     hint: str
-    inputs: List[str] = field(default_factory=list)
-    controls: List[Dict[str, Any]] = field(default_factory=list)
+    inputs: list[str] = field(default_factory=list)
+    controls: list[dict[str, Any]] = field(default_factory=list)
     overlay: bool = False
     #: The script republishes fleet positions on its `/out` topic.
     positions: bool = False
     #: The topics are wrapped by qrkey and a PIN is needed.
     protected: bool = False
     #: A URL when the script brings its own front end.
-    ui: Optional[str] = None
+    ui: str | None = None
 
     def payload(self) -> bytes:
         return json.dumps(asdict(self)).encode()
 
-    def defaults(self) -> Dict[str, Any]:
+    def defaults(self) -> dict[str, Any]:
         """The declared value of every control that carries one."""
         return {c["id"]: c["value"] for c in self.controls if "value" in c}
 
 
-def app_topics(root: str, swarm: str, name: str) -> Tuple[str, str, str]:
+def app_topics(root: str, swarm: str, name: str) -> tuple[str, str, str]:
     """The announce, input and output topics of one app."""
     base = f"{root}/{swarm}/apps/{name}"
     return base, f"{base}/in", f"{base}/out"
@@ -263,7 +261,7 @@ class PointerSample:
     """A pointer or finger over the arena; `at` is None when it left."""
 
     client: str
-    at: Optional[Point]
+    at: Point | None
 
 
 @dataclass(frozen=True)
@@ -304,7 +302,7 @@ class GoalsInput:
     """Every pin on the map, in the order they were placed."""
 
     client: str
-    points: List[Point]
+    points: list[Point]
 
 
 @dataclass(frozen=True)
@@ -312,7 +310,7 @@ class RectsInput:
     """Every rectangle on the map."""
 
     client: str
-    rects: List[Rect]
+    rects: list[Rect]
 
 
 @dataclass(frozen=True)
@@ -321,18 +319,16 @@ class TextInput:
     text: str
 
 
-def _point(raw: Any) -> Optional[Point]:
+def _point(raw: Any) -> Point | None:
     try:
         return Point(float(raw["x"]), float(raw["y"]))
     except (KeyError, TypeError, ValueError):
         return None
 
 
-def _rect(raw: Any) -> Optional[Rect]:
+def _rect(raw: Any) -> Rect | None:
     try:
-        return Rect(
-            float(raw["x"]), float(raw["y"]), float(raw["w"]), float(raw["h"])
-        )
+        return Rect(float(raw["x"]), float(raw["y"]), float(raw["w"]), float(raw["h"]))
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -388,7 +384,9 @@ def parse_input(payload: Any) -> Any:
         return RectsInput(client=client, rects=[r for r in rects if r is not None])
     if kind == "text":
         text = payload.get("text")
-        return None if not isinstance(text, str) else TextInput(client=client, text=text)
+        return (
+            None if not isinstance(text, str) else TextInput(client=client, text=text)
+        )
     if kind is None:
         return None
     return payload
@@ -439,9 +437,7 @@ def _swap_passes(cost: np.ndarray, assign: np.ndarray, max_passes: int) -> np.nd
     return assign
 
 
-def assign_targets(
-    sources: Any, targets: Any, *, max_passes: int = 8
-) -> np.ndarray:
+def assign_targets(sources: Any, targets: Any, *, max_passes: int = 8) -> np.ndarray:
     """
     One distinct target per source, by squared distance.
 
@@ -487,12 +483,12 @@ class CommandQueue:
     """
 
     def __init__(self) -> None:
-        self._pending: Dict[Tuple[str, str], Tuple[str, str, Any]] = {}
+        self._pending: dict[tuple[str, str], tuple[str, str, Any]] = {}
 
     def put(self, address: str, kind: str, payload: Any) -> None:
         self._pending[(address, kind)] = (address, kind, payload)
 
-    def drain(self) -> List[Tuple[str, str, Any]]:
+    def drain(self) -> list[tuple[str, str, Any]]:
         """Every pending command in insertion order, leaving the queue empty."""
         out = list(self._pending.values())
         self._pending.clear()
@@ -516,12 +512,12 @@ class ControllerClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.command_rate_hz = command_rate_hz
-        self.bots: Dict[str, Bot] = {}
+        self.bots: dict[str, Bot] = {}
         self.swarm_id: str = "0000"
-        self.map_size: Tuple[int, int] = (2000, 2000)
+        self.map_size: tuple[int, int] = (2000, 2000)
         self._queue = CommandQueue()
         self._http = httpx.AsyncClient(timeout=5.0)
-        self._tasks: List[asyncio.Task] = []
+        self._tasks: list[asyncio.Task] = []
         self._stop = asyncio.Event()
 
     @property
@@ -561,7 +557,7 @@ class ControllerClient:
         for raw in listing:
             self._absorb(raw)
 
-    def _absorb(self, raw: Dict[str, Any]) -> None:
+    def _absorb(self, raw: dict[str, Any]) -> None:
         address = raw.get("address")
         if not address:
             return
@@ -583,9 +579,7 @@ class ControllerClient:
             ),
             application=int(raw.get("application", APPLICATION_DOTBOT)),
             battery=(
-                float(battery)
-                if battery is not None
-                else (bot.battery if bot else 0.0)
+                float(battery) if battery is not None else (bot.battery if bot else 0.0)
             ),
         )
 
@@ -606,7 +600,7 @@ class ControllerClient:
             except (OSError, websockets.WebSocketException):
                 await asyncio.sleep(1.0)
 
-    def _as_raw(self, address: str) -> Dict[str, Any]:
+    def _as_raw(self, address: str) -> dict[str, Any]:
         bot = self.bots.get(address)
         if bot is None:
             return {"address": address}
@@ -679,36 +673,36 @@ class PlaygroundApp:
         broker: str = DEFAULT_BROKER,
         controller: str = DEFAULT_CONTROLLER,
         root: str = TOPIC_ROOT,
-        swarm: Optional[str] = None,
+        swarm: str | None = None,
         command_rate_hz: float = 5.0,
     ) -> None:
         self.announcement = announcement
         self.root = root
         self.swarm = swarm
-        self.values: Dict[str, Any] = announcement.defaults()
-        self.pointer: Optional[PointerSample] = None
+        self.values: dict[str, Any] = announcement.defaults()
+        self.pointer: PointerSample | None = None
         #: The latest of each map input, so a loop can read it like a value.
-        self.goals: List[Point] = []
-        self.rects: List[Rect] = []
+        self.goals: list[Point] = []
+        self.rects: list[Rect] = []
         self.text: str = ""
         self.controller = ControllerClient(controller, command_rate_hz=command_rate_hz)
         self._broker = urlparse(broker if "://" in broker else f"mqtt://{broker}")
-        self._client: Optional[MQTTClient] = None
+        self._client: MQTTClient | None = None
         self._client_id = f"playground-{announcement.name}-{uuid.uuid4().hex[:8]}"
-        self._on_pointer: List[Callable[[PointerSample], None]] = []
-        self._on_control: List[Callable[[ControlChange], None]] = []
-        self._on_action: List[Callable[[Action], None]] = []
-        self._on_goals: List[Callable[[GoalsInput], None]] = []
-        self._on_rects: List[Callable[[RectsInput], None]] = []
-        self._on_text: List[Callable[[TextInput], None]] = []
-        self._on_input: List[Callable[[Dict[str, Any]], None]] = []
+        self._on_pointer: list[Callable[[PointerSample], None]] = []
+        self._on_control: list[Callable[[ControlChange], None]] = []
+        self._on_action: list[Callable[[Action], None]] = []
+        self._on_goals: list[Callable[[GoalsInput], None]] = []
+        self._on_rects: list[Callable[[RectsInput], None]] = []
+        self._on_text: list[Callable[[TextInput], None]] = []
+        self._on_input: list[Callable[[dict[str, Any]], None]] = []
 
     @property
-    def bots(self) -> Dict[str, Bot]:
+    def bots(self) -> dict[str, Bot]:
         return self.controller.bots
 
     @property
-    def topics(self) -> Tuple[str, str, str]:
+    def topics(self) -> tuple[str, str, str]:
         if self.swarm is None:
             raise RuntimeError("swarm id unknown until start() has read the controller")
         return app_topics(self.root, self.swarm, self.announcement.name)
@@ -731,7 +725,7 @@ class PlaygroundApp:
     def on_text(self, callback: Callable[[TextInput], None]) -> None:
         self._on_text.append(callback)
 
-    def on_input(self, callback: Callable[[Dict[str, Any]], None]) -> None:
+    def on_input(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Every input kind this helper does not model, as a plain dict."""
         self._on_input.append(callback)
 
@@ -765,7 +759,7 @@ class PlaygroundApp:
             self._client = None
         await self.controller.close()
 
-    def publish_overlay(self, items: Sequence[Dict[str, Any]]) -> None:
+    def publish_overlay(self, items: Sequence[dict[str, Any]]) -> None:
         self._publish_out({"kind": "overlay", "items": list(items)})
 
     def publish_status(self, text: str) -> None:
@@ -783,7 +777,7 @@ class PlaygroundApp:
             }
         )
 
-    def _publish_out(self, message: Dict[str, Any]) -> None:
+    def _publish_out(self, message: dict[str, Any]) -> None:
         if self._client is None:
             return
         _, _, outbound = self.topics

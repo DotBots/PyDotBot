@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
-
 import numpy as np
 
 try:
@@ -46,7 +44,7 @@ def sample_mask(mask: np.ndarray, step_px: float) -> np.ndarray:
     if rows == 0 or columns == 0 or step_px <= 0:
         return np.zeros((0, 2))
     step = max(1.0, step_px)
-    points: List[Tuple[float, float]] = []
+    points: list[tuple[float, float]] = []
     for y in np.arange(0, rows, step):
         y0, y1 = int(y), min(rows, int(y + step))
         for x in np.arange(0, columns, step):
@@ -64,7 +62,7 @@ def word_points(
     *,
     budget: int,
     height_mm: float,
-    arena: Tuple[float, float],
+    arena: tuple[float, float],
     min_spacing_mm: float,
     margin_mm: float = 150.0,
 ) -> np.ndarray:
@@ -108,7 +106,7 @@ def word_points(
 
 
 def ring_points(
-    center: Tuple[float, float],
+    center: tuple[float, float],
     count: int,
     radius: float,
     *,
@@ -125,7 +123,7 @@ def ring_points(
 
 
 def clamp_to_arena(
-    points: np.ndarray, arena: Tuple[float, float], margin: float = 90.0
+    points: np.ndarray, arena: tuple[float, float], margin: float = 90.0
 ) -> np.ndarray:
     """Keep every point inside the walls, which the bots cannot drive through."""
     if len(points) == 0:
@@ -140,7 +138,7 @@ def clamp_to_arena(
 
 
 def spare_ring(
-    count: int, arena: Tuple[float, float], *, margin: float = 150.0
+    count: int, arena: tuple[float, float], *, margin: float = 150.0
 ) -> np.ndarray:
     """
     Somewhere to park the bots a formation does not need: a ring just inside

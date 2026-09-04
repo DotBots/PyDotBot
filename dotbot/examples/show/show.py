@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import colorsys
-from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -59,7 +58,7 @@ ANNOUNCEMENT = Announcement(
 
 
 def formation(
-    figure: str, count: int, arena: Tuple[float, float], phase: float
+    figure: str, count: int, arena: tuple[float, float], phase: float
 ) -> np.ndarray:
     """`count` points making one figure at `phase` radians, inside the arena."""
     if count <= 0:
@@ -100,7 +99,7 @@ def formation(
     return clamp_to_arena(points, arena)
 
 
-def hue_by_angle(points: np.ndarray, arena: Tuple[float, float]) -> np.ndarray:
+def hue_by_angle(points: np.ndarray, arena: tuple[float, float]) -> np.ndarray:
     """Each point's bearing from the arena centre, in degrees."""
     if len(points) == 0:
         return np.zeros(0)
@@ -109,16 +108,16 @@ def hue_by_angle(points: np.ndarray, arena: Tuple[float, float]) -> np.ndarray:
     return np.degrees(np.arctan2(dy, dx)) % 360.0
 
 
-def rgb(hue: float) -> Tuple[int, int, int]:
+def rgb(hue: float) -> tuple[int, int, int]:
     """One LED colour, full saturation, at `hue` degrees."""
     r, g, b = colorsys.hsv_to_rgb((hue % 360.0) / 360.0, 1.0, 1.0)
     return int(r * 255), int(g * 255), int(b * 255)
 
 
-def figure_overlay(figure: str, points: np.ndarray) -> List[dict]:
+def figure_overlay(figure: str, points: np.ndarray) -> list[dict]:
     """The figure as a path: closed for a ring, open for a spiral or a wave."""
 
-    def path(part: np.ndarray, closed: bool) -> List[dict]:
+    def path(part: np.ndarray, closed: bool) -> list[dict]:
         if len(part) < 2:
             return []
         return [
@@ -145,17 +144,17 @@ class Choreography:
     def __init__(self) -> None:
         self.phase = 0.0
         self.playing = True
-        self._slots: Dict[str, int] = {}
-        self._for: Tuple[str, int] = ("", 0)
-        self._hue: Dict[str, float] = {}
+        self._slots: dict[str, int] = {}
+        self._for: tuple[str, int] = ("", 0)
+        self._hue: dict[str, float] = {}
 
     def slots(
         self,
         figure: str,
-        addresses: List[str],
+        addresses: list[str],
         positions: np.ndarray,
-        arena: Tuple[float, float],
-    ) -> Dict[str, int]:
+        arena: tuple[float, float],
+    ) -> dict[str, int]:
         if self._for == (figure, len(addresses)) and set(self._slots) == set(addresses):
             return self._slots
         points = formation(figure, len(addresses), arena, self.phase)
@@ -212,13 +211,17 @@ async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
             slot = slots.get(bot.address, 0)
             target = points[slot]
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
+                bot.address,
+                [Point(target[0], target[1])],
+                threshold=int(app.values.get("arrive", ARRIVE_MM)),
             )
             if show.needs_led(bot.address, hues[slot]):
                 app.controller.rgb_led(bot.address, *rgb(hues[slot]))
 
         app.publish_overlay(
-            figure_overlay(figure, points) if bool(app.values.get("guides", True)) else []
+            figure_overlay(figure, points)
+            if bool(app.values.get("guides", True))
+            else []
         )
         app.publish_status(
             f"{figure}, {'playing' if show.playing else 'paused'}, {len(bots)} bots"
@@ -228,9 +231,7 @@ async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
 @demo_command
 def cli(broker: str, controller: str, rate: float) -> None:
     """Run the swarm through a set of choreographies."""
-    serve(
-        ANNOUNCEMENT, drive, broker=broker, controller=controller, rate=rate
-    )
+    serve(ANNOUNCEMENT, drive, broker=broker, controller=controller, rate=rate)
 
 
 if __name__ == "__main__":

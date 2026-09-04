@@ -230,9 +230,9 @@ class TestParseTheNewInputKinds:
         assert parsed == GoalsInput(client="c1", points=[Point(1, 2), Point(3, 4)])
 
     def test_an_emptied_goal_set_is_a_message_of_its_own(self):
-        assert parse_input({"kind": "goals", "client": "c1", "points": []}) == GoalsInput(
-            client="c1", points=[]
-        )
+        assert parse_input(
+            {"kind": "goals", "client": "c1", "points": []}
+        ) == GoalsInput(client="c1", points=[])
 
     def test_rects_carry_a_positive_width_and_height(self):
         parsed = parse_input(
@@ -243,9 +243,9 @@ class TestParseTheNewInputKinds:
         assert parsed.rects[0].center == Point(200, 100)
 
     def test_text_and_actions(self):
-        assert parse_input({"kind": "text", "client": "c1", "text": "DOTBOT"}) == TextInput(
-            client="c1", text="DOTBOT"
-        )
+        assert parse_input(
+            {"kind": "text", "client": "c1", "text": "DOTBOT"}
+        ) == TextInput(client="c1", text="DOTBOT")
         assert parse_input({"kind": "action", "client": "c1", "id": "go"}) == Action(
             client="c1", id="go"
         )
@@ -368,7 +368,14 @@ class TestRasterisedWords:
         assert len(one) <= 60 and len(many) <= 60
 
     def test_an_empty_word_rasterises_to_nothing(self):
-        assert len(word_points("", budget=50, height_mm=800, arena=self.ARENA, min_spacing_mm=160)) == 0
+        assert (
+            len(
+                word_points(
+                    "", budget=50, height_mm=800, arena=self.ARENA, min_spacing_mm=160
+                )
+            )
+            == 0
+        )
 
     def test_spares_park_on_a_ring_inside_the_walls(self):
         ring = spare_ring(24, self.ARENA, margin=150)
@@ -426,8 +433,12 @@ class TestRegionDemo:
         for count in (1, 5, 17, 40):
             points = fill_points(rect, count)
             assert len(points) == count
-            assert points[:, 0].min() >= rect.x and points[:, 0].max() <= rect.x + rect.w
-            assert points[:, 1].min() >= rect.y and points[:, 1].max() <= rect.y + rect.h
+            assert (
+                points[:, 0].min() >= rect.x and points[:, 0].max() <= rect.x + rect.w
+            )
+            assert (
+                points[:, 1].min() >= rect.y and points[:, 1].max() <= rect.y + rect.h
+            )
 
     def test_every_bot_gets_its_own_slot_in_the_regions(self):
         rng = np.random.default_rng(2)

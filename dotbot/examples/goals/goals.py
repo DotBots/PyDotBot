@@ -8,7 +8,7 @@ set a pin, shift-click to add more.
 from __future__ import annotations
 
 import asyncio
-from typing import List, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
@@ -52,7 +52,7 @@ def ring_targets(
     bots: np.ndarray,
     pins: np.ndarray,
     radius: float,
-    arena: Tuple[float, float],
+    arena: tuple[float, float],
 ) -> np.ndarray:
     """
     A target per bot: its group's ring around its pin, assigned within the
@@ -95,15 +95,19 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         targets = ring_targets(positions, pins, radius, app.controller.map_size)
         for bot, target in zip(bots, targets):
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
+                bot.address,
+                [Point(target[0], target[1])],
+                threshold=int(app.values.get("arrive", ARRIVE_MM)),
             )
 
         groups = split_by_proximity(positions, pins)
-        overlay: List[dict] = []
+        overlay: list[dict] = []
         for i, pin in enumerate(pins):
             count = int((groups == i).sum())
             overlay.append(
-                overlay_point(pin[0], pin[1], r=radius, label=f"{count}", color="accent")
+                overlay_point(
+                    pin[0], pin[1], r=radius, label=f"{count}", color="accent"
+                )
             )
         app.publish_overlay(overlay)
         app.publish_status(f"{len(bots)} bots over {len(pins)} pins")

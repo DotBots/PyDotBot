@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Tuple
 
 from dotbot.examples.common.playground import (
     Announcement,
@@ -64,7 +63,7 @@ ANNOUNCEMENT = Announcement(
 )
 
 
-def pads(arena: Tuple[float, float], inset: float = PAD_INSET_MM) -> List[Point]:
+def pads(arena: tuple[float, float], inset: float = PAD_INSET_MM) -> list[Point]:
     """One pad per corner of the arena."""
     return [
         Point(inset, inset),
@@ -74,9 +73,7 @@ def pads(arena: Tuple[float, float], inset: float = PAD_INSET_MM) -> List[Point]
     ]
 
 
-def nearest_free(
-    bot: Bot, free: List[int], places: List[Point]
-) -> Optional[int]:
+def nearest_free(bot: Bot, free: list[int], places: list[Point]) -> int | None:
     """The closest unclaimed pad, or None when every pad is taken."""
     if not free:
         return None
@@ -94,13 +91,13 @@ class Cycle:
 
     def __init__(self) -> None:
         #: address -> pad index
-        self.holding: Dict[str, int] = {}
+        self.holding: dict[str, int] = {}
         #: address -> when it docked, or None while it is still driving there
-        self.since: Dict[str, Optional[float]] = {}
+        self.since: dict[str, float | None] = {}
         #: address -> when it was released
-        self.released: Dict[str, float] = {}
+        self.released: dict[str, float] = {}
 
-    def free_pads(self, count: int) -> List[int]:
+    def free_pads(self, count: int) -> list[int]:
         taken = set(self.holding.values())
         return [i for i in range(count) if i not in taken]
 

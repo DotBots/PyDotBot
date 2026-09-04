@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import random
 from math import hypot
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Sequence
 
 from dotbot.examples.common.playground import (
     Announcement,
@@ -56,7 +56,7 @@ ANNOUNCEMENT = Announcement(
 
 def separation(
     at: Point, neighbours: Sequence[Point], radius: float
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Reynolds separation: a unit-or-shorter push away from close neighbours.
 
@@ -92,7 +92,7 @@ def follow_target(
     *,
     spread_mm: float,
     step_mm: float,
-    arena: Tuple[int, int],
+    arena: tuple[int, int],
     margin: float = BOT_FOOTPRINT_MM,
 ) -> Point:
     """Where one bot should head: at the pointer, pushed off its neighbours."""
@@ -114,7 +114,7 @@ def follow_target(
 
 
 def wander_target(
-    rng: random.Random, arena: Tuple[int, int], margin: float = 200
+    rng: random.Random, arena: tuple[int, int], margin: float = 200
 ) -> Point:
     """A point somewhere in the arena, well clear of the walls."""
     return Point(
@@ -126,14 +126,14 @@ def wander_target(
 class _Wander:
     """Per-bot wander goals, replaced on arrival or on timeout."""
 
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(self, seed: int | None = None) -> None:
         self._rng = random.Random(seed)
-        self._goals: Dict[str, Tuple[Point, int]] = {}
+        self._goals: dict[str, tuple[Point, int]] = {}
 
     def clear(self) -> None:
         self._goals.clear()
 
-    def goal(self, address: str, at: Point, arena: Tuple[int, int]) -> Point:
+    def goal(self, address: str, at: Point, arena: tuple[int, int]) -> Point:
         goal, age = self._goals.get(address, (None, 0))
         reached = (
             goal is not None and hypot(goal.x - at.x, goal.y - at.y) < WANDER_ARRIVE_MM
@@ -159,7 +159,7 @@ async def drive(app: PlaygroundApp, period: float = 0.2) -> None:
 
         if pointer is not None:
             wander.clear()
-            positions: List[Point] = [Point(b.x, b.y) for b in bots]
+            positions: list[Point] = [Point(b.x, b.y) for b in bots]
             for bot in bots:
                 target = follow_target(
                     Point(bot.x, bot.y),

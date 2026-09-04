@@ -8,7 +8,7 @@ Shift-drag on the map to draw a region; drag an edge to resize it.
 from __future__ import annotations
 
 import asyncio
-from typing import List, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
@@ -39,12 +39,14 @@ ANNOUNCEMENT = Announcement(
     title="Regions",
     hint="Shift-drag a rectangle. The swarm splits across the regions by area.",
     inputs=["rects"],
-    controls=[slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm")],
+    controls=[
+        slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm")
+    ],
     overlay=True,
 )
 
 
-def share_by_area(rects: Sequence[Rect], bots: int) -> List[int]:
+def share_by_area(rects: Sequence[Rect], bots: int) -> list[int]:
     """
     How many bots each region gets: its share of the total area, with the
     rounding leftovers going to the largest regions. Every region gets at
@@ -74,7 +76,7 @@ def capacity(rect: Rect) -> int:
     return max(1, int(w * h // (SPACING_MM * SPACING_MM)))
 
 
-def share_by_capacity(rects: Sequence[Rect], bots: int) -> List[int]:
+def share_by_capacity(rects: Sequence[Rect], bots: int) -> list[int]:
     """`share_by_area`, capped at what each region holds; the rest stay unassigned."""
     caps = [capacity(r) for r in rects]
     counts = [0] * len(rects)
@@ -114,7 +116,7 @@ def fill_points(rect: Rect, count: int) -> np.ndarray:
 
 
 def region_targets(
-    bots: np.ndarray, rects: Sequence[Rect], arena: Tuple[float, float]
+    bots: np.ndarray, rects: Sequence[Rect], arena: tuple[float, float]
 ) -> np.ndarray:
     """A target per bot: a slot in one region, or a spot on the parking ring."""
     counts = share_by_capacity(rects, len(bots))
@@ -143,7 +145,9 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         targets = region_targets(positions, rects, app.controller.map_size)
         for bot, target in zip(bots, targets):
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
+                bot.address,
+                [Point(target[0], target[1])],
+                threshold=int(app.values.get("arrive", ARRIVE_MM)),
             )
 
         counts = share_by_capacity(rects, len(bots))
