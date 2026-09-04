@@ -109,7 +109,7 @@ export const Playground: React.FC = () => {
     params.get("theme") === "light" ? "light" : "dark",
   );
   const [world, setWorld] = useState<WorldKind>(
-    params.get("world") === "controller" ? "controller" : "fake",
+    params.get("world") === "fake" ? "fake" : "controller",
   );
   const mobile = useMediaQuery(MOBILE_QUERY);
   const onController = world === "controller";
@@ -623,7 +623,7 @@ export const Playground: React.FC = () => {
           </>
         )}
         <div style={{ display: "flex", background: "var(--elevated)", borderRadius: 7, padding: 2, gap: 2, border: "1px solid var(--hairline)" }}>
-          {(["fake", "controller"] as const).map((w) => (
+          {(["controller", "fake"] as const).map((w) => (
             <div
               key={w}
               onClick={() => setWorld(w)}
