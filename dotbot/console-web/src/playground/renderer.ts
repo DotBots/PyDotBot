@@ -59,8 +59,8 @@ const GLYPH_UNITS_PER_MM = 25 / BOT_FOOTPRINT_MM;
 
 /** Below this on-screen footprint the glyph's detail is not resolvable. */
 const GLYPH_MIN_PX = 11;
-/** Below this, a triangle costs more than it shows. */
-const TRIANGLE_MIN_PX = 5;
+/** Below this, a heading tick costs more than it shows. */
+const TICK_MIN_PX = 5;
 /** Hue buckets: one fill call each, so the batch count is bounded. */
 const HUE_BUCKETS = 24;
 
@@ -156,7 +156,7 @@ function drawBots(ctx: CanvasRenderingContext2D, s: Scene) {
   // Small on screen: one path per hue bucket, so a thousand bots cost a
   // couple of dozen fills rather than a thousand.
   const paths: (Path2D | null)[] = new Array(HUE_BUCKETS).fill(null);
-  const dot = px < TRIANGLE_MIN_PX;
+  const dot = px < TICK_MIN_PX;
   const r = Math.max(1.2, px / 2);
   for (let i = 0; i < n; i++) {
     const bucket = Math.min(HUE_BUCKETS - 1, Math.floor((s.hues[i] / 360) * HUE_BUCKETS));
@@ -170,13 +170,21 @@ function drawBots(ctx: CanvasRenderingContext2D, s: Scene) {
       p.rect(sx - r, sy - r, r * 2, r * 2);
       continue;
     }
+    // A disc centred on the bot, so a shape made of bots keeps its outline
+    // whichever way they face, and a short tick along the heading for the
+    // direction. Nose along the heading, in the arena frame's screen coordinates.
     const h = s.poses[i * 3 + 2] * (Math.PI / 180);
-    // Nose along the heading, in the arena frame's screen coordinates.
     const nx = -Math.sin(h);
     const ny = Math.cos(h);
-    p.moveTo(sx + nx * r * 1.2, sy + ny * r * 1.2);
-    p.lineTo(sx - nx * r * 0.9 + ny * r * 0.85, sy - ny * r * 0.9 - nx * r * 0.85);
-    p.lineTo(sx - nx * r * 0.9 - ny * r * 0.85, sy - ny * r * 0.9 + nx * r * 0.85);
+    const disc = r * 0.8;
+    p.moveTo(sx + disc, sy);
+    p.arc(sx, sy, disc, 0, Math.PI * 2);
+    const tip = r * 1.5;
+    const half = Math.max(0.8, r * 0.3);
+    p.moveTo(sx + ny * half, sy - nx * half);
+    p.lineTo(sx + nx * tip + ny * half, sy + ny * tip - nx * half);
+    p.lineTo(sx + nx * tip - ny * half, sy + ny * tip + nx * half);
+    p.lineTo(sx - ny * half, sy + nx * half);
     p.closePath();
   }
   for (let b = 0; b < HUE_BUCKETS; b++) {
