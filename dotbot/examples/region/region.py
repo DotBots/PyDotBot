@@ -21,10 +21,11 @@ from dotbot.examples.common.playground import (
     demo_command,
     overlay_rect,
     serve,
+    slider,
 )
 
 #: Waypoint threshold handed to the bot's own controller, mm.
-ARRIVE_MM = 90
+ARRIVE_MM = 40
 
 #: Bots keep this far from a region's edge, so none is parked in a wall.
 INSET_MM = 60
@@ -34,7 +35,7 @@ ANNOUNCEMENT = Announcement(
     title="Regions",
     hint="Shift-drag a rectangle. The swarm splits across the regions by area.",
     inputs=["rects"],
-    controls=[],
+    controls=[slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm")],
     overlay=True,
 )
 
@@ -111,7 +112,7 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         targets = region_targets(positions, rects)
         for bot, target in zip(bots, targets):
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=ARRIVE_MM
+                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
             )
 
         counts = share_by_area(rects, len(bots))

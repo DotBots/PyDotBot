@@ -25,14 +25,17 @@ from dotbot.examples.common.playground import (
 from dotbot.examples.common.raster import clamp_to_arena, ring_points
 
 #: Waypoint threshold handed to the bot's own controller, mm.
-ARRIVE_MM = 90
+ARRIVE_MM = 40
 
 ANNOUNCEMENT = Announcement(
     name="goals",
     title="Goals",
     hint="Click to set a pin, shift-click for more. Each group rings its pin.",
     inputs=["goals"],
-    controls=[slider("radius", 100, 900, 320, step=20, label="Ring radius", unit="mm")],
+    controls=[
+        slider("radius", 100, 900, 320, step=20, label="Ring radius", unit="mm"),
+        slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm"),
+    ],
     overlay=True,
 )
 
@@ -92,7 +95,7 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         targets = ring_targets(positions, pins, radius, app.controller.map_size)
         for bot, target in zip(bots, targets):
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=ARRIVE_MM
+                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
             )
 
         groups = split_by_proximity(positions, pins)

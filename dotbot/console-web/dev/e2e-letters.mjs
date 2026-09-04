@@ -34,11 +34,11 @@ const scatterFor = Number(arg("scatter-seconds", "14"));
 const settle = Number(arg("seconds", "45"));
 
 /**
- * The bar the swarm has to clear, mm: the demo's own waypoint threshold is
- * 80 mm, so a bot that reached its pin sits within that of it, and the mean
+ * The bar the swarm has to clear, mm: the demo's default arrival radius is
+ * 40 mm, so a bot that reached its pin sits within that of it, and the mean
  * over pins is allowed twice it to leave room for one straggler in a corner.
  */
-const ARRIVED_MM = Number(arg("arrived", "160"));
+const ARRIVED_MM = Number(arg("arrived", "80"));
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const repo = fileURLToPath(new URL("../../..", import.meta.url));

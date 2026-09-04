@@ -39,7 +39,7 @@ PHASE_RATE = 0.12
 
 #: Waypoint threshold, mm. Looser than a formation demo would like, but a bot
 #: that keeps hunting its slot never gets to the next keyframe.
-ARRIVE_MM = 120
+ARRIVE_MM = 100
 
 ANNOUNCEMENT = Announcement(
     name="show",
@@ -50,6 +50,7 @@ ANNOUNCEMENT = Announcement(
         select("figure", FIGURES, "ring", label="Figure"),
         slider("tempo", 10, 200, 100, step=5, label="Tempo", unit="%"),
         button("play", label="Play / pause"),
+        slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm"),
     ],
     overlay=True,
 )
@@ -209,7 +210,7 @@ async def drive(app: PlaygroundApp, keyframe: float = KEYFRAME_S) -> None:
             slot = slots.get(bot.address, 0)
             target = points[slot]
             app.controller.waypoints(
-                bot.address, [Point(target[0], target[1])], threshold=ARRIVE_MM
+                bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
             )
             if show.needs_led(bot.address, hues[slot]):
                 app.controller.rgb_led(bot.address, *rgb(hues[slot]))

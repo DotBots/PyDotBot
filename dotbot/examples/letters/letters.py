@@ -35,14 +35,17 @@ BOT_FOOTPRINT_MM = 80
 MIN_SPACING_MM = 2 * BOT_FOOTPRINT_MM
 
 #: Waypoint threshold handed to the bot's own controller, mm.
-ARRIVE_MM = 80
+ARRIVE_MM = 40
 
 ANNOUNCEMENT = Announcement(
     name="letters",
     title="Spell a word",
     hint="Type a word, press Go, and the swarm rasterises it.",
     inputs=["text"],
-    controls=[slider("size", 200, 1600, 700, step=50, label="Height", unit="mm")],
+    controls=[
+        slider("size", 200, 1600, 700, step=50, label="Height", unit="mm"),
+        slider("arrive", 20, 150, ARRIVE_MM, step=5, label="Arrival radius", unit="mm"),
+    ],
     overlay=True,
 )
 
@@ -113,7 +116,7 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
         for bot in bots:
             target = word.targets.get(bot.address)
             if target is not None:
-                app.controller.waypoints(bot.address, [target], threshold=ARRIVE_MM)
+                app.controller.waypoints(bot.address, [target], threshold=int(app.values.get("arrive", ARRIVE_MM)))
 
 
 @demo_command
