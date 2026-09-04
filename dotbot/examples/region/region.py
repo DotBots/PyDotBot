@@ -8,7 +8,7 @@ Shift-drag on the map to draw a region; drag an edge to resize it.
 from __future__ import annotations
 
 import asyncio
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
 import numpy as np
 
@@ -23,12 +23,16 @@ from dotbot.examples.common.playground import (
     serve,
     slider,
 )
+from dotbot.examples.common.raster import spare_ring
 
 #: Waypoint threshold handed to the bot's own controller, mm.
 ARRIVE_MM = 40
 
 #: Bots keep this far from a region's edge, so none is parked in a wall.
 INSET_MM = 60
+
+#: Closest two bots are ever aimed inside a region: two footprints, mm.
+SPACING_MM = 160
 
 ANNOUNCEMENT = Announcement(
     name="region",
@@ -62,6 +66,31 @@ def share_by_area(rects: Sequence[Rect], bots: int) -> List[int]:
     return [int(c) for c in counts]
 
 
+def capacity(rect: Rect) -> int:
+    """How many bots a rectangle holds at SPACING_MM, inside the inset."""
+    w, h = rect.w - 2 * INSET_MM, rect.h - 2 * INSET_MM
+    if w <= 0 or h <= 0:
+        return 0
+    return max(1, int(w * h // (SPACING_MM * SPACING_MM)))
+
+
+def share_by_capacity(rects: Sequence[Rect], bots: int) -> List[int]:
+    """`share_by_area`, capped at what each region holds; the rest stay unassigned."""
+    caps = [capacity(r) for r in rects]
+    counts = [0] * len(rects)
+    remaining = min(bots, sum(caps))
+    while remaining > 0:
+        open_idx = [i for i in range(len(rects)) if counts[i] < caps[i]]
+        if not open_idx:
+            break
+        share = share_by_area([rects[i] for i in open_idx], remaining)
+        for i, c in zip(open_idx, share):
+            take = min(c, caps[i] - counts[i])
+            counts[i] += take
+            remaining -= take
+    return counts
+
+
 def fill_points(rect: Rect, count: int) -> np.ndarray:
     """
     `count` points spread over a rectangle on the squarest grid that holds
@@ -84,16 +113,18 @@ def fill_points(rect: Rect, count: int) -> np.ndarray:
     return np.asarray(points, dtype=float)
 
 
-def region_targets(bots: np.ndarray, rects: Sequence[Rect]) -> np.ndarray:
-    """A target per bot: a slot in one region, assigned across the whole set."""
-    counts = share_by_area(rects, len(bots))
+def region_targets(
+    bots: np.ndarray, rects: Sequence[Rect], arena: Tuple[float, float]
+) -> np.ndarray:
+    """A target per bot: a slot in one region, or a spot on the parking ring."""
+    counts = share_by_capacity(rects, len(bots))
     slots = np.concatenate(
         [fill_points(rect, count) for rect, count in zip(rects, counts)]
         + [np.zeros((0, 2))]
     )
-    if len(slots) < len(bots):
-        # Rounding can leave a bot without a slot; it stays where it is.
-        slots = np.concatenate([slots, bots[len(slots) :]])
+    spares = spare_ring(len(bots) - len(slots), arena)
+    if len(spares):
+        slots = np.concatenate([slots, spares])
     return slots[assign_targets(bots, slots)]
 
 
@@ -109,20 +140,25 @@ async def drive(app: PlaygroundApp, period: float = 0.5) -> None:
             continue
 
         positions = np.array([[b.x, b.y] for b in bots], dtype=float)
-        targets = region_targets(positions, rects)
+        targets = region_targets(positions, rects, app.controller.map_size)
         for bot, target in zip(bots, targets):
             app.controller.waypoints(
                 bot.address, [Point(target[0], target[1])], threshold=int(app.values.get("arrive", ARRIVE_MM))
             )
 
-        counts = share_by_area(rects, len(bots))
+        counts = share_by_capacity(rects, len(bots))
         app.publish_overlay(
             [
                 overlay_rect(r.x, r.y, r.w, r.h, label=f"{c} bots", color="accent")
                 for r, c in zip(rects, counts)
             ]
         )
-        app.publish_status(f"{len(bots)} bots over {len(rects)} regions")
+        parked = len(bots) - sum(counts)
+        app.publish_status(
+            f"{sum(counts)} of {len(bots)} bots fit in {len(rects)} regions, {parked} parked"
+            if parked
+            else f"{len(bots)} bots over {len(rects)} regions"
+        )
 
 
 @demo_command

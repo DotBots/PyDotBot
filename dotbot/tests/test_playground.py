@@ -44,7 +44,13 @@ from dotbot.examples.goals.goals import ANNOUNCEMENT as GOALS
 from dotbot.examples.goals.goals import ring_targets, split_by_proximity
 from dotbot.examples.letters.letters import ANNOUNCEMENT as LETTERS
 from dotbot.examples.region.region import ANNOUNCEMENT as REGION
-from dotbot.examples.region.region import fill_points, region_targets, share_by_area
+from dotbot.examples.region.region import (
+    capacity,
+    fill_points,
+    region_targets,
+    share_by_area,
+    share_by_capacity,
+)
 from dotbot.examples.show.show import ANNOUNCEMENT as SHOW
 from dotbot.examples.show.show import (
     FIGURES,
@@ -427,9 +433,23 @@ class TestRegionDemo:
         rng = np.random.default_rng(2)
         bots = rng.uniform(0, 2000, (25, 2))
         rects = [Rect(0, 0, 800, 800), Rect(1000, 1000, 600, 400)]
-        targets = region_targets(bots, rects)
+        targets = region_targets(bots, rects, (2000, 2000))
         assert len(targets) == 25
         assert len({tuple(np.round(t, 3)) for t in targets}) == 25
+
+    def test_a_region_takes_only_the_bots_it_holds_and_the_rest_park(self):
+        small = Rect(0, 0, 500, 500)
+        assert capacity(small) == 5
+        assert share_by_capacity([small], 100) == [5]
+        big = Rect(1000, 0, 2000, 2000)
+        counts = share_by_capacity([small, big], 40)
+        assert counts[0] <= 5 and sum(counts) == 40
+        assert share_by_capacity([small, big], 1000) == [5, 138]
+        # A 6 m arena keeps the parking ring clear of the corner rectangle.
+        bots = np.random.default_rng(3).uniform(0, 6000, (100, 2))
+        targets = region_targets(bots, [small], (6000, 6000))
+        inside = ((targets[:, 0] <= 500) & (targets[:, 1] <= 500)).sum()
+        assert inside == 5 and len(targets) == 100
 
 
 class TestShowDemo:
