@@ -157,8 +157,37 @@ export function fillPoints(rect: Box, count: number, inset = 60): Points {
 }
 
 /** Every region's slots, in region order, for `bots` bots to share. */
+/** Closest two bots are ever aimed inside a region: two footprints, mm. */
+export const REGION_SPACING = 160;
+
+/** How many bots a rectangle holds at REGION_SPACING, inside the inset. */
+export function regionCapacity(rect: Box, inset = 60, spacing = REGION_SPACING): number {
+  const w = rect.w - 2 * inset;
+  const h = rect.h - 2 * inset;
+  if (w <= 0 || h <= 0) return 0;
+  return Math.max(1, Math.floor((w * h) / (spacing * spacing)));
+}
+
+/** `shareByArea`, capped at what each region holds; the rest stay unassigned. */
+export function shareByCapacity(rects: Box[], bots: number, inset = 60): number[] {
+  const caps = rects.map((r) => regionCapacity(r, inset));
+  const counts = rects.map(() => 0);
+  let remaining = Math.min(bots, caps.reduce((a, b) => a + b, 0));
+  while (remaining > 0) {
+    const open = rects.map((_, i) => i).filter((i) => counts[i] < caps[i]);
+    if (open.length === 0) break;
+    const share = shareByArea(open.map((i) => rects[i]), remaining);
+    open.forEach((i, k) => {
+      const take = Math.min(share[k], caps[i] - counts[i]);
+      counts[i] += take;
+      remaining -= take;
+    });
+  }
+  return counts;
+}
+
 export function regionSlots(rects: Box[], bots: number, inset = 60): Points {
-  const counts = shareByArea(rects, bots);
+  const counts = shareByCapacity(rects, bots, inset);
   const parts = rects.map((r, i) => fillPoints(r, counts[i], inset));
   const out = new Float64Array(parts.reduce((a, p) => a + p.length, 0));
   let at = 0;

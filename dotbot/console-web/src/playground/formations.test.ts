@@ -6,8 +6,10 @@ import {
   fillPoints,
   formation,
   hueByAngle,
+  regionCapacity,
   regionSlots,
   ringPoints,
+  shareByCapacity,
   ringTargets,
   shareByArea,
   spareRing,
@@ -169,6 +171,24 @@ describe("ringTargets", () => {
   });
 });
 
+describe("shareByCapacity", () => {
+  it("never assigns more bots than a region holds", () => {
+    const small = { x: 0, y: 0, w: 500, h: 500 };
+    expect(regionCapacity(small)).toBe(5);
+    expect(shareByCapacity([small], 100)).toEqual([5]);
+    expect(regionSlots([small], 100).length).toBe(10);
+  });
+
+  it("fills a full region's neighbour before giving up", () => {
+    const small = { x: 0, y: 0, w: 500, h: 500 };
+    const big = { x: 1000, y: 0, w: 2000, h: 2000 };
+    const counts = shareByCapacity([small, big], 40);
+    expect(counts[0]).toBeLessThanOrEqual(5);
+    expect(counts[0] + counts[1]).toBe(40);
+    expect(shareByCapacity([small, big], 1000)).toEqual([5, 138]);
+  });
+});
+
 describe("shareByArea", () => {
   it("splits the fleet in proportion to the areas", () => {
     const counts = shareByArea(
@@ -224,7 +244,9 @@ describe("fillPoints and regionSlots", () => {
       { x: 0, y: 0, w: 1000, h: 1000 },
       { x: 2000, y: 2000, w: 500, h: 500 },
     ];
-    expect(regionSlots(rects, 40).length).toBe(80);
+    // 30 fit in the first, 5 in the second; the other five bots park.
+    expect(regionSlots(rects, 40).length).toBe(70);
+    expect(regionSlots([{ x: 0, y: 0, w: 3000, h: 3000 }], 40).length).toBe(80);
   });
 });
 

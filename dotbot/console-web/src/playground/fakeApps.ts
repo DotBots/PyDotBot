@@ -7,7 +7,7 @@ import {
   hueByAngle,
   regionSlots,
   ringTargets,
-  shareByArea,
+  shareByCapacity,
   spareRing,
   splitByProximity,
 } from "./formations";
@@ -173,14 +173,11 @@ export class AppRunner {
     if (s.kind === "goals" && s.pins.length > 0) {
       this.targets = ringTargets(from, toPoints(s.pins), s.radius, world.side, world.side);
     } else if (s.kind === "region" && s.rects.length > 0) {
-      let slots = regionSlots(s.rects, n);
-      if (slots.length < n * 2) {
-        // Rounding can leave a bot without a slot; it stays where it is.
-        const padded = new Float64Array(n * 2);
-        padded.set(slots, 0);
-        padded.set(from.subarray(slots.length), slots.length);
-        slots = padded;
-      }
+      const fill = regionSlots(s.rects, n);
+      const spares = spareRing(n - (fill.length >> 1), world.side, world.side);
+      const slots = new Float64Array(fill.length + spares.length);
+      slots.set(fill, 0);
+      slots.set(spares, fill.length);
       this.targets = gather(slots, assignTargets(from, slots));
     } else if (s.kind === "letters" && s.ink.length > 0) {
       const ink = toPoints(s.ink);
@@ -328,7 +325,7 @@ export class AppRunner {
         if (s.rects.length === 0) {
           return { items: [], status: "waiting for a region on the map" };
         }
-        const counts = shareByArea(s.rects, n);
+        const counts = shareByCapacity(s.rects, n);
         const items: OverlayItem[] = s.rects.map((r, i) => ({
           type: "rect",
           x: r.x,
@@ -345,7 +342,14 @@ export class AppRunner {
             items.push(point(slots[k * 2], slots[k * 2 + 1], 24, "muted"));
           }
         });
-        return { items, status: `${n} bots over ${s.rects.length} regions` };
+        const fit = counts.reduce((a, b) => a + b, 0);
+        return {
+          items,
+          status:
+            fit < n
+              ? `${fit} of ${n} bots fit in ${s.rects.length} regions, ${n - fit} parked`
+              : `${n} bots over ${s.rects.length} regions`,
+        };
       }
       case "show": {
         const points = formation(s.figure, n, world.side, world.side, this.phase);
