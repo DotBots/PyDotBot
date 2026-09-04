@@ -75,13 +75,17 @@ export interface Goal extends Vec2 {
   id: number;
 }
 
-/** A rectangle the map collects for a `rects` app, in arena mm. */
-export interface RectShape {
-  id: number;
+/** A rectangle in arena mm, with its corner at (x, y). */
+export interface Box {
   x: number;
   y: number;
   w: number;
   h: number;
+}
+
+/** A rectangle the map collects for a `rects` app. */
+export interface RectShape extends Box {
+  id: number;
 }
 
 /** Arena mm, the frame arenaFrame.ts states. */
