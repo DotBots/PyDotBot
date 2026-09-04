@@ -153,13 +153,26 @@ export interface WorldTuning {
   /** 1..6, the follow app's spread slider, in footprints. */
   spread: number;
   wanderWhenIdle: boolean;
+  /** Multiplies the battery drain, so a charging cycle can be watched sooner. */
+  drainScale: number;
 }
 
 export const DEFAULT_TUNING: WorldTuning = {
   speedPct: 60,
   spread: 2,
   wanderWhenIdle: true,
+  drainScale: 1,
 };
+
+/** A full battery, volts. The simulator's own model starts here too. */
+export const FULL_BATTERY_V = 3.0;
+
+/**
+ * Volts lost per mm driven. At the default 60% speed a bot covers about
+ * 290 mm/s, so it falls the 40 mV to the charging demo's default threshold in
+ * a little under a minute of driving. A parked bot does not drain.
+ */
+export const DRAIN_V_PER_MM = 2.5e-6;
 
 /**
  * Arena side for a bot count, in mm. The controller's default 2 m room holds a
@@ -173,6 +186,12 @@ export function arenaSideFor(count: number): number {
 /** How far a bot steers away from the arena edge, mm. */
 const WALL_MARGIN = BOT_FOOTPRINT_MM * 2;
 
+/** How hard separation bends a bot with no target of its own. */
+const BLOB_SEPARATION = 1.7;
+
+/** And one holding an assigned slot, which its neighbours are not aiming at. */
+const HOLD_SEPARATION = 0.7;
+
 export class FakeWorld {
   readonly count: number;
   readonly side: number;
@@ -180,6 +199,15 @@ export class FakeWorld {
   readonly y: Float64Array;
   readonly heading: Float64Array;
   readonly hue: Float32Array;
+  /** Last reported battery, volts, as the charging demo reads it. */
+  readonly battery: Float64Array;
+  /** Where an app sent each bot, x, y per bot, read where `hasTarget` is set. */
+  readonly targets: Float64Array;
+  readonly hasTarget: Uint8Array;
+  /** Bots an app is holding still, a docked one being the case that exists. */
+  readonly held: Uint8Array;
+  /** How close to its target a bot has to be to stop, mm. */
+  arriveMm = 40;
   private readonly wanderAngle: Float64Array;
   private readonly rng: () => number;
   private tuning: WorldTuning = { ...DEFAULT_TUNING };
@@ -200,6 +228,10 @@ export class FakeWorld {
     this.y = new Float64Array(this.count);
     this.heading = new Float64Array(this.count);
     this.hue = new Float32Array(this.count);
+    this.battery = new Float64Array(this.count);
+    this.targets = new Float64Array(this.count * 2);
+    this.hasTarget = new Uint8Array(this.count);
+    this.held = new Uint8Array(this.count);
     this.wanderAngle = new Float64Array(this.count);
     this.rng = mulberry32(cfg.seed);
     this.place(cfg.placement);
@@ -221,6 +253,9 @@ export class FakeWorld {
       // The LED colour is the bot's identity here; a hue wheel keeps a
       // thousand of them distinguishable in a blob.
       this.hue[i] = (i * 137.508) % 360;
+      // A spread of a few mV, so a charging cycle is a queue rather than the
+      // whole fleet crossing the threshold on the same tick.
+      this.battery[i] = FULL_BATTERY_V - this.rng() * 0.02;
     }
   }
 
@@ -282,6 +317,20 @@ export class FakeWorld {
     };
   }
 
+  /** Seek the pointer, or drift, which is what a bot with no target does. */
+  private roam(pose: Vec, i: number, maxSpeed: number, sepRadius: number, dt: number): Vec {
+    if (this.target !== null) return arrive(pose, this.target, maxSpeed, sepRadius * 3);
+    return this.tuning.wanderWhenIdle ? this.wander(i, maxSpeed, dt) : { x: 0, y: 0 };
+  }
+
+  /** Arrive on the assigned point, and ask for nothing once inside it. */
+  private hold(i: number, pose: Vec, maxSpeed: number, sepRadius: number): Vec {
+    const target = { x: this.targets[i * 2], y: this.targets[i * 2 + 1] };
+    const d = Math.hypot(target.x - pose.x, target.y - pose.y);
+    if (d <= this.arriveMm) return { x: 0, y: 0 };
+    return arrive(pose, target, maxSpeed, Math.max(sepRadius * 3, this.arriveMm * 3));
+  }
+
   /** A push back inside the arena, growing as the bot nears an edge. */
   private walls(i: number, maxSpeed: number): Vec {
     let vx = 0;
@@ -310,20 +359,23 @@ export class FakeWorld {
       if (i === this.drivenIndex) {
         left = this.drivenWheels.left;
         right = this.drivenWheels.right;
+      } else if (this.held[i] === 1) {
+        left = 0;
+        right = 0;
       } else {
-        const goal =
-          this.target !== null
-            ? arrive(pose, this.target, maxSpeed, sepRadius * 3)
-            : this.tuning.wanderWhenIdle
-              ? this.wander(i, maxSpeed, dt)
-              : { x: 0, y: 0 };
+        const holding = this.hasTarget[i] === 1;
+        const goal = holding
+          ? this.hold(i, pose, maxSpeed, sepRadius)
+          : this.roam(pose, i, maxSpeed, sepRadius, dt);
         const sep = separation(pose, this.neighbours(i, scratch), sepRadius, maxSpeed);
         const wall = this.walls(i, maxSpeed);
         // Separation outweighs the goal, so a blob spreads instead of piling
-        // onto one point; the walls outrank both.
+        // onto one point; the walls outrank both. A bot with a slot of its own
+        // only needs enough of it to not sit on a neighbour.
+        const push = holding ? HOLD_SEPARATION : BLOB_SEPARATION;
         const desired = {
-          x: goal.x + sep.x * 1.7 + wall.x * 3,
-          y: goal.y + sep.y * 1.7 + wall.y * 3,
+          x: goal.x + sep.x * push + wall.x * 3,
+          y: goal.y + sep.y * push + wall.y * 3,
         };
         const mag = Math.hypot(desired.x, desired.y);
         if (mag > maxSpeed) {
@@ -340,6 +392,11 @@ export class FakeWorld {
       this.y[i] = Math.max(0, Math.min(this.side, next.y));
       this.heading[i] = next.heading;
       motion = Math.max(motion, Math.abs(vL), Math.abs(vR));
+      const travelled = (Math.abs(vL + vR) / 2) * dt;
+      this.battery[i] = Math.max(
+        0,
+        this.battery[i] - travelled * DRAIN_V_PER_MM * this.tuning.drainScale,
+      );
     }
     this.lastMotion = motion;
   }

@@ -172,6 +172,56 @@ describe("FakeWorld", () => {
     expect(w.moving).toBe(false);
   });
 
+  it("drives to an assigned target and stops inside the arrival radius", () => {
+    const w = new FakeWorld({ count: 1, placement: "grid", seed: 1 });
+    w.setTuning({ speedPct: 80, spread: 2, wanderWhenIdle: true });
+    w.x[0] = 300;
+    w.y[0] = 300;
+    w.targets[0] = 1500;
+    w.targets[1] = 1200;
+    w.hasTarget[0] = 1;
+    w.arriveMm = 60;
+    for (let s = 0; s < 1500; s++) w.step(0.02);
+    expect(Math.hypot(w.x[0] - 1500, w.y[0] - 1200)).toBeLessThanOrEqual(60);
+  });
+
+  it("keeps a held bot where it is, whatever else is pulling at it", () => {
+    const w = new FakeWorld({ count: 1, placement: "grid", seed: 1 });
+    w.setTarget({ x: 1900, y: 1900 });
+    w.held[0] = 1;
+    const at = { x: w.x[0], y: w.y[0] };
+    for (let s = 0; s < 200; s++) w.step(0.02);
+    expect(w.x[0]).toBeCloseTo(at.x, 6);
+    expect(w.y[0]).toBeCloseTo(at.y, 6);
+  });
+
+  it("drains the battery with the distance driven, and not while parked", () => {
+    const w = new FakeWorld({ count: 1, placement: "grid", seed: 1 });
+    w.setTuning({ speedPct: 100, spread: 2, wanderWhenIdle: false });
+    w.setTarget({ x: w.side - 200, y: w.side - 200 });
+    const full = w.battery[0];
+    for (let s = 0; s < 300; s++) w.step(0.02);
+    const driven = w.battery[0];
+    expect(driven).toBeLessThan(full);
+
+    w.setTarget(null);
+    w.held[0] = 1;
+    for (let s = 0; s < 300; s++) w.step(0.02);
+    expect(w.battery[0]).toBe(driven);
+  });
+
+  it("drains faster when the showcase asks it to", () => {
+    const drop = (drainScale: number) => {
+      const w = new FakeWorld({ count: 1, placement: "grid", seed: 1 });
+      w.setTuning({ speedPct: 100, spread: 2, wanderWhenIdle: false, drainScale });
+      w.setTarget({ x: w.side - 200, y: w.side - 200 });
+      const full = w.battery[0];
+      for (let s = 0; s < 300; s++) w.step(0.02);
+      return full - w.battery[0];
+    };
+    expect(drop(10)).toBeCloseTo(drop(1) * 10, 6);
+  });
+
   it("packs a snapshot as x, y, heading per bot", () => {
     const w = new FakeWorld({ count: 3, placement: "grid", seed: 2 });
     const snap = w.snapshot();
