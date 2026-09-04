@@ -63,7 +63,7 @@ describe("the sample rail", () => {
     expect(ids("follow")).toEqual(["speed", "spread", "wander"]);
     expect(ids("goals")).toEqual(["radius", "arrive"]);
     expect(ids("region")).toEqual(["arrive"]);
-    expect(ids("show")).toEqual(["figure", "tempo", "play", "arrive"]);
+    expect(ids("show")).toEqual(["figure", "tempo", "play", "guides", "arrive"]);
     expect(ids("letters")).toEqual(["size", "arrive"]);
     expect(ids("charging")).toEqual(["threshold", "charge"]);
   });

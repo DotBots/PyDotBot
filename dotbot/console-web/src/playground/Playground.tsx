@@ -354,6 +354,7 @@ export const Playground: React.FC = () => {
           figure: String(v.figure ?? "ring"),
           tempo: Number(v.tempo ?? 100),
           playing,
+          guides: Boolean(v.guides ?? true),
           arrive,
         };
       case "letters":

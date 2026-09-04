@@ -39,7 +39,14 @@ export type FakeAppSpec =
   | { kind: "none" }
   | { kind: "goals"; pins: Vec2[]; radius: number; arrive: number }
   | { kind: "region"; rects: Box[]; arrive: number }
-  | { kind: "show"; figure: string; tempo: number; playing: boolean; arrive: number }
+  | {
+      kind: "show";
+      figure: string;
+      tempo: number;
+      playing: boolean;
+      guides: boolean;
+      arrive: number;
+    }
   | { kind: "letters"; word: string; ink: Vec2[]; arrive: number };
 
 export interface ChargingSpec {
@@ -354,7 +361,7 @@ export class AppRunner {
       case "show": {
         const points = formation(s.figure, n, world.side, world.side, this.phase);
         return {
-          items: figureOverlay(s.figure, points),
+          items: s.guides ? figureOverlay(s.figure, points) : [],
           status: `${s.figure}, ${s.playing ? "playing" : "paused"}, ${n} bots`,
         };
       }

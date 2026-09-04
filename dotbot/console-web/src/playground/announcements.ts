@@ -87,6 +87,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
       },
       { id: "tempo", type: "slider", label: "Tempo", min: 10, max: 800, step: 5, value: 100, unit: "%" },
       { id: "play", type: "button", label: "Play / pause" },
+      { id: "guides", type: "toggle", label: "Show guides", value: true },
       arriveSlider(100),
     ],
     overlay: true,

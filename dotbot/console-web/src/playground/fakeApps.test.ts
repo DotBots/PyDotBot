@@ -74,7 +74,7 @@ describe("holding a set of targets", () => {
     const world = seeded(12);
     const runner = new AppRunner();
     const identity = Float32Array.from(world.hue);
-    runner.setSpec({ kind: "show", figure: "ring", tempo: 100, playing: true, arrive: 100 });
+    runner.setSpec({ kind: "show", figure: "ring", tempo: 100, guides: true, playing: true, arrive: 100 });
     run(world, runner, 2);
     expect([...world.hue]).not.toEqual([...identity]);
 
@@ -91,6 +91,7 @@ describe("holding a set of targets", () => {
       figure: "ring",
       tempo: 100,
       playing,
+      guides: true,
       arrive: 100,
     });
     runner.setSpec(spec(true));
@@ -207,7 +208,7 @@ describe("what the apps publish", () => {
 
   it("says what the show is doing", () => {
     const runner = new AppRunner();
-    runner.setSpec({ kind: "show", figure: "wave", tempo: 50, playing: false, arrive: 100 });
+    runner.setSpec({ kind: "show", figure: "wave", tempo: 50, guides: true, playing: false, arrive: 100 });
     const out = drawable(runner);
     expect(out.status).toBe("wave, paused, 12 bots");
   });
