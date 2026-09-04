@@ -4,8 +4,6 @@ import { FakeWorld, type Vec, type WorldTuning } from "./fakeWorld";
 // The fake world's own thread. It owns the physics clock and the demos; the
 // page only sends commands and receives packed positions and overlays.
 
-export type RatePreset = "frame" | "mari";
-
 export type WorkerCommand =
   | { type: "seed"; count: number; placement: "grid" | "random"; seed: number }
   | { type: "tuning"; tuning: Partial<WorldTuning> }
@@ -13,7 +11,6 @@ export type WorkerCommand =
   | { type: "drive"; index: number; left: number; right: number }
   | { type: "app"; spec: FakeAppSpec }
   | { type: "charging"; charging: ChargingSpec }
-  | { type: "rate"; rate: RatePreset }
   | { type: "stop" };
 
 export type WorkerEvent =
@@ -22,11 +19,6 @@ export type WorkerEvent =
   // The payload an app would have published on its /out topic, in the shape
   // `overlay.ts` parses, so both worlds reach the canvas the same way.
   | { type: "out"; payload: unknown };
-
-// Placeholder numbers standing in for a Mari link until phase 2 measures one:
-// positions arrive five times a second and a command lands 100 ms late.
-const MARI_POST_INTERVAL_MS = 200;
-const MARI_COMMAND_DELAY_MS = 100;
 
 const STEP_MS = 16;
 
@@ -45,25 +37,11 @@ const post = (
 
 let world: FakeWorld | null = null;
 const apps = new AppRunner();
-let rate: RatePreset = "frame";
 let timer: ReturnType<typeof setTimeout> | null = null;
-let lastPost = 0;
 let lastOut = 0;
 let lastOverlay = "";
 let lastStatus: string | null = null;
 let lastTick = 0;
-/** Commands held back by the rate preset's command delay. */
-let pending: { at: number; run: () => void }[] = [];
-
-function defer(run: () => void) {
-  const delay = rate === "mari" ? MARI_COMMAND_DELAY_MS : 0;
-  if (delay === 0) {
-    run();
-    return;
-  }
-  pending.push({ at: Date.now() + delay, run });
-}
-
 /**
  * Send the next overlay and status whatever they say. A change of app clears
  * what the page is holding, so an unchanged line still has to be re-sent.
@@ -96,17 +74,11 @@ function tick() {
   const dt = Math.min(0.05, (now - lastTick) / 1000 || STEP_MS / 1000);
   lastTick = now;
 
-  const due = pending.filter((p) => p.at <= now);
-  pending = pending.filter((p) => p.at > now);
-  for (const p of due) p.run();
-
   apps.step(world, dt, now);
   world.step(dt);
   publishOut(now);
 
-  const interval = rate === "mari" ? MARI_POST_INTERVAL_MS : 0;
-  if (now - lastPost >= interval) {
-    lastPost = now;
+  {
     const poses = world.snapshot();
     const transfer: Transferable[] = [poses.buffer];
     let hues: Float32Array | undefined;
@@ -132,10 +104,8 @@ self.onmessage = (e: MessageEvent<WorkerCommand>) => {
     case "seed": {
       world = new FakeWorld({ count: cmd.count, placement: cmd.placement, seed: cmd.seed });
       apps.reset();
-      pending = [];
       const hues = new Float32Array(world.hue);
       post({ type: "seeded", count: world.count, side: world.side, hues }, [hues.buffer]);
-      lastPost = 0;
       lastOut = 0;
       lastOverlay = "";
       lastStatus = null;
@@ -146,23 +116,18 @@ self.onmessage = (e: MessageEvent<WorkerCommand>) => {
       world?.setTuning(cmd.tuning);
       break;
     case "target":
-      defer(() => world?.setTarget(cmd.target));
+      world?.setTarget(cmd.target);
       break;
     case "drive":
-      defer(() => world?.setDriven(cmd.index, cmd.left, cmd.right));
+      world?.setDriven(cmd.index, cmd.left, cmd.right);
       break;
     case "app":
-      defer(() => {
-        apps.setSpec(cmd.spec);
-        forgetOut();
-      });
+      apps.setSpec(cmd.spec);
+      forgetOut();
       break;
     case "charging":
       apps.setCharging(cmd.charging);
       forgetOut();
-      break;
-    case "rate":
-      rate = cmd.rate;
       break;
     case "stop":
       if (timer !== null) clearTimeout(timer);

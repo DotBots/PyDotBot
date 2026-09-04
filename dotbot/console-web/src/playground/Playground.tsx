@@ -33,7 +33,6 @@ import type {
   Vec2,
   WorldKind,
 } from "./types";
-import type { RatePreset } from "./fakeWorld.worker";
 
 // The Playground page: a canvas, a rail of what is running, a panel of the
 // selected app's declared controls, and one hint line. Everything but the
@@ -145,22 +144,20 @@ export const Playground: React.FC = () => {
   // --- the two worlds -------------------------------------------------------
 
   const [values, setValues] = useState<Record<string, ControlValues>>(() => {
-    const v = initialValuesByApp([...BUILTINS, ...SAMPLE_APPS]);
-    const drain = Number(params.get("drain"));
-    if (Number.isFinite(drain) && drain > 0) v.showcase.drain = Math.min(20, Math.round(drain));
-    return v;
+    return initialValuesByApp([...BUILTINS, ...SAMPLE_APPS]);
   });
-
-  const showcase = values.showcase;
+  // A dev knob for the charging harness: `?drain=20` makes a minute of driving
+  // drain a battery in seconds.
+  const drainScale = (() => {
+    const d = Number(params.get("drain"));
+    return Number.isFinite(d) && d > 0 ? Math.min(20, Math.round(d)) : 1;
+  })();
   // The fake fleet's size is the page's, not any app's: every demo runs at it.
   const [fakeCount, setFakeCount] = useState(() => {
     const n = Number(new URLSearchParams(window.location.search).get("n"));
     return Number.isFinite(n) && n > 0 ? Math.max(10, Math.min(1000, Math.round(n))) : 200;
   });
-  const placement = String(showcase.placement) as "grid" | "random";
-  const rate = String(showcase.rate) as RatePreset;
-
-  const fake = useFakeWorld(!onController, fakeCount, placement, onOut);
+  const fake = useFakeWorld(!onController, fakeCount, "grid", onOut);
 
   const poseRef = useRef<Float32Array>(EMPTY);
   const hueRef = useRef<Float32Array>(EMPTY);
@@ -237,7 +234,7 @@ export const Playground: React.FC = () => {
     [onController, running],
   );
 
-  const [selected, setSelected] = useState(() => params.get("app") ?? "showcase");
+  const [selected, setSelected] = useState(() => params.get("app") ?? "drive");
   const app = apps.find((a) => a.name === selected) ?? apps[0];
 
   // A demo that just announced itself arrives with no values yet.
@@ -265,8 +262,6 @@ export const Playground: React.FC = () => {
 
   const driveCount = onController ? controllerCount : fakeCount;
 
-  useEffect(() => fake.setRate(rate), [fake, rate]);
-
   const follow = values.follow;
   useEffect(() => {
     if (follow === undefined) return;
@@ -274,9 +269,9 @@ export const Playground: React.FC = () => {
       speedPct: Number(follow.speed),
       spread: Number(follow.spread),
       wanderWhenIdle: Boolean(follow.wander),
-      drainScale: Number(showcase.drain ?? 1),
+      drainScale,
     });
-  }, [fake, follow, showcase.drain]);
+  }, [fake, follow, drainScale]);
 
   const publish = useCallback(
     (message: Record<string, unknown>) => {
@@ -495,11 +490,10 @@ export const Playground: React.FC = () => {
 
   const onAction = useCallback(
     (id: string) => {
-      if (selected === "showcase" && id === "reseed") fake.reseed();
-      else if (!onController && selected === "show" && id === "play") setPlaying((p) => !p);
+      if (!onController && selected === "show" && id === "play") setPlaying((p) => !p);
       else publish(actionMessage(id));
     },
-    [fake, onController, publish, selected],
+    [onController, publish, selected],
   );
 
   // Keys 1-9 select rail entries, unless a field has the keyboard.
@@ -580,13 +574,12 @@ export const Playground: React.FC = () => {
     ? "Tap a bot on the map to drive it. Escape, or the button again, cancels."
     : `Hold the stick on the map to drive bot ${driven}. Two fingers pan.`;
   const panelTitle = drives ? driveTitle : app.title;
-  const hintLine = drives ? driveHint : app.hint;
 
   const panel = (
     <>
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{panelTitle}</div>
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 14 }}>
-        {app.builtin ? "built in" : `dotbot/${swarm ?? "?"}/apps/${app.name}`}
+        {drives ? driveHint : app.builtin ? "built in" : `dotbot/${swarm ?? "?"}/apps/${app.name}`}
       </div>
       {app.inputs.includes("text") && <TextInput onSend={onText} />}
       <Controls
@@ -748,14 +741,22 @@ export const Playground: React.FC = () => {
         {!mobile && (
           <span style={{ fontSize: 11, color: "var(--muted)" }}>{NEEDS[world]}</span>
         )}
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: onController ? 1 : "0 0 8px" }} />
         {onController ? (
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
             {botsSeen} bots
           </span>
         ) : (
           <label
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 11,
+              color: "var(--muted)",
+            }}
           >
             <input
               type="range"
@@ -765,14 +766,34 @@ export const Playground: React.FC = () => {
               value={fakeCount}
               onChange={(e) => setFakeCount(Number(e.target.value))}
               aria-label="Bots"
-              style={{ width: mobile ? 70 : 120, accentColor: "var(--accent)" }}
+              style={{ flex: "1 1 auto", minWidth: 60, maxWidth: 720, accentColor: "var(--accent)" }}
             />
-            <span style={{ fontFamily: "var(--font-mono)" }}>{fakeCount} bots</span>
+            <span style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+              {fakeCount} bots
+            </span>
+            <button
+              type="button"
+              onClick={fake.reseed}
+              title="Scatter the fleet again"
+              style={{
+                fontSize: 11,
+                padding: "2px 7px",
+                borderRadius: 5,
+                border: "1px solid var(--hairline)",
+                background: "var(--elevated)",
+                color: "var(--muted)",
+                cursor: "pointer",
+              }}
+            >
+              scatter
+            </button>
           </label>
         )}
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
-          {fps} fps
-        </span>
+        {!mobile && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
+            {fps} fps
+          </span>
+        )}
         {onController && (
           <span
             style={{
@@ -831,7 +852,7 @@ export const Playground: React.FC = () => {
             borderBottom: "1px solid var(--hairline)",
           }}
         >
-          {app.hint}
+          {drives ? driveHint : app.hint}
         </div>
       )}
 
@@ -886,22 +907,6 @@ export const Playground: React.FC = () => {
       </div>
 
       {/* Hint line */}
-      <div
-        style={{
-          flex: "none",
-          padding: "6px 12px",
-          fontSize: 11.5,
-          color: "var(--muted)",
-          background: "var(--surface)",
-          borderTop: "1px solid var(--hairline)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {hintLine}
-      </div>
-
       {showQr && <QrCard url={phoneLink} onClose={() => setShowQr(false)} />}
     </div>
   );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChargingSpec, FakeAppSpec } from "./fakeApps";
 import { arenaSideFor, type Vec, type WorldTuning } from "./fakeWorld";
-import type { RatePreset, WorkerCommand, WorkerEvent } from "./fakeWorld.worker";
+import type { WorkerCommand, WorkerEvent } from "./fakeWorld.worker";
 
 // The page's handle on the fake world. Positions land in refs, never in state:
 // a thousand bots at 60 Hz through React would re-render the chrome every
@@ -23,7 +23,6 @@ export interface FakeWorldHandle {
   setTuning: (t: Partial<WorldTuning>) => void;
   setApp: (spec: FakeAppSpec) => void;
   setCharging: (charging: ChargingSpec) => void;
-  setRate: (r: RatePreset) => void;
   reseed: () => void;
 }
 
@@ -107,7 +106,6 @@ export function useFakeWorld(
       (charging: ChargingSpec) => send({ type: "charging", charging }),
       [send],
     ),
-    setRate: useCallback((r: RatePreset) => send({ type: "rate", rate: r }), [send]),
     reseed: useCallback(() => setSeed((s) => s + 1), []),
   };
 }

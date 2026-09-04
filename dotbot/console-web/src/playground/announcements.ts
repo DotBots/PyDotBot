@@ -4,7 +4,7 @@ import type { AppAnnouncement, ControlDecl, ControlValues } from "./types";
 export const DRIVE: AppAnnouncement = {
   name: "drive",
   title: "Drive",
-  hint: "Pick a bot and hold the stick. One bot, wheel commands, no script needed.",
+  hint: "Pick a bot and hold the stick. The rest keep wandering. No script needed.",
   inputs: ["drive"],
   controls: [{ id: "bot", type: "botpicker", label: "Bot" }],
   overlay: false,
@@ -14,25 +14,7 @@ export const DRIVE: AppAnnouncement = {
   builtin: true,
 };
 
-export const SHOWCASE: AppAnnouncement = {
-  name: "showcase",
-  title: "Showcase",
-  hint: "A fake swarm, wandering. Raise the count to see what a thousand looks like.",
-  inputs: [],
-  controls: [
-    { id: "placement", type: "select", label: "Start", options: ["grid", "random"], value: "grid" },
-    { id: "rate", type: "select", label: "Update rate", options: ["frame", "mari"], value: "frame" },
-    { id: "drain", type: "slider", label: "Battery drain", min: 1, max: 20, step: 1, value: 1, unit: "x" },
-    { id: "reseed", type: "button", label: "Scatter again" },
-  ],
-  overlay: false,
-  positions: false,
-  protected: false,
-  ui: null,
-  builtin: true,
-};
-
-export const BUILTINS: AppAnnouncement[] = [DRIVE, SHOWCASE];
+export const BUILTINS: AppAnnouncement[] = [DRIVE];
 
 /** The arrival radius every demo that holds a formation declares, mm. */
 const arriveSlider = (value: number): ControlDecl => ({
