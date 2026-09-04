@@ -614,7 +614,7 @@ export const Playground: React.FC = () => {
       title={a.hint}
       style={{
         display: "flex",
-        alignItems: "center",
+        alignItems: mobile ? "center" : "flex-start",
         gap: 8,
         padding: "6px 9px",
         borderRadius: 7,
@@ -631,17 +631,36 @@ export const Playground: React.FC = () => {
           width: 6,
           height: 6,
           flex: "none",
+          marginTop: mobile ? 0 : 5,
           borderRadius: "50%",
           background: a.builtin ? "var(--muted)" : "var(--s-Running)",
         }}
       />
-      <span style={{ flex: 1 }}>{a.title}</span>
-      {a.ui && <span style={{ fontSize: 10 }}>&#8599;</span>}
-      {!mobile && (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>
-          {i + 1}
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ flex: 1 }}>{a.title}</span>
+          {a.ui && <span style={{ fontSize: 10 }}>&#8599;</span>}
+          {!mobile && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>
+              {i + 1}
+            </span>
+          )}
         </span>
-      )}
+        {!mobile && (
+          <span
+            style={{
+              display: "block",
+              marginTop: 2,
+              fontSize: 11,
+              lineHeight: 1.3,
+              whiteSpace: "normal",
+              color: "var(--muted)",
+            }}
+          >
+            {a.hint}
+          </span>
+        )}
+      </span>
     </div>
   );
 
@@ -793,7 +812,7 @@ export const Playground: React.FC = () => {
         {!mobile && (
           <div
             style={{
-              width: 168,
+              width: 208,
               flex: "none",
               padding: 10,
               overflowY: "auto",
