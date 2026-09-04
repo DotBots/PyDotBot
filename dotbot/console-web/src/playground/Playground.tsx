@@ -157,6 +157,10 @@ export const Playground: React.FC = () => {
     const n = Number(new URLSearchParams(window.location.search).get("n"));
     return Number.isFinite(n) && n > 0 ? Math.max(10, Math.min(1000, Math.round(n))) : 200;
   });
+  // The slider shows its draft while it is dragged and reseeds the world only
+  // on release: every step would otherwise rebuild the fleet under the thumb.
+  const [countDraft, setCountDraft] = useState(fakeCount);
+  const commitCount = useCallback(() => setFakeCount(countDraft), [countDraft]);
   const fake = useFakeWorld(!onController, fakeCount, "grid", onOut);
 
   const poseRef = useRef<Float32Array>(EMPTY);
@@ -764,13 +768,16 @@ export const Playground: React.FC = () => {
               min={10}
               max={1000}
               step={10}
-              value={fakeCount}
-              onChange={(e) => setFakeCount(Number(e.target.value))}
+              value={countDraft}
+              onChange={(e) => setCountDraft(Number(e.target.value))}
+              onPointerUp={commitCount}
+              onKeyUp={commitCount}
+              onBlur={commitCount}
               aria-label="Bots"
               style={{ flex: "1 1 auto", minWidth: 60, maxWidth: 720, accentColor: "var(--accent)" }}
             />
             <span style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
-              {fakeCount} bots
+              {countDraft} bots
             </span>
             <button
               type="button"
