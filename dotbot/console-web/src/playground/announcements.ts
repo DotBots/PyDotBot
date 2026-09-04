@@ -20,7 +20,6 @@ export const SHOWCASE: AppAnnouncement = {
   hint: "A fake swarm, wandering. Raise the count to see what a thousand looks like.",
   inputs: [],
   controls: [
-    { id: "bots", type: "slider", label: "Bots", min: 10, max: 1000, step: 10, value: 200 },
     { id: "placement", type: "select", label: "Start", options: ["grid", "random"], value: "grid" },
     { id: "rate", type: "select", label: "Update rate", options: ["frame", "mari"], value: "frame" },
     { id: "drain", type: "slider", label: "Battery drain", min: 1, max: 20, step: 1, value: 1, unit: "x" },
@@ -104,7 +103,7 @@ export const SAMPLE_APPS: AppAnnouncement[] = [
         options: ["ring", "double ring", "spiral", "pulse", "wave"],
         value: "ring",
       },
-      { id: "tempo", type: "slider", label: "Tempo", min: 10, max: 200, step: 5, value: 100, unit: "%" },
+      { id: "tempo", type: "slider", label: "Tempo", min: 10, max: 800, step: 5, value: 100, unit: "%" },
       { id: "play", type: "button", label: "Play / pause" },
       arriveSlider(100),
     ],

@@ -146,15 +146,17 @@ export const Playground: React.FC = () => {
 
   const [values, setValues] = useState<Record<string, ControlValues>>(() => {
     const v = initialValuesByApp([...BUILTINS, ...SAMPLE_APPS]);
-    const n = Number(params.get("n"));
-    if (Number.isFinite(n) && n > 0) v.showcase.bots = Math.max(10, Math.min(1000, Math.round(n)));
     const drain = Number(params.get("drain"));
     if (Number.isFinite(drain) && drain > 0) v.showcase.drain = Math.min(20, Math.round(drain));
     return v;
   });
 
   const showcase = values.showcase;
-  const fakeCount = Number(showcase.bots);
+  // The fake fleet's size is the page's, not any app's: every demo runs at it.
+  const [fakeCount, setFakeCount] = useState(() => {
+    const n = Number(new URLSearchParams(window.location.search).get("n"));
+    return Number.isFinite(n) && n > 0 ? Math.max(10, Math.min(1000, Math.round(n))) : 200;
+  });
   const placement = String(showcase.placement) as "grid" | "random";
   const rate = String(showcase.rate) as RatePreset;
 
@@ -747,9 +749,27 @@ export const Playground: React.FC = () => {
           <span style={{ fontSize: 11, color: "var(--muted)" }}>{NEEDS[world]}</span>
         )}
         <div style={{ flex: 1 }} />
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
-          {botsSeen} bots
-        </span>
+        {onController ? (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
+            {botsSeen} bots
+          </span>
+        ) : (
+          <label
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}
+          >
+            <input
+              type="range"
+              min={10}
+              max={1000}
+              step={10}
+              value={fakeCount}
+              onChange={(e) => setFakeCount(Number(e.target.value))}
+              aria-label="Bots"
+              style={{ width: mobile ? 70 : 120, accentColor: "var(--accent)" }}
+            />
+            <span style={{ fontFamily: "var(--font-mono)" }}>{fakeCount} bots</span>
+          </label>
+        )}
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>
           {fps} fps
         </span>
@@ -797,6 +817,21 @@ export const Playground: React.FC = () => {
           }}
         >
           {apps.map(railEntry)}
+        </div>
+      )}
+      {mobile && (
+        <div
+          style={{
+            flex: "none",
+            padding: "5px 10px",
+            fontSize: 11,
+            lineHeight: 1.3,
+            color: "var(--muted)",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--hairline)",
+          }}
+        >
+          {app.hint}
         </div>
       )}
 

@@ -383,7 +383,8 @@ export const Arena: React.FC<ArenaProps> = (props) => {
     } else if (props.inputMode === "goals") {
       startGoals(p, at, e.shiftKey);
     } else if (props.inputMode === "rects") {
-      startRects(p, at, e.shiftKey);
+      // A finger has no shift key: on touch, dragging on empty arena draws.
+      startRects(p, at, e.shiftKey || e.pointerType === "touch");
     }
   };
 
