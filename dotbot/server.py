@@ -19,7 +19,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 from starlette.background import BackgroundTask
@@ -481,6 +481,12 @@ async def mrta_proxy(path: str, request: Request):
             if k.lower() in ("content-type", "cache-control")
         },
     )
+
+
+@api.get("/playground", include_in_schema=False)
+async def playground():
+    """The playground page, which the console build emits inside its own folder."""
+    return RedirectResponse("/console/playground/")
 
 
 # Mount static files after all routes are defined

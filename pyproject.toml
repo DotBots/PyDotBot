@@ -94,9 +94,14 @@ calibrate = [
     "opencv-python    >= 4.12.0.88",
     "textual          >= 6.4.0",
 ]
+# The letters playground demo rasterises text with Pillow.
+letters = [
+    "pillow           >= 10.1.0",
+]
 all = [
     "opencv-python    >= 4.12.0.88",
     "textual          >= 6.4.0",
+    "pillow           >= 10.1.0",
 ]
 dev = [
     "pytest",

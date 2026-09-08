@@ -1,4 +1,6 @@
 /// <reference types="vitest" />
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -18,6 +20,16 @@ export default defineConfig({
   // controller; the dev server stays at /. API paths are absolute either way.
   base: "./",
   plugins: [react()],
+  // Two entries, one build: the console at dist/index.html and the playground
+  // at dist/playground/index.html, sharing the asset chunks.
+  build: {
+    rollupOptions: {
+      input: {
+        console: fileURLToPath(new URL("./index.html", import.meta.url)),
+        playground: fileURLToPath(new URL("./playground/index.html", import.meta.url)),
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -37,6 +49,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // A .tsx test renders a component to static markup, which needs no DOM.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

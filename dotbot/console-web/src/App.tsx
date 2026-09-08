@@ -273,6 +273,23 @@ export const App: React.FC = () => {
           <span style={{ fontSize: 11, color: "var(--muted)" }}>&middot; {bots.length} bots</span>
         </div>
         <div style={{ flex: 1 }} />
+        {/* Relative, so it resolves both at / in dev and at /console/ in the build. */}
+        <a
+          href="playground/"
+          target="_blank"
+          rel="noreferrer"
+          title="Demo pages driven by scripts on the broker"
+          style={{
+            fontSize: 12,
+            fontWeight: 500,
+            color: "var(--muted)",
+            border: "1px solid var(--hairline)",
+            borderRadius: 7,
+            padding: "4px 10px",
+          }}
+        >
+          Playground &#8599;
+        </a>
         <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />
         {/* theme: Dark | Light segmented (v1) */}
         <div

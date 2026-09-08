@@ -12,12 +12,24 @@ export const BOT_GLYPH_BOX = 48;
 // callers matching the glyph to a real-world footprint.
 export const BOT_GLYPH_SPAN = (BOT_GLYPH_BOX * 25) / 32;
 
-const BOARD =
+// Geometry in the 32-unit nose-up box, exported so a canvas renderer draws the
+// same robot as the SVG marker.
+export const BOARD =
   "M-10.7,-11.9 L10.7,-11.9 Q12,-11.9 12,-10.6 L12,-2.4 Q12,-1.1 10.7,-1.1 " +
   "L6.9,-1.1 L6.9,10.6 Q6.9,11.9 5.6,11.9 L-5.6,11.9 Q-6.9,11.9 -6.9,10.6 " +
   "L-6.9,-1.1 L-10.7,-1.1 Q-12,-1.1 -12,-2.4 L-12,-10.6 Q-12,-11.9 -10.7,-11.9 Z";
 
+export const TYRES = [
+  { x: -12.5, y: 0.2, w: 5.4, h: 11.3, r: 1.7 },
+  { x: 7.1, y: 0.2, w: 5.4, h: 11.3, r: 1.7 },
+];
+
 const TREAD_Y = [2.2, 5.3, 8.4];
+
+export const TREADS = TREAD_Y.flatMap((y) => [
+  { x: -11.9, y, w: 4.2, h: 1.1, r: 0.55 },
+  { x: 7.7, y, w: 4.2, h: 1.1, r: 0.55 },
+]);
 
 interface BotGlyphProps {
   color: string;
@@ -45,15 +57,13 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ color, heading, size = BOT_G
     ) : (
       <>
         <g fill="var(--tyre)">
-          <rect x="-12.5" y="0.2" width="5.4" height="11.3" rx="1.7" />
-          <rect x="7.1" y="0.2" width="5.4" height="11.3" rx="1.7" />
+          {TYRES.map((t) => (
+            <rect key={t.x} x={t.x} y={t.y} width={t.w} height={t.h} rx={t.r} />
+          ))}
         </g>
         <g fill="#000" opacity={0.52}>
-          {TREAD_Y.map((y) => (
-            <React.Fragment key={y}>
-              <rect x="-11.9" y={y} width="4.2" height="1.1" rx="0.55" />
-              <rect x="7.7" y={y} width="4.2" height="1.1" rx="0.55" />
-            </React.Fragment>
+          {TREADS.map((t) => (
+            <rect key={`${t.x},${t.y}`} x={t.x} y={t.y} width={t.w} height={t.h} rx={t.r} />
           ))}
         </g>
         <path d={BOARD} fill={color} />

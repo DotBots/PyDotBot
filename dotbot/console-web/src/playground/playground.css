@@ -1,0 +1,9 @@
+/* The map is something a finger rests on and drags across, so a drag on it
+   must not start a text selection or raise the iOS long-press callout. The
+   rest of the page stays selectable. */
+.pg-root canvas,
+.pg-stick {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
