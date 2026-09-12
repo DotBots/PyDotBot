@@ -104,6 +104,12 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
 
 
+class DotBotAreaRequestModel(BaseModel):
+    """The areas to show, each a name, a "+"-joined composite or x,y,w,h in mm."""
+
+    area: List[str] = []
+
+
 class DotBotCalibrationReadsModel(BaseModel):
     """How many reads one station contributed to one point."""
 
@@ -302,6 +308,7 @@ class DotBotNotificationCommand(IntEnum):
     PIN_CODE_UPDATE: int = 3
     NEW_DOTBOT: int = 4
     CALIBRATION_SESSION_UPDATE: int = 5
+    AREA_UPDATE: int = 6
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -330,6 +337,8 @@ class DotBotNotificationModel(BaseModel):
     pin_code: Optional[int] = None
     # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
     calibration_session: Optional[DotBotCalibrationSessionModel] = None
+    # Carried by AREA_UPDATE: the areas shown after the change.
+    areas: Optional[List[DotBotAreaModel]] = None
 
 
 class WSBase(BaseModel):

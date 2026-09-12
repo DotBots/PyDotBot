@@ -536,6 +536,22 @@ class _StubController:
         self.areas = [site.areas["arena"]]
         self.notifications: list = []
 
+    async def set_areas(self, specs):
+        from dotbot.models import (
+            DotBotAreaModel,
+            DotBotNotificationCommand,
+            DotBotNotificationModel,
+        )
+
+        self.areas = self.site.registry().resolve_all(specs) or [self.site.extent]
+        self.notifications.append(
+            DotBotNotificationModel(
+                cmd=DotBotNotificationCommand.AREA_UPDATE,
+                areas=[DotBotAreaModel(**a.as_dict()) for a in self.areas],
+            )
+        )
+        return self.areas
+
 
 @pytest.fixture
 def rest():
@@ -619,3 +635,39 @@ async def test_points_that_do_not_span_are_refused_with_the_span_rule(rest):
     )
     assert response.status_code == 409
     assert "Span the area you will drive in" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_the_area_routes_round_trip_names_and_a_literal_rectangle(rest):
+    http, controller, _ = rest
+
+    assert (await http.get("/controller/area")).json() == [
+        {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"}
+    ]
+
+    body = (
+        await http.put(
+            "/controller/area", json={"area": ["annex", "1000,0,1000,1000"]}
+        )
+    ).json()
+    assert body == [
+        {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"},
+        {"x": 1000, "y": 0, "w": 1000, "h": 1000, "name": "1000,0,1000,1000"},
+    ]
+    assert (await http.get("/controller/area")).json() == body
+
+    # One notification carries the areas shown after the change.
+    assert len(controller.notifications) == 1
+    assert controller.notifications[0].cmd == 6
+    assert [a.name for a in controller.notifications[0].areas] == [
+        "annex",
+        "1000,0,1000,1000",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_area_name_says_which_site_was_searched(rest):
+    http, _, _ = rest
+    response = await http.put("/controller/area", json={"area": ["balcony"]})
+    assert response.status_code == 422
+    assert "site 'c405-arena' defines" in response.json()["detail"]

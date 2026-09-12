@@ -30,6 +30,7 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotAreaModel,
+    DotBotAreaRequestModel,
     DotBotBackgroundMapModel,
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPushedModel,
@@ -300,6 +301,22 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
 async def area():
     """Areas-shown HTTP GET handler."""
     return [DotBotAreaModel(**a.as_dict()) for a in api.controller.areas]
+
+
+@api.put(
+    path="/controller/area",
+    response_model=List[DotBotAreaModel],
+    response_model_exclude_none=True,
+    summary="Replace the areas shown, in frame millimetres",
+    tags=["controller"],
+)
+async def area_replace(request: DotBotAreaRequestModel):
+    """Areas-shown HTTP PUT handler."""
+    try:
+        areas = await api.controller.set_areas(list(request.area))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return [DotBotAreaModel(**a.as_dict()) for a in areas]
 
 
 @api.get(

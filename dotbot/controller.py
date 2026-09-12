@@ -55,6 +55,7 @@ from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
+    DotBotAreaModel,
     DotBotCalibrationSessionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -71,7 +72,7 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.area import fallback_area
+from dotbot.area import Area, fallback_area
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.server import api, default_ui_path
@@ -639,6 +640,24 @@ class Controller:
                 ),
             )
         )
+
+    async def set_areas(self, specs: List[str]) -> List[Area]:
+        """Replace the areas shown, and say so on the WebSocket.
+
+        An area never reaches a robot, so this is a state change plus a
+        re-render: no calibration file is touched and nothing is recaptured.
+        """
+        if specs:
+            self.areas = self.site.registry().resolve_all(specs)
+        else:
+            self.areas = [self.site.extent or fallback_area(self.site.name)]
+        await self.notify_clients(
+            DotBotNotificationModel(
+                cmd=DotBotNotificationCommand.AREA_UPDATE,
+                areas=[DotBotAreaModel(**a.as_dict()) for a in self.areas],
+            )
+        )
+        return self.areas
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
