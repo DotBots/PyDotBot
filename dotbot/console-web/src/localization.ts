@@ -24,6 +24,14 @@ export function minimapLabel(site: Site | null, areas: Area[]): string {
   return `SITE ${name} · ${extentLabel(site)} · showing ${areasShownLabel(areas)}`;
 }
 
+/** The same label split in two, for a column too narrow for one line. */
+export function minimapLines(site: Site | null, areas: Area[]): [string, string] {
+  return [
+    `SITE ${site?.name || "unknown"} · ${extentLabel(site)}`,
+    `showing ${areasShownLabel(areas)}`,
+  ];
+}
+
 export interface Coverage {
   /** The id the robots report, when every robot that reports one agrees. */
   id: string;

@@ -1,23 +1,35 @@
 import React, { useRef } from "react";
 
 import { areaToFraction } from "./frame";
+import { minimapLines } from "./localization";
 import { stateColor } from "./viewChrome";
 
 import { Camera, clampCam, ViewGeom } from "./MapView";
-import { Area, UnifiedBot } from "./types";
+import { Area, Site, UnifiedBot } from "./types";
 
 interface MinimapProps {
   bots: UnifiedBot[];
+  /** The part of the frame the map draws, which the box tracks. */
   viewport: Area;
+  site: Site | null;
+  activeAreas: Area[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
 }
 
-// Whole-arena overview with the current map viewport as a rectangle.
-// Dragging moves the camera (the design pans through here). The arena box
-// keeps the real arena aspect ratio - a 2000x2000 arena is a square.
-export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, geom }) => {
+// The whole site, with every area as a faint outline and the current map
+// viewport as a box. It says where the operator is rather than following
+// them, so it does not zoom with the viewport; dragging moves the camera.
+export const Minimap: React.FC<MinimapProps> = ({
+  bots,
+  viewport,
+  site,
+  activeAreas,
+  cam,
+  setCam,
+  geom,
+}) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -49,11 +61,35 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
   };
 
   const rect = viewportRect();
+  const shown = new Set(activeAreas.map((a) => a.name ?? "").filter(Boolean));
+  // The whole site, never the viewport: the box below is what moves.
+  const box: Area = site?.extent_mm
+    ? { x: 0, y: 0, w: site.extent_mm[0], h: site.extent_mm[1] }
+    : viewport;
+  // viewportRect speaks fractions of the drawn viewport; the minimap draws
+  // the site, so the box has to be re-expressed against it.
+  const onBox = (fraction: number, axis: "x" | "y") => {
+    const frame =
+      axis === "x"
+        ? viewport.x + fraction * viewport.w
+        : viewport.y + fraction * viewport.h;
+    return axis === "x" ? (frame - box.x) / box.w : (frame - box.y) / box.h;
+  };
+  const areaBox = (a: Area) => {
+    const tl = areaToFraction({ x: a.x, y: a.y }, box);
+    const br = areaToFraction({ x: a.x + a.w, y: a.y + a.h }, box);
+    return {
+      left: `${tl.fx * 100}%`,
+      top: `${tl.fy * 100}%`,
+      width: `${(br.fx - tl.fx) * 100}%`,
+      height: `${(br.fy - tl.fy) * 100}%`,
+    };
+  };
 
   return (
     <div
       style={{
-        width: 196,
+        width: 214,
         flex: "none",
         background: "var(--surface)",
         padding: 12,
@@ -62,8 +98,21 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
         gap: 6,
       }}
     >
-      <div style={{ fontSize: 10, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)" }}>
-        Site &middot; {viewport.w}&times;{viewport.h}mm
+      <div style={{ fontSize: 9.5, lineHeight: 1.4, letterSpacing: ".4px", color: "var(--muted)" }}>
+        {minimapLines(site, activeAreas).map((line, i) => (
+          <div
+            key={i}
+            style={{
+              textTransform: "uppercase",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={line}
+          >
+            {line}
+          </div>
+        ))}
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
         <div
@@ -78,7 +127,7 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
           onPointerUp={() => (dragging.current = false)}
           style={{
             position: "relative",
-            aspectRatio: `${viewport.w} / ${viewport.h}`,
+            aspectRatio: `${box.w} / ${box.h}`,
             height: "100%",
             maxWidth: "100%",
             background: "var(--canvas)",
@@ -92,6 +141,18 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
         userSelect: "none",
           }}
         >
+          {(site?.areas ?? []).map((a) => (
+            <div
+              key={`mini-${a.name}`}
+              style={{
+                position: "absolute",
+                ...areaBox(a),
+                border: `1px ${shown.has(a.name ?? "") ? "solid" : "dashed"} var(--hairline)`,
+                background: shown.has(a.name ?? "") ? "rgba(228,3,46,.05)" : "transparent",
+                pointerEvents: "none",
+              }}
+            />
+          ))}
           {bots
             .filter((b) => b.position)
             .map((b) => (
@@ -99,8 +160,8 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
                 key={b.id}
                 style={{
                   position: "absolute",
-                  left: `${areaToFraction(b.position!, viewport).fx * 100}%`,
-                  top: `${areaToFraction(b.position!, viewport).fy * 100}%`,
+                  left: `${areaToFraction(b.position!, box).fx * 100}%`,
+                  top: `${areaToFraction(b.position!, box).fy * 100}%`,
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
@@ -114,10 +175,10 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, g
             <div
               style={{
                 position: "absolute",
-                left: `${rect.x0 * 100}%`,
-                top: `${rect.y0 * 100}%`,
-                width: `${(rect.x1 - rect.x0) * 100}%`,
-                height: `${(rect.y1 - rect.y0) * 100}%`,
+                left: `${onBox(rect.x0, "x") * 100}%`,
+                top: `${onBox(rect.y0, "y") * 100}%`,
+                width: `${(onBox(rect.x1, "x") - onBox(rect.x0, "x")) * 100}%`,
+                height: `${(onBox(rect.y1, "y") - onBox(rect.y0, "y")) * 100}%`,
                 border: "1px solid var(--accent)",
                 background: "rgba(228,3,46,.06)",
                 pointerEvents: "none",

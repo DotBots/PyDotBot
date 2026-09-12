@@ -6,7 +6,7 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { Area, BotState, LH2Position, LINK_LABEL, STATE_ORDER, UnifiedBot } from "./types";
+import { Area, BotState, LH2Position, LINK_LABEL, STATE_ORDER, Site, UnifiedBot } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -36,6 +36,8 @@ interface FooterProps {
   bots: UnifiedBot[];
   flashQueue: Record<string, FlashJob>;
   viewport: Area;
+  site: Site | null;
+  activeAreas: Area[];
   selection: Set<string>;
   pendingWaypoints: LH2Position[];
   cam: Camera;
@@ -341,7 +343,15 @@ export const Footer: React.FC<FooterProps> = (props) => {
         borderTop: "1px solid var(--hairline)",
       }}
     >
-      <Minimap bots={props.bots} viewport={props.viewport} cam={props.cam} setCam={props.setCam} geom={props.geom} />
+      <Minimap
+        bots={props.bots}
+        viewport={props.viewport}
+        site={props.site}
+        activeAreas={props.activeAreas}
+        cam={props.cam}
+        setCam={props.setCam}
+        geom={props.geom}
+      />
 
       <div style={{ flex: 1, background: "var(--surface)", position: "relative" }}>
         {/* NONE: fleet rollup (all states, zero-count rows dimmed, per v1) */}

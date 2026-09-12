@@ -534,6 +534,8 @@ export const App: React.FC = () => {
         bots={bots}
         flashQueue={orch.queue}
         viewport={viewport}
+        site={site}
+        activeAreas={activeAreas}
         selection={selection}
         pendingWaypoints={pending}
         cam={cam}

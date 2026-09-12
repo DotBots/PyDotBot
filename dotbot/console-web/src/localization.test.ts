@@ -6,6 +6,7 @@ import {
   coverageLabel,
   extentLabel,
   minimapLabel,
+  minimapLines,
   stationRows,
   stationsSummary,
 } from "./localization";
@@ -95,6 +96,13 @@ describe("the areas shown", () => {
 });
 
 describe("the footer minimap label", () => {
+  it("splits in two for a column too narrow for one line", () => {
+    expect(minimapLines(C405, [ARENA])).toEqual([
+      "SITE c405-arena · 3330 x 4000 mm",
+      "showing arena",
+    ]);
+  });
+
   it("names the site, its extent and what is shown", () => {
     expect(minimapLabel(C405, [ARENA, DEV])).toBe(
       "SITE c405-arena · 3330 x 4000 mm · showing arena, dev-corner",
