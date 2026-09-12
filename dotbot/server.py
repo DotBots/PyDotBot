@@ -7,7 +7,7 @@
 
 import base64
 import os
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 import httpx
 from fastapi import (
@@ -31,6 +31,12 @@ from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotAreaModel,
     DotBotBackgroundMapModel,
+    DotBotCalibrationCaptureModel,
+    DotBotCalibrationPushedModel,
+    DotBotCalibrationSavedModel,
+    DotBotCalibrationSaveModel,
+    DotBotCalibrationSessionModel,
+    DotBotCalibrationStartModel,
     DotBotConnectionModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -46,6 +52,7 @@ from dotbot.models import (
     WSRgbLed,
     WSWaypoints,
 )
+from dotbot.swarm_client import conn_string
 from dotbot.protocol import (
     ApplicationType,
     PayloadCommandMoveRaw,
@@ -315,6 +322,101 @@ async def site():
     )
 
 
+@api.post(
+    path="/controller/calibration/session",
+    response_model=DotBotCalibrationSessionModel,
+    summary="Open a calibration session over a set of resolved points",
+    tags=["calibration"],
+)
+async def calibration_session_start(request: DotBotCalibrationStartModel):
+    """Calibration-session HTTP POST handler."""
+    specs = (
+        [request.points] if isinstance(request.points, str) else list(request.points)
+    )
+    return await _calibration(
+        api.controller.calibration_session.start(specs, request.device)
+    )
+
+
+@api.get(
+    path="/controller/calibration/session/state",
+    response_model=Optional[DotBotCalibrationSessionModel],
+    summary="Return the calibration session, or null when there is none",
+    tags=["calibration"],
+)
+async def calibration_session_state():
+    """Calibration-session state HTTP GET handler."""
+    return api.controller.calibration_session.state()
+
+
+@api.post(
+    path="/controller/calibration/session/capture",
+    response_model=DotBotCalibrationSessionModel,
+    summary="Capture the outstanding point from one robot",
+    tags=["calibration"],
+)
+async def calibration_session_capture(request: DotBotCalibrationCaptureModel):
+    """Calibration-capture HTTP POST handler."""
+    return await _calibration(
+        api.controller.calibration_session.capture(request.device)
+    )
+
+
+@api.post(
+    path="/controller/calibration/session/redo",
+    response_model=DotBotCalibrationSessionModel,
+    summary="Discard the last captured point's reads and re-open it",
+    tags=["calibration"],
+)
+async def calibration_session_redo():
+    """Calibration-redo HTTP POST handler."""
+    return await _calibration(api.controller.calibration_session.redo())
+
+
+@api.post(
+    path="/controller/calibration/session/save",
+    response_model=DotBotCalibrationSavedModel,
+    summary="Solve the session and write its schema 2 calibration file",
+    tags=["calibration"],
+)
+async def calibration_session_save(request: DotBotCalibrationSaveModel):
+    """Calibration-save HTTP POST handler."""
+    return await _calibration(api.controller.calibration_session.save(request.tag))
+
+
+@api.post(
+    path="/controller/calibration/session/push",
+    response_model=DotBotCalibrationPushedModel,
+    summary="Send the saved calibration to the robots over the air",
+    tags=["calibration"],
+)
+async def calibration_session_push():
+    """Calibration-push HTTP POST handler."""
+    return await _calibration(api.controller.calibration_session.push())
+
+
+@api.delete(
+    path="/controller/calibration/session",
+    summary="Abandon the calibration session without writing anything",
+    tags=["calibration"],
+)
+async def calibration_session_abandon():
+    """Calibration-session HTTP DELETE handler."""
+    return await api.controller.calibration_session.abandon()
+
+
+async def _calibration(awaitable):
+    """Turn a session's refusals into a status a client can render as a line."""
+    from dotbot.calibration.session import SessionError
+
+    try:
+        return await awaitable
+    except SessionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @api.get(
     path="/controller/connection",
     response_model=DotBotConnectionModel,
@@ -324,16 +426,9 @@ async def site():
 async def connection():
     """Connection HTTP GET handler."""
     settings = api.controller.settings
-    if settings.adapter == "cloud":
-        scheme = "mqtts" if settings.mqtt_use_tls else "mqtt"
-        conn = f"{scheme}://{settings.mqtt_host}:{settings.mqtt_port}"
-    elif settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
-        conn = "simulator"
-    else:
-        conn = settings.port
     return DotBotConnectionModel(
         adapter=settings.adapter,
-        connection=conn,
+        connection=conn_string(settings),
         swarm_id=settings.network_id,
         gw_address=settings.gw_address,
     )
