@@ -625,10 +625,25 @@ class Controller:
         return sorted(stale)
 
     def _swarmit_client(self, device: str = ""):
-        """A swarmit client on the same connection the controller runs on."""
+        """A swarmit client on the same connection the controller runs on.
+
+        There is no fleet behind a simulator adapter, so a capture would
+        stall on its first request; the simulated client answers it instead,
+        which is what makes calibration mode walkable without hardware.
+        """
+        if self.settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+            from dotbot.calibration.simulated import SimulatedCaptureClient
+
+            return SimulatedCaptureClient(device, self._outstanding_point)
         return build_swarmit_client(
             conn_string(self.settings), self.settings.network_id, device or None
         )
+
+    def _outstanding_point(self):
+        """The frame coordinates the session is capturing, for the simulator."""
+        session = self.calibration_session.session
+        point = session.outstanding if session else None
+        return None if point is None else point.mm
 
     async def _notify_calibration_session(self, state):
         """One notification per calibration-session state change."""

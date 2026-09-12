@@ -671,3 +671,55 @@ async def test_an_unknown_area_name_says_which_site_was_searched(rest):
     response = await http.put("/controller/area", json={"area": ["balcony"]})
     assert response.status_code == 422
     assert "site 'c405-arena' defines" in response.json()["detail"]
+
+
+# --- rehearsing without a fleet ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_simulated_client_answers_the_point_the_session_is_asking_about(
+    monkeypatch, tmp_path
+):
+    """A controller on the simulator walks the whole mode and solves.
+
+    The counts are computed from the declared point, so they agree with it
+    by construction: this rehearses the surface, it does not validate one.
+    """
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    from dotbot.calibration.simulated import SimulatedCaptureClient
+
+    holder: dict = {}
+    driver = SessionDriver(
+        client_factory=lambda device: SimulatedCaptureClient(
+            device,
+            lambda: (
+                holder["driver"].session.outstanding.mm
+                if holder["driver"].session
+                and holder["driver"].session.outstanding is not None
+                else None
+            ),
+        ),
+        notify=_noop,
+        site=C405,
+        stream_factory=lambda c, device, on_idle: CaptureSession(
+            c, device, _TAG, on_idle_records=on_idle
+        ),
+    )
+    holder["driver"] = driver
+    monkeypatch.setattr("dotbot.calibration.simulated._SAMPLE_TAG", _TAG)
+
+    await driver.start(["arena:corners"])
+    driver.session.reads = 3
+    driver.session.timeout = 2.0
+    driver.session.retries = 0
+    for _ in range(4):
+        await driver.capture("ABCD")
+
+    saved = await driver.save()
+    stations = saved["session"]["stations"]
+    assert [s["index"] for s in stations] == [0, 1]
+    assert all(s["residual_mm"] < 1.0 for s in stations)
+
+
+async def _noop(_state):
+    return None
