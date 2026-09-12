@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchConnection, putWaypoints } from "./api";
+import { fetchConnection, putArea, putWaypoints } from "./api";
+import { isPhoneWidth } from "./calibration";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
-import { Inspector } from "./Inspector";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
+import { RightPane, RightTab } from "./RightPane";
+import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   ControllerConnection,
   LH2Position,
   PlannedMission,
 } from "./types";
+import { useCalibration } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
@@ -22,7 +25,9 @@ const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, site, activeAreas, viewport, wsUp } = useFleet();
+  const { bots, site, activeAreas, setActiveAreas, session, setSession, viewport, wsUp } =
+    useFleet();
+  const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -61,7 +66,6 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
-  const [layersOpen, setLayersOpen] = useState(false);
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
     waypoints: true,
@@ -71,8 +75,39 @@ export const App: React.FC = () => {
     trails: false,
     crashedOnly: false,
   });
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  // The robot chosen to capture: clicked on the map, or typed in the card.
+  const [capturer, setCapturer] = useState("");
+  const [rightTab, setRightTab] = useState<RightTab>("layers");
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [conn, setConn] = useState<ControllerConnection | null>(null);
+
+  // Below this width the step card is the whole screen: calibration day
+  // happens on the floor, and the console does not reflow - at 390 px the
+  // rail panel alone would take 340 of them.
+  const [narrow, setNarrow] = useState(() => isPhoneWidth(window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setNarrow(isPhoneWidth(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // The areas shown live on the controller, so a toggle is a PUT and the
+  // notification it broadcasts is what redraws every open console.
+  const onAreasChange = useCallback(
+    (names: string[]) => {
+      putArea(names)
+        .then((list) => setActiveAreas(list.length > 0 ? list : activeAreas))
+        .catch(() => showToast("The controller refused that area"));
+    },
+    [activeAreas, setActiveAreas, showToast],
+  );
+
+  const onCalibrate = useCallback(() => {
+    const names = activeAreas.map((a) => a.name).filter(Boolean) as string[];
+    const points = names.length ? `${names[0]}:corners` : "arena:corners";
+    calibration.start([points]);
+    setRightCollapsed(false);
+  }, [activeAreas, calibration]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
@@ -201,6 +236,53 @@ export const App: React.FC = () => {
     { key: "trails", label: "Trails" },
     { key: "crashedOnly", label: "Only crashed bots" },
   ];
+
+  // On a phone the card is the whole screen: a small picture at the top so
+  // the operator knows which corner is next from a crouch, and Capture as
+  // the one large target.
+  if (narrow && session) {
+    return (
+      <div
+        data-theme={theme}
+        style={{
+          minHeight: "100vh",
+          width: "100%",
+          overflowX: "hidden",
+          background: "var(--canvas)",
+          color: "var(--text)",
+          fontFamily: "var(--font-ui)",
+          fontSize: 13,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            height: 44,
+            padding: "0 14px",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--hairline)",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 15 }}>DotBots</div>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            showing {activeAreas.map((a) => a.name).filter(Boolean).join(", ") || "the whole site"}
+          </span>
+        </div>
+        <StepCard
+          session={session}
+          calibration={calibration}
+          areaNames={activeAreas.map((a) => a.name ?? "").filter(Boolean)}
+          device={capturer || session.device || ""}
+          onDeviceChange={setCapturer}
+          phone
+          onDone={() => calibration.abandon()}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -332,6 +414,13 @@ export const App: React.FC = () => {
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
+          site={site}
+          activeAreas={activeAreas}
+          session={session}
+          calibrationBusy={calibration.busy}
+          calibrationError={calibration.error}
+          onCalibrate={onCalibrate}
+          onPushStale={() => calibration.push()}
         />
 
         {/* view area */}
@@ -356,6 +445,8 @@ export const App: React.FC = () => {
               onGeom={setGeom}
               onSelect={onSelect}
               onAddWaypoint={onAddWaypoint}
+              session={session}
+              onPickCapturer={(id) => setCapturer(id.toUpperCase())}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
@@ -363,42 +454,6 @@ export const App: React.FC = () => {
 
           {/* shared view switcher */}
           <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "center", zIndex: 12 }}>
-            <div
-              onClick={() => setInspectorOpen((v) => !v)}
-              title="Show the full device info for the selection"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 11px",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 12,
-                background: inspectorOpen ? "var(--elevated)" : "var(--surface)",
-                border: "1px solid var(--hairline)",
-              }}
-            >
-              &#9432;&nbsp;Info
-            </div>
-            {view === "map" && (
-              <div
-                onClick={() => setLayersOpen((v) => !v)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 11px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  background: layersOpen ? "var(--elevated)" : "var(--surface)",
-                  border: "1px solid var(--hairline)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,.3)",
-                }}
-              >
-                &#9636; Layers
-              </div>
-            )}
             <div
               style={{
                 display: "flex",
@@ -454,68 +509,25 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* layers panel */}
-          {layersOpen && view === "map" && (
-            <div
-              style={{
-                position: "absolute",
-                top: 52,
-                right: 12,
-                width: 178,
-                background: "var(--surface)",
-                border: "1px solid var(--hairline)",
-                borderRadius: 10,
-                padding: 10,
-                zIndex: 12,
-                boxShadow: "0 8px 30px rgba(0,0,0,.4)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", margin: "0 4px 6px" }}>
-                <span style={{ fontSize: 10, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)" }}>Layers</span>
-                <div style={{ flex: 1 }} />
-                <span onClick={() => setLayersOpen(false)} style={{ cursor: "pointer", color: "var(--muted)", fontSize: 14, lineHeight: 1 }}>
-                  &#10005;
-                </span>
-              </div>
-              {layerRows.map((l) => (
-                <div
-                  key={l.key}
-                  onClick={() => setLayers((prev) => ({ ...prev, [l.key]: !prev[l.key] }))}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "5px 4px",
-                    borderRadius: 5,
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: layers[l.key] ? "var(--text)" : "var(--muted)" }}>{l.label}</span>
-                  <span
-                    style={{
-                      width: 15,
-                      height: 15,
-                      borderRadius: 4,
-                      border: "1px solid var(--hairline)",
-                      background: layers[l.key] ? "var(--accent)" : "transparent",
-                      color: "#fff",
-                      fontSize: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {layers[l.key] ? "✓" : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-        {inspectorOpen && (
-          <Inspector bots={selectedBots} onClose={() => setInspectorOpen(false)} />
-        )}
+        <RightPane
+          tab={rightTab}
+          setTab={setRightTab}
+          collapsed={rightCollapsed}
+          setCollapsed={setRightCollapsed}
+          bots={selectedBots}
+          site={site}
+          activeAreas={activeAreas}
+          onAreasChange={onAreasChange}
+          layers={layers}
+          layerRows={layerRows}
+          onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          session={session}
+          calibration={calibration}
+          device={capturer || session?.device || ""}
+          onDeviceChange={setCapturer}
+          onCalibrationDone={() => calibration.abandon()}
+        />
       </div>
 
       <Footer

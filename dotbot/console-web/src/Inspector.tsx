@@ -84,12 +84,6 @@ export function infoText(bot: UnifiedBot): string {
   return out.join("\n");
 }
 
-const label: React.CSSProperties = {
-  fontSize: 9,
-  letterSpacing: ".5px",
-  textTransform: "uppercase",
-  color: "var(--muted)",
-};
 const mono: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 11 };
 
 const Row: React.FC<{ k: string; v: string; indent?: boolean; accent?: boolean }> = ({
@@ -239,46 +233,14 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
   );
 };
 
-export const Inspector: React.FC<{
-  bots: UnifiedBot[];
-  onClose: () => void;
-}> = ({ bots, onClose }) => (
-  <div
-    style={{
-      // Wide enough that a full version string ("bl   0.8.0rc3-87-gb8957de",
-      // the longest value here) fits the value column on one line.
-      width: 324,
-      flex: "none",
-      borderLeft: "1px solid var(--hairline)",
-      background: "var(--surface)",
-      display: "flex",
-      flexDirection: "column",
-      zIndex: 11,
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        padding: "12px 14px",
-        borderBottom: "1px solid var(--hairline)",
-      }}
-    >
-      <div style={{ ...label, flex: 1 }}>
-        Inspector{bots.length > 1 ? ` · ${bots.length} bots` : ""}
+export const InspectorBody: React.FC<{ bots: UnifiedBot[] }> = ({ bots }) => (
+  <div style={{ padding: 12 }}>
+    {bots.length === 0 ? (
+      <div style={{ ...mono, color: "var(--muted)", fontSize: 11 }}>
+        Select a bot to inspect it.
       </div>
-      <div onClick={onClose} title="Close inspector" style={{ cursor: "pointer", color: "var(--muted)" }}>
-        &times;
-      </div>
-    </div>
-    <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-      {bots.length === 0 ? (
-        <div style={{ ...mono, color: "var(--muted)", fontSize: 11 }}>
-          Select a bot to inspect it.
-        </div>
-      ) : (
-        bots.map((b) => <Card key={b.id} bot={b} />)
-      )}
-    </div>
+    ) : (
+      bots.map((b) => <Card key={b.id} bot={b} />)
+    )}
   </div>
 );

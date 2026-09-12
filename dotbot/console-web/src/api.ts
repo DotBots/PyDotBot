@@ -1,5 +1,8 @@
 import {
   Area,
+  CalibrationPushed,
+  CalibrationSaved,
+  CalibrationSession,
   ControllerConnection,
   LH2Position,
   PyDotBot,
@@ -22,6 +25,10 @@ export async function fetchDotBots(): Promise<PyDotBot[]> {
 export async function fetchArea(): Promise<Area[]> {
   const res = await fetch(`${CONTROLLER}/area`);
   return res.json();
+}
+
+export async function putArea(area: string[]): Promise<Area[]> {
+  return controllerJson(`${CONTROLLER}/area`, { method: "PUT", body: { area } });
 }
 
 export async function fetchSite(): Promise<Site> {
@@ -81,6 +88,71 @@ export async function putWaypoints(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ threshold, waypoints }),
   });
+}
+
+// --- the calibration session ----------------------------------------------
+//
+// The controller owns the loop and refuses what its state does not allow, so
+// its refusal message is what the card shows. Everything here throws that
+// message rather than a status code.
+
+const SESSION = `${CONTROLLER}/calibration/session`;
+
+async function controllerJson<T>(
+  url: string,
+  init: { method: string; body?: unknown } = { method: "GET" },
+): Promise<T> {
+  const res = await fetch(url, {
+    method: init.method,
+    ...(init.body === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(init.body),
+        }),
+  });
+  const text = await res.text();
+  const parsed = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    throw new Error(parsed?.detail ?? `${res.status} ${res.statusText}`);
+  }
+  return parsed as T;
+}
+
+export async function fetchCalibrationSession(): Promise<CalibrationSession | null> {
+  return controllerJson(`${SESSION}/state`);
+}
+
+export async function startCalibration(
+  points: string[],
+  device = "",
+): Promise<CalibrationSession> {
+  return controllerJson(SESSION, { method: "POST", body: { points, device } });
+}
+
+export async function captureCalibrationPoint(
+  device: string,
+): Promise<CalibrationSession> {
+  return controllerJson(`${SESSION}/capture`, {
+    method: "POST",
+    body: { device },
+  });
+}
+
+export async function redoCalibrationPoint(): Promise<CalibrationSession> {
+  return controllerJson(`${SESSION}/redo`, { method: "POST" });
+}
+
+export async function saveCalibration(tag = ""): Promise<CalibrationSaved> {
+  return controllerJson(`${SESSION}/save`, { method: "POST", body: { tag } });
+}
+
+export async function pushCalibration(): Promise<CalibrationPushed> {
+  return controllerJson(`${SESSION}/push`, { method: "POST" });
+}
+
+export async function abandonCalibration(): Promise<void> {
+  await controllerJson(SESSION, { method: "DELETE" });
 }
 
 export function controllerWsUrl(): string {

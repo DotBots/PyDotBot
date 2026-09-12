@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { controllerWsUrl, fetchArea, fetchDotBots, fetchSite, fetchSwarmitStatus } from "./api";
+import {
+  controllerWsUrl,
+  fetchArea,
+  fetchCalibrationSession,
+  fetchDotBots,
+  fetchSite,
+  fetchSwarmitStatus,
+} from "./api";
 import { siteViewport } from "./frame";
 import {
   Area,
   BotState,
+  CalibrationSession,
   LinkState,
   PyDotBot,
   STATE_ORDER,
@@ -95,6 +103,9 @@ export function useFleet(): {
   bots: UnifiedBot[];
   site: Site | null;
   activeAreas: Area[];
+  setActiveAreas: (areas: Area[]) => void;
+  session: CalibrationSession | null;
+  setSession: (session: CalibrationSession | null) => void;
   viewport: Area;
   wsUp: boolean;
 } {
@@ -103,6 +114,7 @@ export function useFleet(): {
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [activeAreas, setActiveAreas] = useState<Area[]>([DEFAULT_AREA]);
+  const [session, setSession] = useState<CalibrationSession | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
@@ -128,6 +140,11 @@ export function useFleet(): {
     fetchArea()
       .then((list) => setActiveAreas(list.length > 0 ? list : [DEFAULT_AREA]))
       .catch(() => {});
+    // A session outlives the browser tab: the controller owns it, so a
+    // reload rejoins the one in flight rather than starting over.
+    fetchCalibrationSession()
+      .then(setSession)
+      .catch(() => {});
   }, [reloadDotBots]);
 
   // Live updates over the controller WebSocket.
@@ -150,6 +167,15 @@ export function useFleet(): {
         try {
           msg = JSON.parse(ev.data);
         } catch {
+          return;
+        }
+        if (msg.cmd === 5) {
+          setSession(msg.calibration_session ?? null);
+          return;
+        }
+        if (msg.cmd === 6) {
+          const list = msg.areas ?? [];
+          setActiveAreas(list.length > 0 ? list : [DEFAULT_AREA]);
           return;
         }
         if (msg.cmd === 2 && msg.data?.address) {
@@ -213,5 +239,14 @@ export function useFleet(): {
 
   const viewport = siteViewport(site, activeAreas, DEFAULT_AREA);
 
-  return { bots, site, activeAreas, viewport, wsUp };
+  return {
+    bots,
+    site,
+    activeAreas,
+    setActiveAreas,
+    session,
+    setSession,
+    viewport,
+    wsUp,
+  };
 }

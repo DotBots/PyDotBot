@@ -1,10 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { CalibrationLayer } from "./CalibrationLayer";
 import { areaToFraction, fractionToArea } from "./frame";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
-import { Area, LH2Position, UnifiedBot } from "./types";
+import { Area, CalibrationSession, LH2Position, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 
 // Layer set mirrors the v1 design (Battery Bars / Waypoints / HotSpots /
@@ -60,6 +61,10 @@ interface MapViewProps {
   onGeom: (g: ViewGeom) => void;
   onSelect: (ids: string[], mode: "replace" | "toggle" | "add") => void;
   onAddWaypoint: (p: LH2Position) => void;
+  // Calibration mode: the rectangle being calibrated, drawn over the map.
+  // While it is open, clicking a robot chooses it as the capturer.
+  session?: CalibrationSession | null;
+  onPickCapturer?: (id: string) => void;
 }
 
 const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
@@ -291,17 +296,42 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 </span>
               </div>
             ))}
+          {props.session && (
+            <CalibrationLayer session={props.session} viewport={props.viewport} />
+          )}
           {props.activeAreas.map((a, i) => (
             <div
               key={`active-${a.name ?? i}`}
               style={{
                 position: "absolute",
                 ...pctArea(a),
-                border: "1px solid var(--grid)",
+                border: "1.5px solid var(--accent)",
+                background: "rgba(228,3,46,.045)",
                 borderRadius: 4,
                 pointerEvents: "none",
               }}
-            />
+            >
+              {a.name && (
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 4,
+                    top: 3,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "var(--accent)",
+                    whiteSpace: "nowrap",
+                    // A shown area and an outlined one can start at the same
+                    // corner, so the emphasised name reads over the other.
+                    background: "var(--canvas)",
+                    padding: "1px 4px",
+                    borderRadius: 3,
+                  }}
+                >
+                  {a.name}
+                </span>
+              )}
+            </div>
           ))}
 
           {/* trails (our extra layer) */}
@@ -407,7 +437,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         if (p) props.onAddWaypoint(p);
                         return;
                       }
-                      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      if (props.session && props.onPickCapturer) {
+                        props.onPickCapturer(b.id);
+                        props.onSelect([b.id], "replace");
+                      } else if (e.shiftKey || e.metaKey || e.ctrlKey) {
                         props.onSelect([b.id], "toggle");
                       } else if (props.selection.has(b.id) && props.selection.size === 1) {
                         props.onSelect([], "replace"); // click the sole selected bot again = deselect

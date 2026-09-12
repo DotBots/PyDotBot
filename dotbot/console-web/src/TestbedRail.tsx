@@ -1,14 +1,16 @@
 import React, { useState } from "react";
 
-import { PlannedMission, UnifiedBot } from "./types";
+import { LocalizationPanel } from "./LocalizationPanel";
+import { Area, CalibrationSession, PlannedMission, Site, UnifiedBot } from "./types";
 import { FirmwareSection } from "./FirmwareSection";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
 // Testbed tab (orchestration controls - disabled until the swarmit write path
-// lands; never mocked) and a Missions tab (waypoint missions derived from
-// live state: Planned = the local queue, Active = bots navigating).
+// lands; never mocked), a Missions tab (waypoint missions derived from live
+// state: Planned = the local queue, Active = bots navigating) and a
+// Localization tab (the site, the areas shown and what the fleet carries).
 
 export interface DoneMission {
   key: string;
@@ -44,6 +46,13 @@ interface TestbedRailProps {
   onGoMission: (key: string) => void;
   onDiscardMission: (key: string) => void;
   onStopMission: (ids: string[]) => void;
+  site: Site | null;
+  activeAreas: Area[];
+  session: CalibrationSession | null;
+  calibrationBusy: boolean;
+  calibrationError: string;
+  onCalibrate: () => void;
+  onPushStale: () => void;
 }
 
 const ledCss = (b: UnifiedBot) =>
@@ -146,7 +155,13 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
   const [mode, setMode] = useState<"collapsed" | "panel">(
     railParam === "collapsed" ? "collapsed" : "panel",
   );
-  const [top, setTop] = useState<"testbed" | "missions">(railParam === "missions" ? "missions" : "testbed");
+  const [top, setTop] = useState<"testbed" | "missions" | "localization">(
+    railParam === "missions"
+      ? "missions"
+      : railParam === "localization"
+        ? "localization"
+        : "testbed",
+  );
   const [tab, setTab] = useState<"console" | "flash">("console");
 
   const missions = deriveMissions(props.bots, props.planned);
@@ -237,6 +252,16 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               </span>
             )}
           </div>
+          <div
+            onClick={() => {
+              setMode("panel");
+              setTop("localization");
+            }}
+            title="Localization"
+            style={{ ...ico, cursor: "pointer" }}
+          >
+            &#9737;
+          </div>
         </div>
       )}
 
@@ -272,6 +297,12 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                 >
                   {missions.length}
                 </span>
+              </div>
+              <div
+                onClick={() => setTop("localization")}
+                style={topTabStyle(top === "localization")}
+              >
+                Localization
               </div>
             </div>
             <div style={{ flex: 1 }} />
@@ -546,6 +577,20 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                 )}
               </div>
             </div>
+          )}
+
+          {/* LOCALIZATION tab */}
+          {top === "localization" && (
+            <LocalizationPanel
+              site={props.site}
+              activeAreas={props.activeAreas}
+              bots={props.bots}
+              session={props.session}
+              busy={props.calibrationBusy}
+              error={props.calibrationError}
+              onCalibrate={props.onCalibrate}
+              onPushStale={props.onPushStale}
+            />
           )}
         </div>
       )}
