@@ -21,7 +21,14 @@ export interface ViewGeom {
 }
 
 export const ZOOM_MIN = 0.5;
-export const ZOOM_MAX = 4;
+
+/**
+ * The ceiling a site with no area to measure gets. A site is drawn with a
+ * margin several metres wide on every side, so a ceiling fixed at a small
+ * multiple cannot frame a room-sized rectangle inside a floor-sized one;
+ * `zoomMax` raises this to whatever the site's smallest area needs.
+ */
+export const ZOOM_MAX_FLOOR = 4;
 
 /** The zoom that shows the whole site: the map's own default. */
 export const SITE_ZOOM = "site";
@@ -61,11 +68,39 @@ export function zoomNames(site: Site | null): string[] {
   return [SITE_ZOOM, ...areas];
 }
 
+/**
+ * The scale at which `target` exactly fills the canvas, before any ceiling.
+ * Zero when the rectangle has no area to fit.
+ */
+export function fitScale(target: Area, viewport: Area, geom: ViewGeom): number {
+  const wPx = (target.w / viewport.w) * geom.side;
+  const hPx = (target.h / viewport.h) * geom.side;
+  if (!(wPx > 0) || !(hPx > 0)) return 0;
+  return Math.min(geom.w / wPx, geom.h / hPx);
+}
+
+/**
+ * How far this site has to be zoomed in for its smallest area to fill the
+ * canvas, pad included. That is the ceiling: an area the site defines is a
+ * place the operator works in, so every one of them has to be reachable.
+ */
+export function zoomMax(
+  site: Site | null,
+  viewport: Area,
+  geom: ViewGeom,
+): number {
+  const needed = (site?.areas ?? [])
+    .map((a) => fitScale(padArea(a), viewport, geom))
+    .filter((s) => Number.isFinite(s) && s > 0);
+  return Math.max(ZOOM_MAX_FLOOR, ...needed);
+}
+
 /** The camera that frames `target` (frame mm) inside `viewport`. */
 export function cameraForArea(
   target: Area,
   viewport: Area,
   geom: ViewGeom,
+  max: number,
 ): Camera {
   const tl = areaToFraction({ x: target.x, y: target.y }, viewport);
   const br = areaToFraction(
@@ -77,7 +112,7 @@ export function cameraForArea(
   if (!(wPx > 0) || !(hPx > 0)) return SITE_CAMERA;
   const scale = Math.max(
     ZOOM_MIN,
-    Math.min(ZOOM_MAX, Math.min(geom.w / wPx, geom.h / hPx)),
+    Math.min(max, Math.min(geom.w / wPx, geom.h / hPx)),
   );
   // Where the target's centre sits in canvas pixels before the camera runs.
   const cx = (geom.w - geom.side) / 2 + ((tl.fx + br.fx) / 2) * geom.side;
@@ -106,7 +141,12 @@ export function cameraForZoom(
   if (name === SITE_ZOOM) return SITE_CAMERA;
   const area = (site?.areas ?? []).find((a) => a.name === name);
   if (!area) return null;
-  return cameraForArea(padArea(area), viewport, geom);
+  return cameraForArea(
+    padArea(area),
+    viewport,
+    geom,
+    zoomMax(site, viewport, geom),
+  );
 }
 
 /** The zoom `?zoom=` asks for, or null when it names nothing this site has. */

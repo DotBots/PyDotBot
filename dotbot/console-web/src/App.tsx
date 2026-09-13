@@ -28,6 +28,7 @@ import {
   cameraForZoom,
   padArea,
   zoomFromSearch,
+  zoomMax,
 } from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
@@ -145,6 +146,8 @@ export const App: React.FC = () => {
   geomRef.current = geom;
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
+  const siteRef = useRef(site);
+  siteRef.current = site;
   const rightTabRef = useRef(rightTab);
   rightTabRef.current = rightTab;
   const camRef = useRef(cam);
@@ -157,7 +160,14 @@ export const App: React.FC = () => {
       setRightCollapsed(false);
       const rect = sessionRect(session);
       if (rect && rect.w > 0 && rect.h > 0 && geomRef.current) {
-        setCam(cameraForArea(padArea(rect), viewportRef.current, geomRef.current));
+        setCam(
+          cameraForArea(
+            padArea(rect),
+            viewportRef.current,
+            geomRef.current,
+            zoomMax(siteRef.current, viewportRef.current, geomRef.current),
+          ),
+        );
       }
       return;
     }
