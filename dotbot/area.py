@@ -118,6 +118,17 @@ def union(areas: list[Area]) -> Area:
     return _bounding_box(areas, "")
 
 
+def drawn_area(areas: list[Area], extent: Area | None, name: str = "") -> Area:
+    """The one rectangle to draw: the areas shown, else the whole site.
+
+    An empty list of areas means the whole site, so a renderer that needs a
+    single box resolves it here instead of reading `areas[0]`.
+    """
+    if areas:
+        return union(areas)
+    return extent or fallback_area(name)
+
+
 def _bounding_box(areas: list[Area], name: str) -> Area:
     x = min(a.x for a in areas)
     y = min(a.y for a in areas)

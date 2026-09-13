@@ -9,6 +9,15 @@ import type { Area, LH2Position, Site } from "./types";
 /** How much frame lies outside the site on every side of the default view. */
 export const VIEWPORT_MARGIN_MM = 2000;
 
+/** What a renderer draws when neither an area shown nor a site extent says otherwise. */
+export const AREA_FALLBACK: Area = { x: 0, y: 0, w: 2000, h: 2000 };
+
+/** The site as one rectangle, when its extent is measured. */
+export function siteExtentArea(site: Site | null): Area | null {
+  if (!site?.extent_mm) return null;
+  return { x: 0, y: 0, w: site.extent_mm[0], h: site.extent_mm[1], name: site.name };
+}
+
 /** Frame mm to a fraction of a rectangle, 0..1 from its top-left corner. */
 export function areaToFraction(p: LH2Position, a: Area): { fx: number; fy: number } {
   return { fx: (p.x - a.x) / a.w, fy: (p.y - a.y) / a.h };
@@ -37,9 +46,7 @@ export function unionAreas(list: Area[], fallback: Area): Area {
  */
 export function siteViewport(site: Site | null, active: Area[], fallback: Area): Area {
   const m = VIEWPORT_MARGIN_MM;
-  const inner = site?.extent_mm
-    ? { x: 0, y: 0, w: site.extent_mm[0], h: site.extent_mm[1] }
-    : unionAreas(active, fallback);
+  const inner = siteExtentArea(site) ?? unionAreas(active, fallback);
   return { x: inner.x - m, y: inner.y - m, w: inner.w + 2 * m, h: inner.h + 2 * m };
 }
 

@@ -404,25 +404,43 @@ def test_controller_resolves_its_active_areas(serial_mock):
         "h": 2000,
         "name": "annex",
     }
+    # One box over several areas shown is their bounding box.
+    assert controller.drawn_area().as_dict() == {
+        "x": 0,
+        "y": 2000,
+        "w": 3330,
+        "h": 2000,
+        "name": "",
+    }
 
 
-def test_no_active_area_draws_the_whole_site(serial_mock):
+def test_no_active_area_shows_nothing_and_draws_the_whole_site(serial_mock):
     settings = ControllerSettings(
         port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
         site=C405,
     )
     controller = Controller(settings)
-    assert [a.as_dict() for a in controller.areas] == [
-        {"x": 0, "y": 0, "w": 2000, "h": 4000, "name": "c405-arena"}
-    ]
+    assert controller.areas == []
+    assert controller.drawn_area().as_dict() == {
+        "x": 0,
+        "y": 0,
+        "w": 2000,
+        "h": 4000,
+        "name": "c405-arena",
+    }
 
 
-def test_a_site_with_no_extent_falls_back_to_one_rectangle(serial_mock):
+def test_a_site_with_no_extent_draws_the_fallback_rectangle(serial_mock):
     settings = ControllerSettings(
         port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
     )
     controller = Controller(settings)
     assert controller.site.name == "default"
-    assert [a.as_dict() for a in controller.areas] == [
-        {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "default"}
-    ]
+    assert controller.areas == []
+    assert controller.drawn_area().as_dict() == {
+        "x": 0,
+        "y": 0,
+        "w": 2000,
+        "h": 2000,
+        "name": "default",
+    }

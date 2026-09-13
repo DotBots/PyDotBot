@@ -1,5 +1,6 @@
 import React from "react";
 
+import { shownAreaNames, toggledAreaNames } from "./areas";
 import { InspectorBody } from "./Inspector";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
@@ -95,18 +96,12 @@ interface RightPaneProps {
 }
 
 export const RightPane: React.FC<RightPaneProps> = (props) => {
-  const shownNames = new Set(
-    props.activeAreas.map((a) => a.name ?? "").filter(Boolean),
-  );
   const siteAreas = props.site?.areas ?? [];
-  const areaNames = [...shownNames];
+  const shownNames = new Set(shownAreaNames(props.site, props.activeAreas));
+  const areaNames = props.activeAreas.map((a) => a.name ?? "").filter(Boolean);
 
-  const toggleArea = (name: string) => {
-    const next = new Set(shownNames);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    props.onAreasChange([...next]);
-  };
+  const toggleArea = (name: string) =>
+    props.onAreasChange(toggledAreaNames(props.site, props.activeAreas, name));
 
   if (props.collapsed) {
     return (

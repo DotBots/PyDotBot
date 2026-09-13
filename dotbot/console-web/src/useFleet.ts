@@ -8,7 +8,7 @@ import {
   fetchSite,
   fetchSwarmitStatus,
 } from "./api";
-import { siteViewport } from "./frame";
+import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
   Area,
   BotState,
@@ -95,9 +95,9 @@ export function merge(
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// What the map shows before the controller answers, and what a site with
-// nothing measured yet falls back to.
-const DEFAULT_AREA: Area = { x: 0, y: 0, w: 2000, h: 2000 };
+// The areas shown are exactly what the controller holds, so an empty list is
+// empty here too: "none shown" means the whole site, and the fallback is only
+// the box a renderer draws when the site has no measured extent.
 
 export function useFleet(): {
   bots: UnifiedBot[];
@@ -113,7 +113,7 @@ export function useFleet(): {
   const swRef = useRef<Record<string, SwarmitNode>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
-  const [activeAreas, setActiveAreas] = useState<Area[]>([DEFAULT_AREA]);
+  const [activeAreas, setActiveAreas] = useState<Area[]>([]);
   const [session, setSession] = useState<CalibrationSession | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
@@ -138,7 +138,7 @@ export function useFleet(): {
       .then(setSite)
       .catch(() => {});
     fetchArea()
-      .then((list) => setActiveAreas(list.length > 0 ? list : [DEFAULT_AREA]))
+      .then(setActiveAreas)
       .catch(() => {});
     // A session outlives the browser tab: the controller owns it, so a
     // reload rejoins the one in flight rather than starting over.
@@ -174,8 +174,7 @@ export function useFleet(): {
           return;
         }
         if (msg.cmd === 6) {
-          const list = msg.areas ?? [];
-          setActiveAreas(list.length > 0 ? list : [DEFAULT_AREA]);
+          setActiveAreas(msg.areas ?? []);
           return;
         }
         if (msg.cmd === 2 && msg.data?.address) {
@@ -237,7 +236,7 @@ export function useFleet(): {
     return () => clearInterval(t);
   }, [rebuild]);
 
-  const viewport = siteViewport(site, activeAreas, DEFAULT_AREA);
+  const viewport = siteViewport(site, activeAreas, AREA_FALLBACK);
 
   return {
     bots,

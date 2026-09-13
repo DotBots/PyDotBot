@@ -114,6 +114,13 @@ describe("the footer minimap label", () => {
       "SITE unknown · not measured · showing the whole site",
     );
   });
+
+  it("says the whole site once every area is unticked", () => {
+    expect(minimapLines(C405, [])).toEqual([
+      "SITE c405-arena · 3330 x 4000 mm",
+      "showing the whole site",
+    ]);
+  });
 });
 
 describe("what the fleet carries", () => {

@@ -14,7 +14,7 @@ import {
 } from "./utils/rest";
 import DotBots from './DotBots';
 import { Area, BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, Site, WaypointsData, WsMessage } from "./types";
-import { siteViewport } from "./utils/frame";
+import { drawnArea, siteViewport } from "./utils/frame";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'RestApp' });
@@ -63,7 +63,9 @@ const RestApp: React.FC = () => {
 
   const fetchArea = useCallback(async () => {
     const data = await apiFetchArea().catch(error => console.log(error));
-    if (data && data.length > 0) setActiveAreas(data);
+    // An empty set is the controller's answer, not a failure: it means the
+    // whole site, which the viewport below resolves.
+    if (data) setActiveAreas(data);
   }, [setActiveAreas]);
 
   const fetchSite = useCallback(async () => {
@@ -210,7 +212,7 @@ const RestApp: React.FC = () => {
         <div id="dotbots">
           <DotBots
             dotbots={dotbots}
-            viewport={siteViewport(site, activeAreas, activeAreas[0])}
+            viewport={siteViewport(site, activeAreas, drawnArea(site, activeAreas))}
             activeAreas={activeAreas}
             siteAreas={site?.areas ?? []}
             backgroundMap={backgroundMap}

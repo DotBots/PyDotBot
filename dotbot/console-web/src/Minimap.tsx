@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 
-import { areaToFraction } from "./frame";
+import { areaToFraction, siteExtentArea } from "./frame";
 import { minimapLines } from "./localization";
 import { stateColor } from "./viewChrome";
 
@@ -63,9 +63,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   const rect = viewportRect();
   const shown = new Set(activeAreas.map((a) => a.name ?? "").filter(Boolean));
   // The whole site, never the viewport: the box below is what moves.
-  const box: Area = site?.extent_mm
-    ? { x: 0, y: 0, w: site.extent_mm[0], h: site.extent_mm[1] }
-    : viewport;
+  const box: Area = siteExtentArea(site) ?? viewport;
   // viewportRect speaks fractions of the drawn viewport; the minimap draws
   // the site, so the box has to be re-expressed against it.
   const onBox = (fraction: number, axis: "x" | "y") => {

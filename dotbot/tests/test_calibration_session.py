@@ -543,7 +543,7 @@ class _StubController:
             DotBotNotificationModel,
         )
 
-        self.areas = self.site.registry().resolve_all(specs) or [self.site.extent]
+        self.areas = self.site.registry().resolve_all(specs)
         self.notifications.append(
             DotBotNotificationModel(
                 cmd=DotBotNotificationCommand.AREA_UPDATE,

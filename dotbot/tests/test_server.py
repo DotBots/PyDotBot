@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
 from dotbot.site import Site
-from dotbot.controller import ControllerSettings
+from dotbot.controller import Controller, ControllerSettings
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -974,6 +974,53 @@ async def test_get_controller_area():
     assert response.json() == [
         {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"}
     ]
+
+
+@pytest.fixture
+def area_controller(monkeypatch):
+    """A real controller behind the area routes, showing one of two areas."""
+    for name in ("write", "open", "flush"):
+        monkeypatch.setattr(
+            f"dotbot_utils.serial_interface.serial.Serial.{name}", MagicMock()
+        )
+    controller = Controller(
+        ControllerSettings(
+            port="/dev/null",
+            baudrate=115200,
+            network_id="0",
+            gw_address="78",
+            site=Site(
+                name="c405-arena",
+                extent_mm=(2000, 4000),
+                areas={
+                    "arena": Area(0, 0, 2000, 2000, "arena"),
+                    "annex": Area(0, 2000, 2000, 2000, "annex"),
+                },
+            ),
+            area=("arena",),
+        )
+    )
+    controller.notify_clients = AsyncMock()
+    api.controller = controller
+    return controller
+
+
+@pytest.mark.asyncio
+async def test_the_area_routes_keep_an_empty_set_empty(area_controller):
+    """Untick every area, then tick one: the empty set never becomes a rectangle."""
+    response = await client.put("/controller/area", json={"area": []})
+    assert response.status_code == 200
+    assert response.json() == []
+    assert area_controller.areas == []
+    assert (await client.get("/controller/area")).json() == []
+
+    notified = area_controller.notify_clients.await_args.args[0]
+    assert notified.cmd == 6
+    assert notified.areas == []
+
+    response = await client.put("/controller/area", json={"area": ["arena"]})
+    assert response.status_code == 200
+    assert response.json() == [{"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"}]
 
 
 @pytest.mark.asyncio

@@ -53,6 +53,9 @@ interface MapViewProps {
   // The areas shown, drawn solid; every other area of the site is outlined.
   activeAreas: Area[];
   siteAreas: Area[];
+  // The whole site, outlined when nothing is shown, so "the whole site" is
+  // visible as a box rather than only as a label.
+  siteExtent: Area | null;
   selection: Set<string>;
   layers: Layers;
   plannedMissions: { waypoints: LH2Position[]; led: string | null }[]; // local queues, not yet sent
@@ -267,6 +270,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           {/* subtle center accents (v1) */}
           <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(228,3,46,.16)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "var(--hairline)", pointerEvents: "none" }} />
+
+          {/* nothing shown means the whole site, outlined and never emphasised */}
+          {props.activeAreas.length === 0 && props.siteExtent && (
+            <div
+              style={{
+                position: "absolute",
+                ...pctArea(props.siteExtent),
+                border: "1px dashed var(--hairline)",
+                borderRadius: 4,
+                pointerEvents: "none",
+              }}
+            />
+          )}
 
           {/* the site's areas: the shown ones solid, the rest outlined */}
           {props.siteAreas

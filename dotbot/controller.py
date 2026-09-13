@@ -72,7 +72,7 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.area import Area, fallback_area
+from dotbot.area import Area, drawn_area
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.server import api, default_ui_path
@@ -202,10 +202,7 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.site = settings.site or Site()
-        if settings.area:
-            self.areas = self.site.registry().resolve_all(list(settings.area))
-        else:
-            self.areas = [self.site.extent or fallback_area(self.site.name)]
+        self.areas = self.site.registry().resolve_all(list(settings.area))
         self.calibration = None
         self.lh2_calibration = []
         if settings.calibration:
@@ -662,10 +659,7 @@ class Controller:
         An area never reaches a robot, so this is a state change plus a
         re-render: no calibration file is touched and nothing is recaptured.
         """
-        if specs:
-            self.areas = self.site.registry().resolve_all(specs)
-        else:
-            self.areas = [self.site.extent or fallback_area(self.site.name)]
+        self.areas = self.site.registry().resolve_all(specs)
         await self.notify_clients(
             DotBotNotificationModel(
                 cmd=DotBotNotificationCommand.AREA_UPDATE,
@@ -673,6 +667,10 @@ class Controller:
             )
         )
         return self.areas
+
+    def drawn_area(self) -> Area:
+        """The one rectangle to draw: the areas shown, else the whole site."""
+        return drawn_area(self.areas, self.site.extent, self.site.name)
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""

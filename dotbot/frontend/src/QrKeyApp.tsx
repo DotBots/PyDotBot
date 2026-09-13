@@ -7,7 +7,7 @@ import { handleDotBotUpdate } from "./utils/helpers";
 import DotBots from './DotBots';
 import QrKeyForm from './QrKeyForm';
 import { Area, DotBot, MqttData, WsMessage } from "./types";
-import { siteViewport } from "./utils/frame";
+import { drawnArea, siteViewport } from "./utils/frame";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'QrKeyApp' });
@@ -17,7 +17,7 @@ const QrKeyApp: React.FC = () => {
   const [message, setMessage] = useState<QrKeyMessage | null>(null);
   // The qrkey transport carries the areas shown and no site, so the map
   // draws that set with the same margin around it.
-  const [activeAreas, setActiveAreas] = useState<Area[]>([{ x: 0, y: 0, w: 2000, h: 2000 }]);
+  const [activeAreas, setActiveAreas] = useState<Area[]>([]);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
 
   const [ready, clientId, mqttData, setMqttData, publish, publishCommand, sendRequest] = useQrKey({
@@ -35,8 +35,7 @@ const QrKeyApp: React.FC = () => {
       if (payload.request === RequestType.DotBots) {
         setDotbots(payload.data as DotBot[]);
       } else if (payload.request === RequestType.Area) {
-        const list = payload.data as Area[];
-        if (list.length > 0) setActiveAreas(list);
+        setActiveAreas(payload.data as Area[]);
       }
     } else if (message.topic === `/notify`) {
       if (payload.cmd === NotificationType.NewDotBot) {
@@ -70,7 +69,7 @@ const QrKeyApp: React.FC = () => {
         <div id="dotbots">
           <DotBots
             dotbots={dotbots}
-            viewport={siteViewport(undefined, activeAreas, activeAreas[0])}
+            viewport={siteViewport(undefined, activeAreas, drawnArea(undefined, activeAreas))}
             activeAreas={activeAreas}
             siteAreas={[]}
             updateDotbots={setDotbots}

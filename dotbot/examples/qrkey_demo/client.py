@@ -19,8 +19,10 @@ from websockets import exceptions as websockets_exceptions
 from websockets.asyncio.client import connect
 
 from dotbot import CONTROLLER_HTTP_HOSTNAME_DEFAULT, CONTROLLER_HTTP_PORT_DEFAULT
+from dotbot.area import drawn_area
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    DotBotAreaModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationModel,
     DotBotReplyModel,
@@ -249,6 +251,12 @@ class QrKeyClient:
         elif request.request == DotBotRequestType.AREA:
             logger.info("Publish the area set")
             areas = self.worker.run(self.client.fetch_area())
+            if not areas:
+                # An empty set means the whole site, and this transport
+                # carries no site, so the box is resolved here.
+                site = self.worker.run(self.client.fetch_site())
+                box = drawn_area([], site.extent, site.name)
+                areas = [DotBotAreaModel(**box.as_dict())]
             message = DotBotReplyModel(
                 request=DotBotRequestType.AREA,
                 data=[item.model_dump(exclude_none=True) for item in areas],

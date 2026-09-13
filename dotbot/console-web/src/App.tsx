@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchConnection, putArea, putWaypoints } from "./api";
 import { isPhoneWidth } from "./calibration";
+import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
 import { ListView } from "./ListView";
@@ -96,10 +97,12 @@ export const App: React.FC = () => {
   const onAreasChange = useCallback(
     (names: string[]) => {
       putArea(names)
-        .then((list) => setActiveAreas(list.length > 0 ? list : activeAreas))
-        .catch(() => showToast("The controller refused that area"));
+        .then(setActiveAreas)
+        .catch((err: Error) =>
+          showToast(`The controller refused that area: ${err.message}`),
+        );
     },
-    [activeAreas, setActiveAreas, showToast],
+    [setActiveAreas, showToast],
   );
 
   const onCalibrate = useCallback(() => {
@@ -431,6 +434,7 @@ export const App: React.FC = () => {
               viewport={viewport}
               activeAreas={activeAreas}
               siteAreas={site?.areas ?? []}
+              siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
               plannedMissions={planned.map((m) => {
