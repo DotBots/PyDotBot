@@ -59,6 +59,8 @@ const Harness: React.FC = () => {
           onGeom={() => {}}
           onSelect={() => {}}
           onAddWaypoint={() => {}}
+          site={C405}
+          onZoom={() => {}}
         />
       </div>
       <div data-testid="pane">

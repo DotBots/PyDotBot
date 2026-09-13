@@ -21,6 +21,7 @@ import { useCalibration } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
+import { Camera as ZoomCamera, cameraForZoom, zoomFromSearch } from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
@@ -109,6 +110,25 @@ export const App: React.FC = () => {
     calibration.start([points], first ?? "");
     setRightCollapsed(false);
   }, [site, calibration]);
+
+  // A named zoom is view state: it moves the camera and goes nowhere else.
+  const zoomTo = useCallback(
+    (name: string) => {
+      if (!geom) return;
+      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, geom);
+      if (next) setCam(next);
+    },
+    [geom, site, viewport],
+  );
+
+  // ?zoom=<site|area-name> presets the view, once the canvas has a size.
+  const presetZoomRef = useRef(false);
+  useEffect(() => {
+    if (presetZoomRef.current || !geom || !site) return;
+    const asked = zoomFromSearch(window.location.search, site);
+    if (asked) zoomTo(asked);
+    presetZoomRef.current = true;
+  }, [geom, site, zoomTo]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
@@ -448,6 +468,8 @@ export const App: React.FC = () => {
               onAddWaypoint={onAddWaypoint}
               session={session}
               onPickCapturer={(id) => setCapturer(id.toUpperCase())}
+              site={site}
+              onZoom={zoomTo}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}

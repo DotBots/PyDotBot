@@ -5,8 +5,20 @@ import { areaToFraction, fractionToArea } from "./frame";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
-import { Area, CalibrationSession, LH2Position, UnifiedBot } from "./types";
+import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
+import {
+  Camera,
+  SITE_ZOOM,
+  ViewGeom,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  clampCam,
+  zoomNames,
+} from "./zoom";
+
+export type { Camera, ViewGeom } from "./zoom";
+export { clampCam } from "./zoom";
 
 // Layer set mirrors the v1 design (Battery Bars / Waypoints / HotSpots /
 // DotBots / Real-scale bots); Trails is our addition on top.
@@ -18,32 +30,6 @@ export interface Layers {
   trueScale: boolean;
   crashedOnly: boolean;
   trails: boolean;
-}
-
-export interface Camera {
-  scale: number;
-  tx: number;
-  ty: number;
-}
-
-export interface ViewGeom {
-  w: number;
-  h: number;
-  side: number;
-}
-
-// v1 clampPan: keep the arena reachable, never fling it off-screen.
-export function clampCam(cam: Camera, geom: ViewGeom): Camera {
-  const sw = geom.side * cam.scale;
-  const padX = Math.max(0, (geom.w - geom.side) / 2);
-  const padY = Math.max(0, (geom.h - geom.side) / 2);
-  const mx = Math.max(0, (sw - geom.w) / 2) + padX;
-  const my = Math.max(0, (sw - geom.h) / 2) + padY;
-  return {
-    ...cam,
-    tx: Math.max(-mx, Math.min(mx, cam.tx)),
-    ty: Math.max(-my, Math.min(my, cam.ty)),
-  };
 }
 
 interface MapViewProps {
@@ -68,6 +54,9 @@ interface MapViewProps {
   // While it is open, clicking a robot chooses it as the capturer.
   session?: CalibrationSession | null;
   onPickCapturer?: (id: string) => void;
+  // The named zooms: the site the menu lists, and what a pick applies to.
+  site: Site | null;
+  onZoom: (name: string) => void;
 }
 
 const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
@@ -82,6 +71,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const { cam, setCam } = props;
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
   const marqueeRef = useRef<{ additive: boolean } | null>(null);
   const geomRef = useRef<ViewGeom>({ w: 1000, h: 600, side: 600 });
@@ -151,6 +141,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // plain drag = pan, plain click (no movement) = clear selection.
   const onCanvasDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    setZoomOpen(false);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (e.altKey) {
       const p = pxToMm(e.clientX, e.clientY);
@@ -298,6 +289,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               >
                 {a.name && (
                   <span
+                    role="button"
+                    title={`Zoom to ${a.name}`}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      props.onZoom(a.name ?? "");
+                    }}
                     style={{
                       position: "absolute",
                       left: 4,
@@ -305,6 +302,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       fontSize: 10,
                       opacity: 0.7,
                       whiteSpace: "nowrap",
+                      cursor: "pointer",
+                      pointerEvents: "auto",
                     }}
                   >
                     {a.name}
@@ -583,12 +582,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         onPointerDown={(e) => e.stopPropagation()}
       >
         {[
-          { label: "+", fn: () => setCam((c) => clampCam({ ...c, scale: Math.min(4, c.scale * 1.25) }, geomRef.current)) },
-          { label: "−", fn: () => setCam((c) => clampCam({ ...c, scale: Math.max(0.5, c.scale / 1.25) }, geomRef.current)) },
-          { label: "◎", fn: () => setCam({ scale: 1, tx: 0, ty: 0 }) },
+          { label: "+", title: "Zoom in", fn: () => setCam((c) => clampCam({ ...c, scale: Math.min(ZOOM_MAX, c.scale * 1.25) }, geomRef.current)) },
+          { label: "−", title: "Zoom out", fn: () => setCam((c) => clampCam({ ...c, scale: Math.max(ZOOM_MIN, c.scale / 1.25) }, geomRef.current)) },
+          { label: "◎", title: "Zoom to", fn: () => setZoomOpen((open) => !open) },
         ].map((z, i) => (
           <div
             key={i}
+            title={z.title}
             onClick={z.fn}
             style={{
               width: 30,
@@ -600,12 +600,55 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               fontSize: 15,
               borderBottom: i < 2 ? "1px solid var(--hairline)" : "none",
               color: "var(--text)",
+              background: i === 2 && zoomOpen ? "var(--elevated)" : "transparent",
             }}
           >
             {z.label}
           </div>
         ))}
       </div>
+
+      {/* the named zooms: the whole site, then one per area */}
+      {zoomOpen && (
+        <div
+          role="menu"
+          aria-label="Zoom to"
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            left: 50,
+            bottom: 14,
+            minWidth: 128,
+            background: "var(--surface)",
+            border: "1px solid var(--hairline)",
+            borderRadius: 8,
+            overflow: "hidden",
+            boxShadow: "0 4px 16px rgba(0,0,0,.3)",
+            zIndex: 14,
+          }}
+        >
+          {zoomNames(props.site).map((name) => (
+            <div
+              key={name}
+              role="menuitem"
+              onClick={() => {
+                props.onZoom(name);
+                setZoomOpen(false);
+              }}
+              style={{
+                padding: "7px 12px",
+                fontSize: 12,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                textTransform: name === SITE_ZOOM ? "capitalize" : "none",
+                color: "var(--text)",
+              }}
+            >
+              {name}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* hint */}
       <div
