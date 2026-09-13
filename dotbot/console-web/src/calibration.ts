@@ -46,6 +46,21 @@ export function noseRotation(nose: string): number {
   return headingToGlyphRotation(noseHeading(nose)) % 360;
 }
 
+/**
+ * Which way the rectangle's inside lies from one corner, as unit steps in x
+ * and y. The robot stands inside the rectangle with its board edges on the
+ * corner's two lines, so its body is drawn that way from the mark. A point
+ * with no corner constrains no pose and sits on its mark.
+ */
+export function insideFromCorner(corner: string | null): { dx: number; dy: number } {
+  if (!corner) return { dx: 0, dy: 0 };
+  const [vertical, horizontal] = corner.split("-");
+  return {
+    dx: horizontal === "left" ? 1 : horizontal === "right" ? -1 : 0,
+    dy: vertical === "top" ? 1 : vertical === "bottom" ? -1 : 0,
+  };
+}
+
 /** "Step 3 of 4", one-based, for the point still outstanding. */
 export function stepLabel(session: CalibrationSession): string {
   const step = session.outstanding === null ? session.total : session.outstanding + 1;

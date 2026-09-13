@@ -6,6 +6,7 @@ import {
   cornerTitle,
   currentPoint,
   expectedErrorLine,
+  insideFromCorner,
   isPhoneWidth,
   noseHeading,
   noseRotation,
@@ -97,6 +98,21 @@ describe("the robot glyph at each corner", () => {
       180, 180, 0, 0,
     ]);
     expect(session().points.map((p) => noseRotation(p.nose))).toEqual([0, 0, 180, 180]);
+  });
+
+  it("stands inside the rectangle, which is where the robot goes", () => {
+    // x grows right and y grows down, so the inside of a top-left corner is
+    // right and down, and of a bottom-right corner is left and up.
+    expect(session().points.map((p) => insideFromCorner(p.corner))).toEqual([
+      { dx: 1, dy: 1 },
+      { dx: -1, dy: 1 },
+      { dx: 1, dy: -1 },
+      { dx: -1, dy: -1 },
+    ]);
+  });
+
+  it("sits on the mark for a point that constrains no pose", () => {
+    expect(insideFromCorner(null)).toEqual({ dx: 0, dy: 0 });
   });
 });
 

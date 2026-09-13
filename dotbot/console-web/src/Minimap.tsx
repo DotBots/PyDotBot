@@ -1,6 +1,7 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { areaToFraction, siteExtentArea } from "./frame";
+import { MINIMAP_TARGET_PX, gridStepMm } from "./grid";
 import { minimapLabel } from "./localization";
 import { stateColor } from "./viewChrome";
 
@@ -33,6 +34,21 @@ export const Minimap: React.FC<MinimapProps> = ({
 }) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // The panel is a fixed width but its height follows the site's aspect, so
+  // the grid step is picked from what the box actually measures.
+  const [boxPx, setBoxPx] = useState({ w: 190, h: 190 });
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setBoxPx({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const viewportRect = () => {
     if (!geom) return null;
@@ -73,6 +89,19 @@ export const Minimap: React.FC<MinimapProps> = ({
         : viewport.y + fraction * viewport.h;
     return axis === "x" ? (frame - box.x) / box.w : (frame - box.y) / box.h;
   };
+  // The same metric grid the map draws, at the minimap's own scale: lines on
+  // whole metric steps of the frame, anchored at the site's zero.
+  const stepMm = gridStepMm(
+    Math.min(boxPx.w / box.w, boxPx.h / box.h),
+    MINIMAP_TARGET_PX,
+  );
+  const grid = {
+    backgroundImage:
+      "linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 100%)," +
+      "linear-gradient(180deg, var(--grid) 0 1px, transparent 1px 100%)",
+    backgroundSize: `${(stepMm / box.w) * boxPx.w}px 100%, 100% ${(stepMm / box.h) * boxPx.h}px`,
+    backgroundPosition: `${((0 - box.x) / box.w) * boxPx.w}px 0, 0 ${((0 - box.y) / box.h) * boxPx.h}px`,
+  } as const;
   const areaBox = (a: Area) => {
     const tl = areaToFraction({ x: a.x, y: a.y }, box);
     const br = areaToFraction({ x: a.x + a.w, y: a.y + a.h }, box);
@@ -126,8 +155,8 @@ export const Minimap: React.FC<MinimapProps> = ({
             height: "100%",
             maxWidth: "100%",
             background: "var(--canvas)",
-            border: "1px solid var(--hairline)",
-            borderRadius: 5,
+            ...grid,
+            border: "1px solid var(--muted)",
             overflow: "hidden",
             cursor: "grab",
             touchAction: "none",
@@ -144,7 +173,8 @@ export const Minimap: React.FC<MinimapProps> = ({
                 style={{
                   position: "absolute",
                   ...areaBox(a),
-                  border: "1px dashed var(--hairline)",
+                  border: "1px dashed var(--muted)",
+                  opacity: 0.75,
                   pointerEvents: "none",
                 }}
               />

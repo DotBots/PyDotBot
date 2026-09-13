@@ -1,0 +1,120 @@
+import type { Camera, ViewGeom } from "./zoom";
+import type { Area } from "./types";
+
+// The map's metric grid: lines on whole metric steps of the frame, anchored at
+// the site's zero, and the ruler that names them.
+//
+// A step is picked so the lines stay about as far apart on screen whatever the
+// camera does, which is what makes the spacing readable as a distance rather
+// than as a fraction of the canvas. The ladder is the 1-2-5 one, so every step
+// is a round number of metres, half-metres or centimetres.
+
+export type Axis = "x" | "y";
+
+/** Grid steps in frame millimetres, coarsest first. */
+export const GRID_LADDER_MM = [
+  10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10,
+];
+
+/** Screen pixels a drawn line aims to keep from the next one. */
+export const GRID_TARGET_PX = 40;
+
+/** Screen pixels a named line aims to keep from the next named one. */
+export const RULER_TARGET_PX = 110;
+
+/**
+ * The same, for the footer minimap. It is a couple of hundred pixels across
+ * at most, so the map's spacing would leave it one line on each axis.
+ */
+export const MINIMAP_TARGET_PX = 24;
+
+/** The finest ladder step still at least `targetPx` apart on screen. */
+export function gridStepMm(pxPerMm: number, targetPx = GRID_TARGET_PX): number {
+  let step = GRID_LADDER_MM[0];
+  for (const candidate of GRID_LADDER_MM) {
+    if (candidate * pxPerMm < targetPx) break;
+    step = candidate;
+  }
+  return step;
+}
+
+const canvasSpan = (axis: Axis, geom: ViewGeom) => (axis === "x" ? geom.w : geom.h);
+const viewOrigin = (axis: Axis, viewport: Area) =>
+  axis === "x" ? viewport.x : viewport.y;
+const viewExtent = (axis: Axis, viewport: Area) =>
+  axis === "x" ? viewport.w : viewport.h;
+const pan = (axis: Axis, cam: Camera) => (axis === "x" ? cam.tx : cam.ty);
+
+/** Where a frame coordinate lands on the canvas, once the camera has run. */
+export function canvasPx(
+  axis: Axis,
+  mm: number,
+  viewport: Area,
+  geom: ViewGeom,
+  cam: Camera,
+): number {
+  const span = canvasSpan(axis, geom);
+  const fraction = (mm - viewOrigin(axis, viewport)) / viewExtent(axis, viewport);
+  const unscaled = (span - geom.side) / 2 + fraction * geom.side;
+  return span / 2 + (unscaled - span / 2) * cam.scale + pan(axis, cam);
+}
+
+/** The frame coordinate at one canvas pixel: the camera, run backwards. */
+export function frameMm(
+  axis: Axis,
+  px: number,
+  viewport: Area,
+  geom: ViewGeom,
+  cam: Camera,
+): number {
+  const span = canvasSpan(axis, geom);
+  const unscaled = (px - span / 2 - pan(axis, cam)) / cam.scale + span / 2;
+  const fraction = (unscaled - (span - geom.side) / 2) / geom.side;
+  return viewOrigin(axis, viewport) + fraction * viewExtent(axis, viewport);
+}
+
+/** Screen pixels one frame millimetre spans on this axis. */
+export function pxPerMm(
+  axis: Axis,
+  viewport: Area,
+  geom: ViewGeom,
+  cam: Camera,
+): number {
+  return (geom.side * cam.scale) / viewExtent(axis, viewport);
+}
+
+export interface Tick {
+  mm: number;
+  px: number;
+}
+
+/**
+ * Every multiple of `stepMm` the canvas shows on one axis, as a frame
+ * coordinate and the canvas pixel it lands on. Multiples of the step, so the
+ * lines are anchored at the frame's zero rather than at a canvas corner.
+ */
+export function axisTicks(
+  axis: Axis,
+  viewport: Area,
+  geom: ViewGeom,
+  cam: Camera,
+  stepMm: number,
+): Tick[] {
+  const from = frameMm(axis, 0, viewport, geom, cam);
+  const to = frameMm(axis, canvasSpan(axis, geom), viewport, geom, cam);
+  const first = Math.ceil(Math.min(from, to) / stepMm);
+  const last = Math.floor(Math.max(from, to) / stepMm);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return [];
+  const ticks: Tick[] = [];
+  for (let n = first; n <= last; n += 1) {
+    const mm = n * stepMm;
+    ticks.push({ mm, px: canvasPx(axis, mm, viewport, geom, cam) });
+  }
+  return ticks;
+}
+
+/** A frame coordinate in metres, to the digits its step actually resolves. */
+export function metreLabel(mm: number, stepMm: number): string {
+  const digits = stepMm >= 1000 ? 0 : stepMm >= 100 ? 1 : 2;
+  return `${(mm / 1000).toFixed(digits)} m`;
+}

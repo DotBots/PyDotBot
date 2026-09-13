@@ -2,6 +2,13 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 
 import { CalibrationLayer } from "./CalibrationLayer";
 import { areaToFraction, fractionToArea } from "./frame";
+import {
+  RULER_TARGET_PX,
+  axisTicks,
+  gridStepMm as pickGridStep,
+  metreLabel,
+  pxPerMm,
+} from "./grid";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
@@ -61,6 +68,12 @@ interface MapViewProps {
 
 const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
 
+// How much canvas a ruler label needs beside it to be readable whole.
+const RULER_CLEAR_PX = 40;
+// The zoom controls sit in the bottom-left corner, where the ruler's own
+// column runs, so it gives up that much of the canvas to them.
+const RULER_CONTROLS_PX = 110;
+
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
 
@@ -118,6 +131,18 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       top: `${tl.fy * 100}%`,
       width: `${(br.fx - tl.fx) * 100}%`,
       height: `${(br.fy - tl.fy) * 100}%`,
+    };
+  };
+
+  // The same box in the drawn square's own pixels, for the SVG outlines.
+  const rectPx = (a: Area) => {
+    const tl = areaToFraction({ x: a.x, y: a.y }, props.viewport);
+    const br = areaToFraction({ x: a.x + a.w, y: a.y + a.h }, props.viewport);
+    return {
+      x: tl.fx * side,
+      y: tl.fy * side,
+      width: (br.fx - tl.fx) * side,
+      height: (br.fy - tl.fy) * side,
     };
   };
 
@@ -215,18 +240,71 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     setMarquee(null);
   };
 
-  const gridStep = side / 10;
-  const gridBg = useMemo(
-    () =>
-      `repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px ${gridStep}px),` +
-      `repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px ${gridStep}px)`,
-    [gridStep],
-  );
-
   // Real-scale layer: glyphs scale to the actual DotBot footprint.
   // The camera scales the whole layer, so a name or a badge would grow with
   // the zoom. Chrome is not an object on the floor: it keeps its size.
   const chrome = 1 / cam.scale;
+
+  // The metric grid, in the scaled layer's own units. The step is the one the
+  // tighter axis can hold at the target spacing, so neither axis crowds; a
+  // line is one screen pixel wide whatever the camera does.
+  const geomNow = geomRef.current;
+  const gridStepMm = useMemo(
+    () =>
+      pickGridStep(
+        Math.min(
+          pxPerMm("x", props.viewport, geomNow, cam),
+          pxPerMm("y", props.viewport, geomNow, cam),
+        ),
+      ),
+    [props.viewport, geomNow, cam],
+  );
+  // The grid lies on the site, so a site with no measured extent falls back to
+  // the whole drawn frame rather than losing its grid.
+  const gridBox = props.siteExtent ?? props.viewport;
+  const gridBg = useMemo(() => {
+    const stepX = (gridStepMm / props.viewport.w) * side;
+    const stepY = (gridStepMm / props.viewport.h) * side;
+    // The tiles are phased so a line falls on the frame's zero, not on the
+    // box's own corner: the steps mean metres from the site's anchor.
+    const zeroX = ((0 - gridBox.x) / props.viewport.w) * side;
+    const zeroY = ((0 - gridBox.y) / props.viewport.h) * side;
+    return {
+      backgroundImage:
+        `linear-gradient(90deg, var(--grid) 0 ${chrome}px, transparent ${chrome}px 100%),` +
+        `linear-gradient(180deg, var(--grid) 0 ${chrome}px, transparent ${chrome}px 100%)`,
+      backgroundSize: `${stepX}px 100%, 100% ${stepY}px`,
+      backgroundPosition: `${zeroX}px 0, 0 ${zeroY}px`,
+    } as const;
+  }, [gridStepMm, props.viewport, gridBox.x, gridBox.y, side, chrome]);
+
+  // The ruler: one label every RULER_TARGET_PX or so, per axis, naming the
+  // metre the line it sits on stands for. A label too close to an edge is
+  // dropped rather than printed half off the canvas or over the other axis.
+  const readable = (ticks: ReturnType<typeof axisTicks>, last: number) =>
+    ticks.filter((t) => t.px > RULER_CLEAR_PX && t.px < last);
+  const rulerX = readable(
+    axisTicks(
+      "x",
+      props.viewport,
+      geomNow,
+      cam,
+      pickGridStep(pxPerMm("x", props.viewport, geomNow, cam), RULER_TARGET_PX),
+    ),
+    geomNow.w - RULER_CLEAR_PX,
+  );
+  const rulerY = readable(
+    axisTicks(
+      "y",
+      props.viewport,
+      geomNow,
+      cam,
+      pickGridStep(pxPerMm("y", props.viewport, geomNow, cam), RULER_TARGET_PX),
+    ),
+    geomNow.h - RULER_CONTROLS_PX,
+  );
+  const rulerStepX = rulerX.length > 1 ? rulerX[1].mm - rulerX[0].mm : gridStepMm;
+  const rulerStepY = rulerY.length > 1 ? rulerY[1].mm - rulerY[0].mm : gridStepMm;
 
   const gscale = props.layers.trueScale
     ? Math.max(0.2, (side * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
@@ -260,7 +338,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           transformOrigin: "50% 50%",
         }}
       >
-        {/* arena */}
+        {/* the drawn frame: the site plus its margin, which draws nothing */}
         <div
           style={{
             position: "absolute",
@@ -269,37 +347,54 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             width: side,
             height: side,
             transform: "translate(-50%, -50%)",
-            background: gridBg,
-            border: "1px solid var(--grid)",
-            borderRadius: 6,
           }}
         >
-          {/* subtle center accents (v1) */}
-          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(228,3,46,.16)", pointerEvents: "none" }} />
-          <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "var(--hairline)", pointerEvents: "none" }} />
+          {/* the site, which the grid lies on */}
+          <div
+            style={{
+              position: "absolute",
+              ...pctArea(gridBox),
+              ...gridBg,
+              pointerEvents: "none",
+            }}
+          />
 
-          {/* the whole site */}
-          {props.siteExtent && (
-            <div
-              style={{
-                position: "absolute",
-                ...pctArea(props.siteExtent),
-                border: "1px dashed var(--hairline)",
-                borderRadius: 4,
-                pointerEvents: "none",
-              }}
+          {/* The outlines: the site as the one outer silhouette, then one
+              dashed rectangle per area. Strokes rather than borders, because
+              a CSS border under a pixel wide is rounded back up to one and
+              then multiplied by the camera; a stroke keeps the width it is
+              given, so counter-scaling it holds the hairline at any zoom. */}
+          <svg
+            width={side}
+            height={side}
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+          >
+            <rect
+              {...rectPx(gridBox)}
+              fill="none"
+              stroke="var(--muted)"
+              strokeWidth={chrome}
             />
-          )}
+            {drawnAreas.map((a) => (
+              <rect
+                key={`outline-${a.name}`}
+                {...rectPx(a)}
+                fill="none"
+                stroke="var(--muted)"
+                strokeWidth={chrome}
+                strokeDasharray={`${5 * chrome} ${4 * chrome}`}
+                opacity={0.75}
+              />
+            ))}
+          </svg>
 
-          {/* the site's areas: an outline and a name, ticked under Layers */}
+          {/* the area names, ticked under Layers > Areas with their outlines */}
           {drawnAreas.map((a, i) => (
               <div
                 key={`area-${a.name}`}
                 style={{
                   position: "absolute",
                   ...pctArea(a),
-                  border: "1px dashed var(--hairline)",
-                  borderRadius: 4,
                   pointerEvents: "none",
                 }}
               >
@@ -569,6 +664,38 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 );
               })}
         </div>
+      </div>
+
+      {/* the ruler: which metre of the frame each edge of the canvas is on.
+          Canvas chrome like the zoom buttons, so it keeps its size and stays
+          on screen whatever the camera does. */}
+      <div
+        aria-label="Metre ruler"
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 8,
+          font: "10px/1 var(--font-mono)",
+          color: "var(--muted)",
+        }}
+      >
+        {rulerX.map((t) => (
+          <span
+            key={`rx-${t.mm}`}
+            style={{ position: "absolute", left: t.px + 3, top: 4, whiteSpace: "nowrap" }}
+          >
+            {metreLabel(t.mm, rulerStepX)}
+          </span>
+        ))}
+        {rulerY.map((t) => (
+          <span
+            key={`ry-${t.mm}`}
+            style={{ position: "absolute", left: 4, top: t.px + 3, whiteSpace: "nowrap" }}
+          >
+            {metreLabel(t.mm, rulerStepY)}
+          </span>
+        ))}
       </div>
 
       {/* marquee */}

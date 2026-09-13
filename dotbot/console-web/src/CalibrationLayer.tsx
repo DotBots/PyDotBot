@@ -1,7 +1,7 @@
 import React from "react";
 
 import { BOT_GLYPH_BOX, BotGlyph } from "./BotGlyph";
-import { noseHeading, sessionRect } from "./calibration";
+import { insideFromCorner, noseHeading, sessionRect } from "./calibration";
 import { areaToFraction } from "./frame";
 import type { Area, CalibrationSession } from "./types";
 
@@ -19,53 +19,61 @@ const pctOf = (x: number, y: number, box: Area) => {
 
 // The numbers are chrome, not objects on the floor, so they keep their size
 // whatever the map's real-scale layer does to the robot glyphs.
+const GLYPH_SIZE = BOT_GLYPH_BOX * 0.7;
+
 const Marker: React.FC<{
   index: number;
   captured: boolean;
   current: boolean;
+  corner: string | null;
   nose: string;
   chrome: number;
-}> = ({ index, captured, current, nose, chrome }) => (
-  <div
-    style={{
-      position: "absolute",
-      left: "50%",
-      top: "50%",
-      transform: `translate(-50%, -50%) scale(${chrome})`,
-      pointerEvents: "none",
-    }}
-  >
-    {/* The badge is what sits on the point; the glyph stands above it, so
-        numbering the corner does not move the mark it names. */}
-    {current && (
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          bottom: "100%",
-          transform: "translateX(-50%)",
-          marginBottom: 2,
-          opacity: 0.9,
-        }}
-      >
-        <BotGlyph color="var(--accent)" heading={noseHeading(nose)} size={BOT_GLYPH_BOX * 0.7} />
-      </div>
-    )}
+}> = ({ index, captured, current, corner, nose, chrome }) => {
+  const inside = insideFromCorner(corner);
+  return (
     <div
       style={{
-        font: "700 11px/1 var(--font-mono)",
-        padding: "3px 7px",
-        borderRadius: 9,
-        whiteSpace: "nowrap",
-        border: `1px solid ${current ? "var(--accent)" : "var(--hairline)"}`,
-        background: current ? "var(--accent)" : "var(--surface)",
-        color: current ? "#fff" : captured ? "var(--s-Running)" : "var(--muted)",
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: `translate(-50%, -50%) scale(${chrome})`,
+        pointerEvents: "none",
       }}
     >
-      {captured ? "✓" : index}
+      {/* The badge is what sits on the point; the glyph stands on the
+          rectangle's inside of it, where the robot itself goes, so numbering
+          the corner does not move the mark it names. */}
+      {current && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: `translate(-50%, -50%) translate(${inside.dx * GLYPH_SIZE}px, ${
+              inside.dy * GLYPH_SIZE
+            }px)`,
+            opacity: 0.9,
+          }}
+        >
+          <BotGlyph color="var(--accent)" heading={noseHeading(nose)} size={GLYPH_SIZE} />
+        </div>
+      )}
+      <div
+        style={{
+          font: "700 11px/1 var(--font-mono)",
+          padding: "3px 7px",
+          borderRadius: 9,
+          whiteSpace: "nowrap",
+          border: `1px solid ${current ? "var(--accent)" : "var(--hairline)"}`,
+          background: current ? "var(--accent)" : "var(--surface)",
+          color: current ? "#fff" : captured ? "var(--s-Running)" : "var(--muted)",
+        }}
+      >
+        {captured ? "✓" : index}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface CalibrationLayerProps {
   session: CalibrationSession;
@@ -97,12 +105,15 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
           top: `${topLeft.fy * 100}%`,
           width: `${(bottomRight.fx - topLeft.fx) * 100}%`,
           height: `${(bottomRight.fy - topLeft.fy) * 100}%`,
-          border: "1.5px solid var(--accent)",
           background: "rgba(228,3,46,.05)",
-          // A band outside the edge, so the session rectangle still reads as
-          // its own object when an area outline sits on the same rectangle.
-          boxShadow: "0 0 0 3px rgba(228,3,46,.14)",
-          borderRadius: 4,
+          // The edge, and a band outside it so the session rectangle still
+          // reads as its own object when an area outline sits on the same
+          // rectangle. Shadows rather than a border, because a border under a
+          // pixel wide is rounded back up to one and then scaled with the
+          // camera; a spread keeps the width it is given.
+          boxShadow:
+            `inset 0 0 0 ${1.5 * chrome}px var(--accent),` +
+            `0 0 0 ${3 * chrome}px rgba(228,3,46,.14)`,
           pointerEvents: "none",
           zIndex: 4,
         }}
@@ -138,6 +149,7 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
             index={p.index}
             captured={p.captured}
             current={session.outstanding === p.index}
+            corner={p.corner}
             nose={p.nose}
             chrome={chrome}
           />
