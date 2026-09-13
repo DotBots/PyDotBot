@@ -1,6 +1,7 @@
 import React from "react";
 
 import { InspectorBody } from "./Inspector";
+import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
 import type { CalibrationSession, Site, UnifiedBot } from "./types";
@@ -9,11 +10,12 @@ import type { Calibration } from "./useCalibration";
 // The right pane: always present, collapsible like the rail.
 //
 // Robot is the inspector, which selecting a robot on the map switches to.
-// Layers holds the three headings the layers popover used to hide - Robots,
-// Areas and Camera - so which area outlines the map draws is ticked in the
-// same place the map's other layers are, and the view switch stands alone at
-// the top right. Calibrate is present only while a session is, and the step
-// card is the whole of it, so Robot and Layers stay reachable during one.
+// Layers holds three headings - Robots, Areas and Camera - so which area
+// outlines the map draws is ticked in the same place the map's other layers
+// are, and the view switch stands alone at the top right. Calibrate is the
+// setup card until a session is open and the step card while one is, so a
+// session is always started from the tab that then runs it, and Robot and
+// Layers stay reachable throughout.
 //
 // Collapsed, the pane is an icon strip like the rail's: one icon per tab,
 // and a click opens the pane on that tab.
@@ -128,9 +130,7 @@ interface RightPaneProps {
 
 export const RightPane: React.FC<RightPaneProps> = (props) => {
   const siteAreas = props.site?.areas ?? [];
-  const tabs: RightTab[] = props.session
-    ? ["robot", "layers", "calibrate"]
-    : ["robot", "layers"];
+  const tabs: RightTab[] = ["robot", "layers", "calibrate"];
 
   const open = (tab: RightTab) => {
     props.setTab(tab);
@@ -219,16 +219,23 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-        {props.tab === "calibrate" && props.session && (
-          <StepCard
-            session={props.session}
-            calibration={props.calibration}
-            areaNames={props.session.area ? [props.session.area] : []}
-            device={props.device}
-            onDeviceChange={props.onDeviceChange}
-            onDone={props.onCalibrationDone}
-          />
-        )}
+        {props.tab === "calibrate" &&
+          (props.session ? (
+            <StepCard
+              session={props.session}
+              calibration={props.calibration}
+              areaNames={props.session.area ? [props.session.area] : []}
+              device={props.device}
+              onDeviceChange={props.onDeviceChange}
+              onDone={props.onCalibrationDone}
+            />
+          ) : (
+            <SetupCard
+              site={props.site}
+              calibration={props.calibration}
+              device={props.device}
+            />
+          ))}
 
         {props.tab === "robot" && <InspectorBody bots={props.bots} />}
 

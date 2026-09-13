@@ -174,12 +174,24 @@ class DotBotCalibrationStartModel(BaseModel):
     """Where this session's points are, in `--points` form.
 
     `area` names the area the expected error is evaluated over; empty means
-    none chosen.
+    none chosen. `reads` is captures averaged per point; None takes the
+    session's own default.
     """
 
     points: Union[str, List[str]] = "arena:corners"
     device: str = ""
     area: str = ""
+    reads: Optional[int] = None
+
+
+class DotBotCalibrationPreviewModel(BaseModel):
+    """What a session over one `--points` specification would open on.
+
+    `reads` is the captures-per-point a start with no `reads` would use.
+    """
+
+    points: List[DotBotCalibrationPointModel] = []
+    reads: int = 0
 
 
 class DotBotCalibrationCaptureModel(BaseModel):

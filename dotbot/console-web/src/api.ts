@@ -1,4 +1,5 @@
 import {
+  CalibrationPreview,
   CalibrationPushed,
   CalibrationSaved,
   CalibrationSession,
@@ -113,14 +114,22 @@ export async function fetchCalibrationSession(): Promise<CalibrationSession | nu
   return controllerJson(`${SESSION}/state`);
 }
 
+export async function previewCalibrationPoints(
+  points: string[],
+): Promise<CalibrationPreview> {
+  const query = points.map((p) => `points=${encodeURIComponent(p)}`).join("&");
+  return controllerJson(`${SESSION}/preview?${query}`);
+}
+
 export async function startCalibration(
   points: string[],
   device = "",
   area = "",
+  reads?: number,
 ): Promise<CalibrationSession> {
   return controllerJson(SESSION, {
     method: "POST",
-    body: { points, device, area },
+    body: { points, device, area, ...(reads === undefined ? {} : { reads }) },
   });
 }
 

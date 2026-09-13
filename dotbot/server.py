@@ -32,6 +32,7 @@ from dotbot.models import (
     DotBotAreaModel,
     DotBotBackgroundMapModel,
     DotBotCalibrationCaptureModel,
+    DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
     DotBotCalibrationSavedModel,
     DotBotCalibrationSaveModel,
@@ -322,8 +323,24 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
         [request.points] if isinstance(request.points, str) else list(request.points)
     )
     return await _calibration(
-        api.controller.calibration_session.start(specs, request.device, request.area)
+        api.controller.calibration_session.start(
+            specs, request.device, request.area, request.reads
+        )
     )
+
+
+@api.get(
+    path="/controller/calibration/session/preview",
+    response_model=DotBotCalibrationPreviewModel,
+    summary="Resolve a set of points without opening a session over them",
+    tags=["calibration"],
+)
+async def calibration_session_preview(points: Annotated[List[str], Query()]):
+    """Calibration-preview HTTP GET handler."""
+    try:
+        return api.controller.calibration_session.preview(points)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @api.get(

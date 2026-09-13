@@ -647,6 +647,69 @@ async def test_a_session_started_without_an_area_names_none(rest):
     assert body["area"] == ""
 
 
+@pytest.mark.asyncio
+async def test_a_preview_resolves_the_same_points_a_start_would(rest):
+    http, _, _ = rest
+    preview = (
+        await http.get(
+            "/controller/calibration/session/preview",
+            params={"points": "arena:corners"},
+        )
+    ).json()
+    started = (
+        await http.post(
+            "/controller/calibration/session", json={"points": ["arena:corners"]}
+        )
+    ).json()
+
+    assert [(p["x"], p["y"]) for p in preview["points"]] == [
+        (p["x"], p["y"]) for p in started["points"]
+    ]
+    assert [p["corner"] for p in preview["points"]] == list(CORNERS)
+    assert preview["reads"] == started["reads"]
+
+
+@pytest.mark.asyncio
+async def test_a_preview_resolves_a_typed_rectangle(rest):
+    """The console's typed `x,y,w,h` rectangle is a spec the resolver takes."""
+    http, _, _ = rest
+    preview = (
+        await http.get(
+            "/controller/calibration/session/preview",
+            params={"points": "750,750,500,500:corners"},
+        )
+    ).json()
+    assert [(p["x"], p["y"]) for p in preview["points"]] == [
+        (797.0, 768.5),
+        (1203.0, 768.5),
+        (797.0, 1231.5),
+        (1203.0, 1231.5),
+    ]
+    assert [p["area"] for p in preview["points"]] == ["750,750,500,500"] * 4
+
+
+@pytest.mark.asyncio
+async def test_a_preview_of_points_no_area_answers_to_is_refused(rest):
+    http, _, _ = rest
+    response = await http.get(
+        "/controller/calibration/session/preview", params={"points": "balcony:corners"}
+    )
+    assert response.status_code == 422
+    assert "unknown area 'balcony'" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_session_takes_the_reads_per_point_it_is_started_with(rest):
+    http, _, _ = rest
+    body = (
+        await http.post(
+            "/controller/calibration/session",
+            json={"points": ["arena:corners"], "reads": 40},
+        )
+    ).json()
+    assert body["reads"] == 40
+
+
 # --- rehearsing without a fleet ---------------------------------------------
 
 

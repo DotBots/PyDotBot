@@ -122,6 +122,14 @@ export interface CalibrationSession {
   error: string;
 }
 
+// What a session over one points specification would open on, resolved by the
+// controller without opening one. `reads` is the captures-per-point a start
+// that names none would use.
+export interface CalibrationPreview {
+  points: CalibrationPoint[];
+  reads: number;
+}
+
 export interface CalibrationSaved {
   id: string;
   id8: string;

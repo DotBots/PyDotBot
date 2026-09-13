@@ -315,19 +315,11 @@ class CalibrationSession:
         return calibration_payload_int32(self.stations)
 
 
-def _point_dict(point: SessionPoint) -> dict:
-    placement = point.placement
+def placement_dict(index: int, placement: PointPlacement) -> dict:
+    """One resolved point, with nothing captured at it yet."""
     x, y = placement.mm
-    reads = [
-        {
-            "station": station,
-            "reads": count,
-            "target": point.reads_target or count,
-        }
-        for station, count in sorted(point.reads_per_station.items())
-    ]
     return {
-        "index": point.index,
+        "index": index,
         "x": x,
         "y": y,
         "corner": placement.corner,
@@ -335,7 +327,23 @@ def _point_dict(point: SessionPoint) -> dict:
         "where": placement.where,
         "how": placement.how,
         "nose": placement.nose,
+        "captured": False,
+        "reads": [],
+        "dropped": 0,
+    }
+
+
+def _point_dict(point: SessionPoint) -> dict:
+    return {
+        **placement_dict(point.index, point.placement),
         "captured": point.captured,
-        "reads": reads,
+        "reads": [
+            {
+                "station": station,
+                "reads": count,
+                "target": point.reads_target or count,
+            }
+            for station, count in sorted(point.reads_per_station.items())
+        ],
         "dropped": (point.capture.drop_count if point.capture else 0),
     }

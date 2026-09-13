@@ -10,6 +10,7 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
+import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
@@ -110,11 +111,12 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  // The rail's action opens the tab that sets a session up; the session
+  // itself is started from there, once its rectangle and reads are chosen.
   const onCalibrate = useCallback(() => {
-    const first = site?.areas?.[0]?.name;
-    const points = first ? `${first}:corners` : "arena:corners";
-    calibration.start([points], first ?? "");
-  }, [site, calibration]);
+    setRightTab("calibrate");
+    setRightCollapsed(false);
+  }, []);
 
   // A named zoom is view state: it moves the camera and goes nowhere else.
   const zoomTo = useCallback(
@@ -297,8 +299,9 @@ export const App: React.FC = () => {
 
   // On a phone the card is the whole screen: a small picture at the top so
   // the operator knows which corner is next from a crouch, and Capture as
-  // the one large target.
-  if (narrow && session) {
+  // the one large target. The setup card takes the screen the same way, so a
+  // session can be set up from the floor rather than only from a desk.
+  if (narrow && (session || rightTab === "calibrate")) {
     return (
       <div
         data-theme={theme}
@@ -329,15 +332,24 @@ export const App: React.FC = () => {
             {site?.name ?? "unknown site"}
           </span>
         </div>
-        <StepCard
-          session={session}
-          calibration={calibration}
-          areaNames={session.area ? [session.area] : []}
-          device={capturer || session.device || ""}
-          onDeviceChange={setCapturer}
-          phone
-          onDone={() => calibration.abandon()}
-        />
+        {session ? (
+          <StepCard
+            session={session}
+            calibration={calibration}
+            areaNames={session.area ? [session.area] : []}
+            device={capturer || session.device || ""}
+            onDeviceChange={setCapturer}
+            phone
+            onDone={() => calibration.abandon()}
+          />
+        ) : (
+          <SetupCard
+            site={site}
+            calibration={calibration}
+            device={capturer}
+            onLeave={() => setRightTab("layers")}
+          />
+        )}
       </div>
     );
   }

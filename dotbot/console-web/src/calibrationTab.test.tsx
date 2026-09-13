@@ -52,13 +52,14 @@ vi.mock("./api", () => ({
   putWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
+  previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
   pushCalibration: vi.fn(),
   redoCalibrationPoint: vi.fn(),
   saveCalibration: vi.fn(),
   startCalibration: vi.fn(),
 }));
 
-import { abandonCalibration } from "./api";
+import { abandonCalibration, startCalibration } from "./api";
 import { App } from "./App";
 
 const SESSION: CalibrationSession = {
@@ -105,12 +106,26 @@ afterEach(() => {
 });
 
 describe("the Calibrate tab", () => {
-  it("is absent while no session is open", () => {
+  it("is present with no session, and carries the setup card", () => {
     render(<App />);
-    expect(tabNames()).toEqual(["Robot", "Layers"]);
+    expect(tabNames()).toEqual(["Robot", "Layers", "Calibrate"]);
+
+    fireEvent.click(screen.getByText("Calibrate"));
+    expect(screen.getByLabelText("Rectangle")).toBeInTheDocument();
+    expect(screen.getByText("Start")).toBeInTheDocument();
+    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
   });
 
-  it("appears and is selected when a session starts", () => {
+  it("opens on the rail's Calibrate action rather than starting a session", () => {
+    render(<App />);
+    fireEvent.click(screen.getByText("Localization"));
+    fireEvent.click(screen.getByText("Calibrate lighthouse"));
+
+    expect(startCalibration).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Rectangle")).toBeInTheDocument();
+  });
+
+  it("is selected when a session starts", () => {
     const { rerender } = render(<App />);
     session = SESSION;
     act(() => {
@@ -118,8 +133,8 @@ describe("the Calibrate tab", () => {
     });
 
     expect(tabNames()).toEqual(["Robot", "Layers", "Calibrate"]);
-    // The step card is the tab's whole content, so the capture button is on
-    // screen the moment the session opens.
+    // The step card takes the tab over from the setup card, so the capture
+    // button is on screen the moment the session opens.
     expect(screen.getByText("Capture")).toBeInTheDocument();
   });
 
@@ -136,7 +151,7 @@ describe("the Calibrate tab", () => {
     expect(screen.queryByText("Capture")).not.toBeInTheDocument();
   });
 
-  it("disappears on Done, and the pane returns to the tab that was open", () => {
+  it("hands the pane back on Done, to the tab that was open", () => {
     const { rerender } = render(<App />);
     // Robot was the tab in use before calibration.
     fireEvent.click(screen.getByText("Robot"));
@@ -145,14 +160,13 @@ describe("the Calibrate tab", () => {
     act(() => {
       rerender(<App />);
     });
-    expect(tabNames()).toEqual(["Robot", "Layers", "Calibrate"]);
+    expect(screen.getByText("Capture")).toBeInTheDocument();
 
     session = null;
     act(() => {
       rerender(<App />);
     });
 
-    expect(tabNames()).toEqual(["Robot", "Layers"]);
     expect(screen.queryByText("Capture")).not.toBeInTheDocument();
     // Robot is selected again: its empty-state line is what the tab shows.
     expect(screen.getByText("Select a bot to inspect it.")).toBeInTheDocument();

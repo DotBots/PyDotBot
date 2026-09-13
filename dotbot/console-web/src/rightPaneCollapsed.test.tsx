@@ -103,10 +103,10 @@ describe("the collapsed right pane", () => {
     render(<Harness />);
     expect(screen.getByTitle("Robot")).toBeInTheDocument();
     expect(screen.getByTitle("Layers")).toBeInTheDocument();
-    expect(screen.queryByTitle("Calibrate")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Calibrate")).toBeInTheDocument();
   });
 
-  it("shows the Calibrate icon too while a session runs", () => {
+  it("keeps the Calibrate icon while a session runs", () => {
     render(<Harness session={SESSION} />);
     expect(screen.getByTitle("Calibrate")).toBeInTheDocument();
   });

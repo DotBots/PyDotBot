@@ -20,7 +20,13 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, Optional, Sequence
 
-from dotbot.calibration.session import CalibrationSession, SessionError
+from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
+from dotbot.calibration.points import resolve_placement_points
+from dotbot.calibration.session import (
+    CalibrationSession,
+    SessionError,
+    placement_dict,
+)
 from dotbot.logger import LOGGER
 from dotbot.site import Site
 
@@ -78,13 +84,35 @@ class SessionDriver:
 
     # -- the loop
 
+    def preview(self, specs: Sequence[str]) -> dict:
+        """What a start over `specs` would open on, without opening it.
+
+        Same resolver as `start`, so the points a client shows before
+        committing are the points it then captures.
+        """
+        placements = resolve_placement_points(list(specs), self.site.registry())
+        return {
+            "points": [
+                placement_dict(index, placement)
+                for index, placement in enumerate(placements)
+            ],
+            "reads": CAPTURE_READS_DEFAULT,
+        }
+
     async def start(
-        self, specs: Sequence[str], device: str = "", area: str = ""
+        self,
+        specs: Sequence[str],
+        device: str = "",
+        area: str = "",
+        reads: Optional[int] = None,
     ) -> dict:
         """Resolve the points and open a session with point 0 outstanding."""
         async with self._lock:
             self._close_stream()
-            session = CalibrationSession.resolve(list(specs), site=self.site)
+            extra = {} if reads is None else {"reads": reads}
+            session = CalibrationSession.resolve(
+                list(specs), site=self.site, **extra
+            )
             session.device = device.upper()
             session.area = area
             self.session = session
