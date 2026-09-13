@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
-import { isPhoneWidth } from "./calibration";
+import { isPhoneWidth, sessionRect } from "./calibration";
 import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
@@ -21,7 +21,13 @@ import { useCalibration } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
-import { Camera as ZoomCamera, cameraForZoom, zoomFromSearch } from "./zoom";
+import {
+  Camera as ZoomCamera,
+  cameraForArea,
+  cameraForZoom,
+  padArea,
+  zoomFromSearch,
+} from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
@@ -108,7 +114,6 @@ export const App: React.FC = () => {
     const first = site?.areas?.[0]?.name;
     const points = first ? `${first}:corners` : "arena:corners";
     calibration.start([points], first ?? "");
-    setRightCollapsed(false);
   }, [site, calibration]);
 
   // A named zoom is view state: it moves the camera and goes nowhere else.
@@ -129,6 +134,38 @@ export const App: React.FC = () => {
     if (asked) zoomTo(asked);
     presetZoomRef.current = true;
   }, [geom, site, zoomTo]);
+
+  // Calibration mode takes over the right pane and the viewport, and gives
+  // both back on Done: the tab that was open before, and the camera that was
+  // on it.
+  const beforeCalibration = useRef<{ tab: RightTab; cam: Camera } | null>(null);
+  const geomRef = useRef<ViewGeom | null>(geom);
+  geomRef.current = geom;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const rightTabRef = useRef(rightTab);
+  rightTabRef.current = rightTab;
+  const camRef = useRef(cam);
+  camRef.current = cam;
+
+  useEffect(() => {
+    if (session && !beforeCalibration.current) {
+      beforeCalibration.current = { tab: rightTabRef.current, cam: camRef.current };
+      setRightTab("calibrate");
+      setRightCollapsed(false);
+      const rect = sessionRect(session);
+      if (rect && rect.w > 0 && rect.h > 0 && geomRef.current) {
+        setCam(cameraForArea(padArea(rect), viewportRef.current, geomRef.current));
+      }
+      return;
+    }
+    if (!session && beforeCalibration.current) {
+      const { tab, cam: previous } = beforeCalibration.current;
+      beforeCalibration.current = null;
+      setRightTab(tab);
+      setCam(previous);
+    }
+  }, [session]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {

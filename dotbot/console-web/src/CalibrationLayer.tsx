@@ -95,6 +95,9 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
           height: `${(bottomRight.fy - topLeft.fy) * 100}%`,
           border: "1.5px solid var(--accent)",
           background: "rgba(228,3,46,.05)",
+          // A band outside the edge, so the session rectangle still reads as
+          // its own object when an area outline sits on the same rectangle.
+          boxShadow: "0 0 0 3px rgba(228,3,46,.14)",
           borderRadius: 4,
           pointerEvents: "none",
           zIndex: 4,
