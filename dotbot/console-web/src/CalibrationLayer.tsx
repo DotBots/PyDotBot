@@ -24,13 +24,14 @@ const Marker: React.FC<{
   captured: boolean;
   current: boolean;
   nose: string;
-}> = ({ index, captured, current, nose }) => (
+  chrome: number;
+}> = ({ index, captured, current, nose, chrome }) => (
   <div
     style={{
       position: "absolute",
       left: "50%",
       top: "50%",
-      transform: "translate(-50%, -50%)",
+      transform: `translate(-50%, -50%) scale(${chrome})`,
       pointerEvents: "none",
     }}
   >
@@ -70,11 +71,14 @@ interface CalibrationLayerProps {
   session: CalibrationSession;
   /** The part of the frame the map draws, so the rectangle lands on it. */
   viewport: Area;
+  /** Reciprocal of the camera scale: chrome keeps its size as the map zooms. */
+  chrome: number;
 }
 
 export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
   session,
   viewport,
+  chrome,
 }) => {
   const rect = sessionRect(session);
   if (!rect) return null;
@@ -112,6 +116,8 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
             fontSize: 10,
             color: "var(--accent)",
             whiteSpace: "nowrap",
+            transform: `scale(${chrome})`,
+            transformOrigin: "right bottom",
           }}
         >
           calibrating {session.at}
@@ -133,6 +139,7 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
             captured={p.captured}
             current={session.outstanding === p.index}
             nose={p.nose}
+            chrome={chrome}
           />
         </div>
       ))}

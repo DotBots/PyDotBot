@@ -121,6 +121,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
+  const drawnAreas = props.siteAreas.filter(
+    (a) => !props.hiddenAreas.has(a.name ?? ""),
+  );
+  // Areas that share a top-left corner would print their names on top of one
+  // another, so each one after the first drops a line.
+  const stackedAt = (index: number) =>
+    drawnAreas.filter(
+      (o, j) =>
+        j < index &&
+        o.x === drawnAreas[index].x &&
+        o.y === drawnAreas[index].y,
+    ).length;
+
   const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
     if (!el) return null;
@@ -211,6 +224,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   );
 
   // Real-scale layer: glyphs scale to the actual DotBot footprint.
+  // The camera scales the whole layer, so a name or a badge would grow with
+  // the zoom. Chrome is not an object on the floor: it keeps its size.
+  const chrome = 1 / cam.scale;
+
   const gscale = props.layers.trueScale
     ? Math.max(0.2, (side * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
     : 1;
@@ -274,9 +291,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           )}
 
           {/* the site's areas: an outline and a name, ticked under Layers */}
-          {props.siteAreas
-            .filter((a) => !props.hiddenAreas.has(a.name ?? ""))
-            .map((a) => (
+          {drawnAreas.map((a, i) => (
               <div
                 key={`area-${a.name}`}
                 style={{
@@ -297,13 +312,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     }}
                     style={{
                       position: "absolute",
-                      left: 4,
-                      top: 2,
+                      // Offsets are in the scaled layer's units, so they are
+                      // divided back out to stay constant on screen.
+                      left: 4 * chrome,
+                      top: (2 + stackedAt(i) * 12) * chrome,
                       fontSize: 10,
                       opacity: 0.7,
                       whiteSpace: "nowrap",
                       cursor: "pointer",
                       pointerEvents: "auto",
+                      transform: `scale(${chrome})`,
+                      transformOrigin: "left top",
                     }}
                   >
                     {a.name}
@@ -312,7 +331,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               </div>
             ))}
           {props.session && (
-            <CalibrationLayer session={props.session} viewport={props.viewport} />
+            <CalibrationLayer
+              session={props.session}
+              viewport={props.viewport}
+              chrome={chrome}
+            />
           )}
 
           {/* trails (our extra layer) */}

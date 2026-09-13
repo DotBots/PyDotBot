@@ -124,7 +124,7 @@ describe("the collapsed right pane", () => {
   it("still collapses back from the open pane", () => {
     render(<Harness />);
     fireEvent.click(screen.getByTitle("Layers"));
-    fireEvent.click(screen.getByTitle("Collapse"));
+    fireEvent.click(screen.getByTitle("Collapse the right pane"));
     expect(state()).toBe("collapsed:layers");
     expect(screen.getByTitle("Layers")).toBeInTheDocument();
   });

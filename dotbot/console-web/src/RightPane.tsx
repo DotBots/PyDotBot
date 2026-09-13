@@ -211,7 +211,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
         <div style={{ flex: 1 }} />
         <span
           onClick={() => props.setCollapsed(true)}
-          title="Collapse"
+          title="Collapse the right pane"
           style={{ cursor: "pointer", color: "var(--muted)", fontSize: 15, lineHeight: 1 }}
         >
           &#8250;
