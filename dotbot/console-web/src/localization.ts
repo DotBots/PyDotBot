@@ -1,10 +1,10 @@
-import type { Area, CalibrationSession, Site, UnifiedBot } from "./types";
+import type { CalibrationSession, Site, UnifiedBot } from "./types";
 
 // What the Localization panel and the footer minimap say, derived from the
-// site, the areas shown and the fleet. Kept out of the markup so the wording
-// is readable in a test, since these are the three facts the console has no
-// home for today: which site the positions belong to, which of its areas are
-// shown, and which robots carry the calibration in use.
+// site and the fleet. Kept out of the markup so the wording is readable in a
+// test, since these are the two facts the console has no home for today:
+// which site the positions belong to, and which robots carry the calibration
+// in use.
 
 /** "3330 x 4000 mm", or the honest absence for a site nobody measured. */
 export function extentLabel(site: Site | null): string {
@@ -12,24 +12,9 @@ export function extentLabel(site: Site | null): string {
   return `${site.extent_mm[0]} x ${site.extent_mm[1]} mm`;
 }
 
-/** The areas shown, by name; "the whole site" when none is. */
-export function areasShownLabel(areas: Area[]): string {
-  const named = areas.map((a) => a.name).filter((n): n is string => Boolean(n));
-  return named.length ? named.join(", ") : "the whole site";
-}
-
-/** The footer minimap's label: the site, its extent and what is shown. */
-export function minimapLabel(site: Site | null, areas: Area[]): string {
-  const name = site?.name || "unknown";
-  return `SITE ${name} · ${extentLabel(site)} · showing ${areasShownLabel(areas)}`;
-}
-
-/** The same label split in two, for a column too narrow for one line. */
-export function minimapLines(site: Site | null, areas: Area[]): [string, string] {
-  return [
-    `SITE ${site?.name || "unknown"} · ${extentLabel(site)}`,
-    `showing ${areasShownLabel(areas)}`,
-  ];
+/** The footer minimap's label: the site and its extent. */
+export function minimapLabel(site: Site | null): string {
+  return `SITE ${site?.name || "unknown"} · ${extentLabel(site)}`;
 }
 
 export interface Coverage {

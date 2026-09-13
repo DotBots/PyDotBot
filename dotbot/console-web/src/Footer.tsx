@@ -37,7 +37,8 @@ interface FooterProps {
   flashQueue: Record<string, FlashJob>;
   viewport: Area;
   site: Site | null;
-  activeAreas: Area[];
+  /** The area names this browser hides, ticked under Layers > Areas. */
+  hiddenAreas: Set<string>;
   selection: Set<string>;
   pendingWaypoints: LH2Position[];
   cam: Camera;
@@ -347,7 +348,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
         bots={props.bots}
         viewport={props.viewport}
         site={props.site}
-        activeAreas={props.activeAreas}
+        hiddenAreas={props.hiddenAreas}
         cam={props.cam}
         setCam={props.setCam}
         geom={props.geom}

@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 
 import { areaToFraction, siteExtentArea } from "./frame";
-import { minimapLines } from "./localization";
+import { minimapLabel } from "./localization";
 import { stateColor } from "./viewChrome";
 
 import { Camera, clampCam, ViewGeom } from "./MapView";
@@ -12,7 +12,8 @@ interface MinimapProps {
   /** The part of the frame the map draws, which the box tracks. */
   viewport: Area;
   site: Site | null;
-  activeAreas: Area[];
+  /** The area names this browser hides, ticked under Layers > Areas. */
+  hiddenAreas: Set<string>;
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
@@ -25,7 +26,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   bots,
   viewport,
   site,
-  activeAreas,
+  hiddenAreas,
   cam,
   setCam,
   geom,
@@ -61,7 +62,6 @@ export const Minimap: React.FC<MinimapProps> = ({
   };
 
   const rect = viewportRect();
-  const shown = new Set(activeAreas.map((a) => a.name ?? "").filter(Boolean));
   // The whole site, never the viewport: the box below is what moves.
   const box: Area = siteExtentArea(site) ?? viewport;
   // viewportRect speaks fractions of the drawn viewport; the minimap draws
@@ -97,20 +97,17 @@ export const Minimap: React.FC<MinimapProps> = ({
       }}
     >
       <div style={{ fontSize: 9.5, lineHeight: 1.4, letterSpacing: ".4px", color: "var(--muted)" }}>
-        {minimapLines(site, activeAreas).map((line, i) => (
-          <div
-            key={i}
-            style={{
-              textTransform: "uppercase",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={line}
-          >
-            {line}
-          </div>
-        ))}
+        <div
+          style={{
+            textTransform: "uppercase",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={minimapLabel(site)}
+        >
+          {minimapLabel(site)}
+        </div>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
         <div
@@ -139,18 +136,19 @@ export const Minimap: React.FC<MinimapProps> = ({
         userSelect: "none",
           }}
         >
-          {(site?.areas ?? []).map((a) => (
-            <div
-              key={`mini-${a.name}`}
-              style={{
-                position: "absolute",
-                ...areaBox(a),
-                border: `1px ${shown.has(a.name ?? "") ? "solid" : "dashed"} var(--hairline)`,
-                background: shown.has(a.name ?? "") ? "rgba(228,3,46,.05)" : "transparent",
-                pointerEvents: "none",
-              }}
-            />
-          ))}
+          {(site?.areas ?? [])
+            .filter((a) => !hiddenAreas.has(a.name ?? ""))
+            .map((a) => (
+              <div
+                key={`mini-${a.name}`}
+                style={{
+                  position: "absolute",
+                  ...areaBox(a),
+                  border: "1px dashed var(--hairline)",
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
           {bots
             .filter((b) => b.position)
             .map((b) => (

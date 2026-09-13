@@ -60,13 +60,12 @@ export interface PyDotBot {
 }
 
 export interface WsNotification {
-  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE, 6 AREA_UPDATE
+  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE
   cmd: number;
   data?: Partial<PyDotBot> & {
     lh2_waypoints?: LH2Position[];
   };
   calibration_session?: CalibrationSession | null;
-  areas?: Area[];
 }
 
 // --- the calibration session the controller owns ---------------------------
@@ -105,6 +104,7 @@ export interface CalibrationStation {
 export interface CalibrationSession {
   at: string; // what the operator asked for, resolved once at start
   site: string;
+  area: string; // the area the expected error is for; "" means none chosen
   device: string;
   reads: number;
   status: string; // collecting | solved | saved
@@ -216,9 +216,9 @@ export interface ControllerConnection {
   gw_address: string;
 }
 
-// GET /controller/area - one of the areas shown, in frame mm.
-// An area is a view of the frame and carries no calibration, so changing it
-// never touches one.
+// One named rectangle of the site, in frame mm. An area is a view of the
+// frame and carries no calibration, so showing or hiding one never touches
+// one.
 export interface Area {
   x: number;
   y: number;

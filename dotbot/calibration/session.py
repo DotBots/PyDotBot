@@ -20,7 +20,6 @@ import datetime
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Sequence
 
-from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import (
     VALID_MM_DEFAULT,
     Calibration,
@@ -79,6 +78,8 @@ class CalibrationSession:
     points: list[SessionPoint]
     site: Site
     at: str = ""
+    # The area the expected error will be evaluated over; "" means none.
+    area: str = ""
     device: str = ""
     robot: str = ROBOT_DEFAULT
     reads: int = CAPTURE_READS_DEFAULT
@@ -267,6 +268,7 @@ class CalibrationSession:
         return {
             "at": self.at,
             "site": self.site.name,
+            "area": self.area,
             "device": self.device,
             "reads": self.reads,
             "status": self.status,
@@ -311,14 +313,6 @@ class CalibrationSession:
         if not self.stations:
             raise SessionError("nothing solved yet, so there is nothing to push")
         return calibration_payload_int32(self.stations)
-
-
-def session_areas(site: Site, specs: Sequence[str]) -> list[Area]:
-    """The areas a session's expected error would be evaluated over."""
-    if not specs:
-        extent = site.extent
-        return [extent] if extent is not None else []
-    return site.registry().resolve_all(list(specs))
 
 
 def _point_dict(point: SessionPoint) -> dict:

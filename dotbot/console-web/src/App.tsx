@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchConnection, putArea, putWaypoints } from "./api";
+import { fetchConnection, putWaypoints } from "./api";
+import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
 import { isPhoneWidth } from "./calibration";
 import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
@@ -26,8 +27,7 @@ const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, site, activeAreas, setActiveAreas, session, setSession, viewport, wsUp } =
-    useFleet();
+  const { bots, site, session, setSession, viewport, wsUp } = useFleet();
   const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -92,25 +92,23 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // The areas shown live on the controller, so a toggle is a PUT and the
-  // notification it broadcasts is what redraws every open console.
-  const onAreasChange = useCallback(
-    (names: string[]) => {
-      putArea(names)
-        .then(setActiveAreas)
-        .catch((err: Error) =>
-          showToast(`The controller refused that area: ${err.message}`),
-        );
-    },
-    [setActiveAreas, showToast],
-  );
+  // Area visibility is a map layer, not shared state: no controller call, and
+  // the set is this browser's.
+  const [hiddenAreas, setHiddenAreas] = useState<Set<string>>(loadHiddenAreas);
+  const onAreaToggle = useCallback((name: string) => {
+    setHiddenAreas((prev) => {
+      const next = toggleHidden(prev, name);
+      saveHiddenAreas(next);
+      return next;
+    });
+  }, []);
 
   const onCalibrate = useCallback(() => {
-    const names = activeAreas.map((a) => a.name).filter(Boolean) as string[];
-    const points = names.length ? `${names[0]}:corners` : "arena:corners";
-    calibration.start([points]);
+    const first = site?.areas?.[0]?.name;
+    const points = first ? `${first}:corners` : "arena:corners";
+    calibration.start([points], first ?? "");
     setRightCollapsed(false);
-  }, [activeAreas, calibration]);
+  }, [site, calibration]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
@@ -271,13 +269,13 @@ export const App: React.FC = () => {
           <div style={{ fontWeight: 700, fontSize: 15 }}>DotBots</div>
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 11, color: "var(--muted)" }}>
-            showing {activeAreas.map((a) => a.name).filter(Boolean).join(", ") || "the whole site"}
+            {site?.name ?? "unknown site"}
           </span>
         </div>
         <StepCard
           session={session}
           calibration={calibration}
-          areaNames={activeAreas.map((a) => a.name ?? "").filter(Boolean)}
+          areaNames={session.area ? [session.area] : []}
           device={capturer || session.device || ""}
           onDeviceChange={setCapturer}
           phone
@@ -418,7 +416,6 @@ export const App: React.FC = () => {
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
           site={site}
-          activeAreas={activeAreas}
           session={session}
           calibrationBusy={calibration.busy}
           calibrationError={calibration.error}
@@ -432,8 +429,8 @@ export const App: React.FC = () => {
             <MapView
               bots={shownBots}
               viewport={viewport}
-              activeAreas={activeAreas}
               siteAreas={site?.areas ?? []}
+              hiddenAreas={hiddenAreas}
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
@@ -521,8 +518,8 @@ export const App: React.FC = () => {
           setCollapsed={setRightCollapsed}
           bots={selectedBots}
           site={site}
-          activeAreas={activeAreas}
-          onAreasChange={onAreasChange}
+          hiddenAreas={hiddenAreas}
+          onAreaToggle={onAreaToggle}
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
@@ -539,7 +536,7 @@ export const App: React.FC = () => {
         flashQueue={orch.queue}
         viewport={viewport}
         site={site}
-        activeAreas={activeAreas}
+        hiddenAreas={hiddenAreas}
         selection={selection}
         pendingWaypoints={pending}
         cam={cam}

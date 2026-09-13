@@ -1,18 +1,18 @@
 import React from "react";
 
-import { shownAreaNames, toggledAreaNames } from "./areas";
 import { InspectorBody } from "./Inspector";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
-import type { Area, CalibrationSession, Site, UnifiedBot } from "./types";
+import type { CalibrationSession, Site, UnifiedBot } from "./types";
 import type { Calibration } from "./useCalibration";
 
 // The right pane: always present, collapsible like the rail, two tabs.
 //
 // Robot is the inspector, which selecting a robot on the map switches to.
 // Layers holds the three headings the layers popover used to hide - Robots,
-// Areas and Camera - so the areas shown are toggled in the same place the
-// map's other layers are, and the view switch stands alone at the top right.
+// Areas and Camera - so which area outlines the map draws is ticked in the
+// same place the map's other layers are, and the view switch stands alone at
+// the top right.
 
 const label10 = {
   fontSize: 10,
@@ -83,8 +83,8 @@ interface RightPaneProps {
   setCollapsed: (collapsed: boolean) => void;
   bots: UnifiedBot[];
   site: Site | null;
-  activeAreas: Area[];
-  onAreasChange: (names: string[]) => void;
+  hiddenAreas: Set<string>;
+  onAreaToggle: (name: string) => void;
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
@@ -97,11 +97,6 @@ interface RightPaneProps {
 
 export const RightPane: React.FC<RightPaneProps> = (props) => {
   const siteAreas = props.site?.areas ?? [];
-  const shownNames = new Set(shownAreaNames(props.site, props.activeAreas));
-  const areaNames = props.activeAreas.map((a) => a.name ?? "").filter(Boolean);
-
-  const toggleArea = (name: string) =>
-    props.onAreasChange(toggledAreaNames(props.site, props.activeAreas, name));
 
   if (props.collapsed) {
     return (
@@ -174,7 +169,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
             <StepCard
               session={props.session}
               calibration={props.calibration}
-              areaNames={areaNames}
+              areaNames={props.session.area ? [props.session.area] : []}
               device={props.device}
               onDeviceChange={props.onDeviceChange}
               onDone={props.onCalibrationDone}
@@ -206,13 +201,13 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               <CheckRow
                 key={a.name}
                 label={a.name ?? ""}
-                on={shownNames.has(a.name ?? "")}
-                onToggle={() => toggleArea(a.name ?? "")}
+                on={!props.hiddenAreas.has(a.name ?? "")}
+                onToggle={() => props.onAreaToggle(a.name ?? "")}
               />
             ))}
             {siteAreas.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-                Checked = shown on the map, emphasised. None checked = the whole site.
+                Checked = its outline is drawn on the map, in this browser only.
               </div>
             )}
 

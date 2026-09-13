@@ -1,50 +1,50 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { shownAreaNames, toggledAreaNames } from "./areas";
-import type { Area, Site } from "./types";
+import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
 
-const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
-const ANNEX: Area = { x: 0, y: 2000, w: 2000, h: 2000, name: "annex" };
+afterEach(() => {
+  window.localStorage.clear();
+  vi.restoreAllMocks();
+});
 
-const C405: Site = {
-  name: "c405-arena",
-  anchor: "the arena's top-left corner, against the door wall of C405",
-  extent_mm: [3330, 4000],
-  areas: [ARENA, ANNEX],
-};
-
-describe("the areas ticked in Layers > Areas", () => {
-  it("ticks the areas shown", () => {
-    expect(shownAreaNames(C405, [ARENA, ANNEX])).toEqual(["arena", "annex"]);
+describe("the areas Layers > Areas hides", () => {
+  it("starts with none hidden, so every outline is drawn", () => {
+    expect(loadHiddenAreas()).toEqual(new Set());
   });
 
-  it("ticks nothing when nothing is shown, which is the whole site", () => {
-    expect(shownAreaNames(C405, [])).toEqual([]);
+  it("round-trips the hidden set through storage", () => {
+    saveHiddenAreas(new Set(["annex"]));
+    expect(loadHiddenAreas()).toEqual(new Set(["annex"]));
   });
 
-  it("ticks no box for a rectangle the site does not define", () => {
-    // The whole-site rectangle a renderer draws is not an area of the site,
-    // so it must never come back as a tick the next toggle would send on.
-    const whole: Area = { x: 0, y: 0, w: 3330, h: 4000, name: "c405-arena" };
-    expect(shownAreaNames(C405, [whole])).toEqual([]);
+  it("draws every outline when storage refuses to answer", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    expect(loadHiddenAreas()).toEqual(new Set());
+  });
+
+  it("keeps working when storage refuses to remember", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    expect(() => saveHiddenAreas(new Set(["annex"]))).not.toThrow();
+  });
+
+  it("ignores a stored value that is not a list of names", () => {
+    window.localStorage.setItem("dotbot.console.hiddenAreas", '{"annex": true}');
+    expect(loadHiddenAreas()).toEqual(new Set());
   });
 });
 
-describe("what a toggle sends", () => {
-  it("unticks the last area to an empty set", () => {
-    expect(toggledAreaNames(C405, [ARENA], "arena")).toEqual([]);
+describe("toggling one area", () => {
+  it("hides an area that was shown", () => {
+    expect(toggleHidden(new Set(), "arena")).toEqual(new Set(["arena"]));
   });
 
-  it("sends one name after untick-all, then tick-one", () => {
-    expect(toggledAreaNames(C405, [], "arena")).toEqual(["arena"]);
-  });
-
-  it("sends one name even if the controller answered with the whole site", () => {
-    const whole: Area = { x: 0, y: 0, w: 3330, h: 4000, name: "c405-arena" };
-    expect(toggledAreaNames(C405, [whole], "arena")).toEqual(["arena"]);
-  });
-
-  it("adds to what is already shown", () => {
-    expect(toggledAreaNames(C405, [ARENA], "annex")).toEqual(["arena", "annex"]);
+  it("shows an area that was hidden, leaving the rest alone", () => {
+    expect(toggleHidden(new Set(["arena", "annex"]), "arena")).toEqual(
+      new Set(["annex"]),
+    );
   });
 });

@@ -4,7 +4,6 @@ import { handleDotBotUpdate } from "./utils/helpers";
 
 import {
   apiFetchDotbots,
-  apiFetchArea,
   apiFetchSite,
   apiFetchBackgroundMap,
   apiUpdateMoveRaw,
@@ -13,14 +12,13 @@ import {
   apiClearPositionsHistory,
 } from "./utils/rest";
 import DotBots from './DotBots';
-import { Area, BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, Site, WaypointsData, WsMessage } from "./types";
-import { drawnArea, siteViewport } from "./utils/frame";
+import { BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, Site, WaypointsData, WsMessage } from "./types";
+import { areaFallback, siteViewport } from "./utils/frame";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'RestApp' });
 
 const RestApp: React.FC = () => {
-  const [activeAreas, setActiveAreas] = useState<Area[] | undefined>(undefined);
   const [site, setSite] = useState<Site | undefined>(undefined);
   const [backgroundMap, setBackgroundMap] = useState<BackgroundMap | undefined>(undefined);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
@@ -60,13 +58,6 @@ const RestApp: React.FC = () => {
     const data = await apiFetchDotbots().catch(error => console.log(error));
     if (data) setDotbots(data);
   }, [setDotbots]);
-
-  const fetchArea = useCallback(async () => {
-    const data = await apiFetchArea().catch(error => console.log(error));
-    // An empty set is the controller's answer, not a failure: it means the
-    // whole site, which the viewport below resolves.
-    if (data) setActiveAreas(data);
-  }, [setActiveAreas]);
 
   const fetchSite = useCallback(async () => {
     const data = await apiFetchSite().catch(error => console.log(error));
@@ -195,26 +186,22 @@ const RestApp: React.FC = () => {
     if (!dotbots) {
       fetchDotBots();
     }
-    if (!activeAreas) {
-      fetchArea();
-    }
     if (!site) {
       fetchSite();
     }
     if (!backgroundMap) {
       fetchBackgroundMap();
     }
-  }, [dotbots, activeAreas, site, backgroundMap, fetchDotBots, fetchArea, fetchSite, fetchBackgroundMap]);
+  }, [dotbots, site, backgroundMap, fetchDotBots, fetchSite, fetchBackgroundMap]);
 
   return (
     <>
-      {activeAreas && (
+      {site && (
         <div id="dotbots">
           <DotBots
             dotbots={dotbots}
-            viewport={siteViewport(site, activeAreas, drawnArea(site, activeAreas))}
-            activeAreas={activeAreas}
-            siteAreas={site?.areas ?? []}
+            viewport={siteViewport(site, areaFallback)}
+            siteAreas={site.areas ?? []}
             backgroundMap={backgroundMap}
             updateDotbots={setDotbots}
             publishCommand={publishCommand}

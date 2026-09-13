@@ -30,7 +30,6 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotAreaModel,
-    DotBotAreaRequestModel,
     DotBotBackgroundMapModel,
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPushedModel,
@@ -292,34 +291,6 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
 
 
 @api.get(
-    path="/controller/area",
-    response_model=List[DotBotAreaModel],
-    response_model_exclude_none=True,
-    summary="Return the areas shown by the controller, in frame millimetres",
-    tags=["controller"],
-)
-async def area():
-    """Areas-shown HTTP GET handler."""
-    return [DotBotAreaModel(**a.as_dict()) for a in api.controller.areas]
-
-
-@api.put(
-    path="/controller/area",
-    response_model=List[DotBotAreaModel],
-    response_model_exclude_none=True,
-    summary="Replace the areas shown, in frame millimetres",
-    tags=["controller"],
-)
-async def area_replace(request: DotBotAreaRequestModel):
-    """Areas-shown HTTP PUT handler."""
-    try:
-        areas = await api.controller.set_areas(list(request.area))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return [DotBotAreaModel(**a.as_dict()) for a in areas]
-
-
-@api.get(
     path="/controller/site",
     response_model=DotBotSiteModel,
     summary="Return the site the controller works in, with its areas",
@@ -351,7 +322,7 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
         [request.points] if isinstance(request.points, str) else list(request.points)
     )
     return await _calibration(
-        api.controller.calibration_session.start(specs, request.device)
+        api.controller.calibration_session.start(specs, request.device, request.area)
     )
 
 

@@ -1,5 +1,4 @@
 import {
-  Area,
   CalibrationPushed,
   CalibrationSaved,
   CalibrationSession,
@@ -20,15 +19,6 @@ const MRTA = "/mrta";
 export async function fetchDotBots(): Promise<PyDotBot[]> {
   const res = await fetch(`${CONTROLLER}/dotbots`);
   return res.json();
-}
-
-export async function fetchArea(): Promise<Area[]> {
-  const res = await fetch(`${CONTROLLER}/area`);
-  return res.json();
-}
-
-export async function putArea(area: string[]): Promise<Area[]> {
-  return controllerJson(`${CONTROLLER}/area`, { method: "PUT", body: { area } });
 }
 
 export async function fetchSite(): Promise<Site> {
@@ -126,8 +116,12 @@ export async function fetchCalibrationSession(): Promise<CalibrationSession | nu
 export async function startCalibration(
   points: string[],
   device = "",
+  area = "",
 ): Promise<CalibrationSession> {
-  return controllerJson(SESSION, { method: "POST", body: { points, device } });
+  return controllerJson(SESSION, {
+    method: "POST",
+    body: { points, device, area },
+  });
 }
 
 export async function captureCalibrationPoint(

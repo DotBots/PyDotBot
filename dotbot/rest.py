@@ -14,7 +14,6 @@ import httpx
 from dotbot.area import Area
 from dotbot.logger import LOGGER, setup_logging
 from dotbot.models import (
-    DotBotAreaModel,
     DotBotModel,
     DotBotQueryModel,
     DotBotSiteModel,
@@ -66,25 +65,6 @@ class RestClient:
             else:
                 return [DotBotModel(**dotbot) for dotbot in response.json()]
         return []
-
-    async def fetch_area(self) -> list[DotBotAreaModel]:
-        """Fetch the areas the controller shows, in frame millimetres."""
-        try:
-            response = await self._client.get(
-                f"{self.base_url}/area",
-                headers={
-                    "Accept": "application/json",
-                },
-            )
-        except httpx.ConnectError as exc:
-            self._logger.warning(f"Failed to fetch the area set: {exc}")
-        else:
-            if response.status_code != 200:
-                self._logger.warning(
-                    f"Failed to fetch the area set: {response} {response.text}"
-                )
-                raise RuntimeError("Failed to fetch the area set")
-        return [DotBotAreaModel(**item) for item in response.json()]
 
     async def fetch_site(self) -> Site:
         """Fetch the site the controller works in, with its extent and areas."""

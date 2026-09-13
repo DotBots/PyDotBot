@@ -389,58 +389,20 @@ def test_controller_with_no_calibration_loads_nothing(serial_mock):
     assert controller.calibration is None
 
 
-def test_controller_resolves_its_active_areas(serial_mock):
-    settings = ControllerSettings(
-        port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
-        site=C405,
-        area=("annex", "wing"),
-    )
-    controller = Controller(settings)
-    assert [a.name for a in controller.areas] == ["annex", "wing"]
-    assert controller.areas[0].as_dict() == {
-        "x": 0,
-        "y": 2000,
-        "w": 2000,
-        "h": 2000,
-        "name": "annex",
-    }
-    # One box over several areas shown is their bounding box.
-    assert controller.drawn_area().as_dict() == {
-        "x": 0,
-        "y": 2000,
-        "w": 3330,
-        "h": 2000,
-        "name": "",
-    }
-
-
-def test_no_active_area_shows_nothing_and_draws_the_whole_site(serial_mock):
+def test_a_controller_keeps_the_site_it_was_given(serial_mock):
     settings = ControllerSettings(
         port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
         site=C405,
     )
     controller = Controller(settings)
-    assert controller.areas == []
-    assert controller.drawn_area().as_dict() == {
-        "x": 0,
-        "y": 0,
-        "w": 2000,
-        "h": 4000,
-        "name": "c405-arena",
-    }
+    assert controller.site.name == "c405-arena"
+    assert sorted(controller.site.areas) == ["annex", "wing"]
 
 
-def test_a_site_with_no_extent_draws_the_fallback_rectangle(serial_mock):
+def test_a_controller_with_no_site_keeps_the_neutral_one(serial_mock):
     settings = ControllerSettings(
         port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
     )
     controller = Controller(settings)
     assert controller.site.name == "default"
-    assert controller.areas == []
-    assert controller.drawn_area().as_dict() == {
-        "x": 0,
-        "y": 0,
-        "w": 2000,
-        "h": 2000,
-        "name": "default",
-    }
+    assert controller.site.areas == {}

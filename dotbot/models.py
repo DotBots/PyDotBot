@@ -104,12 +104,6 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
 
 
-class DotBotAreaRequestModel(BaseModel):
-    """The areas to show, each a name, a "+"-joined composite or x,y,w,h in mm."""
-
-    area: List[str] = []
-
-
 class DotBotCalibrationReadsModel(BaseModel):
     """How many reads one station contributed to one point."""
 
@@ -159,6 +153,8 @@ class DotBotCalibrationSessionModel(BaseModel):
 
     at: str = ""
     site: str = ""
+    # The area the expected error is evaluated over; empty means none chosen.
+    area: str = ""
     device: str = ""
     reads: int = 0
     status: str = "collecting"
@@ -175,10 +171,15 @@ class DotBotCalibrationSessionModel(BaseModel):
 
 
 class DotBotCalibrationStartModel(BaseModel):
-    """Where this session's points are, in `--points` form."""
+    """Where this session's points are, in `--points` form.
+
+    `area` names the area the expected error is evaluated over; empty means
+    none chosen.
+    """
 
     points: Union[str, List[str]] = "arena:corners"
     device: str = ""
+    area: str = ""
 
 
 class DotBotCalibrationCaptureModel(BaseModel):
@@ -258,7 +259,7 @@ class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
     DOTBOTS: int = 0
-    AREA: int = 1
+    SITE: int = 1
 
 
 class DotBotRequestModel(BaseModel):
@@ -308,7 +309,6 @@ class DotBotNotificationCommand(IntEnum):
     PIN_CODE_UPDATE: int = 3
     NEW_DOTBOT: int = 4
     CALIBRATION_SESSION_UPDATE: int = 5
-    AREA_UPDATE: int = 6
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -337,8 +337,6 @@ class DotBotNotificationModel(BaseModel):
     pin_code: Optional[int] = None
     # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
     calibration_session: Optional[DotBotCalibrationSessionModel] = None
-    # Carried by AREA_UPDATE: the areas shown after the change.
-    areas: Optional[List[DotBotAreaModel]] = None
 
 
 class WSBase(BaseModel):

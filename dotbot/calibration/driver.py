@@ -78,12 +78,15 @@ class SessionDriver:
 
     # -- the loop
 
-    async def start(self, specs: Sequence[str], device: str = "") -> dict:
+    async def start(
+        self, specs: Sequence[str], device: str = "", area: str = ""
+    ) -> dict:
         """Resolve the points and open a session with point 0 outstanding."""
         async with self._lock:
             self._close_stream()
             session = CalibrationSession.resolve(list(specs), site=self.site)
             session.device = device.upper()
+            session.area = area
             self.session = session
             await self._emit()
             return session.as_dict()

@@ -50,11 +50,11 @@ interface MapViewProps {
   bots: UnifiedBot[];
   // The part of the frame the map draws: the whole site plus a margin.
   viewport: Area;
-  // The areas shown, drawn solid; every other area of the site is outlined.
-  activeAreas: Area[];
+  // Every area of the site, drawn as an outline with its name.
   siteAreas: Area[];
-  // The whole site, outlined when nothing is shown, so "the whole site" is
-  // visible as a box rather than only as a label.
+  // The area names this browser hides, ticked under Layers > Areas.
+  hiddenAreas: Set<string>;
+  // The whole site, outlined so it reads as a box rather than only a label.
   siteExtent: Area | null;
   selection: Set<string>;
   layers: Layers;
@@ -130,8 +130,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       height: `${(br.fy - tl.fy) * 100}%`,
     };
   };
-
-  const activeNames = new Set(props.activeAreas.map((a) => a.name ?? ""));
 
   const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
@@ -271,8 +269,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(228,3,46,.16)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "var(--hairline)", pointerEvents: "none" }} />
 
-          {/* nothing shown means the whole site, outlined and never emphasised */}
-          {props.activeAreas.length === 0 && props.siteExtent && (
+          {/* the whole site */}
+          {props.siteExtent && (
             <div
               style={{
                 position: "absolute",
@@ -284,9 +282,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             />
           )}
 
-          {/* the site's areas: the shown ones solid, the rest outlined */}
+          {/* the site's areas: an outline and a name, ticked under Layers */}
           {props.siteAreas
-            .filter((a) => !activeNames.has(a.name ?? ""))
+            .filter((a) => !props.hiddenAreas.has(a.name ?? ""))
             .map((a) => (
               <div
                 key={`area-${a.name}`}
@@ -298,57 +296,25 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   pointerEvents: "none",
                 }}
               >
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 4,
-                    top: 2,
-                    fontSize: 10,
-                    opacity: 0.5,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {a.name}
-                </span>
+                {a.name && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 4,
+                      top: 2,
+                      fontSize: 10,
+                      opacity: 0.7,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {a.name}
+                  </span>
+                )}
               </div>
             ))}
           {props.session && (
             <CalibrationLayer session={props.session} viewport={props.viewport} />
           )}
-          {props.activeAreas.map((a, i) => (
-            <div
-              key={`active-${a.name ?? i}`}
-              style={{
-                position: "absolute",
-                ...pctArea(a),
-                border: "1.5px solid var(--accent)",
-                background: "rgba(228,3,46,.045)",
-                borderRadius: 4,
-                pointerEvents: "none",
-              }}
-            >
-              {a.name && (
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 4,
-                    top: 3,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: "var(--accent)",
-                    whiteSpace: "nowrap",
-                    // A shown area and an outlined one can start at the same
-                    // corner, so the emphasised name reads over the other.
-                    background: "var(--canvas)",
-                    padding: "1px 4px",
-                    borderRadius: 3,
-                  }}
-                >
-                  {a.name}
-                </span>
-              )}
-            </div>
-          ))}
 
           {/* trails (our extra layer) */}
           {props.layers.trails && (

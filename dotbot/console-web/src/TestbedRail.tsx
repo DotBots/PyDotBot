@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 
 import { LocalizationPanel } from "./LocalizationPanel";
-import { Area, CalibrationSession, PlannedMission, Site, UnifiedBot } from "./types";
+import { CalibrationSession, PlannedMission, Site, UnifiedBot } from "./types";
 import { FirmwareSection } from "./FirmwareSection";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
@@ -10,7 +10,7 @@ import { FlashJob, LogRow } from "./useOrchestration";
 // Testbed tab (orchestration controls - disabled until the swarmit write path
 // lands; never mocked), a Missions tab (waypoint missions derived from live
 // state: Planned = the local queue, Active = bots navigating) and a
-// Localization tab (the site, the areas shown and what the fleet carries).
+// Localization tab (the site and what the fleet carries).
 
 export interface DoneMission {
   key: string;
@@ -47,7 +47,6 @@ interface TestbedRailProps {
   onDiscardMission: (key: string) => void;
   onStopMission: (ids: string[]) => void;
   site: Site | null;
-  activeAreas: Area[];
   session: CalibrationSession | null;
   calibrationBusy: boolean;
   calibrationError: string;
@@ -583,7 +582,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           {top === "localization" && (
             <LocalizationPanel
               site={props.site}
-              activeAreas={props.activeAreas}
               bots={props.bots}
               session={props.session}
               busy={props.calibrationBusy}

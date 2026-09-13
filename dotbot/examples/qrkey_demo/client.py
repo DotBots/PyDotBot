@@ -19,7 +19,6 @@ from websockets import exceptions as websockets_exceptions
 from websockets.asyncio.client import connect
 
 from dotbot import CONTROLLER_HTTP_HOSTNAME_DEFAULT, CONTROLLER_HTTP_PORT_DEFAULT
-from dotbot.area import drawn_area
 from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotAreaModel,
@@ -29,6 +28,7 @@ from dotbot.models import (
     DotBotRequestModel,
     DotBotRequestType,
     DotBotRgbLedCommandModel,
+    DotBotSiteModel,
     DotBotWaypoints,
     DotBotXGOActionCommandModel,
 )
@@ -248,18 +248,21 @@ class QrKeyClient:
                 data=data,
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
-        elif request.request == DotBotRequestType.AREA:
-            logger.info("Publish the area set")
-            areas = self.worker.run(self.client.fetch_area())
-            if not areas:
-                # An empty set means the whole site, and this transport
-                # carries no site, so the box is resolved here.
-                site = self.worker.run(self.client.fetch_site())
-                box = drawn_area([], site.extent, site.name)
-                areas = [DotBotAreaModel(**box.as_dict())]
+        elif request.request == DotBotRequestType.SITE:
+            logger.info("Publish the site")
+            site = self.worker.run(self.client.fetch_site())
+            model = DotBotSiteModel(
+                name=site.name,
+                anchor=site.anchor,
+                extent_mm=list(site.extent_mm) if site.extent_mm else None,
+                areas=[
+                    DotBotAreaModel(**a.as_dict())
+                    for a in sorted(site.areas.values(), key=lambda a: a.name)
+                ],
+            )
             message = DotBotReplyModel(
-                request=DotBotRequestType.AREA,
-                data=[item.model_dump(exclude_none=True) for item in areas],
+                request=DotBotRequestType.SITE,
+                data=model.model_dump(),
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
         else:

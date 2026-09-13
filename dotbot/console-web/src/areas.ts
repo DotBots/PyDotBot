@@ -1,28 +1,38 @@
-import type { Area, Site } from "./types";
-
-// Which boxes Layers > Areas ticks, and what a tick sends.
+// Which area outlines the map draws, per browser.
 //
-// The controller holds exactly the areas shown, so unticking the last one
-// sends an empty list and an empty list means the whole site. A tick is only
-// ever a name the site defines: a rectangle the controller cannot name back
-// must not come round as one.
+// Every area of the site is an outline; Layers > Areas ticks which ones are
+// visible. Nothing reaches the controller, so the set is remembered locally
+// and a browser that refuses storage still renders every outline.
 
-/** The names of the areas shown that the site defines, in the order shown. */
-export function shownAreaNames(site: Site | null, shown: Area[]): string[] {
-  const defined = new Set(
-    (site?.areas ?? []).map((a) => a.name ?? "").filter(Boolean),
-  );
-  return shown.map((a) => a.name ?? "").filter((name) => defined.has(name));
+const KEY = "dotbot.console.hiddenAreas";
+
+/** The area names this browser hides, empty when storage says nothing. */
+export function loadHiddenAreas(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(
+      Array.isArray(parsed) ? parsed.filter((n) => typeof n === "string") : [],
+    );
+  } catch {
+    return new Set();
+  }
 }
 
-/** What ticking or unticking `name` sends: the ticked names, plus or minus it. */
-export function toggledAreaNames(
-  site: Site | null,
-  shown: Area[],
-  name: string,
-): string[] {
-  const names = shownAreaNames(site, shown);
-  return names.includes(name)
-    ? names.filter((other) => other !== name)
-    : [...names, name];
+/** Remember the hidden set; a browser that refuses storage just forgets it. */
+export function saveHiddenAreas(hidden: Set<string>): void {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify([...hidden]));
+  } catch {
+    /* private window, cleared site data, storage blocked */
+  }
+}
+
+/** The hidden set with `name` flipped. */
+export function toggleHidden(hidden: Set<string>, name: string): Set<string> {
+  const next = new Set(hidden);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  return next;
 }

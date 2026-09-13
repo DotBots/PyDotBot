@@ -966,61 +966,13 @@ def test_the_api_binds_loopback_unless_asked_otherwise():
 
 
 @pytest.mark.asyncio
-async def test_get_controller_area():
-    """The areas shown reach a renderer as a list of frame rectangles."""
-    api.controller.areas = [Area(0, 2000, 2000, 2000, "annex")]
-    response = await client.get("/controller/area")
-    assert response.status_code == 200
-    assert response.json() == [
-        {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"}
-    ]
-
-
-@pytest.fixture
-def area_controller(monkeypatch):
-    """A real controller behind the area routes, showing one of two areas."""
-    for name in ("write", "open", "flush"):
-        monkeypatch.setattr(
-            f"dotbot_utils.serial_interface.serial.Serial.{name}", MagicMock()
-        )
-    controller = Controller(
-        ControllerSettings(
-            port="/dev/null",
-            baudrate=115200,
-            network_id="0",
-            gw_address="78",
-            site=Site(
-                name="c405-arena",
-                extent_mm=(2000, 4000),
-                areas={
-                    "arena": Area(0, 0, 2000, 2000, "arena"),
-                    "annex": Area(0, 2000, 2000, 2000, "annex"),
-                },
-            ),
-            area=("arena",),
-        )
+@pytest.mark.parametrize("method", ["get", "put"])
+async def test_the_area_routes_are_gone(method):
+    """Areas are a client-side layer, so the controller holds no set of them."""
+    response = await getattr(client, method)(
+        "/controller/area", **({} if method == "get" else {"json": {"area": []}})
     )
-    controller.notify_clients = AsyncMock()
-    api.controller = controller
-    return controller
-
-
-@pytest.mark.asyncio
-async def test_the_area_routes_keep_an_empty_set_empty(area_controller):
-    """Untick every area, then tick one: the empty set never becomes a rectangle."""
-    response = await client.put("/controller/area", json={"area": []})
-    assert response.status_code == 200
-    assert response.json() == []
-    assert area_controller.areas == []
-    assert (await client.get("/controller/area")).json() == []
-
-    notified = area_controller.notify_clients.await_args.args[0]
-    assert notified.cmd == 6
-    assert notified.areas == []
-
-    response = await client.put("/controller/area", json={"area": ["arena"]})
-    assert response.status_code == 200
-    assert response.json() == [{"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"}]
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

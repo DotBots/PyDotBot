@@ -13,11 +13,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# What a renderer draws when neither a shown area nor a site extent says
-# otherwise: a 2 x 2 m square at the frame origin.
-AREA_FALLBACK_MM = (0, 0, 2000, 2000)
-
-
 @dataclass(frozen=True)
 class Area:
     """One rectangle in frame millimetres.
@@ -47,11 +42,6 @@ class Area:
     def as_dict(self) -> dict[str, int]:
         """The four numbers plus the name, the shape every consumer receives."""
         return {"x": self.x, "y": self.y, "w": self.w, "h": self.h, "name": self.name}
-
-
-def fallback_area(name: str = "") -> Area:
-    """The rectangle a renderer falls back to, named after its caller."""
-    return Area(*AREA_FALLBACK_MM, name)
 
 
 @dataclass
@@ -93,7 +83,7 @@ class AreaRegistry:
         raise ValueError(f"unknown area {spec!r}; {self._known()}")
 
     def resolve_all(self, specs: list[str] | tuple[str, ...]) -> list[Area]:
-        """The areas shown: one rectangle per specification, in order."""
+        """One rectangle per specification, in order."""
         return [self.resolve(spec) for spec in specs]
 
     def _known(self) -> str:
@@ -109,24 +99,6 @@ class AreaRegistry:
     def _composite(self, spec: str) -> Area:
         parts = [self.resolve(p) for p in spec.split("+")]
         return _bounding_box(parts, spec)
-
-
-def union(areas: list[Area]) -> Area:
-    """The bounding box of the areas shown, for a renderer that needs one box."""
-    if not areas:
-        return fallback_area()
-    return _bounding_box(areas, "")
-
-
-def drawn_area(areas: list[Area], extent: Area | None, name: str = "") -> Area:
-    """The one rectangle to draw: the areas shown, else the whole site.
-
-    An empty list of areas means the whole site, so a renderer that needs a
-    single box resolves it here instead of reading `areas[0]`.
-    """
-    if areas:
-        return union(areas)
-    return extent or fallback_area(name)
 
 
 def _bounding_box(areas: list[Area], name: str) -> Area:

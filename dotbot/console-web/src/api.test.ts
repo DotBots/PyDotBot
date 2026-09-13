@@ -4,7 +4,6 @@ import {
   captureCalibrationPoint,
   fetchCalibrationSession,
   parseSseChunk,
-  putArea,
   saveCalibration,
   startCalibration,
 } from "./api";
@@ -70,29 +69,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("the areas shown", () => {
-  it("PUTs the names the Layers tab has checked", async () => {
-    const calls = stubFetch(200, [{ x: 0, y: 2000, w: 2000, h: 2000, name: "annex" }]);
-    const areas = await putArea(["annex", "dev-corner"]);
-    expect(calls).toEqual([
-      {
-        url: "/controller/area",
-        method: "PUT",
-        body: { area: ["annex", "dev-corner"] },
-      },
-    ]);
-    expect(areas[0].name).toBe("annex");
-  });
-});
-
 describe("the calibration session", () => {
   it("starts one over the points the panel resolved", async () => {
     const calls = stubFetch(200, { total: 4 });
-    await startCalibration(["arena:corners"], "ABCD");
+    await startCalibration(["arena:corners"], "ABCD", "arena");
     expect(calls[0]).toEqual({
       url: "/controller/calibration/session",
       method: "POST",
-      body: { points: ["arena:corners"], device: "ABCD" },
+      body: { points: ["arena:corners"], device: "ABCD", area: "arena" },
     });
   });
 

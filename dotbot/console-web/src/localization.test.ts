@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  areasShownLabel,
   calibrationCoverage,
   coverageLabel,
   extentLabel,
   minimapLabel,
-  minimapLines,
   stationRows,
   stationsSummary,
 } from "./localization";
@@ -54,6 +52,7 @@ const bot = (id: string, homographies?: number): UnifiedBot =>
 const session = (over: Partial<CalibrationSession> = {}): CalibrationSession => ({
   at: "arena:corners",
   site: "c405-arena",
+  area: "",
   device: "",
   reads: 25,
   status: "collecting",
@@ -81,45 +80,13 @@ describe("the site line", () => {
   });
 });
 
-describe("the areas shown", () => {
-  it("names them in the order the controller sends", () => {
-    expect(areasShownLabel([ARENA, DEV])).toBe("arena, dev-corner");
-  });
-
-  it("says the whole site when none is shown", () => {
-    expect(areasShownLabel([])).toBe("the whole site");
-  });
-
-  it("ignores a literal rectangle's absent name", () => {
-    expect(areasShownLabel([{ x: 0, y: 0, w: 100, h: 100 }])).toBe("the whole site");
-  });
-});
-
 describe("the footer minimap label", () => {
-  it("splits in two for a column too narrow for one line", () => {
-    expect(minimapLines(C405, [ARENA])).toEqual([
-      "SITE c405-arena · 3330 x 4000 mm",
-      "showing arena",
-    ]);
-  });
-
-  it("names the site, its extent and what is shown", () => {
-    expect(minimapLabel(C405, [ARENA, DEV])).toBe(
-      "SITE c405-arena · 3330 x 4000 mm · showing arena, dev-corner",
-    );
+  it("names the site and its extent", () => {
+    expect(minimapLabel(C405)).toBe("SITE c405-arena · 3330 x 4000 mm");
   });
 
   it("stays honest before the controller answers", () => {
-    expect(minimapLabel(null, [])).toBe(
-      "SITE unknown · not measured · showing the whole site",
-    );
-  });
-
-  it("says the whole site once every area is unticked", () => {
-    expect(minimapLines(C405, [])).toEqual([
-      "SITE c405-arena · 3330 x 4000 mm",
-      "showing the whole site",
-    ]);
+    expect(minimapLabel(null)).toBe("SITE unknown · not measured");
   });
 });
 

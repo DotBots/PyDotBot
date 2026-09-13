@@ -44,6 +44,7 @@ const POINTS: CalibrationPoint[] = [
 const session = (over: Partial<CalibrationSession> = {}): CalibrationSession => ({
   at: "arena:corners",
   site: "c405-arena",
+  area: "",
   device: "",
   reads: 25,
   status: "collecting",
@@ -155,13 +156,13 @@ describe("the expected-error line", () => {
     expect(expectedErrorLine(null, ["arena"])).toBeNull();
   });
 
-  it("names the areas shown once there is a number", () => {
-    expect(expectedErrorLine(session({ expected_error_mm: 1.6 }), ["arena", "annex"])).toBe(
-      "expected 1.6 mm over arena, annex",
+  it("names the area the session was started over", () => {
+    expect(expectedErrorLine(session({ expected_error_mm: 1.6 }), ["arena"])).toBe(
+      "expected 1.6 mm over arena",
     );
   });
 
-  it("says the whole site when no area is shown", () => {
+  it("says the whole site when the session named no area", () => {
     expect(expectedErrorLine(session({ expected_error_mm: 18.5 }), [])).toBe(
       "expected 18.5 mm over the whole site",
     );

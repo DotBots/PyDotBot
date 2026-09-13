@@ -1,21 +1,19 @@
 import React from "react";
 
 import {
-  areasShownLabel,
   calibrationCoverage,
   coverageLabel,
   extentLabel,
   stationRows,
   stationsSummary,
 } from "./localization";
-import type { Area, CalibrationSession, Site, UnifiedBot } from "./types";
+import type { CalibrationSession, Site, UnifiedBot } from "./types";
 
 // The Localization panel, behind the rail's third tab.
 //
-// Three facts have no home in the console today and each is the first thing
-// an operator asks: which site the positions belong to, which of its areas
-// are shown, and which robots carry the calibration in use. The two actions
-// that change them sit at the bottom.
+// Two facts have no home in the console today and each is the first thing an
+// operator asks: which site the positions belong to, and which robots carry
+// the calibration in use. The two actions that change them sit at the bottom.
 
 const label10 = {
   fontSize: 10,
@@ -60,7 +58,6 @@ const actionButton = (accent: boolean, disabled: boolean): React.CSSProperties =
 
 interface LocalizationPanelProps {
   site: Site | null;
-  activeAreas: Area[];
   bots: UnifiedBot[];
   session: CalibrationSession | null;
   busy: boolean;
@@ -72,7 +69,6 @@ interface LocalizationPanelProps {
 
 export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   site,
-  activeAreas,
   bots,
   session,
   busy,
@@ -98,15 +94,6 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
               zero at {site.anchor}
             </div>
           )}
-        </Section>
-
-        <Section title="Areas shown">
-          <div style={{ fontSize: 13 }}>{areasShownLabel(activeAreas)}</div>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
-            toggled under Layers &gt; Areas
-            <br />
-            none on = the whole site
-          </div>
         </Section>
 
         <Section title="Calibration on the fleet">
@@ -190,7 +177,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
         <div
           onClick={() => !busy && onCalibrate()}
           style={actionButton(true, busy)}
-          title="Open a calibration session over the areas shown"
+          title="Open a calibration session over the site"
         >
           Calibrate lighthouse
         </div>

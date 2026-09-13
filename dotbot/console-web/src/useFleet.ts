@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   controllerWsUrl,
-  fetchArea,
   fetchCalibrationSession,
   fetchDotBots,
   fetchSite,
@@ -95,15 +94,9 @@ export function merge(
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// The areas shown are exactly what the controller holds, so an empty list is
-// empty here too: "none shown" means the whole site, and the fallback is only
-// the box a renderer draws when the site has no measured extent.
-
 export function useFleet(): {
   bots: UnifiedBot[];
   site: Site | null;
-  activeAreas: Area[];
-  setActiveAreas: (areas: Area[]) => void;
   session: CalibrationSession | null;
   setSession: (session: CalibrationSession | null) => void;
   viewport: Area;
@@ -113,7 +106,6 @@ export function useFleet(): {
   const swRef = useRef<Record<string, SwarmitNode>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
-  const [activeAreas, setActiveAreas] = useState<Area[]>([]);
   const [session, setSession] = useState<CalibrationSession | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
@@ -131,14 +123,11 @@ export function useFleet(): {
     }
   }, [rebuild]);
 
-  // Initial data, the site the map is drawn over, and the areas shown.
+  // Initial data, and the site the map is drawn over.
   useEffect(() => {
     reloadDotBots();
     fetchSite()
       .then(setSite)
-      .catch(() => {});
-    fetchArea()
-      .then(setActiveAreas)
       .catch(() => {});
     // A session outlives the browser tab: the controller owns it, so a
     // reload rejoins the one in flight rather than starting over.
@@ -171,10 +160,6 @@ export function useFleet(): {
         }
         if (msg.cmd === 5) {
           setSession(msg.calibration_session ?? null);
-          return;
-        }
-        if (msg.cmd === 6) {
-          setActiveAreas(msg.areas ?? []);
           return;
         }
         if (msg.cmd === 2 && msg.data?.address) {
@@ -236,13 +221,11 @@ export function useFleet(): {
     return () => clearInterval(t);
   }, [rebuild]);
 
-  const viewport = siteViewport(site, activeAreas, AREA_FALLBACK);
+  const viewport = siteViewport(site, AREA_FALLBACK);
 
   return {
     bots,
     site,
-    activeAreas,
-    setActiveAreas,
     session,
     setSession,
     viewport,

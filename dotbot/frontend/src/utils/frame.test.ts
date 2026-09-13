@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { siteViewport, unionAreas, viewportMarginMm } from './frame';
+import { areaFallback, siteViewport, viewportMarginMm } from './frame';
 import { Area, Site } from '../types';
 
 const arena: Area = { x: 0, y: 0, w: 2000, h: 2000, name: 'arena' };
@@ -15,30 +15,20 @@ const site = (extent: [number, number] | null): Site => ({
 describe('siteViewport', () => {
   test('surrounds the site extent by the margin on every side', () => {
     expect(viewportMarginMm).toBe(2000);
-    expect(siteViewport(site([2000, 4000]), [arena], arena)).toEqual({
+    expect(siteViewport(site([2000, 4000]), areaFallback)).toEqual({
       x: -2000, y: -2000, w: 6000, h: 8000,
     });
   });
 
-  test('falls back to the areas shown when the site has no measured extent', () => {
-    expect(siteViewport(site(null), [arena, annex], arena)).toEqual({
-      x: -2000, y: -2000, w: 6000, h: 8000,
+  test('falls back when the site has no measured extent', () => {
+    expect(siteViewport(site(null), areaFallback)).toEqual({
+      x: -2000, y: -2000, w: 6000, h: 6000,
     });
   });
 
   test('falls back again before the controller answers', () => {
-    expect(siteViewport(undefined, [], arena)).toEqual({
+    expect(siteViewport(undefined, areaFallback)).toEqual({
       x: -2000, y: -2000, w: 6000, h: 6000,
     });
-  });
-});
-
-describe('unionAreas', () => {
-  test('is the bounding box of its parts', () => {
-    expect(unionAreas([arena, annex], arena)).toEqual({ x: 0, y: 0, w: 2000, h: 4000 });
-  });
-
-  test('is the fallback when nothing is active', () => {
-    expect(unionAreas([], annex)).toEqual(annex);
   });
 });

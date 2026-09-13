@@ -216,8 +216,7 @@ interface DotBotsMapProps {
   active: string;
   // The part of the frame this map draws: the whole site plus a margin.
   viewport: Area;
-  // The areas shown, drawn solid; every other area of the site is outlined.
-  activeAreas: Area[];
+  // Every area of the site, drawn as an outline with its name.
   siteAreas: Area[];
   backgroundMap?: BackgroundMap;
   mapSize: number;
@@ -255,7 +254,6 @@ export const DotBotsMap: React.FC<DotBotsMapProps> = (props) => {
     width: area.w * mapSize / props.viewport.w,
     height: area.h * mapSize / props.viewport.w,
   });
-  const activeNames = new Set(props.activeAreas.map(area => area.name ?? ""));
 
   return (
     <div className={`${props.dotbots && props.dotbots.length > 0 ? "visible" : "invisible"}`}>
@@ -295,9 +293,8 @@ export const DotBotsMap: React.FC<DotBotsMapProps> = (props) => {
                 strokeWidth="1"
                 onClick={mapClicked}
               />
-              {/* the site's areas: the shown ones solid, the rest outlined */}
+              {/* the site's areas: an outline and a name each */}
               {props.siteAreas
-                .filter(area => !activeNames.has(area.name ?? ""))
                 .map(area => (
                   <g key={`area-${area.name}`} pointerEvents="none">
                     <rect
@@ -318,16 +315,6 @@ export const DotBotsMap: React.FC<DotBotsMapProps> = (props) => {
                     </text>
                   </g>
                 ))}
-              {props.activeAreas.map((area, index) => (
-                <rect
-                  key={`active-${area.name ?? index}`}
-                  {...areaBox(area)}
-                  fill="none"
-                  stroke="gray"
-                  strokeWidth="2"
-                  pointerEvents="none"
-                />
-              ))}
               {props.dotbots &&
                 props.dotbots
                   .filter(dotbot => dotbot.status !== 2)

@@ -55,7 +55,6 @@ from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
-    DotBotAreaModel,
     DotBotCalibrationSessionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -72,7 +71,6 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.area import Area, drawn_area
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.server import api, default_ui_path
@@ -125,9 +123,6 @@ class ControllerSettings:
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
-    # The areas shown, each entry a name, a "+"-joined composite or
-    # x,y,w,h in mm. Empty means the whole site.
-    area: tuple[str, ...] = ()
     site: Optional[Site] = None
     calibration: Optional[str] = None
     background_map: str = ""
@@ -202,7 +197,6 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.site = settings.site or Site()
-        self.areas = self.site.registry().resolve_all(list(settings.area))
         self.calibration = None
         self.lh2_calibration = []
         if settings.calibration:
@@ -652,25 +646,6 @@ class Controller:
                 ),
             )
         )
-
-    async def set_areas(self, specs: List[str]) -> List[Area]:
-        """Replace the areas shown, and say so on the WebSocket.
-
-        An area never reaches a robot, so this is a state change plus a
-        re-render: no calibration file is touched and nothing is recaptured.
-        """
-        self.areas = self.site.registry().resolve_all(specs)
-        await self.notify_clients(
-            DotBotNotificationModel(
-                cmd=DotBotNotificationCommand.AREA_UPDATE,
-                areas=[DotBotAreaModel(**a.as_dict()) for a in self.areas],
-            )
-        )
-        return self.areas
-
-    def drawn_area(self) -> Area:
-        """The one rectangle to draw: the areas shown, else the whole site."""
-        return drawn_area(self.areas, self.site.extent, self.site.name)
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""

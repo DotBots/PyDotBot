@@ -528,29 +528,12 @@ async def test_two_captures_at_once_do_not_share_a_point():
 
 
 class _StubController:
-    """Just enough controller for the routes: a driver, a site, areas."""
+    """Just enough controller for the routes: a driver and a site."""
 
     def __init__(self, driver, site=C405):
         self.calibration_session = driver
         self.site = site
-        self.areas = [site.areas["arena"]]
         self.notifications: list = []
-
-    async def set_areas(self, specs):
-        from dotbot.models import (
-            DotBotAreaModel,
-            DotBotNotificationCommand,
-            DotBotNotificationModel,
-        )
-
-        self.areas = self.site.registry().resolve_all(specs)
-        self.notifications.append(
-            DotBotNotificationModel(
-                cmd=DotBotNotificationCommand.AREA_UPDATE,
-                areas=[DotBotAreaModel(**a.as_dict()) for a in self.areas],
-            )
-        )
-        return self.areas
 
 
 @pytest.fixture
@@ -638,39 +621,30 @@ async def test_points_that_do_not_span_are_refused_with_the_span_rule(rest):
 
 
 @pytest.mark.asyncio
-async def test_the_area_routes_round_trip_names_and_a_literal_rectangle(rest):
-    http, controller, _ = rest
-
-    assert (await http.get("/controller/area")).json() == [
-        {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"}
-    ]
-
+async def test_a_session_stores_the_area_its_expected_error_is_for(rest):
+    """The area rides the start request; nothing is computed from it yet."""
+    http, _, _ = rest
     body = (
-        await http.put(
-            "/controller/area", json={"area": ["annex", "1000,0,1000,1000"]}
+        await http.post(
+            "/controller/calibration/session",
+            json={"points": ["arena:corners"], "area": "annex"},
         )
     ).json()
-    assert body == [
-        {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"},
-        {"x": 1000, "y": 0, "w": 1000, "h": 1000, "name": "1000,0,1000,1000"},
-    ]
-    assert (await http.get("/controller/area")).json() == body
-
-    # One notification carries the areas shown after the change.
-    assert len(controller.notifications) == 1
-    assert controller.notifications[0].cmd == 6
-    assert [a.name for a in controller.notifications[0].areas] == [
-        "annex",
-        "1000,0,1000,1000",
-    ]
+    assert body["area"] == "annex"
+    assert (await http.get("/controller/calibration/session/state")).json()[
+        "area"
+    ] == "annex"
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_area_name_says_which_site_was_searched(rest):
+async def test_a_session_started_without_an_area_names_none(rest):
     http, _, _ = rest
-    response = await http.put("/controller/area", json={"area": ["balcony"]})
-    assert response.status_code == 422
-    assert "site 'c405-arena' defines" in response.json()["detail"]
+    body = (
+        await http.post(
+            "/controller/calibration/session", json={"points": ["arena:corners"]}
+        )
+    ).json()
+    assert body["area"] == ""
 
 
 # --- rehearsing without a fleet ---------------------------------------------
