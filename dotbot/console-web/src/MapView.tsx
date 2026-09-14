@@ -100,19 +100,18 @@ const ZOOM_TRACK_PAD_PX = 10;
 const ZOOM_BAR_H_PX = ZOOM_BTN_PX + 2;
 const ZOOM_BAR_W_PX =
   ZOOM_BTN_PX * 2 + ZOOM_TRACK_PX + ZOOM_TRACK_PAD_PX * 2 + 4;
-// The recentre button, beside the bar. The scale goes on the line above
-// rather than beside it: the bottom-right corner carries the canvas hint, and
-// a row long enough to reach it collides on a narrow canvas.
+// The zoom-to button beside the bar, then the scale, all on one line.
 const RECENTRE_LEFT_PX = CHROME_INSET_PX + ZOOM_BAR_W_PX + CHROME_GAP_PX;
-const SCALE_BOTTOM_PX = CHROME_INSET_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX;
-const SCALE_H_PX = 14;
+const SCALE_LEFT_PX = RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX;
+// The most canvas the scale takes: its bar at the longest, and a label.
+const SCALE_MAX_PX = 112;
 // The bottom-left corner the controls hold, which the ruler's own column
 // gives up to them.
-const RULER_CONTROLS_PX = SCALE_BOTTOM_PX + SCALE_H_PX + CHROME_GAP_PX;
+const RULER_CONTROLS_PX = CHROME_INSET_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX;
 // The canvas the bottom line needs to carry the controls and the hint both.
 const HINT_PX = 100;
 const BOTTOM_LINE_PX =
-  RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
+  SCALE_LEFT_PX + SCALE_MAX_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
 
 // How far a pointer travels before a press is a drag rather than a click.
 const DRAG_MIN_PX = 5;
@@ -1007,9 +1006,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       <div
         style={{
           position: "absolute",
-          left: CHROME_INSET_PX,
-          bottom: SCALE_BOTTOM_PX,
-          height: SCALE_H_PX,
+          left: SCALE_LEFT_PX,
+          bottom: CHROME_INSET_PX,
+          height: ZOOM_BAR_H_PX,
           display: "flex",
           alignItems: "center",
           pointerEvents: "none",
@@ -1104,7 +1103,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         >
           <kbd className="db-kbd">{SHORTCUTS_KEY}</kbd> shortcuts
         </button>
-
       )}
     </div>
   );
