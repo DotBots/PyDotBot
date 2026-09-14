@@ -11,6 +11,11 @@ Implementation: prepend `--conn simulator` to argv and delegate to the
 controller's Click command. `dotbot run simulator --sailbot` forwards through to
 the controller's robot-type selector. A future refactor may turn this
 into a first-class entry (and possibly a separate sim process).
+
+The delegation builds a fresh Click context, which inherits nothing, so the
+root group's loaded config is handed over explicitly as `obj`. Without it
+every config-driven setting - the active site, its extent and areas
+included - resolves as if no config file existed.
 """
 
 import click
@@ -36,4 +41,4 @@ def cmd(ctx):
     `dotbot run simulator --help` for the full option list.
     """
     args = ["--conn", "simulator", *ctx.args]
-    _controller_main.main(args=args, standalone_mode=True)
+    _controller_main.main(args=args, standalone_mode=True, obj=ctx.obj)

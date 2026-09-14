@@ -254,3 +254,44 @@ def test_main_simulator_offers_scaffold_with_none(scaffold, _run, _serial):
     runner = CliRunner()
     runner.invoke(main, ["--conn", "simulator"])
     scaffold.assert_called_once_with(None)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_simulator_keeps_the_site_tables(controller, _asyncio_run, tmp_path):
+    """`run simulator` re-enters the controller through a fresh Click context,
+    so the root group's config has to be handed over explicitly. Without it
+    the site resolves to the package default and its extent and areas are
+    lost."""
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(
+        """
+site = "hall"
+
+[sites.hall]
+extent_mm = [20000, 30000]
+
+[sites.hall.areas.arena]
+x = 14000
+y = 22000
+w = 2000
+h = 2000
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.site.name == "hall"
+    assert settings.site.extent_mm == (20000, 30000)
+    assert settings.site.areas["arena"].as_dict() == {
+        "x": 14000,
+        "y": 22000,
+        "w": 2000,
+        "h": 2000,
+        "name": "arena",
+    }
