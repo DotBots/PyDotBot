@@ -84,6 +84,31 @@ export const ZOOM_MIN = 1;
  */
 export const ZOOM_STEP = 1.5;
 
+/** Wheel travel, in pixels, worth one press of the zoom buttons. */
+export const WHEEL_PX_PER_STEP = 100;
+
+/**
+ * A wheel event's travel in pixels, down positive. A wheel held with shift
+ * arrives on the horizontal axis in most browsers, so either axis counts; a
+ * wheel that reports lines or pages is scaled to about what they span.
+ */
+export function wheelDeltaPx(e: {
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+}): number {
+  const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+  if (e.deltaMode === 1) return delta * 16;
+  if (e.deltaMode === 2) return delta * 400;
+  return delta;
+}
+
+/** The scale a wheel of `deltaPx` lands on: in when scrolled up, out when down. */
+export function wheelScale(scale: number, deltaPx: number, max: number): number {
+  if (!Number.isFinite(deltaPx)) return clampScale(scale, max);
+  return steppedScale(scale, -deltaPx / WHEEL_PX_PER_STEP, max);
+}
+
 /** A scale held inside the range the map can show. */
 export function clampScale(scale: number, max: number): number {
   const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;

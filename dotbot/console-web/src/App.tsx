@@ -11,6 +11,8 @@ import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
 import { SetupCard } from "./SetupCard";
+import { CLOSE_KEY, SHORTCUTS_KEY, typingIn } from "./shortcuts";
+import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
@@ -182,6 +184,27 @@ export const App: React.FC = () => {
   useEffect(() => {
     fetchConnection().then(setConn);
   }, []);
+
+  // The shortcuts panel: its key opens it with nothing selected and closes
+  // it again; Escape closes it; a key typed into a field is left alone.
+  const [shortcuts, setShortcuts] = useState(false);
+  const nothingSelected = selection.size === 0;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingIn(e.target)) return;
+      if (e.key === SHORTCUTS_KEY) {
+        if (shortcuts) setShortcuts(false);
+        else if (nothingSelected) setShortcuts(true);
+        else return;
+        e.preventDefault();
+      } else if (e.key === CLOSE_KEY && shortcuts) {
+        setShortcuts(false);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, nothingSelected]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -528,6 +551,7 @@ export const App: React.FC = () => {
               onPickCapturer={(id) => setCapturer(id.toUpperCase())}
               site={site}
               onZoom={zoomTo}
+              onShortcuts={() => setShortcuts(true)}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
@@ -590,6 +614,7 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          <ShortcutsPanel open={shortcuts} onClose={() => setShortcuts(false)} />
         </div>
         <RightPane
           tab={rightTab}

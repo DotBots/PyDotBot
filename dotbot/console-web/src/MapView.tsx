@@ -15,6 +15,7 @@ import {
   ticksInSite,
 } from "./grid";
 import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
+import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
@@ -24,11 +25,14 @@ import {
   SITE_ZOOM,
   ViewGeom,
   ZOOM_MIN,
+  cameraForArea,
   clampCam,
   scaleForFraction,
   steppedScale,
   viewCentre,
   viewGeom,
+  wheelDeltaPx,
+  wheelScale,
   zoomAbout,
   zoomFraction,
   zoomMax,
@@ -77,6 +81,8 @@ interface MapViewProps {
   // The named zooms: the site the menu lists, and what a pick applies to.
   site: Site | null;
   onZoom: (name: string) => void;
+  // The hint in the corner opens the shortcuts panel.
+  onShortcuts?: () => void;
 }
 
 // How much canvas a ruler label needs beside it to be readable whole.
@@ -104,10 +110,12 @@ const SCALE_H_PX = 14;
 // gives up to them.
 const RULER_CONTROLS_PX = SCALE_BOTTOM_PX + SCALE_H_PX + CHROME_GAP_PX;
 // The canvas the bottom line needs to carry the controls and the hint both.
-const HINT_PX = 290;
+const HINT_PX = 100;
 const BOTTOM_LINE_PX =
   RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
 
+// How far a pointer travels before a press is a drag rather than a click.
+const DRAG_MIN_PX = 5;
 // The selection ring hugs the robot: its footprint plus this on every side.
 const SELECTION_PAD_PX = 3;
 // A waypoint diamond is a fraction of the robot it belongs to, floored where
@@ -135,11 +143,13 @@ const ledCss = (b: UnifiedBot) =>
 export const MapView: React.FC<MapViewProps> = (props) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { cam, setCam } = props;
-  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // A modifier drag in progress: which one, and its rectangle in client px.
+  type DragKind = "select" | "zoom";
+  const [drag, setDrag] = useState<{ kind: DragKind; x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
-  const marqueeRef = useRef<{ additive: boolean } | null>(null);
+  const dragRef = useRef<DragKind | null>(null);
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
@@ -211,7 +221,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const colorOf = (a: Area) =>
     areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
 
-  const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
+  // Zoom runs free between the whole site and the ceiling the site needs.
+  // The geometry is read live, so a resize that moves the ceiling moves the
+  // slider's range with it.
+  const maxNow = () => zoomMax(props.site, props.viewport, geomRef.current);
+
+  // The frame point under a client pixel, on or off the drawn frame.
+  const pointToFrame = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
     if (!el) return null;
     const r = el.getBoundingClientRect();
@@ -221,26 +237,33 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const uy = (clientY - cy - cam.ty) / cam.scale + r.height / 2;
     const ax = ux - (r.width - boxW) / 2;
     const ay = uy - (r.height - boxH) / 2;
-    const { x, y } = fractionToArea(ax / boxW, ay / boxH, props.viewport);
-    const { x: x0, y: y0, w, h } = props.viewport;
-    if (x < x0 || y < y0 || x > x0 + w || y > y0 + h) return null;
-    return { x: Math.round(x), y: Math.round(y) };
+    return fractionToArea(ax / boxW, ay / boxH, props.viewport);
   };
 
-  // v1 canvas semantics: alt-click = waypoint, shift-drag = marquee,
-  // plain drag = pan, plain click (no movement) = clear selection.
+  // The same, only where it lands on the drawn frame: a waypoint is a place.
+  const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
+    const p = pointToFrame(clientX, clientY);
+    if (!p) return null;
+    const { x: x0, y: y0, w, h } = props.viewport;
+    if (p.x < x0 || p.y < y0 || p.x > x0 + w || p.y > y0 + h) return null;
+    return { x: Math.round(p.x), y: Math.round(p.y) };
+  };
+
+  // Pointer gestures, by the modifier held: none pans, and a press that does
+  // not move clears the selection; the rest are `MAP_MODIFIER`'s roles.
   const onCanvasDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     setZoomOpen(false);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    if (e.altKey) {
+    const role = roleOf(e);
+    if (role === "waypoint") {
       const p = pxToMm(e.clientX, e.clientY);
       if (p) props.onAddWaypoint(p);
       return;
     }
-    if (e.shiftKey) {
-      marqueeRef.current = { additive: true };
-      setMarquee({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
+    if (role === "select" || role === "zoom") {
+      dragRef.current = role;
+      setDrag({ kind: role, x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
       return;
     }
     panRef.current = { x0: e.clientX, y0: e.clientY, tx0: cam.tx, ty0: cam.ty, moved: false };
@@ -255,26 +278,27 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       setCam((c) => clampCam({ ...c, tx: p.tx0 + dx, ty: p.ty0 + dy }, geomRef.current));
       return;
     }
-    if (marqueeRef.current) setMarquee((m) => (m ? { ...m, x1: e.clientX, y1: e.clientY } : m));
+    if (dragRef.current) setDrag((d) => (d ? { ...d, x1: e.clientX, y1: e.clientY } : d));
   };
 
   const onCanvasUp = () => {
     if (panRef.current) {
       const moved = panRef.current.moved;
       panRef.current = null;
-      if (!moved) props.onSelect([], "replace"); // plain click on empty canvas clears
+      if (!moved) props.onSelect([], "replace");
       return;
     }
-    if (!marqueeRef.current || !marquee) {
-      marqueeRef.current = null;
-      setMarquee(null);
-      return;
-    }
-    const x0 = Math.min(marquee.x0, marquee.x1);
-    const x1 = Math.max(marquee.x0, marquee.x1);
-    const y0 = Math.min(marquee.y0, marquee.y1);
-    const y1 = Math.max(marquee.y0, marquee.y1);
-    if (x1 - x0 >= 5 || y1 - y0 >= 5) {
+    const kind = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!kind || !drag) return;
+    const x0 = Math.min(drag.x0, drag.x1);
+    const x1 = Math.max(drag.x0, drag.x1);
+    const y0 = Math.min(drag.y0, drag.y1);
+    const y1 = Math.max(drag.y0, drag.y1);
+    const moved = x1 - x0 >= DRAG_MIN_PX || y1 - y0 >= DRAG_MIN_PX;
+    if (kind === "select") {
+      if (!moved) return;
       const hits = props.bots
         .filter((b) => {
           if (!b.position) return false;
@@ -287,10 +311,53 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         })
         .map((b) => b.id);
       props.onSelect(hits, "add");
+      return;
     }
-    marqueeRef.current = null;
-    setMarquee(null);
+    // A zoom drag frames its rectangle; a zoom click steps in on its point.
+    const geom = geomRef.current;
+    if (moved) {
+      const tl = pointToFrame(x0, y0);
+      const br = pointToFrame(x1, y1);
+      if (!tl || !br) return;
+      setCam(
+        cameraForArea(
+          { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
+          props.viewport,
+          geom,
+          maxNow(),
+        ),
+      );
+      return;
+    }
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const anchor = { x: drag.x0 - r.left, y: drag.y0 - r.top };
+    setCam((c) => zoomAbout(c, steppedScale(c.scale, 1, maxNow()), anchor, geom));
   };
+
+  // The wheel, with the zoom modifier held, zooms about the pointer. A native
+  // listener: React's own wheel handler is passive, so it could not keep the
+  // page from scrolling as well.
+  const wheelRef = useRef<(e: WheelEvent) => void>(() => {});
+  wheelRef.current = (e: WheelEvent) => {
+    if (!holds(e, MAP_MODIFIER.zoom)) return;
+    e.preventDefault();
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const anchor = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const delta = wheelDeltaPx(e);
+    setCam((c) =>
+      zoomAbout(c, wheelScale(c.scale, delta, maxNow()), anchor, geomRef.current),
+    );
+  };
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => wheelRef.current(e);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   // The camera scales the whole layer, so a name or a badge would grow with
   // the zoom. Chrome is not an object on the floor: it keeps its size.
@@ -304,10 +371,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const gridStepMm = useMemo(() => pickGridStep(perMm), [perMm]);
   const subStepMm = useMemo(() => pickSubStep(perMm), [perMm]);
 
-  // Zoom runs free between the whole site and the ceiling the site needs.
-  // The geometry is read live, so a resize that moves the ceiling moves the
-  // slider's range with it.
-  const maxNow = () => zoomMax(props.site, props.viewport, geomRef.current);
   const atFraction = zoomFraction(cam.scale, maxNow());
   // What the zoom is worth on the floor: the number that means something.
   const bar = scaleBar(perMm);
@@ -429,12 +492,23 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       onPointerDown={onCanvasDown}
       onPointerMove={onCanvasMove}
       onPointerUp={onCanvasUp}
+      // Ctrl and a press is the secondary click on a Mac: a select drag
+      // there would otherwise open the menu under itself.
+      onContextMenu={(e) => {
+        if (dragRef.current) e.preventDefault();
+      }}
       style={{
         position: "relative",
         flex: 1,
         overflow: "hidden",
         background: "var(--canvas)",
-        cursor: panRef.current ? "grabbing" : "default",
+        cursor: panRef.current
+          ? "grabbing"
+          : drag?.kind === "zoom"
+            ? "zoom-in"
+            : drag
+              ? "crosshair"
+              : "default",
         touchAction: "none",
         // Drag surface: a pan or marquee would otherwise smear a text
         // selection across the UI and race the browser's native drag.
@@ -628,8 +702,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     key={b.id}
                     id={`bot-${b.id}`}
                     onPointerDown={(e) => {
+                      const role = roleOf(e);
+                      // A zoom gesture is the floor's, wherever it starts.
+                      if (role === "zoom") return;
                       e.stopPropagation();
-                      if (e.altKey) {
+                      if (role === "waypoint") {
                         const p = pxToMm(e.clientX, e.clientY);
                         if (p) props.onAddWaypoint(p);
                         return;
@@ -637,7 +714,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       if (props.session && props.onPickCapturer) {
                         props.onPickCapturer(b.id);
                         props.onSelect([b.id], "replace");
-                      } else if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      } else if (role === "select") {
                         props.onSelect([b.id], "toggle");
                       } else if (props.selection.has(b.id) && props.selection.size === 1) {
                         props.onSelect([], "replace"); // click the sole selected bot again = deselect
@@ -804,17 +881,25 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         ))}
       </div>
 
-      {/* marquee */}
-      {marquee && (
+      {/* the rectangle a modifier drag is drawing: a selection in the
+          accent, a zoom in the text colour */}
+      {drag && (
         <div
+          data-testid={`drag-${drag.kind}`}
           style={{
             position: "fixed",
-            left: Math.min(marquee.x0, marquee.x1),
-            top: Math.min(marquee.y0, marquee.y1),
-            width: Math.abs(marquee.x1 - marquee.x0),
-            height: Math.abs(marquee.y1 - marquee.y0),
-            border: "1px dashed var(--accent)",
-            background: "rgba(228,3,46,.06)",
+            left: Math.min(drag.x0, drag.x1),
+            top: Math.min(drag.y0, drag.y1),
+            width: Math.abs(drag.x1 - drag.x0),
+            height: Math.abs(drag.y1 - drag.y0),
+            border:
+              drag.kind === "select"
+                ? "1px dashed var(--accent)"
+                : "1px solid var(--text)",
+            background:
+              drag.kind === "select"
+                ? "color-mix(in srgb, var(--accent) 6%, transparent)"
+                : "color-mix(in srgb, var(--text) 6%, transparent)",
             pointerEvents: "none",
             zIndex: 20,
           }}
@@ -1004,22 +1089,22 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       {/* hint: the far end of the line the zoom controls start, so it gives
           way on a canvas with room for only one of them */}
       {geomNow.w >= BOTTOM_LINE_PX && (
-        <div
+        <button
+          type="button"
+          className="db-map-hint"
+          title="Keyboard and mouse shortcuts"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => props.onShortcuts?.()}
           style={{
             position: "absolute",
             right: CHROME_INSET_PX,
             bottom: CHROME_INSET_PX,
-            fontSize: 11,
-            color: "var(--muted)",
-            background: "var(--surface)",
-            border: "1px solid var(--hairline)",
-            borderRadius: 6,
-            padding: "5px 9px",
-            pointerEvents: "none",
+            zIndex: 10,
           }}
         >
-          drag = pan &middot; shift-drag = select &middot; &#8997; alt-click = waypoint
-        </div>
+          <kbd className="db-kbd">{SHORTCUTS_KEY}</kbd> shortcuts
+        </button>
+
       )}
     </div>
   );
