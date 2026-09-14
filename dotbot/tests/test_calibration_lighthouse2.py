@@ -8,6 +8,7 @@ integer counts rather than the other way round.
 """
 
 import tomllib
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -27,7 +28,6 @@ from dotbot.calibration.lighthouse2 import (
 )
 from dotbot.area import Area, AreaRegistry
 from dotbot.calibration.points import collect_header, point_prompt, resolve_points
-from dotbot.calibration.wire import calibration_payload, unpack_payload
 from dotbot.site import Site
 
 # A plausible wall-mounted station: the magnitude of perspective row real
@@ -344,18 +344,6 @@ def test_resolve_prefers_an_actual_path(monkeypatch, tmp_path):
     assert resolve_calibration_path(str(path)) == path
 
 
-def test_wire_payload_is_float32_and_round_trips(monkeypatch, tmp_path):
-    _, path = _saved(monkeypatch, tmp_path)
-    calibration = read_calibration_file(path)
-
-    payload = calibration_payload(calibration.stations)
-    assert len(payload) == 1 + 36
-    assert payload[0] == 1
-
-    unpacked = unpack_payload(payload)[0]
-    assert np.allclose(unpacked, calibration.stations[0].homography, rtol=1e-6)
-
-
 # --- points and areas ------------------------------------------------------
 
 
@@ -572,18 +560,21 @@ homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 
 """
 
 
-def test_the_wire_payload_is_pinned_against_the_shared_fixture(tmp_path):
-    """Both repos build the same bytes from the same file."""
-    import struct
+def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
+    """The receiver keys matrices by position, so station 2 in slot 1 is a 1.2 m error."""
+    import pytest
+
+    from dotbot.calibration.lighthouse2 import calibration_payload_int32
 
     path = tmp_path / "calibration.toml"
     path.write_text(FIXTURE_TOML, encoding="utf-8")
-    calibration = read_calibration_file(path)
+    only = read_calibration_file(path).stations[0]
+    gapped = replace(only, index=2)
 
-    expected = bytes([1]) + struct.pack(
-        "<9f", 1523.4, -38.2, 1012.7, 41.9, 1531.8, 988.3, 0.2134, -0.0871, 1.0
-    )
-    assert calibration_payload(calibration.stations) == expected
+    with pytest.raises(ValueError, match="numbered from zero without gaps"):
+        calibration_payload_int32([gapped])
+
+    assert calibration_payload_int32([replace(only, index=0)])[0] == 1
 
 
 def test_the_cli_push_payload_goes_through_the_shim(tmp_path):
@@ -600,7 +591,6 @@ def test_the_cli_push_payload_goes_through_the_shim(tmp_path):
     payload = calibration_payload_int32(calibration.stations)
     assert payload == bytes([1]) + homography_as_bytes(calibration.stations[0].matrix)
     assert len(payload) == 37
-    assert payload != calibration_payload(calibration.stations)
 
 
 def test_the_int32_shim_is_the_only_quantised_path(tmp_path):

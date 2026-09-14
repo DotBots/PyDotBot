@@ -334,13 +334,19 @@ def homography_as_bytes(matrix: np.ndarray) -> bytes:
 def calibration_payload_int32(stations) -> bytes:
     """The push payload for firmware that reads int32 x 1e3.
 
-    A count byte, then `homography_as_bytes` per station in index order:
-    the same layout as `wire.calibration_payload`, quantised through the
-    shim. Deleted with it.
+    A count byte, then `homography_as_bytes` per station in index order.
+    The receiver keys the matrices by position, so a station's index must
+    equal its position: a gap would hand one station's map to another,
+    which no length check can see.
     """
     ordered = sorted(stations, key=lambda s: s.index)
     if not ordered:
         raise ValueError("calibration carries no solved station")
+    if [s.index for s in ordered] != list(range(len(ordered))):
+        got = ", ".join(str(s.index) for s in ordered)
+        raise ValueError(
+            f"stations must be numbered from zero without gaps to be pushed, got {got}"
+        )
     payload = bytearray([len(ordered)])
     for station in ordered:
         payload += homography_as_bytes(station.matrix)

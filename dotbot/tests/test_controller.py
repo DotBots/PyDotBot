@@ -336,7 +336,6 @@ def test_controller_loads_the_calibration_named_by_id(tmp_path, monkeypatch, ser
     """An id prefix resolves under calibrations/<site>/, never the newest file."""
     import numpy as np
 
-    from dotbot.calibration.wire import unpack_payload
     from dotbot.controller import load_calibration
 
     written = _write_calibration(tmp_path, monkeypatch)
@@ -376,7 +375,6 @@ def test_controller_loads_the_calibration_named_by_id(tmp_path, monkeypatch, ser
         written.stations[0].homography,
         atol=1e-3,
     )
-    assert len(unpack_payload(bytes([1]) + b"\x00" * 36)) == 1
 
 
 def test_controller_with_no_calibration_loads_nothing(serial_mock):
