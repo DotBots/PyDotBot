@@ -5,6 +5,7 @@ import {
   SHORTCUTS_KEY,
   SHORTCUT_GROUPS,
   ShortcutGroup,
+  isKey,
   isModifier,
   modifierLabel,
   onMac,
@@ -24,6 +25,8 @@ const Keys: React.FC<{ keys: string[]; mac: boolean }> = ({ keys, mac }) => (
         {i > 0 && <span className="db-gesture">+</span>}
         {isModifier(key) ? (
           <kbd className="db-kbd">{modifierLabel(key, mac)}</kbd>
+        ) : isKey(key) ? (
+          <kbd className="db-kbd">{key}</kbd>
         ) : (
           <span className="db-gesture">{key}</span>
         )}

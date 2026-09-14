@@ -45,6 +45,8 @@ Control dock
 - [ ] LED button -> swatch grid -> bot circle + map dot recolor (toast confirms)
 - [ ] Alt-click map queues waypoints (dashed diamonds); popover lists "x, y mm" with per-item remove
 - [ ] Go sends: bot navigates, diamonds go solid, button morphs to "Stop nav"
+- [ ] `G` does what the Go / Stop nav button does; with nothing selected, nothing queued or
+      nothing drivable it toasts why instead
 - [ ] Deselect and reselect other bots: the Planned mission survives (see rail Missions)
 
 Testbed rail

@@ -1,7 +1,8 @@
 // The map's interactions, stated once. The handlers read which modifier means
-// what from `MAP_MODIFIER`, and the shortcuts panel prints `SHORTCUT_GROUPS`,
-// whose key column is built from the same table: reassigning a modifier here
-// changes the behaviour and its documentation in one edit.
+// what from `MAP_MODIFIER` and which key fires what from `ACTION_KEY`, and
+// the shortcuts panel prints `SHORTCUT_GROUPS`, whose key column is built
+// from the same tables: reassigning a key here changes the behaviour and its
+// documentation in one edit.
 
 export type Modifier = "shift" | "ctrl" | "alt";
 
@@ -44,6 +45,21 @@ export function roleOf(e: ModifierKeys): MapRole | null {
   return null;
 }
 
+/** The keys that fire an action on their own: one key, one action. */
+export const ACTION_KEY = {
+  go: "G",
+} as const;
+
+export type ActionKey = (typeof ACTION_KEY)[keyof typeof ACTION_KEY];
+
+/** Whether a key press is `key` on its own: either case, no modifier held. */
+export function pressed(
+  e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+  key: ActionKey,
+): boolean {
+  return !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toUpperCase() === key;
+}
+
 /** The key that opens and closes the shortcuts panel. */
 export const SHORTCUTS_KEY = "?";
 
@@ -58,9 +74,12 @@ export function typingIn(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
-/** One row of the panel: the keys, held in order, and what the map does. */
+/**
+ * One row of the panel: the keys, held in order, and what the map does. A
+ * key is a modifier, an action key, or the name of a gesture.
+ */
 export interface Shortcut {
-  keys: (Modifier | string)[];
+  keys: (Modifier | ActionKey | string)[];
   does: string;
 }
 
@@ -94,6 +113,10 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
         keys: [MAP_MODIFIER.waypoint, "click"],
         does: "Queue a waypoint there for the selected robots",
       },
+      {
+        keys: [ACTION_KEY.go],
+        does: "Send the selected robots to their queued waypoints, or stop them on their way",
+      },
     ],
   },
 ];
@@ -114,6 +137,11 @@ const MODIFIERS = new Set<string>(Object.values(MAP_MODIFIER));
 
 /** Whether a key column entry names a modifier rather than a gesture. */
 export const isModifier = (key: string): key is Modifier => MODIFIERS.has(key);
+
+const KEYS = new Set<string>(Object.values(ACTION_KEY));
+
+/** Whether a key column entry names a key on its own rather than a gesture. */
+export const isKey = (key: string): key is ActionKey => KEYS.has(key);
 
 /** Whether this browser runs on a Mac, where the modifiers have other names. */
 export const onMac = (): boolean =>

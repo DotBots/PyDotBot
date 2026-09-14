@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SHORTCUT_GROUPS, isModifier, modifierLabel, onMac } from "./shortcuts";
+import { SHORTCUT_GROUPS, isKey, isModifier, modifierLabel, onMac } from "./shortcuts";
 import type { Site, UnifiedBot } from "./types";
 
 const site: Site = {
@@ -180,7 +180,11 @@ describe("the shortcuts panel", () => {
       group.rows.forEach((row, i) => {
         expect(rows[i]).toHaveTextContent(row.does);
         for (const key of row.keys) {
-          expect(rows[i]).toHaveTextContent(isModifier(key) ? modifierLabel(key, mac) : key);
+          const label = isModifier(key) ? modifierLabel(key, mac) : key;
+          expect(rows[i]).toHaveTextContent(label);
+          if (isModifier(key) || isKey(key)) {
+            expect(within(rows[i]).getByText(label, { selector: "kbd" })).toBeInTheDocument();
+          }
         }
       });
     }

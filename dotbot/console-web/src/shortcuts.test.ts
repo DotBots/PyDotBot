@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTION_KEY,
   MAP_MODIFIER,
   SHORTCUT_GROUPS,
   holds,
+  isKey,
   isModifier,
   modifierLabel,
+  pressed,
   roleOf,
   typingIn,
 } from "./shortcuts";
@@ -66,6 +69,37 @@ describe("the shortcut rows", () => {
     expect(modifierLabel("alt", true)).toContain("⌥");
     expect(modifierLabel("alt", false)).toBe("Alt");
     expect(modifierLabel("shift", false)).toBe("Shift");
+  });
+});
+
+describe("the action keys", () => {
+  const press = (key: string, over = {}) => ({
+    key,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    ...over,
+  });
+
+  it("match in either case, with no modifier held", () => {
+    expect(pressed(press("g"), ACTION_KEY.go)).toBe(true);
+    expect(pressed(press("G"), ACTION_KEY.go)).toBe(true);
+    expect(pressed(press("g", { metaKey: true }), ACTION_KEY.go)).toBe(false);
+    expect(pressed(press("g", { ctrlKey: true }), ACTION_KEY.go)).toBe(false);
+    expect(pressed(press("g", { altKey: true }), ACTION_KEY.go)).toBe(false);
+    expect(pressed(press("h"), ACTION_KEY.go)).toBe(false);
+  });
+
+  it("are keys to the panel, not gestures or modifiers, and every one has a row", () => {
+    const named = new Set(
+      SHORTCUT_GROUPS.flatMap((g) => g.rows.flatMap((r) => r.keys.filter(isKey))),
+    );
+    for (const key of Object.values(ACTION_KEY)) {
+      expect(isKey(key)).toBe(true);
+      expect(isModifier(key)).toBe(false);
+      expect(named.has(key)).toBe(true);
+    }
+    expect(isKey("drag")).toBe(false);
   });
 });
 

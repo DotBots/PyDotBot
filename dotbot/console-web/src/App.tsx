@@ -11,7 +11,16 @@ import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
 import { SetupCard } from "./SetupCard";
-import { CLOSE_KEY, SHORTCUTS_KEY, typingIn } from "./shortcuts";
+import {
+  ACTION_KEY,
+  CLOSE_KEY,
+  MAP_MODIFIER,
+  SHORTCUTS_KEY,
+  modifierLabel,
+  onMac,
+  pressed,
+  typingIn,
+} from "./shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
@@ -276,6 +285,29 @@ export const App: React.FC = () => {
     });
     if (drivableSelected.length > 0) showToast("Navigation stopped");
   }, [drivableSelected, showToast]);
+
+  // The go key is the dock's Go button: it sends the selection to its queued
+  // waypoints, or stops it when it is already under way. With nothing to act
+  // on it says what is missing, so a press never passes in silence.
+  const anyAuto = drivableSelected.some((b) => b.nav === "auto");
+  const selectedCount = selectedBots.length;
+  const drivableCount = drivableSelected.length;
+  const queued = pending.length;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || typingIn(e.target) || !pressed(e, ACTION_KEY.go)) return;
+      if (selectedCount === 0) showToast("Nothing selected");
+      else if (drivableCount === 0) showToast("Not drivable");
+      else if (anyAuto) onStopNav();
+      else if (queued > 0) onGo();
+      else
+        showToast(
+          `No waypoints queued: ${modifierLabel(MAP_MODIFIER.waypoint, onMac())} + click the floor adds one`,
+        );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, selectedCount, drivableCount, anyAuto, queued, onGo, onStopNav, showToast]);
 
   const onClearQueue = useCallback(() => {
     setPlanned((prev) => prev.filter((m) => m.key !== selKey));
