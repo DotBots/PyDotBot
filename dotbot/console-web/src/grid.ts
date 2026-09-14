@@ -26,8 +26,8 @@ export const GRID_SUB_STEP_MM = 500;
 /** Screen pixels a drawn line aims to keep from the next one. */
 export const GRID_TARGET_PX = 40;
 
-/** Screen pixels a named line aims to keep from the next named one. */
-export const RULER_TARGET_PX = 110;
+/** Screen pixels a named line needs from the next named one to stay readable. */
+export const RULER_MIN_GAP_PX = 44;
 
 /**
  * The same, for the footer minimap. It is a couple of hundred pixels across
@@ -55,6 +55,24 @@ export function gridSubStepMm(
   targetPx = GRID_TARGET_PX,
 ): number | null {
   return GRID_SUB_STEP_MM * pxPerMm >= targetPx ? GRID_SUB_STEP_MM : null;
+}
+
+/**
+ * The step the ruler names: the grid's own step, multiplied up until the
+ * labels clear `minGapPx`. Multiplying is what keeps every label on a drawn
+ * line, which a ladder of the ruler's own does not - 5 m labels over a 2 m
+ * grid name lines that are not there.
+ */
+export function rulerStepMm(
+  stepMm: number,
+  pxPerMm: number,
+  minGapPx = RULER_MIN_GAP_PX,
+): number {
+  const every = [1, 2, 5, 10, 20, 50, 100];
+  for (const n of every) {
+    if (stepMm * n * pxPerMm >= minGapPx) return stepMm * n;
+  }
+  return stepMm * every[every.length - 1];
 }
 
 const canvasSpan = (axis: Axis, geom: ViewGeom) => (axis === "x" ? geom.w : geom.h);

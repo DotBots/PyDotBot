@@ -3,12 +3,12 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { CalibrationLayer } from "./CalibrationLayer";
 import { areaToFraction, fractionToArea } from "./frame";
 import {
-  RULER_TARGET_PX,
   axisTicks,
   gridStepMm as pickGridStep,
   gridSubStepMm as pickSubStep,
   metreLabel,
   pxPerMm,
+  rulerStepMm as pickRulerStep,
 } from "./grid";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
@@ -297,33 +297,21 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     chrome,
   ]);
 
-  // The ruler: one label every RULER_TARGET_PX or so, per axis, naming the
-  // metre the line it sits on stands for. A label too close to an edge is
-  // dropped rather than printed half off the canvas or over the other axis.
+  // The ruler names the lines the grid draws: the same step, or a multiple of
+  // it where the labels would not fit, so a number always sits on a line. A
+  // label too close to an edge is dropped rather than printed half off the
+  // canvas or over the other axis.
+  const rulerStep = pickRulerStep(gridStepMm, perMm);
   const readable = (ticks: ReturnType<typeof axisTicks>, last: number) =>
     ticks.filter((t) => t.px > RULER_CLEAR_PX && t.px < last);
   const rulerX = readable(
-    axisTicks(
-      "x",
-      props.viewport,
-      geomNow,
-      cam,
-      pickGridStep(pxPerMm("x", props.viewport, geomNow, cam), RULER_TARGET_PX),
-    ),
+    axisTicks("x", props.viewport, geomNow, cam, rulerStep),
     geomNow.w - RULER_CLEAR_PX,
   );
   const rulerY = readable(
-    axisTicks(
-      "y",
-      props.viewport,
-      geomNow,
-      cam,
-      pickGridStep(pxPerMm("y", props.viewport, geomNow, cam), RULER_TARGET_PX),
-    ),
+    axisTicks("y", props.viewport, geomNow, cam, rulerStep),
     geomNow.h - RULER_CONTROLS_PX,
   );
-  const rulerStepX = rulerX.length > 1 ? rulerX[1].mm - rulerX[0].mm : gridStepMm;
-  const rulerStepY = rulerY.length > 1 ? rulerY[1].mm - rulerY[0].mm : gridStepMm;
 
   const gscale = props.layers.trueScale
     ? Math.max(0.2, (boxW * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
@@ -705,7 +693,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             key={`rx-${t.mm}`}
             style={{ position: "absolute", left: t.px + 3, top: 4, whiteSpace: "nowrap" }}
           >
-            {metreLabel(t.mm, rulerStepX)}
+            {metreLabel(t.mm, rulerStep)}
           </span>
         ))}
         {rulerY.map((t) => (
@@ -713,7 +701,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             key={`ry-${t.mm}`}
             style={{ position: "absolute", left: 4, top: t.px + 3, whiteSpace: "nowrap" }}
           >
-            {metreLabel(t.mm, rulerStepY)}
+            {metreLabel(t.mm, rulerStep)}
           </span>
         ))}
       </div>

@@ -4,7 +4,7 @@ import {
   GRID_LADDER_MM,
   GRID_SUB_STEP_MM,
   GRID_TARGET_PX,
-  RULER_TARGET_PX,
+  RULER_MIN_GAP_PX,
   axisTicks,
   canvasPx,
   frameMm,
@@ -12,6 +12,7 @@ import {
   gridSubStepMm,
   metreLabel,
   pxPerMm,
+  rulerStepMm,
 } from "./grid";
 import type { Area } from "./types";
 import { viewGeom } from "./zoom";
@@ -53,12 +54,6 @@ describe("the grid step", () => {
     expect(gridStepMm(100)).toBe(1000);
   });
 
-  it("names lines further apart than it draws them", () => {
-    const perMm = pxPerMm("x", VIEWPORT, GEOM, SITE_CAM);
-    expect(gridStepMm(perMm, RULER_TARGET_PX)).toBeGreaterThanOrEqual(
-      gridStepMm(perMm, GRID_TARGET_PX),
-    );
-  });
 
   it("gets finer as the camera zooms in", () => {
     const at = (scale: number) =>
@@ -86,6 +81,39 @@ describe("the half-metre sub-grid", () => {
   it("is the floor: nothing finer is ever drawn", () => {
     [1, 10, 100].forEach((perMm) => {
       expect(gridSubStepMm(perMm)).toBe(GRID_SUB_STEP_MM);
+    });
+  });
+});
+
+describe("the ruler step", () => {
+  it("is the grid's own step wherever the labels fit", () => {
+    // 1 m across 60 px: a label every metre clears the gap on its own.
+    expect(rulerStepMm(1000, 60 / 1000)).toBe(1000);
+    expect(rulerStepMm(5000, 94 / 5000)).toBe(5000);
+  });
+
+  it("is a multiple of it where they do not, never a step of its own", () => {
+    // The case the map got wrong: 5 m labels over a 2 m grid name lines the
+    // grid never draws. 2 m at 40 px needs doubling, not a jump to 5 m.
+    const perMm = 20 / 1000;
+    expect(gridStepMm(perMm)).toBe(2000);
+    const step = rulerStepMm(2000, perMm);
+    expect(step % 2000).toBe(0);
+    expect(step).toBe(4000);
+  });
+
+  it("lands every label on a drawn grid line, at any zoom", () => {
+    [0.004, 0.01, 0.02, 0.05, 0.1, 0.3, 1].forEach((perMm) => {
+      const grid = gridStepMm(perMm);
+      const ruler = rulerStepMm(grid, perMm);
+      expect(ruler % grid).toBe(0);
+      expect(ruler * perMm).toBeGreaterThanOrEqual(RULER_MIN_GAP_PX);
+    });
+  });
+
+  it("never names anything finer than the metre", () => {
+    [1, 10, 100].forEach((perMm) => {
+      expect(rulerStepMm(gridStepMm(perMm), perMm)).toBeGreaterThanOrEqual(1000);
     });
   });
 });
