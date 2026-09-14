@@ -277,6 +277,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (dragRef.current) setDrag((d) => (d ? { ...d, x1: e.clientX, y1: e.clientY } : d));
   };
 
+  // Shared by pointerup's siblings: drop every gesture without acting on it.
+  const onCanvasCancel = () => {
+    panRef.current = null;
+    dragRef.current = null;
+    setDrag(null);
+  };
+
   const onCanvasUp = () => {
     if (panRef.current) {
       const moved = panRef.current.moved;
@@ -488,6 +495,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       onPointerDown={onCanvasDown}
       onPointerMove={onCanvasMove}
       onPointerUp={onCanvasUp}
+      // A cancelled pointer sends no pointerup, so without this the pan and
+      // the marquee keep following a cursor with no button held.
+      onPointerCancel={onCanvasCancel}
+      // A cancelled pointer sends no pointerup, so without this the pan and
+      // the marquee keep following a cursor with no button held.
       // Ctrl and a press is the secondary click on a Mac: a drag held on it
       // would otherwise open the menu under itself.
       onContextMenu={(e) => {

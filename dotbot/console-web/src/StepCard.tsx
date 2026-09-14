@@ -181,7 +181,9 @@ export const StepCard: React.FC<StepCardProps> = ({
               {calibration.busy ? "Capturing…" : "Capture"}
             </div>
             <div
-              onClick={() => !calibration.busy && calibration.redo()}
+              onClick={() =>
+                !calibration.busy && session.captured > 0 && calibration.redo()
+              }
               style={{
                 ...button("plain", calibration.busy || session.captured === 0),
                 flex: phone ? 1 : 0.6,

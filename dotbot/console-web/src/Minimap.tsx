@@ -94,7 +94,10 @@ export const Minimap: React.FC<MinimapProps> = ({
       axis === "x"
         ? viewport.x + fraction * viewport.w
         : viewport.y + fraction * viewport.h;
-    return axis === "x" ? (frame - box.x) / box.w : (frame - box.y) / box.h;
+    const f = axis === "x" ? (frame - box.x) / box.w : (frame - box.y) / box.h;
+    // The viewport is the site plus a margin, so it runs past the minimap
+    // whenever the whole site is in view. Clipped, it reads as "all of it".
+    return Math.max(0, Math.min(1, f));
   };
   // The same metric grid the map draws, at the minimap's own scale: lines on
   // whole metric steps of the frame, anchored at the site's zero.
@@ -150,12 +153,15 @@ export const Minimap: React.FC<MinimapProps> = ({
           ref={boxRef}
           title="Drag to move the map view"
           onPointerDown={(e) => {
+            if (e.button !== 0) return;
             dragging.current = true;
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             centerOn(e.clientX, e.clientY);
           }}
           onPointerMove={(e) => dragging.current && centerOn(e.clientX, e.clientY)}
           onPointerUp={() => (dragging.current = false)}
+          onPointerCancel={() => (dragging.current = false)}
+          onLostPointerCapture={() => (dragging.current = false)}
           style={{
             position: "relative",
             aspectRatio: `${box.w} / ${box.h}`,

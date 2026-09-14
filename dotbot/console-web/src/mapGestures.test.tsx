@@ -191,6 +191,29 @@ describe("the wheel", () => {
   });
 });
 
+describe("a gesture the browser cancels", () => {
+  it("is dropped rather than left following the cursor", () => {
+    const onSelect = vi.fn();
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} onSelect={onSelect} />);
+    const before = camera();
+    const el = canvas();
+
+    // A select drag the browser takes over part-way: no pointerup ever comes.
+    fireEvent.pointerDown(el, { button: 0, clientX: 100, clientY: 100, ...held(MAP_MODIFIER.select) });
+    fireEvent.pointerMove(el, { clientX: 300, clientY: 300, ...held(MAP_MODIFIER.select) });
+    fireEvent.pointerCancel(el, { clientX: 300, clientY: 300 });
+
+    // Moving afterwards with nothing held must neither select nor pan.
+    fireEvent.pointerMove(el, { clientX: 700, clientY: 500 });
+
+    // The rectangle is the symptom: without a cancel path it stays painted
+    // and keeps tracking a cursor with no button held.
+    expect(screen.queryByTestId("drag-select")).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    expectCamera(camera(), before);
+  });
+});
+
 describe("a drag with the zoom modifier", () => {
   it("frames the rectangle it drew", () => {
     const onSelect = vi.fn();

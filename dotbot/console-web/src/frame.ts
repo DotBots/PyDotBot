@@ -14,8 +14,9 @@ export const AREA_FALLBACK: Area = { x: 0, y: 0, w: 2000, h: 2000 };
 
 /** The site as one rectangle, when its extent is measured. */
 export function siteExtentArea(site: Site | null): Area | null {
-  if (!site?.extent_mm) return null;
-  return { x: 0, y: 0, w: site.extent_mm[0], h: site.extent_mm[1], name: site.name };
+  const [w, h] = site?.extent_mm ?? [0, 0];
+  if (!(w > 0) || !(h > 0)) return null;
+  return { x: 0, y: 0, w, h, name: site!.name };
 }
 
 /** Frame mm to a fraction of a rectangle, 0..1 from its top-left corner. */
