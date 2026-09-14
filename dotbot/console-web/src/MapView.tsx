@@ -9,6 +9,7 @@ import {
   metreLabel,
   pxPerMm,
   rulerStepMm as pickRulerStep,
+  ticksInSite,
 } from "./grid";
 import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
@@ -294,18 +295,27 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   ]);
 
   // The ruler names the lines the grid draws: the same step, or a multiple of
-  // it where the labels would not fit, so a number always sits on a line. A
-  // label too close to an edge is dropped rather than printed half off the
-  // canvas or over the other axis.
+  // it where the labels would not fit, so a number always sits on a line. It
+  // names the site and nothing around it, so every number it prints is a
+  // metre of measured floor. A label too close to an edge is dropped rather
+  // than printed half off the canvas or over the other axis.
   const rulerStep = pickRulerStep(gridStepMm, perMm);
   const readable = (ticks: ReturnType<typeof axisTicks>, last: number) =>
     ticks.filter((t) => t.px > RULER_CLEAR_PX && t.px < last);
   const rulerX = readable(
-    axisTicks("x", props.viewport, geomNow, cam, rulerStep),
+    ticksInSite(
+      axisTicks("x", props.viewport, geomNow, cam, rulerStep),
+      "x",
+      props.siteExtent,
+    ),
     geomNow.w - RULER_CLEAR_PX,
   );
   const rulerY = readable(
-    axisTicks("y", props.viewport, geomNow, cam, rulerStep),
+    ticksInSite(
+      axisTicks("y", props.viewport, geomNow, cam, rulerStep),
+      "y",
+      props.siteExtent,
+    ),
     geomNow.h - RULER_CONTROLS_PX,
   );
 

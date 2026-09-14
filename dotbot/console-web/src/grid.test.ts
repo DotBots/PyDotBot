@@ -13,6 +13,7 @@ import {
   metreLabel,
   pxPerMm,
   rulerStepMm,
+  ticksInSite,
 } from "./grid";
 import type { Area } from "./types";
 import { viewGeom } from "./zoom";
@@ -166,6 +167,59 @@ describe("the lines the ruler names", () => {
       const before = still.find((s) => s.mm === m.mm)!;
       expect(m.px).toBeCloseTo(before.px + 200, 6);
     });
+  });
+});
+
+describe("the ticks a ruler names", () => {
+  // The c405 floor inside the viewport the tests draw: 3330 x 4000 mm of
+  // measured site, with 2 m of unmeasured margin on every side.
+  const SITE: Area = { x: 0, y: 0, w: 3330, h: 4000, name: "c405-arena" };
+  const ticks = (axis: "x" | "y", step: number) =>
+    axisTicks(axis, VIEWPORT, GEOM, SITE_CAM, step);
+
+  it("never counts backwards from the site's zero", () => {
+    (["x", "y"] as const).forEach((axis) => {
+      const named = ticksInSite(ticks(axis, 1000), axis, SITE);
+      expect(named.length).toBeGreaterThan(0);
+      named.forEach((t) => expect(t.mm).toBeGreaterThanOrEqual(0));
+    });
+  });
+
+  it("stops at the site's far edge rather than naming the margin", () => {
+    expect(ticksInSite(ticks("x", 1000), "x", SITE).map((t) => t.mm)).toEqual([
+      0, 1000, 2000, 3000,
+    ]);
+    expect(ticksInSite(ticks("y", 1000), "y", SITE).map((t) => t.mm)).toEqual([
+      0, 1000, 2000, 3000, 4000,
+    ]);
+  });
+
+  it("keeps the line on the far edge itself", () => {
+    const edge: Area = { x: 0, y: 0, w: 3000, h: 4000 };
+    expect(
+      ticksInSite(ticks("x", 1000), "x", edge).map((t) => t.mm),
+    ).toContain(3000);
+  });
+
+  it("drops nothing the site covers, at any zoom", () => {
+    [1, 2, 4, 8].forEach((scale) => {
+      const cam: Camera = { scale, tx: 0, ty: 0 };
+      const all = axisTicks("x", VIEWPORT, GEOM, cam, 1000);
+      const named = ticksInSite(all, "x", SITE);
+      expect(named).toEqual(all.filter((t) => t.mm >= 0 && t.mm <= 3330));
+    });
+  });
+
+  it("fences only the zero side when the site has no measured extent", () => {
+    const named = ticksInSite(ticks("x", 1000), "x", null);
+    expect(named.length).toBeGreaterThan(0);
+    named.forEach((t) => expect(t.mm).toBeGreaterThanOrEqual(0));
+    // Everything from zero out, including past where a site would have ended.
+    expect(named.map((t) => t.mm)).toEqual(
+      ticks("x", 1000)
+        .filter((t) => t.mm >= 0)
+        .map((t) => t.mm),
+    );
   });
 });
 

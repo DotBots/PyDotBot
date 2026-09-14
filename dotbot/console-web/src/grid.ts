@@ -155,6 +155,23 @@ export function axisTicks(
   return ticks;
 }
 
+/**
+ * The ticks that fall on measured floor, for a ruler to name. The map draws a
+ * margin around the site so a bot that leaves it is still visible, but the
+ * margin is not floor anyone measured: naming it counts metres backwards from
+ * the site's own zero. A site with no measured extent has a zero but no far
+ * edge, so only the zero side is fenced.
+ */
+export function ticksInSite(
+  ticks: Tick[],
+  axis: Axis,
+  extent: Area | null,
+): Tick[] {
+  const from = extent ? Math.max(0, viewOrigin(axis, extent)) : 0;
+  const to = extent ? from + viewExtent(axis, extent) : Infinity;
+  return ticks.filter((t) => t.mm >= from - 1e-6 && t.mm <= to + 1e-6);
+}
+
 /** A frame coordinate in metres, to the digits its step actually resolves. */
 export function metreLabel(mm: number, stepMm: number): string {
   const digits = stepMm >= 1000 ? 0 : stepMm >= 100 ? 1 : 2;
