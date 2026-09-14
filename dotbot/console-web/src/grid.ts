@@ -7,15 +7,21 @@ import type { Area } from "./types";
 //
 // A step is picked so the lines stay about as far apart on screen whatever the
 // camera does, which is what makes the spacing readable as a distance rather
-// than as a fraction of the canvas. The ladder is the 1-2-5 one, so every step
-// is a round number of metres, half-metres or centimetres.
+// than as a fraction of the canvas. The ladder is the 1-2-5 one and bottoms
+// out at the metre, so every step is a round number of metres. Past that the
+// half-metre comes in as a sub-grid drawn under the metre lines rather than in
+// place of them, and nothing finer than a half-metre is ever drawn.
 
 export type Axis = "x" | "y";
 
 /** Grid steps in frame millimetres, coarsest first. */
-export const GRID_LADDER_MM = [
-  10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10,
-];
+export const GRID_LADDER_MM = [10000, 5000, 2000, 1000];
+
+/**
+ * The one step below the ladder, drawn weaker and only under the metre lines.
+ * The floor on what the map draws: half a metre is as fine as the grid goes.
+ */
+export const GRID_SUB_STEP_MM = 500;
 
 /** Screen pixels a drawn line aims to keep from the next one. */
 export const GRID_TARGET_PX = 40;
@@ -37,6 +43,18 @@ export function gridStepMm(pxPerMm: number, targetPx = GRID_TARGET_PX): number {
     step = candidate;
   }
   return step;
+}
+
+/**
+ * The half-metre sub-grid, once it is that far apart on screen, else null.
+ * Drawn under the metre lines rather than instead of them, so the metre stays
+ * the step the eye counts in and the half-metre only fills it in.
+ */
+export function gridSubStepMm(
+  pxPerMm: number,
+  targetPx = GRID_TARGET_PX,
+): number | null {
+  return GRID_SUB_STEP_MM * pxPerMm >= targetPx ? GRID_SUB_STEP_MM : null;
 }
 
 const canvasSpan = (axis: Axis, geom: ViewGeom) => (axis === "x" ? geom.w : geom.h);

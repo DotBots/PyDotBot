@@ -5,6 +5,8 @@
   --surface: #1e222b;
   --elevated: #2a2f3a;
   --grid: #2c313c;
+  /* The half-metre sub-grid: weaker than --grid, so the metre still reads. */
+  --grid-sub: #21252d;
   --text: #e6e9ef;
   --muted: #9aa4b2;
   --accent: #e4032e;
@@ -29,6 +31,7 @@
   --surface: #ffffff;
   --elevated: #eef1f6;
   --grid: #dbe1ea;
+  --grid-sub: #e9edf3;
   --text: #0f172a;
   --muted: #5b6577;
   --hairline: rgba(0, 0, 0, 0.07);

@@ -6,6 +6,7 @@ import {
   RULER_TARGET_PX,
   axisTicks,
   gridStepMm as pickGridStep,
+  gridSubStepMm as pickSubStep,
   metreLabel,
   pxPerMm,
 } from "./grid";
@@ -252,38 +253,49 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // the zoom. Chrome is not an object on the floor: it keeps its size.
   const chrome = 1 / cam.scale;
 
-  // The metric grid, in the scaled layer's own units. The step is the one the
-  // tighter axis can hold at the target spacing, so neither axis crowds; a
-  // line is one screen pixel wide whatever the camera does.
+  // The metric grid, in the scaled layer's own units. Both axes span a
+  // millimetre in the same pixels, so one step serves them both; a line is one
+  // screen pixel wide whatever the camera does.
   const geomNow = geomRef.current;
-  const gridStepMm = useMemo(
-    () =>
-      pickGridStep(
-        Math.min(
-          pxPerMm("x", props.viewport, geomNow, cam),
-          pxPerMm("y", props.viewport, geomNow, cam),
-        ),
-      ),
-    [props.viewport, geomNow, cam],
-  );
+  const perMm = pxPerMm("x", props.viewport, geomNow, cam);
+  const gridStepMm = useMemo(() => pickGridStep(perMm), [perMm]);
+  const subStepMm = useMemo(() => pickSubStep(perMm), [perMm]);
   // The grid lies on the site, so a site with no measured extent falls back to
   // the whole drawn frame rather than losing its grid.
   const gridBox = props.siteExtent ?? props.viewport;
   const gridBg = useMemo(() => {
-    const stepX = (gridStepMm / props.viewport.w) * boxW;
-    const stepY = (gridStepMm / props.viewport.h) * boxH;
     // The tiles are phased so a line falls on the frame's zero, not on the
     // box's own corner: the steps mean metres from the site's anchor.
     const zeroX = ((0 - gridBox.x) / props.viewport.w) * boxW;
     const zeroY = ((0 - gridBox.y) / props.viewport.h) * boxH;
+    const lines = (stepMm: number, color: string) => ({
+      image:
+        `linear-gradient(90deg, ${color} 0 ${chrome}px, transparent ${chrome}px 100%),` +
+        `linear-gradient(180deg, ${color} 0 ${chrome}px, transparent ${chrome}px 100%)`,
+      size:
+        `${(stepMm / props.viewport.w) * boxW}px 100%,` +
+        `100% ${(stepMm / props.viewport.h) * boxH}px`,
+      position: `${zeroX}px 0, 0 ${zeroY}px`,
+    });
+    // The metre lines are listed first, so they paint over the sub-grid where
+    // the two coincide and keep their own weight.
+    const layers = [lines(gridStepMm, "var(--grid)")];
+    if (subStepMm) layers.push(lines(subStepMm, "var(--grid-sub)"));
     return {
-      backgroundImage:
-        `linear-gradient(90deg, var(--grid) 0 ${chrome}px, transparent ${chrome}px 100%),` +
-        `linear-gradient(180deg, var(--grid) 0 ${chrome}px, transparent ${chrome}px 100%)`,
-      backgroundSize: `${stepX}px 100%, 100% ${stepY}px`,
-      backgroundPosition: `${zeroX}px 0, 0 ${zeroY}px`,
+      backgroundImage: layers.map((l) => l.image).join(","),
+      backgroundSize: layers.map((l) => l.size).join(","),
+      backgroundPosition: layers.map((l) => l.position).join(","),
     } as const;
-  }, [gridStepMm, props.viewport, gridBox.x, gridBox.y, boxW, boxH, chrome]);
+  }, [
+    gridStepMm,
+    subStepMm,
+    props.viewport,
+    gridBox.x,
+    gridBox.y,
+    boxW,
+    boxH,
+    chrome,
+  ]);
 
   // The ruler: one label every RULER_TARGET_PX or so, per axis, naming the
   // metre the line it sits on stands for. A label too close to an edge is
@@ -358,6 +370,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         >
           {/* the site, which the grid lies on */}
           <div
+            data-testid="map-grid"
             style={{
               position: "absolute",
               ...pctArea(gridBox),

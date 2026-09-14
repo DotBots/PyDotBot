@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   GRID_LADDER_MM,
+  GRID_SUB_STEP_MM,
   GRID_TARGET_PX,
   RULER_TARGET_PX,
   axisTicks,
   canvasPx,
   frameMm,
   gridStepMm,
+  gridSubStepMm,
   metreLabel,
   pxPerMm,
 } from "./grid";
@@ -24,10 +26,8 @@ describe("the grid step", () => {
   it("is the finest ladder step still at the target spacing", () => {
     // 1 m across 20 px: the finest step at least 40 px apart is 2 m.
     expect(gridStepMm(20 / 1000)).toBe(2000);
-    // 1 m across 60 px: 0.5 m lands at 30 px, so 1 m is the finest that holds.
+    // 1 m across 60 px: it clears the target on its own.
     expect(gridStepMm(60 / 1000)).toBe(1000);
-    // 1 m across 500 px: 0.1 m lands at 50 px, 0.05 m at 25 px.
-    expect(gridStepMm(500 / 1000)).toBe(100);
   });
 
   it("holds every step it picks at or above the target", () => {
@@ -46,8 +46,11 @@ describe("the grid step", () => {
     expect(gridStepMm(1 / 1000)).toBe(GRID_LADDER_MM[0]);
   });
 
-  it("stops at the finest step rather than splitting a centimetre", () => {
-    expect(gridStepMm(100)).toBe(GRID_LADDER_MM[GRID_LADDER_MM.length - 1]);
+  it("stops at the metre however far the camera zooms in", () => {
+    [0.1, 1, 10, 100].forEach((scale) => {
+      expect(gridStepMm(scale)).toBeGreaterThanOrEqual(1000);
+    });
+    expect(gridStepMm(100)).toBe(1000);
   });
 
   it("names lines further apart than it draws them", () => {
@@ -65,6 +68,25 @@ describe("the grid step", () => {
       expect(step).toBeLessThanOrEqual(steps[i]);
     });
     expect(steps[steps.length - 1]).toBeLessThan(steps[0]);
+  });
+});
+
+describe("the half-metre sub-grid", () => {
+  it("stays away until half a metre is itself at the target spacing", () => {
+    expect(gridSubStepMm(60 / 1000)).toBeNull();
+    expect(gridSubStepMm(80 / 1000)).toBe(GRID_SUB_STEP_MM);
+  });
+
+  it("comes in under a metre step, never in place of one", () => {
+    const perMm = 200 / 1000;
+    expect(gridStepMm(perMm)).toBe(1000);
+    expect(gridSubStepMm(perMm)).toBe(500);
+  });
+
+  it("is the floor: nothing finer is ever drawn", () => {
+    [1, 10, 100].forEach((perMm) => {
+      expect(gridSubStepMm(perMm)).toBe(GRID_SUB_STEP_MM);
+    });
   });
 });
 
