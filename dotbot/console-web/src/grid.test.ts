@@ -204,11 +204,13 @@ describe("the scale bar", () => {
     expect(px).toBeGreaterThan(0);
   });
 
-  it("names its distance in the unit that needs no leading zeros", () => {
-    expect(barLabel(20)).toBe("20 mm");
-    expect(barLabel(500)).toBe("500 mm");
+  it("names its distance in the metres the ruler names, never millimetres", () => {
+    expect(barLabel(20)).toBe("0.02 m");
+    expect(barLabel(500)).toBe("0.5 m");
     expect(barLabel(1000)).toBe("1 m");
     expect(barLabel(5000)).toBe("5 m");
+    // Whatever the zoom, the corner and the edge are in the same unit.
+    SCALE_BAR_LADDER_MM.forEach((mm) => expect(barLabel(mm)).toMatch(/ m$/));
   });
 });
 

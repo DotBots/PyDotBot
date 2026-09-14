@@ -104,9 +104,12 @@ export function scaleBar(
   return { mm, px: mm * pxPerMm };
 }
 
-/** A scale bar's distance, in the unit that states it without leading zeros. */
+/**
+ * A scale bar's distance. The ruler names the frame in metres, so the bar
+ * does too: one map, one unit, whatever the zoom.
+ */
 export function barLabel(mm: number): string {
-  return mm < 1000 ? `${mm} mm` : metreLabel(mm, mm);
+  return metreLabel(mm, mm);
 }
 
 const canvasSpan = (axis: Axis, geom: ViewGeom) => (axis === "x" ? geom.w : geom.h);
