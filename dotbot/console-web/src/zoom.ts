@@ -3,10 +3,12 @@ import type { Area, Site } from "./types";
 
 // The viewport: which part of the drawn frame fills the canvas.
 //
-// The map draws the whole viewport into a square of `side` pixels centred in
-// the canvas, then applies the camera about the canvas centre. A named zoom
-// is one rectangle of the frame plus a pad, resolved to the camera that
-// frames it.
+// The map draws the whole viewport into a box of `boxW` x `boxH` pixels
+// centred in the canvas, then applies the camera about the canvas centre. The
+// box carries the viewport's own aspect ratio, so one frame millimetre is the
+// same number of pixels on both axes and the slack axis is letterboxed. A
+// named zoom is one rectangle of the frame plus a pad, resolved to the camera
+// that frames it.
 
 export interface Camera {
   scale: number;
@@ -17,10 +19,34 @@ export interface Camera {
 export interface ViewGeom {
   w: number;
   h: number;
-  side: number;
+  boxW: number;
+  boxH: number;
 }
 
 export const ZOOM_MIN = 0.5;
+
+/** Canvas kept clear around the drawn box, so the frame has visible margins. */
+export const CANVAS_INSET_PX = 48;
+
+/** The smallest box the map draws into, however little canvas it is given. */
+export const BOX_MIN_PX = 200;
+
+/**
+ * The drawn box for a canvas: the viewport's aspect ratio, as large as the
+ * canvas holds once the inset is taken off both axes.
+ */
+export function viewGeom(w: number, h: number, viewport: Area): ViewGeom {
+  const availW = Math.max(BOX_MIN_PX, w - CANVAS_INSET_PX);
+  const availH = Math.max(BOX_MIN_PX, h - CANVAS_INSET_PX);
+  const aspect =
+    viewport.w > 0 && viewport.h > 0 ? viewport.w / viewport.h : 1;
+  const boxH = Math.min(availW / aspect, availH);
+  return { w, h, boxW: boxH * aspect, boxH };
+}
+
+/** The drawn box's own extent on one axis. */
+export const boxSpan = (axis: "x" | "y", geom: ViewGeom) =>
+  axis === "x" ? geom.boxW : geom.boxH;
 
 /**
  * The ceiling a site with no area to measure gets. A site is drawn with a
@@ -39,11 +65,10 @@ export const ZOOM_PAD = 0.15;
 
 // v1 clampPan: keep the arena reachable, never fling it off-screen.
 export function clampCam(cam: Camera, geom: ViewGeom): Camera {
-  const sw = geom.side * cam.scale;
-  const padX = Math.max(0, (geom.w - geom.side) / 2);
-  const padY = Math.max(0, (geom.h - geom.side) / 2);
-  const mx = Math.max(0, (sw - geom.w) / 2) + padX;
-  const my = Math.max(0, (sw - geom.h) / 2) + padY;
+  const padX = Math.max(0, (geom.w - geom.boxW) / 2);
+  const padY = Math.max(0, (geom.h - geom.boxH) / 2);
+  const mx = Math.max(0, (geom.boxW * cam.scale - geom.w) / 2) + padX;
+  const my = Math.max(0, (geom.boxH * cam.scale - geom.h) / 2) + padY;
   return {
     ...cam,
     tx: Math.max(-mx, Math.min(mx, cam.tx)),
@@ -73,8 +98,8 @@ export function zoomNames(site: Site | null): string[] {
  * Zero when the rectangle has no area to fit.
  */
 export function fitScale(target: Area, viewport: Area, geom: ViewGeom): number {
-  const wPx = (target.w / viewport.w) * geom.side;
-  const hPx = (target.h / viewport.h) * geom.side;
+  const wPx = (target.w / viewport.w) * geom.boxW;
+  const hPx = (target.h / viewport.h) * geom.boxH;
   if (!(wPx > 0) || !(hPx > 0)) return 0;
   return Math.min(geom.w / wPx, geom.h / hPx);
 }
@@ -107,16 +132,16 @@ export function cameraForArea(
     { x: target.x + target.w, y: target.y + target.h },
     viewport,
   );
-  const wPx = (br.fx - tl.fx) * geom.side;
-  const hPx = (br.fy - tl.fy) * geom.side;
+  const wPx = (br.fx - tl.fx) * geom.boxW;
+  const hPx = (br.fy - tl.fy) * geom.boxH;
   if (!(wPx > 0) || !(hPx > 0)) return SITE_CAMERA;
   const scale = Math.max(
     ZOOM_MIN,
     Math.min(max, Math.min(geom.w / wPx, geom.h / hPx)),
   );
   // Where the target's centre sits in canvas pixels before the camera runs.
-  const cx = (geom.w - geom.side) / 2 + ((tl.fx + br.fx) / 2) * geom.side;
-  const cy = (geom.h - geom.side) / 2 + ((tl.fy + br.fy) / 2) * geom.side;
+  const cx = (geom.w - geom.boxW) / 2 + ((tl.fx + br.fx) / 2) * geom.boxW;
+  const cy = (geom.h - geom.boxH) / 2 + ((tl.fy + br.fy) / 2) * geom.boxH;
   return clampCam(
     {
       scale,

@@ -1,3 +1,4 @@
+import { boxSpan } from "./zoom";
 import type { Camera, ViewGeom } from "./zoom";
 import type { Area } from "./types";
 
@@ -54,8 +55,9 @@ export function canvasPx(
   cam: Camera,
 ): number {
   const span = canvasSpan(axis, geom);
+  const box = boxSpan(axis, geom);
   const fraction = (mm - viewOrigin(axis, viewport)) / viewExtent(axis, viewport);
-  const unscaled = (span - geom.side) / 2 + fraction * geom.side;
+  const unscaled = (span - box) / 2 + fraction * box;
   return span / 2 + (unscaled - span / 2) * cam.scale + pan(axis, cam);
 }
 
@@ -68,19 +70,23 @@ export function frameMm(
   cam: Camera,
 ): number {
   const span = canvasSpan(axis, geom);
+  const box = boxSpan(axis, geom);
   const unscaled = (px - span / 2 - pan(axis, cam)) / cam.scale + span / 2;
-  const fraction = (unscaled - (span - geom.side) / 2) / geom.side;
+  const fraction = (unscaled - (span - box) / 2) / box;
   return viewOrigin(axis, viewport) + fraction * viewExtent(axis, viewport);
 }
 
-/** Screen pixels one frame millimetre spans on this axis. */
+/**
+ * Screen pixels one frame millimetre spans on this axis. The drawn box keeps
+ * the viewport's aspect ratio, so both axes answer the same number.
+ */
 export function pxPerMm(
   axis: Axis,
   viewport: Area,
   geom: ViewGeom,
   cam: Camera,
 ): number {
-  return (geom.side * cam.scale) / viewExtent(axis, viewport);
+  return (boxSpan(axis, geom) * cam.scale) / viewExtent(axis, viewport);
 }
 
 export interface Tick {

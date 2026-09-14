@@ -12,11 +12,12 @@ import {
   pxPerMm,
 } from "./grid";
 import type { Area } from "./types";
+import { viewGeom } from "./zoom";
 import type { Camera, ViewGeom } from "./zoom";
 
 // The c405 floor: 3330 x 4000 mm of site, so 7330 x 8000 mm of drawn frame.
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 7330, h: 8000 };
-const GEOM: ViewGeom = { w: 900, h: 600, side: 552 };
+const GEOM: ViewGeom = viewGeom(900, 600, VIEWPORT);
 const SITE_CAM: Camera = { scale: 1, tx: 0, ty: 0 };
 
 describe("the grid step", () => {

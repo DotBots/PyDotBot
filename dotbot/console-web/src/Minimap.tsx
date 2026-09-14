@@ -52,14 +52,14 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   const viewportRect = () => {
     if (!geom) return null;
-    const { w, h, side } = geom;
-    const span = (extent: number, t: number) => {
-      const min = 0.5 - (extent / 2 + t) / (side * cam.scale);
-      const max = 0.5 + (extent / 2 - t) / (side * cam.scale);
+    const { w, h, boxW, boxH } = geom;
+    const span = (extent: number, drawn: number, t: number) => {
+      const min = 0.5 - (extent / 2 + t) / (drawn * cam.scale);
+      const max = 0.5 + (extent / 2 - t) / (drawn * cam.scale);
       return [Math.max(0, min), Math.min(1, max)];
     };
-    const [x0, x1] = span(w, cam.tx);
-    const [y0, y1] = span(h, cam.ty);
+    const [x0, x1] = span(w, boxW, cam.tx);
+    const [y0, y1] = span(h, boxH, cam.ty);
     return { x0, x1, y0, y1 };
   };
 
@@ -71,7 +71,11 @@ export const Minimap: React.FC<MinimapProps> = ({
     const fy = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
     setCam((c) =>
       clampCam(
-        { ...c, tx: -(fx - 0.5) * geom.side * c.scale, ty: -(fy - 0.5) * geom.side * c.scale },
+        {
+          ...c,
+          tx: -(fx - 0.5) * geom.boxW * c.scale,
+          ty: -(fy - 0.5) * geom.boxH * c.scale,
+        },
         geom,
       ),
     );

@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { areaToFraction } from "./frame";
 import {
+  CANVAS_INSET_PX,
   SITE_CAMERA,
   SITE_ZOOM,
   ZOOM_MAX_FLOOR,
   cameraForArea,
   cameraForZoom,
+  clampCam,
   fitScale,
   padArea,
+  viewGeom,
   zoomFromSearch,
   zoomMax,
   zoomNames,
@@ -25,19 +28,74 @@ const C405: Site = {
 };
 // The site extent plus the 2 m margin, which is what the map draws.
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
-const GEOM = { w: 900, h: 600, side: 552 };
+const GEOM = viewGeom(900, 600, VIEWPORT);
 const MAX = zoomMax(C405, VIEWPORT, GEOM);
 
 // Where a frame point lands on the canvas once the camera has run.
 function onCanvas(p: { x: number; y: number }, cam: { scale: number; tx: number; ty: number }) {
   const { fx, fy } = areaToFraction(p, VIEWPORT);
-  const px = (GEOM.w - GEOM.side) / 2 + fx * GEOM.side;
-  const py = (GEOM.h - GEOM.side) / 2 + fy * GEOM.side;
+  const px = (GEOM.w - GEOM.boxW) / 2 + fx * GEOM.boxW;
+  const py = (GEOM.h - GEOM.boxH) / 2 + fy * GEOM.boxH;
   return {
     x: GEOM.w / 2 + (px - GEOM.w / 2) * cam.scale + cam.tx,
     y: GEOM.h / 2 + (py - GEOM.h / 2) * cam.scale + cam.ty,
   };
 }
+
+describe("the drawn box", () => {
+  // 20 x 30 m of site, so 24 x 34 m of drawn frame: the case a square box
+  // squashes by half a pixel per millimetre on one axis.
+  const TALL: Area = { x: -2000, y: -2000, w: 24000, h: 34000 };
+
+  it("carries the viewport's own aspect ratio", () => {
+    const geom = viewGeom(1280, 720, TALL);
+    expect(geom.boxW / geom.boxH).toBeCloseTo(TALL.w / TALL.h, 9);
+  });
+
+  it("spans one millimetre by the same pixels on both axes", () => {
+    const geom = viewGeom(1280, 720, TALL);
+    expect(geom.boxW / TALL.w).toBeCloseTo(geom.boxH / TALL.h, 12);
+  });
+
+  it("fits the canvas, inset, whichever axis is the tight one", () => {
+    [
+      viewGeom(1280, 720, TALL),
+      viewGeom(720, 1280, TALL),
+      viewGeom(900, 600, VIEWPORT),
+    ].forEach((geom) => {
+      expect(geom.boxW).toBeLessThanOrEqual(geom.w - CANVAS_INSET_PX + 1e-9);
+      expect(geom.boxH).toBeLessThanOrEqual(geom.h - CANVAS_INSET_PX + 1e-9);
+      // One axis is the one that fits exactly; the other is letterboxed.
+      expect(
+        Math.min(
+          geom.w - CANVAS_INSET_PX - geom.boxW,
+          geom.h - CANVAS_INSET_PX - geom.boxH,
+        ),
+      ).toBeCloseTo(0, 6);
+    });
+  });
+
+  it("keeps a box to draw into on a canvas too small to inset", () => {
+    const geom = viewGeom(40, 30, TALL);
+    expect(Math.min(geom.boxW, geom.boxH)).toBeGreaterThan(0);
+    expect(geom.boxW / geom.boxH).toBeCloseTo(TALL.w / TALL.h, 9);
+  });
+});
+
+describe("panning", () => {
+  it("keeps the site reachable rather than flinging it off-canvas", () => {
+    const TALL: Area = { x: -2000, y: -2000, w: 24000, h: 34000 };
+    const geom = viewGeom(1280, 720, TALL);
+    const far = clampCam({ scale: 3, tx: 99999, ty: -99999 }, geom);
+    // The clamp never pushes the box's own centre outside the canvas.
+    expect(Math.abs(far.tx)).toBeLessThanOrEqual(
+      (geom.boxW * 3 - geom.w) / 2 + Math.max(0, (geom.w - geom.boxW) / 2) + 1e-9,
+    );
+    expect(Math.abs(far.ty)).toBeLessThanOrEqual(
+      (geom.boxH * 3 - geom.h) / 2 + Math.max(0, (geom.h - geom.boxH) / 2) + 1e-9,
+    );
+  });
+});
 
 describe("the named zooms", () => {
   it("lists the site first, then one per area", () => {

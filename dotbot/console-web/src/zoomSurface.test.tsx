@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import { MapView } from "./MapView";
 import type { Area, Site } from "./types";
-import { Camera, SITE_CAMERA, cameraForZoom, zoomFromSearch } from "./zoom";
+import {
+  Camera,
+  SITE_CAMERA,
+  cameraForZoom,
+  viewGeom,
+  zoomFromSearch,
+} from "./zoom";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
 const ANNEX: Area = { x: 0, y: 2000, w: 2000, h: 2000, name: "annex" };
@@ -15,7 +21,7 @@ const C405: Site = {
   areas: [ARENA, ANNEX],
 };
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
-const GEOM = { w: 900, h: 600, side: 552 };
+const GEOM = viewGeom(900, 600, VIEWPORT);
 
 // The map with a camera over it, zoomed the way App zooms it.
 const Harness: React.FC<{ onCam?: (c: Camera) => void }> = ({ onCam }) => {

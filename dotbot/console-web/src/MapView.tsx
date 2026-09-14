@@ -20,6 +20,7 @@ import {
   ViewGeom,
   ZOOM_MIN,
   clampCam,
+  viewGeom,
   zoomMax,
   zoomNames,
 } from "./zoom";
@@ -87,14 +88,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const [zoomOpen, setZoomOpen] = useState(false);
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
   const marqueeRef = useRef<{ additive: boolean } | null>(null);
-  const geomRef = useRef<ViewGeom>({ w: 1000, h: 600, side: 600 });
+  const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
   const smoothPositions = useSmoothPositions(props.bots, mapDiagonal);
 
-  const [side, setSide] = useState(600);
+  const [box, setBox] = useState(() => viewGeom(1000, 600, props.viewport));
   const onGeomRef = useRef(props.onGeom);
   onGeomRef.current = props.onGeom;
+  const viewportRef = useRef(props.viewport);
+  viewportRef.current = props.viewport;
   // Track the canvas size live (rail open/close, window resize): the arena
   // keeps its margins instead of overflowing when the canvas shrinks.
   const measure = useCallback((el: HTMLDivElement | null) => {
@@ -105,16 +108,20 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (!el) return;
     const update = () => {
       const r = el.getBoundingClientRect();
-      const s = Math.max(200, Math.min(r.width, r.height) - 48);
-      setSide(s);
-      geomRef.current = { w: r.width, h: r.height, side: s };
-      onGeomRef.current(geomRef.current);
+      const g = viewGeom(r.width, r.height, viewportRef.current);
+      setBox(g);
+      geomRef.current = g;
+      onGeomRef.current(g);
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+    // The viewport's extent decides the box's aspect, so a site that arrives
+    // after the first measure has to re-run it.
+  }, [props.viewport.w, props.viewport.h]);
+  const boxW = box.boxW;
+  const boxH = box.boxH;
 
   const pctPos = (p: LH2Position) => {
     const { fx, fy } = areaToFraction(p, props.viewport);
@@ -134,15 +141,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
-  // The same box in the drawn square's own pixels, for the SVG outlines.
+  // The same box in the drawn box's own pixels, for the SVG outlines.
   const rectPx = (a: Area) => {
     const tl = areaToFraction({ x: a.x, y: a.y }, props.viewport);
     const br = areaToFraction({ x: a.x + a.w, y: a.y + a.h }, props.viewport);
     return {
-      x: tl.fx * side,
-      y: tl.fy * side,
-      width: (br.fx - tl.fx) * side,
-      height: (br.fy - tl.fy) * side,
+      x: tl.fx * boxW,
+      y: tl.fy * boxH,
+      width: (br.fx - tl.fx) * boxW,
+      height: (br.fy - tl.fy) * boxH,
     };
   };
 
@@ -167,9 +174,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const cy = r.top + r.height / 2;
     const ux = (clientX - cx - cam.tx) / cam.scale + r.width / 2;
     const uy = (clientY - cy - cam.ty) / cam.scale + r.height / 2;
-    const ax = ux - (r.width - side) / 2;
-    const ay = uy - (r.height - side) / 2;
-    const { x, y } = fractionToArea(ax / side, ay / side, props.viewport);
+    const ax = ux - (r.width - boxW) / 2;
+    const ay = uy - (r.height - boxH) / 2;
+    const { x, y } = fractionToArea(ax / boxW, ay / boxH, props.viewport);
     const { x: x0, y: y0, w, h } = props.viewport;
     if (x < x0 || y < y0 || x > x0 + w || y > y0 + h) return null;
     return { x: Math.round(x), y: Math.round(y) };
@@ -263,12 +270,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // the whole drawn frame rather than losing its grid.
   const gridBox = props.siteExtent ?? props.viewport;
   const gridBg = useMemo(() => {
-    const stepX = (gridStepMm / props.viewport.w) * side;
-    const stepY = (gridStepMm / props.viewport.h) * side;
+    const stepX = (gridStepMm / props.viewport.w) * boxW;
+    const stepY = (gridStepMm / props.viewport.h) * boxH;
     // The tiles are phased so a line falls on the frame's zero, not on the
     // box's own corner: the steps mean metres from the site's anchor.
-    const zeroX = ((0 - gridBox.x) / props.viewport.w) * side;
-    const zeroY = ((0 - gridBox.y) / props.viewport.h) * side;
+    const zeroX = ((0 - gridBox.x) / props.viewport.w) * boxW;
+    const zeroY = ((0 - gridBox.y) / props.viewport.h) * boxH;
     return {
       backgroundImage:
         `linear-gradient(90deg, var(--grid) 0 ${chrome}px, transparent ${chrome}px 100%),` +
@@ -276,7 +283,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       backgroundSize: `${stepX}px 100%, 100% ${stepY}px`,
       backgroundPosition: `${zeroX}px 0, 0 ${zeroY}px`,
     } as const;
-  }, [gridStepMm, props.viewport, gridBox.x, gridBox.y, side, chrome]);
+  }, [gridStepMm, props.viewport, gridBox.x, gridBox.y, boxW, boxH, chrome]);
 
   // The ruler: one label every RULER_TARGET_PX or so, per axis, naming the
   // metre the line it sits on stands for. A label too close to an edge is
@@ -307,7 +314,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const rulerStepY = rulerY.length > 1 ? rulerY[1].mm - rulerY[0].mm : gridStepMm;
 
   const gscale = props.layers.trueScale
-    ? Math.max(0.2, (side * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
+    ? Math.max(0.2, (boxW * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
     : 1;
 
   return (
@@ -344,8 +351,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             position: "absolute",
             left: "50%",
             top: "50%",
-            width: side,
-            height: side,
+            width: boxW,
+            height: boxH,
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -365,8 +372,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               then multiplied by the camera; a stroke keeps the width it is
               given, so counter-scaling it holds the hairline at any zoom. */}
           <svg
-            width={side}
-            height={side}
+            width={boxW}
+            height={boxH}
             style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
           >
             <rect
@@ -436,7 +443,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
           {/* trails (our extra layer) */}
           {props.layers.trails && (
-            <svg width={side} height={side} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <svg width={boxW} height={boxH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
               {props.bots
                 .filter((b) => b.trail.length > 1)
                 .map((b) => (
@@ -445,7 +452,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     points={b.trail
                       .map((p) => {
                         const { fx, fy } = areaToFraction(p, props.viewport);
-                        return `${fx * side},${fy * side}`;
+                        return `${fx * boxW},${fy * boxH}`;
                       })
                       .join(" ")}
                     fill="none"

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Site } from "./types";
-import { ZOOM_MAX_FLOOR, zoomMax } from "./zoom";
+import { ZOOM_MAX_FLOOR, viewGeom, zoomMax } from "./zoom";
 
 // A floor-sized site with a room-sized area in it: the case a ceiling fixed
 // at a small multiple could not frame.
@@ -133,12 +133,7 @@ describe("zooming to an area", () => {
     // takes far more than the fallback ceiling to fill the canvas.
     expect(scale).toBeGreaterThan(ZOOM_MAX_FLOOR);
     expect(scale).toBeCloseTo(
-      zoomMax(site, VIEWPORT, {
-        w: CANVAS.width,
-        h: CANVAS.height,
-        // The map insets its square by 48 px inside the shorter canvas side.
-        side: Math.max(200, Math.min(CANVAS.width, CANVAS.height) - 48),
-      }),
+      zoomMax(site, VIEWPORT, viewGeom(CANVAS.width, CANVAS.height, VIEWPORT)),
       6,
     );
   });
