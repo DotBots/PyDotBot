@@ -782,6 +782,7 @@ class Controller:
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
+                self.site,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

@@ -14,9 +14,9 @@ import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
-from math import atan2, cos, pi, sin, sqrt
+from math import atan2, ceil, cos, pi, sin, sqrt
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
@@ -27,8 +27,10 @@ from dotbot import (
     SIMULATOR_INIT_STATE_DEFAULT,
     addr_to_hex,
 )
+from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
+from dotbot.site import Site
 
 Kv = 700  # motor speed constant in RPM
 R = 50  # motor reduction ratio
@@ -58,6 +60,12 @@ SIMULATOR_UPDATE_INTERVAL_S = 0.05
 MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
 )
+
+# Where a world file's unpositioned robots go. `arena` is the area name the
+# rest of the CLI already defaults to (`--points` resolves `arena:corners`).
+PLACEMENT_AREA_DEFAULT = "arena"
+# The square a site that measures neither an extent nor an area falls back to.
+PLACEMENT_EXTENT_DEFAULT_MM = 2000
 
 # Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
 GRU_FEATURE_COLS = [
@@ -121,9 +129,15 @@ def _random_address() -> str:
 
 
 class SimulatedDotBotSettings(BaseModel):
+    """One simulated robot as a world file declares it.
+
+    `pos_x` / `pos_y` are frame millimetres. Leaving them out asks for a
+    placement inside the active site instead - see `place_dotbots`.
+    """
+
     address: str = Field(default_factory=_random_address)
-    pos_x: int
-    pos_y: int
+    pos_x: Optional[int] = None
+    pos_y: Optional[int] = None
     direction: int = -1000
     calibrated: int = 0xFF
     motor_left_error: float = 0
@@ -182,8 +196,8 @@ class DotBotSimulator:
 
     def __init__(self, settings: SimulatedDotBotSettings, tx_queue: queue.Queue):
         self.address = settings.address.upper()
-        self.pos_x = settings.pos_x
-        self.pos_y = settings.pos_y
+        self.pos_x = settings.pos_x or 0
+        self.pos_y = settings.pos_y or 0
         self.theta = settings.direction * -1 if settings.direction != -1000 else 0
         self.motor_left_error = settings.motor_left_error
         self.motor_right_error = settings.motor_right_error
@@ -769,10 +783,81 @@ def resolve_init_state_path(path: str) -> str:
     return path
 
 
+def placement_area(site: Optional[Site] = None) -> Area:
+    """The rectangle a world file's unpositioned robots are spread over.
+
+    The site's `arena` area, else its first declared area, else its whole
+    extent, else a 2 x 2 m square at the frame origin for a site that
+    measures neither.
+    """
+    if site is not None:
+        area = site.areas.get(PLACEMENT_AREA_DEFAULT)
+        if area is not None:
+            return area
+        for first in site.areas.values():
+            return first
+        if site.extent is not None:
+            return site.extent
+    side = PLACEMENT_EXTENT_DEFAULT_MM
+    return Area(0, 0, side, side)
+
+
+def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
+    """`count` points on the cell centres of a grid covering `area`, row-major.
+
+    Deterministic, so the same world file and site always produce the same
+    fleet layout.
+    """
+    if count <= 0:
+        return []
+    cols = ceil(sqrt(count))
+    rows = ceil(count / cols)
+    return [
+        (
+            int(area.x + (index % cols + 0.5) * area.w / cols),
+            int(area.y + (index // cols + 0.5) * area.h / rows),
+        )
+        for index in range(count)
+    ]
+
+
+def place_dotbots(
+    dotbots: List[SimulatedDotBotSettings], site: Optional[Site] = None
+) -> List[SimulatedDotBotSettings]:
+    """Fill in the positions a world file left out.
+
+    A robot that gives `pos_x` / `pos_y` keeps them; the rest take grid cells
+    of the site's placement area, in file order.
+    """
+    unplaced = [
+        index
+        for index, bot in enumerate(dotbots)
+        if bot.pos_x is None or bot.pos_y is None
+    ]
+    if not unplaced:
+        return list(dotbots)
+    positions = grid_positions(placement_area(site), len(unplaced))
+    placed = list(dotbots)
+    for slot, index in enumerate(unplaced):
+        bot, (x, y) = dotbots[index], positions[slot]
+        placed[index] = bot.model_copy(
+            update={
+                "pos_x": x if bot.pos_x is None else bot.pos_x,
+                "pos_y": y if bot.pos_y is None else bot.pos_y,
+            }
+        )
+    return placed
+
+
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots"""
 
-    def __init__(self, on_frame_received: Callable, simulator_init_state: str):
+    def __init__(
+        self,
+        on_frame_received: Callable,
+        simulator_init_state: str,
+        site: Optional[Site] = None,
+    ):
         self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
         self._stp_event = threading.Event()
@@ -786,7 +871,7 @@ class DotBotSimulatorCommunicationInterface:
                 settings=dotbot_settings,
                 tx_queue=self.queue,
             )
-            for dotbot_settings in init_state.dotbots
+            for dotbot_settings in place_dotbots(init_state.dotbots, site)
         ]
         self._dotbot_modes = [s.network_mode for s in init_state.dotbots]
         self._address_to_index = {d.address: i for i, d in enumerate(self.dotbots)}
