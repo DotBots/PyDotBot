@@ -5,7 +5,10 @@ import {
   GRID_SUB_STEP_MM,
   GRID_TARGET_PX,
   RULER_MIN_GAP_PX,
+  SCALE_BAR_LADDER_MM,
+  SCALE_BAR_PX,
   axisTicks,
+  barLabel,
   canvasPx,
   frameMm,
   gridStepMm,
@@ -13,6 +16,7 @@ import {
   metreLabel,
   pxPerMm,
   rulerStepMm,
+  scaleBar,
   ticksInSite,
 } from "./grid";
 import type { Area } from "./types";
@@ -167,6 +171,44 @@ describe("the lines the ruler names", () => {
       const before = still.find((s) => s.mm === m.mm)!;
       expect(m.px).toBeCloseTo(before.px + 200, 6);
     });
+  });
+});
+
+describe("the scale bar", () => {
+  it("stands for a round distance, never a measured one", () => {
+    [0.004, 0.02, 0.05, 0.2, 1, 4].forEach((perMm) => {
+      expect(SCALE_BAR_LADDER_MM).toContain(scaleBar(perMm).mm);
+    });
+  });
+
+  it("is the longest distance that still fits the space it has", () => {
+    // Up past the finest the map can ever be zoomed, where the bar would
+    // otherwise run out of the panel it sits in.
+    [0.004, 0.02, 0.05, 0.2, 1, 1.5, 2.5].forEach((perMm) => {
+      const { mm, px } = scaleBar(perMm);
+      expect(px).toBeLessThanOrEqual(SCALE_BAR_PX);
+      const next = SCALE_BAR_LADDER_MM[SCALE_BAR_LADDER_MM.indexOf(mm) + 1];
+      if (next) expect(next * perMm).toBeGreaterThan(SCALE_BAR_PX);
+    });
+  });
+
+  it("stands for less floor the further the map zooms in", () => {
+    const wide = scaleBar(0.02).mm;
+    const close = scaleBar(0.4).mm;
+    expect(close).toBeLessThan(wide);
+  });
+
+  it("keeps its shortest rung rather than vanishing when zoomed right in", () => {
+    const { mm, px } = scaleBar(50);
+    expect(mm).toBe(SCALE_BAR_LADDER_MM[0]);
+    expect(px).toBeGreaterThan(0);
+  });
+
+  it("names its distance in the unit that needs no leading zeros", () => {
+    expect(barLabel(20)).toBe("20 mm");
+    expect(barLabel(500)).toBe("500 mm");
+    expect(barLabel(1000)).toBe("1 m");
+    expect(barLabel(5000)).toBe("5 m");
   });
 });
 

@@ -23,8 +23,6 @@ export interface ViewGeom {
   boxH: number;
 }
 
-export const ZOOM_MIN = 0.5;
-
 /** Canvas kept clear around the drawn box, so the frame has visible margins. */
 export const CANVAS_INSET_PX = 48;
 
@@ -62,6 +60,61 @@ export const SITE_CAMERA: Camera = { scale: 1, tx: 0, ty: 0 };
 
 /** How much of a rectangle's own size is left around it when zoomed to. */
 export const ZOOM_PAD = 0.15;
+
+/**
+ * What one zoom level is worth. Doubling covers a whole site in four or five
+ * levels and jumps a press clean past what was being read; much under 1.4
+ * takes too many presses to cross the range and a press stops being visible.
+ * At 1.5 a typical floor lands on seven or eight levels.
+ */
+export const ZOOM_RATIO = 1.5;
+
+/**
+ * The scales the map zooms through, level 1 first. Level 1 is the whole site
+ * in view - the map's own default camera - and the ladder's last rung sits at
+ * or past `max`, so every area the ceiling was raised for is reachable at a
+ * whole level rather than between two.
+ */
+export function zoomLadder(max: number, ratio = ZOOM_RATIO): number[] {
+  const top = Number.isFinite(max) ? Math.max(1, max) : 1;
+  const levels = Math.max(1, Math.ceil(Math.log(top) / Math.log(ratio)));
+  return Array.from({ length: levels + 1 }, (_, i) => ratio ** i);
+}
+
+/** Which rung a scale is nearest, counted by ratio rather than difference. */
+function nearestRung(scale: number, ladder: number[]): number {
+  if (!(scale > 0)) return 0;
+  let best = 0;
+  for (let i = 1; i < ladder.length; i += 1) {
+    if (
+      Math.abs(Math.log(scale / ladder[i])) <
+      Math.abs(Math.log(scale / ladder[best]))
+    ) {
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** The level a scale is on, 1-based, for the operator to read off. */
+export function zoomLevel(scale: number, ladder: number[]): number {
+  return nearestRung(scale, ladder) + 1;
+}
+
+/** The rung a free scale rounds to, so every view sits on a whole level. */
+export function snapToLadder(scale: number, ladder: number[]): number {
+  return ladder[nearestRung(scale, ladder)];
+}
+
+/** The scale `delta` levels away, held inside the ladder at both ends. */
+export function steppedScale(
+  scale: number,
+  delta: number,
+  ladder: number[],
+): number {
+  const rung = nearestRung(scale, ladder) + delta;
+  return ladder[Math.max(0, Math.min(ladder.length - 1, rung))];
+}
 
 // v1 clampPan: keep the arena reachable, never fling it off-screen.
 export function clampCam(cam: Camera, geom: ViewGeom): Camera {
@@ -148,12 +201,16 @@ export function zoomMax(
   return Math.max(ZOOM_MAX_FLOOR, ...needed);
 }
 
-/** The camera that frames `target` (frame mm) inside `viewport`. */
+/**
+ * The camera that frames `target` (frame mm) inside `viewport`, on the
+ * nearest whole level of `ladder`. Rounding up can only eat into the pad a
+ * named zoom leaves around its rectangle, never into the rectangle itself.
+ */
 export function cameraForArea(
   target: Area,
   viewport: Area,
   geom: ViewGeom,
-  max: number,
+  ladder: number[],
 ): Camera {
   const tl = areaToFraction({ x: target.x, y: target.y }, viewport);
   const br = areaToFraction(
@@ -163,10 +220,7 @@ export function cameraForArea(
   const wPx = (br.fx - tl.fx) * geom.boxW;
   const hPx = (br.fy - tl.fy) * geom.boxH;
   if (!(wPx > 0) || !(hPx > 0)) return SITE_CAMERA;
-  const scale = Math.max(
-    ZOOM_MIN,
-    Math.min(max, Math.min(geom.w / wPx, geom.h / hPx)),
-  );
+  const scale = snapToLadder(Math.min(geom.w / wPx, geom.h / hPx), ladder);
   // Where the target's centre sits in canvas pixels before the camera runs.
   const cx = (geom.w - geom.boxW) / 2 + ((tl.fx + br.fx) / 2) * geom.boxW;
   const cy = (geom.h - geom.boxH) / 2 + ((tl.fy + br.fy) / 2) * geom.boxH;
@@ -198,7 +252,7 @@ export function cameraForZoom(
     padArea(area),
     viewport,
     geom,
-    zoomMax(site, viewport, geom),
+    zoomLadder(zoomMax(site, viewport, geom)),
   );
 }
 

@@ -4,11 +4,13 @@ import { CalibrationLayer } from "./CalibrationLayer";
 import { areaToFraction, fractionToArea } from "./frame";
 import {
   axisTicks,
+  barLabel,
   gridStepMm as pickGridStep,
   gridSubStepMm as pickSubStep,
   metreLabel,
   pxPerMm,
   rulerStepMm as pickRulerStep,
+  scaleBar,
   ticksInSite,
 } from "./grid";
 import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
@@ -20,11 +22,13 @@ import {
   Camera,
   SITE_ZOOM,
   ViewGeom,
-  ZOOM_MIN,
   clampCam,
+  steppedScale,
   viewCentre,
   viewGeom,
   zoomAbout,
+  zoomLadder,
+  zoomLevel,
   zoomMax,
   zoomNames,
 } from "./zoom";
@@ -74,7 +78,9 @@ interface MapViewProps {
 const RULER_CLEAR_PX = 40;
 // The zoom controls sit in the bottom-left corner, where the ruler's own
 // column runs, so it gives up that much of the canvas to them.
-const RULER_CONTROLS_PX = 110;
+const RULER_CONTROLS_PX = 152;
+// The zoom control's own width, which the menu opens clear of.
+const ZOOM_PANEL_PX = 104;
 
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
@@ -259,6 +265,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const perMm = pxPerMm("x", props.viewport, geomNow, cam);
   const gridStepMm = useMemo(() => pickGridStep(perMm), [perMm]);
   const subStepMm = useMemo(() => pickSubStep(perMm), [perMm]);
+
+  // Zoom is a ladder of whole levels: level 1 is the site in view, and the
+  // buttons step one rung. The geometry is read live, so a resize that moves
+  // the ceiling moves the ladder with it.
+  const ladderNow = () =>
+    zoomLadder(zoomMax(props.site, props.viewport, geomRef.current));
+  const ladder = ladderNow();
+  const atLevel = zoomLevel(cam.scale, ladder);
+  // What the level is worth on the floor: the number that means something.
+  const bar = scaleBar(perMm);
   // The grid lies on the site, so a site with no measured extent falls back to
   // the whole drawn frame rather than losing its grid.
   const gridBox = props.siteExtent ?? props.viewport;
@@ -762,12 +778,54 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           overflow: "hidden",
           boxShadow: "0 4px 16px rgba(0,0,0,.3)",
           zIndex: 10,
+          width: ZOOM_PANEL_PX,
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {/* which level the map is on, and what that level is worth on the
+            floor: the bar is the number an operator can actually use. */}
+        <div
+          style={{
+            padding: "6px 9px 7px",
+            borderBottom: "1px solid var(--hairline)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+          }}
+        >
+          <span
+            aria-label="Zoom level"
+            title={`Zoom level ${atLevel} of ${ladder.length}`}
+            style={{
+              font: "600 10px/1 var(--font-mono)",
+              letterSpacing: ".5px",
+              color: "var(--text)",
+            }}
+          >
+            z{atLevel}/{ladder.length}
+          </span>
+          <span
+            aria-label="Map scale"
+            style={{ display: "flex", alignItems: "flex-end", gap: 5 }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: Math.round(bar.px),
+                height: 4,
+                borderLeft: "1px solid var(--muted)",
+                borderRight: "1px solid var(--muted)",
+                borderBottom: "1px solid var(--muted)",
+              }}
+            />
+            <span style={{ font: "10px/1 var(--font-mono)", color: "var(--muted)" }}>
+              {barLabel(bar.mm)}
+            </span>
+          </span>
+        </div>
         {[
-          { label: "+", title: "Zoom in", fn: () => setCam((c) => zoomAbout(c, Math.min(zoomMax(props.site, props.viewport, geomRef.current), c.scale * 1.25), viewCentre(geomRef.current), geomRef.current)) },
-          { label: "−", title: "Zoom out", fn: () => setCam((c) => zoomAbout(c, Math.max(ZOOM_MIN, c.scale / 1.25), viewCentre(geomRef.current), geomRef.current)) },
+          { label: "+", title: "Zoom in", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, 1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
+          { label: "−", title: "Zoom out", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, -1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
           { label: "◎", title: "Zoom to", fn: () => setZoomOpen((open) => !open) },
         ].map((z, i) => (
           <div
@@ -775,7 +833,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             title={z.title}
             onClick={z.fn}
             style={{
-              width: 30,
               height: 30,
               display: "flex",
               alignItems: "center",
@@ -800,7 +857,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           onPointerDown={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
-            left: 50,
+            left: 14 + ZOOM_PANEL_PX + 6,
             bottom: 14,
             minWidth: 128,
             background: "var(--surface)",

@@ -75,6 +75,40 @@ export function rulerStepMm(
   return stepMm * every[every.length - 1];
 }
 
+/** Screen pixels a scale bar aims for: long enough to read, short enough to tuck in a corner. */
+export const SCALE_BAR_PX = 52;
+
+/**
+ * The distances a scale bar is willing to stand for, in frame millimetres.
+ * It reaches well under the metre so the bar still fits its budget at the
+ * finest zoom, where a robot's own 95 mm is the length worth comparing to.
+ */
+export const SCALE_BAR_LADDER_MM = [
+  20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000,
+];
+
+/**
+ * The longest round distance a bar of about `targetPx` can carry, and what it
+ * measures on screen. The ruler already names the frame's own metres; this
+ * says how much floor a length of canvas is, without reading two labels.
+ */
+export function scaleBar(
+  pxPerMm: number,
+  targetPx = SCALE_BAR_PX,
+): { mm: number; px: number } {
+  let mm = SCALE_BAR_LADDER_MM[0];
+  for (const candidate of SCALE_BAR_LADDER_MM) {
+    if (candidate * pxPerMm > targetPx) break;
+    mm = candidate;
+  }
+  return { mm, px: mm * pxPerMm };
+}
+
+/** A scale bar's distance, in the unit that states it without leading zeros. */
+export function barLabel(mm: number): string {
+  return mm < 1000 ? `${mm} mm` : metreLabel(mm, mm);
+}
+
 const canvasSpan = (axis: Axis, geom: ViewGeom) => (axis === "x" ? geom.w : geom.h);
 const viewOrigin = (axis: Axis, viewport: Area) =>
   axis === "x" ? viewport.x : viewport.y;

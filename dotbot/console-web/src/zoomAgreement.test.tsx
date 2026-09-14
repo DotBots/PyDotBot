@@ -2,8 +2,18 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { barLabel, pxPerMm, scaleBar } from "./grid";
 import type { Site } from "./types";
-import { ZOOM_MAX_FLOOR, viewGeom, zoomMax } from "./zoom";
+import {
+  ZOOM_MAX_FLOOR,
+  ZOOM_RATIO,
+  fitScale,
+  padArea,
+  snapToLadder,
+  viewGeom,
+  zoomLadder,
+  zoomMax,
+} from "./zoom";
 
 // A floor-sized site with a room-sized area in it: the case a ceiling fixed
 // at a small multiple could not frame.
@@ -132,9 +142,46 @@ describe("zooming to an area", () => {
     // The dock is about a tenth of the drawn viewport's short side, so it
     // takes far more than the fallback ceiling to fill the canvas.
     expect(scale).toBeGreaterThan(ZOOM_MAX_FLOOR);
+    const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
+    const ladder = zoomLadder(zoomMax(site, VIEWPORT, geom));
+    // It lands on a whole level, the one nearest the fit it asked for.
     expect(scale).toBeCloseTo(
-      zoomMax(site, VIEWPORT, viewGeom(CANVAS.width, CANVAS.height, VIEWPORT)),
+      snapToLadder(fitScale(padArea(site.areas[2]), VIEWPORT, geom), ladder),
       6,
     );
+    expect(ladder.map((r) => Number(r.toFixed(6)))).toContain(
+      Number(scale.toFixed(6)),
+    );
+  });
+
+  it("reads out the level it is on, and the levels there are", () => {
+    render(<App />);
+    const level = () => screen.getByLabelText("Zoom level").textContent;
+    // The whole site is level 1: the map's own opening camera.
+    const ladder = zoomLadder(
+      zoomMax(site, VIEWPORT, viewGeom(CANVAS.width, CANVAS.height, VIEWPORT)),
+    );
+    expect(level()).toBe(`z1/${ladder.length}`);
+
+    fireEvent.click(screen.getByTitle("Zoom in"));
+    expect(level()).toBe(`z2/${ladder.length}`);
+    fireEvent.click(screen.getByTitle("Zoom out"));
+    expect(level()).toBe(`z1/${ladder.length}`);
+  });
+
+  it("says what a level is worth on the floor", () => {
+    render(<App />);
+    const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
+    const barAt = (scale: number) =>
+      scaleBar(pxPerMm("x", VIEWPORT, geom, { scale, tx: 0, ty: 0 }));
+    const scaleText = () => screen.getByLabelText("Map scale").textContent ?? "";
+
+    expect(scaleText()).toBe(barLabel(barAt(1).mm));
+
+    // Zoomed in, the same length of canvas stands for less floor.
+    for (let i = 0; i < 3; i += 1) fireEvent.click(screen.getByTitle("Zoom in"));
+    const closer = barAt(ZOOM_RATIO ** 3);
+    expect(scaleText()).toBe(barLabel(closer.mm));
+    expect(closer.mm).toBeLessThan(barAt(1).mm);
   });
 });
