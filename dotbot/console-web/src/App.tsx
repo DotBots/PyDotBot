@@ -28,7 +28,6 @@ import {
   cameraForZoom,
   padArea,
   zoomFromSearch,
-  zoomLadder,
   zoomMax,
 } from "./zoom";
 
@@ -165,9 +164,7 @@ export const App: React.FC = () => {
             padArea(rect),
             viewportRef.current,
             geomRef.current,
-            zoomLadder(
-              zoomMax(siteRef.current, viewportRef.current, geomRef.current),
-            ),
+            zoomMax(siteRef.current, viewportRef.current, geomRef.current),
           ),
         );
       }

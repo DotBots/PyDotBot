@@ -76,7 +76,7 @@ export function rulerStepMm(
 }
 
 /** Screen pixels a scale bar aims for: long enough to read, short enough to tuck in a corner. */
-export const SCALE_BAR_PX = 52;
+export const SCALE_BAR_PX = 64;
 
 /**
  * The distances a scale bar is willing to stand for, in frame millimetres.

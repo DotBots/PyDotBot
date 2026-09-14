@@ -6,12 +6,13 @@ import { barLabel, pxPerMm, scaleBar } from "./grid";
 import type { Site } from "./types";
 import {
   ZOOM_MAX_FLOOR,
-  ZOOM_RATIO,
+  ZOOM_MIN,
+  ZOOM_STEP,
   fitScale,
   padArea,
-  snapToLadder,
+  scaleForFraction,
   viewGeom,
-  zoomLadder,
+  zoomFraction,
   zoomMax,
 } from "./zoom";
 
@@ -134,7 +135,7 @@ describe("zooming to an area", () => {
     expect(fromMenu).not.toBe("translate(0px, 0px) scale(1)");
   });
 
-  it("reaches the site's smallest area instead of stopping at a fixed ceiling", () => {
+  it("fills the canvas with the area rather than stopping short of it", () => {
     render(<App />);
     fireEvent.pointerDown(screen.getByTitle("Zoom to dock"));
 
@@ -143,33 +144,14 @@ describe("zooming to an area", () => {
     // takes far more than the fallback ceiling to fill the canvas.
     expect(scale).toBeGreaterThan(ZOOM_MAX_FLOOR);
     const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
-    const ladder = zoomLadder(zoomMax(site, VIEWPORT, geom));
-    // It lands on a whole level, the one nearest the fit it asked for.
+    // Exactly the fit it asked for, not the nearest scale to it.
     expect(scale).toBeCloseTo(
-      snapToLadder(fitScale(padArea(site.areas[2]), VIEWPORT, geom), ladder),
+      fitScale(padArea(site.areas[2]), VIEWPORT, geom),
       6,
     );
-    expect(ladder.map((r) => Number(r.toFixed(6)))).toContain(
-      Number(scale.toFixed(6)),
-    );
   });
 
-  it("reads out the level it is on, and the levels there are", () => {
-    render(<App />);
-    const level = () => screen.getByLabelText("Zoom level").textContent;
-    // The whole site is level 1: the map's own opening camera.
-    const ladder = zoomLadder(
-      zoomMax(site, VIEWPORT, viewGeom(CANVAS.width, CANVAS.height, VIEWPORT)),
-    );
-    expect(level()).toBe(`z1/${ladder.length}`);
-
-    fireEvent.click(screen.getByTitle("Zoom in"));
-    expect(level()).toBe(`z2/${ladder.length}`);
-    fireEvent.click(screen.getByTitle("Zoom out"));
-    expect(level()).toBe(`z1/${ladder.length}`);
-  });
-
-  it("says what a level is worth on the floor", () => {
+  it("says what the zoom is worth on the floor", () => {
     render(<App />);
     const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
     const barAt = (scale: number) =>
@@ -180,8 +162,79 @@ describe("zooming to an area", () => {
 
     // Zoomed in, the same length of canvas stands for less floor.
     for (let i = 0; i < 3; i += 1) fireEvent.click(screen.getByTitle("Zoom in"));
-    const closer = barAt(ZOOM_RATIO ** 3);
+    const closer = barAt(ZOOM_STEP ** 3);
     expect(scaleText()).toBe(barLabel(closer.mm));
     expect(closer.mm).toBeLessThan(barAt(1).mm);
+  });
+
+  it("shows where in the range the map is, however it got there", () => {
+    render(<App />);
+    const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
+    const max = zoomMax(site, VIEWPORT, geom);
+    const slider = () => screen.getByLabelText("Zoom") as HTMLInputElement;
+
+    // The whole site is the far end of the range.
+    expect(Number(slider().value)).toBeCloseTo(0, 9);
+
+    // The buttons and the handle agree on where a press lands.
+    fireEvent.click(screen.getByTitle("Zoom in"));
+    expect(Number(slider().value)).toBeCloseTo(
+      zoomFraction(ZOOM_STEP, max),
+      6,
+    );
+
+    // And so does a named zoom, which does not go through either.
+    fireEvent.pointerDown(screen.getByTitle("Zoom to dock"));
+    expect(Number(slider().value)).toBeCloseTo(
+      zoomFraction(scaleOf(camera()), max),
+      6,
+    );
+  });
+
+  it("moves the camera to the scale the handle is dragged to", () => {
+    render(<App />);
+    const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
+    const max = zoomMax(site, VIEWPORT, geom);
+    const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+
+    fireEvent.change(slider, { target: { value: "0.5" } });
+    expect(scaleOf(camera())).toBeCloseTo(scaleForFraction(0.5, max), 6);
+
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(scaleOf(camera())).toBeCloseTo(max, 6);
+
+    fireEvent.change(slider, { target: { value: "0" } });
+    expect(scaleOf(camera())).toBeCloseTo(ZOOM_MIN, 6);
+  });
+
+  it("takes the arrow and page keys, and the ends of the range", () => {
+    render(<App />);
+    const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
+    const max = zoomMax(site, VIEWPORT, geom);
+    const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(scaleOf(camera())).toBeCloseTo(ZOOM_STEP, 6);
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(scaleOf(camera())).toBeCloseTo(ZOOM_MIN, 6);
+
+    fireEvent.keyDown(slider, { key: "PageUp" });
+    expect(scaleOf(camera())).toBeCloseTo(ZOOM_STEP ** 3, 6);
+
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(scaleOf(camera())).toBeCloseTo(max, 6);
+    fireEvent.keyDown(slider, { key: "Home" });
+    expect(scaleOf(camera())).toBeCloseTo(ZOOM_MIN, 6);
+  });
+
+  it("speaks its position as floor, not as a bare number", () => {
+    render(<App />);
+    const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+    const spoken = () => slider.getAttribute("aria-valuetext") ?? "";
+
+    expect(spoken()).toMatch(/^[\d.]+ m of floor across the map$/);
+    const wide = parseFloat(spoken());
+    fireEvent.click(screen.getByTitle("Zoom in"));
+    expect(parseFloat(spoken())).toBeLessThan(wide);
   });
 });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { BOT_FOOTPRINT_MM, botFootprintPx, glyphLevel } from "./BotGlyph";
+import {
+  BOT_FOOTPRINT_MM,
+  GLYPH_DETAIL_PX,
+  botFootprintPx,
+  glyphLevel,
+} from "./BotGlyph";
 import { areaToFraction } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
@@ -9,20 +14,21 @@ import {
   SITE_ZOOM,
   ZOOM_MAX_FLOOR,
   ZOOM_MAX_PX_PER_MM,
-  ZOOM_RATIO,
+  ZOOM_MIN,
+  ZOOM_STEP,
   cameraForArea,
   cameraForZoom,
   clampCam,
+  clampScale,
   fitScale,
   padArea,
-  snapToLadder,
+  scaleForFraction,
   steppedScale,
   viewCentre,
   viewGeom,
   zoomAbout,
+  zoomFraction,
   zoomFromSearch,
-  zoomLadder,
-  zoomLevel,
   zoomMax,
   zoomNames,
 } from "./zoom";
@@ -41,7 +47,6 @@ const C405: Site = {
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
 const GEOM = viewGeom(900, 600, VIEWPORT);
 const MAX = zoomMax(C405, VIEWPORT, GEOM);
-const LADDER = zoomLadder(MAX);
 
 // Where a frame point lands on the canvas once the camera has run.
 function onCanvas(p: { x: number; y: number }, cam: { scale: number; tx: number; ty: number }) {
@@ -109,68 +114,74 @@ describe("panning", () => {
   });
 });
 
-describe("the zoom ladder", () => {
+describe("the zoom range", () => {
   it("starts at the whole site, which is the map's own camera", () => {
-    expect(zoomLadder(9)[0]).toBe(1);
-    expect(SITE_CAMERA.scale).toBe(1);
-    expect(zoomLevel(SITE_CAMERA.scale, zoomLadder(9))).toBe(1);
+    expect(ZOOM_MIN).toBe(1);
+    expect(SITE_CAMERA.scale).toBe(ZOOM_MIN);
+    expect(zoomFraction(SITE_CAMERA.scale, 11.4)).toBe(0);
   });
 
-  it("steps every level by the same ratio", () => {
-    const ladder = zoomLadder(9);
-    ladder.slice(1).forEach((rung, i) => {
-      expect(rung / ladder[i]).toBeCloseTo(ZOOM_RATIO, 9);
+  it("holds a scale between the site and the ceiling", () => {
+    expect(clampScale(4, 11.4)).toBe(4);
+    expect(clampScale(0.2, 11.4)).toBe(ZOOM_MIN);
+    expect(clampScale(999, 11.4)).toBe(11.4);
+    // A ceiling below the site view, or no ceiling at all, still leaves a
+    // scale the map can draw.
+    expect(clampScale(4, 0.5)).toBe(ZOOM_MIN);
+    expect(clampScale(4, Number.NaN)).toBe(ZOOM_MIN);
+    expect(clampScale(Number.NaN, 11.4)).toBe(ZOOM_MIN);
+  });
+
+  it("steps a press by the same ratio wherever it starts", () => {
+    expect(steppedScale(1, 1, 11.4)).toBeCloseTo(ZOOM_STEP, 9);
+    expect(steppedScale(4, 1, 11.4)).toBeCloseTo(4 * ZOOM_STEP, 9);
+    expect(steppedScale(4, -1, 11.4)).toBeCloseTo(4 / ZOOM_STEP, 9);
+    expect(steppedScale(1, 3, 11.4)).toBeCloseTo(ZOOM_STEP ** 3, 9);
+  });
+
+  it("stops a press at both ends rather than running past them", () => {
+    expect(steppedScale(ZOOM_MIN, -1, 11.4)).toBe(ZOOM_MIN);
+    expect(steppedScale(11.4, 1, 11.4)).toBe(11.4);
+  });
+
+  it("comes back to the scale it left, in and out again", () => {
+    let scale = 2;
+    for (let i = 0; i < 3; i += 1) scale = steppedScale(scale, 1, 40);
+    for (let i = 0; i < 3; i += 1) scale = steppedScale(scale, -1, 40);
+    expect(scale).toBeCloseTo(2, 9);
+  });
+
+  it("puts the ends of the range at the ends of the slider", () => {
+    expect(zoomFraction(ZOOM_MIN, 11.4)).toBe(0);
+    expect(zoomFraction(11.4, 11.4)).toBeCloseTo(1, 12);
+    // Past either end reads as that end, never off the track.
+    expect(zoomFraction(0.1, 11.4)).toBe(0);
+    expect(zoomFraction(999, 11.4)).toBeCloseTo(1, 12);
+  });
+
+  it("spends the same travel on the same magnification", () => {
+    // Half the track is the square root of the whole range, not half of it:
+    // a press is worth the same handful of pixels wherever the handle is.
+    const max = 16;
+    expect(scaleForFraction(0.5, max)).toBeCloseTo(Math.sqrt(max), 9);
+    const step = (from: number) =>
+      zoomFraction(from * ZOOM_STEP, max) - zoomFraction(from, max);
+    expect(step(1)).toBeCloseTo(step(4), 12);
+  });
+
+  it("reads a position back as the scale it stands for", () => {
+    [0, 0.17, 0.5, 0.83, 1].forEach((f) => {
+      expect(zoomFraction(scaleForFraction(f, 11.4), 11.4)).toBeCloseTo(f, 12);
     });
+    // A position off the track, or none at all, still names a scale.
+    expect(scaleForFraction(-1, 11.4)).toBe(ZOOM_MIN);
+    expect(scaleForFraction(2, 11.4)).toBeCloseTo(11.4, 9);
+    expect(scaleForFraction(Number.NaN, 11.4)).toBe(ZOOM_MIN);
   });
 
-  it("reaches past the ceiling, so every area is a whole level", () => {
-    [4, 9, 11.4, 30].forEach((max) => {
-      const ladder = zoomLadder(max);
-      expect(ladder[ladder.length - 1]).toBeGreaterThanOrEqual(max);
-      // And no further than one level past it, or the top would be wasted.
-      expect(ladder[ladder.length - 2]).toBeLessThan(max);
-    });
-  });
-
-  it("has a level to step to however low the ceiling is", () => {
-    expect(zoomLadder(1).length).toBeGreaterThan(1);
-    expect(zoomLadder(0).length).toBeGreaterThan(1);
-    expect(zoomLadder(Number.NaN).length).toBeGreaterThan(1);
-  });
-
-  it("counts up as the map zooms in, the way a web map does", () => {
-    const ladder = zoomLadder(11.4);
-    expect(zoomLevel(ladder[0], ladder)).toBe(1);
-    expect(zoomLevel(ladder[3], ladder)).toBe(4);
-    expect(zoomLevel(ladder[ladder.length - 1], ladder)).toBe(ladder.length);
-  });
-
-  it("reads a scale between two rungs as the nearer of them", () => {
-    const ladder = zoomLadder(11.4);
-    expect(zoomLevel(1.05, ladder)).toBe(1);
-    expect(zoomLevel(1.45, ladder)).toBe(2);
-    expect(snapToLadder(1.45, ladder)).toBe(ladder[1]);
-    // Off the bottom and off the top, rather than off the ladder.
-    expect(zoomLevel(0.2, ladder)).toBe(1);
-    expect(snapToLadder(999, ladder)).toBe(ladder[ladder.length - 1]);
-  });
-
-  it("steps one level at a time, and stops at both ends", () => {
-    const ladder = zoomLadder(11.4);
-    expect(steppedScale(ladder[0], 1, ladder)).toBe(ladder[1]);
-    expect(steppedScale(ladder[2], -1, ladder)).toBe(ladder[1]);
-    expect(steppedScale(ladder[0], -1, ladder)).toBe(ladder[0]);
-    const top = ladder[ladder.length - 1];
-    expect(steppedScale(top, 1, ladder)).toBe(top);
-  });
-
-  it("comes back to the level it left, in and out again", () => {
-    const ladder = zoomLadder(11.4);
-    let scale = ladder[0];
-    for (let i = 0; i < 3; i += 1) scale = steppedScale(scale, 1, ladder);
-    expect(zoomLevel(scale, ladder)).toBe(4);
-    for (let i = 0; i < 3; i += 1) scale = steppedScale(scale, -1, ladder);
-    expect(scale).toBe(ladder[0]);
+  it("leaves a degenerate range at the whole site", () => {
+    expect(zoomFraction(4, 1)).toBe(0);
+    expect(scaleForFraction(0.5, 1)).toBe(ZOOM_MIN);
   });
 });
 
@@ -262,15 +273,16 @@ describe("zooming to an area", () => {
     expect(centre.y).toBeCloseTo(GEOM.h / 2, 6);
   });
 
-  it("lands on a whole level rather than between two", () => {
-    const cam = cameraForArea(padArea(ARENA), VIEWPORT, GEOM, LADDER);
-    expect(LADDER).toContain(cam.scale);
+  it("fits the area exactly rather than landing near it", () => {
+    const cam = cameraForArea(padArea(ARENA), VIEWPORT, GEOM, MAX);
+    expect(cam.scale).toBeCloseTo(
+      fitScale(padArea(ARENA), VIEWPORT, GEOM),
+      9,
+    );
   });
 
   it("fills the canvas with the area, edges and all", () => {
-    // Rounding a fit up to the next level can only eat into the pad, so the
-    // area itself is still whole on the canvas.
-    const cam = cameraForArea(padArea(ARENA), VIEWPORT, GEOM, LADDER);
+    const cam = cameraForArea(padArea(ARENA), VIEWPORT, GEOM, MAX);
     const tl = onCanvas({ x: ARENA.x, y: ARENA.y }, cam);
     const br = onCanvas({ x: ARENA.x + ARENA.w, y: ARENA.y + ARENA.h }, cam);
     expect(tl.x).toBeGreaterThanOrEqual(0);
@@ -288,11 +300,9 @@ describe("zooming to an area", () => {
     expect(padded).toEqual({ x: -300, y: -300, w: 2600, h: 2600, name: "arena" });
   });
 
-  it("never zooms past the ladder's top rung", () => {
+  it("never zooms past the ceiling", () => {
     const speck: Area = { x: 1000, y: 1000, w: 1, h: 1, name: "speck" };
-    expect(cameraForArea(speck, VIEWPORT, GEOM, LADDER).scale).toBe(
-      LADDER[LADDER.length - 1],
-    );
+    expect(cameraForArea(speck, VIEWPORT, GEOM, MAX).scale).toBe(MAX);
   });
 
   it("leaves the camera alone for a name the site does not define", () => {
@@ -381,17 +391,36 @@ describe("how far in the glyph ladder reaches", () => {
     ...C405,
     areas: [ARENA, ANNEX, { x: 100, y: 100, w: 800, h: 800, name: "pen" }],
   };
-  const footprints = (site: Site) =>
-    zoomLadder(zoomMax(site, VIEWPORT, GEOM)).map((scale) =>
-      botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, { scale, tx: 0, ty: 0 })),
+  // A bot's size on screen, sampled right across a site's zoom range.
+  const footprints = (site: Site) => {
+    const max = zoomMax(site, VIEWPORT, GEOM);
+    return Array.from({ length: 41 }, (_, i) =>
+      botFootprintPx(
+        pxPerMm("x", VIEWPORT, GEOM, {
+          scale: scaleForFraction(i / 40, max),
+          tx: 0,
+          ty: 0,
+        }),
+      ),
     );
+  };
 
-  it("draws the board on the top five levels of any site", () => {
+  it("turns the board on at a size on screen, not at a zoom level", () => {
+    [plain, withPen].forEach((site) => {
+      footprints(site).forEach((px) => {
+        expect(glyphLevel(px, 1)).toBe(
+          px >= GLYPH_DETAIL_PX ? "detail" : "dot",
+        );
+      });
+    });
+  });
+
+  it("reaches the board on any site, and keeps it to the top", () => {
     [plain, withPen].forEach((site) => {
       const levels = footprints(site).map((px) => glyphLevel(px, 1));
       const detail = levels.filter((l) => l === "detail").length;
-      expect(detail).toBeGreaterThanOrEqual(5);
-      // And they are the top ones: once it is the board it stays the board.
+      expect(detail).toBeGreaterThan(0);
+      // Once it is the board it stays the board, all the way to the ceiling.
       expect(levels.slice(-detail).every((l) => l === "detail")).toBe(true);
     });
   });

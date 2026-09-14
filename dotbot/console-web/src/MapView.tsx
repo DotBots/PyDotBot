@@ -22,16 +22,19 @@ import {
   Camera,
   SITE_ZOOM,
   ViewGeom,
+  ZOOM_MIN,
   clampCam,
+  scaleForFraction,
   steppedScale,
   viewCentre,
   viewGeom,
   zoomAbout,
-  zoomLadder,
-  zoomLevel,
+  zoomFraction,
   zoomMax,
   zoomNames,
 } from "./zoom";
+
+import "./mapChrome.css";
 
 export type { Camera, ViewGeom } from "./zoom";
 export { clampCam } from "./zoom";
@@ -76,13 +79,42 @@ interface MapViewProps {
 
 // How much canvas a ruler label needs beside it to be readable whole.
 const RULER_CLEAR_PX = 40;
-// The zoom controls sit in the bottom-left corner, where the ruler's own
-// column runs, so it gives up that much of the canvas to them.
-const RULER_CONTROLS_PX = 124;
-// How far in from the canvas edge the map chrome sits.
+// How far in from the canvas edge the map chrome sits, and what separates
+// one piece of it from the next.
 const CHROME_INSET_PX = 14;
-// One zoom button, square; the stepper is a column of three.
-const ZOOM_BUTTON_PX = 30;
+const CHROME_GAP_PX = 8;
+// One square button, and the slider's own track between two of them.
+const ZOOM_BTN_PX = 30;
+const ZOOM_TRACK_PX = 132;
+const ZOOM_TRACK_PAD_PX = 10;
+// The bar around them: two buttons, the track and its padding, the two
+// hairlines between, and the bar's own border.
+const ZOOM_BAR_H_PX = ZOOM_BTN_PX + 2;
+const ZOOM_BAR_W_PX =
+  ZOOM_BTN_PX * 2 + ZOOM_TRACK_PX + ZOOM_TRACK_PAD_PX * 2 + 4;
+// The recentre button, beside the bar. The scale goes on the line above
+// rather than beside it: the bottom-right corner carries the canvas hint, and
+// a row long enough to reach it collides on a narrow canvas.
+const RECENTRE_LEFT_PX = CHROME_INSET_PX + ZOOM_BAR_W_PX + CHROME_GAP_PX;
+const SCALE_BOTTOM_PX = CHROME_INSET_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX;
+const SCALE_H_PX = 14;
+// The bottom-left corner the controls hold, which the ruler's own column
+// gives up to them.
+const RULER_CONTROLS_PX = SCALE_BOTTOM_PX + SCALE_H_PX + CHROME_GAP_PX;
+// The canvas the bottom line needs to carry the controls and the hint both.
+const HINT_PX = 290;
+const BOTTOM_LINE_PX =
+  RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
+
+// What the arrow and page keys are worth on the slider, in button presses.
+const ZOOM_KEY_STEPS = new Map<string, number>([
+  ["ArrowRight", 1],
+  ["ArrowUp", 1],
+  ["ArrowLeft", -1],
+  ["ArrowDown", -1],
+  ["PageUp", 3],
+  ["PageDown", -3],
+]);
 
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
@@ -268,15 +300,42 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const gridStepMm = useMemo(() => pickGridStep(perMm), [perMm]);
   const subStepMm = useMemo(() => pickSubStep(perMm), [perMm]);
 
-  // Zoom is a ladder of whole levels: level 1 is the site in view, and the
-  // buttons step one rung. The geometry is read live, so a resize that moves
-  // the ceiling moves the ladder with it.
-  const ladderNow = () =>
-    zoomLadder(zoomMax(props.site, props.viewport, geomRef.current));
-  const ladder = ladderNow();
-  const atLevel = zoomLevel(cam.scale, ladder);
-  // What the level is worth on the floor: the number that means something.
+  // Zoom runs free between the whole site and the ceiling the site needs.
+  // The geometry is read live, so a resize that moves the ceiling moves the
+  // slider's range with it.
+  const maxNow = () => zoomMax(props.site, props.viewport, geomRef.current);
+  const atFraction = zoomFraction(cam.scale, maxNow());
+  // What the zoom is worth on the floor: the number that means something.
   const bar = scaleBar(perMm);
+  // The floor the canvas spans, which is what a screen reader is told the
+  // slider has moved to.
+  const acrossMm = perMm > 0 ? geomNow.w / perMm : 0;
+
+  const toScale = (scale: number) =>
+    setCam((c) =>
+      zoomAbout(c, scale, viewCentre(geomRef.current), geomRef.current),
+    );
+  const nudge = (presses: number) =>
+    setCam((c) =>
+      zoomAbout(
+        c,
+        steppedScale(c.scale, presses, maxNow()),
+        viewCentre(geomRef.current),
+        geomRef.current,
+      ),
+    );
+  const onSliderKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const presses = ZOOM_KEY_STEPS.get(e.key);
+    if (presses !== undefined) {
+      e.preventDefault();
+      nudge(presses);
+      return;
+    }
+    if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      toScale(e.key === "Home" ? ZOOM_MIN : maxNow());
+    }
+  };
   // The grid lies on the site, so a site with no measured extent falls back to
   // the whole drawn frame rather than losing its grid.
   const gridBox = props.siteExtent ?? props.viewport;
@@ -766,91 +825,137 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         />
       )}
 
-      {/* the zoom stepper: what can be pressed, and only that, in one column */}
+      {/* the zoom bar: minus, the slider that says where in the range the map
+          is, and plus. Everything in it can be pressed or dragged. */}
       <div
         style={{
           position: "absolute",
           left: CHROME_INSET_PX,
           bottom: CHROME_INSET_PX,
+          height: ZOOM_BAR_H_PX,
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
           background: "var(--surface)",
           border: "1px solid var(--hairline)",
-          borderRadius: 7,
+          borderRadius: 8,
           overflow: "hidden",
           boxShadow: "0 4px 16px rgba(0,0,0,.3)",
           zIndex: 10,
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {[
-          { label: "+", title: "Zoom in", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, 1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
-          { label: "−", title: "Zoom out", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, -1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
-          { label: "◎", title: "Zoom to", fn: () => setZoomOpen((open) => !open) },
-        ].map((z, i) => (
-          <button
-            key={z.title}
-            type="button"
-            title={z.title}
-            onClick={z.fn}
-            style={{
-              width: ZOOM_BUTTON_PX,
-              height: ZOOM_BUTTON_PX,
-              padding: 0,
-              border: "none",
-              borderTop: i > 0 ? "1px solid var(--hairline)" : "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              font: "15px/1 var(--font-ui)",
-              color: "var(--text)",
-              background: i === 2 && zoomOpen ? "var(--elevated)" : "transparent",
-            }}
-          >
-            {z.label}
-          </button>
-        ))}
+        <button
+          className="db-map-btn"
+          type="button"
+          title="Zoom out"
+          aria-label="Zoom out"
+          onClick={() => nudge(-1)}
+          style={{
+            width: ZOOM_BTN_PX,
+            height: "100%",
+            borderRight: "1px solid var(--hairline)",
+          }}
+        >
+          &minus;
+        </button>
+        <input
+          className="db-zoom-slider"
+          type="range"
+          min={0}
+          max={1}
+          step="any"
+          value={atFraction}
+          aria-label="Zoom"
+          aria-valuetext={`${metreLabel(acrossMm, acrossMm)} of floor across the map`}
+          onChange={(e) =>
+            toScale(scaleForFraction(Number(e.target.value), maxNow()))
+          }
+          onKeyDown={onSliderKey}
+          style={{
+            width: ZOOM_TRACK_PX,
+            margin: `0 ${ZOOM_TRACK_PAD_PX}px`,
+            backgroundImage:
+              `linear-gradient(to right, var(--accent) ${atFraction * 100}%,` +
+              ` var(--elevated) ${atFraction * 100}%)`,
+          }}
+        />
+        <button
+          className="db-map-btn"
+          type="button"
+          title="Zoom in"
+          aria-label="Zoom in"
+          onClick={() => nudge(1)}
+          style={{
+            width: ZOOM_BTN_PX,
+            height: "100%",
+            borderLeft: "1px solid var(--hairline)",
+          }}
+        >
+          +
+        </button>
       </div>
 
-      {/* the readouts: which level the map is on, and what a length of canvas
-          is worth on the floor. Nothing here is pressable. */}
+      {/* the named zooms, one press away from the bar it sits beside */}
+      <button
+        className="db-map-btn"
+        type="button"
+        title="Zoom to"
+        aria-label="Zoom to"
+        aria-haspopup="menu"
+        aria-expanded={zoomOpen}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setZoomOpen((open) => !open)}
+        style={{
+          position: "absolute",
+          left: RECENTRE_LEFT_PX,
+          bottom: CHROME_INSET_PX,
+          width: ZOOM_BAR_H_PX,
+          height: ZOOM_BAR_H_PX,
+          background: zoomOpen ? "var(--elevated)" : "var(--surface)",
+          border: "1px solid var(--hairline)",
+          borderRadius: 8,
+          boxShadow: "0 4px 16px rgba(0,0,0,.3)",
+          zIndex: 10,
+        }}
+      >
+        ◎
+      </button>
+
+      {/* the scale: what a length of canvas is worth on the floor, and the
+          one number the map states. Drawn on the map, and not pressable. */}
       <div
         style={{
           position: "absolute",
-          left: CHROME_INSET_PX + ZOOM_BUTTON_PX + 10,
-          bottom: CHROME_INSET_PX + 3,
+          left: CHROME_INSET_PX,
+          bottom: SCALE_BOTTOM_PX,
+          height: SCALE_H_PX,
           display: "flex",
-          alignItems: "flex-end",
-          gap: 12,
-          font: "11px/1 var(--font-mono)",
-          color: "var(--muted)",
-          // Drawn straight on the map, so the map's own colour halos it.
-          textShadow: "0 0 2px var(--canvas), 0 0 3px var(--canvas)",
-          whiteSpace: "nowrap",
+          alignItems: "center",
+          pointerEvents: "none",
           zIndex: 9,
         }}
       >
         <span
-          aria-label="Zoom level"
-          title={`Zoom level ${atLevel} of ${ladder.length}`}
-          style={{ letterSpacing: ".3px" }}
-        >
-          <span style={{ color: "var(--text)", fontWeight: 600 }}>z{atLevel}</span>
-          /{ladder.length}
-        </span>
-        <span
           aria-label="Map scale"
-          style={{ display: "flex", alignItems: "flex-end", gap: 6 }}
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 7,
+            font: "600 11px/1 var(--font-mono)",
+            color: "var(--text)",
+            whiteSpace: "nowrap",
+            // Drawn straight on the map, so the map's own colour halos it.
+            textShadow: "0 0 2px var(--canvas), 0 0 3px var(--canvas)",
+          }}
         >
           <span
             aria-hidden
             style={{
               width: Math.round(bar.px),
-              height: 5,
-              borderLeft: "1px solid var(--muted)",
-              borderRight: "1px solid var(--muted)",
-              borderBottom: "1px solid var(--muted)",
+              height: 7,
+              borderLeft: "1px solid var(--text)",
+              borderRight: "1px solid var(--text)",
+              borderBottom: "1px solid var(--text)",
               filter: "drop-shadow(0 0 1px var(--canvas))",
             }}
           />
@@ -866,8 +971,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           onPointerDown={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
-            left: CHROME_INSET_PX + ZOOM_BUTTON_PX + 8,
-            bottom: CHROME_INSET_PX + ZOOM_BUTTON_PX,
+            left: RECENTRE_LEFT_PX,
+            bottom: CHROME_INSET_PX + ZOOM_BAR_H_PX + 6,
             minWidth: 128,
             background: "var(--surface)",
             border: "1px solid var(--hairline)",
@@ -900,23 +1005,26 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         </div>
       )}
 
-      {/* hint */}
-      <div
-        style={{
-          position: "absolute",
-          right: 14,
-          bottom: 14,
-          fontSize: 11,
-          color: "var(--muted)",
-          background: "var(--surface)",
-          border: "1px solid var(--hairline)",
-          borderRadius: 6,
-          padding: "5px 9px",
-          pointerEvents: "none",
-        }}
-      >
-        drag = pan &middot; shift-drag = select &middot; &#8997; alt-click = waypoint
-      </div>
+      {/* hint: the far end of the line the zoom controls start, so it gives
+          way on a canvas with room for only one of them */}
+      {geomNow.w >= BOTTOM_LINE_PX && (
+        <div
+          style={{
+            position: "absolute",
+            right: CHROME_INSET_PX,
+            bottom: CHROME_INSET_PX,
+            fontSize: 11,
+            color: "var(--muted)",
+            background: "var(--surface)",
+            border: "1px solid var(--hairline)",
+            borderRadius: 6,
+            padding: "5px 9px",
+            pointerEvents: "none",
+          }}
+        >
+          drag = pan &middot; shift-drag = select &middot; &#8997; alt-click = waypoint
+        </div>
+      )}
     </div>
   );
 };

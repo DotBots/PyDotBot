@@ -72,58 +72,54 @@ export const SITE_CAMERA: Camera = { scale: 1, tx: 0, ty: 0 };
 export const ZOOM_PAD = 0.15;
 
 /**
- * What one zoom level is worth. Doubling covers a whole site in four or five
- * levels and jumps a press clean past what was being read; much under 1.4
- * takes too many presses to cross the range and a press stops being visible.
- * At 1.5 a typical floor lands on seven or eight levels.
+ * The far end of the range: the whole site in view, which is also the map's
+ * own opening camera. Zooming out past it would only add margin.
  */
-export const ZOOM_RATIO = 1.5;
+export const ZOOM_MIN = 1;
 
 /**
- * The scales the map zooms through, level 1 first. Level 1 is the whole site
- * in view - the map's own default camera - and the ladder's last rung sits at
- * or past `max`, so every area the ceiling was raised for is reachable at a
- * whole level rather than between two.
+ * What one press of the zoom buttons is worth. Doubling jumps a press clean
+ * past whatever was being read; much under 1.4 and a press stops being
+ * visible at all.
  */
-export function zoomLadder(max: number, ratio = ZOOM_RATIO): number[] {
-  const top = Number.isFinite(max) ? Math.max(1, max) : 1;
-  const levels = Math.max(1, Math.ceil(Math.log(top) / Math.log(ratio)));
-  return Array.from({ length: levels + 1 }, (_, i) => ratio ** i);
+export const ZOOM_STEP = 1.5;
+
+/** A scale held inside the range the map can show. */
+export function clampScale(scale: number, max: number): number {
+  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  if (!(scale > 0)) return ZOOM_MIN;
+  return Math.min(top, Math.max(ZOOM_MIN, scale));
 }
 
-/** Which rung a scale is nearest, counted by ratio rather than difference. */
-function nearestRung(scale: number, ladder: number[]): number {
-  if (!(scale > 0)) return 0;
-  let best = 0;
-  for (let i = 1; i < ladder.length; i += 1) {
-    if (
-      Math.abs(Math.log(scale / ladder[i])) <
-      Math.abs(Math.log(scale / ladder[best]))
-    ) {
-      best = i;
-    }
-  }
-  return best;
-}
-
-/** The level a scale is on, 1-based, for the operator to read off. */
-export function zoomLevel(scale: number, ladder: number[]): number {
-  return nearestRung(scale, ladder) + 1;
-}
-
-/** The rung a free scale rounds to, so every view sits on a whole level. */
-export function snapToLadder(scale: number, ladder: number[]): number {
-  return ladder[nearestRung(scale, ladder)];
-}
-
-/** The scale `delta` levels away, held inside the ladder at both ends. */
+/** The scale `delta` presses away, held inside the range at both ends. */
 export function steppedScale(
   scale: number,
   delta: number,
-  ladder: number[],
+  max: number,
 ): number {
-  const rung = nearestRung(scale, ladder) + delta;
-  return ladder[Math.max(0, Math.min(ladder.length - 1, rung))];
+  return clampScale(scale * ZOOM_STEP ** delta, max);
+}
+
+/**
+ * Where a scale sits in the range: 0 at the whole site, 1 at the ceiling.
+ * Measured in ratios rather than differences, so the same travel along a
+ * slider is the same magnification wherever the handle already is.
+ */
+export function zoomFraction(scale: number, max: number): number {
+  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  if (!(top > ZOOM_MIN)) return 0;
+  return (
+    Math.log(clampScale(scale, top) / ZOOM_MIN) / Math.log(top / ZOOM_MIN)
+  );
+}
+
+/** The scale one position along the range stands for: `zoomFraction` back. */
+export function scaleForFraction(fraction: number, max: number): number {
+  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  const f = Number.isFinite(fraction)
+    ? Math.max(0, Math.min(1, fraction))
+    : 0;
+  return ZOOM_MIN * (top / ZOOM_MIN) ** f;
 }
 
 // v1 clampPan: keep the arena reachable, never fling it off-screen.
@@ -216,15 +212,14 @@ export function zoomMax(
 }
 
 /**
- * The camera that frames `target` (frame mm) inside `viewport`, on the
- * nearest whole level of `ladder`. Rounding up can only eat into the pad a
- * named zoom leaves around its rectangle, never into the rectangle itself.
+ * The camera that frames `target` (frame mm) inside `viewport`: the scale
+ * that exactly fits it, held inside the range the map can show.
  */
 export function cameraForArea(
   target: Area,
   viewport: Area,
   geom: ViewGeom,
-  ladder: number[],
+  max: number,
 ): Camera {
   const tl = areaToFraction({ x: target.x, y: target.y }, viewport);
   const br = areaToFraction(
@@ -234,7 +229,7 @@ export function cameraForArea(
   const wPx = (br.fx - tl.fx) * geom.boxW;
   const hPx = (br.fy - tl.fy) * geom.boxH;
   if (!(wPx > 0) || !(hPx > 0)) return SITE_CAMERA;
-  const scale = snapToLadder(Math.min(geom.w / wPx, geom.h / hPx), ladder);
+  const scale = clampScale(Math.min(geom.w / wPx, geom.h / hPx), max);
   // Where the target's centre sits in canvas pixels before the camera runs.
   const cx = (geom.w - geom.boxW) / 2 + ((tl.fx + br.fx) / 2) * geom.boxW;
   const cy = (geom.h - geom.boxH) / 2 + ((tl.fy + br.fy) / 2) * geom.boxH;
@@ -266,7 +261,7 @@ export function cameraForZoom(
     padArea(area),
     viewport,
     geom,
-    zoomLadder(zoomMax(site, viewport, geom)),
+    zoomMax(site, viewport, geom),
   );
 }
 
