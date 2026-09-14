@@ -13,6 +13,7 @@ Submodules
    :maxdepth: 4
 
    dotbot.adapter
+   dotbot.area
    dotbot.controller
    dotbot.controller_app
    dotbot.dotbot_simulator
@@ -24,3 +25,4 @@ Submodules
    dotbot.rest
    dotbot.sailbot_simulator
    dotbot.server
+   dotbot.site
