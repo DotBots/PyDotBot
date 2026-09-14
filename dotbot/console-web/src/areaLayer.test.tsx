@@ -111,14 +111,40 @@ describe("Layers > Areas", () => {
     render(<Harness />);
 
     const map = screen.getByTestId("map");
-    expect(within(map).getByText("arena")).toBeInTheDocument();
-    expect(within(map).getByText("annex")).toBeInTheDocument();
+    expect(within(map).getByRole("img", { name: "arena" })).toBeInTheDocument();
+    expect(within(map).getByRole("img", { name: "annex" })).toBeInTheDocument();
 
     fireEvent.click(within(screen.getByTestId("pane")).getByText("annex"));
 
-    expect(within(map).queryByText("annex")).not.toBeInTheDocument();
-    expect(within(map).getByText("arena")).toBeInTheDocument();
+    expect(within(map).queryByRole("img", { name: "annex" })).not.toBeInTheDocument();
+    expect(within(map).getByRole("img", { name: "arena" })).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("draws each area in its own colour, the one its row carries", () => {
+    render(<Harness />);
+    const map = screen.getByTestId("map");
+    const pane = screen.getByTestId("pane");
+    const outline = (name: string) =>
+      within(map).getByRole("img", { name }).getAttribute("stroke");
+    const swatch = (name: string) =>
+      within(pane).getByTestId(`swatch-${name}`).getAttribute("data-color");
+
+    expect(outline("arena")).toBe(swatch("arena"));
+    expect(outline("annex")).toBe(swatch("annex"));
+    expect(outline("arena")).not.toBe(outline("annex"));
+  });
+
+  it("keeps an area's colour when another is hidden", () => {
+    render(<Harness />);
+    const map = screen.getByTestId("map");
+    const before = within(map)
+      .getByRole("img", { name: "arena" })
+      .getAttribute("stroke");
+    fireEvent.click(within(screen.getByTestId("pane")).getByText("annex"));
+    expect(
+      within(map).getByRole("img", { name: "arena" }).getAttribute("stroke"),
+    ).toBe(before);
   });
 
   it("remembers the hidden set in this browser", () => {

@@ -1,5 +1,6 @@
 import React from "react";
 
+import { areaColor } from "./areaColor";
 import { InspectorBody } from "./Inspector";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
@@ -43,14 +44,17 @@ export const CheckRow: React.FC<{
   disabled?: boolean;
   hint?: string;
   onToggle?: () => void;
-}> = ({ label, on, disabled = false, hint, onToggle }) => (
+  // A colour the row stands for, drawn as a swatch before its label.
+  swatch?: string;
+  // Anything the row carries besides its tick, between the label and it.
+  trailing?: React.ReactNode;
+}> = ({ label, on, disabled = false, hint, onToggle, swatch, trailing }) => (
   <div
     onClick={() => !disabled && onToggle?.()}
     title={hint}
     style={{
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
       gap: 8,
       padding: "5px 4px",
       borderRadius: 5,
@@ -59,7 +63,24 @@ export const CheckRow: React.FC<{
       opacity: disabled ? 0.45 : 1,
     }}
   >
-    <span style={{ color: on ? "var(--text)" : "var(--muted)" }}>{label}</span>
+    {swatch && (
+      <span
+        aria-hidden
+        data-testid={`swatch-${label}`}
+        data-color={swatch}
+        style={{
+          width: 14,
+          height: 8,
+          flex: "none",
+          borderRadius: 2,
+          border: `1.5px dashed ${swatch}`,
+          background: `color-mix(in srgb, ${swatch} 30%, transparent)`,
+          opacity: on ? 1 : 0.5,
+        }}
+      />
+    )}
+    <span style={{ flex: 1, color: on ? "var(--text)" : "var(--muted)" }}>{label}</span>
+    {trailing}
     <span
       style={{
         width: 15,
@@ -118,6 +139,8 @@ interface RightPaneProps {
   site: Site | null;
   hiddenAreas: Set<string>;
   onAreaToggle: (name: string) => void;
+  // Zoom the map to a named area: the row is where the area's name lives.
+  onZoom?: (name: string) => void;
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
@@ -263,11 +286,37 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                 label={a.name ?? ""}
                 on={!props.hiddenAreas.has(a.name ?? "")}
                 onToggle={() => props.onAreaToggle(a.name ?? "")}
+                swatch={areaColor(a.name ?? "", siteAreas.map((o) => o.name))}
+                trailing={
+                  props.onZoom && (
+                    <button
+                      type="button"
+                      title={`Zoom to ${a.name}`}
+                      aria-label={`Zoom to ${a.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onZoom?.(a.name ?? "");
+                      }}
+                      style={{
+                        padding: "0 5px",
+                        border: "none",
+                        borderRadius: 4,
+                        background: "transparent",
+                        color: "var(--muted)",
+                        font: "13px/1 var(--font-ui)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ◎
+                    </button>
+                  )
+                }
               />
             ))}
             {siteAreas.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-                Checked = its outline is drawn on the map, in this browser only.
+                Checked = its outline is drawn on the map in its colour, in this
+                browser only. ◎ zooms to it.
               </div>
             )}
 

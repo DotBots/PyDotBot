@@ -119,10 +119,10 @@ describe("zooming to an area", () => {
     const fromMenu = camera();
     cleanup();
 
-    // The area's name on the map.
+    // The area's row under Layers > Areas, where its name lives.
     render(<App />);
-    fireEvent.pointerDown(screen.getByTitle("Zoom to dock"));
-    const fromLabel = camera();
+    fireEvent.click(screen.getByTitle("Zoom to dock"));
+    const fromRow = camera();
     cleanup();
 
     // The URL preset.
@@ -130,14 +130,14 @@ describe("zooming to an area", () => {
     render(<App />);
     const fromSearch = camera();
 
-    expect(fromLabel).toBe(fromMenu);
+    expect(fromRow).toBe(fromMenu);
     expect(fromSearch).toBe(fromMenu);
     expect(fromMenu).not.toBe("translate(0px, 0px) scale(1)");
   });
 
   it("fills the canvas with the area rather than stopping short of it", () => {
     render(<App />);
-    fireEvent.pointerDown(screen.getByTitle("Zoom to dock"));
+    fireEvent.click(screen.getByTitle("Zoom to dock"));
 
     const scale = scaleOf(camera());
     // The dock is about a tenth of the drawn viewport's short side, so it
@@ -184,7 +184,7 @@ describe("zooming to an area", () => {
     );
 
     // And so does a named zoom, which does not go through either.
-    fireEvent.pointerDown(screen.getByTitle("Zoom to dock"));
+    fireEvent.click(screen.getByTitle("Zoom to dock"));
     expect(Number(slider().value)).toBeCloseTo(
       zoomFraction(scaleOf(camera()), max),
       6,

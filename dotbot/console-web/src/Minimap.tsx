@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
+import { areaColor } from "./areaColor";
 import { areaToFraction, siteExtentArea } from "./frame";
 import { MINIMAP_TARGET_PX, gridStepMm } from "./grid";
 import { minimapLabel } from "./localization";
@@ -179,8 +180,8 @@ export const Minimap: React.FC<MinimapProps> = ({
                 style={{
                   position: "absolute",
                   ...areaBox(a),
-                  border: "1px dashed var(--muted)",
-                  opacity: 0.75,
+                  border: `1px dashed ${areaColor(a.name ?? "", (site?.areas ?? []).map((o) => o.name))}`,
+                  opacity: 0.85,
                   pointerEvents: "none",
                 }}
               />

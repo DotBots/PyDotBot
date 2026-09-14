@@ -166,12 +166,14 @@ describe("the zoom buttons", () => {
   });
 });
 
-describe("an area's name on the map", () => {
-  it("zooms to that area when clicked", () => {
-    const seen: Camera[] = [];
-    render(<Harness onCam={(c) => seen.push(c)} />);
-    fireEvent.pointerDown(screen.getByTitle("Zoom to arena"));
-    expect(seen).toEqual([cameraForZoom("arena", C405, VIEWPORT, GEOM)]);
+describe("an area on the map", () => {
+  it("carries its name for the pointer and the screen reader, not as text", () => {
+    render(<Harness />);
+    const outline = screen.getByRole("img", { name: "arena" });
+    expect(outline.querySelector("title")?.textContent).toBe("arena");
+    // The name is the outline's tooltip and nothing else on the map.
+    const printed = screen.queryAllByText("arena").map((el) => el.tagName);
+    expect(printed).toEqual(["title"]);
   });
 });
 

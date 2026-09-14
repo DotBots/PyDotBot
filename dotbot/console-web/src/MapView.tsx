@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
 import { areaToFraction, fractionToArea } from "./frame";
 import {
@@ -106,6 +107,9 @@ const HINT_PX = 290;
 const BOTTOM_LINE_PX =
   RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
 
+// How much of an area's colour washes its floor.
+const AREA_TINT = 0.05;
+
 // What the arrow and page keys are worth on the slider, in button presses.
 const ZOOM_KEY_STEPS = new Map<string, number>([
   ["ArrowRight", 1],
@@ -197,15 +201,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const drawnAreas = props.siteAreas.filter(
     (a) => !props.hiddenAreas.has(a.name ?? ""),
   );
-  // Areas that share a top-left corner would print their names on top of one
-  // another, so each one after the first drops a line.
-  const stackedAt = (index: number) =>
-    drawnAreas.filter(
-      (o, j) =>
-        j < index &&
-        o.x === drawnAreas[index].x &&
-        o.y === drawnAreas[index].y,
-    ).length;
+  const colorOf = (a: Area) =>
+    areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
 
   const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
@@ -465,10 +462,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           />
 
           {/* The outlines: the site as the one outer silhouette, then one
-              dashed rectangle per area. Strokes rather than borders, because
-              a CSS border under a pixel wide is rounded back up to one and
-              then multiplied by the camera; a stroke keeps the width it is
-              given, so counter-scaling it holds the hairline at any zoom. */}
+              dashed rectangle per area in the area's own colour, ticked under
+              Layers > Areas, where the colour is named. Strokes rather than
+              borders, because a CSS border under a pixel wide is rounded back
+              up to one and then multiplied by the camera; a stroke keeps the
+              width it is given, so counter-scaling it holds the hairline at
+              any zoom. Only the stroke takes the pointer, for its tooltip. */}
           <svg
             width={boxW}
             height={boxH}
@@ -483,54 +482,22 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             {drawnAreas.map((a) => (
               <rect
                 key={`outline-${a.name}`}
+                data-testid={`area-${a.name}`}
+                role="img"
+                aria-label={a.name}
                 {...rectPx(a)}
-                fill="none"
-                stroke="var(--muted)"
+                fill={colorOf(a)}
+                fillOpacity={AREA_TINT}
+                stroke={colorOf(a)}
+                strokeOpacity={0.85}
                 strokeWidth={chrome}
                 strokeDasharray={`${5 * chrome} ${4 * chrome}`}
-                opacity={0.75}
-              />
+                style={{ pointerEvents: "stroke" }}
+              >
+                <title>{a.name}</title>
+              </rect>
             ))}
           </svg>
-
-          {/* the area names, ticked under Layers > Areas with their outlines */}
-          {drawnAreas.map((a, i) => (
-              <div
-                key={`area-${a.name}`}
-                style={{
-                  position: "absolute",
-                  ...pctArea(a),
-                  pointerEvents: "none",
-                }}
-              >
-                {a.name && (
-                  <span
-                    role="button"
-                    title={`Zoom to ${a.name}`}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      props.onZoom(a.name ?? "");
-                    }}
-                    style={{
-                      position: "absolute",
-                      // Offsets are in the scaled layer's units, so they are
-                      // divided back out to stay constant on screen.
-                      left: 4 * chrome,
-                      top: (2 + stackedAt(i) * 12) * chrome,
-                      fontSize: 10,
-                      opacity: 0.7,
-                      whiteSpace: "nowrap",
-                      cursor: "pointer",
-                      pointerEvents: "auto",
-                      transform: `scale(${chrome})`,
-                      transformOrigin: "left top",
-                    }}
-                  >
-                    {a.name}
-                  </span>
-                )}
-              </div>
-            ))}
           {props.session && (
             <CalibrationLayer
               session={props.session}

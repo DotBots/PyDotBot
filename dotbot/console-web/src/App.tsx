@@ -599,6 +599,7 @@ export const App: React.FC = () => {
           site={site}
           hiddenAreas={hiddenAreas}
           onAreaToggle={onAreaToggle}
+          onZoom={zoomTo}
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
