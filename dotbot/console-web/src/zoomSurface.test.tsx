@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { frameMm } from "./grid";
@@ -64,35 +64,20 @@ const Harness: React.FC<{ onCam?: (c: Camera) => void; from?: Camera }> = ({
   );
 };
 
-describe("the zoom menu", () => {
-  it("opens on the fit button and lists the site and every area", () => {
-    render(<Harness />);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTitle("Zoom to"));
-
-    const menu = screen.getByRole("menu", { name: "Zoom to" });
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(
-      ["site", "arena", "annex"],
-    );
-  });
-
-  it("zooms to the area a menu item names, and closes", () => {
+describe("the fit button", () => {
+  it("goes back to the whole site in one press", () => {
     const seen: Camera[] = [];
     render(<Harness onCam={(c) => seen.push(c)} />);
-    fireEvent.click(screen.getByTitle("Zoom to"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "annex" }));
 
-    expect(seen).toEqual([cameraForZoom("annex", C405, VIEWPORT, GEOM)]);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-  });
+    fireEvent.click(screen.getByTitle("Zoom to the whole site"));
 
-  it("goes back to the whole site from the same menu", () => {
-    const seen: Camera[] = [];
-    render(<Harness onCam={(c) => seen.push(c)} />);
-    fireEvent.click(screen.getByTitle("Zoom to"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "site" }));
     expect(seen).toEqual([SITE_CAMERA]);
+  });
+
+  it("offers no menu: an area is zoomed from its Layers row", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByTitle("Zoom to the whole site"));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });
 
@@ -178,13 +163,11 @@ describe("an area on the map", () => {
 });
 
 describe("the ?zoom= preset", () => {
-  it("lands on the same camera the menu item would", () => {
+  it("lands on the camera that area's name asks for", () => {
     const asked = zoomFromSearch("?zoom=annex", C405);
-    const seen: Camera[] = [];
-    render(<Harness onCam={(c) => seen.push(c)} />);
-    fireEvent.click(screen.getByTitle("Zoom to"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "annex" }));
 
-    expect(cameraForZoom(asked!, C405, VIEWPORT, GEOM)).toEqual(seen[0]);
+    expect(cameraForZoom(asked!, C405, VIEWPORT, GEOM)).toEqual(
+      cameraForZoom("annex", C405, VIEWPORT, GEOM),
+    );
   });
 });

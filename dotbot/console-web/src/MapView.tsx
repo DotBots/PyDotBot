@@ -36,7 +36,6 @@ import {
   zoomAbout,
   zoomFraction,
   zoomMax,
-  zoomNames,
 } from "./zoom";
 
 import "./mapChrome.css";
@@ -146,7 +145,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   type DragKind = "select" | "zoom";
   const [drag, setDrag] = useState<{ kind: DragKind; x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [zoomOpen, setZoomOpen] = useState(false);
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
   const dragRef = useRef<DragKind | null>(null);
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
@@ -252,7 +250,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // not move clears the selection; the rest are `MAP_MODIFIER`'s roles.
   const onCanvasDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    setZoomOpen(false);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const role = roleOf(e);
     if (role === "waypoint") {
@@ -975,23 +972,21 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         </button>
       </div>
 
-      {/* the named zooms, one press away from the bar it sits beside */}
+      {/* back to the whole site; an area is zoomed from its Layers row */}
       <button
         className="db-map-btn"
         type="button"
-        title="Zoom to"
-        aria-label="Zoom to"
-        aria-haspopup="menu"
-        aria-expanded={zoomOpen}
+        title="Zoom to the whole site"
+        aria-label="Zoom to the whole site"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setZoomOpen((open) => !open)}
+        onClick={() => props.onZoom(SITE_ZOOM)}
         style={{
           position: "absolute",
           left: RECENTRE_LEFT_PX,
           bottom: CHROME_INSET_PX,
           width: ZOOM_BAR_H_PX,
           height: ZOOM_BAR_H_PX,
-          background: zoomOpen ? "var(--elevated)" : "var(--surface)",
+          background: "var(--surface)",
           border: "1px solid var(--hairline)",
           borderRadius: 8,
           boxShadow: "0 4px 16px rgba(0,0,0,.3)",
@@ -1042,48 +1037,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           <span>{barLabel(bar.mm)}</span>
         </span>
       </div>
-
-      {/* the named zooms: the whole site, then one per area */}
-      {zoomOpen && (
-        <div
-          role="menu"
-          aria-label="Zoom to"
-          onPointerDown={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            left: RECENTRE_LEFT_PX,
-            bottom: CHROME_INSET_PX + ZOOM_BAR_H_PX + 6,
-            minWidth: 128,
-            background: "var(--surface)",
-            border: "1px solid var(--hairline)",
-            borderRadius: 8,
-            overflow: "hidden",
-            boxShadow: "0 4px 16px rgba(0,0,0,.3)",
-            zIndex: 14,
-          }}
-        >
-          {zoomNames(props.site).map((name) => (
-            <div
-              key={name}
-              role="menuitem"
-              onClick={() => {
-                props.onZoom(name);
-                setZoomOpen(false);
-              }}
-              style={{
-                padding: "7px 12px",
-                fontSize: 12,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                textTransform: name === SITE_ZOOM ? "capitalize" : "none",
-                color: "var(--text)",
-              }}
-            >
-              {name}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* hint: the far end of the line the zoom controls start, so it gives
           way on a canvas with room for only one of them */}

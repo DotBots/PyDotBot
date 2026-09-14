@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { barLabel, pxPerMm, scaleBar } from "./grid";
@@ -106,19 +106,7 @@ const scaleOf = (transform: string) =>
   Number(/scale\(([-\d.]+)\)/.exec(transform)?.[1]);
 
 describe("zooming to an area", () => {
-  it("lands on the same camera from the menu, the label and ?zoom=", () => {
-    // The menu.
-    render(<App />);
-    fireEvent.click(screen.getByTitle("Zoom to"));
-    fireEvent.click(
-      within(screen.getByRole("menu", { name: "Zoom to" })).getByRole(
-        "menuitem",
-        { name: "dock" },
-      ),
-    );
-    const fromMenu = camera();
-    cleanup();
-
+  it("lands on the same camera from the Layers row and from ?zoom=", () => {
     // The area's row under Layers > Areas, where its name lives.
     render(<App />);
     fireEvent.click(screen.getByTitle("Zoom to dock"));
@@ -130,9 +118,18 @@ describe("zooming to an area", () => {
     render(<App />);
     const fromSearch = camera();
 
-    expect(fromRow).toBe(fromMenu);
-    expect(fromSearch).toBe(fromMenu);
-    expect(fromMenu).not.toBe("translate(0px, 0px) scale(1)");
+    expect(fromSearch).toBe(fromRow);
+    expect(fromRow).not.toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("goes back to the whole site from the fit button", () => {
+    render(<App />);
+    fireEvent.click(screen.getByTitle("Zoom to dock"));
+    expect(camera()).not.toBe("translate(0px, 0px) scale(1)");
+
+    fireEvent.click(screen.getByTitle("Zoom to the whole site"));
+
+    expect(camera()).toBe("translate(0px, 0px) scale(1)");
   });
 
   it("fills the canvas with the area rather than stopping short of it", () => {
