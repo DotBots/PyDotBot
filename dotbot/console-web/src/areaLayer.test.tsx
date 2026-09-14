@@ -49,7 +49,6 @@ const Harness: React.FC = () => {
             waypoints: true,
             hotSpots: false,
             dotBots: true,
-            trueScale: true,
             trails: false,
             crashedOnly: false,
           }}
@@ -84,7 +83,6 @@ const Harness: React.FC = () => {
             waypoints: true,
             hotSpots: false,
             dotBots: true,
-            trueScale: true,
             trails: false,
             crashedOnly: false,
           }}

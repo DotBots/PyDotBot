@@ -80,7 +80,6 @@ const Harness: React.FC<{ session?: CalibrationSession | null }> = ({
           waypoints: true,
           hotSpots: false,
           dotBots: true,
-          trueScale: true,
           trails: false,
           crashedOnly: false,
         }}

@@ -10,7 +10,7 @@ import {
   pxPerMm,
   rulerStepMm as pickRulerStep,
 } from "./grid";
-import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
+import { BotGlyph, botFootprintPx, glyphBoxPx } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
@@ -30,13 +30,12 @@ export type { Camera, ViewGeom } from "./zoom";
 export { clampCam } from "./zoom";
 
 // Layer set mirrors the v1 design (Battery Bars / Waypoints / HotSpots /
-// DotBots / Real-scale bots); Trails is our addition on top.
+// DotBots); Trails is our addition on top.
 export interface Layers {
   batteryBars: boolean;
   waypoints: boolean;
   hotSpots: boolean;
   dotBots: boolean;
-  trueScale: boolean;
   crashedOnly: boolean;
   trails: boolean;
 }
@@ -67,8 +66,6 @@ interface MapViewProps {
   site: Site | null;
   onZoom: (name: string) => void;
 }
-
-const REAL_BOT_MM = 80; // approximate DotBot footprint for the Real-scale layer
 
 // How much canvas a ruler label needs beside it to be readable whole.
 const RULER_CLEAR_PX = 40;
@@ -248,7 +245,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     setMarquee(null);
   };
 
-  // Real-scale layer: glyphs scale to the actual DotBot footprint.
   // The camera scales the whole layer, so a name or a badge would grow with
   // the zoom. Chrome is not an object on the floor: it keeps its size.
   const chrome = 1 / cam.scale;
@@ -313,9 +309,18 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     geomNow.h - RULER_CONTROLS_PX,
   );
 
-  const gscale = props.layers.trueScale
-    ? Math.max(0.2, (boxW * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
-    : 1;
+  // The robot is an object on the floor, so it is drawn at the floor's own
+  // scale: zooming in tells the truth about how much room it takes. Zooming
+  // out floors it at a size that can still be seen and clicked.
+  const footprintPx = botFootprintPx(perMm);
+  const glyphPx = glyphBoxPx(footprintPx);
+  // What sits around the robot - selection, badges, labels - is chrome, and
+  // keeps its size on screen whatever the camera does.
+  const selectionPx = Math.max(34, footprintPx + 12);
+  // What sits on top of the robot shrinks with it, to a floor, so a bot the
+  // size of a dot is not buried under its own indicators.
+  const drivePx = Math.max(4, Math.min(10, footprintPx * 0.5));
+  const batteryPx = Math.max(14, Math.min(28, footprintPx));
 
   return (
     <div
@@ -471,7 +476,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               if (b.waypoints.length === 0) return [];
               const isSel = props.selection.has(b.id);
               const led = ledCss(b);
-              const s = (isSel ? 10 : 8) * gscale;
+              const s = isSel ? 10 : 8;
               return b.waypoints.map((w, i) => {
                 const q = pctPos(w);
                 return (
@@ -483,7 +488,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       top: `${q.top}%`,
                       width: s,
                       height: s,
-                      transform: "translate(-50%, -50%) rotate(45deg)",
+                      transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
                       background: isSel ? led : "transparent",
                       border: `1.5px solid ${led}`,
                       opacity: isSel ? 1 : 0.35,
@@ -508,9 +513,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     position: "absolute",
                     left: `${q.left}%`,
                     top: `${q.top}%`,
-                    width: 10 * gscale,
-                    height: 10 * gscale,
-                    transform: "translate(-50%, -50%) rotate(45deg)",
+                    width: 10,
+                    height: 10,
+                    transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
                     background: "transparent",
                     border: `1.5px dashed ${led}`,
                     boxShadow: `0 0 7px ${led}`,
@@ -562,7 +567,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       position: "absolute",
                       left: `${q.left}%`,
                       top: `${q.top}%`,
-                      transform: `translate(-50%, -50%) scale(${gscale})`,
+                      transform: `translate(-50%, -50%) scale(${chrome})`,
                       cursor: "pointer",
                       zIndex: selected ? 6 : 2,
                       width: 0,
@@ -588,9 +593,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           position: "absolute",
                           left: "50%",
                           top: "50%",
-                          width: 44,
-                          height: 44,
-                          margin: "-22px 0 0 -22px",
+                          width: selectionPx,
+                          height: selectionPx,
+                          margin: `${-selectionPx / 2}px 0 0 ${-selectionPx / 2}px`,
                           border: "1.5px solid var(--accent)",
                           borderRadius: 3,
                           boxShadow: "0 0 0 3px rgba(228,3,46,.14)",
@@ -603,9 +608,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: -24,
+                          top: -footprintPx / 2 - 11,
                           transform: "translateX(-50%)",
-                          width: 28,
+                          width: batteryPx,
                           height: 3,
                           background: "rgba(255,255,255,.2)",
                           borderRadius: 2,
@@ -624,7 +629,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
                     >
-                      <BotGlyph color={stc} heading={b.heading} size={BOT_GLYPH_BOX} />
+                      <BotGlyph color={stc} heading={b.heading} size={glyphPx} />
                     </div>
                     {/* drive dot: white ring at center = drivable; its FILL is
                         the LED color (experiment: merges the v1 LED pip into the
@@ -635,12 +640,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           position: "absolute",
                           left: "50%",
                           top: "50%",
-                          width: 10,
-                          height: 10,
-                          margin: "-5px 0 0 -5px",
+                          width: drivePx,
+                          height: drivePx,
+                          margin: `${-drivePx / 2}px 0 0 ${-drivePx / 2}px`,
                           borderRadius: "50%",
                           background: led,
-                          border: "1.5px solid rgba(255,255,255,.95)",
+                          border: `${Math.max(1, drivePx / 7)}px solid rgba(255,255,255,.95)`,
                           boxShadow: `0 0 3px rgba(0,0,0,.5), 0 0 5px ${led}`,
                           zIndex: 7,
                         }}
@@ -652,7 +657,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: 21,
+                          top: footprintPx / 2 + 3,
                           transform: "translateX(-50%)",
                           font: "600 9px/1 var(--font-mono)",
                           letterSpacing: ".5px",

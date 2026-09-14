@@ -12,6 +12,29 @@ export const BOT_GLYPH_BOX = 48;
 // callers matching the glyph to a real-world footprint.
 export const BOT_GLYPH_SPAN = (BOT_GLYPH_BOX * 25) / 32;
 
+/**
+ * The robot's footprint on the floor. The v3 PCB outline is 94.00 mm across
+ * by 95.00 mm deep, and the tyres fill the steps in its sides, so what the
+ * robot occupies is about that square.
+ */
+export const BOT_FOOTPRINT_MM = 95;
+
+/** Screen pixels a bot is drawn at however far the map zooms out. */
+export const BOT_MIN_PX = 8;
+
+/**
+ * The footprint a bot is drawn at, in screen pixels: its true size, floored
+ * where true size would be a speck too small to see or to click.
+ */
+export function botFootprintPx(pxPerMm: number): number {
+  return Math.max(BOT_MIN_PX, BOT_FOOTPRINT_MM * pxPerMm);
+}
+
+/** The glyph box that draws a footprint of `footprintPx`. */
+export function glyphBoxPx(footprintPx: number): number {
+  return (footprintPx * BOT_GLYPH_BOX) / BOT_GLYPH_SPAN;
+}
+
 const BOARD =
   "M-10.7,-11.9 L10.7,-11.9 Q12,-11.9 12,-10.6 L12,-2.4 Q12,-1.1 10.7,-1.1 " +
   "L6.9,-1.1 L6.9,10.6 Q6.9,11.9 5.6,11.9 L-5.6,11.9 Q-6.9,11.9 -6.9,10.6 " +

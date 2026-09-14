@@ -39,7 +39,6 @@ const Harness: React.FC<{ onCam?: (c: Camera) => void }> = ({ onCam }) => {
         waypoints: true,
         hotSpots: false,
         dotBots: true,
-        trueScale: true,
         trails: false,
         crashedOnly: false,
       }}

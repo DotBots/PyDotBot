@@ -81,7 +81,6 @@ export const App: React.FC = () => {
     waypoints: true,
     hotSpots: false,
     dotBots: true,
-    trueScale: true,
     trails: false,
     crashedOnly: false,
   });
@@ -302,7 +301,6 @@ export const App: React.FC = () => {
     { key: "waypoints", label: "Waypoints" },
     { key: "hotSpots", label: "HotSpots" },
     { key: "dotBots", label: "DotBots" },
-    { key: "trueScale", label: "Real-scale bots" },
     { key: "trails", label: "Trails" },
     { key: "crashedOnly", label: "Only crashed bots" },
   ];
