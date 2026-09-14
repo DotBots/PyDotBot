@@ -42,13 +42,77 @@ const BOARD =
 
 const TREAD_Y = [2.2, 5.3, 8.4];
 
+// The heading arrow: the board outline's detail is mush below about twenty
+// pixels, and a bot that small still has to say which way it points.
+const ARROW = "M0,-14.5 L10.5,9.5 L0,4 L-10.5,9.5 Z";
+
+/** How much of the robot is drawn: the board, an arrow, or a mark. */
+export type GlyphLevel = "detail" | "arrow" | "dot";
+
+/** Screen pixels of footprint the board outline needs before it reads. */
+export const GLYPH_DETAIL_PX = 22;
+
+/** Screen pixels the heading arrow needs before it is a smear. */
+export const GLYPH_ARROW_PX = 10;
+
+/** Past this many bots the map drops a level: the detail is lost in a crowd. */
+export const GLYPH_CROWD_BOTS = 200;
+
+/**
+ * Which glyph a bot of this on-screen size gets. Zoom decides it; a crowded
+ * map drops one level further, since detail nobody can pick apart only costs
+ * legibility.
+ */
+export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
+  const bySize: GlyphLevel =
+    footprintPx >= GLYPH_DETAIL_PX
+      ? "detail"
+      : footprintPx >= GLYPH_ARROW_PX
+        ? "arrow"
+        : "dot";
+  if (botCount <= GLYPH_CROWD_BOTS) return bySize;
+  return bySize === "detail" ? "arrow" : "dot";
+}
+
 interface BotGlyphProps {
   color: string;
   heading: number | null; // degrees, 0 = +y, positive clockwise in the arena frame
   size?: number;
+  level?: GlyphLevel;
 }
 
-export const BotGlyph: React.FC<BotGlyphProps> = ({ color, heading, size = BOT_GLYPH_BOX }) => (
+const body = (color: string, heading: number | null, level: GlyphLevel) => {
+  // Drawing an outline unrotated would assert a north the bot never reported,
+  // so a headingless bot gets a body with no front.
+  if (heading === null) return <circle r="8.5" fill={color} />;
+  // Too small for a front to read: position and state are all that is left.
+  if (level === "dot") return <rect x="-10" y="-10" width="20" height="20" rx="3" fill={color} />;
+  if (level === "arrow") return <path d={ARROW} fill={color} />;
+  return (
+    <>
+      <g fill="var(--tyre)">
+        <rect x="-12.5" y="0.2" width="5.4" height="11.3" rx="1.7" />
+        <rect x="7.1" y="0.2" width="5.4" height="11.3" rx="1.7" />
+      </g>
+      <g fill="#000" opacity={0.52}>
+        {TREAD_Y.map((y) => (
+          <React.Fragment key={y}>
+            <rect x="-11.9" y={y} width="4.2" height="1.1" rx="0.55" />
+            <rect x="7.7" y={y} width="4.2" height="1.1" rx="0.55" />
+          </React.Fragment>
+        ))}
+      </g>
+      <path d={BOARD} fill={color} />
+    </>
+  );
+};
+
+export const BotGlyph: React.FC<BotGlyphProps> = ({
+  color,
+  heading,
+  size = BOT_GLYPH_BOX,
+  level = "detail",
+}) => (
   <svg
     viewBox="-16 -16 32 32"
     width={size}
@@ -58,29 +122,11 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ color, heading, size = BOT_G
       overflow: "visible",
       filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
       transform:
-        heading === null ? undefined : `rotate(${headingToGlyphRotation(heading)}deg)`,
+        heading === null || level === "dot"
+          ? undefined
+          : `rotate(${headingToGlyphRotation(heading)}deg)`,
     }}
   >
-    {heading === null ? (
-      // Drawing the outline unrotated would assert a north the bot never
-      // reported, so a headingless bot gets a body with no front.
-      <circle r="8.5" fill={color} />
-    ) : (
-      <>
-        <g fill="var(--tyre)">
-          <rect x="-12.5" y="0.2" width="5.4" height="11.3" rx="1.7" />
-          <rect x="7.1" y="0.2" width="5.4" height="11.3" rx="1.7" />
-        </g>
-        <g fill="#000" opacity={0.52}>
-          {TREAD_Y.map((y) => (
-            <React.Fragment key={y}>
-              <rect x="-11.9" y={y} width="4.2" height="1.1" rx="0.55" />
-              <rect x="7.7" y={y} width="4.2" height="1.1" rx="0.55" />
-            </React.Fragment>
-          ))}
-        </g>
-        <path d={BOARD} fill={color} />
-      </>
-    )}
+    {body(color, heading, level)}
   </svg>
 );

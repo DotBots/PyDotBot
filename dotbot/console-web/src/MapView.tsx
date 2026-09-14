@@ -10,7 +10,7 @@ import {
   pxPerMm,
   rulerStepMm as pickRulerStep,
 } from "./grid";
-import { BotGlyph, botFootprintPx, glyphBoxPx } from "./BotGlyph";
+import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
@@ -314,12 +314,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // out floors it at a size that can still be seen and clicked.
   const footprintPx = botFootprintPx(perMm);
   const glyphPx = glyphBoxPx(footprintPx);
+  // How much of the robot is worth drawing at that size, with the fleet's own
+  // size as the tie-breaker.
+  const level = glyphLevel(footprintPx, props.bots.length);
   // What sits around the robot - selection, badges, labels - is chrome, and
   // keeps its size on screen whatever the camera does.
   const selectionPx = Math.max(34, footprintPx + 12);
   // What sits on top of the robot shrinks with it, to a floor, so a bot the
   // size of a dot is not buried under its own indicators.
-  const drivePx = Math.max(4, Math.min(10, footprintPx * 0.5));
+  const drivePx = Math.max(3, Math.min(10, footprintPx * 0.32));
   const batteryPx = Math.max(14, Math.min(28, footprintPx));
 
   return (
@@ -629,7 +632,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
                     >
-                      <BotGlyph color={stc} heading={b.heading} size={glyphPx} />
+                      <BotGlyph
+                        color={stc}
+                        heading={b.heading}
+                        size={glyphPx}
+                        level={level}
+                      />
                     </div>
                     {/* drive dot: white ring at center = drivable; its FILL is
                         the LED color (experiment: merges the v1 LED pip into the
