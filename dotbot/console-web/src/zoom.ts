@@ -76,6 +76,34 @@ export function clampCam(cam: Camera, geom: ViewGeom): Camera {
   };
 }
 
+/**
+ * The camera at a new scale with one canvas point held where it is. That is
+ * what a zoom is: the thing being looked at stays put and only the scale
+ * changes. Leaving the pan alone across a scale change moves it instead, by
+ * more the further the camera has been panned from the frame's centre.
+ */
+export function zoomAbout(
+  cam: Camera,
+  scale: number,
+  anchor: { x: number; y: number },
+  geom: ViewGeom,
+): Camera {
+  const k = scale / cam.scale;
+  if (!Number.isFinite(k) || k <= 0) return cam;
+  const ax = anchor.x - geom.w / 2;
+  const ay = anchor.y - geom.h / 2;
+  return clampCam(
+    { scale, tx: ax * (1 - k) + cam.tx * k, ty: ay * (1 - k) + cam.ty * k },
+    geom,
+  );
+}
+
+/** The canvas point the zoom buttons hold still: whatever is in the middle. */
+export const viewCentre = (geom: ViewGeom) => ({
+  x: geom.w / 2,
+  y: geom.h / 2,
+});
+
 /** A rectangle grown by a fraction of its own size on every side. */
 export function padArea(a: Area, frac = ZOOM_PAD): Area {
   return {

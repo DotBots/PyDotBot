@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { areaToFraction } from "./frame";
+import { frameMm } from "./grid";
 import {
   CANVAS_INSET_PX,
   SITE_CAMERA,
@@ -11,11 +12,14 @@ import {
   clampCam,
   fitScale,
   padArea,
+  viewCentre,
   viewGeom,
+  zoomAbout,
   zoomFromSearch,
   zoomMax,
   zoomNames,
 } from "./zoom";
+import type { Camera } from "./zoom";
 import type { Area, Site } from "./types";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
@@ -94,6 +98,70 @@ describe("panning", () => {
     expect(Math.abs(far.ty)).toBeLessThanOrEqual(
       (geom.boxH * 3 - geom.h) / 2 + Math.max(0, (geom.h - geom.boxH) / 2) + 1e-9,
     );
+  });
+});
+
+describe("zooming the map", () => {
+  // The frame coordinate sitting under one canvas point.
+  const under = (px: { x: number; y: number }, cam: Camera) => ({
+    x: frameMm("x", px.x, VIEWPORT, GEOM, cam),
+    y: frameMm("y", px.y, VIEWPORT, GEOM, cam),
+  });
+  // A millimetre of frame is well under a pixel here, so "within a pixel" is
+  // the tolerance the assertion is actually about.
+  const mmPerPx = VIEWPORT.w / GEOM.boxW;
+  const centre = viewCentre(GEOM);
+
+  it("holds the middle of the canvas still, in and out", () => {
+    // Panned off the frame's own centre: the case leaving the pan alone gets
+    // wrong, and gets more wrong the further it is panned.
+    const start: Camera = { scale: 1, tx: 100, ty: 20 };
+    const was = under(centre, start);
+
+    let cam = start;
+    for (let i = 0; i < 3; i += 1) {
+      cam = zoomAbout(cam, cam.scale * 1.25, centre, GEOM);
+      const now = under(centre, cam);
+      expect(now.x).toBeCloseTo(was.x, 6);
+      expect(now.y).toBeCloseTo(was.y, 6);
+    }
+    expect(cam.scale).toBeCloseTo(1.25 ** 3, 9);
+
+    for (let i = 0; i < 3; i += 1) {
+      cam = zoomAbout(cam, cam.scale / 1.25, centre, GEOM);
+      const now = under(centre, cam);
+      expect(Math.abs(now.x - was.x)).toBeLessThan(mmPerPx);
+      expect(Math.abs(now.y - was.y)).toBeLessThan(mmPerPx);
+    }
+    // Three steps out from three steps in is where it started.
+    expect(cam.scale).toBeCloseTo(start.scale, 9);
+    expect(cam.tx).toBeCloseTo(start.tx, 6);
+    expect(cam.ty).toBeCloseTo(start.ty, 6);
+  });
+
+  it("holds any canvas point still, for a cursor-anchored zoom", () => {
+    const cam: Camera = { scale: 1.4, tx: -40, ty: 12 };
+    const cursor = { x: GEOM.w * 0.28, y: GEOM.h * 0.71 };
+    const was = under(cursor, cam);
+    const zoomed = zoomAbout(cam, cam.scale * 1.5, cursor, GEOM);
+    const now = under(cursor, zoomed);
+    expect(now.x).toBeCloseTo(was.x, 6);
+    expect(now.y).toBeCloseTo(was.y, 6);
+  });
+
+  it("leaves the camera alone rather than dividing by a scale of zero", () => {
+    const cam: Camera = { scale: 0, tx: 10, ty: 10 };
+    expect(zoomAbout(cam, 2, centre, GEOM)).toBe(cam);
+  });
+
+  it("still keeps the site reachable when a zoom out would strand it", () => {
+    const stranded = zoomAbout(
+      { scale: 6, tx: 900, ty: -600 },
+      1,
+      centre,
+      GEOM,
+    );
+    expect(stranded).toEqual(clampCam(stranded, GEOM));
   });
 });
 

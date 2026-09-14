@@ -22,7 +22,9 @@ import {
   ViewGeom,
   ZOOM_MIN,
   clampCam,
+  viewCentre,
   viewGeom,
+  zoomAbout,
   zoomMax,
   zoomNames,
 } from "./zoom";
@@ -764,8 +766,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         onPointerDown={(e) => e.stopPropagation()}
       >
         {[
-          { label: "+", title: "Zoom in", fn: () => setCam((c) => clampCam({ ...c, scale: Math.min(zoomMax(props.site, props.viewport, geomRef.current), c.scale * 1.25) }, geomRef.current)) },
-          { label: "−", title: "Zoom out", fn: () => setCam((c) => clampCam({ ...c, scale: Math.max(ZOOM_MIN, c.scale / 1.25) }, geomRef.current)) },
+          { label: "+", title: "Zoom in", fn: () => setCam((c) => zoomAbout(c, Math.min(zoomMax(props.site, props.viewport, geomRef.current), c.scale * 1.25), viewCentre(geomRef.current), geomRef.current)) },
+          { label: "−", title: "Zoom out", fn: () => setCam((c) => zoomAbout(c, Math.max(ZOOM_MIN, c.scale / 1.25), viewCentre(geomRef.current), geomRef.current)) },
           { label: "◎", title: "Zoom to", fn: () => setZoomOpen((open) => !open) },
         ].map((z, i) => (
           <div
