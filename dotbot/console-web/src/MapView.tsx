@@ -78,9 +78,11 @@ interface MapViewProps {
 const RULER_CLEAR_PX = 40;
 // The zoom controls sit in the bottom-left corner, where the ruler's own
 // column runs, so it gives up that much of the canvas to them.
-const RULER_CONTROLS_PX = 152;
-// The zoom control's own width, which the menu opens clear of.
-const ZOOM_PANEL_PX = 104;
+const RULER_CONTROLS_PX = 124;
+// How far in from the canvas edge the map chrome sits.
+const CHROME_INSET_PX = 14;
+// One zoom button, square; the stepper is a column of three.
+const ZOOM_BUTTON_PX = 30;
 
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
@@ -764,89 +766,96 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         />
       )}
 
-      {/* zoom controls */}
+      {/* the zoom stepper: what can be pressed, and only that, in one column */}
       <div
         style={{
           position: "absolute",
-          left: 14,
-          bottom: 14,
+          left: CHROME_INSET_PX,
+          bottom: CHROME_INSET_PX,
           display: "flex",
           flexDirection: "column",
           background: "var(--surface)",
           border: "1px solid var(--hairline)",
-          borderRadius: 8,
+          borderRadius: 7,
           overflow: "hidden",
           boxShadow: "0 4px 16px rgba(0,0,0,.3)",
           zIndex: 10,
-          width: ZOOM_PANEL_PX,
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* which level the map is on, and what that level is worth on the
-            floor: the bar is the number an operator can actually use. */}
-        <div
-          style={{
-            padding: "6px 9px 7px",
-            borderBottom: "1px solid var(--hairline)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 5,
-          }}
-        >
-          <span
-            aria-label="Zoom level"
-            title={`Zoom level ${atLevel} of ${ladder.length}`}
-            style={{
-              font: "600 10px/1 var(--font-mono)",
-              letterSpacing: ".5px",
-              color: "var(--text)",
-            }}
-          >
-            z{atLevel}/{ladder.length}
-          </span>
-          <span
-            aria-label="Map scale"
-            style={{ display: "flex", alignItems: "flex-end", gap: 5 }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: Math.round(bar.px),
-                height: 4,
-                borderLeft: "1px solid var(--muted)",
-                borderRight: "1px solid var(--muted)",
-                borderBottom: "1px solid var(--muted)",
-              }}
-            />
-            <span style={{ font: "10px/1 var(--font-mono)", color: "var(--muted)" }}>
-              {barLabel(bar.mm)}
-            </span>
-          </span>
-        </div>
         {[
           { label: "+", title: "Zoom in", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, 1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
           { label: "−", title: "Zoom out", fn: () => setCam((c) => zoomAbout(c, steppedScale(c.scale, -1, ladderNow()), viewCentre(geomRef.current), geomRef.current)) },
           { label: "◎", title: "Zoom to", fn: () => setZoomOpen((open) => !open) },
         ].map((z, i) => (
-          <div
-            key={i}
+          <button
+            key={z.title}
+            type="button"
             title={z.title}
             onClick={z.fn}
             style={{
-              height: 30,
+              width: ZOOM_BUTTON_PX,
+              height: ZOOM_BUTTON_PX,
+              padding: 0,
+              border: "none",
+              borderTop: i > 0 ? "1px solid var(--hairline)" : "none",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              fontSize: 15,
-              borderBottom: i < 2 ? "1px solid var(--hairline)" : "none",
+              font: "15px/1 var(--font-ui)",
               color: "var(--text)",
               background: i === 2 && zoomOpen ? "var(--elevated)" : "transparent",
             }}
           >
             {z.label}
-          </div>
+          </button>
         ))}
+      </div>
+
+      {/* the readouts: which level the map is on, and what a length of canvas
+          is worth on the floor. Nothing here is pressable. */}
+      <div
+        style={{
+          position: "absolute",
+          left: CHROME_INSET_PX + ZOOM_BUTTON_PX + 10,
+          bottom: CHROME_INSET_PX + 3,
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 12,
+          font: "11px/1 var(--font-mono)",
+          color: "var(--muted)",
+          // Drawn straight on the map, so the map's own colour halos it.
+          textShadow: "0 0 2px var(--canvas), 0 0 3px var(--canvas)",
+          whiteSpace: "nowrap",
+          zIndex: 9,
+        }}
+      >
+        <span
+          aria-label="Zoom level"
+          title={`Zoom level ${atLevel} of ${ladder.length}`}
+          style={{ letterSpacing: ".3px" }}
+        >
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>z{atLevel}</span>
+          /{ladder.length}
+        </span>
+        <span
+          aria-label="Map scale"
+          style={{ display: "flex", alignItems: "flex-end", gap: 6 }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: Math.round(bar.px),
+              height: 5,
+              borderLeft: "1px solid var(--muted)",
+              borderRight: "1px solid var(--muted)",
+              borderBottom: "1px solid var(--muted)",
+              filter: "drop-shadow(0 0 1px var(--canvas))",
+            }}
+          />
+          <span>{barLabel(bar.mm)}</span>
+        </span>
       </div>
 
       {/* the named zooms: the whole site, then one per area */}
@@ -857,8 +866,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           onPointerDown={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
-            left: 14 + ZOOM_PANEL_PX + 6,
-            bottom: 14,
+            left: CHROME_INSET_PX + ZOOM_BUTTON_PX + 8,
+            bottom: CHROME_INSET_PX + ZOOM_BUTTON_PX,
             minWidth: 128,
             background: "var(--surface)",
             border: "1px solid var(--hairline)",
