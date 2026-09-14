@@ -349,6 +349,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
         viewport={props.viewport}
         site={props.site}
         hiddenAreas={props.hiddenAreas}
+        selection={props.selection}
         cam={props.cam}
         setCam={props.setCam}
         geom={props.geom}

@@ -15,6 +15,7 @@ interface MinimapProps {
   site: Site | null;
   /** The area names this browser hides, ticked under Layers > Areas. */
   hiddenAreas: Set<string>;
+  selection: Set<string>;
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
@@ -28,6 +29,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   viewport,
   site,
   hiddenAreas,
+  selection,
   cam,
   setCam,
   geom,
@@ -185,22 +187,30 @@ export const Minimap: React.FC<MinimapProps> = ({
             ))}
           {bots
             .filter((b) => b.position)
-            .map((b) => (
-              <div
-                key={b.id}
-                style={{
-                  position: "absolute",
-                  left: `${areaToFraction(b.position!, box).fx * 100}%`,
-                  top: `${areaToFraction(b.position!, box).fy * 100}%`,
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  transform: "translate(-50%, -50%)",
-                  background: stateColor(b.state),
-                  boxShadow: `0 0 4px ${stateColor(b.state)}`,
-                }}
-              />
-            ))}
+            .map((b) => {
+              // A dot at minimap scale, where the site is a couple of hundred
+              // pixels across: a glow would merge neighbours into a blob. The
+              // selected one is ringed rather than grown, so the fleet keeps
+              // its spacing.
+              const selected = selection.has(b.id);
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    position: "absolute",
+                    left: `${areaToFraction(b.position!, box).fx * 100}%`,
+                    top: `${areaToFraction(b.position!, box).fy * 100}%`,
+                    width: 3,
+                    height: 3,
+                    borderRadius: "50%",
+                    transform: "translate(-50%, -50%)",
+                    background: stateColor(b.state),
+                    boxShadow: selected ? "0 0 0 1.5px var(--accent)" : undefined,
+                    zIndex: selected ? 2 : 1,
+                  }}
+                />
+              );
+            })}
           {rect && (
             <div
               style={{
