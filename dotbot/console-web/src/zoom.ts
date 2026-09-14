@@ -50,9 +50,19 @@ export const boxSpan = (axis: "x" | "y", geom: ViewGeom) =>
  * The ceiling a site with no area to measure gets. A site is drawn with a
  * margin several metres wide on every side, so a ceiling fixed at a small
  * multiple cannot frame a room-sized rectangle inside a floor-sized one;
- * `zoomMax` raises this to whatever the site's smallest area needs.
+ * `zoomMax` raises this to whatever the site needs.
  */
 export const ZOOM_MAX_FLOOR = 4;
+
+/**
+ * The finest the map can always be zoomed, in screen pixels per millimetre of
+ * floor. A ceiling taken from the site's areas alone caps a floor whose areas
+ * are all room-sized long before a robot is more than a mark; at one pixel to
+ * the millimetre a 95 mm DotBot is 95 px, which is a board rather than an
+ * arrow. Stated in pixels per millimetre so the same zoom shows the same
+ * robot at the same size whatever site it is on.
+ */
+export const ZOOM_MAX_PX_PER_MM = 1;
 
 /** The zoom that shows the whole site: the map's own default. */
 export const SITE_ZOOM = "site";
@@ -186,9 +196,11 @@ export function fitScale(target: Area, viewport: Area, geom: ViewGeom): number {
 }
 
 /**
- * How far this site has to be zoomed in for its smallest area to fill the
- * canvas, pad included. That is the ceiling: an area the site defines is a
- * place the operator works in, so every one of them has to be reachable.
+ * How far this site can be zoomed in: far enough for its smallest area to
+ * fill the canvas, pad included, and always far enough to read one robot.
+ * An area the site defines is a place the operator works in, so every one of
+ * them has to be reachable; a robot is what they are looking at, so its own
+ * size sets a ceiling no site can be too plain to reach.
  */
 export function zoomMax(
   site: Site | null,
@@ -198,7 +210,9 @@ export function zoomMax(
   const needed = (site?.areas ?? [])
     .map((a) => fitScale(padArea(a), viewport, geom))
     .filter((s) => Number.isFinite(s) && s > 0);
-  return Math.max(ZOOM_MAX_FLOOR, ...needed);
+  const perMm = viewport.w > 0 ? geom.boxW / viewport.w : 0;
+  const forDetail = perMm > 0 ? ZOOM_MAX_PX_PER_MM / perMm : 0;
+  return Math.max(ZOOM_MAX_FLOOR, forDetail, ...needed);
 }
 
 /**

@@ -42,15 +42,20 @@ const BOARD =
 
 const TREAD_Y = [2.2, 5.3, 8.4];
 
-// The heading arrow: the board outline's detail is mush below about twenty
-// pixels, and a bot that small still has to say which way it points.
+// The heading arrow: below the board outline's own legible size a bot still
+// has to say which way it points.
 const ARROW = "M0,-14.5 L10.5,9.5 L0,4 L-10.5,9.5 Z";
 
 /** How much of the robot is drawn: the board, an arrow, or a mark. */
 export type GlyphLevel = "detail" | "arrow" | "dot";
 
-/** Screen pixels of footprint the board outline needs before it reads. */
-export const GLYPH_DETAIL_PX = 22;
+/**
+ * Screen pixels of footprint the board outline needs before it reads. Judged
+ * from the map at each zoom level, with a bot turned 45 degrees so the
+ * outline is at its hardest to make out: at 17 px the stepped board and one
+ * tyre are still there, at 11 px it is a coloured blob.
+ */
+export const GLYPH_DETAIL_PX = 16;
 
 /** Screen pixels the heading arrow needs before it is a smear. */
 export const GLYPH_ARROW_PX = 10;

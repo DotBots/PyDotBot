@@ -53,6 +53,14 @@ describe("how much of a bot is drawn", () => {
     expect(glyphLevel(GLYPH_ARROW_PX - 1, 1)).toBe("dot");
   });
 
+  it("draws the board from the size the outline was judged legible at", () => {
+    // Read off the map itself, with a bot turned 45 degrees so the outline is
+    // hardest to make out: the stepped board and a tyre still show at 17 px,
+    // and are a coloured blob at 11.
+    expect(glyphLevel(17, 1)).toBe("detail");
+    expect(glyphLevel(11, 1)).toBe("arrow");
+  });
+
   it("drops one level in a crowd, where detail is lost anyway", () => {
     const many = GLYPH_CROWD_BOTS + 1;
     expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("arrow");

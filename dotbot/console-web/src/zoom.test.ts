@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { BOT_FOOTPRINT_MM, botFootprintPx, glyphLevel } from "./BotGlyph";
 import { areaToFraction } from "./frame";
-import { frameMm } from "./grid";
+import { frameMm, pxPerMm } from "./grid";
 import {
   CANVAS_INSET_PX,
   SITE_CAMERA,
   SITE_ZOOM,
   ZOOM_MAX_FLOOR,
+  ZOOM_MAX_PX_PER_MM,
+  ZOOM_RATIO,
   cameraForArea,
   cameraForZoom,
   clampCam,
   fitScale,
   padArea,
-  ZOOM_RATIO,
   snapToLadder,
   steppedScale,
   viewCentre,
@@ -299,12 +301,11 @@ describe("zooming to an area", () => {
 });
 
 describe("the zoom ceiling", () => {
-  it("is whatever the site's smallest area needs, pad included", () => {
+  it("clears whatever the site's smallest area needs, pad included", () => {
     const small: Area = { x: 100, y: 100, w: 800, h: 800, name: "pen" };
     const site: Site = { ...C405, areas: [ARENA, ANNEX, small] };
-    expect(zoomMax(site, VIEWPORT, GEOM)).toBeCloseTo(
+    expect(zoomMax(site, VIEWPORT, GEOM)).toBeGreaterThanOrEqual(
       fitScale(padArea(small), VIEWPORT, GEOM),
-      9,
     );
   });
 
@@ -327,15 +328,38 @@ describe("the zoom ceiling", () => {
     };
     const viewport: Area = { x: -2000, y: -2000, w: 7330, h: 8000 };
     expect(zoomMax(floor, viewport, GEOM)).toBeGreaterThan(6);
-    expect(zoomMax(floor, viewport, GEOM)).toBeCloseTo(
+    expect(zoomMax(floor, viewport, GEOM)).toBeGreaterThanOrEqual(
       fitScale(padArea(floor.areas[0]), viewport, GEOM),
+    );
+  });
+
+  it("always reaches a pixel to the millimetre, whatever the areas are", () => {
+    // A site whose areas are all floor-sized: nothing in it asks for zoom,
+    // so without this the map stops before a robot is more than a mark.
+    const plain: Site = { ...C405, areas: [ARENA, ANNEX] };
+    const max = zoomMax(plain, VIEWPORT, GEOM);
+    expect(pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 })).toBeGreaterThanOrEqual(
+      ZOOM_MAX_PX_PER_MM - 1e-9,
+    );
+    // Which is a 95 mm robot at very nearly its own size in pixels.
+    expect(
+      BOT_FOOTPRINT_MM * pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 }),
+    ).toBeGreaterThanOrEqual(BOT_FOOTPRINT_MM - 1e-6);
+  });
+
+  it("still clears an area that asks for more than that", () => {
+    const speck: Area = { x: 100, y: 100, w: 60, h: 60, name: "pen" };
+    const site: Site = { ...C405, areas: [ARENA, speck] };
+    expect(zoomMax(site, VIEWPORT, GEOM)).toBeCloseTo(
+      fitScale(padArea(speck), VIEWPORT, GEOM),
       9,
     );
   });
 
-  it("falls back to the floor when the site defines no area", () => {
-    expect(zoomMax({ ...C405, areas: [] }, VIEWPORT, GEOM)).toBe(ZOOM_MAX_FLOOR);
-    expect(zoomMax(null, VIEWPORT, GEOM)).toBe(ZOOM_MAX_FLOOR);
+  it("falls back no lower than the floor when the site defines no area", () => {
+    [zoomMax({ ...C405, areas: [] }, VIEWPORT, GEOM), zoomMax(null, VIEWPORT, GEOM)].forEach(
+      (max) => expect(max).toBeGreaterThanOrEqual(ZOOM_MAX_FLOOR),
+    );
   });
 
   it("ignores an area with no extent to fit", () => {
@@ -343,7 +367,37 @@ describe("the zoom ceiling", () => {
       ...C405,
       areas: [{ x: 0, y: 0, w: 0, h: 0, name: "point" }],
     };
-    expect(zoomMax(site, VIEWPORT, GEOM)).toBe(ZOOM_MAX_FLOOR);
+    expect(zoomMax(site, VIEWPORT, GEOM)).toBe(
+      zoomMax({ ...C405, areas: [] }, VIEWPORT, GEOM),
+    );
+  });
+});
+
+describe("how far in the glyph ladder reaches", () => {
+  // The two sites that differ: one with a small area to zoom to, one with
+  // nothing but room-sized ones. The ceiling has to serve both.
+  const plain: Site = { ...C405, areas: [ARENA, ANNEX] };
+  const withPen: Site = {
+    ...C405,
+    areas: [ARENA, ANNEX, { x: 100, y: 100, w: 800, h: 800, name: "pen" }],
+  };
+  const footprints = (site: Site) =>
+    zoomLadder(zoomMax(site, VIEWPORT, GEOM)).map((scale) =>
+      botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, { scale, tx: 0, ty: 0 })),
+    );
+
+  it("draws the board on the top five levels of any site", () => {
+    [plain, withPen].forEach((site) => {
+      const levels = footprints(site).map((px) => glyphLevel(px, 1));
+      const detail = levels.filter((l) => l === "detail").length;
+      expect(detail).toBeGreaterThanOrEqual(5);
+      // And they are the top ones: once it is the board it stays the board.
+      expect(levels.slice(-detail).every((l) => l === "detail")).toBe(true);
+    });
+  });
+
+  it("shows the same robot at the same size on either site", () => {
+    expect(footprints(plain)).toEqual(footprints(withPen));
   });
 });
 
