@@ -8,7 +8,6 @@ import {
   BOT_GLYPH_SPAN,
   BOT_MIN_PX,
   BotGlyph,
-  GLYPH_ARROW_PX,
   GLYPH_CROWD_BOTS,
   GLYPH_DETAIL_PX,
   botFootprintPx,
@@ -48,9 +47,7 @@ describe("how big a bot is drawn", () => {
 describe("how much of a bot is drawn", () => {
   it("is whatever its on-screen size can carry", () => {
     expect(glyphLevel(GLYPH_DETAIL_PX, 1)).toBe("detail");
-    expect(glyphLevel(GLYPH_DETAIL_PX - 1, 1)).toBe("arrow");
-    expect(glyphLevel(GLYPH_ARROW_PX, 1)).toBe("arrow");
-    expect(glyphLevel(GLYPH_ARROW_PX - 1, 1)).toBe("dot");
+    expect(glyphLevel(GLYPH_DETAIL_PX - 1, 1)).toBe("dot");
   });
 
   it("draws the board from the size the outline was judged legible at", () => {
@@ -58,13 +55,13 @@ describe("how much of a bot is drawn", () => {
     // hardest to make out: the stepped board and a tyre still show at 17 px,
     // and are a coloured blob at 11.
     expect(glyphLevel(17, 1)).toBe("detail");
-    expect(glyphLevel(11, 1)).toBe("arrow");
+    expect(glyphLevel(11, 1)).toBe("dot");
   });
 
-  it("drops one level in a crowd, where detail is lost anyway", () => {
+  it("drops the board to a square in a crowd, where detail is lost anyway", () => {
     const many = GLYPH_CROWD_BOTS + 1;
-    expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("arrow");
-    expect(glyphLevel(GLYPH_ARROW_PX, many)).toBe("dot");
+    expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("dot");
+    expect(glyphLevel(200, many)).toBe("dot");
   });
 
   it("bottoms out at the dot however crowded the map gets", () => {
@@ -86,13 +83,6 @@ describe("the glyph a level draws", () => {
     expect(el.querySelectorAll("rect").length).toBeGreaterThan(2);
   });
 
-  it("draws one arrow, turned to the heading, a step down", () => {
-    const el = svg({ color: "red", heading: 90, level: "arrow" });
-    expect(el.querySelectorAll("rect")).toHaveLength(0);
-    expect(el.querySelectorAll("path")).toHaveLength(1);
-    expect(el.style.transform).toContain("rotate");
-  });
-
   it("draws a square with no front where a front would not read", () => {
     const el = svg({ color: "red", heading: 90, level: "dot" });
     expect(el.querySelectorAll("path")).toHaveLength(0);
@@ -101,7 +91,7 @@ describe("the glyph a level draws", () => {
   });
 
   it("keeps the headingless body at every level", () => {
-    (["detail", "arrow", "dot"] as const).forEach((level) => {
+    (["detail", "dot"] as const).forEach((level) => {
       const el = svg({ color: "red", heading: null, level });
       expect(el.querySelectorAll("circle")).toHaveLength(1);
     });

@@ -42,12 +42,8 @@ const BOARD =
 
 const TREAD_Y = [2.2, 5.3, 8.4];
 
-// The heading arrow: below the board outline's own legible size a bot still
-// has to say which way it points.
-const ARROW = "M0,-14.5 L10.5,9.5 L0,4 L-10.5,9.5 Z";
-
-/** How much of the robot is drawn: the board, an arrow, or a mark. */
-export type GlyphLevel = "detail" | "arrow" | "dot";
+/** How much of the robot is drawn: the board, or a mark. */
+export type GlyphLevel = "detail" | "dot";
 
 /**
  * Screen pixels of footprint the board outline needs before it reads. Judged
@@ -57,26 +53,17 @@ export type GlyphLevel = "detail" | "arrow" | "dot";
  */
 export const GLYPH_DETAIL_PX = 16;
 
-/** Screen pixels the heading arrow needs before it is a smear. */
-export const GLYPH_ARROW_PX = 10;
-
 /** Past this many bots the map drops a level: the detail is lost in a crowd. */
 export const GLYPH_CROWD_BOTS = 200;
 
 /**
  * Which glyph a bot of this on-screen size gets. Zoom decides it; a crowded
- * map drops one level further, since detail nobody can pick apart only costs
+ * map is marks at any zoom, since detail nobody can pick apart only costs
  * legibility.
  */
 export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
-  const bySize: GlyphLevel =
-    footprintPx >= GLYPH_DETAIL_PX
-      ? "detail"
-      : footprintPx >= GLYPH_ARROW_PX
-        ? "arrow"
-        : "dot";
-  if (botCount <= GLYPH_CROWD_BOTS) return bySize;
-  return bySize === "detail" ? "arrow" : "dot";
+  if (botCount > GLYPH_CROWD_BOTS) return "dot";
+  return footprintPx >= GLYPH_DETAIL_PX ? "detail" : "dot";
 }
 
 interface BotGlyphProps {
@@ -92,7 +79,6 @@ const body = (color: string, heading: number | null, level: GlyphLevel) => {
   if (heading === null) return <circle r="8.5" fill={color} />;
   // Too small for a front to read: position and state are all that is left.
   if (level === "dot") return <rect x="-10" y="-10" width="20" height="20" rx="3" fill={color} />;
-  if (level === "arrow") return <path d={ARROW} fill={color} />;
   return (
     <>
       <g fill="var(--tyre)">

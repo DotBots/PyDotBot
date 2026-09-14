@@ -58,8 +58,8 @@ export const ZOOM_MAX_FLOOR = 4;
  * The finest the map can always be zoomed, in screen pixels per millimetre of
  * floor. A ceiling taken from the site's areas alone caps a floor whose areas
  * are all room-sized long before a robot is more than a mark; at one pixel to
- * the millimetre a 95 mm DotBot is 95 px, which is a board rather than an
- * arrow. Stated in pixels per millimetre so the same zoom shows the same
+ * the millimetre a 95 mm DotBot is 95 px, which is a board rather than a
+ * mark. Stated in pixels per millimetre so the same zoom shows the same
  * robot at the same size whatever site it is on.
  */
 export const ZOOM_MAX_PX_PER_MM = 1;
