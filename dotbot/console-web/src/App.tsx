@@ -514,6 +514,7 @@ export const App: React.FC = () => {
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
+                  ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
                 };

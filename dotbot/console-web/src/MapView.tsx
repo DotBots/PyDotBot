@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 
 import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
-import { areaToFraction, fractionToArea } from "./frame";
+import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
 import {
   axisTicks,
   barLabel,
@@ -63,7 +63,8 @@ interface MapViewProps {
   siteExtent: Area | null;
   selection: Set<string>;
   layers: Layers;
-  plannedMissions: { waypoints: LH2Position[]; led: string | null }[]; // local queues, not yet sent
+  // Local queues, not yet sent: the robots each is bound to, and its points.
+  plannedMissions: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   onGeom: (g: ViewGeom) => void;
@@ -107,6 +108,12 @@ const HINT_PX = 290;
 const BOTTOM_LINE_PX =
   RECENTRE_LEFT_PX + ZOOM_BAR_H_PX + CHROME_GAP_PX + HINT_PX + CHROME_INSET_PX;
 
+// The selection ring hugs the robot: its footprint plus this on every side.
+const SELECTION_PAD_PX = 3;
+// A waypoint diamond is a fraction of the robot it belongs to, floored where
+// the robot is a dot.
+const WAYPOINT_OF_FOOTPRINT = 0.35;
+const WAYPOINT_MIN_PX = 5;
 // How much of an area's colour washes its floor.
 const AREA_TINT = 0.05;
 
@@ -405,11 +412,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const level = glyphLevel(footprintPx, props.bots.length);
   // What sits around the robot - selection, badges, labels - is chrome, and
   // keeps its size on screen whatever the camera does.
-  const selectionPx = Math.max(34, footprintPx + 12);
+  const selectionPx = footprintPx + SELECTION_PAD_PX * 2;
+  const waypointPx = Math.max(WAYPOINT_MIN_PX, footprintPx * WAYPOINT_OF_FOOTPRINT);
   // What sits on top of the robot shrinks with it, to a floor, so a bot the
   // size of a dot is not buried under its own indicators.
   const drivePx = Math.max(3, Math.min(10, footprintPx * 0.32));
   const batteryPx = Math.max(14, Math.min(28, footprintPx));
+  // A robot drawn as a mark is one nobody reads per-robot detail on, so its
+  // own indicators go with the board: the selection ring and the reset badge
+  // stay, being how a robot is found rather than what it says.
+  const indicators = level === "detail";
 
   return (
     <div
@@ -529,62 +541,65 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             </svg>
           )}
 
-          {/* waypoints: per-bot LED-colored diamonds (v1: no connector lines) */}
+          {/* waypoints: the selected robots' own, as LED-coloured diamonds,
+              and the queues waiting to be sent to them, dashed. A robot that
+              is not selected shows none, so the floor carries only what the
+              operator is working on. */}
           {props.layers.waypoints &&
             props.bots.flatMap((b) => {
-              if (b.waypoints.length === 0) return [];
-              const isSel = props.selection.has(b.id);
+              if (!props.selection.has(b.id) || b.waypoints.length === 0) return [];
               const led = ledCss(b);
-              const s = isSel ? 10 : 8;
               return b.waypoints.map((w, i) => {
                 const q = pctPos(w);
                 return (
                   <div
                     key={`${b.id}-wp-${i}`}
+                    data-testid={`waypoint-${b.id}-${i}`}
+                    title={`waypoint ${i + 1}`}
                     style={{
                       position: "absolute",
                       left: `${q.left}%`,
                       top: `${q.top}%`,
-                      width: s,
-                      height: s,
+                      width: waypointPx,
+                      height: waypointPx,
                       transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
-                      background: isSel ? led : "transparent",
+                      background: led,
                       border: `1.5px solid ${led}`,
-                      opacity: isSel ? 1 : 0.35,
-                      boxShadow: isSel ? `0 0 7px ${led}` : "none",
+                      boxShadow: `0 0 7px ${led}`,
                       pointerEvents: "none",
                     }}
                   />
                 );
               });
             })}
-
-          {/* planned (queued, not sent) waypoints */}
           {props.layers.waypoints &&
-            props.plannedMissions.flatMap((m, mi) =>
-              m.waypoints.map((p, i) => {
-              const q = pctPos(p);
-              const led = m.led ?? "var(--accent)";
-              return (
-                <div
-                  key={`pend-${mi}-${i}`}
-                  style={{
-                    position: "absolute",
-                    left: `${q.left}%`,
-                    top: `${q.top}%`,
-                    width: 10,
-                    height: 10,
-                    transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
-                    background: "transparent",
-                    border: `1.5px dashed ${led}`,
-                    boxShadow: `0 0 7px ${led}`,
-                    pointerEvents: "none",
-                  }}
-                  title={`waypoint ${i + 1}`}
-                />
-              );
-              }),
-            )}
+            props.plannedMissions
+              .filter((m) => m.ids.some((id) => props.selection.has(id)))
+              .flatMap((m) =>
+                m.waypoints.map((p, i) => {
+                  const q = pctPos(p);
+                  const led = m.led ?? "var(--accent)";
+                  return (
+                    <div
+                      key={`pend-${m.ids.join("-")}-${i}`}
+                      data-testid={`planned-${m.ids.join("-")}-${i}`}
+                      title={`waypoint ${i + 1}`}
+                      style={{
+                        position: "absolute",
+                        left: `${q.left}%`,
+                        top: `${q.top}%`,
+                        width: waypointPx,
+                        height: waypointPx,
+                        transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
+                        background: "transparent",
+                        border: `1.5px dashed ${led}`,
+                        boxShadow: `0 0 7px ${led}`,
+                        pointerEvents: "none",
+                      }}
+                    />
+                  );
+                }),
+              )}
 
           {/* bots (v1 glyph: state-colored body, LED pip, drive dot, chip label) */}
           {props.layers.dotBots &&
@@ -598,6 +613,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const stc = stateColor(b.state);
                 const pct = batteryPct(b);
                 const blink = b.state === "Programming" || b.state === "Resetting";
+                // The board turns with the heading; the ring around it turns
+                // too, so it hugs the board whichever way the robot faces.
+                const turned = level === "detail" && b.heading !== null;
+                const turn = turned ? headingToGlyphRotation(b.heading!) : 0;
+                // How far below the centre a turned box reaches, as a
+                // fraction of its half side.
+                const reach = turned
+                  ? Math.abs(Math.cos((turn * Math.PI) / 180)) +
+                    Math.abs(Math.sin((turn * Math.PI) / 180))
+                  : 1;
                 return (
                   <div
                     key={b.id}
@@ -645,25 +670,28 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     >
                       <ResetBadge bot={b} size={13} />
                     </div>
-                    {/* selection rectangle */}
+                    {/* selection ring, hugging the board */}
                     {selected && (
                       <div
+                        data-testid={`selection-${b.id}`}
                         style={{
                           position: "absolute",
                           left: "50%",
                           top: "50%",
                           width: selectionPx,
                           height: selectionPx,
-                          margin: `${-selectionPx / 2}px 0 0 ${-selectionPx / 2}px`,
+                          transform: `translate(-50%, -50%) rotate(${turn}deg)`,
                           border: "1.5px solid var(--accent)",
                           borderRadius: 3,
-                          boxShadow: "0 0 0 3px rgba(228,3,46,.14)",
+                          boxShadow:
+                            "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)",
                         }}
                       />
                     )}
                     {/* battery bar */}
-                    {props.layers.batteryBars && (
+                    {props.layers.batteryBars && indicators && (
                       <div
+                        data-testid={`battery-${b.id}`}
                         style={{
                           position: "absolute",
                           left: "50%",
@@ -698,8 +726,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     {/* drive dot: white ring at center = drivable; its FILL is
                         the LED color (experiment: merges the v1 LED pip into the
                         drive indicator - see design-feedback) */}
-                    {b.drivable && (
+                    {b.drivable && indicators && (
                       <div
+                        data-testid={`drive-${b.id}`}
                         style={{
                           position: "absolute",
                           left: "50%",
@@ -721,7 +750,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: (selected ? selectionPx : footprintPx) / 2 + 3,
+                          top: ((selected ? selectionPx : footprintPx) / 2) * reach + 3,
                           transform: "translateX(-50%)",
                           font: "600 9px/1 var(--font-mono)",
                           letterSpacing: ".5px",
