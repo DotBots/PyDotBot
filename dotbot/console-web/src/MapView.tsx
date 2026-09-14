@@ -665,7 +665,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: footprintPx / 2 + 3,
+                          top: (selected ? selectionPx : footprintPx) / 2 + 3,
                           transform: "translateX(-50%)",
                           font: "600 9px/1 var(--font-mono)",
                           letterSpacing: ".5px",
