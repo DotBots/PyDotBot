@@ -26,14 +26,14 @@ describe("the modifier table", () => {
 
   it("names the role a held modifier asks for, and none for a bare press", () => {
     expect(roleOf(keys())).toBeNull();
-    expect(roleOf(keys({ shiftKey: true }))).toBe("zoom");
-    expect(roleOf(keys({ ctrlKey: true }))).toBe("select");
+    expect(roleOf(keys({ shiftKey: true }))).toBe("select");
+    expect(roleOf(keys({ ctrlKey: true }))).toBe("zoom");
     expect(roleOf(keys({ altKey: true }))).toBe("waypoint");
   });
 
   it("reads the Command key as Ctrl, for a Mac", () => {
     expect(holds(keys({ metaKey: true }), "ctrl")).toBe(true);
-    expect(roleOf(keys({ metaKey: true }))).toBe("select");
+    expect(roleOf(keys({ metaKey: true }))).toBe("zoom");
   });
 
   it("resolves two modifiers in the table's order", () => {

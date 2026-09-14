@@ -182,12 +182,6 @@ describe("the wheel", () => {
     expect(camera().scale).toBeCloseTo(1, 6);
   });
 
-  it("takes the horizontal axis a shifted wheel lands on", () => {
-    render(<Harness />);
-    fireEvent.wheel(canvas(), { deltaX: -100, deltaY: 0, clientX: 450, clientY: 300, ...held(MAP_MODIFIER.zoom) });
-    expect(camera().scale).toBeCloseTo(ZOOM_STEP, 6);
-  });
-
   it("does nothing with no modifier, or with another one", () => {
     render(<Harness />);
     fireEvent.wheel(canvas(), { deltaY: -100, clientX: 300, clientY: 200 });

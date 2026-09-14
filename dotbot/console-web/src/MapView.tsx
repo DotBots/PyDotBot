@@ -336,7 +336,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
   // The wheel, with the zoom modifier held, zooms about the pointer. A native
   // listener: React's own wheel handler is passive, so it could not keep the
-  // page from scrolling as well.
+  // browser from zooming the page as well.
   const wheelRef = useRef<(e: WheelEvent) => void>(() => {});
   wheelRef.current = (e: WheelEvent) => {
     if (!holds(e, MAP_MODIFIER.zoom)) return;
@@ -491,8 +491,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       onPointerDown={onCanvasDown}
       onPointerMove={onCanvasMove}
       onPointerUp={onCanvasUp}
-      // Ctrl and a press is the secondary click on a Mac: a select drag
-      // there would otherwise open the menu under itself.
+      // Ctrl and a press is the secondary click on a Mac: a drag held on it
+      // would otherwise open the menu under itself.
       onContextMenu={(e) => {
         if (dragRef.current) e.preventDefault();
       }}

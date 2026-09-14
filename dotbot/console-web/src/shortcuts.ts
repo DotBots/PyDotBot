@@ -11,8 +11,8 @@ export type Modifier = "shift" | "ctrl" | "alt";
  */
 export const MAP_MODIFIER = {
   waypoint: "alt",
-  zoom: "shift",
-  select: "ctrl",
+  zoom: "ctrl",
+  select: "shift",
 } as const satisfies Record<string, Modifier>;
 
 export type MapRole = keyof typeof MAP_MODIFIER;

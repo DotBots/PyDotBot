@@ -88,19 +88,13 @@ export const ZOOM_STEP = 1.5;
 export const WHEEL_PX_PER_STEP = 100;
 
 /**
- * A wheel event's travel in pixels, down positive. A wheel held with shift
- * arrives on the horizontal axis in most browsers, so either axis counts; a
- * wheel that reports lines or pages is scaled to about what they span.
+ * A wheel event's travel in pixels, down positive. A wheel that reports
+ * lines or pages is scaled to about what they span.
  */
-export function wheelDeltaPx(e: {
-  deltaX: number;
-  deltaY: number;
-  deltaMode: number;
-}): number {
-  const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
-  if (e.deltaMode === 1) return delta * 16;
-  if (e.deltaMode === 2) return delta * 400;
-  return delta;
+export function wheelDeltaPx(e: { deltaY: number; deltaMode: number }): number {
+  if (e.deltaMode === 1) return e.deltaY * 16;
+  if (e.deltaMode === 2) return e.deltaY * 400;
+  return e.deltaY;
 }
 
 /** The scale a wheel of `deltaPx` lands on: in when scrolled up, out when down. */
