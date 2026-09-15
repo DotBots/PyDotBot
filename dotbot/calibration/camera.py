@@ -10,13 +10,17 @@ its outer edges on the area's edge lines, and the marker is centred on the
 page - so the centre is the corner inset by half a page, and the operator
 measures nothing.
 
-`cv2` is imported inside `render_sheet`, the only function that needs it,
-so the layout is available without the `[calibrate]` extra installed.
+`cv2` draws the marker and `PIL` sets the type; both are imported inside
+the drawing functions, so the layout is available without the
+`[calibrate]` extra installed.
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -42,6 +46,17 @@ MARKER_SIDE_MM = 150.0
 # 100 % with a ruler before taping anything down.
 SCALE_BAR_MM = 100.0
 
+# Plain sans faces to set the caption in, macOS first then Linux. Pillow's
+# own face stands in when none is installed.
+_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+)
+
 
 def _px(mm: float) -> int:
     """Millimetres as whole pixels at the sheet's print density."""
@@ -51,6 +66,31 @@ def _px(mm: float) -> int:
 PAGE_WIDTH_PX = _px(PAGE_WIDTH_MM)
 PAGE_HEIGHT_PX = _px(PAGE_HEIGHT_MM)
 MARKER_SIDE_PX = _px(MARKER_SIDE_MM)
+
+
+@lru_cache(maxsize=1)
+def _font_file() -> str | None:
+    """The first installed candidate face, or None for Pillow's own."""
+    for candidate in _FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    print(
+        "camera sheets: no system sans face found, setting the caption in "
+        "Pillow's built-in one; the printed geometry is unaffected.",
+        file=sys.stderr,
+    )
+    return None
+
+
+@lru_cache(maxsize=None)
+def _font(size_mm: float):
+    """The caption face at a body size given in millimetres."""
+    from PIL import ImageFont
+
+    candidate = _font_file()
+    if candidate is None:
+        return ImageFont.load_default(size=_px(size_mm))
+    return ImageFont.truetype(candidate, _px(size_mm))
 
 
 @dataclass(frozen=True)
@@ -160,53 +200,46 @@ def render_sheet(marker_id: int) -> np.ndarray:
     x0 = (PAGE_WIDTH_PX - MARKER_SIDE_PX) // 2
     y0 = (PAGE_HEIGHT_PX - MARKER_SIDE_PX) // 2
     page[y0 : y0 + MARKER_SIDE_PX, x0 : x0 + MARKER_SIDE_PX] = marker
-    _caption(page, marker_id)
-    return page
+    return _caption(page, marker_id)
 
 
-def _caption(page: np.ndarray, marker_id: int) -> None:
+def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:
     """The id, the dictionary and the scale bar, in the bottom margin.
 
     Kept below 250 mm so a full cell of white separates it from the
-    marker's border, which the detector needs as a quiet zone.
+    marker's border, which the detector needs as a quiet zone. Returns the
+    page with the type set, the text coordinates being baselines.
     """
-    import cv2
+    from PIL import Image, ImageDraw
 
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    image = Image.fromarray(page)
+    draw = ImageDraw.Draw(image)
     ink = 0
     left = _px((PAGE_WIDTH_MM - MARKER_SIDE_MM) / 2)
-    cv2.putText(
-        page,
-        f"marker {marker_id} - {CORNERS[marker_id]} corner",
+    draw.text(
         (left, _px(255.0)),
-        font,
-        2.6,
-        ink,
-        6,
-        cv2.LINE_AA,
+        f"marker {marker_id} - {CORNERS[marker_id]} corner",
+        font=_font(6.4),
+        fill=ink,
+        anchor="ls",
     )
-    cv2.putText(
-        page,
-        f"{MARKER_DICTIONARY}, {MARKER_SIDE_MM:g} mm - print at 100 %",
+    draw.text(
         (left, _px(266.0)),
-        font,
-        1.7,
-        ink,
-        4,
-        cv2.LINE_AA,
+        f"{MARKER_DICTIONARY}, {MARKER_SIDE_MM:g} mm - print at 100 %",
+        font=_font(4.2),
+        fill=ink,
+        anchor="ls",
     )
     bar_y = _px(278.0)
     bar_end = left + _px(SCALE_BAR_MM)
-    cv2.line(page, (left, bar_y), (bar_end, bar_y), ink, 6)
+    draw.line(((left, bar_y), (bar_end, bar_y)), ink, width=5)
     for x in (left, bar_end):
-        cv2.line(page, (x, _px(275.0)), (x, _px(281.0)), ink, 6)
-    cv2.putText(
-        page,
+        draw.line(((x, _px(275.0)), (x, _px(281.0))), ink, width=5)
+    draw.text(
+        (bar_end + _px(5.0), bar_y),
         f"{SCALE_BAR_MM:g} mm",
-        (bar_end + _px(6.0), _px(281.0)),
-        font,
-        1.7,
-        ink,
-        4,
-        cv2.LINE_AA,
+        font=_font(3.6),
+        fill=ink,
+        anchor="lm",
     )
+    return np.array(image)

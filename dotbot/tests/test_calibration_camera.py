@@ -13,12 +13,14 @@ import numpy as np
 import pytest
 
 from dotbot.area import Area
+from dotbot.calibration import camera
 from dotbot.calibration.camera import (
     MARKER_DICTIONARY,
     MARKER_SIDE_MM,
     MARKER_SIDE_PX,
     PAGE_HEIGHT_PX,
     PAGE_WIDTH_PX,
+    _px,
     marker_layout,
     render_sheet,
     sheet_marker,
@@ -118,3 +120,19 @@ def test_sheet_decodes_to_its_own_id(marker_id):
 def test_sheet_millimetres_per_pixel_matches_the_layout():
     """The printed marker and the derived layout describe one object."""
     assert MARKER_SIDE_MM / MARKER_SIDE_PX == pytest.approx(25.4 / 300, abs=1e-4)
+
+
+def test_sheet_renders_without_any_of_the_candidate_fonts(monkeypatch):
+    """The lab machine may carry none of them; a sheet still has to print."""
+    monkeypatch.setattr(camera, "_FONT_CANDIDATES", ())
+    camera._font_file.cache_clear()
+    camera._font.cache_clear()
+    try:
+        page = render_sheet(0)
+    finally:
+        camera._font_file.cache_clear()
+        camera._font.cache_clear()
+
+    assert page.shape == (PAGE_HEIGHT_PX, PAGE_WIDTH_PX)
+    caption = page[_px(250.0) : _px(270.0), _px(30.0) : _px(150.0)]
+    assert (caption < 128).any()
