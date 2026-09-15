@@ -245,6 +245,23 @@ export interface Site {
   areas: Area[];
 }
 
+// GET /controller/cameras - one registered camera, one area. `width` and
+// `height` are the raster's rather than the device's: the stream carries the
+// area warped at `mm_per_px`, so they are the area's own size in pixels.
+// `span_mm` is the quadrilateral through the four markers' outer corners, in
+// frame mm, which is where the registration is trustworthy.
+export interface RegisteredCamera {
+  area: string;
+  source: number | string;
+  mm_per_px: number;
+  width: number;
+  height: number;
+  span_mm: number[][];
+  residual_mm: number;
+  id: string;
+  lens: string;
+}
+
 // A waypoint mission queued locally but not yet sent: bound to the bots that
 // were selected when its waypoints were dropped (survives deselection).
 export interface PlannedMission {

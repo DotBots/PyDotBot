@@ -1,7 +1,15 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
+import {
+  CameraOpacity,
+  hasSpan,
+  opacityFor,
+  spanMask,
+  spanPoints,
+} from "./cameraLayer";
 import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
 import {
   axisTicks,
@@ -18,7 +26,14 @@ import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
 import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
-import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
+import {
+  Area,
+  CalibrationSession,
+  LH2Position,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 import {
   Camera,
@@ -62,6 +77,10 @@ interface MapViewProps {
   siteAreas: Area[];
   // The area names this browser hides, ticked under Layers > Areas.
   hiddenAreas: Set<string>;
+  // The cameras the controller warps, one per area, drawn under the grid at
+  // the opacity Layers > Camera sets. None listed, nothing drawn.
+  cameras?: RegisteredCamera[];
+  cameraOpacity?: CameraOpacity;
   // The whole site, outlined so it reads as a box rather than only a label.
   siteExtent: Area | null;
   selection: Set<string>;
@@ -217,6 +236,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   );
   const colorOf = (a: Area) =>
     areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
+
+  // A camera is drawn on the area it covers, so one the site does not define
+  // has nowhere to land and is left out.
+  const cameraLayers = (props.cameras ?? []).flatMap((camera) => {
+    const area = props.siteAreas.find((a) => a.name === camera.area);
+    return area ? [{ camera, area }] : [];
+  });
 
   // Zoom runs free between the whole site and the ceiling the site needs.
   // The geometry is read live, so a resize that moves the ceiling moves the
@@ -544,6 +570,65 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             transform: "translate(-50%, -50%)",
           }}
         >
+          {/* The camera, first so it lies under the grid and under every
+              glyph: the layer exists to compare what the camera sees against
+              what the lighthouse reports, which needs the glyphs on top of
+              the photograph and legible at any opacity. The stream is the
+              area warped into its own raster, so the box is the area. */}
+          {cameraLayers.map(({ camera, area }) => {
+            const mask = spanMask(camera.span_mm, area);
+            return (
+              <div
+                key={`camera-${camera.area}`}
+                data-testid={`camera-layer-${camera.area}`}
+                style={{
+                  position: "absolute",
+                  ...pctArea(area),
+                  opacity: opacityFor(props.cameraOpacity ?? {}, camera.area),
+                  pointerEvents: "none",
+                }}
+              >
+                <img
+                  data-testid={`camera-image-${camera.area}`}
+                  src={cameraStreamUrl(camera.area)}
+                  alt={`Camera on ${camera.area}`}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    height: "100%",
+                    maskImage: mask,
+                    WebkitMaskImage: mask,
+                    maskSize: "100% 100%",
+                    WebkitMaskSize: "100% 100%",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskRepeat: "no-repeat",
+                  }}
+                />
+                {/* The registered square itself: where the four sheets stood
+                    and the homography was fitted, so the fade around it reads
+                    as a boundary rather than a soft photograph. */}
+                {hasSpan(camera.span_mm) && (
+                  <svg
+                    viewBox={`0 0 ${area.w} ${area.h}`}
+                    preserveAspectRatio="none"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+                  >
+                    <polygon
+                      data-testid={`camera-span-${camera.area}`}
+                      points={spanPoints(camera.span_mm, area)}
+                      fill="none"
+                      stroke="var(--muted)"
+                      strokeOpacity={0.7}
+                      strokeWidth={chrome}
+                      strokeDasharray={`${4 * chrome} ${4 * chrome}`}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
+                )}
+              </div>
+            );
+          })}
+
           {/* the site, which the grid lies on */}
           <div
             data-testid="map-grid"

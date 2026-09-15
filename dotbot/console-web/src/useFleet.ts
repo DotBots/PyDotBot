@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   controllerWsUrl,
   fetchCalibrationSession,
+  fetchCameras,
   fetchDotBots,
   fetchSite,
   fetchSwarmitStatus,
@@ -14,6 +15,7 @@ import {
   CalibrationSession,
   LinkState,
   PyDotBot,
+  RegisteredCamera,
   STATE_ORDER,
   Site,
   SwarmitNode,
@@ -97,6 +99,7 @@ export function merge(
 export function useFleet(): {
   bots: UnifiedBot[];
   site: Site | null;
+  cameras: RegisteredCamera[];
   session: CalibrationSession | null;
   setSession: (session: CalibrationSession | null) => void;
   viewport: Area;
@@ -106,6 +109,7 @@ export function useFleet(): {
   const swRef = useRef<Record<string, SwarmitNode>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
+  const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
   const [session, setSession] = useState<CalibrationSession | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
@@ -129,6 +133,10 @@ export function useFleet(): {
     fetchSite()
       .then(setSite)
       .catch(() => {});
+    // What the controller was started with: a camera is registered on the
+    // command line and warped for as long as it runs, so this is read once
+    // the same way the site is.
+    fetchCameras().then(setCameras);
     // A session outlives the browser tab: the controller owns it, so a
     // reload rejoins the one in flight rather than starting over.
     fetchCalibrationSession()
@@ -226,6 +234,7 @@ export function useFleet(): {
   return {
     bots,
     site,
+    cameras,
     session,
     setSession,
     viewport,

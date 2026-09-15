@@ -1,19 +1,25 @@
 import React from "react";
 
 import { areaColor } from "./areaColor";
+import { CameraOpacity, opacityFor } from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
-import type { CalibrationSession, Site, UnifiedBot } from "./types";
+import type {
+  CalibrationSession,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import type { Calibration } from "./useCalibration";
 
 // The right pane: always present, collapsible like the rail.
 //
 // Robot is the inspector, which selecting a robot on the map switches to.
-// Layers holds three headings - Robots, Areas and Camera - so which area
-// outlines the map draws is ticked in the same place the map's other layers
-// are, and the view switch stands alone at the top right. Calibrate is the
+// Layers holds Robots and Areas, plus Camera once one is registered, so which
+// area outlines the map draws is ticked in the same place the map's other
+// layers are, and the view switch stands alone at the top right. Calibrate is the
 // setup card until a session is open and the step card while one is, so a
 // session is always started from the tab that then runs it, and Robot and
 // Layers stay reachable throughout.
@@ -101,6 +107,55 @@ export const CheckRow: React.FC<{
   </div>
 );
 
+// One registered camera: the area it covers, how well it registered, and how
+// opaque its image is drawn. A slider rather than a tick, because the layer
+// is a comparison instrument - the useful settings are between off and on.
+const CameraRow: React.FC<{
+  camera: RegisteredCamera;
+  opacity: number;
+  onOpacity: (value: number) => void;
+}> = ({ camera, opacity, onOpacity }) => {
+  const pct = Math.round(opacity * 100);
+  return (
+    <div data-testid={`camera-row-${camera.area}`} style={{ padding: "5px 4px", fontSize: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ flex: 1, font: "600 12px/1.4 var(--font-mono)", color: "var(--text)" }}>
+          {camera.area}
+        </span>
+        <span
+          title={`Registration id ${camera.id.slice(0, 8)}, source ${camera.source}, ${camera.width} x ${camera.height} px at ${camera.mm_per_px} mm/px`}
+          style={{ color: "var(--muted)", fontSize: 11 }}
+        >
+          {camera.residual_mm.toFixed(1)} mm
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+        <span style={{ color: "var(--muted)", fontSize: 11 }}>Opacity</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={pct}
+          aria-label={`Camera opacity on ${camera.area}`}
+          onChange={(e) => onOpacity(Number(e.target.value) / 100)}
+          style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer" }}
+        />
+        <span
+          style={{
+            width: 32,
+            textAlign: "right",
+            font: "11px/1 var(--font-mono)",
+            color: "var(--muted)",
+          }}
+        >
+          {pct}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export type RightTab = "robot" | "layers" | "calibrate";
 
 const TAB_LABEL: Record<RightTab, string> = {
@@ -144,6 +199,10 @@ interface RightPaneProps {
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
+  // The cameras the controller warps. None registered, no Camera heading.
+  cameras?: RegisteredCamera[];
+  cameraOpacity?: CameraOpacity;
+  onCameraOpacity?: (area: string, value: number) => void;
   session: CalibrationSession | null;
   calibration: Calibration;
   device: string;
@@ -153,6 +212,7 @@ interface RightPaneProps {
 
 export const RightPane: React.FC<RightPaneProps> = (props) => {
   const siteAreas = props.site?.areas ?? [];
+  const cameras = props.cameras ?? [];
   const tabs: RightTab[] = ["robot", "layers", "calibrate"];
 
   const open = (tab: RightTab) => {
@@ -320,11 +380,24 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               </div>
             )}
 
-            <div style={{ ...label10, margin: "14px 0 4px" }}>Camera</div>
-            <CheckRow label="Camera layer" on={false} disabled hint="No camera registered" />
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-              no camera registered
-            </div>
+            {cameras.length > 0 && (
+              <>
+                <div style={{ ...label10, margin: "14px 0 4px" }}>Camera</div>
+                {cameras.map((c) => (
+                  <CameraRow
+                    key={c.area}
+                    camera={c}
+                    opacity={opacityFor(props.cameraOpacity ?? {}, c.area)}
+                    onOpacity={(value) => props.onCameraOpacity?.(c.area, value)}
+                  />
+                ))}
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Drawn under the grid and under the robots, exact inside the
+                  registered square and faded past it, in this browser only.
+                  The millimetres are how well it registered.
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

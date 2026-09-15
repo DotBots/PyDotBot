@@ -146,7 +146,7 @@ describe("the Calibrate tab", () => {
     });
 
     fireEvent.click(screen.getByText("Layers"));
-    expect(screen.getByText("Camera layer")).toBeInTheDocument();
+    expect(screen.getByText("Areas")).toBeInTheDocument();
     // The card left with the tab; it is not stacked above the others.
     expect(screen.queryByText("Capture")).not.toBeInTheDocument();
   });

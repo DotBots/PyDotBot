@@ -2,6 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import {
+  CameraOpacity,
+  loadCameraOpacity,
+  saveCameraOpacity,
+  withOpacity,
+} from "./cameraLayer";
 import { isPhoneWidth, sessionRect } from "./calibration";
 import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
@@ -47,7 +53,7 @@ const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, site, session, setSession, viewport, wsUp } = useFleet();
+  const { bots, site, cameras, session, setSession, viewport, wsUp } = useFleet();
   const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -118,6 +124,18 @@ export const App: React.FC = () => {
     setHiddenAreas((prev) => {
       const next = toggleHidden(prev, name);
       saveHiddenAreas(next);
+      return next;
+    });
+  }, []);
+
+  // So is the camera layer's opacity: a way of looking at the map, and this
+  // browser's own.
+  const [cameraOpacity, setCameraOpacity] =
+    useState<CameraOpacity>(loadCameraOpacity);
+  const onCameraOpacity = useCallback((area: string, value: number) => {
+    setCameraOpacity((prev) => {
+      const next = withOpacity(prev, area, value);
+      saveCameraOpacity(next);
       return next;
     });
   }, []);
@@ -563,6 +581,8 @@ export const App: React.FC = () => {
               viewport={viewport}
               siteAreas={site?.areas ?? []}
               hiddenAreas={hiddenAreas}
+              cameras={cameras}
+              cameraOpacity={cameraOpacity}
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
@@ -661,6 +681,9 @@ export const App: React.FC = () => {
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          cameras={cameras}
+          cameraOpacity={cameraOpacity}
+          onCameraOpacity={onCameraOpacity}
           session={session}
           calibration={calibration}
           device={capturer || session?.device || ""}

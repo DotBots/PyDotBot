@@ -117,7 +117,7 @@ describe("the collapsed right pane", () => {
     fireEvent.click(screen.getByTitle("Layers"));
 
     expect(state()).toBe("open:layers");
-    expect(screen.getByText("Camera layer")).toBeInTheDocument();
+    expect(screen.getByText("Areas")).toBeInTheDocument();
   });
 
   it("still collapses back from the open pane", () => {
