@@ -40,6 +40,23 @@ const SPAN: number[][] = [
   [1030, 926.5],
 ];
 
+// The bench's GoPro, looking down on dev-corner from well outside it: its
+// frame's rectangle through the homography swallows the area whole.
+const COVERAGE: number[][] = [
+  [355.3, 2473.0],
+  [446.5, -1554.1],
+  [2443.2, -538.4],
+  [2276.0, 1851.2],
+];
+
+// A camera aimed short of the area: it sees the left two thirds and stops.
+const PART_COVERAGE: number[][] = [
+  [900, -200],
+  [1700, -200],
+  [1700, 1200],
+  [900, 1200],
+];
+
 const CAMERA: RegisteredCamera = {
   area: "dev-corner",
   source: "/tmp/synthetic.png",
@@ -47,6 +64,7 @@ const CAMERA: RegisteredCamera = {
   width: 500,
   height: 500,
   span_mm: SPAN,
+  coverage_mm: COVERAGE,
   residual_mm: 0.1495,
   id: "7b21c0d9f3a1",
   lens: "linear",
@@ -222,11 +240,58 @@ describe("the camera as a map layer", () => {
 
   it("draws the image whole out to the area's edge, with no falloff", () => {
     render(<Harness />);
+    const mask = decodeURIComponent(
+      screen.getByTestId("camera-image-dev-corner").style.maskImage,
+    );
+    expect(mask).toContain(`viewBox="0 0 ${DEV_CORNER.w} ${DEV_CORNER.h}"`);
+    expect(mask).not.toContain("feMorphology");
+    expect(mask).toContain(`<rect width="1000" height="1000" fill="#fff"/>`);
+  });
+
+  it("cuts the image to the floor the camera can see", () => {
+    render(<Harness cameras={[{ ...CAMERA, coverage_mm: PART_COVERAGE }]} />);
+    const mask = decodeURIComponent(
+      screen.getByTestId("camera-image-dev-corner").style.maskImage,
+    );
+    expect(mask).toContain(
+      `<clipPath id="c"><polygon points="` +
+        `${polygonPoints(PART_COVERAGE, DEV_CORNER)}"/></clipPath>`,
+    );
+    expect(mask).toContain(`<g clip-path="url(#c)">`);
+  });
+
+  it("draws the whole box when the camera reports no coverage polygon", () => {
+    render(<Harness cameras={[{ ...CAMERA, coverage_mm: [] }]} />);
     expect(
       screen.getByTestId("camera-image-dev-corner").style.maskImage,
     ).toBe("");
+    expect(
+      screen.queryByTestId("camera-coverage-dev-corner"),
+    ).not.toBeInTheDocument();
   });
 
+  it("draws the edge of the camera's view where it falls inside the area", () => {
+    render(<Harness cameras={[{ ...CAMERA, coverage_mm: PART_COVERAGE }]} />);
+    expect(
+      screen.getByTestId("camera-coverage-dev-corner").getAttribute("points"),
+    ).toBe(polygonPoints(PART_COVERAGE, DEV_CORNER));
+  });
+
+  it("puts that edge outside the box for a camera covering the area whole", () => {
+    // The svg clips to the area, so an outline whose corners all sit well
+    // clear of it draws no line: full coverage reads as a clean area rather
+    // than as one more boundary to interpret.
+    render(<Harness />);
+    const points = screen
+      .getByTestId("camera-coverage-dev-corner")
+      .getAttribute("points")!
+      .split(" ")
+      .map((p) => p.split(",").map(Number));
+    expect(points).toHaveLength(4);
+    for (const [x, y] of points) {
+      expect(x < 0 || x > DEV_CORNER.w || y < 0 || y > DEV_CORNER.h).toBe(true);
+    }
+  });
 
   it("lies under the grid, so the grid and the glyphs stay on top", () => {
     render(<Harness />);
@@ -287,8 +352,24 @@ describe("the falloff past the span", () => {
     );
   });
 
-  it("masks nothing when the camera reports no span", () => {
+  it("clips a faded span to the coverage as well", () => {
+    const mask = decodeURIComponent(
+      spanMask(PATCH_SPAN, ARENA, PART_COVERAGE),
+    );
+    expect(mask).toContain("feMorphology");
+    expect(mask).toContain(`<g clip-path="url(#c)">`);
+  });
+
+  it("masks nothing when the camera reports neither polygon", () => {
     expect(spanMask([], DEV_CORNER)).toBe("");
+    expect(spanMask([], DEV_CORNER, [])).toBe("");
+  });
+
+  it("cuts to the coverage even with no span to fade from", () => {
+    const mask = decodeURIComponent(spanMask([], DEV_CORNER, PART_COVERAGE));
+    expect(mask).not.toContain("feMorphology");
+    expect(mask).toContain(`<g clip-path="url(#c)">`);
+    expect(mask).toContain(`<rect width="1000" height="1000" fill="#fff"/>`);
   });
 });
 

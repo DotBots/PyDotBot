@@ -576,7 +576,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               the photograph and legible at any opacity. The stream is the
               area warped into its own raster, so the box is the area. */}
           {cameraLayers.map(({ camera, area }) => {
-            const mask = spanMask(camera.span_mm, area);
+            const mask = spanMask(camera.span_mm, area, camera.coverage_mm);
             return (
               <div
                 key={`camera-${camera.area}`}
@@ -604,25 +604,41 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     WebkitMaskRepeat: "no-repeat",
                   }}
                 />
-                {/* The registered square itself: where the four sheets stood
-                    and the homography was fitted, so what was measured is
-                    marked off from what is extrapolated around it. */}
-                {hasSpan(camera.span_mm) && (
+                {/* Two boundaries, and they answer different questions. The
+                    solid one is where the camera's own view of the floor
+                    ends, drawn only where that falls inside the area, so an
+                    area it covers whole carries no line at all. The dashed
+                    one is the registered square, where the four sheets stood
+                    and the homography was fitted, marking off what was
+                    measured from what is extrapolated around it. */}
+                {(hasSpan(camera.coverage_mm) || hasSpan(camera.span_mm)) && (
                   <svg
                     viewBox={`0 0 ${area.w} ${area.h}`}
                     preserveAspectRatio="none"
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
                   >
-                    <polygon
-                      data-testid={`camera-span-${camera.area}`}
-                      points={polygonPoints(camera.span_mm, area)}
-                      fill="none"
-                      stroke="var(--muted)"
-                      strokeOpacity={0.7}
-                      strokeWidth={chrome}
-                      strokeDasharray={`${4 * chrome} ${4 * chrome}`}
-                      vectorEffect="non-scaling-stroke"
-                    />
+                    {hasSpan(camera.coverage_mm) && (
+                      <polygon
+                        data-testid={`camera-coverage-${camera.area}`}
+                        points={polygonPoints(camera.coverage_mm, area)}
+                        fill="none"
+                        stroke="var(--muted)"
+                        strokeWidth={chrome}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                    {hasSpan(camera.span_mm) && (
+                      <polygon
+                        data-testid={`camera-span-${camera.area}`}
+                        points={polygonPoints(camera.span_mm, area)}
+                        fill="none"
+                        stroke="var(--muted)"
+                        strokeOpacity={0.7}
+                        strokeWidth={chrome}
+                        strokeDasharray={`${4 * chrome} ${4 * chrome}`}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
                   </svg>
                 )}
               </div>

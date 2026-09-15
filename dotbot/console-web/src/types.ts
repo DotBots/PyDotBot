@@ -257,6 +257,9 @@ export interface RegisteredCamera {
   width: number;
   height: number;
   span_mm: number[][];
+  // The source frame's rectangle through the homography: the floor this
+  // camera can see. Empty when the homography maps it to no polygon.
+  coverage_mm: number[][];
   residual_mm: number;
   id: string;
   lens: string;

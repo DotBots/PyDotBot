@@ -1,5 +1,5 @@
-// The camera layer: how opaque it is drawn, and how far past the registration
-// it still claims to be accurate.
+// The camera layer: how opaque it is drawn, how far past the registration it
+// still claims to be accurate, and where the camera stops seeing floor at all.
 //
 // The controller warps one camera into its area's own raster, so the image's
 // box is the area. `span_mm`, the quadrilateral the four ArUco sheets spanned,
@@ -8,6 +8,11 @@
 // measured in the span's own size rather than in the room left to the area's
 // edge: a span that nearly fills its area is drawn whole out to that edge,
 // four sheets in the middle of a large one fade to nothing well inside it.
+//
+// `coverage_mm` is the source frame's own rectangle through the same
+// homography, so it is the floor the camera can see. Outside it the warp had
+// no source to read, and the layer is cut there rather than drawn, so the map
+// shows through and the edge of the camera's view is visible.
 //
 // The opacity is a way of looking at the map, like which area outlines are
 // drawn: it reaches no controller and is remembered in this browser only.
@@ -73,7 +78,7 @@ export function withOpacity(
   return { ...opacity, [area]: Math.min(1, Math.max(0, value)) };
 }
 
-/** Whether a span is a polygon at all, rather than a missing or stub field. */
+/** Whether a polygon is one at all, rather than a missing or stub field. */
 export function hasSpan(span: number[][] | undefined): span is number[][] {
   return (
     Array.isArray(span) &&
@@ -135,8 +140,9 @@ export function reachMm(span: number[][], area: Area): number {
 }
 
 /**
- * A CSS `mask-image` holding the span grown by the falloff and blurred across
- * it, so the layer stops where the extrapolation stops being believable.
+ * A CSS `mask-image` cutting the layer to what the camera saw and can still
+ * be believed: the span grown by the falloff and blurred across it, clipped
+ * to the camera's coverage.
  *
  * The dilation and the blur put the mask at full inside `fade.start` past the
  * span and at nothing by `fade.end`, three standard deviations either side of
@@ -146,21 +152,42 @@ export function reachMm(span: number[][], area: Area): number {
  * The mask is drawn in the area's millimetres and stretched over the image
  * box, which is the same rectangle, so a millimetre is a millimetre in both.
  */
-export function spanMask(span: number[][], area: Area): string {
-  if (!hasSpan(span) || reachMm(span, area) <= fadeMm(span).start) return "";
-  const { start, end } = fadeMm(span);
+export function spanMask(
+  span: number[][],
+  area: Area,
+  coverage?: number[][],
+): string {
+  const clipped = hasSpan(coverage);
+  const faded = hasSpan(span) && reachMm(span, area) > fadeMm(span).start;
+  if (!clipped && !faded) return "";
+
+  let defs = "";
+  let shape = `<rect width="${area.w}" height="${area.h}" fill="#fff"/>`;
+  if (faded) {
+    const { start, end } = fadeMm(span);
+    defs +=
+      `<filter id="f" filterUnits="userSpaceOnUse"` +
+      ` x="0" y="0" width="${area.w}" height="${area.h}">` +
+      `<feMorphology operator="dilate" radius="${(start + end) / 2}"/>` +
+      `<feGaussianBlur stdDeviation="${(end - start) / 6}"/>` +
+      `</filter>`;
+    shape =
+      `<polygon points="${polygonPoints(span, area)}" fill="#fff"` +
+      ` filter="url(#f)"/>`;
+  }
+  if (clipped) {
+    defs +=
+      `<clipPath id="c">` +
+      `<polygon points="${polygonPoints(coverage, area)}"/>` +
+      `</clipPath>`;
+    shape = `<g clip-path="url(#c)">${shape}</g>`;
+  }
+
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${area.w} ${area.h}"` +
     ` preserveAspectRatio="none">` +
-    `<defs>` +
-    `<filter id="f" filterUnits="userSpaceOnUse"` +
-    ` x="0" y="0" width="${area.w}" height="${area.h}">` +
-    `<feMorphology operator="dilate" radius="${(start + end) / 2}"/>` +
-    `<feGaussianBlur stdDeviation="${(end - start) / 6}"/>` +
-    `</filter>` +
-    `</defs>` +
-    `<polygon points="${polygonPoints(span, area)}" fill="#fff"` +
-    ` filter="url(#f)"/>` +
+    `<defs>${defs}</defs>` +
+    shape +
     `</svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }

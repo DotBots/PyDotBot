@@ -392,9 +392,10 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                   />
                 ))}
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-                  Drawn under the grid and under the robots, exact inside the
-                  registered square and faded past it, in this browser only.
-                  The millimetres are how well it registered.
+                  Drawn under the grid and under the robots, in this browser
+                  only. It stops where the camera stops seeing floor, so
+                  anywhere the map shows through is outside its view. The
+                  millimetres are how well it registered.
                 </div>
               </>
             )}
