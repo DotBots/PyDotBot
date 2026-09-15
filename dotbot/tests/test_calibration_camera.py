@@ -20,6 +20,7 @@ from dotbot.calibration.camera import (
     MARKER_SIDE_PX,
     PAGE_HEIGHT_PX,
     PAGE_WIDTH_PX,
+    _diagram_frame_px,
     _px,
     marker_layout,
     render_sheet,
@@ -120,6 +121,88 @@ def test_sheet_decodes_to_its_own_id(marker_id):
 def test_sheet_millimetres_per_pixel_matches_the_layout():
     """The printed marker and the derived layout describe one object."""
     assert MARKER_SIDE_MM / MARKER_SIDE_PX == pytest.approx(25.4 / 300, abs=1e-4)
+
+
+def _diagram(page):
+    """The bottom-margin region the placement diagram is drawn in."""
+    left, top, right, bottom = _diagram_frame_px()
+    return page[top : bottom + 1, left : right + 1]
+
+
+@pytest.mark.parametrize("marker_id", range(len(CORNERS)))
+def test_sheet_diagram_fills_the_seat_its_caption_names(marker_id):
+    """The solid seat lands in the quadrant the printed corner name points at."""
+    ink = _diagram(render_sheet(marker_id)) < 128
+    height, width = ink.shape
+    quadrants = {
+        "top-left": ink[: height // 2, : width // 2],
+        "top-right": ink[: height // 2, width // 2 :],
+        "bottom-left": ink[height // 2 :, : width // 2],
+        "bottom-right": ink[height // 2 :, width // 2 :],
+    }
+    counts = {name: int(area.sum()) for name, area in quadrants.items()}
+    filled = max(counts, key=counts.get)
+
+    assert filled == CORNERS[marker_id]
+    assert counts[filled] > 2 * max(
+        count for name, count in counts.items() if name != filled
+    )
+
+
+def test_sheet_diagram_differs_between_the_four_sheets():
+    """A corner-indexing slip would leave two sheets pointing at one corner."""
+    diagrams = [_diagram(render_sheet(marker_id)) for marker_id in range(len(CORNERS))]
+    for first in range(len(CORNERS)):
+        for second in range(first + 1, len(CORNERS)):
+            assert not np.array_equal(diagrams[first], diagrams[second])
+
+
+def _filled_seat_box(page):
+    """The solid seat's bounds within the diagram, in pixels.
+
+    Found by eroding, which eats the thin strokes and leaves only the one
+    filled shape, so the measurement does not restate the drawing's own
+    arithmetic.
+    """
+    left, top, right, bottom = _diagram_frame_px()
+    diagram = page[top : bottom + 1, left : right + 1]
+    solid = cv2.erode((diagram < 128).astype(np.uint8), np.ones((9, 9), np.uint8))
+    rows, columns = np.nonzero(solid)
+    return columns.min(), rows.min(), columns.max(), rows.max()
+
+
+def test_sheet_diagram_is_square_and_its_seats_are_one_shape_moved():
+    """Two spans rounded apart is exactly the near-square that ships unnoticed."""
+    left, top, right, bottom = _diagram_frame_px()
+    assert right - left == bottom - top
+
+    pages = [render_sheet(marker_id) for marker_id in range(len(CORNERS))]
+    assert len({int((_diagram(page) < 128).sum()) for page in pages}) == 1
+
+    side = right - left
+    boxes = [_filled_seat_box(page) for page in pages]
+    assert len({(x1 - x0, y1 - y0) for x0, y0, x1, y1 in boxes}) == 1
+    insets = {(min(x0, side - x1), min(y0, side - y1)) for x0, y0, x1, y1 in boxes}
+    assert len(insets) == 1
+    assert max(insets.pop()) <= 5  # flush to both edges, within the erosion
+
+
+def test_sheet_keeps_a_marker_cell_of_white_below_the_marker():
+    """The quiet zone the detector needs, which the diagram must not creep into."""
+    cell_px = _px(MARKER_SIDE_MM / 6)  # a 4x4 marker is six cells across
+    marker_bottom = (PAGE_HEIGHT_PX + MARKER_SIDE_PX) // 2
+    for marker_id in range(len(CORNERS)):
+        page = render_sheet(marker_id)
+        assert (page[marker_bottom : marker_bottom + cell_px, :] == 255).all()
+    assert _diagram_frame_px()[1] >= marker_bottom + cell_px
+
+
+def test_sheet_diagram_clears_the_caption_beside_it():
+    """A gutter of white between the longest caption and the diagram's frame."""
+    left, top, _, bottom = _diagram_frame_px()
+    for marker_id in range(len(CORNERS)):
+        gutter = render_sheet(marker_id)[top:bottom, left - _px(4.0) : left - _px(1.0)]
+        assert (gutter == 255).all()
 
 
 def test_sheet_renders_without_any_of_the_candidate_fonts(monkeypatch):

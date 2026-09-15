@@ -46,6 +46,19 @@ MARKER_SIDE_MM = 150.0
 # 100 % with a ruler before taping anything down.
 SCALE_BAR_MM = 100.0
 
+# The placement diagram: a square standing for the area, in the bottom
+# margin right of the caption. It is anchored by its top-right corner,
+# whose x lines up with the marker's right edge so the printed matter is
+# one column, and whose y clears the marker's quiet zone. Square because a
+# sheet carries no area and so cannot know the real one's proportions.
+DIAGRAM_RIGHT_MM = 180.0
+DIAGRAM_TOP_MM = 250.0
+DIAGRAM_SIDE_MM = 26.0
+
+# One sheet's seat in that square, A4 proportioned like the page it stands
+# for, so four of them read as pages rather than as corner marks.
+DIAGRAM_SEAT_HEIGHT_MM = 7.0
+
 # Plain sans faces to set the caption in, macOS first then Linux. Pillow's
 # own face stands in when none is installed.
 _FONT_CANDIDATES = (
@@ -91,6 +104,17 @@ def _font(size_mm: float):
     if candidate is None:
         return ImageFont.load_default(size=_px(size_mm))
     return ImageFont.truetype(candidate, _px(size_mm))
+
+
+def _diagram_frame_px() -> tuple[int, int, int, int]:
+    """The diagram's square in whole pixels, as (left, top, right, bottom).
+
+    Built from one corner and one side, so the square is square on the
+    page rather than two spans rounded apart.
+    """
+    side = _px(DIAGRAM_SIDE_MM)
+    right, top = _px(DIAGRAM_RIGHT_MM), _px(DIAGRAM_TOP_MM)
+    return right - side, top, right, top + side
 
 
 @dataclass(frozen=True)
@@ -200,6 +224,7 @@ def render_sheet(marker_id: int) -> np.ndarray:
     x0 = (PAGE_WIDTH_PX - MARKER_SIDE_PX) // 2
     y0 = (PAGE_HEIGHT_PX - MARKER_SIDE_PX) // 2
     page[y0 : y0 + MARKER_SIDE_PX, x0 : x0 + MARKER_SIDE_PX] = marker
+    _placement_diagram(page, marker_id)
     return _caption(page, marker_id)
 
 
@@ -243,3 +268,46 @@ def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:
         anchor="lm",
     )
     return np.array(image)
+
+
+def _placement_diagram(page: np.ndarray, marker_id: int) -> None:
+    """Where this sheet goes, drawn rather than spelled out.
+
+    The square is the area, and each corner holds a page-shaped seat flush
+    against its two edges, which is how a sheet is taped. This sheet's
+    seat is solid, and the notch in it points at the top of the page, the
+    edge that faces the top of the map.
+
+    Laid out in whole pixels off one frame, so the four seats come out
+    identical instead of each rounding on its own.
+    """
+    import cv2
+
+    ink = 0
+    left, top, right, bottom = _diagram_frame_px()
+    seat_height = _px(DIAGRAM_SEAT_HEIGHT_MM)
+    seat_width = round(seat_height * PAGE_WIDTH_MM / PAGE_HEIGHT_MM)
+    cv2.rectangle(page, (left, top), (right, bottom), ink, 4, cv2.LINE_AA)
+    for seat_id, corner in enumerate(CORNERS):
+        vertical, _, horizontal = corner.partition("-")
+        x = left if horizontal == "left" else right - seat_width
+        y = top if vertical == "top" else bottom - seat_height
+        far = (x + seat_width, y + seat_height)
+        if seat_id != marker_id:
+            cv2.rectangle(page, (x, y), far, ink, 3, cv2.LINE_AA)
+            continue
+        cv2.rectangle(page, (x, y), far, ink, -1, cv2.LINE_AA)
+        # The notch has to reach the seat's top edge. A filled seat is a
+        # marker-shaped candidate, and one that keeps an unbroken rim of
+        # black around a light shape passes the detector's border check
+        # and decodes as some other id. Breaking the rim is what rejects
+        # it; `test_sheet_decodes_to_its_own_id` is the guard.
+        centre = x + seat_width / 2
+        notch = np.array(
+            [
+                [round(centre), y - 1],
+                [round(centre - 0.30 * seat_width), y + round(0.42 * seat_height)],
+                [round(centre + 0.30 * seat_width), y + round(0.42 * seat_height)],
+            ]
+        )
+        cv2.fillPoly(page, [notch], 255, cv2.LINE_AA)
