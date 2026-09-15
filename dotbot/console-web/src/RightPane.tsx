@@ -1,7 +1,14 @@
 import React from "react";
 
 import { areaColor } from "./areaColor";
-import { CameraOpacity, opacityFor } from "./cameraLayer";
+import {
+  CameraOffset,
+  CameraOpacity,
+  NO_OFFSET,
+  OffsetMm,
+  offsetFor,
+  opacityFor,
+} from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
@@ -107,15 +114,25 @@ export const CheckRow: React.FC<{
   </div>
 );
 
-// One registered camera: the area it covers, how well it registered, and how
-// opaque its image is drawn. A slider rather than a tick, because the layer
-// is a comparison instrument - the useful settings are between off and on.
+// One registered camera: the area it covers, how well it registered, how
+// opaque its image is drawn, and how far that image is nudged. A slider for
+// the opacity rather than a tick, because the layer is a comparison
+// instrument - the useful settings are between off and on. Typed millimetres
+// for the offset, because the operator arrives at it by reading a distance
+// off the map and the arrow keys still step it one at a time.
 const CameraRow: React.FC<{
   camera: RegisteredCamera;
   opacity: number;
   onOpacity: (value: number) => void;
-}> = ({ camera, opacity, onOpacity }) => {
+  offset: OffsetMm;
+  onOffset: (value: OffsetMm) => void;
+}> = ({ camera, opacity, onOpacity, offset, onOffset }) => {
   const pct = Math.round(opacity * 100);
+  const nudged = offset.dx !== 0 || offset.dy !== 0;
+  const axes = [
+    { key: "dx" as const, label: "x" },
+    { key: "dy" as const, label: "y" },
+  ];
   return (
     <div data-testid={`camera-row-${camera.area}`} style={{ padding: "5px 4px", fontSize: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -151,6 +168,52 @@ const CameraRow: React.FC<{
         >
           {pct}%
         </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+        <span style={{ color: "var(--muted)", fontSize: 11, flex: 1 }}>Offset</span>
+        {axes.map(({ key, label }) => (
+          <span key={key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ color: "var(--muted)", font: "11px/1 var(--font-mono)" }}>
+              {label}
+            </span>
+            <input
+              type="number"
+              step={1}
+              value={offset[key]}
+              aria-label={`Camera offset ${label} on ${camera.area}`}
+              onChange={(e) => onOffset({ ...offset, [key]: Number(e.target.value) })}
+              style={{
+                width: 46,
+                padding: "1px 3px",
+                border: "1px solid var(--hairline)",
+                borderRadius: 4,
+                background: "var(--canvas)",
+                color: "var(--text)",
+                font: "11px/1.4 var(--font-mono)",
+              }}
+            />
+          </span>
+        ))}
+        <span style={{ color: "var(--muted)", font: "11px/1 var(--font-mono)" }}>mm</span>
+        <button
+          type="button"
+          title={`Reset the camera offset on ${camera.area}`}
+          aria-label={`Reset camera offset on ${camera.area}`}
+          disabled={!nudged}
+          onClick={() => onOffset(NO_OFFSET)}
+          style={{
+            padding: "0 4px",
+            border: "none",
+            borderRadius: 4,
+            background: "transparent",
+            color: "var(--muted)",
+            font: "13px/1 var(--font-ui)",
+            cursor: nudged ? "pointer" : "default",
+            opacity: nudged ? 1 : 0.35,
+          }}
+        >
+          ⟲
+        </button>
       </div>
     </div>
   );
@@ -203,6 +266,8 @@ interface RightPaneProps {
   cameras?: RegisteredCamera[];
   cameraOpacity?: CameraOpacity;
   onCameraOpacity?: (area: string, value: number) => void;
+  cameraOffset?: CameraOffset;
+  onCameraOffset?: (area: string, value: OffsetMm) => void;
   session: CalibrationSession | null;
   calibration: Calibration;
   device: string;
@@ -389,6 +454,8 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                     camera={c}
                     opacity={opacityFor(props.cameraOpacity ?? {}, c.area)}
                     onOpacity={(value) => props.onCameraOpacity?.(c.area, value)}
+                    offset={offsetFor(props.cameraOffset ?? {}, c.area)}
+                    onOffset={(value) => props.onCameraOffset?.(c.area, value)}
                   />
                 ))}
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
@@ -396,6 +463,14 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                   only. It stops where the camera stops seeing floor, so
                   anywhere the map shows through is outside its view. The
                   millimetres are how well it registered.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Offset moves the picture, never the glyph: the warp flattens
+                  the robots' tops onto the floor, so a robot draws a few
+                  centimetres from where it stands. Nudge until the two line
+                  up. One shift fits the whole area only because this camera
+                  looks in from one side; a camera hung over the middle would
+                  need a correction that grows outward from the centre.
                 </div>
               </>
             )}

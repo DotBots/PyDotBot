@@ -14,12 +14,16 @@
 // no source to read, and the layer is cut there rather than drawn, so the map
 // shows through and the edge of the camera's view is visible.
 //
-// The opacity is a way of looking at the map, like which area outlines are
-// drawn: it reaches no controller and is remembered in this browser only.
+// The opacity and the offset are both ways of looking at the map, like which
+// area outlines are drawn: they reach no controller and are remembered in this
+// browser only. The offset shifts the image and the outlines drawn on it, and
+// nothing else: the glyph is the measurement, so moving it to meet the picture
+// would corrupt the thing being checked.
 
 import type { Area } from "./types";
 
 const KEY = "dotbot.console.cameraOpacity";
+const OFFSET_KEY = "dotbot.console.cameraOffset";
 
 /** Visible on arrival, and still plainly an underlay under the grid. */
 export const DEFAULT_CAMERA_OPACITY = 0.6;
@@ -76,6 +80,104 @@ export function withOpacity(
   value: number,
 ): CameraOpacity {
   return { ...opacity, [area]: Math.min(1, Math.max(0, value)) };
+}
+
+// Well past any parallax correction, so a mistyped value cannot throw the
+// layer clear of its area, and still ample on a large floor.
+const OFFSET_LIMIT_MM = 1000;
+
+/** How far one area's image is nudged, in frame millimetres. */
+export interface OffsetMm {
+  dx: number;
+  dy: number;
+}
+
+/** Layer offset by area name. */
+export type CameraOffset = Record<string, OffsetMm>;
+
+/** No nudge, which is where every camera starts. */
+export const NO_OFFSET: OffsetMm = Object.freeze({ dx: 0, dy: 0 });
+
+// An empty or unparseable field reads as no nudge rather than as NaN, which
+// would otherwise reach the transform and blank the layer.
+const clampMm = (v: number): number =>
+  Number.isFinite(v)
+    ? Math.min(OFFSET_LIMIT_MM, Math.max(-OFFSET_LIMIT_MM, v))
+    : 0;
+
+const usableOffset = (v: unknown): v is OffsetMm =>
+  !!v &&
+  typeof v === "object" &&
+  !Array.isArray(v) &&
+  Number.isFinite((v as OffsetMm).dx) &&
+  Number.isFinite((v as OffsetMm).dy);
+
+/** What this browser last set, empty when storage says nothing usable. */
+export function loadCameraOffset(): CameraOffset {
+  try {
+    const raw = window.localStorage.getItem(OFFSET_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, v]) => usableOffset(v))
+        .map(([area, v]) => [
+          area,
+          { dx: clampMm((v as OffsetMm).dx), dy: clampMm((v as OffsetMm).dy) },
+        ]),
+    ) as CameraOffset;
+  } catch {
+    return {};
+  }
+}
+
+/** Remember it; a browser that refuses storage just forgets it. */
+export function saveCameraOffset(offset: CameraOffset): void {
+  try {
+    window.localStorage.setItem(OFFSET_KEY, JSON.stringify(offset));
+  } catch {
+    /* private window, cleared site data, storage blocked */
+  }
+}
+
+/** One area's offset, falling back to no nudge at all. */
+export function offsetFor(offset: CameraOffset, area: string): OffsetMm {
+  const v = offset[area];
+  return usableOffset(v) ? v : NO_OFFSET;
+}
+
+/** The map with one area's offset replaced, clamped to the limit. */
+export function withOffset(
+  offset: CameraOffset,
+  area: string,
+  value: OffsetMm,
+): CameraOffset {
+  return {
+    ...offset,
+    [area]: { dx: clampMm(value.dx), dy: clampMm(value.dy) },
+  };
+}
+
+// A millimetre as a percentage of the box side it runs along, rounded to six
+// places so the value reads as the millimetres behind it rather than as
+// binary-float noise. A millionth of the box is orders below a pixel.
+const sidePct = (mm: number, side: number): number =>
+  Math.round((mm / side) * 1e8) / 1e6;
+
+/**
+ * The offset as a CSS `transform` for the layer's box, or undefined when it
+ * is not nudged, so an untouched layer carries no transform at all.
+ *
+ * The box is the area, so a millimetre is a percentage of the matching side.
+ */
+export function offsetTransform(
+  offset: OffsetMm,
+  area: Area,
+): string | undefined {
+  if (!offset.dx && !offset.dy) return undefined;
+  if (!(area.w > 0) || !(area.h > 0)) return undefined;
+  return `translate(${sidePct(offset.dx, area.w)}%, ${sidePct(offset.dy, area.h)}%)`;
 }
 
 /** Whether a polygon is one at all, rather than a missing or stub field. */

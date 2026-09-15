@@ -4,8 +4,11 @@ import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
 import {
+  CameraOffset,
   CameraOpacity,
   hasSpan,
+  offsetFor,
+  offsetTransform,
   opacityFor,
   polygonPoints,
   spanMask,
@@ -81,6 +84,7 @@ interface MapViewProps {
   // the opacity Layers > Camera sets. None listed, nothing drawn.
   cameras?: RegisteredCamera[];
   cameraOpacity?: CameraOpacity;
+  cameraOffset?: CameraOffset;
   // The whole site, outlined so it reads as a box rather than only a label.
   siteExtent: Area | null;
   selection: Set<string>;
@@ -574,9 +578,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               glyph: the layer exists to compare what the camera sees against
               what the lighthouse reports, which needs the glyphs on top of
               the photograph and legible at any opacity. The stream is the
-              area warped into its own raster, so the box is the area. */}
+              area warped into its own raster, so the box is the area, and the
+              offset nudges that box: the image and the outlines drawn on it
+              move together, and the glyphs above them do not move at all. */}
           {cameraLayers.map(({ camera, area }) => {
             const mask = spanMask(camera.span_mm, area, camera.coverage_mm);
+            const transform = offsetTransform(
+              offsetFor(props.cameraOffset ?? {}, camera.area),
+              area,
+            );
             return (
               <div
                 key={`camera-${camera.area}`}
@@ -585,6 +595,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   position: "absolute",
                   ...pctArea(area),
                   opacity: opacityFor(props.cameraOpacity ?? {}, camera.area),
+                  transform,
                   pointerEvents: "none",
                 }}
               >

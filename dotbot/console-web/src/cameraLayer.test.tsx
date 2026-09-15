@@ -3,16 +3,23 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CameraOffset,
   CameraOpacity,
   DEFAULT_CAMERA_OPACITY,
+  NO_OFFSET,
   fadeMm,
+  loadCameraOffset,
   loadCameraOpacity,
+  offsetFor,
+  offsetTransform,
   opacityFor,
   polygonPoints,
   reachMm,
+  saveCameraOffset,
   saveCameraOpacity,
   spanMask,
   spanSizeMm,
+  withOffset,
   withOpacity,
 } from "./cameraLayer";
 import { areaToFraction } from "./frame";
@@ -91,13 +98,16 @@ const LAYERS = {
   crashedOnly: false,
 };
 
-// The map and the Layers tab over one opacity map, exactly as App wires them.
+// The map and the Layers tab over one opacity map and one offset map, exactly
+// as App wires them.
 const Harness: React.FC<{ cameras?: RegisteredCamera[] }> = ({
   cameras = [CAMERA],
 }) => {
   const [cameraOpacity, setCameraOpacity] = useState<CameraOpacity>(
     loadCameraOpacity,
   );
+  const [cameraOffset, setCameraOffset] =
+    useState<CameraOffset>(loadCameraOffset);
   const [tab, setTab] = useState<RightTab>("layers");
   return (
     <>
@@ -109,6 +119,7 @@ const Harness: React.FC<{ cameras?: RegisteredCamera[] }> = ({
           hiddenAreas={new Set()}
           cameras={cameras}
           cameraOpacity={cameraOpacity}
+          cameraOffset={cameraOffset}
           siteExtent={{ x: 0, y: 0, w: 2000, h: 4000, name: C405.name }}
           selection={new Set()}
           layers={LAYERS}
@@ -141,6 +152,14 @@ const Harness: React.FC<{ cameras?: RegisteredCamera[] }> = ({
             setCameraOpacity((prev) => {
               const next = withOpacity(prev, area, value);
               saveCameraOpacity(next);
+              return next;
+            })
+          }
+          cameraOffset={cameraOffset}
+          onCameraOffset={(area, value) =>
+            setCameraOffset((prev) => {
+              const next = withOffset(prev, area, value);
+              saveCameraOffset(next);
               return next;
             })
           }
@@ -411,5 +430,152 @@ describe("the opacity this browser remembers", () => {
       "dev-corner": 1,
     });
     expect(withOpacity({}, "dev-corner", -1)).toEqual({ "dev-corner": 0 });
+  });
+});
+
+describe("the offset that lines the image up with the robots", () => {
+  it("translates the layer by the offset, in the box's own percentage", () => {
+    render(<Harness />);
+    const layer = screen.getByTestId("camera-layer-dev-corner");
+    expect(layer.style.transform).toBe("");
+
+    fireEvent.change(screen.getByLabelText("Camera offset x on dev-corner"), {
+      target: { value: "36" },
+    });
+
+    // dev-corner is 1000 mm wide, so 36 mm of frame is 3.6% of the box.
+    expect(layer.style.transform).toBe("translate(3.6%, 0%)");
+    expect(window.localStorage.getItem("dotbot.console.cameraOffset")).toBe(
+      '{"dev-corner":{"dx":36,"dy":0}}',
+    );
+  });
+
+  it("moves the image and its outlines, and no other layer", () => {
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText("Camera offset y on dev-corner"), {
+      target: { value: "-20" },
+    });
+    const layer = screen.getByTestId("camera-layer-dev-corner");
+    expect(layer.style.transform).toBe("translate(0%, -2%)");
+
+    // The photograph and both boundaries ride inside the nudged box, so they
+    // stay on the picture they annotate.
+    for (const id of [
+      "camera-image-dev-corner",
+      "camera-span-dev-corner",
+      "camera-coverage-dev-corner",
+    ]) {
+      expect(layer.contains(screen.getByTestId(id))).toBe(true);
+    }
+
+    // Every other layer drawn in the same box is left where it was, which is
+    // what keeps the glyph reporting the measurement rather than the picture.
+    const drawn = Array.from(layer.parentElement!.children) as HTMLElement[];
+    expect(drawn.length).toBeGreaterThan(1);
+    for (const el of drawn) {
+      if (el !== layer) expect(el.style.transform).toBe("");
+    }
+  });
+
+  it("resets to no nudge, and offers the reset only when there is one", () => {
+    render(<Harness />);
+    const reset = screen.getByLabelText("Reset camera offset on dev-corner");
+    expect(reset).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Camera offset x on dev-corner"), {
+      target: { value: "36" },
+    });
+    expect(reset).toBeEnabled();
+
+    fireEvent.click(reset);
+    expect(screen.getByTestId("camera-layer-dev-corner").style.transform).toBe(
+      "",
+    );
+    expect(reset).toBeDisabled();
+  });
+});
+
+describe("the offset this browser remembers", () => {
+  it("starts every camera unnudged", () => {
+    expect(offsetFor({}, "dev-corner")).toEqual(NO_OFFSET);
+  });
+
+  it("round-trips through storage", () => {
+    saveCameraOffset({ "dev-corner": { dx: 36, dy: -7 } });
+    expect(offsetFor(loadCameraOffset(), "dev-corner")).toEqual({
+      dx: 36,
+      dy: -7,
+    });
+  });
+
+  it("ignores a stored value that is not an offset", () => {
+    window.localStorage.setItem(
+      "dotbot.console.cameraOffset",
+      '{"dev-corner": 36, "arena": {"dx": "east", "dy": 0},' +
+        ' "annex": {"dx": 1, "dy": 2}}',
+    );
+    expect(loadCameraOffset()).toEqual({ annex: { dx: 1, dy: 2 } });
+  });
+
+  it("clamps a stored value that is past the limit", () => {
+    window.localStorage.setItem(
+      "dotbot.console.cameraOffset",
+      '{"dev-corner": {"dx": 9000, "dy": -9000}}',
+    );
+    expect(loadCameraOffset()).toEqual({
+      "dev-corner": { dx: 1000, dy: -1000 },
+    });
+  });
+
+  it("falls back to no nudge when storage refuses to answer", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    expect(loadCameraOffset()).toEqual({});
+  });
+
+  it("keeps working when storage refuses to remember", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    expect(() =>
+      saveCameraOffset({ "dev-corner": { dx: 36, dy: 0 } }),
+    ).not.toThrow();
+  });
+
+  it("clamps what a caller sets, and leaves the other areas alone", () => {
+    expect(
+      withOffset({ arena: { dx: 1, dy: 2 } }, "dev-corner", {
+        dx: 4000,
+        dy: -4000,
+      }),
+    ).toEqual({
+      arena: { dx: 1, dy: 2 },
+      "dev-corner": { dx: 1000, dy: -1000 },
+    });
+  });
+
+  it("reads an emptied field as no nudge rather than as NaN", () => {
+    expect(withOffset({}, "dev-corner", { dx: NaN, dy: 5 })).toEqual({
+      "dev-corner": { dx: 0, dy: 5 },
+    });
+  });
+});
+
+describe("the offset as a transform", () => {
+  it("is a percentage of the matching side, so a millimetre is a millimetre", () => {
+    expect(offsetTransform({ dx: 36, dy: -20 }, DEV_CORNER)).toBe(
+      "translate(3.6%, -2%)",
+    );
+  });
+
+  it("is nothing at all when the layer is not nudged", () => {
+    expect(offsetTransform(NO_OFFSET, DEV_CORNER)).toBeUndefined();
+  });
+
+  it("is nothing for an area with no size to scale against", () => {
+    expect(
+      offsetTransform({ dx: 36, dy: 0 }, { x: 0, y: 0, w: 0, h: 0 }),
+    ).toBeUndefined();
   });
 });

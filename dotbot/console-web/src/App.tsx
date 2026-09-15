@@ -3,9 +3,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
 import {
+  CameraOffset,
   CameraOpacity,
+  OffsetMm,
+  loadCameraOffset,
   loadCameraOpacity,
+  saveCameraOffset,
   saveCameraOpacity,
+  withOffset,
   withOpacity,
 } from "./cameraLayer";
 import { isPhoneWidth, sessionRect } from "./calibration";
@@ -136,6 +141,18 @@ export const App: React.FC = () => {
     setCameraOpacity((prev) => {
       const next = withOpacity(prev, area, value);
       saveCameraOpacity(next);
+      return next;
+    });
+  }, []);
+
+  // And so is the nudge that lines its image up with the robots, which
+  // corrects for the camera not hanging straight over the floor.
+  const [cameraOffset, setCameraOffset] =
+    useState<CameraOffset>(loadCameraOffset);
+  const onCameraOffset = useCallback((area: string, value: OffsetMm) => {
+    setCameraOffset((prev) => {
+      const next = withOffset(prev, area, value);
+      saveCameraOffset(next);
       return next;
     });
   }, []);
@@ -583,6 +600,7 @@ export const App: React.FC = () => {
               hiddenAreas={hiddenAreas}
               cameras={cameras}
               cameraOpacity={cameraOpacity}
+              cameraOffset={cameraOffset}
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
@@ -684,6 +702,8 @@ export const App: React.FC = () => {
           cameras={cameras}
           cameraOpacity={cameraOpacity}
           onCameraOpacity={onCameraOpacity}
+          cameraOffset={cameraOffset}
+          onCameraOffset={onCameraOffset}
           session={session}
           calibration={calibration}
           device={capturer || session?.device || ""}
