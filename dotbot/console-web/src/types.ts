@@ -60,10 +60,87 @@ export interface PyDotBot {
 }
 
 export interface WsNotification {
-  cmd: number; // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT
+  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE
+  cmd: number;
   data?: Partial<PyDotBot> & {
     lh2_waypoints?: LH2Position[];
   };
+  calibration_session?: CalibrationSession | null;
+}
+
+// --- the calibration session the controller owns ---------------------------
+//
+// One capture session at a time, one point outstanding at a time, and
+// whichever robot answers it is that point. Every state change arrives on the
+// status WebSocket as cmd 5.
+
+export interface CalibrationReads {
+  station: number;
+  reads: number;
+  target: number;
+}
+
+export interface CalibrationPoint {
+  index: number;
+  x: number; // frame mm, the photodiode's own position
+  y: number;
+  corner: string | null; // null for a point typed as coordinates
+  area: string;
+  where: string; // "top-left corner of arena"
+  how: string; // the placement, as an instruction
+  nose: string; // top | bottom, where the robot's nose points
+  captured: boolean;
+  reads: CalibrationReads[];
+  dropped: number; // records the capture-quality guard rejected
+}
+
+export interface CalibrationStation {
+  index: number;
+  points: number;
+  residual_mm: number;
+  solved_from: string;
+}
+
+export interface CalibrationSession {
+  at: string; // what the operator asked for, resolved once at start
+  site: string;
+  area: string; // the area the expected error is for; "" means none chosen
+  device: string;
+  reads: number;
+  status: string; // collecting | solved | saved
+  outstanding: number | null; // null once every point is captured
+  captured: number;
+  total: number;
+  // Null until the predictor exists; a renderer shows the line only when it
+  // is a number.
+  expected_error_mm: number | null;
+  points: CalibrationPoint[];
+  stations: CalibrationStation[];
+  unsolved: { index: number; points: number }[];
+  saved_path: string | null;
+  saved_id: string;
+  error: string;
+}
+
+// What a session over one points specification would open on, resolved by the
+// controller without opening one. `reads` is the captures-per-point a start
+// that names none would use.
+export interface CalibrationPreview {
+  points: CalibrationPoint[];
+  reads: number;
+}
+
+export interface CalibrationSaved {
+  id: string;
+  id8: string;
+  path: string | null;
+  session: CalibrationSession;
+}
+
+export interface CalibrationPushed {
+  id: string;
+  bytes: number;
+  stale: string[];
 }
 
 // What a bot reports it is running, as carried in SwarmitNode.info.
@@ -147,9 +224,9 @@ export interface ControllerConnection {
   gw_address: string;
 }
 
-// GET /controller/area - one of the areas shown, in frame mm.
-// An area is a view of the frame and carries no calibration, so changing it
-// never touches one.
+// One named rectangle of the site, in frame mm. An area is a view of the
+// frame and carries no calibration, so showing or hiding one never touches
+// one.
 export interface Area {
   x: number;
   y: number;

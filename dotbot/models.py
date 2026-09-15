@@ -104,6 +104,125 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
 
 
+class DotBotCalibrationReadsModel(BaseModel):
+    """How many reads one station contributed to one point."""
+
+    station: int
+    reads: int
+    target: int
+
+
+class DotBotCalibrationPointModel(BaseModel):
+    """One point of the session: where it is, how to stand there, what it holds."""
+
+    index: int
+    x: float
+    y: float
+    corner: Optional[str] = None
+    area: str = ""
+    where: str = ""
+    how: str = ""
+    nose: str = ""
+    captured: bool = False
+    reads: List[DotBotCalibrationReadsModel] = []
+    dropped: int = 0
+
+
+class DotBotCalibrationStationModel(BaseModel):
+    """One solved station and how well it fits its own evidence."""
+
+    index: int
+    points: int
+    residual_mm: float
+    solved_from: str = "direct"
+
+
+class DotBotCalibrationUnsolvedModel(BaseModel):
+    """A station seen at too few points for a homography."""
+
+    index: int
+    points: int
+
+
+class DotBotCalibrationSessionModel(BaseModel):
+    """The whole capture session, as every client renders it.
+
+    `expected_error_mm` is None until the predictor exists, and a renderer
+    shows the line only when it is a number.
+    """
+
+    at: str = ""
+    site: str = ""
+    # The area the expected error is evaluated over; empty means none chosen.
+    area: str = ""
+    device: str = ""
+    reads: int = 0
+    status: str = "collecting"
+    outstanding: Optional[int] = None
+    captured: int = 0
+    total: int = 0
+    expected_error_mm: Optional[float] = None
+    points: List[DotBotCalibrationPointModel] = []
+    stations: List[DotBotCalibrationStationModel] = []
+    unsolved: List[DotBotCalibrationUnsolvedModel] = []
+    saved_path: Optional[str] = None
+    saved_id: str = ""
+    error: str = ""
+
+
+class DotBotCalibrationStartModel(BaseModel):
+    """Where this session's points are, in `--points` form.
+
+    `area` names the area the expected error is evaluated over; empty means
+    none chosen. `reads` is captures averaged per point; None takes the
+    session's own default.
+    """
+
+    points: Union[str, List[str]] = "arena:corners"
+    device: str = ""
+    area: str = ""
+    reads: Optional[int] = None
+
+
+class DotBotCalibrationPreviewModel(BaseModel):
+    """What a session over one `--points` specification would open on.
+
+    `reads` is the captures-per-point a start with no `reads` would use.
+    """
+
+    points: List[DotBotCalibrationPointModel] = []
+    reads: int = 0
+
+
+class DotBotCalibrationCaptureModel(BaseModel):
+    """Which robot takes the outstanding point's reads."""
+
+    device: str = ""
+
+
+class DotBotCalibrationSaveModel(BaseModel):
+    """An optional session label, written into the file's metadata."""
+
+    tag: str = ""
+
+
+class DotBotCalibrationSavedModel(BaseModel):
+    """What a save produced: the file, and the id the robots will report."""
+
+    id: str
+    id8: str
+    path: Optional[str] = None
+    session: DotBotCalibrationSessionModel
+
+
+class DotBotCalibrationPushedModel(BaseModel):
+    """What a push sent, and which robots still do not hold it."""
+
+    id: str
+    bytes: int
+    stale: List[str] = []
+
+
 class DotBotConnectionModel(BaseModel):
     """How the controller reaches the swarm, for display in a UI.
 
@@ -152,7 +271,7 @@ class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
     DOTBOTS: int = 0
-    AREA: int = 1
+    SITE: int = 1
 
 
 class DotBotRequestModel(BaseModel):
@@ -201,6 +320,7 @@ class DotBotNotificationCommand(IntEnum):
     UPDATE: int = 2
     PIN_CODE_UPDATE: int = 3
     NEW_DOTBOT: int = 4
+    CALIBRATION_SESSION_UPDATE: int = 5
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -227,6 +347,8 @@ class DotBotNotificationModel(BaseModel):
     cmd: DotBotNotificationCommand
     data: Optional[Union[DotBotNotificationUpdate, DotBotModel]] = None
     pin_code: Optional[int] = None
+    # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
+    calibration_session: Optional[DotBotCalibrationSessionModel] = None
 
 
 class WSBase(BaseModel):

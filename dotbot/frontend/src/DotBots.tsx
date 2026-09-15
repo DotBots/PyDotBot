@@ -17,7 +17,6 @@ interface DotBotsProps {
   // The part of the frame the map draws: the whole site plus a margin.
   viewport: Area;
   // The areas shown, drawn solid; every other area of the site is outlined.
-  activeAreas: Area[];
   siteAreas: Area[];
   backgroundMap?: BackgroundMap;
   updateDotbots: React.Dispatch<React.SetStateAction<DotBot[]>>;
@@ -27,7 +26,7 @@ interface DotBotsProps {
   qrkeyUrl?: string;
 }
 
-const DotBots: React.FC<DotBotsProps> = ({ dotbots, viewport, activeAreas, siteAreas, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
+const DotBots: React.FC<DotBotsProps> = ({ dotbots, viewport, siteAreas, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
   const [activeDotbot, setActiveDotbot] = useState(inactiveAddress);
   const [showDotBotHistory, setShowDotBotHistory] = useState(true);
   const [dotbotHistorySize, setDotbotHistorySize] = useState(maxPositionHistory);
@@ -240,7 +239,6 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, viewport, activeAreas, siteA
                         mapClicked={mapClicked}
                         mapSize={350}
                         viewport={viewport}
-                        activeAreas={activeAreas}
                         siteAreas={siteAreas}
                         backgroundMap={backgroundMap}
                         publish={publish}
@@ -258,7 +256,6 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, viewport, activeAreas, siteA
                         mapClicked={mapClicked}
                         mapSize={1000}
                         viewport={viewport}
-                        activeAreas={activeAreas}
                         siteAreas={siteAreas}
                         backgroundMap={backgroundMap}
                         publish={publish}

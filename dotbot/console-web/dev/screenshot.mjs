@@ -1,9 +1,12 @@
 // Dev screenshot helper: loads a console URL in headless Chrome, waits for
 // live data to render (or a fixed delay), then captures a PNG.
-// Usage: node dev/screenshot.mjs <url> <outfile> [waitMs=4000]
+// Usage: node dev/screenshot.mjs <url> <outfile> [waitMs=4000] [width] [height]
+// A width below 500 is why this exists rather than `chrome --screenshot`:
+// headless Chrome clamps its window there, so the phone layout never shows.
 import puppeteer from "puppeteer-core";
 
-const [url, outfile, waitMs = "4000"] = process.argv.slice(2);
+const [url, outfile, waitMs = "4000", width = "1440", height = "900"] =
+  process.argv.slice(2);
 if (!url || !outfile) {
   console.error("usage: node dev/screenshot.mjs <url> <outfile> [waitMs]");
   process.exit(1);
@@ -15,9 +18,12 @@ const browser = await puppeteer.launch({
   args: ["--disable-gpu", "--hide-scrollbars"],
 });
 const page = await browser.newPage();
-await page.setViewport({ width: 1440, height: 900 });
+await page.setViewport({ width: Number(width), height: Number(height) });
 await page.goto(url, { waitUntil: "domcontentloaded" });
 await new Promise((r) => setTimeout(r, Number(waitMs)));
 await page.screenshot({ path: outfile });
+const overflow = await page.evaluate(
+  () => document.documentElement.scrollWidth - window.innerWidth,
+);
 await browser.close();
-console.log("saved", outfile);
+console.log("saved", outfile, `viewport ${width}x${height}`, `overflow ${overflow}px`);

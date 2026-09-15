@@ -174,6 +174,12 @@ def load_calibration_file(path: Path) -> tuple[int, bytes]:
             f"Invalid calibration file: homography count {len(stations)} exceeds "
             f"LH2 limit ({LH2_MAX_HOMOGRAPHIES})"
         )
+    if [s.index for s in stations] != list(range(len(stations))):
+        got = ", ".join(str(s.index) for s in stations)
+        raise click.ClickException(
+            f"Invalid calibration file: the config page keys matrices by position, "
+            f"so stations must be numbered from zero without gaps, got {got}"
+        )
     matrices = bytearray()
     for station in stations:
         matrices += homography_as_bytes(station.matrix)

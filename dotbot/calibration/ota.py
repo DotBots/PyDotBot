@@ -149,14 +149,26 @@ class CaptureSession:
     background reader thread decodes records addressed to `device` into a
     queue; `capture()` triggers and waits, re-triggering on timeout because
     the trigger send is best-effort (no transport-level ack).
+
+    Records arriving outside a capture window came from the robot's own
+    trigger rather than a request; `on_idle_records` receives them instead of
+    the queue, so a press is stored rather than drained.
     """
 
-    def __init__(self, client, device: str, tag: int):
+    def __init__(
+        self,
+        client,
+        device: str,
+        tag: int,
+        on_idle_records: Callable[[list[LH2CalibrationSample]], None] | None = None,
+    ):
         self._client = client
         self._device = device.upper()
         self._tag = tag
         self._queue: queue.Queue = queue.Queue()
         self._stop = threading.Event()
+        self._capturing = threading.Event()
+        self._on_idle_records = on_idle_records
         self._thread = threading.Thread(target=self._reader, daemon=True)
 
     def __enter__(self) -> CaptureSession:
@@ -175,8 +187,12 @@ class CaptureSession:
                     continue
                 data = bytes.fromhex(event.get("data_hex", ""))
                 decoded = parse_capture_payload(data, self._tag)
-                if decoded:
+                if not decoded:
+                    continue
+                if self._capturing.is_set() or self._on_idle_records is None:
                     self._queue.put(decoded)
+                else:
+                    self._on_idle_records(decoded)
         except Exception as exc:  # surfaced on the next capture() get()
             self._queue.put(exc)
 
@@ -222,14 +238,22 @@ class CaptureSession:
         timeout: float = CAPTURE_TIMEOUT_DEFAULT,
         retries: int = CAPTURE_RETRIES_DEFAULT,
         on_attempt: Callable[[int, int], None] | None = None,
-        on_read: Callable[[int, int], None] | None = None,
+        on_read: (
+            Callable[[int, int, list[list[LH2CalibrationSample]]], None] | None
+        ) = None,
     ) -> PointCapture:
         """Take `reads` captures at one point and group them per station."""
         collected: list[list[LH2CalibrationSample]] = []
-        for index in range(reads):
-            if on_read is not None:
-                on_read(index + 1, reads)
-            collected.append(
-                self.capture(timeout=timeout, retries=retries, on_attempt=on_attempt)
-            )
+        self._capturing.set()
+        try:
+            for index in range(reads):
+                collected.append(
+                    self.capture(
+                        timeout=timeout, retries=retries, on_attempt=on_attempt
+                    )
+                )
+                if on_read is not None:
+                    on_read(index + 1, reads, collected)
+        finally:
+            self._capturing.clear()
         return samples_from_reads(collected, point)

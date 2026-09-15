@@ -5,6 +5,8 @@
   --surface: #1e222b;
   --elevated: #2a2f3a;
   --grid: #2c313c;
+  /* The half-metre sub-grid: weaker than --grid, so the metre still reads. */
+  --grid-sub: #21252d;
   --text: #e6e9ef;
   --muted: #9aa4b2;
   --accent: #e4032e;
@@ -20,6 +22,15 @@
   --s-Resetting: #a855f7;
   --s-Inactive: #6b7280;
 
+  /* Area colours: map furniture, so dusty rather than saturated, and kept off
+     the hues the state colours and the accent own. Shared across themes. */
+  --area-0: #8a93e8;
+  --area-1: #c98ab8;
+  --area-2: #a9b45a;
+  --area-3: #d3a06a;
+  --area-4: #6fb2ad;
+  --area-5: #7f9ccb;
+
   --font-ui: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
@@ -29,6 +40,7 @@
   --surface: #ffffff;
   --elevated: #eef1f6;
   --grid: #dbe1ea;
+  --grid-sub: #e9edf3;
   --text: #0f172a;
   --muted: #5b6577;
   --hairline: rgba(0, 0, 0, 0.07);

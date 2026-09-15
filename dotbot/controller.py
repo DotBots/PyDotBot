@@ -49,13 +49,14 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
-from dotbot.area import fallback_area
+from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.csv_data_logger import CSVDataLogger, CSVLog
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
+    DotBotCalibrationSessionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -73,6 +74,7 @@ from dotbot.protocol import (
 )
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
+from dotbot.swarm_client import build_swarmit_client, conn_string
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -120,9 +122,6 @@ class ControllerSettings:
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
-    # The areas shown, each entry a name, a "+"-joined composite or
-    # x,y,w,h in mm. Empty means the whole site.
-    area: tuple[str, ...] = ()
     site: Optional[Site] = None
     calibration: Optional[str] = None
     background_map: str = ""
@@ -197,10 +196,6 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
         self.site = settings.site or Site()
-        if settings.area:
-            self.areas = self.site.registry().resolve_all(list(settings.area))
-        else:
-            self.areas = [self.site.extent or fallback_area(self.site.name)]
         self.calibration = None
         self.lh2_calibration = []
         if settings.calibration:
@@ -220,6 +215,12 @@ class Controller:
                 "No calibration selected: robots keep whatever they hold. "
                 "Pass --calibration <path|id> or set [run.controller] calibration."
             )
+        self.calibration_session = SessionDriver(
+            client_factory=self._swarmit_client,
+            notify=self._notify_calibration_session,
+            site=self.site,
+            stale_devices=self.stale_devices,
+        )
         self.api = api
         if settings.csv_data_output is not None:
             self.logger.info("CSV data output enabled", path=settings.csv_data_output)
@@ -595,6 +596,56 @@ class Controller:
             if websocket in self.websockets:
                 self.websockets.remove(websocket)
 
+    def stale_devices(self) -> List[str]:
+        """Robots that do not hold every station of the calibration in use.
+
+        Today's firmware advertises a per-station bitmask and not the
+        calibration's id, so this answers "which robots are missing a
+        matrix", which is the worklist a push can act on.
+        """
+        if not self.lh2_calibration:
+            return []
+        stale = []
+        for address, dotbot in self.dotbots.items():
+            if not all(
+                dotbot.calibrated >> station.index & 0x01
+                for station in self.lh2_calibration
+            ):
+                stale.append(address)
+        return sorted(stale)
+
+    def _swarmit_client(self, device: str = ""):
+        """A swarmit client on the same connection the controller runs on.
+
+        There is no fleet behind a simulator adapter, so a capture would
+        stall on its first request; the simulated client answers it instead,
+        which is what makes calibration mode walkable without hardware.
+        """
+        if self.settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+            from dotbot.calibration.simulated import SimulatedCaptureClient
+
+            return SimulatedCaptureClient(device, self._outstanding_point)
+        return build_swarmit_client(
+            conn_string(self.settings), self.settings.network_id, device or None
+        )
+
+    def _outstanding_point(self):
+        """The frame coordinates the session is capturing, for the simulator."""
+        session = self.calibration_session.session
+        point = session.outstanding if session else None
+        return None if point is None else point.mm
+
+    async def _notify_calibration_session(self, state):
+        """One notification per calibration-session state change."""
+        await self.notify_clients(
+            DotBotNotificationModel(
+                cmd=DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE,
+                calibration_session=(
+                    DotBotCalibrationSessionModel(**state) if state else None
+                ),
+            )
+        )
+
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
         self.logger.debug("notify", cmd=notification.cmd.name)
@@ -730,6 +781,7 @@ class Controller:
         elif self.settings.adapter == "dotbot-simulator":
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
+                self.site,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

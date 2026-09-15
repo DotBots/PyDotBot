@@ -24,7 +24,6 @@ extra; ImportError at invocation prints an install hint instead of a
 traceback.
 """
 
-import datetime
 import sys
 import time
 
@@ -33,22 +32,14 @@ import click
 from dotbot.cli._site import site_from_context
 
 
-def _build_swarmit_client(ctx, conn, swarm_id, device=None):
-    """Build a swarmit client targeting one `device`, or the whole swarm when None.
+def _swarmit_client(ctx, conn, swarm_id, device=None):
+    """A swarmit client for this CLI invocation.
 
-    Reuses swarmit's own conn-string translation so the two CLIs can't
-    drift, and falls back to the unified dotbot config's `conn` / `swarm_id`
-    (like `dotbot swarm`) when the flags are omitted. Imported lazily: the
-    swarmit protocol registry must not load during PyDotBot test collection.
-
-    Transport selection is swarmit's call: `build_client` probes for a running
-    swarmit server and falls back to an in-process controller on its own, so
-    there is no flag to choose here.
+    Falls back to the unified dotbot config's `conn` / `swarm_id` (like
+    `dotbot swarm`) when the flags are omitted, then hands off to the builder
+    the controller uses, so the two cannot drift on what a connection string
+    means.
     """
-    from swarmit.cli.main import DEFAULTS, _conn_to_config
-    from swarmit.client import build_client
-    from swarmit.testbed.controller import ControllerSettings
-
     if conn is None or swarm_id is None:
         from dotbot.config import resolve
 
@@ -60,21 +51,9 @@ def _build_swarmit_client(ctx, conn, swarm_id, device=None):
         if swarm_id is None:
             swarm_id = resolve("swarm_id", config=config, deployment=deployment)
 
-    final = {**DEFAULTS, **_conn_to_config(conn, swarm_id)}
-    settings = ControllerSettings(
-        serial_port=final["serial_port"],
-        serial_baudrate=final["baudrate"],
-        mqtt_host=final["mqtt_host"],
-        mqtt_port=final["mqtt_port"],
-        mqtt_use_tls=final["mqtt_use_tls"],
-        mqtt_username=final.get("mqtt_username"),
-        mqtt_password=final.get("mqtt_password"),
-        network_id=int(final["swarmit_network_id"], 16),
-        adapter=final["adapter"],
-        devices=[device.upper()] if device else [],
-        verbose=False,
-    )
-    return build_client(settings)
+    from dotbot.swarm_client import build_swarmit_client
+
+    return build_swarmit_client(conn, swarm_id, device)
 
 
 @click.group(
@@ -190,24 +169,14 @@ def _collect(
     try:
         from swarmit.testbed.protocol import LH2_CALIB_TAG
 
-        from dotbot.calibration.lighthouse2 import (
-            VALID_MM_DEFAULT,
-            LighthouseManager,
-            Placement,
-            calibration_payload_int32,
-            read_calibration_file,
-        )
         from dotbot.calibration.ota import (
             CAPTURE_READS_DEFAULT,
             CAPTURE_RETRIES_DEFAULT,
             CAPTURE_TIMEOUT_DEFAULT,
             CaptureSession,
         )
-        from dotbot.calibration.points import (
-            collect_header,
-            point_prompt,
-            resolve_placement_points,
-        )
+        from dotbot.calibration.points import collect_header, point_prompt
+        from dotbot.calibration.session import CalibrationSession, SessionError
     except ImportError as exc:
         click.echo(
             "`dotbot swarm lh2-calibration collect` needs the calibration "
@@ -218,27 +187,22 @@ def _collect(
         click.echo(f"(import error was: {exc})", err=True)
         sys.exit(1)
 
-    reads = reads if reads is not None else CAPTURE_READS_DEFAULT
-    timeout = timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT
-    retries = retries if retries is not None else CAPTURE_RETRIES_DEFAULT
     specs = list(points) or ["arena:corners"]
-
     site, site_source = site_from_context(ctx, site_name)
     try:
-        placements = resolve_placement_points(specs, site.registry())
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    if len(placements) < 4:
-        raise click.ClickException(
-            f"a homography needs at least 4 points, --points resolved to "
-            f"{len(placements)}. Span the area you will drive in."
+        session = CalibrationSession.resolve(
+            specs,
+            site=site,
+            device=device,
+            reads=reads if reads is not None else CAPTURE_READS_DEFAULT,
+            timeout=timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT,
+            retries=retries if retries is not None else CAPTURE_RETRIES_DEFAULT,
         )
-
-    points_mm = [p.mm for p in placements]
-    placement = Placement(index=0, at=" ".join(specs), points_mm=points_mm)
+    except (SessionError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
     try:
-        client = _build_swarmit_client(ctx, conn, swarm_id, device)
+        client = _swarmit_client(ctx, conn, swarm_id, device)
     except click.ClickException:
         raise
     except Exception as exc:
@@ -246,70 +210,62 @@ def _collect(
         sys.exit(1)
 
     with client:
-        with CaptureSession(client, device, LH2_CALIB_TAG) as session:
+        with CaptureSession(client, device, LH2_CALIB_TAG) as stream:
             # Give the transport's own connect/subscribe log lines a beat to
             # print before our prompts, so the two don't interleave on screen.
             time.sleep(0.2)
             click.echo(
-                collect_header(site, site_source, len(placements), reads, device)
+                collect_header(
+                    site, site_source, len(session.points), session.reads, device
+                )
             )
-            for index, point in enumerate(placements):
+            while not session.complete:
+                outstanding = session.outstanding
                 click.prompt(
-                    "  " + point_prompt(index, len(placements), point),
+                    "  "
+                    + point_prompt(
+                        outstanding.index,
+                        len(session.points),
+                        outstanding.placement,
+                    ),
                     default="",
                     show_default=False,
                     prompt_suffix="",
                 )
                 try:
-                    capture = session.capture_point(
-                        point=index,
-                        reads=reads,
-                        timeout=timeout,
-                        retries=retries,
-                    )
+                    point = session.capture(stream)
                 except TimeoutError as exc:
                     click.echo(f"  ! {exc}", err=True)
                     raise click.Abort()
-                placement.samples.extend(capture.samples)
-                for sample in capture.samples:
+                for sample in point.capture.samples:
                     counts = sample.mean_counts()
                     click.echo(
                         f"    station {sample.station}: {sample.reads} reads, "
                         f"mean count1={counts.count1:.1f} count2={counts.count2:.1f}"
                     )
-                if capture.dropped:
-                    click.echo(f"    {capture.drop_summary()}")
+                if point.capture.dropped:
+                    click.echo(f"    {point.capture.drop_summary()}")
 
-        placement.captured_at = datetime.datetime.now(datetime.timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        manager = LighthouseManager(
-            placements=[placement],
-            site=site,
-            valid_mm=site.valid_mm or VALID_MM_DEFAULT,
-        )
         try:
-            stations = manager.solve()
+            calibration = session.save(tag=tag)
         except Exception as exc:
             click.echo(f"Failed to compute calibration: {exc}", err=True)
             sys.exit(1)
-        for station in stations:
+        for station in session.stations:
             click.echo(
                 f"station {station.index}: {station.points} points, "
                 f"residual {station.residual_mm:.3f} mm"
             )
-        for index, seen in manager.unsolved_stations:
+        for index, seen in session.unsolved:
             click.echo(
                 f"station {index}: seen at {seen} point(s), not solved "
                 "(a homography needs 4)"
             )
-        path = manager.save_calibration(tag=tag)
-        calibration = read_calibration_file(path)
-        click.echo(f"\nCalibration saved to {path}")
+        click.echo(f"\nCalibration saved to {session.saved_path}")
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            client.send_lh2_calibration(calibration_payload_int32(calibration.stations))
+            client.send_lh2_calibration(session.push_payload())
             click.echo("Sent the calibration to the robots over the air.")
         else:
             click.echo(
@@ -372,7 +328,7 @@ def _push(ctx, calibration, conn, swarm_id, site_name):
         f"Sending {len(loaded.stations)} calibration matrix/matrices "
         f"({len(payload)} B, id {loaded.id8}, site {site.name}) to the swarm..."
     )
-    client = _build_swarmit_client(ctx, conn, swarm_id)
+    client = _swarmit_client(ctx, conn, swarm_id)
     with client:
         client.send_lh2_calibration(payload)
     click.echo("Sent.")

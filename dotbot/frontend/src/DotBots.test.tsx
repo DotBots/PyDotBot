@@ -62,7 +62,6 @@ const Wrapper: React.FC<{
     <DotBots
       dotbots={dotbots}
       viewport={viewport}
-      activeAreas={[arena]}
       siteAreas={[arena]}
       updateDotbots={setDotbots}
       publishCommand={publishCommand}
@@ -185,7 +184,6 @@ test('mapClicked does nothing when no dotbot is active', () => {
     <DotBots
       dotbots={[bot]}
       viewport={viewport}
-      activeAreas={[arena]}
       siteAreas={[arena]}
       updateDotbots={updateDotbots}
       publishCommand={vi.fn()}
@@ -206,7 +204,6 @@ test('mapClicked does nothing when maxWaypoints is already reached', async () =>
     <DotBots
       dotbots={[bot]}
       viewport={viewport}
-      activeAreas={[arena]}
       siteAreas={[arena]}
       updateDotbots={updateDotbots}
       publishCommand={vi.fn()}

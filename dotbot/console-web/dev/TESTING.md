@@ -24,8 +24,11 @@ controller runs. `curl localhost:5173/controller/dotbots` must return bots.
 Map + selection
 - [ ] Title bar: LIVE (green pulse), bot count; Dark|Light toggle flips theme
 - [ ] Bots move smoothly; heading pointer at the circle edge; battery bar above
-- [ ] Plain drag pans (clamped); plain click clears selection
+- [ ] Plain drag pans (clamped); plain click clears selection; a plain scroll does nothing
 - [ ] Shift-drag marquee selects; shift-click toggles one bot
+- [ ] Cmd/Ctrl-drag zooms to the rectangle; Cmd/Ctrl-click steps in on that point
+- [ ] Cmd/Ctrl-scroll and a trackpad pinch zoom about the pointer; the browser's own page zoom stays put
+- [ ] `?` with nothing selected opens the shortcuts panel; keys read Cmd/Option on a Mac, Ctrl/Alt elsewhere
 - [ ] Click bot: red rectangle + id chip; hover another bot: chip appears
 - [ ] Zoom +/-/recenter; arena keeps margins when rail opens or window resizes
 - [ ] Layers panel: Battery Bars / Waypoints / DotBots / Real-scale / Trails toggle live
@@ -42,6 +45,8 @@ Control dock
 - [ ] LED button -> swatch grid -> bot circle + map dot recolor (toast confirms)
 - [ ] Alt-click map queues waypoints (dashed diamonds); popover lists "x, y mm" with per-item remove
 - [ ] Go sends: bot navigates, diamonds go solid, button morphs to "Stop nav"
+- [ ] `G` does what the Go / Stop nav button does; with nothing selected, nothing queued or
+      nothing drivable it toasts why instead
 - [ ] Deselect and reselect other bots: the Planned mission survives (see rail Missions)
 
 Testbed rail

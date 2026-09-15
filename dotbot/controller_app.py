@@ -228,17 +228,6 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help="Path to a .toml configuration file.",
 )
 @click.option(
-    "--area",
-    "area",
-    type=str,
-    multiple=True,
-    help=(
-        "The areas shown at start (none means the whole site): an area name "
-        "from the config's [sites.<site>.areas.*] tables, a '+'-joined "
-        "composite, or x,y,w,h in mm. Repeat for more than one."
-    ),
-)
-@click.option(
     "--site",
     "site",
     type=str,
@@ -265,8 +254,8 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help=(
         "Path to a background map image file in png format. The image should"
         "be a top-down view of the environment, with 1024 pixels width and a "
-        "height proportional to the areas shown, which are set with the "
-        "--area option."
+        "height proportional to the site extent (2 x 2 m when the site has "
+        "none)."
     ),
 )
 @click.option(
@@ -310,7 +299,6 @@ def main(
     gw_address,
     controller_http_port,
     controller_http_host,
-    area,
     site,
     calibration,
     background_map,
@@ -346,20 +334,10 @@ def main(
 
     unified = (ctx.obj or {}).get("config")
     site, site_source = site_from_context(ctx, site)
-    area, area_source = _resolve_controller_key(
-        "area", list(area) or None, unified, None
-    )
-    if isinstance(area, str):
-        area = [area]
     calibration, calibration_source = _resolve_controller_key(
         "calibration", calibration, unified, None
     )
     print(f"Site: {site.name} (from {site_source})")
-    print(
-        f"Area: {' '.join(area)} (from {area_source})"
-        if area
-        else "Area: the whole site"
-    )
     print(
         f"Calibration: {calibration} (from {calibration_source})"
         if calibration
@@ -398,7 +376,6 @@ def main(
         "gw_address": gw_address,
         "controller_http_port": controller_http_port,
         "controller_http_host": controller_http_host,
-        "area": tuple(area or ()),
         "site": site,
         "calibration": calibration,
         "background_map": background_map,

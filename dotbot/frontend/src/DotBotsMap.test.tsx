@@ -14,7 +14,6 @@ const defaultProps = {
   dotbots: [] as DotBot[],
   active: inactiveAddress,
   viewport,
-  activeAreas: [arena],
   siteAreas: [arena, { x: 0, y: 2000, w: 2000, h: 2000, name: 'annex' }],
   mapSize: 400,
   showHistory: true,

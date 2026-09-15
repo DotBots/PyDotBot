@@ -58,7 +58,7 @@ class Site:
         return (0, 0, int(self.extent_mm[0]), int(self.extent_mm[1]))
 
     def registry(self) -> AreaRegistry:
-        """The resolver `--area` and `--points` run against."""
+        """The resolver `--points` runs against."""
         return AreaRegistry(named=dict(self.areas), site=self.name)
 
 

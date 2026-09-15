@@ -2,7 +2,6 @@ import { vi } from 'vitest';
 import axios from 'axios';
 import {
   apiFetchDotbots,
-  apiFetchArea,
   apiFetchSite,
   apiFetchBackgroundMap,
   apiUpdateMoveRaw,
@@ -35,23 +34,6 @@ describe('apiFetchDotbots', () => {
   test('propagates axios error', async () => {
     mockedGet.mockRejectedValueOnce(new Error('Network Error'));
     await expect(apiFetchDotbots()).rejects.toThrow('Network Error');
-  });
-});
-
-// ─── apiFetchArea ────────────────────────────────────────────────────────────
-
-describe('apiFetchArea', () => {
-  test('GET /controller/area and returns the shown rectangles', async () => {
-    const areas = [{ x: 0, y: 2000, w: 2000, h: 2000, name: 'annex' }];
-    mockedGet.mockResolvedValueOnce({ data: areas });
-    const result = await apiFetchArea();
-    expect(mockedGet).toHaveBeenCalledWith(`${API_URL}/controller/area`);
-    expect(result).toEqual(areas);
-  });
-
-  test('propagates axios error', async () => {
-    mockedGet.mockRejectedValueOnce(new Error('Network Error'));
-    await expect(apiFetchArea()).rejects.toThrow('Network Error');
   });
 });
 

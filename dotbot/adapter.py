@@ -2,6 +2,7 @@
 
 import asyncio
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from dotbot_utils.hdlc import HDLCHandler, HDLCState, hdlc_encode
 from dotbot_utils.protocol import (
@@ -24,6 +25,7 @@ from dotbot import SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
 from dotbot.logger import LOGGER
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
+from dotbot.site import Site
 
 
 class GatewayAdapterBase(ABC):
@@ -287,12 +289,14 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
     def __init__(
         self,
         simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
+        site: Optional[Site] = None,
     ):
         self.simulator_init_state = simulator_init_state
+        self.site = site
 
     def create_simulator(self, on_frame_received: callable):
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, self.simulator_init_state
+            on_frame_received, self.simulator_init_state, self.site
         )
 
 

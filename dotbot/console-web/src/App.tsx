@@ -1,28 +1,54 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchConnection, putWaypoints } from "./api";
+import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import { isPhoneWidth, sessionRect } from "./calibration";
+import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
-import { Inspector } from "./Inspector";
 import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
+import { RightPane, RightTab } from "./RightPane";
+import { SetupCard } from "./SetupCard";
+import {
+  ACTION_KEY,
+  CLOSE_KEY,
+  MAP_MODIFIER,
+  SHORTCUTS_KEY,
+  modifierLabel,
+  onMac,
+  pressed,
+  typingIn,
+} from "./shortcuts";
+import { ShortcutsPanel } from "./ShortcutsPanel";
+import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   ControllerConnection,
   LH2Position,
   PlannedMission,
 } from "./types";
+import { useCalibration } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
+import {
+  Camera as ZoomCamera,
+  cameraForArea,
+  cameraForZoom,
+  padArea,
+  zoomFromSearch,
+  zoomMax,
+} from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, site, activeAreas, viewport, wsUp } = useFleet();
+  const { bots, site, session, setSession, viewport, wsUp } = useFleet();
+  const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -61,23 +87,133 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
-  const [layersOpen, setLayersOpen] = useState(false);
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
     waypoints: true,
     hotSpots: false,
     dotBots: true,
-    trueScale: true,
     trails: false,
     crashedOnly: false,
   });
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  // The robot chosen to capture: clicked on the map, or typed in the card.
+  const [capturer, setCapturer] = useState("");
+  const [rightTab, setRightTab] = useState<RightTab>("layers");
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [conn, setConn] = useState<ControllerConnection | null>(null);
+
+  // Below this width the step card is the whole screen: calibration day
+  // happens on the floor, and the console does not reflow - at 390 px the
+  // rail panel alone would take 340 of them.
+  const [narrow, setNarrow] = useState(() => isPhoneWidth(window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setNarrow(isPhoneWidth(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Area visibility is a map layer, not shared state: no controller call, and
+  // the set is this browser's.
+  const [hiddenAreas, setHiddenAreas] = useState<Set<string>>(loadHiddenAreas);
+  const onAreaToggle = useCallback((name: string) => {
+    setHiddenAreas((prev) => {
+      const next = toggleHidden(prev, name);
+      saveHiddenAreas(next);
+      return next;
+    });
+  }, []);
+
+  // The rail's action opens the tab that sets a session up; the session
+  // itself is started from there, once its rectangle and reads are chosen.
+  const onCalibrate = useCallback(() => {
+    setRightTab("calibrate");
+    setRightCollapsed(false);
+  }, []);
+
+  // A named zoom is view state: it moves the camera and goes nowhere else.
+  const zoomTo = useCallback(
+    (name: string) => {
+      if (!geom) return;
+      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, geom);
+      if (next) setCam(next);
+    },
+    [geom, site, viewport],
+  );
+
+  // ?zoom=<site|area-name> presets the view, once the canvas has a size.
+  const presetZoomRef = useRef(false);
+  useEffect(() => {
+    if (presetZoomRef.current || !geom || !site) return;
+    const asked = zoomFromSearch(window.location.search, site);
+    if (asked) zoomTo(asked);
+    presetZoomRef.current = true;
+  }, [geom, site, zoomTo]);
+
+  // Calibration mode takes over the right pane and the viewport, and gives
+  // both back on Done: the tab that was open before, and the camera that was
+  // on it.
+  const beforeCalibration = useRef<{ tab: RightTab; cam: Camera } | null>(null);
+  const geomRef = useRef<ViewGeom | null>(geom);
+  geomRef.current = geom;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const siteRef = useRef(site);
+  siteRef.current = site;
+  const rightTabRef = useRef(rightTab);
+  rightTabRef.current = rightTab;
+  const camRef = useRef(cam);
+  camRef.current = cam;
+
+  useEffect(() => {
+    if (session && !beforeCalibration.current) {
+      beforeCalibration.current = { tab: rightTabRef.current, cam: camRef.current };
+      setRightTab("calibrate");
+      setRightCollapsed(false);
+      const rect = sessionRect(session);
+      if (rect && rect.w > 0 && rect.h > 0 && geomRef.current) {
+        setCam(
+          cameraForArea(
+            padArea(rect),
+            viewportRef.current,
+            geomRef.current,
+            zoomMax(siteRef.current, viewportRef.current, geomRef.current),
+          ),
+        );
+      }
+      return;
+    }
+    if (!session && beforeCalibration.current) {
+      const { tab, cam: previous } = beforeCalibration.current;
+      beforeCalibration.current = null;
+      setRightTab(tab);
+      setCam(previous);
+    }
+  }, [session]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
     fetchConnection().then(setConn);
   }, []);
+
+  // The shortcuts panel: its key opens it with nothing selected and closes
+  // it again; Escape closes it; a key typed into a field is left alone.
+  const [shortcuts, setShortcuts] = useState(false);
+  const nothingSelected = selection.size === 0;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingIn(e.target)) return;
+      if (e.key === SHORTCUTS_KEY) {
+        if (shortcuts) setShortcuts(false);
+        else if (nothingSelected) setShortcuts(true);
+        else return;
+        e.preventDefault();
+      } else if (e.key === CLOSE_KEY && shortcuts) {
+        setShortcuts(false);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, nothingSelected]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -150,6 +286,29 @@ export const App: React.FC = () => {
     if (drivableSelected.length > 0) showToast("Navigation stopped");
   }, [drivableSelected, showToast]);
 
+  // The go key is the dock's Go button: it sends the selection to its queued
+  // waypoints, or stops it when it is already under way. With nothing to act
+  // on it says what is missing, so a press never passes in silence.
+  const anyAuto = drivableSelected.some((b) => b.nav === "auto");
+  const selectedCount = selectedBots.length;
+  const drivableCount = drivableSelected.length;
+  const queued = pending.length;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || typingIn(e.target) || !pressed(e, ACTION_KEY.go)) return;
+      if (selectedCount === 0) showToast("Nothing selected");
+      else if (drivableCount === 0) showToast("Not drivable");
+      else if (anyAuto) onStopNav();
+      else if (queued > 0) onGo();
+      else
+        showToast(
+          `No waypoints queued: ${modifierLabel(MAP_MODIFIER.waypoint, onMac())} + click the floor adds one`,
+        );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, selectedCount, drivableCount, anyAuto, queued, onGo, onStopNav, showToast]);
+
   const onClearQueue = useCallback(() => {
     setPlanned((prev) => prev.filter((m) => m.key !== selKey));
   }, [selKey]);
@@ -197,10 +356,66 @@ export const App: React.FC = () => {
     { key: "waypoints", label: "Waypoints" },
     { key: "hotSpots", label: "HotSpots" },
     { key: "dotBots", label: "DotBots" },
-    { key: "trueScale", label: "Real-scale bots" },
     { key: "trails", label: "Trails" },
     { key: "crashedOnly", label: "Only crashed bots" },
   ];
+
+  // On a phone the card is the whole screen: a small picture at the top so
+  // the operator knows which corner is next from a crouch, and Capture as
+  // the one large target. The setup card takes the screen the same way, so a
+  // session can be set up from the floor rather than only from a desk.
+  if (narrow && (session || rightTab === "calibrate")) {
+    return (
+      <div
+        data-theme={theme}
+        style={{
+          minHeight: "100vh",
+          width: "100%",
+          overflowX: "hidden",
+          background: "var(--canvas)",
+          color: "var(--text)",
+          fontFamily: "var(--font-ui)",
+          fontSize: 13,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            height: 44,
+            padding: "0 14px",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--hairline)",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 15 }}>DotBots</div>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            {site?.name ?? "unknown site"}
+          </span>
+        </div>
+        {session ? (
+          <StepCard
+            session={session}
+            calibration={calibration}
+            areaNames={session.area ? [session.area] : []}
+            device={capturer || session.device || ""}
+            onDeviceChange={setCapturer}
+            phone
+            onDone={() => calibration.abandon()}
+          />
+        ) : (
+          <SetupCard
+            site={site}
+            calibration={calibration}
+            device={capturer}
+            onLeave={() => setRightTab("layers")}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -332,6 +547,12 @@ export const App: React.FC = () => {
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
+          site={site}
+          session={session}
+          calibrationBusy={calibration.busy}
+          calibrationError={calibration.error}
+          onCalibrate={onCalibrate}
+          onPushStale={() => calibration.push()}
         />
 
         {/* view area */}
@@ -340,13 +561,15 @@ export const App: React.FC = () => {
             <MapView
               bots={shownBots}
               viewport={viewport}
-              activeAreas={activeAreas}
               siteAreas={site?.areas ?? []}
+              hiddenAreas={hiddenAreas}
+              siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
+                  ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
                 };
@@ -356,6 +579,11 @@ export const App: React.FC = () => {
               onGeom={setGeom}
               onSelect={onSelect}
               onAddWaypoint={onAddWaypoint}
+              session={session}
+              onPickCapturer={(id) => setCapturer(id.toUpperCase())}
+              site={site}
+              onZoom={zoomTo}
+              onShortcuts={() => setShortcuts(true)}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
@@ -363,42 +591,6 @@ export const App: React.FC = () => {
 
           {/* shared view switcher */}
           <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "center", zIndex: 12 }}>
-            <div
-              onClick={() => setInspectorOpen((v) => !v)}
-              title="Show the full device info for the selection"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 11px",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 12,
-                background: inspectorOpen ? "var(--elevated)" : "var(--surface)",
-                border: "1px solid var(--hairline)",
-              }}
-            >
-              &#9432;&nbsp;Info
-            </div>
-            {view === "map" && (
-              <div
-                onClick={() => setLayersOpen((v) => !v)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 11px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  background: layersOpen ? "var(--elevated)" : "var(--surface)",
-                  border: "1px solid var(--hairline)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,.3)",
-                }}
-              >
-                &#9636; Layers
-              </div>
-            )}
             <div
               style={{
                 display: "flex",
@@ -454,74 +646,35 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* layers panel */}
-          {layersOpen && view === "map" && (
-            <div
-              style={{
-                position: "absolute",
-                top: 52,
-                right: 12,
-                width: 178,
-                background: "var(--surface)",
-                border: "1px solid var(--hairline)",
-                borderRadius: 10,
-                padding: 10,
-                zIndex: 12,
-                boxShadow: "0 8px 30px rgba(0,0,0,.4)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", margin: "0 4px 6px" }}>
-                <span style={{ fontSize: 10, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)" }}>Layers</span>
-                <div style={{ flex: 1 }} />
-                <span onClick={() => setLayersOpen(false)} style={{ cursor: "pointer", color: "var(--muted)", fontSize: 14, lineHeight: 1 }}>
-                  &#10005;
-                </span>
-              </div>
-              {layerRows.map((l) => (
-                <div
-                  key={l.key}
-                  onClick={() => setLayers((prev) => ({ ...prev, [l.key]: !prev[l.key] }))}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "5px 4px",
-                    borderRadius: 5,
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: layers[l.key] ? "var(--text)" : "var(--muted)" }}>{l.label}</span>
-                  <span
-                    style={{
-                      width: 15,
-                      height: 15,
-                      borderRadius: 4,
-                      border: "1px solid var(--hairline)",
-                      background: layers[l.key] ? "var(--accent)" : "transparent",
-                      color: "#fff",
-                      fontSize: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {layers[l.key] ? "✓" : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <ShortcutsPanel open={shortcuts} onClose={() => setShortcuts(false)} />
         </div>
-        {inspectorOpen && (
-          <Inspector bots={selectedBots} onClose={() => setInspectorOpen(false)} />
-        )}
+        <RightPane
+          tab={rightTab}
+          setTab={setRightTab}
+          collapsed={rightCollapsed}
+          setCollapsed={setRightCollapsed}
+          bots={selectedBots}
+          site={site}
+          hiddenAreas={hiddenAreas}
+          onAreaToggle={onAreaToggle}
+          onZoom={zoomTo}
+          layers={layers}
+          layerRows={layerRows}
+          onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          session={session}
+          calibration={calibration}
+          device={capturer || session?.device || ""}
+          onDeviceChange={setCapturer}
+          onCalibrationDone={() => calibration.abandon()}
+        />
       </div>
 
       <Footer
         bots={bots}
         flashQueue={orch.queue}
         viewport={viewport}
+        site={site}
+        hiddenAreas={hiddenAreas}
         selection={selection}
         pendingWaypoints={pending}
         cam={cam}

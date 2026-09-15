@@ -60,7 +60,7 @@ describe("the default viewport", () => {
 
   it("surrounds the site extent by the margin on every side", () => {
     expect(VIEWPORT_MARGIN_MM).toBe(2000);
-    expect(siteViewport(site([2000, 4000]), [ARENA], ARENA)).toEqual({
+    expect(siteViewport(site([2000, 4000]), ARENA)).toMatchObject({
       x: -2000,
       y: -2000,
       w: 6000,
@@ -69,22 +69,22 @@ describe("the default viewport", () => {
   });
 
   it("keeps the site's zero at the same fraction of the box on both axes", () => {
-    const vp = siteViewport(site([2000, 4000]), [ARENA], ARENA);
+    const vp = siteViewport(site([2000, 4000]), ARENA);
     expect(areaToFraction({ x: 0, y: 0 }, vp)).toEqual({ fx: 1 / 3, fy: 0.25 });
     expect(areaToFraction({ x: 2000, y: 4000 }, vp)).toEqual({ fx: 2 / 3, fy: 0.75 });
   });
 
-  it("falls back to the areas shown when the site has no measured extent", () => {
-    expect(siteViewport(site(null), [ARENA, ANNEX], ARENA)).toEqual({
+  it("falls back when the site has no measured extent", () => {
+    expect(siteViewport(site(null), ARENA)).toMatchObject({
       x: -2000,
       y: -2000,
-      w: 6000,
-      h: 8000,
+      w: 5000,
+      h: 4800,
     });
   });
 
   it("falls back again when the controller has not answered yet", () => {
-    expect(siteViewport(null, [], ARENA)).toEqual({
+    expect(siteViewport(null, ARENA)).toMatchObject({
       x: -2000,
       y: -2000,
       w: 5000,

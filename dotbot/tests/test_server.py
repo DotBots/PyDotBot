@@ -966,14 +966,13 @@ def test_the_api_binds_loopback_unless_asked_otherwise():
 
 
 @pytest.mark.asyncio
-async def test_get_controller_area():
-    """The areas shown reach a renderer as a list of frame rectangles."""
-    api.controller.areas = [Area(0, 2000, 2000, 2000, "annex")]
-    response = await client.get("/controller/area")
-    assert response.status_code == 200
-    assert response.json() == [
-        {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"}
-    ]
+@pytest.mark.parametrize("method", ["get", "put"])
+async def test_the_area_routes_are_gone(method):
+    """Areas are a client-side layer, so the controller holds no set of them."""
+    response = await getattr(client, method)(
+        "/controller/area", **({} if method == "get" else {"json": {"area": []}})
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

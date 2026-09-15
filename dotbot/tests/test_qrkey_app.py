@@ -94,3 +94,48 @@ verbose = true
     assert args[0].http_port == 1234
     assert args[0].webbrowser is True
     assert args[0].verbose is True
+
+
+@pytest.fixture
+def site_client():
+    """A qrkey client whose REST side answers with one measured site."""
+    from unittest.mock import MagicMock
+
+    from dotbot.area import Area
+    from dotbot.examples.qrkey_demo.client import QrKeyClient
+    from dotbot.site import Site
+
+    rest = MagicMock()
+
+    async def fetch_site():
+        return Site(
+            name="c405-arena",
+            anchor="the arena's top-left corner",
+            extent_mm=(2000, 4000),
+            areas={
+                "arena": Area(0, 0, 2000, 2000, "arena"),
+                "annex": Area(0, 2000, 2000, 2000, "annex"),
+            },
+        )
+
+    rest.fetch_site = fetch_site
+    client = QrKeyClient(QrKeyClientSettings(), rest)
+    client.qrkey = MagicMock()
+    return client
+
+
+def test_a_site_request_replies_with_the_whole_site(site_client):
+    """The MQTT bridge ships the site, so a phone draws what the console draws."""
+    site_client.on_request({"request": 1, "reply": "abc"})
+    topic, message = site_client.qrkey.publish.call_args.args
+    assert topic == "/reply/abc"
+    assert message["request"] == 1
+    assert message["data"] == {
+        "name": "c405-arena",
+        "anchor": "the arena's top-left corner",
+        "extent_mm": [2000, 4000],
+        "areas": [
+            {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"},
+            {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"},
+        ],
+    }

@@ -11,9 +11,15 @@ from typing import List, Optional
 
 import httpx
 
+from dotbot.area import Area
 from dotbot.logger import LOGGER, setup_logging
-from dotbot.models import DotBotAreaModel, DotBotModel, DotBotQueryModel
+from dotbot.models import (
+    DotBotModel,
+    DotBotQueryModel,
+    DotBotSiteModel,
+)
 from dotbot.protocol import ApplicationType
+from dotbot.site import Site
 
 
 class RestClient:
@@ -60,24 +66,32 @@ class RestClient:
                 return [DotBotModel(**dotbot) for dotbot in response.json()]
         return []
 
-    async def fetch_area(self) -> list[DotBotAreaModel]:
-        """Fetch the areas the controller shows, in frame millimetres."""
+    async def fetch_site(self) -> Site:
+        """Fetch the site the controller works in, with its extent and areas."""
         try:
             response = await self._client.get(
-                f"{self.base_url}/area",
+                f"{self.base_url}/site",
                 headers={
                     "Accept": "application/json",
                 },
             )
         except httpx.ConnectError as exc:
-            self._logger.warning(f"Failed to fetch the area set: {exc}")
-        else:
-            if response.status_code != 200:
-                self._logger.warning(
-                    f"Failed to fetch the area set: {response} {response.text}"
-                )
-                raise RuntimeError("Failed to fetch the area set")
-        return [DotBotAreaModel(**item) for item in response.json()]
+            self._logger.warning(f"Failed to fetch the site: {exc}")
+            return Site()
+        if response.status_code != 200:
+            self._logger.warning(
+                f"Failed to fetch the site: {response} {response.text}"
+            )
+            return Site()
+        model = DotBotSiteModel(**response.json())
+        return Site(
+            name=model.name,
+            anchor=model.anchor,
+            extent_mm=(
+                (model.extent_mm[0], model.extent_mm[1]) if model.extent_mm else None
+            ),
+            areas={a.name: Area(a.x, a.y, a.w, a.h, a.name) for a in model.areas},
+        )
 
     async def _send_command(self, address, application, resource, command):
         self._logger.info(

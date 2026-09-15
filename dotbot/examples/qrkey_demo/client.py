@@ -21,12 +21,14 @@ from websockets.asyncio.client import connect
 from dotbot import CONTROLLER_HTTP_HOSTNAME_DEFAULT, CONTROLLER_HTTP_PORT_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    DotBotAreaModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationModel,
     DotBotReplyModel,
     DotBotRequestModel,
     DotBotRequestType,
     DotBotRgbLedCommandModel,
+    DotBotSiteModel,
     DotBotWaypoints,
     DotBotXGOActionCommandModel,
 )
@@ -246,12 +248,21 @@ class QrKeyClient:
                 data=data,
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
-        elif request.request == DotBotRequestType.AREA:
-            logger.info("Publish the area set")
-            areas = self.worker.run(self.client.fetch_area())
+        elif request.request == DotBotRequestType.SITE:
+            logger.info("Publish the site")
+            site = self.worker.run(self.client.fetch_site())
+            model = DotBotSiteModel(
+                name=site.name,
+                anchor=site.anchor,
+                extent_mm=list(site.extent_mm) if site.extent_mm else None,
+                areas=[
+                    DotBotAreaModel(**a.as_dict())
+                    for a in sorted(site.areas.values(), key=lambda a: a.name)
+                ],
+            )
             message = DotBotReplyModel(
-                request=DotBotRequestType.AREA,
-                data=[item.model_dump(exclude_none=True) for item in areas],
+                request=DotBotRequestType.SITE,
+                data=model.model_dump(),
             ).model_dump(exclude_none=True)
             self.qrkey.publish(reply_topic, message)
         else:
