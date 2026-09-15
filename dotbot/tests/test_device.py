@@ -396,7 +396,7 @@ def test_create_config_hex_appends_calibration(tmp_path):
     pytest.importorskip("intelhex")
     from intelhex import IntelHex
 
-    # 2 homography matrices, 36 bytes each (3x3 int32).
+    # 2 matrices, 36 bytes each, as the page writer emits them.
     matrices = bytes(range(72))
     dest = tmp_path / "config-cal.hex"
     create_config_hex(dest, 0x00AA, calibration=(2, matrices))

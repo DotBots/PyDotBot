@@ -22,7 +22,7 @@ const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, mapSize, wsUp } = useFleet();
+  const { bots, site, activeAreas, viewport, wsUp } = useFleet();
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -339,7 +339,9 @@ export const App: React.FC = () => {
           {view === "map" && (
             <MapView
               bots={shownBots}
-              mapSize={mapSize}
+              viewport={viewport}
+              activeAreas={activeAreas}
+              siteAreas={site?.areas ?? []}
               selection={selection}
               layers={layers}
               plannedMissions={planned.map((m) => {
@@ -519,7 +521,7 @@ export const App: React.FC = () => {
       <Footer
         bots={bots}
         flashQueue={orch.queue}
-        mapSize={mapSize}
+        viewport={viewport}
         selection={selection}
         pendingWaypoints={pending}
         cam={cam}

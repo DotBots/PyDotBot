@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { controllerWsUrl, fetchDotBots, fetchMapSize, fetchSwarmitStatus } from "./api";
+import { controllerWsUrl, fetchArea, fetchDotBots, fetchSite, fetchSwarmitStatus } from "./api";
+import { siteViewport } from "./frame";
 import {
+  Area,
   BotState,
   LinkState,
-  MapSize,
   PyDotBot,
   STATE_ORDER,
+  Site,
   SwarmitNode,
   UnifiedBot,
   WsNotification,
@@ -85,15 +87,22 @@ export function merge(
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
+// What the map shows before the controller answers, and what a site with
+// nothing measured yet falls back to.
+const DEFAULT_AREA: Area = { x: 0, y: 0, w: 2000, h: 2000 };
+
 export function useFleet(): {
   bots: UnifiedBot[];
-  mapSize: MapSize;
+  site: Site | null;
+  activeAreas: Area[];
+  viewport: Area;
   wsUp: boolean;
 } {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
-  const [mapSize, setMapSize] = useState<MapSize>({ width: 2000, height: 2000 });
+  const [site, setSite] = useState<Site | null>(null);
+  const [activeAreas, setActiveAreas] = useState<Area[]>([DEFAULT_AREA]);
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
@@ -110,11 +119,14 @@ export function useFleet(): {
     }
   }, [rebuild]);
 
-  // Initial data + map size.
+  // Initial data, the site the map is drawn over, and the areas shown.
   useEffect(() => {
     reloadDotBots();
-    fetchMapSize()
-      .then(setMapSize)
+    fetchSite()
+      .then(setSite)
+      .catch(() => {});
+    fetchArea()
+      .then((list) => setActiveAreas(list.length > 0 ? list : [DEFAULT_AREA]))
       .catch(() => {});
   }, [reloadDotBots]);
 
@@ -199,5 +211,7 @@ export function useFleet(): {
     return () => clearInterval(t);
   }, [rebuild]);
 
-  return { bots, mapSize, wsUp };
+  const viewport = siteViewport(site, activeAreas, DEFAULT_AREA);
+
+  return { bots, site, activeAreas, viewport, wsUp };
 }

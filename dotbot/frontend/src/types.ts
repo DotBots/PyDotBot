@@ -15,9 +15,23 @@ export interface RgbLed {
   blue: number;
 }
 
-export interface AreaSize {
-  width: number;
-  height: number;
+// GET /controller/area - one of the areas shown, in frame mm.
+export interface Area {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  name?: string;
+}
+
+// GET /controller/site - the floor the controller works in. `extent_mm` is
+// [width, height] with zero at its top-left corner, which is where `anchor`
+// points; a site with nothing measured yet reports none.
+export interface Site {
+  name: string;
+  anchor: string;
+  extent_mm: [number, number] | null;
+  areas: Area[];
 }
 
 export interface BackgroundMap {

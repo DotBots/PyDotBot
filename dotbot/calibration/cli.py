@@ -17,7 +17,6 @@ import structlog
 from serial.tools import list_ports
 
 from dotbot.calibration.app import CalibrationApp
-from dotbot.calibration.lighthouse2 import CALIBRATION_DISTANCE_DEFAULT
 
 
 def get_default_port():
@@ -34,6 +33,8 @@ def get_default_port():
 
 SERIAL_BAUDRATE_DEFAULT = 115200
 LH_NUM_DEFAULT = 0
+# Side of the square figure this serial path lays out, centred in the frame.
+DISTANCE_DEFAULT = 500
 
 
 @click.command()
@@ -55,7 +56,7 @@ LH_NUM_DEFAULT = 0
 @click.option(
     "-d",
     "--distance",
-    default=CALIBRATION_DISTANCE_DEFAULT,
+    default=DISTANCE_DEFAULT,
     type=int,
     help="Distance between reference calibration points in millimeters.",
 )

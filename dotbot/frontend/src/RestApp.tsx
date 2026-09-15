@@ -4,7 +4,8 @@ import { handleDotBotUpdate } from "./utils/helpers";
 
 import {
   apiFetchDotbots,
-  apiFetchMapSize,
+  apiFetchArea,
+  apiFetchSite,
   apiFetchBackgroundMap,
   apiUpdateMoveRaw,
   apiUpdateRgbLed,
@@ -12,13 +13,15 @@ import {
   apiClearPositionsHistory,
 } from "./utils/rest";
 import DotBots from './DotBots';
-import { AreaSize, BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, WaypointsData, WsMessage } from "./types";
+import { Area, BackgroundMap, DotBot, CommandData, MoveRawData, RgbLedData, Site, WaypointsData, WsMessage } from "./types";
+import { siteViewport } from "./utils/frame";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'RestApp' });
 
 const RestApp: React.FC = () => {
-  const [areaSize, setAreaSize] = useState<AreaSize | undefined>(undefined);
+  const [activeAreas, setActiveAreas] = useState<Area[] | undefined>(undefined);
+  const [site, setSite] = useState<Site | undefined>(undefined);
   const [backgroundMap, setBackgroundMap] = useState<BackgroundMap | undefined>(undefined);
   const [dotbots, setDotbots] = useState<DotBot[]>([]);
   const [qrkeyAvailable, setQrkeyAvailable] = useState<boolean>(false);
@@ -58,10 +61,15 @@ const RestApp: React.FC = () => {
     if (data) setDotbots(data);
   }, [setDotbots]);
 
-  const fetchAreaSize = useCallback(async () => {
-    const data = await apiFetchMapSize().catch(error => console.log(error));
-    if (data) setAreaSize(data);
-  }, [setAreaSize]);
+  const fetchArea = useCallback(async () => {
+    const data = await apiFetchArea().catch(error => console.log(error));
+    if (data && data.length > 0) setActiveAreas(data);
+  }, [setActiveAreas]);
+
+  const fetchSite = useCallback(async () => {
+    const data = await apiFetchSite().catch(error => console.log(error));
+    if (data) setSite(data);
+  }, [setSite]);
 
   const fetchBackgroundMap = useCallback(async () => {
     const data = await apiFetchBackgroundMap().catch(error => console.log(error));
@@ -185,21 +193,26 @@ const RestApp: React.FC = () => {
     if (!dotbots) {
       fetchDotBots();
     }
-    if (!areaSize) {
-      fetchAreaSize();
+    if (!activeAreas) {
+      fetchArea();
+    }
+    if (!site) {
+      fetchSite();
     }
     if (!backgroundMap) {
       fetchBackgroundMap();
     }
-  }, [dotbots, areaSize, backgroundMap, fetchDotBots, fetchAreaSize, fetchBackgroundMap]);
+  }, [dotbots, activeAreas, site, backgroundMap, fetchDotBots, fetchArea, fetchSite, fetchBackgroundMap]);
 
   return (
     <>
-      {areaSize && (
+      {activeAreas && (
         <div id="dotbots">
           <DotBots
             dotbots={dotbots}
-            areaSize={areaSize}
+            viewport={siteViewport(site, activeAreas, activeAreas[0])}
+            activeAreas={activeAreas}
+            siteAreas={site?.areas ?? []}
             backgroundMap={backgroundMap}
             updateDotbots={setDotbots}
             publishCommand={publishCommand}

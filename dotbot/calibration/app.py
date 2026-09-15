@@ -23,7 +23,24 @@ from dotbot.calibration.lighthouse2 import (
     LH2CalibrationSample,
     LH2Counts,
     LighthouseManager,
+    Placement,
 )
+
+
+def square_placement(side: float) -> Placement:
+    """The square figure this serial path lays out, centred at (2.5d, 2.5d).
+
+    The four corners are visited in CORNERS order, and the frame spans
+    0..5d on both axes, which is the geometry the serial firmware's prompts
+    already assume.
+    """
+    low, high = 2.0 * side, 3.0 * side
+    return Placement(
+        index=0,
+        at=f"serial square, side {side:g} mm",
+        points_mm=[(low, low), (high, low), (low, high), (high, high)],
+    )
+
 
 # Tracebacks from inside the Textual TUI don't make it to the terminal,
 # so we tee everything we'd want to see to a file under CALIBRATION_DIR
@@ -158,7 +175,8 @@ class CalibrationApp(App):
 
         self.hdlc_handler = HDLCHandler()
         self.lh2_manager = LighthouseManager(
-            calibration_distance=distance, extra_lh_num=self.extra_lh_num
+            placements=[square_placement(distance)],
+            extra_lh_num=self.extra_lh_num,
         )
         self.data_log = None
         self.app_log = None

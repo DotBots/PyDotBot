@@ -2,7 +2,8 @@ import { vi } from 'vitest';
 import axios from 'axios';
 import {
   apiFetchDotbots,
-  apiFetchMapSize,
+  apiFetchArea,
+  apiFetchSite,
   apiFetchBackgroundMap,
   apiUpdateMoveRaw,
   apiUpdateRgbLed,
@@ -37,20 +38,37 @@ describe('apiFetchDotbots', () => {
   });
 });
 
-// ─── apiFetchMapSize ─────────────────────────────────────────────────────────
+// ─── apiFetchArea ────────────────────────────────────────────────────────────
 
-describe('apiFetchMapSize', () => {
-  test('GET /controller/map_size and returns data', async () => {
-    const size = { width: 4000, height: 4000 };
-    mockedGet.mockResolvedValueOnce({ data: size });
-    const result = await apiFetchMapSize();
-    expect(mockedGet).toHaveBeenCalledWith(`${API_URL}/controller/map_size`);
-    expect(result).toEqual(size);
+describe('apiFetchArea', () => {
+  test('GET /controller/area and returns the shown rectangles', async () => {
+    const areas = [{ x: 0, y: 2000, w: 2000, h: 2000, name: 'annex' }];
+    mockedGet.mockResolvedValueOnce({ data: areas });
+    const result = await apiFetchArea();
+    expect(mockedGet).toHaveBeenCalledWith(`${API_URL}/controller/area`);
+    expect(result).toEqual(areas);
   });
 
   test('propagates axios error', async () => {
     mockedGet.mockRejectedValueOnce(new Error('Network Error'));
-    await expect(apiFetchMapSize()).rejects.toThrow('Network Error');
+    await expect(apiFetchArea()).rejects.toThrow('Network Error');
+  });
+});
+
+// ─── apiFetchSite ────────────────────────────────────────────────────────────
+
+describe('apiFetchSite', () => {
+  test('GET /controller/site and returns the site with its areas', async () => {
+    const site = {
+      name: 'c405-arena',
+      anchor: 'the arena top-left corner',
+      extent_mm: [2000, 4000],
+      areas: [{ x: 0, y: 0, w: 2000, h: 2000, name: 'arena' }],
+    };
+    mockedGet.mockResolvedValueOnce({ data: site });
+    const result = await apiFetchSite();
+    expect(mockedGet).toHaveBeenCalledWith(`${API_URL}/controller/site`);
+    expect(result).toEqual(site);
   });
 });
 

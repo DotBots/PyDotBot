@@ -16,7 +16,6 @@ import queue
 import time
 import webbrowser
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import serial
@@ -32,7 +31,6 @@ from dotbot import (
     CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
-    MAP_SIZE_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
     MRTA_URL_DEFAULT,
@@ -51,6 +49,8 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.area import fallback_area
+from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.csv_data_logger import CSVDataLogger, CSVLog
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
@@ -58,7 +58,6 @@ from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotGPSPosition,
     DotBotLH2Position,
-    DotBotMapSizeModel,
     DotBotModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
@@ -73,6 +72,7 @@ from dotbot.protocol import (
     PayloadType,
 )
 from dotbot.server import api, default_ui_path
+from dotbot.site import Site
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -86,29 +86,18 @@ INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
-CALIBRATION_PATH = Path.home() / ".dotbot" / "calibration.out"
 
 
-@dataclass
-class CalibrationHomography:
-    """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
+def load_calibration(spec: str, site: Optional[str] = None):
+    """The schema 2 calibration `spec` names: a file path or an id prefix.
 
-    homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
+    Never the newest file on disk: a controller runs on the calibration it
+    was told to run on, so that two bots reporting the same id are known to
+    carry the same numbers. An id prefix resolves under `site` only.
+    """
+    from dotbot.calibration.lighthouse2 import load_calibration as _load
 
-
-def load_calibration() -> list[CalibrationHomography]:
-    if not os.path.exists(CALIBRATION_PATH):
-        return []
-    with open(CALIBRATION_PATH, "rb") as calibration_file:
-        homographies: list[CalibrationHomography] = []
-        homographies_num = int.from_bytes(
-            calibration_file.read(1), "little", signed=False
-        )
-        for _ in range(homographies_num):
-            homographies.append(
-                CalibrationHomography(homography_matrix=calibration_file.read(36))
-            )
-    return homographies
+    return _load(spec, site=site)
 
 
 class ControllerException(Exception):
@@ -131,7 +120,11 @@ class ControllerSettings:
     network_id: str = NETWORK_ID_DEFAULT
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
-    map_size: str = MAP_SIZE_DEFAULT
+    # The areas shown, each entry a name, a "+"-joined composite or
+    # x,y,w,h in mm. Empty means the whole site.
+    area: tuple[str, ...] = ()
+    site: Optional[Site] = None
+    calibration: Optional[str] = None
     background_map: str = ""
     headless: bool = False
     verbose: bool = False
@@ -203,12 +196,31 @@ class Controller:
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
         self.websockets = []
-        self.lh2_calibration: list[CalibrationHomography] = load_calibration()
+        self.site = settings.site or Site()
+        if settings.area:
+            self.areas = self.site.registry().resolve_all(list(settings.area))
+        else:
+            self.areas = [self.site.extent or fallback_area(self.site.name)]
+        self.calibration = None
+        self.lh2_calibration = []
+        if settings.calibration:
+            self.calibration = load_calibration(
+                settings.calibration, site=self.site.name
+            )
+            self.lh2_calibration = self.calibration.stations
+            self.logger.info(
+                "Calibration loaded",
+                path=str(self.calibration.path),
+                site=self.calibration.site.name,
+                calibration_id=self.calibration.id,
+                stations=len(self.lh2_calibration),
+            )
+        else:
+            self.logger.info(
+                "No calibration selected: robots keep whatever they hold. "
+                "Pass --calibration <path|id> or set [run.controller] calibration."
+            )
         self.api = api
-        self.map_size = DotBotMapSizeModel(
-            width=int(settings.map_size.split("x")[0]),
-            height=int(settings.map_size.split("x")[1]),
-        )
         if settings.csv_data_output is not None:
             self.logger.info("CSV data output enabled", path=settings.csv_data_output)
             self.csv_data_logger = CSVDataLogger(settings.csv_data_output)
@@ -384,24 +396,23 @@ class Controller:
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
             need_update = False
             is_fully_calibrated = all(
-                [
-                    dotbot.calibrated >> index & 0x01
-                    for index in range(len(self.lh2_calibration))
-                ]
+                dotbot.calibrated >> station.index & 0x01
+                for station in self.lh2_calibration
             )
             if is_fully_calibrated is False and self.lh2_calibration:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 self.dotbots.update({dotbot.address: dotbot})
-                for index, homography in enumerate(self.lh2_calibration):
+                for station in self.lh2_calibration:
+                    matrix_bytes = homography_as_bytes(station.matrix)
                     self.logger.info(
                         "Sending calibration homography",
-                        index=index,
-                        matrix=homography.homography_matrix,
+                        index=station.index,
+                        matrix=matrix_bytes,
                     )
                     payload = PayloadLh2CalibrationHomography(
-                        index=index,
-                        homography_matrix=homography.homography_matrix,
+                        index=station.index,
+                        homography_matrix=matrix_bytes,
                     )
                     self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:

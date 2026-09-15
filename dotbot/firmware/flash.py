@@ -48,8 +48,8 @@ CONFIG_ADDR = 0x0103F800
 CONFIG_MAGIC = 0x5753524D
 CONFIG_MANIFEST_NAME = "config-manifest.json"
 # LH2 calibration is appended to the swarmit config page after (magic, net_id).
-# Matches swarmit's swarmit_config_t and the format produced by
-# dotbot-lh2-calibration (1-byte count + N matrices of 3x3 int32 LE).
+# Matches swarmit's swarmit_config_t: a homography count then N matrices of
+# 3x3 int32 LE.
 LH2_MATRIX_BYTES = 3 * 3 * 4  # 3x3 int32 matrix
 LH2_MAX_HOMOGRAPHIES = 16
 # Application images are linked after the bootloader.
@@ -146,61 +146,38 @@ def make_config_hex_path(
 
 
 def load_calibration_file(path: Path) -> tuple[int, bytes]:
-    """Parse a swarmit LH2 calibration file.
+    """Read a schema 2 calibration file into the config page's matrix bytes.
 
-    Accepts two formats:
-
-    - **TOML** (`*.toml`, the modern record): schema-versioned, carries
-      metadata (timestamp, station count, calibration distance). The
-      `[calibration].data_hex` field is the same byte payload as the
-      legacy format, hex-encoded.
-    - **Legacy binary** (`calibration.out`): 1-byte count + N × 36 bytes.
-
-    The flash path itself only needs the raw bytes; this loader just
-    extracts them from whichever envelope was provided.
+    The page still carries int32 x 1e3 matrices, so the station matrices go
+    through the calibration package's int32 shim. The page layout follows the
+    element type when the firmware moves to float32.
     """
-    if path.suffix == ".toml":
-        if tomllib is None:
-            raise click.ClickException(
-                "Reading a .toml calibration file needs Python 3.11+ "
-                "(tomllib in the stdlib) or the tomli backport."
-            )
-        try:
-            # Binary mode lets tomllib handle UTF-8 itself (TOML is
-            # spec'd as UTF-8); read_text() would pick up the platform
-            # default (cp1252 on Windows) and mangle the contents.
-            with open(path, "rb") as f:
-                parsed = tomllib.load(f)
-            data = bytes.fromhex(parsed["calibration"]["data_hex"])
-        except (KeyError, ValueError) as exc:
-            raise click.ClickException(
-                f"Malformed TOML calibration file {path}: {exc}"
-            ) from exc
-    else:
-        data = path.read_bytes()
-    if len(data) < 1 or (len(data) - 1) % LH2_MATRIX_BYTES != 0:
+    from dotbot.calibration.lighthouse2 import (
+        homography_as_bytes,
+        read_calibration_file,
+    )
+
+    try:
+        calibration = read_calibration_file(Path(path))
+    except (OSError, ValueError) as exc:
         raise click.ClickException(
-            f"Invalid calibration file size: expected 1+N*{LH2_MATRIX_BYTES} "
-            f"bytes (count byte + matrices), got {len(data)}"
+            f"Cannot read calibration file {path}: {exc}"
+        ) from exc
+
+    stations = sorted(calibration.stations, key=lambda s: s.index)
+    if not stations:
+        raise click.ClickException(
+            f"Calibration file {path} has no solved [[station]] table"
         )
-    count = data[0]
-    matrices = data[1:]
-    expected = len(matrices) // LH2_MATRIX_BYTES
-    if count != expected:
+    if len(stations) > LH2_MAX_HOMOGRAPHIES:
         raise click.ClickException(
-            f"Invalid calibration file: count byte ({count}) does not match "
-            f"matrix payload length ({expected})"
-        )
-    if count == 0:
-        raise click.ClickException(
-            "Invalid calibration file: homography count cannot be zero"
-        )
-    if count > LH2_MAX_HOMOGRAPHIES:
-        raise click.ClickException(
-            f"Invalid calibration file: homography count {count} exceeds "
+            f"Invalid calibration file: homography count {len(stations)} exceeds "
             f"LH2 limit ({LH2_MAX_HOMOGRAPHIES})"
         )
-    return count, matrices
+    matrices = bytearray()
+    for station in stations:
+        matrices += homography_as_bytes(station.matrix)
+    return len(stations), bytes(matrices)
 
 
 def _write_word_le(ih, addr: int, word: int) -> None:
@@ -225,8 +202,9 @@ def create_config_hex(
     #   offset 0:  magic (uint32 LE)
     #   offset 4:  has_net_id (uint32 LE)        — 1 means the net_id below is provisioned
     #   offset 8:  net_id (uint32 LE)
-    #   offset 12: homography_count (uint32 LE)  — swarmit only; meaningful only with --calibration
-    #   offset 16: homographies[N][3][3] (int32 LE) — swarmit only
+    #   offset 12: homography_count (uint32 LE)  - swarmit only; meaningful only with --calibration
+    #   offset 16: the matrices, in whatever element type
+    #              lighthouse2.homography_as_bytes emits - swarmit only
     _write_word_le(ih, CONFIG_ADDR + 0, CONFIG_MAGIC)
     _write_word_le(ih, CONFIG_ADDR + 4, 1)
     _write_word_le(ih, CONFIG_ADDR + 8, net_id_value)

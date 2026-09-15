@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
-import { arenaToFraction, fractionToArena } from "./arenaFrame";
+import { areaToFraction, fractionToArea } from "./frame";
 import { BOT_GLYPH_BOX, BOT_GLYPH_SPAN, BotGlyph } from "./BotGlyph";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
-import { LH2Position, MapSize, UnifiedBot } from "./types";
+import { Area, LH2Position, UnifiedBot } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 
 // Layer set mirrors the v1 design (Battery Bars / Waypoints / HotSpots /
@@ -47,7 +47,11 @@ export function clampCam(cam: Camera, geom: ViewGeom): Camera {
 
 interface MapViewProps {
   bots: UnifiedBot[];
-  mapSize: MapSize;
+  // The part of the frame the map draws: the whole site plus a margin.
+  viewport: Area;
+  // The areas shown, drawn solid; every other area of the site is outlined.
+  activeAreas: Area[];
+  siteAreas: Area[];
   selection: Set<string>;
   layers: Layers;
   plannedMissions: { waypoints: LH2Position[]; led: string | null }[]; // local queues, not yet sent
@@ -74,7 +78,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const marqueeRef = useRef<{ additive: boolean } | null>(null);
   const geomRef = useRef<ViewGeom>({ w: 1000, h: 600, side: 600 });
 
-  const mapDiagonal = Math.hypot(props.mapSize.width, props.mapSize.height);
+  const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
   const smoothPositions = useSmoothPositions(props.bots, mapDiagonal);
 
   const [side, setSide] = useState(600);
@@ -102,9 +106,24 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   }, []);
 
   const pctPos = (p: LH2Position) => {
-    const { fx, fy } = arenaToFraction(p, props.mapSize);
+    const { fx, fy } = areaToFraction(p, props.viewport);
     return { left: fx * 100, top: fy * 100 };
   };
+
+  // One area as a percentage box of the viewport, so it lands in the same
+  // coordinate space as the bots.
+  const pctArea = (a: Area) => {
+    const tl = areaToFraction({ x: a.x, y: a.y }, props.viewport);
+    const br = areaToFraction({ x: a.x + a.w, y: a.y + a.h }, props.viewport);
+    return {
+      left: `${tl.fx * 100}%`,
+      top: `${tl.fy * 100}%`,
+      width: `${(br.fx - tl.fx) * 100}%`,
+      height: `${(br.fy - tl.fy) * 100}%`,
+    };
+  };
+
+  const activeNames = new Set(props.activeAreas.map((a) => a.name ?? ""));
 
   const pxToMm = (clientX: number, clientY: number): LH2Position | null => {
     const el = wrapRef.current;
@@ -116,8 +135,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const uy = (clientY - cy - cam.ty) / cam.scale + r.height / 2;
     const ax = ux - (r.width - side) / 2;
     const ay = uy - (r.height - side) / 2;
-    const { x, y } = fractionToArena(ax / side, ay / side, props.mapSize);
-    if (x < 0 || y < 0 || x > props.mapSize.width || y > props.mapSize.height) return null;
+    const { x, y } = fractionToArea(ax / side, ay / side, props.viewport);
+    const { x: x0, y: y0, w, h } = props.viewport;
+    if (x < x0 || y < y0 || x > x0 + w || y > y0 + h) return null;
     return { x: Math.round(x), y: Math.round(y) };
   };
 
@@ -195,7 +215,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
   // Real-scale layer: glyphs scale to the actual DotBot footprint.
   const gscale = props.layers.trueScale
-    ? Math.max(0.2, (side * (REAL_BOT_MM / props.mapSize.width)) / BOT_GLYPH_SPAN)
+    ? Math.max(0.2, (side * (REAL_BOT_MM / props.viewport.w)) / BOT_GLYPH_SPAN)
     : 1;
 
   return (
@@ -243,6 +263,47 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(228,3,46,.16)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "var(--hairline)", pointerEvents: "none" }} />
 
+          {/* the site's areas: the shown ones solid, the rest outlined */}
+          {props.siteAreas
+            .filter((a) => !activeNames.has(a.name ?? ""))
+            .map((a) => (
+              <div
+                key={`area-${a.name}`}
+                style={{
+                  position: "absolute",
+                  ...pctArea(a),
+                  border: "1px dashed var(--hairline)",
+                  borderRadius: 4,
+                  pointerEvents: "none",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 4,
+                    top: 2,
+                    fontSize: 10,
+                    opacity: 0.5,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {a.name}
+                </span>
+              </div>
+            ))}
+          {props.activeAreas.map((a, i) => (
+            <div
+              key={`active-${a.name ?? i}`}
+              style={{
+                position: "absolute",
+                ...pctArea(a),
+                border: "1px solid var(--grid)",
+                borderRadius: 4,
+                pointerEvents: "none",
+              }}
+            />
+          ))}
+
           {/* trails (our extra layer) */}
           {props.layers.trails && (
             <svg width={side} height={side} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
@@ -253,7 +314,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     key={b.id}
                     points={b.trail
                       .map((p) => {
-                        const { fx, fy } = arenaToFraction(p, props.mapSize);
+                        const { fx, fy } = areaToFraction(p, props.viewport);
                         return `${fx * side},${fy * side}`;
                       })
                       .join(" ")}

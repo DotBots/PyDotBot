@@ -1,14 +1,14 @@
 import React, { useRef } from "react";
 
-import { arenaToFraction } from "./arenaFrame";
+import { areaToFraction } from "./frame";
 import { stateColor } from "./viewChrome";
 
 import { Camera, clampCam, ViewGeom } from "./MapView";
-import { MapSize, UnifiedBot } from "./types";
+import { Area, UnifiedBot } from "./types";
 
 interface MinimapProps {
   bots: UnifiedBot[];
-  mapSize: MapSize;
+  viewport: Area;
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
@@ -17,7 +17,7 @@ interface MinimapProps {
 // Whole-arena overview with the current map viewport as a rectangle.
 // Dragging moves the camera (the design pans through here). The arena box
 // keeps the real arena aspect ratio - a 2000x2000 arena is a square.
-export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, geom }) => {
+export const Minimap: React.FC<MinimapProps> = ({ bots, viewport, cam, setCam, geom }) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -63,7 +63,7 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
       }}
     >
       <div style={{ fontSize: 10, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)" }}>
-        Arena &middot; {mapSize.width}&times;{mapSize.height}mm
+        Site &middot; {viewport.w}&times;{viewport.h}mm
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
         <div
@@ -78,7 +78,7 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
           onPointerUp={() => (dragging.current = false)}
           style={{
             position: "relative",
-            aspectRatio: `${mapSize.width} / ${mapSize.height}`,
+            aspectRatio: `${viewport.w} / ${viewport.h}`,
             height: "100%",
             maxWidth: "100%",
             background: "var(--canvas)",
@@ -99,8 +99,8 @@ export const Minimap: React.FC<MinimapProps> = ({ bots, mapSize, cam, setCam, ge
                 key={b.id}
                 style={{
                   position: "absolute",
-                  left: `${arenaToFraction(b.position!, mapSize).fx * 100}%`,
-                  top: `${arenaToFraction(b.position!, mapSize).fy * 100}%`,
+                  left: `${areaToFraction(b.position!, viewport).fx * 100}%`,
+                  top: `${areaToFraction(b.position!, viewport).fy * 100}%`,
                   width: 5,
                   height: 5,
                   borderRadius: "50%",

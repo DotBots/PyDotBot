@@ -1,6 +1,7 @@
 """Test module for controller base class."""
 
 import asyncio
+import pathlib
 import time
 from unittest.mock import MagicMock
 
@@ -11,6 +12,7 @@ from dotbot_utils.serial_interface import SerialInterface
 
 from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
+from dotbot.area import Area
 from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
 from dotbot.models import (
     DotBotGPSPosition,
@@ -20,6 +22,30 @@ from dotbot.models import (
     DotBotStatus,
 )
 from dotbot.protocol import ApplicationType, ControlModeType, PayloadControlMode
+from dotbot.site import Site
+
+# A measured site, which the package never ships.
+C405 = Site(
+    name="c405-arena",
+    anchor="the arena's top-left corner, against the door wall of C405",
+    extent_mm=(2000, 4000),
+    areas={
+        "annex": Area(0, 2000, 2000, 2000, "annex"),
+        "wing": Area(2000, 2610, 1330, 1390, "wing"),
+    },
+)
+
+
+@pytest.fixture
+def serial_mock(monkeypatch):
+    """Stub the serial port so a Controller can be built without hardware."""
+    monkeypatch.setattr(
+        "dotbot_utils.serial_interface.serial.Serial.write", MagicMock()
+    )
+    monkeypatch.setattr("dotbot_utils.serial_interface.serial.Serial.open", MagicMock())
+    monkeypatch.setattr(
+        "dotbot_utils.serial_interface.serial.Serial.flush", MagicMock()
+    )
 
 
 @pytest.fixture
@@ -284,3 +310,134 @@ def test_addr_to_hex_is_uppercase_and_padded(addr, expected):
     """
     assert addr_to_hex(addr) == expected
     assert addr_to_hex(addr) == addr_to_hex(addr).upper()
+
+
+def _write_calibration(tmp_path, monkeypatch, site="site-a"):
+    """Save a solved calibration under tmp_path and return its id."""
+    import sys
+
+    from dotbot.calibration import lighthouse2
+
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    import test_calibration_lighthouse2 as helpers
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    manager = lighthouse2.LighthouseManager(
+        placements=[helpers._consistent_placement(corners, reads=3)],
+        site=Site(name=site),
+    )
+    manager.solve()
+    path = manager.save_calibration()
+    return lighthouse2.read_calibration_file(path)
+
+
+def test_controller_loads_the_calibration_named_by_id(
+    tmp_path, monkeypatch, serial_mock
+):
+    """An id prefix resolves under calibrations/<site>/, never the newest file."""
+    import numpy as np
+
+    from dotbot.calibration.wire import unpack_payload
+    from dotbot.controller import load_calibration
+
+    written = _write_calibration(tmp_path, monkeypatch)
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+        site=Site(name="site-a"),
+        calibration=written.id8,
+    )
+    controller = Controller(settings)
+
+    assert controller.lh2_calibration
+    assert controller.calibration.site.name == "site-a"
+    assert (
+        load_calibration(written.id8, site="site-a").path
+        == tmp_path / "calibrations" / "site-a" / written.path.name
+    )
+    # The site scopes the lookup: the same id is not found under another.
+    with pytest.raises(ValueError, match="no calibration matches"):
+        load_calibration(written.id8, site="site-b")
+
+    from dotbot.calibration.lighthouse2 import homography_as_bytes
+
+    pushed = bytes([len(controller.lh2_calibration)]) + b"".join(
+        homography_as_bytes(s.matrix) for s in controller.lh2_calibration
+    )
+    # The int32 shim quantises each element to a thousandth.
+    assert np.allclose(
+        [
+            [v / 1e3 for v in row]
+            for row in [
+                [
+                    int.from_bytes(pushed[1 + i * 4 : 5 + i * 4], "little", signed=True)
+                    for i in range(9)
+                ][j : j + 3]
+                for j in (0, 3, 6)
+            ]
+        ],
+        written.stations[0].homography,
+        atol=1e-3,
+    )
+    assert len(unpack_payload(bytes([1]) + b"\x00" * 36)) == 1
+
+
+def test_controller_with_no_calibration_loads_nothing(serial_mock):
+    """No --calibration and no config key: nothing is loaded, and it is said."""
+    settings = ControllerSettings(
+        port="/dev/null", baudrate=115200, network_id="0", gw_address="78"
+    )
+    controller = Controller(settings)
+    assert controller.lh2_calibration == []
+    assert controller.calibration is None
+
+
+def test_controller_resolves_its_active_areas(serial_mock):
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+        site=C405,
+        area=("annex", "wing"),
+    )
+    controller = Controller(settings)
+    assert [a.name for a in controller.areas] == ["annex", "wing"]
+    assert controller.areas[0].as_dict() == {
+        "x": 0,
+        "y": 2000,
+        "w": 2000,
+        "h": 2000,
+        "name": "annex",
+    }
+
+
+def test_no_active_area_draws_the_whole_site(serial_mock):
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+        site=C405,
+    )
+    controller = Controller(settings)
+    assert [a.as_dict() for a in controller.areas] == [
+        {"x": 0, "y": 0, "w": 2000, "h": 4000, "name": "c405-arena"}
+    ]
+
+
+def test_a_site_with_no_extent_falls_back_to_one_rectangle(serial_mock):
+    settings = ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+    )
+    controller = Controller(settings)
+    assert controller.site.name == "default"
+    assert [a.as_dict() for a in controller.areas] == [
+        {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "default"}
+    ]

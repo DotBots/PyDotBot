@@ -315,26 +315,3 @@ def test_lh2_calibration_collect_missing_extras_prints_hint(runner, monkeypatch)
     result = runner.invoke(cli, ["run", "lh2-calibration", "collect"])
     assert result.exit_code == 1, result.output
     assert "pip install dotbot[calibrate]" in result.output
-
-
-def test_lh2_calibration_apply_missing_extras_prints_hint(runner, monkeypatch):
-    """`dotbot run lh2-calibration apply` falls back to the install hint
-    when the calibration runtime deps aren't available."""
-    monkeypatch.setitem(sys.modules, "dotbot.calibration.exporter", None)
-    monkeypatch.setitem(sys.modules, "dotbot.calibration.lighthouse2", None)
-    result = runner.invoke(cli, ["run", "lh2-calibration", "apply", "/tmp/lh2.h"])
-    assert result.exit_code == 1, result.output
-    assert "pip install dotbot[calibrate]" in result.output
-
-
-def test_lh2_calibration_apply_no_saved_calibration(runner, tmp_path, monkeypatch):
-    """`apply` exits 1 with a clear message when no saved calibration
-    exists at the expected location."""
-    # Point LighthouseManager at an empty tmp dir so load_calibration
-    # finds nothing.
-    monkeypatch.setattr("dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path)
-    result = runner.invoke(
-        cli, ["run", "lh2-calibration", "apply", str(tmp_path / "out.h")]
-    )
-    assert result.exit_code == 1, result.output
-    assert "No saved calibration" in result.output

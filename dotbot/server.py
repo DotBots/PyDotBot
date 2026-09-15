@@ -29,9 +29,9 @@ from dotbot import pydotbot_version
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
+    DotBotAreaModel,
     DotBotBackgroundMapModel,
     DotBotConnectionModel,
-    DotBotMapSizeModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -39,6 +39,7 @@ from dotbot.models import (
     DotBotNotificationUpdate,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
+    DotBotSiteModel,
     DotBotWaypoints,
     WSMessage,
     WSMoveRaw,
@@ -283,15 +284,35 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
 
 
 @api.get(
-    path="/controller/map_size",
-    response_model=DotBotMapSizeModel,
+    path="/controller/area",
+    response_model=List[DotBotAreaModel],
     response_model_exclude_none=True,
-    summary="Return the map size of the controller",
+    summary="Return the areas shown by the controller, in frame millimetres",
     tags=["controller"],
 )
-async def map_size():
-    """Map size HTTP GET handler."""
-    return api.controller.map_size
+async def area():
+    """Areas-shown HTTP GET handler."""
+    return [DotBotAreaModel(**a.as_dict()) for a in api.controller.areas]
+
+
+@api.get(
+    path="/controller/site",
+    response_model=DotBotSiteModel,
+    summary="Return the site the controller works in, with its areas",
+    tags=["controller"],
+)
+async def site():
+    """Active site HTTP GET handler."""
+    current = api.controller.site
+    return DotBotSiteModel(
+        name=current.name,
+        anchor=current.anchor,
+        extent_mm=list(current.extent_mm) if current.extent_mm else None,
+        areas=[
+            DotBotAreaModel(**a.as_dict())
+            for a in sorted(current.areas.values(), key=lambda a: a.name)
+        ],
+    )
 
 
 @api.get(

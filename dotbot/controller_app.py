@@ -21,7 +21,6 @@ from dotbot import (
     CONTROLLER_HTTP_HOST_DEFAULT,
     CONTROLLER_HTTP_PORT_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
-    MAP_SIZE_DEFAULT,
     MRTA_URL_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     SWARMIT_URL_DEFAULT,
@@ -29,6 +28,7 @@ from dotbot import (
 )
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
+from dotbot.cli._site import site_from_context
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
 
@@ -44,6 +44,26 @@ _LEGACY_TOML_KEYS = {
     "port",
     "baudrate",
 }
+
+
+def _resolve_controller_key(key, flag, config, default):
+    """One `[run.controller]` key with the layer it came from.
+
+    Explicit flag, then the environment, then the config table, then the
+    built-in default. The top-level config is deliberately not consulted:
+    it carries the sites, not a selection within one.
+    """
+    if flag is not None:
+        return flag, "the command line"
+    env_name = f"DOTBOT_RUN_CONTROLLER_{key.upper()}"
+    raw = os.environ.get(env_name)
+    if raw is not None:
+        return ([raw] if isinstance(default, str) else raw), env_name
+    section = getattr(getattr(config, "run", None), "controller", None)
+    value = getattr(section, key, None)
+    if value is not None:
+        return ([value] if isinstance(default, str) else value), "the config file"
+    return ([default] if isinstance(default, str) else default), "the default"
 
 
 def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
@@ -208,20 +228,45 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help="Path to a .toml configuration file.",
 )
 @click.option(
-    "-m",
-    "--map-size",
+    "--area",
+    "area",
     type=str,
-    help=f"Map size in mm. Defaults to '{MAP_SIZE_DEFAULT}'",
+    multiple=True,
+    help=(
+        "The areas shown at start (none means the whole site): an area name "
+        "from the config's [sites.<site>.areas.*] tables, a '+'-joined "
+        "composite, or x,y,w,h in mm. Repeat for more than one."
+    ),
+)
+@click.option(
+    "--site",
+    "site",
+    type=str,
+    default=None,
+    help=(
+        "The site this session works in, which names its coordinate frame "
+        "and the directory its calibrations live under. Defaults to `site` "
+        "in the dotbot config."
+    ),
+)
+@click.option(
+    "--calibration",
+    type=str,
+    help=(
+        "The LH2 calibration this session runs on: a file path or the id "
+        "prefix of a file under ~/.dotbot/calibrations/<site>/. With none "
+        "given, no calibration is loaded and robots keep whatever they hold."
+    ),
 )
 @click.option(
     "-M",
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
     help=(
-        f"Path to a background map image file in png format. The image should"
+        "Path to a background map image file in png format. The image should"
         "be a top-down view of the environment, with 1024 pixels width and a "
-        "height proportional to the real map size. The map size should be set "
-        f"with the --map-size option (default: {MAP_SIZE_DEFAULT})."
+        "height proportional to the areas shown, which are set with the "
+        "--area option."
     ),
 )
 @click.option(
@@ -265,7 +310,9 @@ def main(
     gw_address,
     controller_http_port,
     controller_http_host,
-    map_size,
+    area,
+    site,
+    calibration,
     background_map,
     simulator_init_state,
     swarmit_url,
@@ -296,6 +343,28 @@ def main(
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
     swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
     mrta_url = from_config(ctx, "mrta_url", "mrta_url", "run.controller")
+
+    unified = (ctx.obj or {}).get("config")
+    site, site_source = site_from_context(ctx, site)
+    area, area_source = _resolve_controller_key(
+        "area", list(area) or None, unified, None
+    )
+    if isinstance(area, str):
+        area = [area]
+    calibration, calibration_source = _resolve_controller_key(
+        "calibration", calibration, unified, None
+    )
+    print(f"Site: {site.name} (from {site_source})")
+    print(
+        f"Area: {' '.join(area)} (from {area_source})"
+        if area
+        else "Area: the whole site"
+    )
+    print(
+        f"Calibration: {calibration} (from {calibration_source})"
+        if calibration
+        else "Calibration: none selected"
+    )
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -329,7 +398,9 @@ def main(
         "gw_address": gw_address,
         "controller_http_port": controller_http_port,
         "controller_http_host": controller_http_host,
-        "map_size": map_size,
+        "area": tuple(area or ()),
+        "site": site,
+        "calibration": calibration,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,

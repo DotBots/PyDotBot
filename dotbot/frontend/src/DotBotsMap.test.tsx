@@ -7,12 +7,15 @@ import { DotBotsMap } from './DotBotsMap';
 import { DotBot } from './types';
 import { inactiveAddress } from './utils/constants';
 
-const areaSize = { width: 4000, height: 4000 };
+const arena = { x: 0, y: 0, w: 2000, h: 2000, name: 'arena' };
+const viewport = { x: -2000, y: -2000, w: 6000, h: 6000 };
 
 const defaultProps = {
   dotbots: [] as DotBot[],
   active: inactiveAddress,
-  areaSize,
+  viewport,
+  activeAreas: [arena],
+  siteAreas: [arena, { x: 0, y: 2000, w: 2000, h: 2000, name: 'annex' }],
   mapSize: 400,
   showHistory: true,
   historySize: 100,

@@ -7,14 +7,18 @@ import { SailBotItem } from "./SailBotItem";
 import { SailBotsMap } from "./SailBotsMap";
 import { XGOItem } from "./XGOItem";
 import { ApplicationType, inactiveAddress, maxWaypoints, maxPositionHistory } from "./utils/constants";
-import { AreaSize, BackgroundMap, DotBot, GpsPosition, LH2Position, PublishCommandFn } from "./types";
+import { Area, BackgroundMap, DotBot, GpsPosition, LH2Position, PublishCommandFn } from "./types";
 
 import logger from './utils/logger';
 const log = logger.child({ module: 'DotBots' });
 
 interface DotBotsProps {
   dotbots: DotBot[];
-  areaSize: AreaSize;
+  // The part of the frame the map draws: the whole site plus a margin.
+  viewport: Area;
+  // The areas shown, drawn solid; every other area of the site is outlined.
+  activeAreas: Area[];
+  siteAreas: Area[];
   backgroundMap?: BackgroundMap;
   updateDotbots: React.Dispatch<React.SetStateAction<DotBot[]>>;
   publishCommand: PublishCommandFn;
@@ -23,7 +27,7 @@ interface DotBotsProps {
   qrkeyUrl?: string;
 }
 
-const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
+const DotBots: React.FC<DotBotsProps> = ({ dotbots, viewport, activeAreas, siteAreas, backgroundMap, updateDotbots, publishCommand, publish, qrkeyAvailable, qrkeyUrl }) => {
   const [activeDotbot, setActiveDotbot] = useState(inactiveAddress);
   const [showDotBotHistory, setShowDotBotHistory] = useState(true);
   const [dotbotHistorySize, setDotbotHistorySize] = useState(maxPositionHistory);
@@ -235,7 +239,9 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
                         setHistorySize={setDotbotHistorySize}
                         mapClicked={mapClicked}
                         mapSize={350}
-                        areaSize={areaSize}
+                        viewport={viewport}
+                        activeAreas={activeAreas}
+                        siteAreas={siteAreas}
                         backgroundMap={backgroundMap}
                         publish={publish}
                       />
@@ -251,7 +257,9 @@ const DotBots: React.FC<DotBotsProps> = ({ dotbots, areaSize, backgroundMap, upd
                         setHistorySize={setDotbotHistorySize}
                         mapClicked={mapClicked}
                         mapSize={1000}
-                        areaSize={areaSize}
+                        viewport={viewport}
+                        activeAreas={activeAreas}
+                        siteAreas={siteAreas}
                         backgroundMap={backgroundMap}
                         publish={publish}
                       />

@@ -1,10 +1,10 @@
-"""Tests for the LH2 calibration math + persistence.
+"""Tests for the LH2 calibration solve, the schema 2 file and the identity.
 
-Carried over from dotbot-lh2-calibration's tests/test_lighthouse2.py.
-The original test called calculate_camera_point with positional args
-matching an older signature (count1, count2, lh_index); the function
-now takes an LH2Counts dataclass. Fixed during the fold; kept the
-golden values.
+Synthetic captures are built by inverting one chosen station matrix, so the
+correspondences are exactly consistent and the solver's own error is the only
+thing under test. A raw count is an integer, and one count unit is worth
+about 0.1 mm on the floor, so the declared coordinates are derived from the
+integer counts rather than the other way round.
 """
 
 import tomllib
@@ -12,13 +12,97 @@ import tomllib
 import numpy as np
 import pytest
 
+from dotbot.area import Area, AreaRegistry
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import (
     LH2Counts,
-    LH2Homography,
     LighthouseManager,
+    Placement,
+    Sample,
+    apply_homography,
     calculate_camera_point,
+    counts_for_camera_point,
+    read_calibration_file,
+    render_calibration,
+    resolve_calibration_path,
 )
+from dotbot.calibration.points import collect_header, point_prompt, resolve_points
+from dotbot.calibration.wire import calibration_payload, unpack_payload
+from dotbot.site import Site
+
+# A plausible wall-mounted station: the magnitude of perspective row real
+# calibration files carry.
+H_TRUE = np.array(
+    [
+        [1523.4, -38.2, 1012.7],
+        [41.9, 1531.8, 988.3],
+        [0.2134, -0.0871, 1.0],
+    ],
+    dtype=np.float64,
+)
+
+ARENA = Area(0, 0, 2000, 2000, "arena")
+# The C405 layout, which the package no longer ships: a site is measured.
+C405 = Site(
+    name="c405-arena",
+    anchor="the arena's top-left corner, against the door wall of C405",
+    extent_mm=(2000, 4000),
+    areas={
+        "arena": ARENA,
+        "annex": Area(0, 2000, 2000, 2000, "annex"),
+        "arena+annex": Area(0, 0, 2000, 4000, "arena+annex"),
+        "wing": Area(2000, 2610, 1330, 1390, "wing"),
+    },
+)
+
+
+def _floor_from_camera(homography, cam_x, cam_y):
+    return apply_homography(homography, np.array([[cam_x, cam_y]]))[0]
+
+
+def _integer_counts(cam_x, cam_y, lh_index=0) -> tuple[int, int]:
+    counts = counts_for_camera_point(cam_x, cam_y, lh_index)
+    return (round(counts.count1), round(counts.count2))
+
+
+def _sample(station, point, count1, count2, reads=1) -> Sample:
+    return Sample(
+        station=station,
+        point=point,
+        count1=[count1] * reads,
+        count2=[count2] * reads,
+    )
+
+
+def _grid_camera_points(n_side):
+    """Camera points spread over the part of the view the arena occupies."""
+    return [
+        (-0.30 + 0.60 * i / (n_side - 1), -0.30 + 0.60 * j / (n_side - 1))
+        for i in range(n_side)
+        for j in range(n_side)
+    ]
+
+
+def _consistent_placement(camera_points, station=0, reads=1, jitter_mm=0.0, seed=0):
+    """A placement whose declared points are `H_TRUE`'s image of the counts.
+
+    With `jitter_mm` the declared coordinates are displaced by a Gaussian per
+    axis, which is what a hand-placed photodiode does.
+    """
+    rng = np.random.default_rng(seed)
+    points, samples = [], []
+    for index, (cam_x, cam_y) in enumerate(camera_points):
+        count1, count2 = _integer_counts(cam_x, cam_y, station)
+        back = calculate_camera_point(LH2Counts(station, count1, count2))
+        floor = _floor_from_camera(H_TRUE, back[0], back[1])
+        if jitter_mm:
+            floor = floor + rng.normal(0.0, jitter_mm, 2)
+        points.append((float(floor[0]), float(floor[1])))
+        samples.append(_sample(station, index, count1, count2, reads))
+    return Placement(index=0, at="synthetic", points_mm=points, samples=samples)
+
+
+# --- the camera model -------------------------------------------------------
 
 
 def test_camera_points():
@@ -28,70 +112,417 @@ def test_camera_points():
     assert y == pytest.approx(0.1512338330873567)
 
 
-def _seed_homography(value: float) -> LH2Homography:
-    h = LH2Homography()
-    h.matrix = np.full((3, 3), value, dtype=np.float64)
-    return h
+# --- the solver -------------------------------------------------------------
 
 
-def test_save_calibration_writes_toml_and_legacy_out(monkeypatch, tmp_path):
+def test_four_points_solve_exactly_and_place_an_off_centre_point():
+    """Four noiseless points fix the map, and it holds 900 mm off centre."""
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    placement = _consistent_placement(corners)
+    manager = LighthouseManager(placements=[placement])
+    station = manager.solve()[0]
+
+    assert station.points == 4
+    # A four-point fit reprojects its own points exactly; the residual is the
+    # solver's own arithmetic, tens of nanometres on a matrix of this scale.
+    assert station.residual_mm < 1e-3
+
+    centre = np.mean(np.array(placement.points_mm), axis=0)
+    # A camera point whose true floor position is about 900 mm off the figure
+    # centre, so the check is extrapolation rather than interpolation.
+    off_x, off_y = 0.55, 0.55
+    count1, count2 = _integer_counts(off_x, off_y)
+    back = calculate_camera_point(LH2Counts(0, count1, count2))
+    truth = _floor_from_camera(H_TRUE, back[0], back[1])
+    solved = _floor_from_camera(station.matrix, back[0], back[1])
+
+    assert np.linalg.norm(truth - centre) == pytest.approx(900, abs=250)
+    assert np.linalg.norm(solved - truth) < 0.01
+
+
+def test_sixteen_noisy_points_solve_by_least_squares_with_a_residual():
+    """Over-determined and noisy: a residual, and no exception."""
+    placement = _consistent_placement(
+        _grid_camera_points(4), reads=25, jitter_mm=3.0, seed=7
+    )
+    manager = LighthouseManager(placements=[placement])
+    station = manager.solve()[0]
+
+    assert station.points == 16
+    # Four points fix eight unknowns, so sixteen points leave the residual at
+    # roughly the per-point placement sigma. It is never zero with noise.
+    assert 0.5 < station.residual_mm < 5.0
+
+
+def test_a_solve_needs_four_points():
+    placement = _consistent_placement([(-0.2, -0.2), (0.2, -0.2), (-0.2, 0.2)])
+    manager = LighthouseManager(placements=[placement])
+    with pytest.raises(ValueError, match="4 points a homography needs"):
+        manager.solve()
+
+
+def test_two_stations_are_solved_from_the_same_placement():
+    """A placement seen by two stations ties both into the same frame."""
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    placement = _consistent_placement(corners)
+    for index, (cam_x, cam_y) in enumerate(corners):
+        count1, count2 = _integer_counts(cam_x, cam_y, 1)
+        placement.samples.append(_sample(1, index, count1, count2))
+
+    stations = LighthouseManager(placements=[placement]).solve()
+    assert [s.index for s in stations] == [0, 1]
+    assert all(s.points == 4 for s in stations)
+
+
+def test_reads_are_averaged_before_the_solve():
+    sample = _sample(0, 0, 100, 200, reads=1)
+    sample.count1 = [100, 102, 104]
+    sample.count2 = [200, 200, 200]
+    assert sample.reads == 3
+    assert sample.mean_counts().count1 == pytest.approx(102.0)
+
+
+# --- the file ---------------------------------------------------------------
+
+
+def _saved(monkeypatch, tmp_path, **kwargs):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    mgr = LighthouseManager(calibration_distance=750, extra_lh_num=1)
-    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
-    mgr.homographies = [_seed_homography(1.5), _seed_homography(2.5)]
-
-    mgr.save_calibration()
-
-    toml_files = list((tmp_path / "calibrations").glob("calibration-*.toml"))
-    assert len(toml_files) == 1, f"expected exactly one TOML file, got {toml_files}"
-    assert (
-        tmp_path / "calibration.out"
-    ).exists(), "legacy .out should still be written"
-
-    with open(toml_files[0], "rb") as f:
-        parsed = tomllib.load(f)
-    assert parsed["schema_version"] == lighthouse2.CALIBRATION_SCHEMA_VERSION
-    assert parsed["metadata"]["calibration_distance_mm"] == 750
-    assert parsed["metadata"]["num_lh_stations"] == 2
-    assert parsed["metadata"]["created_at"].endswith("Z")
-
-    payload = bytes.fromhex(parsed["calibration"]["data_hex"])
-    assert payload[0] == 2
-    assert len(payload) == 1 + 2 * 36
-    assert payload == (tmp_path / "calibration.out").read_bytes()
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    placement = _consistent_placement(corners, reads=3)
+    manager = LighthouseManager(placements=[placement], **kwargs)
+    manager.solve()
+    return manager, manager.save_calibration(tag=kwargs.pop("tag", None))
 
 
-def test_save_calibration_tag_in_filename_and_metadata(monkeypatch, tmp_path):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    mgr = LighthouseManager(extra_lh_num=0)
-    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
-    mgr.homographies = [_seed_homography(1.0)]
+def test_save_writes_schema_2_into_the_site_directory(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
 
-    path = mgr.save_calibration(tag="office-2x2m")
+    assert path.parent == tmp_path / "calibrations" / "default"
+    parsed = tomllib.loads(path.read_text())
+    assert parsed["schema_version"] == 2
+    assert parsed["site"]["name"] == "default"
+    assert parsed["site"]["anchor"] == ""
+    assert "frame" not in parsed
+    assert "false_origin_mm" not in parsed["site"]
+    assert parsed["validity"]["valid_mm"] == [0, 0, 4000, 4500]
+    assert parsed["metadata"]["robot"] == "dotbot-v3"
+    assert len(parsed["metadata"]["id"]) == 16
+    assert path.name.endswith(f"-{parsed['metadata']['id'][:8]}.toml")
+    assert len(parsed["placement"]) == 1
+    assert len(parsed["placement"][0]["samples"]) == 4
+    assert parsed["placement"][0]["samples"][0]["count1"] == pytest.approx(
+        parsed["placement"][0]["samples"][0]["count1"]
+    )
+    assert len(parsed["station"]) == 1
+    assert parsed["station"][0]["solved_from"] == "direct"
+    assert "calibration_distance_mm" not in parsed["metadata"]
+    assert "num_lh_stations" not in parsed["metadata"]
+    assert "calibration" not in parsed
 
-    assert path.name.startswith("calibration-office-2x2m-")
-    with open(path, "rb") as f:
-        parsed = tomllib.load(f)
-    assert parsed["metadata"]["tag"] == "office-2x2m"
+
+def test_save_writes_no_legacy_out_sidecar(monkeypatch, tmp_path):
+    _saved(monkeypatch, tmp_path)
+    assert not (tmp_path / "calibration.out").exists()
+    assert list(tmp_path.rglob("*.out")) == []
 
 
-def test_save_calibration_sanitizes_and_omits_empty_tag(monkeypatch, tmp_path):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    mgr = LighthouseManager(extra_lh_num=0)
-    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
-    mgr.homographies = [_seed_homography(1.0)]
+def test_schema_2_round_trips_and_re_solves_to_the_same_matrices_and_id(
+    monkeypatch, tmp_path
+):
+    manager, path = _saved(monkeypatch, tmp_path)
+    loaded = read_calibration_file(path)
 
-    # Unsafe characters collapse to dashes and the leading ".." is trimmed;
-    # the slug stays a single filename component inside ~/.dotbot/calibrations.
-    path = mgr.save_calibration(tag="../lab room/A")
-    assert path.parent == tmp_path / "calibrations"
-    assert path.name.startswith("calibration-lab-room-A-")
+    assert loaded.stored_id == loaded.id
+    assert loaded.placements[0].points_mm == manager.placements[0].points_mm
 
-    # A tag that reduces to nothing is treated as absent (no stray dashes).
-    path = mgr.save_calibration(tag="///")
-    assert path.name.startswith("calibration-2")  # the timestamp year
-    with open(path, "rb") as f:
-        assert "tag" not in tomllib.load(f)["metadata"]
+    re_solved = LighthouseManager(
+        placements=loaded.placements, site=loaded.site, valid_mm=loaded.valid_mm
+    )
+    re_solved.solve()
+    assert re_solved.stations[0].homography == loaded.stations[0].homography
+    assert re_solved.stations[0].residual_mm == loaded.stations[0].residual_mm
+
+    written_again = render_calibration(loaded)
+    assert f'id = "{loaded.id}"' in written_again
+
+
+def test_schema_1_file_is_rejected(tmp_path):
+    path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
+    path.write_text(
+        'schema_version = 1\n[calibration]\ndata_hex = "00"\n', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="schema_version 1"):
+        read_calibration_file(path)
+
+
+def test_a_file_carrying_a_frame_table_is_rejected(tmp_path):
+    path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
+    path.write_text(
+        'schema_version = 2\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match=r"\[frame\] is not a table"):
+        read_calibration_file(path)
+
+
+def test_calibration_id_ignores_the_descriptive_fields(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+    original = read_calibration_file(path)
+    before = original.id
+
+    original.site.anchor = "somewhere else entirely, 2027"
+    original.created_at = "2030-12-31T23:59:59Z"
+    original.tag = "another-session"
+    original.robot = "dotbot-v9"
+    original.placements[0].at = "typed by hand"
+    assert original.id == before
+
+
+def test_calibration_id_moves_when_the_site_is_renamed(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+    calibration = read_calibration_file(path)
+    before = calibration.id
+
+    calibration.site.name = "somewhere-else"
+    assert calibration.id != before
+
+
+def test_calibration_id_moves_when_a_reframe_shifts_the_points(monkeypatch, tmp_path):
+    """Zero is the anchor, so a reframe shows up in `points_mm` alone."""
+    _, path = _saved(monkeypatch, tmp_path)
+    calibration = read_calibration_file(path)
+    before = calibration.id
+
+    calibration.placements[0].points_mm = [
+        (x + 100.0, y) for x, y in calibration.placements[0].points_mm
+    ]
+    assert calibration.id != before
+
+
+def test_calibration_id_moves_when_a_point_or_a_matrix_moves(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+
+    calibration = read_calibration_file(path)
+    before = calibration.id
+    x, y = calibration.placements[0].points_mm[0]
+    calibration.placements[0].points_mm[0] = (x + 1.0, y)
+    assert calibration.id != before
+
+    calibration = read_calibration_file(path)
+    calibration.stations[0].homography[2][2] = 1.001
+    assert calibration.id != before
+
+    calibration = read_calibration_file(path)
+    calibration.valid_mm = (0, 0, 5000, 5000)
+    assert calibration.id != before
+
+
+def test_resolve_by_id_prefix_under_the_site_directory(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+    calibration = read_calibration_file(path)
+
+    resolved = resolve_calibration_path(calibration.id8, root=tmp_path / "calibrations")
+    assert resolved == path
+
+    with pytest.raises(ValueError, match="no calibration matches"):
+        resolve_calibration_path("ffffffff", root=tmp_path / "calibrations")
+
+
+def test_an_id_prefix_resolves_only_under_the_named_site(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path, site=Site(name="site-a"))
+    root = tmp_path / "calibrations"
+    prefix = path.name.split("-")[-1][:8]
+
+    assert resolve_calibration_path(prefix, root, site="site-a") == path
+    with pytest.raises(ValueError, match="no calibration matches"):
+        resolve_calibration_path(prefix, root, site="site-b")
+
+
+def test_resolve_prefers_an_actual_path(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+    assert resolve_calibration_path(str(path)) == path
+
+
+def test_wire_payload_is_float32_and_round_trips(monkeypatch, tmp_path):
+    _, path = _saved(monkeypatch, tmp_path)
+    calibration = read_calibration_file(path)
+
+    payload = calibration_payload(calibration.stations)
+    assert len(payload) == 1 + 36
+    assert payload[0] == 1
+
+    unpacked = unpack_payload(payload)[0]
+    assert np.allclose(unpacked, calibration.stations[0].homography, rtol=1e-6)
+
+
+# --- points and areas ------------------------------------------------------
+
+
+def _mm(spec, registry):
+    return [point.mm for point in resolve_points(spec, registry)]
+
+
+def test_arena_corner_marks_come_from_the_robot_geometry():
+    """Every corner insets by the photodiode's distance to the PCB edges."""
+    assert _mm("arena:corners", C405.registry()) == [
+        (47.0, 18.5),
+        (1953.0, 18.5),
+        (47.0, 1981.5),
+        (1953.0, 1981.5),
+    ]
+
+
+def test_a_taller_area_insets_both_ends_by_the_front_clearance():
+    """Noses point outward, so the front edge rests on each y line."""
+    assert _mm("arena+annex:corners", C405.registry()) == [
+        (47.0, 18.5),
+        (1953.0, 18.5),
+        (47.0, 3981.5),
+        (1953.0, 3981.5),
+    ]
+
+
+def test_corner_marks_follow_an_offset_rectangle():
+    registry = AreaRegistry(named={"open": Area(500, 700, 1000, 1000, "open")})
+    assert _mm("open:corners", registry) == [
+        (547.0, 718.5),
+        (1453.0, 718.5),
+        (547.0, 1681.5),
+        (1453.0, 1681.5),
+    ]
+
+
+def test_a_literal_rectangle_carries_the_corner_rule():
+    """A taped square needs no config entry: x,y,w,h stands in for a name."""
+    registry = C405.registry()
+    assert _mm("750,750,500,500:corners", registry) == [
+        (797.0, 768.5),
+        (1203.0, 768.5),
+        (797.0, 1231.5),
+        (1203.0, 1231.5),
+    ]
+    assert _mm("750,750,500,500:bottom-right", registry) == [(1203.0, 1231.5)]
+    assert _mm("750,750,500,500", registry) == [(1000.0, 1000.0)]
+
+
+def test_points_forms():
+    registry = C405.registry()
+    assert _mm("1500,2500", registry) == [(1500.0, 2500.0)]
+    assert _mm("arena", registry) == [(1000.0, 1000.0)]
+    assert _mm("arena:top-right", registry) == [(1953.0, 18.5)]
+    with pytest.raises(ValueError, match="unknown area"):
+        resolve_points("nowhere", registry)
+    with pytest.raises(ValueError, match="four are a rectangle"):
+        resolve_points("1,2,3", registry)
+
+
+def test_an_area_name_in_a_site_with_no_areas_says_so():
+    """A fresh install ships no site, so the message has to name the fix."""
+    with pytest.raises(ValueError, match=r"defines no areas"):
+        resolve_points("arena:corners", Site().registry())
+    assert resolve_points("1500,2500", Site().registry())[0].mm == (1500.0, 2500.0)
+
+
+def test_area_resolution_forms():
+    registry = C405.registry()
+    assert registry.resolve("annex").as_dict() == {
+        "x": 0,
+        "y": 2000,
+        "w": 2000,
+        "h": 2000,
+        "name": "annex",
+    }
+    assert registry.resolve("0,0,500,600").as_dict() == {
+        "x": 0,
+        "y": 0,
+        "w": 500,
+        "h": 600,
+        "name": "0,0,500,600",
+    }
+    composite = registry.resolve("arena+wing")
+    assert composite.as_dict() == {
+        "x": 0,
+        "y": 0,
+        "w": 3330,
+        "h": 4000,
+        "name": "arena+wing",
+    }
+
+
+# --- what the operator reads ------------------------------------------------
+
+
+def test_every_corner_describes_the_pose_before_the_coordinate():
+    prompts = [
+        point_prompt(i, 4, point)
+        for i, point in enumerate(resolve_points("arena:corners", C405.registry()))
+    ]
+    assert prompts[0] == (
+        "point 0 of 4, top-left corner of arena: robot inside the rectangle, "
+        "left edge on the left line, front edge on the top line, nose toward "
+        "the top. Photodiode lands at (47, 18.5) mm. Press Enter when it is "
+        "still."
+    )
+    assert prompts[1] == (
+        "point 1 of 4, top-right corner of arena: robot inside the rectangle, "
+        "right edge on the right line, front edge on the top line, nose "
+        "toward the top. Photodiode lands at (1953, 18.5) mm. Press Enter "
+        "when it is still."
+    )
+    assert prompts[2] == (
+        "point 2 of 4, bottom-left corner of arena: robot inside the "
+        "rectangle, left edge on the left line, front edge on the bottom "
+        "line, nose toward the bottom. Photodiode lands at (47, 1981.5) mm. "
+        "Press Enter when it is still."
+    )
+    assert prompts[3] == (
+        "point 3 of 4, bottom-right corner of arena: robot inside the "
+        "rectangle, right edge on the right line, front edge on the bottom "
+        "line, nose toward the bottom. Photodiode lands at (1953, 1981.5) "
+        "mm. Press Enter when it is still."
+    )
+
+
+def test_a_typed_point_instructs_nothing_beyond_the_coordinate():
+    point = resolve_points("1500,2500", C405.registry())[0]
+    assert point.corner is None
+    assert point.where == "" and point.how == ""
+    assert point_prompt(2, 5, point) == (
+        "point 2 of 5: photodiode on (1500, 2500) mm. Press Enter when it is " "still."
+    )
+
+
+def test_the_header_states_the_site_the_orientation_and_the_rule():
+    header = collect_header(C405, "the config file", 4, 10)
+    assert "site c405-arena (from the config file)" in header
+    assert "x grows right, y grows down" in header
+    assert f"zero is {C405.anchor}" in header
+    assert "nose toward the nearest top or bottom edge" in header
+
+
+def test_the_header_names_the_missing_anchor_key():
+    header = collect_header(Site(), "the default", 4, 10)
+    assert "add `anchor` to [sites.default]" in header
+
+
+def test_the_package_default_site_names_no_lab():
+    """A real site is measured: the package ships a name and nothing else."""
+    site = Site()
+    assert site.name == "default"
+    assert site.anchor == ""
+    assert site.extent_mm is None
+    assert site.areas == {}
+    assert site.valid_mm is None
+
+
+def test_a_site_extent_is_the_plausibility_fence():
+    assert C405.valid_mm == (0, 0, 2000, 4000)
+    assert C405.extent.as_dict() == {
+        "x": 0,
+        "y": 0,
+        "w": 2000,
+        "h": 4000,
+        "name": "c405-arena",
+    }
 
 
 def test_slug_tag_rules():
@@ -103,51 +534,85 @@ def test_slug_tag_rules():
     assert lighthouse2._slug_tag("***") == ""
 
 
-def test_load_calibration_prefers_newest_toml(monkeypatch, tmp_path):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    mgr = LighthouseManager(extra_lh_num=0)
-    mgr.calibration_output_path = tmp_path / lighthouse2.CALIBRATION_LEGACY_OUT
+# The same schema 2 fixture swarmit's test_helpers.py carries, so the two
+# packers cannot drift.
+FIXTURE_TOML = """\
+schema_version = 2
 
-    mgr.homographies = [_seed_homography(3.0)]
-    mgr.save_calibration()
-    first = list((tmp_path / "calibrations").glob("calibration-*.toml"))[0]
-    first.stat()  # touch to avoid mtime tie
-    import os
-    import time
+[metadata]
+created_at = "2026-09-10T09:12:00Z"
+id = "3f9a1c07e2b845d6"
+robot = "dotbot-v3"
 
-    older = time.time() - 60
-    os.utime(first, (older, older))
+[site]
+name = "inria-aio-c"
+anchor = "the arena's top-left corner, against the door wall of C405"
 
-    mgr.homographies = [_seed_homography(7.0)]
-    mgr.save_calibration()
+[validity]
+valid_mm = [0, 0, 4000, 4500]
 
-    matrices = mgr.load_calibration()
-    assert len(matrices) == 1
-    # The newest save wrote 7.0; legacy .out would also be 7.0 (last
-    # write wins), so this test specifically pins that the loader picks
-    # a TOML file at all by checking the matrix matches the in-memory
-    # value packed via homography_as_bytes.
-    expected = lighthouse2.homography_as_bytes(np.full((3, 3), 7.0))
-    assert matrices[0] == expected
+[[placement]]
+index = 0
+at = "arena:corners"
+points_mm = [[50.0, 20.0], [2000.0, 20.0], [50.0, 2000.0], [2000.0, 2000.0]]
+captured_at = "2026-09-10T09:10:41Z"
+samples = [
+  { station = 0, point = 0, count1 = [41290], count2 = [51728] },
+]
 
-
-def test_load_calibration_falls_back_to_legacy_out(monkeypatch, tmp_path):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    legacy = tmp_path / "calibration.out"
-    # 1 homography, all-zero matrix
-    legacy.write_bytes(b"\x01" + (b"\x00" * 36))
-
-    mgr = LighthouseManager()
-    mgr.calibration_output_path = legacy
-    matrices = mgr.load_calibration()
-    assert matrices == [b"\x00" * 36]
+[[station]]
+index = 0
+solved_from = "direct"
+points = 4
+residual_mm = 0.0
+homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
+"""
 
 
-def test_load_calibration_rejects_unknown_schema(monkeypatch, tmp_path):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    (tmp_path / "calibration-2099-01-01T00-00-00Z.toml").write_text(
-        'schema_version = 999\n[calibration]\ndata_hex = "00"\n'
+def test_the_wire_payload_is_pinned_against_the_shared_fixture(tmp_path):
+    """Both repos build the same bytes from the same file."""
+    import struct
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    calibration = read_calibration_file(path)
+
+    expected = bytes([1]) + struct.pack(
+        "<9f", 1523.4, -38.2, 1012.7, 41.9, 1531.8, 988.3, 0.2134, -0.0871, 1.0
     )
-    mgr = LighthouseManager()
-    with pytest.raises(ValueError, match="schema_version 999"):
-        mgr.load_calibration()
+    assert calibration_payload(calibration.stations) == expected
+
+
+def test_the_cli_push_payload_goes_through_the_shim(tmp_path):
+    """`push` and `collect --push` send int32 x 1e3, never float32, until the firmware wave."""
+    from dotbot.calibration.lighthouse2 import (
+        calibration_payload_int32,
+        homography_as_bytes,
+    )
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    calibration = read_calibration_file(path)
+
+    payload = calibration_payload_int32(calibration.stations)
+    assert payload == bytes([1]) + homography_as_bytes(calibration.stations[0].matrix)
+    assert len(payload) == 37
+    assert payload != calibration_payload(calibration.stations)
+
+
+def test_the_int32_shim_is_the_only_quantised_path(tmp_path):
+    """The shim carries a schema 2 file to firmware that still reads int32."""
+    from dotbot.calibration.lighthouse2 import homography_as_bytes
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    calibration = read_calibration_file(path)
+
+    packed = homography_as_bytes(calibration.stations[0].matrix)
+    assert len(packed) == 36
+    elements = [
+        int.from_bytes(packed[i : i + 4], "little", signed=True)
+        for i in range(0, 36, 4)
+    ]
+    assert elements[0] == 1523400
+    assert elements[8] == 1000

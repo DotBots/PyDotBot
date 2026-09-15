@@ -9,10 +9,8 @@ single-device calibration over either transport.
 Subcommands:
 
 - `collect`  — capture LH2 counts via the Textual TUI from a single
-               serial-attached nRF DK; writes ~/.dotbot/calibration.out.
-- `apply <path>` — write the saved calibration as a C header to
-               <path>. Today the only consumer is the swarmit secure
-               bootloader (it #includes the file at compile time).
+               serial-attached nRF DK; writes a schema 2 calibration file
+               under ~/.dotbot/calibrations/<site>/.
 
 Cable-free, over-the-air calibration of a DotBot in the arena lives under
 `dotbot swarm lh2-calibration` (it drives the fleet transport, not a serial
@@ -50,7 +48,7 @@ def _run_tui(ctx: click.Context) -> None:
 
 @click.group(
     name="lh2-calibration",
-    help="LH2 calibration for one serial-attached device: capture, apply.",
+    help="LH2 calibration for one serial-attached device: capture.",
     invoke_without_command=True,
 )
 @click.pass_context
@@ -76,46 +74,3 @@ def cmd(ctx: click.Context) -> None:
 @click.pass_context
 def _collect(ctx: click.Context) -> None:
     _run_tui(ctx)
-
-
-@cmd.command(
-    name="apply",
-    help=(
-        "Write the saved calibration as a C header to PATH. Today the "
-        "consumer is the swarmit secure bootloader (#includes the file "
-        "at compile time). The over-the-air / runtime equivalent is "
-        "`dotbot swarm lh2-calibration push`."
-    ),
-)
-@click.argument(
-    "path",
-    type=click.Path(dir_okay=False, writable=True),
-)
-def _apply(path: str) -> None:
-    try:
-        from dotbot.calibration.exporter import export_calibration
-        from dotbot.calibration.lighthouse2 import LighthouseManager
-    except ImportError as exc:
-        click.echo(
-            "`dotbot run lh2-calibration apply` needs the calibration "
-            "runtime deps.\nInstall with:  pip install dotbot[calibrate]",
-            err=True,
-        )
-        click.echo(f"(import error was: {exc})", err=True)
-        sys.exit(1)
-
-    lh2_manager = LighthouseManager()
-    calibrations = lh2_manager.load_calibration()
-    if not calibrations:
-        click.echo(
-            "No saved calibration found at "
-            f"{lh2_manager.calibration_output_path}.\n"
-            "Run `dotbot run lh2-calibration collect` first.",
-            err=True,
-        )
-        sys.exit(1)
-
-    output = export_calibration(calibrations)
-    with open(path, "w") as f:
-        f.write(output)
-    click.echo(f"Wrote calibration ({len(calibrations)} matrices) to {path}")

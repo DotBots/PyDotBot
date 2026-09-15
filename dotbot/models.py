@@ -81,11 +81,27 @@ class DotBotWaypoints(BaseModel):
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]]
 
 
-class DotBotMapSizeModel(BaseModel):
-    """Map size model."""
+class DotBotAreaModel(BaseModel):
+    """One named rectangle in frame millimetres."""
 
-    width: int  # in mm unit
-    height: int  # in mm unit
+    x: int
+    y: int
+    w: int
+    h: int
+    name: str = ""
+
+
+class DotBotSiteModel(BaseModel):
+    """The site the controller works in, and the areas it defines.
+
+    `extent_mm` is `[width, height]`, zero at its top-left corner, which is
+    where `anchor` points. A site with no measured extent reports none.
+    """
+
+    name: str
+    anchor: str = ""
+    extent_mm: Optional[List[int]] = None
+    areas: List[DotBotAreaModel] = []
 
 
 class DotBotConnectionModel(BaseModel):
@@ -136,7 +152,7 @@ class DotBotRequestType(IntEnum):
     """Request received from MQTT client."""
 
     DOTBOTS: int = 0
-    MAP_SIZE: int = 1
+    AREA: int = 1
 
 
 class DotBotRequestModel(BaseModel):

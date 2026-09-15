@@ -81,7 +81,7 @@ test('QrKeyApp renders DotBots with zero bots initially', () => {
 
 // ─── clientId effect: sendRequest via setTimeout ─────────────────────────────
 
-test('QrKeyApp sends DotBots and AreaSize requests when clientId becomes available', () => {
+test('QrKeyApp sends DotBots and Area requests when clientId becomes available', () => {
   vi.useFakeTimers();
   mockReady = true;
   mockClientId = 'client-abc';
@@ -93,7 +93,7 @@ test('QrKeyApp sends DotBots and AreaSize requests when clientId becomes availab
     reply: 'client-abc',
   });
   expect(mockSendRequest).toHaveBeenCalledWith({
-    request: RequestType.AreaSize,
+    request: RequestType.Area,
     reply: 'client-abc',
   });
   vi.useRealTimers();

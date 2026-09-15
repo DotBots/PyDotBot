@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 import DotBots from './DotBots';
-import { DotBot, AreaSize } from './types';
+import { Area, DotBot } from './types';
 import { maxWaypoints } from './utils/constants';
 
 // Expose callbacks captured from the map mocks so tests can trigger them directly
@@ -32,7 +32,8 @@ vi.mock('./SailBotsMap', () => ({
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-const areaSize: AreaSize = { width: 4000, height: 4000 };
+const arena: Area = { x: 0, y: 0, w: 2000, h: 2000, name: 'arena' };
+const viewport: Area = { x: -2000, y: -2000, w: 6000, h: 6000 };
 
 const makeBot = (overrides: Partial<DotBot> = {}): DotBot => ({
   address: 'aabbccddeeff',
@@ -60,7 +61,9 @@ const Wrapper: React.FC<{
   return (
     <DotBots
       dotbots={dotbots}
-      areaSize={areaSize}
+      viewport={viewport}
+      activeAreas={[arena]}
+      siteAreas={[arena]}
       updateDotbots={setDotbots}
       publishCommand={publishCommand}
       publish={publish}
@@ -181,7 +184,9 @@ test('mapClicked does nothing when no dotbot is active', () => {
   render(
     <DotBots
       dotbots={[bot]}
-      areaSize={areaSize}
+      viewport={viewport}
+      activeAreas={[arena]}
+      siteAreas={[arena]}
       updateDotbots={updateDotbots}
       publishCommand={vi.fn()}
       publish={vi.fn()}
@@ -200,7 +205,9 @@ test('mapClicked does nothing when maxWaypoints is already reached', async () =>
   render(
     <DotBots
       dotbots={[bot]}
-      areaSize={areaSize}
+      viewport={viewport}
+      activeAreas={[arena]}
+      siteAreas={[arena]}
       updateDotbots={updateDotbots}
       publishCommand={vi.fn()}
       publish={vi.fn()}

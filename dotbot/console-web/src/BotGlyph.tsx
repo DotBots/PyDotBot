@@ -1,6 +1,6 @@
 import React from "react";
 
-import { headingToGlyphRotation } from "./arenaFrame";
+import { headingToGlyphRotation } from "./frame";
 
 // The map marker, traced from the DotBot v3 board outline: one PCB, wide at the
 // front and narrower between the wheels, with the tyres outboard of the narrow

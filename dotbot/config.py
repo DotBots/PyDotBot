@@ -10,17 +10,29 @@ exhaustively unit-testable without hardware. The CLI layer (a later phase)
 feeds it the actual flags and `os.environ`.
 
 The file mirrors the four-namespace CLI: top-level shared keys plus `[fw]` /
-`[device]` / `[swarm]` / `[run]` tables, and `[deployment.<name>]` entries for the
-physical deployments you switch between.
+`[device]` / `[swarm]` / `[run]` tables, `[deployment.<name>]` entries for the
+physical deployments you switch between, and `[sites.<name>]` entries for the
+floors you work on.
 
 ```toml
 default_deployment = "inria"
+site     = "c405-arena"
 conn     = "mqtts://broker.local:8883"   # shared; sections/deployments override
 swarm_id = "0001"
 
 [deployment.inria]                          # a named deployment - select, don't edit
 conn = "mqtts://broker.inria.fr:8883"
 swarm_id = "0001"
+
+[sites.c405-arena]                          # a floor: where zero is, how big, its areas
+anchor = "the corner where the arena's top wall meets the door wall"
+extent_mm = [2000, 4000]
+
+[sites.c405-arena.areas.arena]
+x = 0
+y = 0
+w = 2000
+h = 2000
 
 [fw]
 board = "dotbot-v3"
@@ -111,6 +123,7 @@ class Deployment(_Strict):
 
     conn: Conn = None
     swarm_id: str | None = None
+    site: str | None = None
     serial_port: str | None = None
     location: str | None = None  # descriptive, for `dotbot deployment list`
     bots: int | None = None  # descriptive
@@ -136,10 +149,35 @@ class SwarmSection(_Strict):
     devices: str | None = None
 
 
+class AreaSection(_Strict):
+    """One `[sites.<site>.areas.<name>]` table: a rectangle in frame millimetres."""
+
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+class SiteSection(_Strict):
+    """One `[sites.<name>]` table: a floor, its anchor, its extent, its areas.
+
+    `anchor` is prose and no code parses it: it is the whole specification
+    for re-establishing zero in the physical world. `extent_mm` is
+    `[width, height]` with zero at the extent's top-left corner, which is
+    where the anchor points.
+    """
+
+    anchor: str | None = None
+    extent_mm: tuple[int, int] | None = None
+    areas: dict[str, AreaSection] = Field(default_factory=dict)
+
+
 class ControllerSection(_Strict):
     http_port: int | None = None
     http_host: str | None = None
-    map_size: str | None = None
+    # The areas shown at start (none means the whole site).
+    area: str | None = None
+    calibration: str | None = None
     background_map: str | None = None
     log_output: str | None = None
     csv_data_output: str | None = None
@@ -169,6 +207,16 @@ class DotbotConfig(_Strict):
     log_level: str | None = None
     conn: Conn = None
     swarm_id: str | None = None
+    # The active site, and with it the coordinate frame this session's
+    # positions and calibrations live in. Read by `swarm lh2-calibration` and
+    # by the controller's calibration lookup, so it is shared rather than
+    # per-command.
+    site: str | None = None
+
+    # `[sites.<name>]` tables map to {name: SiteSection}. Shared across the
+    # whole config: a deployment selects a site by name, and several
+    # deployments can work the same floor.
+    sites: dict[str, SiteSection] = Field(default_factory=dict)
 
     fw: FwSection = Field(default_factory=FwSection)
     device: DeviceSection = Field(default_factory=DeviceSection)
