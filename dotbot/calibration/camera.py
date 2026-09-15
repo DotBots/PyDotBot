@@ -10,23 +10,46 @@ its outer edges on the area's edge lines, and the marker is centred on the
 page - so the centre is the corner inset by half a page, and the operator
 measures nothing.
 
-`cv2` draws the marker and `PIL` sets the type and writes the files; both
-are imported inside the functions that need them, so the layout is
-available without the `[calibrate]` extra installed.
+Registration itself is the same object the lighthouse produces: one
+homography from an instrument's pixels into the site's frame, solved by
+least squares, carrying its own reprojection residual and a deterministic
+id, written under `calibrations/<site>/`. The solver, the residual and the
+file's float rendering come from `lighthouse2` so the two files are one
+format with two kinds.
+
+`cv2` draws the marker, reads the camera and solves; `PIL` sets the type
+and writes the sheets. Both are imported inside the functions that need
+them, so the layout and the file are available without the `[calibrate]`
+extra installed.
 """
 
 from __future__ import annotations
 
+import datetime
+import hashlib
 import sys
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import numpy as np
 
 from dotbot.area import Area
+from dotbot.calibration.lighthouse2 import (
+    _num,
+    _toml_escape,
+    _toml_matrix,
+    _toml_points,
+    apply_homography,
+    calibration_root,
+    compute_homography_matrix,
+    reprojection_residual_mm,
+    site_dir,
+)
 from dotbot.calibration.points import CORNERS
+from dotbot.site import SITE_DEFAULT, Site
 
 MM_PER_INCH = 25.4
 
@@ -121,13 +144,13 @@ def corner_of(marker_id: int) -> str:
     """The area corner a marker id names.
 
     This and `marker_id_for` are the only place the relation between an id
-    and a corner is written: the layout, the sheet renderer and anything
-    that reads a marker back off the floor all go through the pair. Today
-    it is the identity onto `CORNERS`, which is what lets the camera and
-    the lighthouse share one corner vocabulary; widening it to carry an
-    area index as well is these two bodies and nothing else.
+    and a corner is written: the layout, the sheet renderer, the probe's
+    marker report and the solver all read it through the pair. Today it is
+    the identity onto `CORNERS`, which is what lets the camera and the
+    lighthouse share one corner vocabulary; widening it to carry an area
+    index as well is these two bodies and nothing else.
     """
-    if not isinstance(marker_id, int) or isinstance(marker_id, bool):
+    if not isinstance(marker_id, (int, np.integer)) or isinstance(marker_id, bool):
         raise ValueError(f"marker id {marker_id!r} is not a whole number")
     if not 0 <= marker_id < len(CORNERS):
         raise ValueError(
@@ -421,3 +444,910 @@ def _placement_diagram(page: np.ndarray, sheet_corner: str) -> None:
             ]
         )
         cv2.fillPoly(page, [notch], 255, cv2.LINE_AA)
+
+
+# --- Finding the camera -----------------------------------------------------
+
+# An OpenCV index is assigned per machine and per session, so no file and no
+# flag default can carry it: `collect` opens the indices in turn and keeps
+# the one that sees the sheets.
+PROBE_INDEX_MAX = 10
+PROBE_MISSES_MAX = 2
+
+# Two of three cameras on the bench return a black first frame and a live
+# second, and ArUco on black reports zero markers - which reads as "no
+# sheets" when the truth is "not ready". Frames are read until one is lit,
+# or until the budget runs out.
+LIT_MEAN_MIN = 8.0
+SETTLE_FRAMES_MAX = 10
+SETTLE_SECONDS_MAX = 2.0
+
+# What disqualifies a source when nothing sees markers: a lens cap or a dark
+# room, and a blank wall or a ceiling. Telling a floor from a face is not
+# attempted - both are lit and structured, and a rule ranking them would be
+# a guess dressed as a measurement.
+DARK_MEAN_MAX = 20.0
+FLAT_SPREAD_MAX = 12.0
+
+READS_DEFAULT = 25
+
+# Above this the registration is reported as suspect. At about 1 mm of floor
+# per pixel a sub-pixel fit lands near 1 mm, so 5 mm is several pixels of
+# disagreement across the sheets rather than noise.
+RESIDUAL_WARN_MM = 5.0
+
+LENS_DEFAULT = "linear"
+
+
+def open_capture(source: int | str, open_source: Callable | None = None):
+    """Open one video source, defaulting to `cv2.VideoCapture`.
+
+    Every read of a camera goes through here, and `open_source` is the seam
+    a scripted capture is handed in on, so the probe, the choice and the
+    reads are all exercisable without a device.
+    """
+    if open_source is not None:
+        return open_source(source)
+    import cv2  # lazy: opencv-python is only required to read a camera
+
+    return cv2.VideoCapture(source)
+
+
+def _gray(frame: np.ndarray | None) -> np.ndarray | None:
+    """One frame as single-channel luminance, whatever the source delivers."""
+    if frame is None:
+        return None
+    frame = np.asarray(frame)
+    if frame.ndim == 2:
+        return frame
+    import cv2
+
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
+def build_detector(dictionary: str = MARKER_DICTIONARY):
+    """The detector every read runs through, with sub-pixel refinement.
+
+    Refinement is what takes a corner from the nearest whole pixel to a
+    fraction of one, and at about 1 mm of floor per pixel it is the
+    difference between a millimetre registration and a pixel one.
+    """
+    import cv2
+
+    parameters = cv2.aruco.DetectorParameters()
+    parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    return cv2.aruco.ArucoDetector(
+        cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary)),
+        parameters,
+    )
+
+
+def detect_markers(frame: np.ndarray, detector) -> dict[int, np.ndarray]:
+    """Every marker in one frame, as id to its four pixel corners.
+
+    An id the detector returns more than once is dropped rather than
+    arbitrated: two candidates decoding to one id means one of them is not
+    the sheet, and nothing in the image says which.
+    """
+    corners, ids, _ = detector.detectMarkers(_gray(frame))
+    if ids is None:
+        return {}
+    found: dict[int, np.ndarray] = {}
+    seen: set[int] = set()
+    for marker_id, quad in zip((int(i) for i in ids.ravel()), corners):
+        if marker_id in seen:
+            found.pop(marker_id, None)
+            continue
+        seen.add(marker_id)
+        found[marker_id] = np.asarray(quad, dtype=np.float64).reshape(4, 2)
+    return found
+
+
+def duplicate_ids(frame: np.ndarray, detector) -> tuple[int, ...]:
+    """The ids this frame decoded more than once."""
+    _, ids, _ = detector.detectMarkers(_gray(frame))
+    if ids is None:
+        return ()
+    flat = [int(i) for i in ids.ravel()]
+    return tuple(sorted({i for i in flat if flat.count(i) > 1}))
+
+
+@dataclass
+class Settled:
+    """The first lit frame a source delivered, and what was thrown away."""
+
+    frame: np.ndarray | None = None
+    discarded: int = 0
+    lit: bool = False
+
+
+def settle(capture, frames_max: int = SETTLE_FRAMES_MAX) -> Settled:
+    """Read until a frame has an image in it, or the budget runs out.
+
+    Returns the first lit frame, or the last one read when none was lit, so
+    a caller always has something to show for a source that delivered
+    anything at all.
+    """
+    import time
+
+    deadline = time.monotonic() + SETTLE_SECONDS_MAX
+    last: np.ndarray | None = None
+    discarded = 0
+    for _ in range(frames_max):
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            break
+        gray = _gray(frame)
+        if float(np.mean(gray)) >= LIT_MEAN_MIN:
+            return Settled(frame=frame, discarded=discarded, lit=True)
+        last = frame
+        discarded += 1
+        if time.monotonic() >= deadline:
+            break
+    return Settled(frame=last, discarded=max(discarded - 1, 0), lit=False)
+
+
+@dataclass
+class Probe:
+    """What one video source looks like, and whether it sees the sheets."""
+
+    source: int | str
+    opened: bool = False
+    backend: str = ""
+    width: int = 0
+    height: int = 0
+    fps: float = 0.0
+    discarded: int = 0
+    mean: float = 0.0
+    spread: float = 0.0
+    marker_ids: tuple[int, ...] = ()
+    frame: np.ndarray | None = None
+    note: str = ""
+
+    @property
+    def dark(self) -> bool:
+        """A lens cap or an unlit room."""
+        return self.mean < DARK_MEAN_MAX
+
+    @property
+    def flat(self) -> bool:
+        """A blank wall or a ceiling: lit, but with nothing in it."""
+        return self.spread < FLAT_SPREAD_MAX
+
+    @property
+    def scene(self) -> bool:
+        """Something is in front of this camera."""
+        return self.frame is not None and not self.dark and not self.flat
+
+    @property
+    def row(self) -> str:
+        """The source's line in the table printed before the reads."""
+        head = f"{str(self.source):<4}"
+        if not self.opened:
+            return f"{head}  did not open"
+        if self.frame is None:
+            return f"{head}  {self.backend:<12}  no frames"
+        markers = " ".join(str(i) for i in self.marker_ids) or "none"
+        tail = ""
+        if not self.marker_ids and self.dark:
+            tail = "  (dark)"
+        elif not self.marker_ids and self.flat:
+            tail = "  (flat)"
+        return (
+            f"{head}  {self.backend:<12}  {self.width} x {self.height:<5}  "
+            f"{self.fps:g} fps  discarded {self.discarded}  "
+            f"mean {self.mean:<5.0f} spread {self.spread:<4.0f} "
+            f"markers {markers}{tail}"
+        )
+
+
+def probe(
+    source: int | str,
+    open_source: Callable | None = None,
+    detector=None,
+) -> Probe:
+    """Open one source, settle it, and report what it sees."""
+    capture = open_capture(source, open_source)
+    if not capture.isOpened():
+        _release(capture)
+        return Probe(source=source, note="did not open")
+    try:
+        settled = settle(capture)
+        backend = str(getattr(capture, "getBackendName", lambda: "")() or "")
+        fps = float(_capture_fps(capture))
+    finally:
+        _release(capture)
+    if settled.frame is None:
+        return Probe(source=source, opened=True, backend=backend, note="no frames")
+    gray = _gray(settled.frame)
+    height, width = gray.shape[:2]
+    found = detect_markers(settled.frame, detector or build_detector())
+    return Probe(
+        source=source,
+        opened=True,
+        backend=backend,
+        width=int(width),
+        height=int(height),
+        fps=fps,
+        discarded=settled.discarded,
+        mean=float(np.mean(gray)),
+        spread=float(np.std(gray)),
+        marker_ids=tuple(sorted(found)),
+        frame=settled.frame,
+    )
+
+
+def _capture_fps(capture) -> float:
+    """The frame rate the source declares, or zero when it declares none."""
+    import cv2
+
+    try:
+        return float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+    except Exception:  # noqa: BLE001 - a scripted or exotic source may not
+        return 0.0
+
+
+def _release(capture) -> None:
+    release = getattr(capture, "release", None)
+    if release is not None:
+        release()
+
+
+def discover(
+    open_source: Callable | None = None,
+    detector=None,
+    index_max: int = PROBE_INDEX_MAX,
+) -> list[Probe]:
+    """Probe the OpenCV indices in turn, in the order they are numbered.
+
+    Stops after `PROBE_MISSES_MAX` consecutive indices fail to open, since
+    the numbering is dense from zero on every backend seen so far, and at
+    `index_max` in any case.
+    """
+    detector = detector or build_detector()
+    probes: list[Probe] = []
+    misses = 0
+    for index in range(index_max):
+        found = probe(index, open_source, detector)
+        if not found.opened:
+            misses += 1
+            if misses >= PROBE_MISSES_MAX:
+                probes.append(found)
+                break
+            probes.append(found)
+            continue
+        misses = 0
+        probes.append(found)
+    return probes
+
+
+@dataclass
+class Choice:
+    """Which source `collect` will read, or why it will not choose one."""
+
+    probe: Probe | None = None
+    reason: str = ""
+    missing: tuple[int, ...] = ()
+
+    @property
+    def chosen(self) -> bool:
+        return self.probe is not None
+
+
+def choose(probes: Sequence[Probe], ids: Sequence[int] | None = None) -> Choice:
+    """The source that sees the sheets, in the order of 2.8's rules.
+
+    Markers decide when exactly one source sees any; a subset of the layout
+    is named and accepted, since the reads will show whether it was the
+    warm-up or the placement. With no markers anywhere, one lit scene is
+    chosen and the operator confirms it from its probe frame - the case
+    before any sheet exists. Anything else refuses to guess.
+    """
+    ids = tuple(ids if ids is not None else layout_ids())
+    seeing = [p for p in probes if p.marker_ids]
+    if len(seeing) == 1:
+        found = seeing[0]
+        missing = tuple(i for i in ids if i not in found.marker_ids)
+        sheets = " ".join(str(i) for i in found.marker_ids)
+        reason = f"source {found.source} sees sheets {sheets}: chosen"
+        if missing:
+            reason += f"; missing {' '.join(str(i) for i in missing)}"
+        return Choice(probe=found, reason=reason, missing=missing)
+    if len(seeing) > 1:
+        sources = ", ".join(str(p.source) for p in seeing)
+        return Choice(
+            reason=(
+                f"sources {sources} all see markers of this dictionary, and "
+                "only you know which one is over the area"
+            )
+        )
+
+    scenes = [p for p in probes if p.scene]
+    if len(scenes) == 1:
+        found = scenes[0]
+        return Choice(
+            probe=found,
+            reason=f"source {found.source} sees no markers; the one lit scene",
+            missing=ids,
+        )
+    if len(scenes) > 1:
+        sources = ", ".join(str(p.source) for p in scenes)
+        return Choice(
+            reason=(
+                f"no source sees markers, and sources {sources} all show a lit "
+                "scene; check their probe frames"
+            )
+        )
+    opened = [str(p.source) for p in probes if p.opened]
+    listed = ", ".join(opened) if opened else "none"
+    return Choice(reason=f"no source shows a lit scene (opened: {listed})")
+
+
+def annotate(frame: np.ndarray, found: dict[int, np.ndarray]) -> np.ndarray:
+    """One frame with the markers it decoded drawn on it, in colour."""
+    import cv2
+
+    frame = np.asarray(frame)
+    canvas = (
+        cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if frame.ndim == 2 else frame.copy()
+    )
+    if not found:
+        return canvas
+    ids = np.array([[i] for i in sorted(found)], dtype=np.int32)
+    corners = [found[i].reshape(1, 4, 2).astype(np.float32) for i in sorted(found)]
+    cv2.aruco.drawDetectedMarkers(canvas, corners, ids)
+    return canvas
+
+
+def write_annotated(
+    frame: np.ndarray, found: dict[int, np.ndarray], path: Path
+) -> Path:
+    """One frame with its detections drawn, as a `.jpg` beside the file."""
+    import cv2
+
+    cv2.imwrite(str(path), annotate(frame, found))
+    return path
+
+
+def write_probe_frames(probes: Sequence[Probe], directory: Path) -> list[Path]:
+    """One annotated `.jpg` per source that delivered a frame."""
+    directory.mkdir(parents=True, exist_ok=True)
+    detector = build_detector()
+    written = []
+    for found in probes:
+        if found.frame is None:
+            continue
+        path = directory / f"source-{_source_slug(found.source)}.jpg"
+        written.append(
+            write_annotated(found.frame, detect_markers(found.frame, detector), path)
+        )
+    return written
+
+
+def _source_slug(source: int | str) -> str:
+    """A source as a filename fragment: an index as itself, a path as its stem."""
+    if isinstance(source, int):
+        return str(source)
+    return _slug(Path(str(source)).stem) or "path"
+
+
+def _slug(text: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "-" for c in text).strip("-.")
+
+
+def parse_source(text: str) -> int | str:
+    """What `--camera` names: an OpenCV index, or a path to open directly."""
+    stripped = text.strip()
+    if stripped.isdigit():
+        return int(stripped)
+    return stripped
+
+
+# --- Reading the sheets -----------------------------------------------------
+
+
+@dataclass
+class ReadTally:
+    """What `--reads` reads of the sheets actually yielded.
+
+    A black read is counted apart from a read that saw no markers: the two
+    have different causes and only one of them means the sheets are not
+    down.
+    """
+
+    target: int = 0
+    complete: int = 0
+    black: int = 0
+    duplicated: int = 0
+    short: int = 0
+    stopped: int = 0
+    discarded: int = 0
+    missing: tuple[int, ...] = ()
+    extra: tuple[int, ...] = ()
+
+    @property
+    def summary(self) -> str:
+        """The one line printed when the reads are done."""
+        markers = len(layout_ids()) if self.complete else 0
+        line = f"{markers} markers in {self.complete} of {self.target} reads"
+        notes = []
+        if self.black:
+            notes.append(f"black {self.black}")
+        if self.duplicated:
+            notes.append(f"duplicate ids {self.duplicated}")
+        if self.short:
+            notes.append(f"incomplete {self.short}")
+        if self.stopped:
+            notes.append(f"no frame {self.stopped}")
+        if notes:
+            line += " (" + ", ".join(notes) + ")"
+        return line
+
+
+def capture_reads(
+    capture,
+    ids: Sequence[int],
+    reads: int,
+    detector=None,
+) -> tuple[list[dict[int, np.ndarray]], ReadTally, np.ndarray | None]:
+    """Read the sheets `reads` times, keeping the reads that saw all of them.
+
+    The warm-up runs first and its settled frame is the first read, which is
+    what lets a single recorded frame stand in for a camera. Returns the
+    kept reads, the tally, and the last frame seen so the operator has a
+    picture of what was registered.
+    """
+    detector = detector or build_detector()
+    ids = tuple(ids)
+    tally = ReadTally(target=reads)
+    kept: list[dict[int, np.ndarray]] = []
+    missing: set[int] = set()
+    extra: set[int] = set()
+    last: np.ndarray | None = None
+
+    settled = settle(capture)
+    tally.discarded = settled.discarded
+    frame = settled.frame
+    for _ in range(reads):
+        if frame is None:
+            tally.stopped += 1
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                frame = None
+                continue
+        last = frame
+        gray = _gray(frame)
+        if float(np.mean(gray)) < LIT_MEAN_MIN:
+            tally.black += 1
+        else:
+            duplicates = duplicate_ids(frame, detector)
+            found = detect_markers(frame, detector)
+            extra.update(i for i in found if i not in ids)
+            wanted = {i: found[i] for i in ids if i in found}
+            if duplicates:
+                tally.duplicated += 1
+            elif len(wanted) == len(ids):
+                kept.append(wanted)
+            else:
+                tally.short += 1
+                missing.update(i for i in ids if i not in wanted)
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            frame = None
+
+    tally.complete = len(kept)
+    tally.missing = tuple(sorted(missing))
+    tally.extra = tuple(sorted(extra))
+    return kept, tally, last
+
+
+def average_corners(
+    reads: Sequence[dict[int, np.ndarray]], ids: Sequence[int]
+) -> dict[int, np.ndarray]:
+    """The sixteen pixel corners, averaged over every complete read."""
+    if not reads:
+        raise ValueError("no read saw every marker, so there is nothing to average")
+    return {
+        marker_id: np.mean([read[marker_id] for read in reads], axis=0)
+        for marker_id in ids
+    }
+
+
+# --- The solve --------------------------------------------------------------
+
+
+@dataclass
+class Solution:
+    """The homography, what it cost, and which sheet fits worst.
+
+    The fit takes all sixteen marker corners rather than the four centres:
+    four points fix the eight unknowns exactly and report a residual of zero
+    by construction, which says nothing about the registration.
+    """
+
+    matrix: list[list[float]]
+    residual_mm: float
+    per_marker_mm: dict[int, float]
+
+    @property
+    def worst(self) -> tuple[int, float]:
+        """The marker furthest from where the layout puts it."""
+        marker_id = max(self.per_marker_mm, key=self.per_marker_mm.get)
+        return marker_id, self.per_marker_mm[marker_id]
+
+
+def solve(layout: Sequence[Marker], corners_px: dict[int, np.ndarray]) -> Solution:
+    """Fit image pixels to frame millimetres over every marker corner."""
+    missing = [m.id for m in layout if m.id not in corners_px]
+    if missing:
+        raise ValueError(
+            "cannot solve without every sheet: "
+            + ", ".join(f"marker {i} ({corner_of(i)})" for i in missing)
+            + " was never read"
+        )
+    pixels = np.array(
+        [corner for m in layout for corner in corners_px[m.id]], dtype=np.float64
+    )
+    millimetres = np.array(
+        [corner for m in layout for corner in m.corners_mm], dtype=np.float64
+    )
+    matrix = compute_homography_matrix(pixels, millimetres)
+    residual = reprojection_residual_mm(matrix, pixels, millimetres)
+    projected = apply_homography(matrix, pixels)
+    per_marker = {}
+    for index, marker in enumerate(layout):
+        block = slice(index * 4, index * 4 + 4)
+        errors = np.linalg.norm(projected[block] - millimetres[block], axis=1)
+        per_marker[marker.id] = float(np.sqrt(np.mean(errors**2)))
+    return Solution(
+        matrix=[[float(v) for v in row] for row in matrix],
+        residual_mm=residual,
+        per_marker_mm=per_marker,
+    )
+
+
+# --- The file ---------------------------------------------------------------
+
+CAMERA_SCHEMA_VERSION = 1
+CAMERA_KIND = "camera"
+CAMERA_TOML_GLOB = "camera-*.toml"
+
+
+@dataclass
+class MarkerObservation:
+    """One sheet as the file records it: where it is, and where it was seen."""
+
+    id: int
+    centre_mm: tuple[float, float]
+    corners_mm: tuple[tuple[float, float], ...]
+    corners_px: tuple[tuple[float, float], ...]
+    dictionary: str = MARKER_DICTIONARY
+    side_mm: float = MARKER_SIDE_MM
+
+
+@dataclass
+class CameraCalibration:
+    """One camera's registration into a site's frame."""
+
+    site: Site = field(default_factory=Site)
+    area: str = ""
+    source: int | str = 0
+    width: int = 0
+    height: int = 0
+    fps: float = 0.0
+    lens: str = LENS_DEFAULT
+    intrinsics: str = ""
+    reads: int = 0
+    markers: list[MarkerObservation] = field(default_factory=list)
+    matrix: list[list[float]] = field(default_factory=list)
+    residual_mm: float = 0.0
+    span_mm: list[tuple[float, float]] = field(default_factory=list)
+    created: str = ""
+    path: Path | None = None
+    # The id the file on disk declares. A mismatch with `id` means the file
+    # was hand-edited into a different registration.
+    stored_id: str = ""
+
+    @property
+    def id(self) -> str:
+        return camera_calibration_id(self)
+
+    @property
+    def id8(self) -> str:
+        return self.id[:8]
+
+
+def camera_canonical_serialisation(calibration: CameraCalibration) -> str:
+    """The text the camera calibration's id is the digest of.
+
+    Same rule as the lighthouse's: a field that cannot change a computed
+    position is not in here. So the anchor, the source, the lens mode, the
+    delivered mode and the read count are all provenance and stay out, and
+    the span stays out too because it is derived from `corners_mm`.
+    """
+    lines = [
+        f"schema_version={CAMERA_SCHEMA_VERSION}",
+        f"kind={CAMERA_KIND}",
+        f"site.name={calibration.site.name}",
+        f"camera.area={calibration.area}",
+    ]
+    for marker in sorted(calibration.markers, key=lambda m: m.id):
+        key = f"marker.{marker.id}"
+        lines.append(f"{key}.dictionary={marker.dictionary}")
+        lines.append(f"{key}.side_mm={_num(marker.side_mm)}")
+        lines.append(
+            f"{key}.corners_mm="
+            + ";".join(f"{_num(x)},{_num(y)}" for x, y in marker.corners_mm)
+        )
+        lines.append(
+            f"{key}.corners_px="
+            + ";".join(f"{_num(x)},{_num(y)}" for x, y in marker.corners_px)
+        )
+    lines.append(
+        "homography.matrix="
+        + ";".join(",".join(_num(v) for v in row) for row in calibration.matrix)
+    )
+    return "\n".join(sorted(lines))
+
+
+def camera_calibration_id(calibration: CameraCalibration) -> str:
+    """Truncated SHA-256 over the canonical serialisation, 16 hex characters."""
+    digest = hashlib.sha256(
+        camera_canonical_serialisation(calibration).encode("utf-8")
+    ).hexdigest()
+    return digest[:16]
+
+
+def render_camera_calibration(calibration: CameraCalibration) -> str:
+    """The schema 1 camera file, as text."""
+    site = calibration.site
+    out = [
+        f"schema_version = {CAMERA_SCHEMA_VERSION}",
+        f'kind = "{CAMERA_KIND}"',
+        f'created = "{calibration.created}"',
+        f'id = "{calibration.id}"',
+        "",
+        "[site]",
+        f'name = "{site.name}"',
+        f'anchor = "{_toml_escape(site.anchor)}"',
+        "",
+        "[camera]",
+        f'area = "{_toml_escape(calibration.area)}"',
+        f"source = {_toml_source(calibration.source)}",
+        f"width = {int(calibration.width)}",
+        f"height = {int(calibration.height)}",
+        f"fps = {_num(calibration.fps)}",
+        f'lens = "{_toml_escape(calibration.lens)}"',
+        f'intrinsics = "{_toml_escape(calibration.intrinsics)}"',
+        f"reads = {int(calibration.reads)}",
+    ]
+    for marker in sorted(calibration.markers, key=lambda m: m.id):
+        out += [
+            "",
+            "[[marker]]",
+            f"id = {marker.id}",
+            f'dictionary = "{marker.dictionary}"',
+            f"side_mm = {_num(marker.side_mm)}",
+            f"centre_mm = [{_num(marker.centre_mm[0])}, {_num(marker.centre_mm[1])}]",
+            f"corners_mm = {_toml_points(marker.corners_mm)}",
+            f"corners_px = {_toml_points(marker.corners_px)}",
+        ]
+    out += [
+        "",
+        "[homography]",
+        f"matrix = {_toml_matrix(calibration.matrix)}",
+        f"residual_mm = {_num(calibration.residual_mm)}",
+        f"span_mm = {_toml_points(calibration.span_mm)}",
+    ]
+    return "\n".join(out) + "\n"
+
+
+def _toml_source(source: int | str) -> str:
+    """The source as TOML: an index as a number, anything else as a string."""
+    if isinstance(source, int) and not isinstance(source, bool):
+        return str(source)
+    return f'"{_toml_escape(str(source))}"'
+
+
+def read_camera_calibration_file(path: Path) -> CameraCalibration:
+    """Parse a schema 1 camera file.
+
+    `kind` is checked before the schema version, so a lighthouse file handed
+    to `--camera-calibration` is refused for what it is rather than for its
+    version number.
+    """
+    path = Path(path)
+    with open(path, "rb") as handle:
+        data = tomllib.load(handle)
+    kind = data.get("kind", "")
+    if kind != CAMERA_KIND:
+        raise ValueError(
+            f"{path}: not a camera calibration (kind {kind!r}). A lighthouse "
+            "calibration goes to --calibration, a camera one here."
+        )
+    schema = data.get("schema_version", 0)
+    if schema != CAMERA_SCHEMA_VERSION:
+        raise ValueError(
+            f"{path}: unsupported camera calibration schema_version {schema} "
+            f"(this build supports {CAMERA_SCHEMA_VERSION})"
+        )
+    site_data = data.get("site", {})
+    camera_data = data.get("camera", {})
+    homography = data.get("homography", {})
+    calibration = CameraCalibration(
+        site=Site(
+            name=site_data.get("name", SITE_DEFAULT),
+            anchor=site_data.get("anchor", ""),
+        ),
+        area=camera_data.get("area", ""),
+        source=camera_data.get("source", 0),
+        width=int(camera_data.get("width", 0)),
+        height=int(camera_data.get("height", 0)),
+        fps=float(camera_data.get("fps", 0.0)),
+        lens=camera_data.get("lens", ""),
+        intrinsics=camera_data.get("intrinsics", ""),
+        reads=int(camera_data.get("reads", 0)),
+        markers=[
+            MarkerObservation(
+                id=int(raw["id"]),
+                centre_mm=(float(raw["centre_mm"][0]), float(raw["centre_mm"][1])),
+                corners_mm=tuple((float(p[0]), float(p[1])) for p in raw["corners_mm"]),
+                corners_px=tuple((float(p[0]), float(p[1])) for p in raw["corners_px"]),
+                dictionary=raw.get("dictionary", MARKER_DICTIONARY),
+                side_mm=float(raw.get("side_mm", MARKER_SIDE_MM)),
+            )
+            for raw in data.get("marker", [])
+        ],
+        matrix=[[float(v) for v in row] for row in homography.get("matrix", [])],
+        residual_mm=float(homography.get("residual_mm", 0.0)),
+        span_mm=[(float(p[0]), float(p[1])) for p in homography.get("span_mm", [])],
+        created=data.get("created", ""),
+        path=path,
+    )
+    calibration.stored_id = str(data.get("id", ""))
+    return calibration
+
+
+def resolve_camera_calibration_path(
+    spec: str,
+    root: Path | None = None,
+    site: str | None = None,
+) -> Path:
+    """The camera file `spec` names: a path, or an id prefix under a site.
+
+    The glob is `camera-*.toml`, so a camera id prefix can never resolve to
+    a lighthouse file sitting in the same directory.
+    """
+    candidate = Path(spec).expanduser()
+    if candidate.is_file():
+        return candidate
+
+    root = root or calibration_root()
+    matches = sorted(
+        path
+        for path in root.glob(f"{site or '*'}/{CAMERA_TOML_GLOB}")
+        if _camera_file_id(path).startswith(spec.lower())
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(
+            f"no camera calibration matches {spec!r}: it is neither a readable "
+            f"file nor the id prefix of a file under {root / (site or '*')}"
+        )
+    listed = "\n  ".join(str(m) for m in matches)
+    raise ValueError(
+        f"camera calibration id prefix {spec!r} matches several files:\n  {listed}"
+    )
+
+
+def _camera_file_id(path: Path) -> str:
+    """The id a file declares, read without solving anything."""
+    try:
+        with open(path, "rb") as handle:
+            return str(tomllib.load(handle).get("id", "")).lower()
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+
+
+def load_camera_calibration(
+    spec: str,
+    root: Path | None = None,
+    site: str | None = None,
+) -> CameraCalibration:
+    """Read the camera calibration `spec` names."""
+    return read_camera_calibration_file(
+        resolve_camera_calibration_path(spec, root, site)
+    )
+
+
+def write_camera_calibration(
+    calibration: CameraCalibration, root: Path | None = None
+) -> Path:
+    """Write to `calibrations/<site>/camera-<stamp>-<id8>.toml`."""
+    stamp = (calibration.created or "").replace(":", "-")
+    directory = (
+        root / calibration.site.name
+        if root is not None
+        else site_dir(calibration.site.name)
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"camera-{stamp}-{calibration.id8}.toml"
+    path.write_text(render_camera_calibration(calibration), encoding="utf-8")
+    calibration.path = path
+    return path
+
+
+def build_calibration(
+    site: Site,
+    area: Area,
+    layout: Sequence[Marker],
+    corners_px: dict[int, np.ndarray],
+    solution: Solution,
+    probe_result: Probe,
+    reads: int,
+    lens: str = LENS_DEFAULT,
+    intrinsics: str = "",
+    created: str = "",
+) -> CameraCalibration:
+    """Everything the file records, assembled from one collect run."""
+    now = created or datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    return CameraCalibration(
+        site=site,
+        area=area.name,
+        source=probe_result.source,
+        width=probe_result.width,
+        height=probe_result.height,
+        fps=probe_result.fps,
+        lens=lens,
+        intrinsics=intrinsics,
+        reads=reads,
+        markers=[
+            MarkerObservation(
+                id=marker.id,
+                centre_mm=marker.centre_mm,
+                corners_mm=marker.corners_mm,
+                corners_px=tuple(
+                    (float(x), float(y)) for x, y in corners_px[marker.id]
+                ),
+            )
+            for marker in layout
+        ],
+        matrix=solution.matrix,
+        residual_mm=solution.residual_mm,
+        span_mm=span_mm(layout),
+        created=now,
+    )
+
+
+# --- What the operator reads ------------------------------------------------
+
+
+def collect_header(site: Site, area: Area, reads: int) -> str:
+    """The paragraph printed once, before the placement instructions."""
+    zero = (
+        site.anchor
+        or "the site's anchor, which this config does not describe (add "
+        f"`anchor` to [sites.{site.name}])"
+    )
+    return (
+        f"\nRegistering a camera over {area.name} in site {site.name}. "
+        "Coordinates are millimetres in the site's frame: x grows right, y "
+        f"grows down, and zero is {zero}.\n"
+        "Tape one printed sheet inside each corner of the area, its two outer "
+        "edges on the area's edge lines, page top toward the top of the map. "
+        "All four the same way up.\n"
+        f"{len(CORNERS)} sheets, then {reads} "
+        f"{'read' if reads == 1 else 'reads'} of them.\n"
+    )
+
+
+def sheet_prompt(marker: Marker, area: Area) -> str:
+    """Where one sheet goes, as an instruction."""
+    x, y = marker.centre_mm
+    return (
+        f"sheet {marker.id} inside the {marker.corner} corner of {area.name}, "
+        f"edges on the lines; marker centre ({x:g}, {y:g}) mm"
+    )
