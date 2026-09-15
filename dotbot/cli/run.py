@@ -48,6 +48,11 @@ _RUN_SUBCOMMANDS = (
         "LH2 calibration: capture, apply, export (serial-side / single device).",
     ),
     (
+        "camera-calibration",
+        "dotbot.cli.camera_calibrate",
+        "Overhead-camera registration: printable ArUco sheets, capture.",
+    ),
+    (
         "demo",
         "dotbot.cli.demo",
         "Built-in research demos (qrkey phone bridge, ...).",
@@ -63,9 +68,9 @@ _RUN_SUBCOMMANDS = (
     subcommands=_RUN_SUBCOMMANDS,
     help=(
         "Launch host-side processes: the controller (+ REST/WS + UI), the "
-        "gateway bridge, a simulator, LH2 calibration, demos, and teleop "
-        "drivers. These run on your computer; `fw` / `device` / `swarm` are "
-        "the things you manage."
+        "gateway bridge, a simulator, LH2 and camera calibration, demos, and "
+        "teleop drivers. These run on your computer; `fw` / `device` / "
+        "`swarm` are the things you manage."
     ),
 )
 def cmd():
