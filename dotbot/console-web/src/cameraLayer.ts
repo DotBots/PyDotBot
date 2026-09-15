@@ -16,7 +16,7 @@
 //
 // The opacity and the offset are both ways of looking at the map, like which
 // area outlines are drawn: they reach no controller and are remembered in this
-// browser only. The offset shifts the image and the outlines drawn on it, and
+// browser only. The offset shifts the image and the outline drawn on it, and
 // nothing else: the glyph is the measurement, so moving it to meet the picture
 // would corrupt the thing being checked.
 

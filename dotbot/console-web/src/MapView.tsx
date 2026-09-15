@@ -615,41 +615,28 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     WebkitMaskRepeat: "no-repeat",
                   }}
                 />
-                {/* Two boundaries, and they answer different questions. The
-                    solid one is where the camera's own view of the floor
+                {/* One boundary: where the camera's own view of the floor
                     ends, drawn only where that falls inside the area, so an
-                    area it covers whole carries no line at all. The dashed
-                    one is the registered square, where the four sheets stood
-                    and the homography was fitted, marking off what was
-                    measured from what is extrapolated around it. */}
-                {(hasSpan(camera.coverage_mm) || hasSpan(camera.span_mm)) && (
+                    area it covers whole carries no line at all. It answers
+                    whether this camera reaches the floor it is registered
+                    on. Where the registration itself was fitted is carried by
+                    the falloff, which dims the image as the extrapolation
+                    past the span grows, and by the markers in the photograph
+                    underneath. */}
+                {hasSpan(camera.coverage_mm) && (
                   <svg
                     viewBox={`0 0 ${area.w} ${area.h}`}
                     preserveAspectRatio="none"
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
                   >
-                    {hasSpan(camera.coverage_mm) && (
-                      <polygon
-                        data-testid={`camera-coverage-${camera.area}`}
-                        points={polygonPoints(camera.coverage_mm, area)}
-                        fill="none"
-                        stroke="var(--muted)"
-                        strokeWidth={chrome}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    )}
-                    {hasSpan(camera.span_mm) && (
-                      <polygon
-                        data-testid={`camera-span-${camera.area}`}
-                        points={polygonPoints(camera.span_mm, area)}
-                        fill="none"
-                        stroke="var(--muted)"
-                        strokeOpacity={0.7}
-                        strokeWidth={chrome}
-                        strokeDasharray={`${4 * chrome} ${4 * chrome}`}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    )}
+                    <polygon
+                      data-testid={`camera-coverage-${camera.area}`}
+                      points={polygonPoints(camera.coverage_mm, area)}
+                      fill="none"
+                      stroke="var(--muted)"
+                      strokeWidth={chrome}
+                      vectorEffect="non-scaling-stroke"
+                    />
                   </svg>
                 )}
               </div>

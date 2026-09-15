@@ -245,16 +245,17 @@ describe("the camera as a map layer", () => {
     expect(image.style.height).toBe("100%");
   });
 
-  it("marks the span out, in the box's own coordinates", () => {
+  it("draws no square through the markers, which the photograph shows", () => {
     render(<Harness />);
-    // The box is the area, so the span's frame millimetres land as the
-    // area's own: 1030 mm of frame is 30 mm into a dev-corner starting at
-    // 1000.
-    const points = "30,73.5 970,73.5 970,926.5 30,926.5";
     expect(
-      screen.getByTestId("camera-span-dev-corner").getAttribute("points"),
-    ).toBe(points);
-    expect(polygonPoints(SPAN, DEV_CORNER)).toBe(points);
+      screen.queryByTestId("camera-span-dev-corner"),
+    ).not.toBeInTheDocument();
+    // The mapping the mask is drawn through is still this one: the box is
+    // the area, so the span's frame millimetres land as the area's own, and
+    // 1030 mm of frame is 30 mm into a dev-corner starting at 1000.
+    expect(polygonPoints(SPAN, DEV_CORNER)).toBe(
+      "30,73.5 970,73.5 970,926.5 30,926.5",
+    );
   });
 
   it("draws the image whole out to the area's edge, with no falloff", () => {
@@ -458,11 +459,10 @@ describe("the offset that lines the image up with the robots", () => {
     const layer = screen.getByTestId("camera-layer-dev-corner");
     expect(layer.style.transform).toBe("translate(0%, -2%)");
 
-    // The photograph and both boundaries ride inside the nudged box, so they
-    // stay on the picture they annotate.
+    // The photograph and the boundary drawn on it ride inside the nudged
+    // box, so the line stays on the picture it annotates.
     for (const id of [
       "camera-image-dev-corner",
-      "camera-span-dev-corner",
       "camera-coverage-dev-corner",
     ]) {
       expect(layer.contains(screen.getByTestId(id))).toBe(true);
