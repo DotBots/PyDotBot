@@ -1,0 +1,212 @@
+# SPDX-FileCopyrightText: 2026-present Inria
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Camera registration: where the ArUco sheets go, and what one looks like.
+
+An overhead camera is registered against four printed markers whose frame
+coordinates are derived from an area's corners rather than measured with a
+tape. One A4 sheet carries one marker, the sheet sits inside a corner with
+its outer edges on the area's edge lines, and the marker is centred on the
+page - so the centre is the corner inset by half a page, and the operator
+measures nothing.
+
+`cv2` is imported inside `render_sheet`, the only function that needs it,
+so the layout is available without the `[calibrate]` extra installed.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Sequence
+
+import numpy as np
+
+from dotbot.area import Area
+from dotbot.calibration.points import CORNERS
+
+MM_PER_INCH = 25.4
+
+# A4 portrait, and the density a sheet is rendered and printed at.
+PAGE_WIDTH_MM = 210.0
+PAGE_HEIGHT_MM = 297.0
+SHEET_DPI = 300
+
+# 150 mm is what the page allows with a quiet zone: a 4x4 marker is six
+# cells across counting its black border, so 25 mm per cell, and the 30 mm
+# side margins leave a cell of white on every side inside the printer's own
+# margin.
+MARKER_DICTIONARY = "DICT_4X4_50"
+MARKER_SIDE_MM = 150.0
+
+# Printed beside the id so the operator can verify the print came out at
+# 100 % with a ruler before taping anything down.
+SCALE_BAR_MM = 100.0
+
+
+def _px(mm: float) -> int:
+    """Millimetres as whole pixels at the sheet's print density."""
+    return round(mm * SHEET_DPI / MM_PER_INCH)
+
+
+PAGE_WIDTH_PX = _px(PAGE_WIDTH_MM)
+PAGE_HEIGHT_PX = _px(PAGE_HEIGHT_MM)
+MARKER_SIDE_PX = _px(MARKER_SIDE_MM)
+
+
+@dataclass(frozen=True)
+class Marker:
+    """One sheet's marker, and where its corners land in the site's frame.
+
+    `id` is the sheet's index into `CORNERS`, so the printed id names the
+    corner the sheet belongs in and the camera shares the lighthouse's
+    corner vocabulary. `corners_mm` is in ArUco's own order - top-left,
+    top-right, bottom-right, bottom-left - so it pairs element by element
+    with the pixel corners the detector returns.
+    """
+
+    id: int
+    centre_mm: tuple[float, float]
+    corners_mm: tuple[tuple[float, float], ...]
+
+    @property
+    def corner(self) -> str:
+        """The area corner this sheet goes in."""
+        return CORNERS[self.id]
+
+
+# Each sheet's own marker corner that faces away from the area's centre,
+# listed in the ArUco order a span is stored in.
+_SPAN_CORNERS = (
+    ("top-left", 0),
+    ("top-right", 1),
+    ("bottom-right", 2),
+    ("bottom-left", 3),
+)
+
+
+def page_inset(corner: str) -> tuple[float, float]:
+    """The (dx, dy) from an area corner to the centre of the sheet there.
+
+    The sheet lies inside the rectangle with its two outer edges on the
+    rectangle's edge lines and its top toward the top of the frame, and the
+    marker is centred on the page, so the inset is half a page either way.
+    """
+    if corner not in CORNERS:
+        raise ValueError(
+            f"unknown corner {corner!r}; expected one of {', '.join(CORNERS)}"
+        )
+    vertical, _, horizontal = corner.partition("-")
+    dx, dy = PAGE_WIDTH_MM / 2, PAGE_HEIGHT_MM / 2
+    return (dx if horizontal == "left" else -dx, dy if vertical == "top" else -dy)
+
+
+def sheet_marker(area: Area, corner: str) -> Marker:
+    """The marker of the sheet placed in one corner of `area`."""
+    dx, dy = page_inset(corner)
+    vertical, _, horizontal = corner.partition("-")
+    x = (area.x if horizontal == "left" else area.x_max) + dx
+    y = (area.y if vertical == "top" else area.y_max) + dy
+    half = MARKER_SIDE_MM / 2
+    return Marker(
+        id=CORNERS.index(corner),
+        centre_mm=(x, y),
+        corners_mm=(
+            (x - half, y - half),
+            (x + half, y - half),
+            (x + half, y + half),
+            (x - half, y + half),
+        ),
+    )
+
+
+def marker_layout(area: Area) -> list[Marker]:
+    """The four sheets of one area, in `CORNERS` order."""
+    return [sheet_marker(area, corner) for corner in CORNERS]
+
+
+def span_mm(layout: Sequence[Marker]) -> list[tuple[float, float]]:
+    """The quadrilateral through the four markers' outer corners.
+
+    The homography is fitted to these sixteen corners, so the quadrilateral
+    they enclose is the region the registration is trustworthy inside:
+    error is flat within it and grows with the square of the distance
+    outside it. Returned in ArUco order, top-left first.
+    """
+    by_corner = {marker.corner: marker for marker in layout}
+    missing = [name for name, _ in _SPAN_CORNERS if name not in by_corner]
+    if missing:
+        raise ValueError(f"layout has no sheet for the {', '.join(missing)} corner(s)")
+    return [by_corner[name].corners_mm[index] for name, index in _SPAN_CORNERS]
+
+
+def render_sheet(marker_id: int) -> np.ndarray:
+    """One printable sheet: A4 at 300 dpi with its marker centred.
+
+    Returned as a grayscale page. The marker's position on the page is what
+    `marker_layout` derives frame coordinates from, so it is centred
+    exactly and everything else lives in the bottom margin.
+    """
+    import cv2  # lazy: opencv-python is only required to draw a sheet
+
+    if marker_id not in range(len(CORNERS)):
+        raise ValueError(
+            f"unknown sheet id {marker_id}; expected 0 to {len(CORNERS) - 1}"
+        )
+    page = np.full((PAGE_HEIGHT_PX, PAGE_WIDTH_PX), 255, dtype=np.uint8)
+    dictionary = cv2.aruco.getPredefinedDictionary(
+        getattr(cv2.aruco, MARKER_DICTIONARY)
+    )
+    marker = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_SIDE_PX)
+    x0 = (PAGE_WIDTH_PX - MARKER_SIDE_PX) // 2
+    y0 = (PAGE_HEIGHT_PX - MARKER_SIDE_PX) // 2
+    page[y0 : y0 + MARKER_SIDE_PX, x0 : x0 + MARKER_SIDE_PX] = marker
+    _caption(page, marker_id)
+    return page
+
+
+def _caption(page: np.ndarray, marker_id: int) -> None:
+    """The id, the dictionary and the scale bar, in the bottom margin.
+
+    Kept below 250 mm so a full cell of white separates it from the
+    marker's border, which the detector needs as a quiet zone.
+    """
+    import cv2
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    ink = 0
+    left = _px((PAGE_WIDTH_MM - MARKER_SIDE_MM) / 2)
+    cv2.putText(
+        page,
+        f"marker {marker_id} - {CORNERS[marker_id]} corner",
+        (left, _px(255.0)),
+        font,
+        2.6,
+        ink,
+        6,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        page,
+        f"{MARKER_DICTIONARY}, {MARKER_SIDE_MM:g} mm - print at 100 %",
+        (left, _px(266.0)),
+        font,
+        1.7,
+        ink,
+        4,
+        cv2.LINE_AA,
+    )
+    bar_y = _px(278.0)
+    bar_end = left + _px(SCALE_BAR_MM)
+    cv2.line(page, (left, bar_y), (bar_end, bar_y), ink, 6)
+    for x in (left, bar_end):
+        cv2.line(page, (x, _px(275.0)), (x, _px(281.0)), ink, 6)
+    cv2.putText(
+        page,
+        f"{SCALE_BAR_MM:g} mm",
+        (bar_end + _px(6.0), _px(281.0)),
+        font,
+        1.7,
+        ink,
+        4,
+        cv2.LINE_AA,
+    )
