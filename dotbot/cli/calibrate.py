@@ -34,7 +34,7 @@ def _run_tui(ctx: click.Context) -> None:
         click.echo(
             "`dotbot run lh2-calibration collect` needs the calibration "
             "runtime deps (opencv-python, textual).\n"
-            "Install with:  pip install dotbot[calibrate]",
+            "Install with:  pip install pydotbot[calibrate]",
             err=True,
         )
         click.echo(f"(import error was: {exc})", err=True)

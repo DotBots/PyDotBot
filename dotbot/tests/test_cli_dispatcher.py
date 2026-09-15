@@ -258,7 +258,7 @@ def test_lazy_subcommand_missing_extra_exits_with_hint():
     runner = CliRunner()
     result = runner.invoke(stub, [])
     assert result.exit_code == 1
-    assert "pip install dotbot[fake-extra]" in result.output
+    assert "pip install pydotbot[fake-extra]" in result.output
     assert "fake-pkg" in result.output
 
 
@@ -306,7 +306,7 @@ def test_lh2_calibration_missing_extras_prints_hint(runner, monkeypatch):
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
     result = runner.invoke(cli, ["run", "lh2-calibration"])
     assert result.exit_code == 1, result.output
-    assert "pip install dotbot[calibrate]" in result.output
+    assert "pip install pydotbot[calibrate]" in result.output
 
 
 def test_lh2_calibration_collect_missing_extras_prints_hint(runner, monkeypatch):
@@ -315,4 +315,4 @@ def test_lh2_calibration_collect_missing_extras_prints_hint(runner, monkeypatch)
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
     result = runner.invoke(cli, ["run", "lh2-calibration", "collect"])
     assert result.exit_code == 1, result.output
-    assert "pip install dotbot[calibrate]" in result.output
+    assert "pip install pydotbot[calibrate]" in result.output
