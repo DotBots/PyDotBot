@@ -26,6 +26,7 @@ from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
+from dotbot.camera import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
@@ -38,6 +39,7 @@ from dotbot.models import (
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
     DotBotCalibrationStartModel,
+    DotBotCameraModel,
     DotBotConnectionModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -309,6 +311,35 @@ async def site():
             for a in sorted(current.areas.values(), key=lambda a: a.name)
         ],
     )
+
+
+@api.get(
+    path="/controller/cameras",
+    response_model=List[DotBotCameraModel],
+    summary="Return the cameras the controller warps into the map",
+    tags=["controller"],
+)
+async def cameras():
+    """Cameras HTTP GET handler."""
+    return [
+        DotBotCameraModel(**camera.descriptor())
+        for camera in api.controller.cameras
+        if camera.live
+    ]
+
+
+@api.get(
+    path="/controller/cameras/{area}/stream",
+    response_class=StreamingResponse,
+    summary="Stream the camera covering one area, warped into its raster",
+    tags=["controller"],
+)
+async def camera_stream(area: str):
+    """Camera stream HTTP GET handler."""
+    for camera in api.controller.cameras:
+        if camera.live and camera.area.name == area:
+            return StreamingResponse(camera.parts(), media_type=STREAM_MEDIA_TYPE)
+    raise HTTPException(status_code=404, detail=f"No camera covers area {area!r}")
 
 
 @api.post(

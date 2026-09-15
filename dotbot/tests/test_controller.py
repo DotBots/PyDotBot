@@ -35,6 +35,9 @@ C405 = Site(
     },
 )
 
+# The 1 x 1 m patch a camera is registered over, in C405's frame.
+DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
+
 
 @pytest.fixture
 def serial_mock(monkeypatch):
@@ -416,3 +419,124 @@ def test_a_controller_with_no_site_keeps_the_neutral_one(serial_mock):
     controller = Controller(settings)
     assert controller.site.name == "default"
     assert controller.site.areas == {}
+
+
+def _write_camera_calibration(tmp_path, monkeypatch, source, area="dev-corner"):
+    """A camera registration under tmp_path, over `source`, and its id."""
+    from dotbot.calibration import camera
+
+    monkeypatch.setattr(camera, "site_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
+    calibration = camera.CameraCalibration(
+        site=Site(name=C405.name, anchor=C405.anchor),
+        area=area,
+        source=str(source),
+        width=64,
+        height=48,
+        fps=0.0,
+        reads=1,
+        markers=[
+            camera.MarkerObservation(
+                id=marker.id,
+                centre_mm=marker.centre_mm,
+                corners_mm=marker.corners_mm,
+                corners_px=((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),
+            )
+            for marker in camera.marker_layout(DEV_CORNER)
+        ],
+        matrix=[[1.0, 0.0, 1000.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        residual_mm=0.4,
+        span_mm=camera.span_mm(camera.marker_layout(DEV_CORNER)),
+        created="2026-09-15T13:42:00Z",
+    )
+    camera.write_camera_calibration(calibration)
+    return calibration
+
+
+def _camera_site():
+    """C405 with the area the camera covers, which C405 itself omits."""
+    areas = dict(C405.areas)
+    areas["dev-corner"] = DEV_CORNER
+    return Site(
+        name=C405.name, anchor=C405.anchor, extent_mm=C405.extent_mm, areas=areas
+    )
+
+
+def test_controller_serves_the_camera_layer_named_by_id(
+    tmp_path, monkeypatch, serial_mock
+):
+    """An id prefix resolves under calibrations/<site>/, as --calibration does."""
+    import cv2
+    import numpy as np
+
+    source = tmp_path / "frame.png"
+    cv2.imwrite(str(source), np.full((48, 64), 180, np.uint8))
+    written = _write_camera_calibration(tmp_path, monkeypatch, source)
+
+    controller = Controller(
+        ControllerSettings(
+            port="/dev/null",
+            baudrate=115200,
+            network_id="0",
+            gw_address="78",
+            site=_camera_site(),
+            camera_calibration=written.id8,
+        )
+    )
+    try:
+        assert len(controller.cameras) == 1
+        served = controller.cameras[0]
+        assert served.live
+        assert served.area == DEV_CORNER
+        assert served.calibration.id == written.id
+        assert served.raster == (500, 500)
+    finally:
+        for camera_service in controller.cameras:
+            camera_service.stop()
+
+
+def test_controller_with_no_camera_calibration_serves_no_layer(serial_mock):
+    settings = ControllerSettings(
+        port="/dev/null", baudrate=115200, network_id="0", gw_address="78"
+    )
+    assert Controller(settings).cameras == []
+
+
+def test_a_camera_calibration_for_an_area_this_site_lacks_serves_no_layer(
+    tmp_path, monkeypatch, serial_mock
+):
+    """The file names an area; the running site is what has to define it."""
+    written = _write_camera_calibration(
+        tmp_path, monkeypatch, tmp_path / "frame.png", area="nowhere"
+    )
+    controller = Controller(
+        ControllerSettings(
+            port="/dev/null",
+            baudrate=115200,
+            network_id="0",
+            gw_address="78",
+            site=_camera_site(),
+            camera_calibration=written.id8,
+        )
+    )
+    assert controller.cameras == []
+
+
+def test_a_camera_calibration_that_resolves_to_nothing_serves_no_layer(
+    tmp_path, monkeypatch, serial_mock
+):
+    """A stale id in a config is a missing layer, never a controller that stops."""
+    from dotbot.calibration import camera
+
+    monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
+    controller = Controller(
+        ControllerSettings(
+            port="/dev/null",
+            baudrate=115200,
+            network_id="0",
+            gw_address="78",
+            site=_camera_site(),
+            camera_calibration="deadbeef",
+        )
+    )
+    assert controller.cameras == []

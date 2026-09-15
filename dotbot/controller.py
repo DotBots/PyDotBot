@@ -51,6 +51,7 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
+from dotbot.camera import CameraService
 from dotbot.csv_data_logger import CSVDataLogger, CSVLog
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
@@ -102,6 +103,13 @@ def load_calibration(spec: str, site: Optional[str] = None):
     return _load(spec, site=site)
 
 
+def load_camera_calibration(spec: str, site: Optional[str] = None):
+    """The camera registration `spec` names: a file path or an id prefix."""
+    from dotbot.calibration.camera import load_camera_calibration as _load
+
+    return _load(spec, site=site)
+
+
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
 
@@ -124,6 +132,7 @@ class ControllerSettings:
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
     calibration: Optional[str] = None
+    camera_calibration: Optional[str] = None
     background_map: str = ""
     headless: bool = False
     verbose: bool = False
@@ -215,6 +224,9 @@ class Controller:
                 "No calibration selected: robots keep whatever they hold. "
                 "Pass --calibration <path|id> or set [run.controller] calibration."
             )
+        self.cameras: List[CameraService] = []
+        if settings.camera_calibration:
+            self._start_camera(settings.camera_calibration)
         self.calibration_session = SessionDriver(
             client_factory=self._swarmit_client,
             notify=self._notify_calibration_session,
@@ -230,6 +242,44 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotSimulator] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def _start_camera(self, spec: str) -> None:
+        """Open the camera layer one registration describes.
+
+        Every way this can fail is a warning and no layer, never a stop: a
+        controller without a camera is a missing layer, not a broken console.
+        """
+        try:
+            calibration = load_camera_calibration(spec, site=self.site.name)
+        except (ValueError, OSError) as exc:
+            self.logger.warning(
+                "Camera calibration not loaded, so no camera layer is served",
+                camera_calibration=spec,
+                error=str(exc),
+            )
+            return
+        try:
+            area = self.site.registry().resolve(calibration.area)
+        except ValueError as exc:
+            self.logger.warning(
+                "Camera calibration names an area this site does not define, "
+                "so no camera layer is served",
+                path=str(calibration.path),
+                area=calibration.area,
+                error=str(exc),
+            )
+            return
+        self.logger.info(
+            "Camera calibration loaded",
+            path=str(calibration.path),
+            site=calibration.site.name,
+            area=area.name,
+            camera_id=calibration.id,
+            residual_mm=round(calibration.residual_mm, 2),
+        )
+        service = CameraService(calibration, area)
+        if service.start():
+            self.cameras.append(service)
 
     def _update_dotbot_twin(
         self,
@@ -820,6 +870,8 @@ class Controller:
         finally:
             if self.csv_data_logger is not None:
                 self.csv_data_logger.close()
+            for camera in self.cameras:
+                camera.stop()
             self.adapter.close()
             self.logger.info("Stopping controller")
             for task in tasks:

@@ -104,6 +104,27 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
 
 
+class DotBotCameraModel(BaseModel):
+    """One registered camera, as the console needs it to draw the layer.
+
+    `width` and `height` are the raster's, not the device's: the stream
+    carries the area warped at `mm_per_px`, so they are the area's own size
+    in raster pixels. `span_mm` is the quadrilateral through the four
+    markers' outer corners, in frame millimetres, which is the region the
+    registration is trustworthy inside.
+    """
+
+    area: str
+    source: Union[int, str]
+    mm_per_px: float
+    width: int
+    height: int
+    span_mm: List[List[float]] = []
+    residual_mm: float = 0.0
+    id: str = ""
+    lens: str = ""
+
+
 class DotBotCalibrationReadsModel(BaseModel):
     """How many reads one station contributed to one point."""
 

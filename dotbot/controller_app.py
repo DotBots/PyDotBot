@@ -248,6 +248,16 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     ),
 )
 @click.option(
+    "--camera-calibration",
+    type=str,
+    help=(
+        "The overhead-camera registration to draw on the map: a file path or "
+        "the id prefix of a file under ~/.dotbot/calibrations/<site>/. Write "
+        "one with `dotbot run camera-calibration collect`. With none given, "
+        "the map carries no camera layer."
+    ),
+)
+@click.option(
     "-M",
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
@@ -301,6 +311,7 @@ def main(
     controller_http_host,
     site,
     calibration,
+    camera_calibration,
     background_map,
     simulator_init_state,
     swarmit_url,
@@ -343,6 +354,14 @@ def main(
         if calibration
         else "Calibration: none selected"
     )
+    camera_calibration, camera_source = _resolve_controller_key(
+        "camera_calibration", camera_calibration, unified, None
+    )
+    print(
+        f"Camera calibration: {camera_calibration} (from {camera_source})"
+        if camera_calibration
+        else "Camera calibration: none selected"
+    )
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -378,6 +397,7 @@ def main(
         "controller_http_host": controller_http_host,
         "site": site,
         "calibration": calibration,
+        "camera_calibration": camera_calibration,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,
