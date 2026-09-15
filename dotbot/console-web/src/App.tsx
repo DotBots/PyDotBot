@@ -21,6 +21,13 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
+import {
+  VIEW_SETTLE_MS,
+  loadSavedViews,
+  saveSavedViews,
+  viewFor,
+  withView,
+} from "./savedView";
 import { SetupCard } from "./SetupCard";
 import {
   ACTION_KEY,
@@ -49,6 +56,7 @@ import {
   cameraForArea,
   cameraForZoom,
   padArea,
+  visibleArea,
   zoomFromSearch,
   zoomMax,
 } from "./zoom";
@@ -174,14 +182,40 @@ export const App: React.FC = () => {
     [geom, site, viewport],
   );
 
-  // ?zoom=<site|area-name> presets the view, once the canvas has a size.
-  const presetZoomRef = useRef(false);
+  // What the map opens on, once the canvas has a size and the site is known.
+  // `?zoom=<site|area-name>` is an instruction and wins; failing that the map
+  // returns to the floor this browser was last looking at, which is stored as
+  // a rectangle and fitted here, so a window of another size lands on the
+  // same floor rather than on the same pixels. Neither, and it opens on the
+  // whole site, as a map with nothing remembered always has.
+  const [openingViews] = useState(loadSavedViews);
+  const openedRef = useRef(false);
   useEffect(() => {
-    if (presetZoomRef.current || !geom || !site) return;
+    if (openedRef.current || !geom || !site) return;
+    openedRef.current = true;
     const asked = zoomFromSearch(window.location.search, site);
-    if (asked) zoomTo(asked);
-    presetZoomRef.current = true;
-  }, [geom, site, zoomTo]);
+    if (asked) {
+      zoomTo(asked);
+      return;
+    }
+    const rect = viewFor(openingViews, site.name, viewport);
+    if (rect) {
+      setCam(cameraForArea(rect, viewport, geom, zoomMax(site, viewport, geom)));
+    }
+  }, [geom, site, viewport, openingViews, zoomTo]);
+
+  // Remembered once the camera settles: a pan would otherwise write storage
+  // on every frame of the drag. Storage is re-read rather than carried in
+  // state, so a second tab on another site keeps its own view.
+  useEffect(() => {
+    if (!openedRef.current || !geom || !site) return;
+    const timer = window.setTimeout(() => {
+      saveSavedViews(
+        withView(loadSavedViews(), site.name, visibleArea(cam, viewport, geom)),
+      );
+    }, VIEW_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [cam, geom, site, viewport]);
 
   // Calibration mode takes over the right pane and the viewport, and gives
   // both back on Done: the tab that was open before, and the camera that was

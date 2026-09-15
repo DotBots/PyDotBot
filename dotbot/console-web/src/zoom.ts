@@ -1,4 +1,4 @@
-import { areaToFraction } from "./frame";
+import { areaToFraction, fractionToArea } from "./frame";
 import type { Area, Site } from "./types";
 
 // The viewport: which part of the drawn frame fills the canvas.
@@ -260,6 +260,34 @@ export function cameraForArea(
     },
     geom,
   );
+}
+
+/**
+ * The floor the canvas is showing, in frame millimetres: the rectangle
+ * `cameraForArea` takes back to this camera, since a view that fills the
+ * canvas is fitted to the canvas exactly.
+ *
+ * This is what a camera means, and the portable half of it. The same
+ * `{scale, tx, ty}` frames a different patch of floor in a canvas of another
+ * size, so a view that has to survive a resize - or a move to another screen
+ * - travels as the rectangle and is fitted again on arrival.
+ */
+export function visibleArea(cam: Camera, viewport: Area, geom: ViewGeom): Area {
+  const scale = cam.scale > 0 ? cam.scale : ZOOM_MIN;
+  // The camera undone: a canvas pixel back to a fraction of the drawn box.
+  const f = (px: number, canvas: number, box: number, t: number) =>
+    ((px - canvas / 2 - t) / scale + box / 2) / box;
+  const tl = fractionToArea(
+    f(0, geom.w, geom.boxW, cam.tx),
+    f(0, geom.h, geom.boxH, cam.ty),
+    viewport,
+  );
+  const br = fractionToArea(
+    f(geom.w, geom.w, geom.boxW, cam.tx),
+    f(geom.h, geom.h, geom.boxH, cam.ty),
+    viewport,
+  );
+  return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
 }
 
 /**
