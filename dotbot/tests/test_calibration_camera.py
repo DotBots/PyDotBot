@@ -107,7 +107,7 @@ def test_layout_span_needs_all_four_sheets():
 
 
 def test_sheet_rejects_an_id_that_names_no_corner():
-    with pytest.raises(ValueError, match="unknown sheet id"):
+    with pytest.raises(ValueError, match="names no area corner"):
         render_sheet(len(CORNERS))
 
 

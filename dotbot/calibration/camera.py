@@ -117,15 +117,48 @@ def _diagram_frame_px() -> tuple[int, int, int, int]:
     return right - side, top, right, top + side
 
 
+def corner_of(marker_id: int) -> str:
+    """The area corner a marker id names.
+
+    This and `marker_id_for` are the only place the relation between an id
+    and a corner is written: the layout, the sheet renderer and anything
+    that reads a marker back off the floor all go through the pair. Today
+    it is the identity onto `CORNERS`, which is what lets the camera and
+    the lighthouse share one corner vocabulary; widening it to carry an
+    area index as well is these two bodies and nothing else.
+    """
+    if not isinstance(marker_id, int) or isinstance(marker_id, bool):
+        raise ValueError(f"marker id {marker_id!r} is not a whole number")
+    if not 0 <= marker_id < len(CORNERS):
+        raise ValueError(
+            f"marker {marker_id} names no area corner; this layout carries "
+            f"{', '.join(str(marker_id_for(c)) for c in CORNERS)}"
+        )
+    return CORNERS[marker_id]
+
+
+def marker_id_for(corner: str) -> int:
+    """The marker id that goes in one corner of an area."""
+    if corner not in CORNERS:
+        raise ValueError(
+            f"unknown corner {corner!r}; expected one of {', '.join(CORNERS)}"
+        )
+    return CORNERS.index(corner)
+
+
+def layout_ids() -> tuple[int, ...]:
+    """The four ids one area's sheets carry, in `CORNERS` order."""
+    return tuple(marker_id_for(corner) for corner in CORNERS)
+
+
 @dataclass(frozen=True)
 class Marker:
     """One sheet's marker, and where its corners land in the site's frame.
 
-    `id` is the sheet's index into `CORNERS`, so the printed id names the
-    corner the sheet belongs in and the camera shares the lighthouse's
-    corner vocabulary. `corners_mm` is in ArUco's own order - top-left,
-    top-right, bottom-right, bottom-left - so it pairs element by element
-    with the pixel corners the detector returns.
+    `id` names the corner the sheet belongs in through `corner_of`, so the
+    printed id and the area's corner are one vocabulary. `corners_mm` is in
+    ArUco's own order - top-left, top-right, bottom-right, bottom-left - so
+    it pairs element by element with the pixel corners the detector returns.
     """
 
     id: int
@@ -135,7 +168,7 @@ class Marker:
     @property
     def corner(self) -> str:
         """The area corner this sheet goes in."""
-        return CORNERS[self.id]
+        return corner_of(self.id)
 
 
 # Each sheet's own marker corner that faces away from the area's centre,
@@ -172,7 +205,7 @@ def sheet_marker(area: Area, corner: str) -> Marker:
     y = (area.y if vertical == "top" else area.y_max) + dy
     half = MARKER_SIDE_MM / 2
     return Marker(
-        id=CORNERS.index(corner),
+        id=marker_id_for(corner),
         centre_mm=(x, y),
         corners_mm=(
             (x - half, y - half),
@@ -212,10 +245,7 @@ def render_sheet(marker_id: int) -> np.ndarray:
     """
     import cv2  # lazy: opencv-python is only required to draw a sheet
 
-    if marker_id not in range(len(CORNERS)):
-        raise ValueError(
-            f"unknown sheet id {marker_id}; expected 0 to {len(CORNERS) - 1}"
-        )
+    corner = corner_of(marker_id)
     page = np.full((PAGE_HEIGHT_PX, PAGE_WIDTH_PX), 255, dtype=np.uint8)
     dictionary = cv2.aruco.getPredefinedDictionary(
         getattr(cv2.aruco, MARKER_DICTIONARY)
@@ -224,8 +254,8 @@ def render_sheet(marker_id: int) -> np.ndarray:
     x0 = (PAGE_WIDTH_PX - MARKER_SIDE_PX) // 2
     y0 = (PAGE_HEIGHT_PX - MARKER_SIDE_PX) // 2
     page[y0 : y0 + MARKER_SIDE_PX, x0 : x0 + MARKER_SIDE_PX] = marker
-    _placement_diagram(page, marker_id)
-    return _caption(page, marker_id)
+    _placement_diagram(page, corner)
+    return _caption(page, marker_id, corner)
 
 
 SHEET_FORMATS = ("pdf", "png")
@@ -233,7 +263,7 @@ SHEET_FORMATS = ("pdf", "png")
 
 def render_sheets() -> list[np.ndarray]:
     """One page per area corner, in `CORNERS` order."""
-    return [render_sheet(marker_id) for marker_id in range(len(CORNERS))]
+    return [render_sheet(marker_id) for marker_id in layout_ids()]
 
 
 def write_sheets(
@@ -274,14 +304,14 @@ def _write_pngs(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
     from PIL import Image
 
     paths = []
-    for marker_id, page in enumerate(pages):
+    for marker_id, page in zip(layout_ids(), pages):
         path = out_dir / f"camera-marker-{marker_id}.png"
         Image.fromarray(page).save(path, dpi=(SHEET_DPI, SHEET_DPI))
         paths.append(path)
     return paths
 
 
-def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:
+def _caption(page: np.ndarray, marker_id: int, corner: str) -> np.ndarray:
     """The id, the dictionary and the scale bar, in the bottom margin.
 
     Kept below 250 mm so a full cell of white separates it from the
@@ -296,7 +326,7 @@ def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:
     left = _px((PAGE_WIDTH_MM - MARKER_SIDE_MM) / 2)
     draw.text(
         (left, _px(255.0)),
-        f"marker {marker_id} - {CORNERS[marker_id]} corner",
+        f"marker {marker_id} - {corner} corner",
         font=_font(6.4),
         fill=ink,
         anchor="ls",
@@ -323,7 +353,7 @@ def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:
     return np.array(image)
 
 
-def _placement_diagram(page: np.ndarray, marker_id: int) -> None:
+def _placement_diagram(page: np.ndarray, sheet_corner: str) -> None:
     """Where this sheet goes, drawn rather than spelled out.
 
     The square is the area, and each corner holds a page-shaped seat flush
@@ -341,12 +371,12 @@ def _placement_diagram(page: np.ndarray, marker_id: int) -> None:
     seat_height = _px(DIAGRAM_SEAT_HEIGHT_MM)
     seat_width = round(seat_height * PAGE_WIDTH_MM / PAGE_HEIGHT_MM)
     cv2.rectangle(page, (left, top), (right, bottom), ink, 4, cv2.LINE_AA)
-    for seat_id, corner in enumerate(CORNERS):
+    for corner in CORNERS:
         vertical, _, horizontal = corner.partition("-")
         x = left if horizontal == "left" else right - seat_width
         y = top if vertical == "top" else bottom - seat_height
         far = (x + seat_width, y + seat_height)
-        if seat_id != marker_id:
+        if corner != sheet_corner:
             cv2.rectangle(page, (x, y), far, ink, 3, cv2.LINE_AA)
             continue
         cv2.rectangle(page, (x, y), far, ink, -1, cv2.LINE_AA)
