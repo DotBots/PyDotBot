@@ -298,6 +298,58 @@ def test_sheets_pdf_pages_carry_their_own_marker_at_its_printed_size(tmp_path):
         )
 
 
+def test_sheets_per_sheet_writes_one_single_page_pdf_per_corner(tmp_path):
+    """Four files named for the markers they carry, not for their position.
+
+    `pdfseparate` numbers its output from 1, so the obvious split gives a
+    file called 1 holding marker 0; the name has to say 0.
+    """
+    written = write_sheets(render_sheets(), tmp_path, "pdf", per_sheet=True)
+    assert [path.name for path in written] == [
+        f"camera-marker-{marker_id}.pdf" for marker_id in range(len(CORNERS))
+    ]
+
+    for marker_id, path in enumerate(written):
+        sizes, pages = _pdf_pages(path)
+        assert len(pages) == 1
+        width_mm, height_mm = sizes[0]
+        assert width_mm == pytest.approx(PAGE_WIDTH_MM, abs=PAGE_TOLERANCE_MM)
+        assert height_mm == pytest.approx(PAGE_HEIGHT_MM, abs=PAGE_TOLERANCE_MM)
+
+        corners, ids, _ = _detector().detectMarkers(pages[0])
+        assert ids is not None and ids.ravel().tolist() == [marker_id]
+        found = corners[0].reshape(4, 2)
+        mm_per_px = width_mm / pages[0].shape[1]
+        assert np.linalg.norm(found[1] - found[0]) * mm_per_px == pytest.approx(
+            MARKER_SIDE_MM, abs=0.1
+        )
+
+
+def test_sheets_per_sheet_and_the_one_file_job_carry_the_same_pages(tmp_path):
+    """The split is a file count, not a different render."""
+    one_dir, split_dir = tmp_path / "one", tmp_path / "four"
+    one_dir.mkdir()
+    split_dir.mkdir()
+    one_file = _pdf_pages(write_sheets(render_sheets(), one_dir)[0])[1]
+    split = [
+        _pdf_pages(path)[1][0]
+        for path in write_sheets(render_sheets(), split_dir, per_sheet=True)
+    ]
+    assert len(one_file) == len(split) == len(CORNERS)
+    for whole, alone in zip(one_file, split):
+        assert np.array_equal(whole, alone)
+
+
+def test_sheets_png_ignores_per_sheet(tmp_path):
+    """png has no one-file form, so the flag has nothing to change."""
+    plain_dir, flagged_dir = tmp_path / "plain", tmp_path / "flagged"
+    plain_dir.mkdir()
+    flagged_dir.mkdir()
+    plain = write_sheets(render_sheets(), plain_dir, "png")
+    flagged = write_sheets(render_sheets(), flagged_dir, "png", True)
+    assert [p.name for p in plain] == [p.name for p in flagged]
+
+
 def test_sheets_png_writes_one_image_per_corner(tmp_path):
     """The image path stays, and each file carries the density in its header."""
     written = write_sheets(render_sheets(), tmp_path, "png")

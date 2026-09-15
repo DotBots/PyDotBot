@@ -60,7 +60,17 @@ def cmd(ctx: click.Context) -> None:
     show_default=True,
     help="pdf is the four pages as one print job; png is one image per sheet.",
 )
-def sheets(out_dir: str, sheet_format: str) -> None:
+@click.option(
+    "--per-sheet",
+    is_flag=True,
+    help=(
+        "Write one single-page PDF per sheet instead of one four-page file. "
+        "What a printer forcing double-sided output needs: a four-page job "
+        "comes back as two sheets with a marker on each face. No effect on "
+        "png, which is already one file per sheet."
+    ),
+)
+def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
     """Render the four printable ArUco sheets, one per area corner."""
     try:
         pages = render_sheets()
@@ -76,7 +86,7 @@ def sheets(out_dir: str, sheet_format: str) -> None:
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    for path in write_sheets(pages, out, sheet_format):
+    for path in write_sheets(pages, out, sheet_format, per_sheet):
         click.echo(str(path))
     click.echo(
         f"Print at 100 % (no scale-to-fit); check the {SCALE_BAR_MM:g} mm bar "

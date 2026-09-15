@@ -267,16 +267,27 @@ def render_sheets() -> list[np.ndarray]:
 
 
 def write_sheets(
-    pages: Sequence[np.ndarray], out_dir: Path, sheet_format: str = "pdf"
+    pages: Sequence[np.ndarray],
+    out_dir: Path,
+    sheet_format: str = "pdf",
+    per_sheet: bool = False,
 ) -> list[Path]:
-    """Write rendered pages into `out_dir`, returning the files written."""
+    """Write rendered pages into `out_dir`, returning the files written.
+
+    `per_sheet` splits the PDF into one single-page file per sheet, which is
+    what a printer forcing double-sided output needs: a four-page job comes
+    back as two sheets carrying a marker on each face, and a marker on the
+    back of another is not tapeable to a floor. PNG has no one-file form, so
+    there the flag changes nothing.
+    """
     if sheet_format not in SHEET_FORMATS:
         raise ValueError(
             f"unknown sheet format {sheet_format!r}; "
             f"expected one of {', '.join(SHEET_FORMATS)}"
         )
-    writer = _write_pdf if sheet_format == "pdf" else _write_pngs
-    return writer(pages, out_dir)
+    if sheet_format == "png":
+        return _write_pngs(pages, out_dir)
+    return _write_pdfs(pages, out_dir) if per_sheet else _write_pdf(pages, out_dir)
 
 
 def _write_pdf(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
@@ -297,6 +308,22 @@ def _write_pdf(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
         quality=100,
     )
     return [path]
+
+
+def _write_pdfs(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
+    """One single-page PDF per sheet, each named for the marker it carries.
+
+    The name carries the marker's own id, which is what the sheet prints and
+    what the operator matches to a corner.
+    """
+    from PIL import Image
+
+    paths = []
+    for marker_id, page in zip(layout_ids(), pages):
+        path = out_dir / f"camera-marker-{marker_id}.pdf"
+        Image.fromarray(page).save(path, resolution=float(SHEET_DPI), quality=100)
+        paths.append(path)
+    return paths
 
 
 def _write_pngs(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
