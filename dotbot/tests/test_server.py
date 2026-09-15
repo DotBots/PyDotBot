@@ -1202,25 +1202,39 @@ async def test_get_controller_cameras(synthetic_camera):
         assert started
         response = await client.get("/controller/cameras")
 
+    import numpy as np
+
     assert response.status_code == 200
-    assert response.json() == [
-        {
-            "area": "dev-corner",
-            "source": str(synthetic_camera.source),
-            "mm_per_px": 2.0,
-            "width": 500,
-            "height": 500,
-            "span_mm": [
-                [1030.0, 73.5],
-                [1970.0, 73.5],
-                [1970.0, 926.5],
-                [1030.0, 926.5],
-            ],
-            "residual_mm": synthetic_camera.residual_mm,
-            "id": synthetic_camera.id,
-            "lens": "linear",
-        }
-    ]
+    (described,) = response.json()
+    # The synthetic frame looks down on a floor wider than the area, so the
+    # camera's coverage swallows dev-corner whole.
+    assert np.array(described.pop("coverage_mm")) == pytest.approx(
+        np.array(
+            [
+                [540.1, -40.1],
+                [2556.3, -40.0],
+                [2583.7, 1109.2],
+                [540.1, 1064.4],
+            ]
+        ),
+        abs=0.1,
+    )
+    assert described == {
+        "area": "dev-corner",
+        "source": str(synthetic_camera.source),
+        "mm_per_px": 2.0,
+        "width": 500,
+        "height": 500,
+        "span_mm": [
+            [1030.0, 73.5],
+            [1970.0, 73.5],
+            [1970.0, 926.5],
+            [1030.0, 926.5],
+        ],
+        "residual_mm": synthetic_camera.residual_mm,
+        "id": synthetic_camera.id,
+        "lens": "linear",
+    }
 
 
 @pytest.mark.asyncio
@@ -1359,3 +1373,72 @@ async def test_a_camera_registered_on_the_bench_describes_itself(real_camera):
     assert descriptor["residual_mm"] == pytest.approx(3.1256, abs=1e-4)
     assert descriptor["width"] == 500 and descriptor["height"] == 500
     assert descriptor["span_mm"][0] == [1030.0, 73.5]
+
+
+def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
+    """The floor the camera can see, in the frame's own millimetres.
+
+    The homography and the frame's size both hold for the whole
+    registration, so this is one polygon per camera rather than an alpha
+    channel on every frame. Checked by mapping it back through the inverse
+    homography, which must land on the frame's four pixel corners.
+    """
+    import numpy as np
+
+    from dotbot.camera import _coverage_mm
+
+    coverage = _coverage_mm(real_camera.matrix, real_camera.width, real_camera.height)
+    inverse = np.linalg.inv(np.array(real_camera.matrix))
+    mapped = np.array([inverse @ [x, y, 1.0] for x, y in coverage])
+    assert (mapped[:, :2] / mapped[:, 2:]) == pytest.approx(
+        np.array([[0.0, 0.0], [1919.0, 0.0], [1919.0, 1079.0], [0.0, 1079.0]]),
+        abs=1e-6,
+    )
+
+
+def test_a_frame_crossing_the_horizon_describes_no_coverage_polygon():
+    """Its image is not a polygon there, and no mask beats a wrong one."""
+    from dotbot.camera import _coverage_mm
+
+    crossing = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.01, -5.0]]
+    assert _coverage_mm(crossing, 1920, 1080) == []
+    assert _coverage_mm([], 1920, 1080) == []
+
+
+@pytest.mark.asyncio
+async def test_the_warp_has_no_source_outside_the_coverage_polygon(
+    synthetic_camera,
+):
+    """What the polygon claims is what the warp does, on the same frame.
+
+    The same registration on a frame cropped to its left 900 columns sees
+    only part of dev-corner. Inside the polygon the raster carries floor;
+    outside it the warp had nothing to read and left its border fill, which
+    is what the console cuts away.
+    """
+    import dataclasses
+
+    import cv2
+    import numpy as np
+
+    from dotbot.camera import MM_PER_PX, CameraService
+
+    columns = 900
+    frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
+    cropped = dataclasses.replace(synthetic_camera, width=columns)
+    service = CameraService(cropped, DEV_CORNER, open_source=delivering(frame, fps=0.0))
+    assert service.start()
+    try:
+        jpeg, _ = service.held()
+    finally:
+        service.stop()
+
+    raster = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    grey = cv2.cvtColor(raster, cv2.COLOR_BGR2GRAY)
+
+    edge = max(x for x, _ in service.coverage_mm)
+    assert DEV_CORNER.x < edge < DEV_CORNER.x + DEV_CORNER.w
+    inside = int((edge - 40 - DEV_CORNER.x) / MM_PER_PX)
+    outside = int((edge + 40 - DEV_CORNER.x) / MM_PER_PX)
+    assert grey[250, inside] > 192  # the bare floor between the sheets
+    assert grey[250, outside] == 0  # no source, so the warp's border fill

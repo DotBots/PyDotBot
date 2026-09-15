@@ -111,7 +111,9 @@ class DotBotCameraModel(BaseModel):
     carries the area warped at `mm_per_px`, so they are the area's own size
     in raster pixels. `span_mm` is the quadrilateral through the four
     markers' outer corners, in frame millimetres, which is the region the
-    registration is trustworthy inside.
+    registration is trustworthy inside. `coverage_mm` is the source frame's
+    own rectangle in the same millimetres, so it is the floor the camera
+    can see; empty when the homography maps it to no polygon.
     """
 
     area: str
@@ -120,6 +122,7 @@ class DotBotCameraModel(BaseModel):
     width: int
     height: int
     span_mm: List[List[float]] = []
+    coverage_mm: List[List[float]] = []
     residual_mm: float = 0.0
     id: str = ""
     lens: str = ""

@@ -9,6 +9,11 @@ warped into its area's raster through the file's homography, encoded as
 JPEG and held; every client of the stream is served that held frame, so
 the layer costs one warp per tick rather than one per connection.
 
+Which raster pixels have a source at all is fixed by the homography and
+the frame's size, both of which hold for the whole registration, so the
+camera's coverage rides in the descriptor as one polygon rather than in
+every frame as an alpha channel.
+
 `cv2` is imported inside the methods that use it, so importing this module
 costs nothing without the `[calibrate]` extra.
 """
@@ -76,6 +81,9 @@ class CameraService:
         self._jpeg: bytes | None = None
         self._sequence = 0
         self.transform = _raster_transform(calibration.matrix, area)
+        self.coverage_mm = _coverage_mm(
+            calibration.matrix, calibration.width, calibration.height
+        )
 
     @property
     def raster(self) -> tuple[int, int]:
@@ -105,6 +113,7 @@ class CameraService:
             "width": width,
             "height": height,
             "span_mm": [[float(x), float(y)] for x, y in self.calibration.span_mm],
+            "coverage_mm": self.coverage_mm,
             "residual_mm": float(self.calibration.residual_mm),
             "id": self.calibration.id,
             "lens": self.calibration.lens,
@@ -260,6 +269,32 @@ class CameraService:
         with self._lock:
             self._jpeg = buffer.tobytes()
             self._sequence += 1
+
+
+def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
+    """The floor the camera can see, as a polygon in frame millimetres.
+
+    The source frame's own rectangle through the homography. Empty when
+    the rectangle crosses the homography's horizon, where its image is not
+    a polygon at all: the sign of the homogeneous divisor is constant over
+    a convex hull exactly when it is constant at every corner.
+    """
+    if not matrix or width < 2 or height < 2:
+        return []
+    corners = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [width - 1.0, 0.0, 1.0],
+            [width - 1.0, height - 1.0, 1.0],
+            [0.0, height - 1.0, 1.0],
+        ]
+    )
+    mapped = corners @ np.array(matrix, dtype=np.float64).T
+    divisor = mapped[:, 2]
+    if not (np.all(divisor > 0) or np.all(divisor < 0)):
+        return []
+    points = mapped[:, :2] / divisor[:, None]
+    return [[float(x), float(y)] for x, y in points]
 
 
 def _raster_transform(matrix, area: Area) -> np.ndarray:
