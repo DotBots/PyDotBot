@@ -17,7 +17,7 @@ shipped.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from dotbot.area import Area, AreaRegistry
 
@@ -36,18 +36,18 @@ class Site:
 
     name: str = SITE_DEFAULT
     anchor: str = ""
-    extent_mm: Optional[tuple[int, int]] = None
+    extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
 
     @property
-    def extent(self) -> Optional[Area]:
+    def extent(self) -> Area | None:
         """The whole site as one rectangle, when its extent is known."""
         if self.extent_mm is None:
             return None
         return Area(0, 0, int(self.extent_mm[0]), int(self.extent_mm[1]), self.name)
 
     @property
-    def valid_mm(self) -> Optional[tuple[int, int, int, int]]:
+    def valid_mm(self) -> tuple[int, int, int, int] | None:
         """The plausibility fence a bot applies, when the extent is known.
 
         `[x_min, y_min, x_max, y_max]`: a position outside the site cannot be
@@ -78,9 +78,7 @@ def site_from_config(config: Any, name: str) -> Site:
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
         areas={
-            area_name: Area(
-                x=area.x, y=area.y, w=area.w, h=area.h, name=area_name
-            )
+            area_name: Area(x=area.x, y=area.y, w=area.w, h=area.h, name=area_name)
             for area_name, area in (getattr(table, "areas", None) or {}).items()
         },
     )

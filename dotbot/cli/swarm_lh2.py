@@ -306,8 +306,7 @@ def _collect(
     "site_name",
     default=None,
     help=(
-        "The site to look the id up under. Defaults to `site` in the dotbot "
-        "config."
+        "The site to look the id up under. Defaults to `site` in the dotbot " "config."
     ),
 )
 @click.pass_context

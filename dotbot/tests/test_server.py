@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.site import Site
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.models import (
     DotBotGPSPosition,
@@ -30,6 +29,7 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
 )
 from dotbot.server import api
+from dotbot.site import Site
 
 client = AsyncClient(transport=ASGITransport(app=api), base_url="http://testserver")
 

@@ -14,7 +14,6 @@ provenance.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from dotbot.area import Area, AreaRegistry
 from dotbot.robots import ROBOT_DEFAULT, robot_geometry
@@ -34,7 +33,7 @@ class PointPlacement:
 
     mm: tuple[float, float]
     area: str = ""
-    corner: Optional[str] = None
+    corner: str | None = None
     side_edge: str = ""  # left | right
     front_edge: str = ""  # top | bottom, the line the nose-side edge rests on
     nose: str = ""  # top | bottom, where the nose points
@@ -61,9 +60,7 @@ class PointPlacement:
         )
 
 
-def corner_mark(
-    area: Area, corner: str, robot: str = ROBOT_DEFAULT
-) -> PointPlacement:
+def corner_mark(area: Area, corner: str, robot: str = ROBOT_DEFAULT) -> PointPlacement:
     """Where a robot's photodiode lands when placed at `corner`.
 
     The robot sits inside the rectangle with its PCB edges on the

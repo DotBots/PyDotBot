@@ -213,7 +213,9 @@ def test_a_station_seen_in_too_few_reads_is_dropped():
     """Station 1 is decoded in 2 of 25 reads: too rare to be in view."""
     reads = [parse_capture_payload(_payload(_record(0, 100, 200)), _TAG)] * 23
     reads += [
-        parse_capture_payload(_payload(_record(0, 100, 200), _record(1, 300, 400)), _TAG)
+        parse_capture_payload(
+            _payload(_record(0, 100, 200), _record(1, 300, 400)), _TAG
+        )
     ] * 2
 
     capture = samples_from_reads(reads, point=0)

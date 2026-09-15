@@ -332,7 +332,9 @@ def _write_calibration(tmp_path, monkeypatch, site="site-a"):
     return lighthouse2.read_calibration_file(path)
 
 
-def test_controller_loads_the_calibration_named_by_id(tmp_path, monkeypatch, serial_mock):
+def test_controller_loads_the_calibration_named_by_id(
+    tmp_path, monkeypatch, serial_mock
+):
     """An id prefix resolves under calibrations/<site>/, never the newest file."""
     import numpy as np
 
@@ -340,8 +342,12 @@ def test_controller_loads_the_calibration_named_by_id(tmp_path, monkeypatch, ser
 
     written = _write_calibration(tmp_path, monkeypatch)
     settings = ControllerSettings(
-        port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
-        site=Site(name="site-a"), calibration=written.id8,
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+        site=Site(name="site-a"),
+        calibration=written.id8,
     )
     controller = Controller(settings)
 
@@ -389,7 +395,10 @@ def test_controller_with_no_calibration_loads_nothing(serial_mock):
 
 def test_a_controller_keeps_the_site_it_was_given(serial_mock):
     settings = ControllerSettings(
-        port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
         site=C405,
     )
     controller = Controller(settings)
@@ -399,7 +408,10 @@ def test_a_controller_keeps_the_site_it_was_given(serial_mock):
 
 def test_a_controller_with_no_site_keeps_the_neutral_one(serial_mock):
     settings = ControllerSettings(
-        port="/dev/null", baudrate=115200, network_id="0", gw_address="78",
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
     )
     controller = Controller(settings)
     assert controller.site.name == "default"

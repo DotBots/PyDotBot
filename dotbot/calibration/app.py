@@ -41,6 +41,7 @@ def square_placement(side: float) -> Placement:
         points_mm=[(low, low), (high, low), (low, high), (high, high)],
     )
 
+
 # Tracebacks from inside the Textual TUI don't make it to the terminal,
 # so we tee everything we'd want to see to a file under CALIBRATION_DIR
 # (~/.dotbot/), the same directory that already holds the calibration

@@ -68,9 +68,7 @@ class AreaRegistry:
         if "," in spec:
             parts = [p.strip() for p in spec.split(",")]
             if len(parts) != 4:
-                raise ValueError(
-                    f"area {spec!r}: a literal rectangle is x,y,w,h in mm"
-                )
+                raise ValueError(f"area {spec!r}: a literal rectangle is x,y,w,h in mm")
             try:
                 x, y, w, h = (int(p) for p in parts)
             except ValueError as exc:

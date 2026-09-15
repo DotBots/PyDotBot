@@ -16,7 +16,6 @@ import queue
 import time
 import webbrowser
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import serial
@@ -50,6 +49,8 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.calibration.driver import SessionDriver
+from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.csv_data_logger import CSVDataLogger, CSVLog
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
@@ -71,8 +72,6 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.calibration.driver import SessionDriver
-from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.swarm_client import build_swarmit_client, conn_string
