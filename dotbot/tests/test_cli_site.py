@@ -50,9 +50,10 @@ def test_a_deployment_carries_its_own_site():
         '[deployment.limerick]\nsite = "limerick-hall"\n'
     )
     deployment, _ = select_deployment(config)
-    assert resolve_site_name(
-        config=config, deployment=deployment, environ={}
-    ) == ("limerick-hall", "the config file")
+    assert resolve_site_name(config=config, deployment=deployment, environ={}) == (
+        "limerick-hall",
+        "the config file",
+    )
 
 
 def test_a_site_table_becomes_its_anchor_extent_and_areas():

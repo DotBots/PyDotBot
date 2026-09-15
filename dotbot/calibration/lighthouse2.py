@@ -232,9 +232,7 @@ def calculate_camera_point(counts: LH2Counts) -> np.ndarray:
     return np.asarray([cam_x, cam_y], dtype=np.float64)
 
 
-def counts_for_camera_point(
-    cam_x: float, cam_y: float, lh_index: int = 0
-) -> LH2Counts:
+def counts_for_camera_point(cam_x: float, cam_y: float, lh_index: int = 0) -> LH2Counts:
     """Inverse of `calculate_camera_point`: the counts that camera point gives.
 
     What a station would have reported for a point in its own view, which is
@@ -602,7 +600,9 @@ def resolve_calibration_path(
             f"the id prefix of a file under {root / (site or '*')}"
         )
     listed = "\n  ".join(str(m) for m in matches)
-    raise ValueError(f"calibration id prefix {spec!r} matches several files:\n  {listed}")
+    raise ValueError(
+        f"calibration id prefix {spec!r} matches several files:\n  {listed}"
+    )
 
 
 def _file_id(path: Path) -> str:
@@ -644,9 +644,7 @@ class LighthouseManager:
         self.extra_lh_num = extra_lh_num
         self.stations: list[StationSolution] = []
         self.unsolved_stations: list[tuple[int, int]] = []
-        self.homographies: list[LH2Homography] = [LH2Homography()] * (
-            1 + extra_lh_num
-        )
+        self.homographies: list[LH2Homography] = [LH2Homography()] * (1 + extra_lh_num)
         self.last_saved_toml_path: Optional[Path] = None
 
     # -- solving
@@ -673,9 +671,7 @@ class LighthouseManager:
         """One station's homography, by least squares over every point it saw."""
         camera_points, reference_points = self.correspondences(station)
         homography = compute_homography_matrix(camera_points, reference_points)
-        residual = reprojection_residual_mm(
-            homography, camera_points, reference_points
-        )
+        residual = reprojection_residual_mm(homography, camera_points, reference_points)
         return StationSolution(
             index=station,
             homography=[[float(v) for v in row] for row in homography],
@@ -685,9 +681,7 @@ class LighthouseManager:
 
     def solve(self) -> list[StationSolution]:
         """Solve every station the placements hold samples for."""
-        stations = sorted(
-            {s.station for p in self.placements for s in p.samples}
-        )
+        stations = sorted({s.station for p in self.placements for s in p.samples})
         if not stations:
             raise ValueError("no samples to solve: every placement is empty")
         if len(stations) > LH2_BASESTATION_COUNT_MAX:
@@ -705,9 +699,7 @@ class LighthouseManager:
             solved.append(self.solve_station(station))
         if not solved:
             seen = ", ".join(f"station {i} at {n} point(s)" for i, n in unsolved)
-            raise ValueError(
-                f"no station has the 4 points a homography needs: {seen}"
-            )
+            raise ValueError(f"no station has the 4 points a homography needs: {seen}")
         self.stations = solved
         self.unsolved_stations = unsolved
         self.homographies = [LH2Homography()] * (

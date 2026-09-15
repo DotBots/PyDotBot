@@ -160,7 +160,9 @@ def load_calibration_file(path: Path) -> tuple[int, bytes]:
     try:
         calibration = read_calibration_file(Path(path))
     except (OSError, ValueError) as exc:
-        raise click.ClickException(f"Cannot read calibration file {path}: {exc}") from exc
+        raise click.ClickException(
+            f"Cannot read calibration file {path}: {exc}"
+        ) from exc
 
     stations = sorted(calibration.stations, key=lambda s: s.index)
     if not stations:

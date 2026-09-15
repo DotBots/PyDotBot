@@ -12,6 +12,7 @@ import tomllib
 import numpy as np
 import pytest
 
+from dotbot.area import Area, AreaRegistry
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import (
     LH2Counts,
@@ -25,7 +26,6 @@ from dotbot.calibration.lighthouse2 import (
     render_calibration,
     resolve_calibration_path,
 )
-from dotbot.area import Area, AreaRegistry
 from dotbot.calibration.points import collect_header, point_prompt, resolve_points
 from dotbot.calibration.wire import calibration_payload, unpack_payload
 from dotbot.site import Site
@@ -320,9 +320,7 @@ def test_resolve_by_id_prefix_under_the_site_directory(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
     calibration = read_calibration_file(path)
 
-    resolved = resolve_calibration_path(
-        calibration.id8, root=tmp_path / "calibrations"
-    )
+    resolved = resolve_calibration_path(calibration.id8, root=tmp_path / "calibrations")
     assert resolved == path
 
     with pytest.raises(ValueError, match="no calibration matches"):
@@ -489,8 +487,7 @@ def test_a_typed_point_instructs_nothing_beyond_the_coordinate():
     assert point.corner is None
     assert point.where == "" and point.how == ""
     assert point_prompt(2, 5, point) == (
-        "point 2 of 5: photodiode on (1500, 2500) mm. Press Enter when it is "
-        "still."
+        "point 2 of 5: photodiode on (1500, 2500) mm. Press Enter when it is " "still."
     )
 
 
@@ -614,7 +611,8 @@ def test_the_int32_shim_is_the_only_quantised_path(tmp_path):
     packed = homography_as_bytes(calibration.stations[0].matrix)
     assert len(packed) == 36
     elements = [
-        int.from_bytes(packed[i : i + 4], "little", signed=True) for i in range(0, 36, 4)
+        int.from_bytes(packed[i : i + 4], "little", signed=True)
+        for i in range(0, 36, 4)
     ]
     assert elements[0] == 1523400
     assert elements[8] == 1000

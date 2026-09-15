@@ -94,4 +94,6 @@ def robot_geometry(model: str = ROBOT_DEFAULT) -> RobotGeometry:
         return ROBOTS[model]
     except KeyError as exc:
         known = ", ".join(sorted(ROBOTS))
-        raise ValueError(f"unknown robot model {model!r}; known models: {known}") from exc
+        raise ValueError(
+            f"unknown robot model {model!r}; known models: {known}"
+        ) from exc

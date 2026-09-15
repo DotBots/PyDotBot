@@ -13,7 +13,7 @@ deliberately neutral: a real site is named by the config, never by PyDotBot.
 from __future__ import annotations
 
 import os
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from dotbot.site import SITE_DEFAULT, Site, site_from_config
 
@@ -23,7 +23,7 @@ SITE_ENV = "DOTBOT_SITE"
 def resolve_site_name(
     config: Any = None,
     deployment: Any = None,
-    flag: Optional[str] = None,
+    flag: str | None = None,
     environ: Mapping[str, str] = os.environ,
 ) -> tuple[str, str]:
     """The active site's name and the layer it came from.
@@ -43,7 +43,7 @@ def resolve_site_name(
     return SITE_DEFAULT, "the default"
 
 
-def site_from_context(ctx: Any, flag: Optional[str] = None) -> tuple[Site, str]:
+def site_from_context(ctx: Any, flag: str | None = None) -> tuple[Site, str]:
     """The active site, built from the config the root group stashed on `ctx.obj`."""
     obj = ctx.obj or {}
     config = obj.get("config")

@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from dotbot.calibration.lighthouse2 import LH2CalibrationSample, LH_PERIODS, Sample
+from dotbot.calibration.lighthouse2 import LH_PERIODS, LH2CalibrationSample, Sample
 from dotbot.calibration.points import CORNERS  # noqa: F401 - the capture order
 
 CAPTURE_TIMEOUT_DEFAULT = 5.0

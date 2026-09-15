@@ -194,6 +194,7 @@ def _collect(
             VALID_MM_DEFAULT,
             LighthouseManager,
             Placement,
+            calibration_payload_int32,
             read_calibration_file,
         )
         from dotbot.calibration.ota import (
@@ -207,7 +208,6 @@ def _collect(
             point_prompt,
             resolve_placement_points,
         )
-        from dotbot.calibration.lighthouse2 import calibration_payload_int32
     except ImportError as exc:
         click.echo(
             "`dotbot swarm lh2-calibration collect` needs the calibration "
@@ -251,9 +251,7 @@ def _collect(
             # print before our prompts, so the two don't interleave on screen.
             time.sleep(0.2)
             click.echo(
-                collect_header(
-                    site, site_source, len(placements), reads, device
-                )
+                collect_header(site, site_source, len(placements), reads, device)
             )
             for index, point in enumerate(placements):
                 click.prompt(
@@ -282,9 +280,9 @@ def _collect(
                 if capture.dropped:
                     click.echo(f"    {capture.drop_summary()}")
 
-        placement.captured_at = datetime.datetime.now(
-            datetime.timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        placement.captured_at = datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         manager = LighthouseManager(
             placements=[placement],
             site=site,
@@ -311,9 +309,7 @@ def _collect(
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            client.send_lh2_calibration(
-                calibration_payload_int32(calibration.stations)
-            )
+            client.send_lh2_calibration(calibration_payload_int32(calibration.stations))
             click.echo("Sent the calibration to the robots over the air.")
         else:
             click.echo(
@@ -354,8 +350,7 @@ def _collect(
     "site_name",
     default=None,
     help=(
-        "The site to look the id up under. Defaults to `site` in the dotbot "
-        "config."
+        "The site to look the id up under. Defaults to `site` in the dotbot " "config."
     ),
 )
 @click.pass_context
