@@ -7,8 +7,8 @@ import {
   CameraOpacity,
   hasSpan,
   opacityFor,
+  polygonPoints,
   spanMask,
-  spanPoints,
 } from "./cameraLayer";
 import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
 import {
@@ -605,8 +605,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   }}
                 />
                 {/* The registered square itself: where the four sheets stood
-                    and the homography was fitted, so the fade around it reads
-                    as a boundary rather than a soft photograph. */}
+                    and the homography was fitted, so what was measured is
+                    marked off from what is extrapolated around it. */}
                 {hasSpan(camera.span_mm) && (
                   <svg
                     viewBox={`0 0 ${area.w} ${area.h}`}
@@ -615,7 +615,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   >
                     <polygon
                       data-testid={`camera-span-${camera.area}`}
-                      points={spanPoints(camera.span_mm, area)}
+                      points={polygonPoints(camera.span_mm, area)}
                       fill="none"
                       stroke="var(--muted)"
                       strokeOpacity={0.7}

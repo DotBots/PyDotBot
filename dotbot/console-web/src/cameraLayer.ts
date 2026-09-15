@@ -1,11 +1,13 @@
-// The camera layer: how opaque it is drawn, and where it stops claiming to be
-// accurate.
+// The camera layer: how opaque it is drawn, and how far past the registration
+// it still claims to be accurate.
 //
 // The controller warps one camera into its area's own raster, so the image's
-// box is the area. Inside `span_mm`, the quadrilateral the four ArUco sheets
-// spanned, the homography was fitted and the image lands where the floor is;
-// outside it the projective error grows with the square of the distance, so
-// the image is faded out rather than drawn as if it were still true.
+// box is the area. `span_mm`, the quadrilateral the four ArUco sheets spanned,
+// is where the homography was fitted; past it the image is an extrapolation
+// whose error grows with the square of the distance. The falloff is therefore
+// measured in the span's own size rather than in the room left to the area's
+// edge: a span that nearly fills its area is drawn whole out to that edge,
+// four sheets in the middle of a large one fade to nothing well inside it.
 //
 // The opacity is a way of looking at the map, like which area outlines are
 // drawn: it reaches no controller and is remembered in this browser only.
@@ -17,10 +19,12 @@ const KEY = "dotbot.console.cameraOpacity";
 /** Visible on arrival, and still plainly an underlay under the grid. */
 export const DEFAULT_CAMERA_OPACITY = 0.6;
 
-// How far past the span the image fades, as a fraction of the room between
-// the span and the area's edge, and the most it may be whatever that room is.
-const FADE_OF_MARGIN = 0.5;
-const FADE_MAX_FRACTION = 0.06;
+// Where the falloff starts and ends, as multiples of the span's own smaller
+// side. A quarter of the span beyond it the extrapolated error is a few times
+// the registration's own; a whole span beyond it there is nothing left to
+// believe.
+const FADE_START_OF_SPAN = 0.25;
+const FADE_END_OF_SPAN = 1.0;
 
 /** Layer opacity by area name, 0 to 1. */
 export type CameraOpacity = Record<string, number>;
@@ -81,52 +85,81 @@ export function hasSpan(span: number[][] | undefined): span is number[][] {
 }
 
 /**
- * The span's corners as SVG polygon points in the area's own millimetres,
- * which is the image box's coordinate system: the raster is the area.
+ * A polygon's corners as SVG points in the area's own millimetres, which is
+ * the image box's coordinate system: the raster is the area.
  */
-export function spanPoints(span: number[][], area: Area): string {
-  return span.map(([x, y]) => `${x - area.x},${y - area.y}`).join(" ");
+export function polygonPoints(polygon: number[][], area: Area): string {
+  return polygon.map(([x, y]) => `${x - area.x},${y - area.y}`).join(" ");
+}
+
+/** A polygon's bounding box in frame millimetres, as x0, y0, x1, y1. */
+function bounds(polygon: number[][]): [number, number, number, number] {
+  const xs = polygon.map(([x]) => x);
+  const ys = polygon.map(([, y]) => y);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
 /**
- * How wide the fade past the span is, in millimetres.
- *
- * It takes half the room between the span and the nearest area edge, so the
- * image has gone before the raster ends and the layer never cuts off mid-fade;
- * a span that reaches the area's edge leaves no room and gets a hard edge,
- * which is the truthful answer there.
+ * The span's own size in millimetres: the smaller side of the rectangle the
+ * four sheets stand in, which is the scale an extrapolation is measured
+ * against.
  */
-export function fadeMm(span: number[][], area: Area): number {
-  const xs = span.map(([x]) => x);
-  const ys = span.map(([, y]) => y);
-  const margin = Math.min(
-    Math.min(...xs) - area.x,
-    area.x + area.w - Math.max(...xs),
-    Math.min(...ys) - area.y,
-    area.y + area.h - Math.max(...ys),
+export function spanSizeMm(span: number[][]): number {
+  const [x0, y0, x1, y1] = bounds(span);
+  return Math.min(x1 - x0, y1 - y0);
+}
+
+/** How far past the span the falloff starts and ends, in millimetres. */
+export function fadeMm(span: number[][]): { start: number; end: number } {
+  const size = spanSizeMm(span);
+  return { start: FADE_START_OF_SPAN * size, end: FADE_END_OF_SPAN * size };
+}
+
+/** The farthest any point of the area lies past the span, in millimetres. */
+export function reachMm(span: number[][], area: Area): number {
+  const [x0, y0, x1, y1] = bounds(span);
+  const corners: number[][] = [
+    [area.x, area.y],
+    [area.x + area.w, area.y],
+    [area.x + area.w, area.y + area.h],
+    [area.x, area.y + area.h],
+  ];
+  return Math.max(
+    ...corners.map(([x, y]) =>
+      Math.hypot(
+        Math.max(0, x0 - x, x - x1),
+        Math.max(0, y0 - y, y - y1),
+      ),
+    ),
   );
-  const cap = FADE_MAX_FRACTION * Math.min(area.w, area.h);
-  return Math.max(0, Math.min(margin * FADE_OF_MARGIN, cap));
 }
 
 /**
- * A CSS `mask-image` holding the span, grown by the fade and blurred over it,
- * so the image is whole inside the span and gone by `span + 2 * fade`.
+ * A CSS `mask-image` holding the span grown by the falloff and blurred across
+ * it, so the layer stops where the extrapolation stops being believable.
+ *
+ * The dilation and the blur put the mask at full inside `fade.start` past the
+ * span and at nothing by `fade.end`, three standard deviations either side of
+ * the dilated edge. An area wholly inside `fade.start` needs no falloff at
+ * all and gets none, so the image runs to the area's edge undimmed.
  *
  * The mask is drawn in the area's millimetres and stretched over the image
  * box, which is the same rectangle, so a millimetre is a millimetre in both.
  */
 export function spanMask(span: number[][], area: Area): string {
-  if (!hasSpan(span)) return "";
-  const fade = fadeMm(span, area);
+  if (!hasSpan(span) || reachMm(span, area) <= fadeMm(span).start) return "";
+  const { start, end } = fadeMm(span);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${area.w} ${area.h}"` +
     ` preserveAspectRatio="none">` +
-    `<filter id="f" x="-30%" y="-30%" width="160%" height="160%">` +
-    `<feMorphology operator="dilate" radius="${fade}"/>` +
-    `<feGaussianBlur stdDeviation="${fade / 2}"/>` +
+    `<defs>` +
+    `<filter id="f" filterUnits="userSpaceOnUse"` +
+    ` x="0" y="0" width="${area.w}" height="${area.h}">` +
+    `<feMorphology operator="dilate" radius="${(start + end) / 2}"/>` +
+    `<feGaussianBlur stdDeviation="${(end - start) / 6}"/>` +
     `</filter>` +
-    `<polygon points="${spanPoints(span, area)}" fill="#fff"` +
+    `</defs>` +
+    `<polygon points="${polygonPoints(span, area)}" fill="#fff"` +
     ` filter="url(#f)"/>` +
     `</svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;

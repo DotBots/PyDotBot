@@ -8,9 +8,11 @@ import {
   fadeMm,
   loadCameraOpacity,
   opacityFor,
+  polygonPoints,
+  reachMm,
   saveCameraOpacity,
   spanMask,
-  spanPoints,
+  spanSizeMm,
   withOpacity,
 } from "./cameraLayer";
 import { areaToFraction } from "./frame";
@@ -206,7 +208,7 @@ describe("the camera as a map layer", () => {
     expect(image.style.height).toBe("100%");
   });
 
-  it("masks to the span, in the box's own coordinates", () => {
+  it("marks the span out, in the box's own coordinates", () => {
     render(<Harness />);
     // The box is the area, so the span's frame millimetres land as the
     // area's own: 1030 mm of frame is 30 mm into a dev-corner starting at
@@ -215,24 +217,16 @@ describe("the camera as a map layer", () => {
     expect(
       screen.getByTestId("camera-span-dev-corner").getAttribute("points"),
     ).toBe(points);
-    expect(spanPoints(SPAN, DEV_CORNER)).toBe(points);
-    const mask = decodeURIComponent(
-      screen.getByTestId("camera-image-dev-corner").style.maskImage,
-    );
-    expect(mask).toContain(`points="${points}"`);
-    expect(mask).toContain(`viewBox="0 0 ${DEV_CORNER.w} ${DEV_CORNER.h}"`);
+    expect(polygonPoints(SPAN, DEV_CORNER)).toBe(points);
   });
 
-  it("fades the image past the span rather than cutting it", () => {
+  it("draws the image whole out to the area's edge, with no falloff", () => {
     render(<Harness />);
-    const mask = decodeURIComponent(
+    expect(
       screen.getByTestId("camera-image-dev-corner").style.maskImage,
-    );
-    // Grown by the fade, then blurred over it: whole at the span's edge and
-    // gone before the raster ends.
-    expect(mask).toContain(`<feMorphology operator="dilate" radius="15"`);
-    expect(mask).toContain(`<feGaussianBlur stdDeviation="7.5"`);
+    ).toBe("");
   });
+
 
   it("lies under the grid, so the grid and the glyphs stay on top", () => {
     render(<Harness />);
@@ -254,30 +248,43 @@ describe("the camera as a map layer", () => {
   });
 });
 
-describe("the fade past the span", () => {
-  it("takes half the room between the span and the area's edge", () => {
-    expect(fadeMm(SPAN, DEV_CORNER)).toBeCloseTo(15, 9);
+// Four sheets in the middle of the 2 x 2 m arena: a 400 mm span with 1.3 m
+// of area beyond it in every direction, so the extrapolation runs to 300%.
+const PATCH_SPAN: number[][] = [
+  [800, 800],
+  [1200, 800],
+  [1200, 1200],
+  [800, 1200],
+];
+
+describe("the falloff past the span", () => {
+  it("is measured in the span's own size, not the room left over", () => {
+    expect(spanSizeMm(SPAN)).toBeCloseTo(853, 9);
+    expect(fadeMm(SPAN)).toEqual({ start: 213.25, end: 853 });
+    expect(spanSizeMm(PATCH_SPAN)).toBeCloseTo(400, 9);
+    expect(fadeMm(PATCH_SPAN)).toEqual({ start: 100, end: 400 });
   });
 
-  it("is capped, so a span far inside a big area still ends inside it", () => {
-    const area: Area = { x: 0, y: 0, w: 2000, h: 4000, name: "arena+annex" };
-    const span = [
-      [500, 1500],
-      [1500, 1500],
-      [1500, 2500],
-      [500, 2500],
-    ];
-    expect(fadeMm(span, area)).toBeCloseTo(120, 9);
+  it("leaves a span that nearly fills its area whole to the edge", () => {
+    // The area corner is 73.5 mm past an 853 mm span, a 9% extrapolation.
+    expect(reachMm(SPAN, DEV_CORNER)).toBeCloseTo(Math.hypot(30, 73.5), 9);
+    expect(reachMm(SPAN, DEV_CORNER)).toBeLessThan(fadeMm(SPAN).start);
+    expect(spanMask(SPAN, DEV_CORNER)).toBe("");
   });
 
-  it("is nothing at all for a span that reaches the area's edge", () => {
-    const span = [
-      [1000, 0],
-      [2000, 0],
-      [2000, 1000],
-      [1000, 1000],
-    ];
-    expect(fadeMm(span, DEV_CORNER)).toBe(0);
+  it("still takes a small patch in a big area to nothing inside it", () => {
+    expect(reachMm(PATCH_SPAN, ARENA)).toBeCloseTo(Math.hypot(800, 800), 9);
+    expect(fadeMm(PATCH_SPAN).end).toBeLessThan(reachMm(PATCH_SPAN, ARENA));
+    const mask = decodeURIComponent(spanMask(PATCH_SPAN, ARENA));
+    // Dilated to the middle of the falloff, then blurred three standard
+    // deviations either side of it: whole at 100 mm, gone by 400 mm.
+    expect(mask).toContain(`<feMorphology operator="dilate" radius="250"`);
+    expect(mask).toContain(`<feGaussianBlur stdDeviation="50"`);
+    expect(mask).toContain(`viewBox="0 0 2000 2000"`);
+    expect(mask).toContain(
+      `<filter id="f" filterUnits="userSpaceOnUse" x="0" y="0"` +
+        ` width="2000" height="2000">`,
+    );
   });
 
   it("masks nothing when the camera reports no span", () => {
