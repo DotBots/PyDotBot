@@ -4,15 +4,15 @@
 """`dotbot run camera-calibration` - register an overhead camera.
 
 Two steps, one subcommand each: `sheets` renders the four printable ArUco
-pages that go in the corners of an area, and `collect` reads them back
-through the camera and solves the homography from image pixels into the
-site's frame. Both run on your own machine and nothing here reaches a
-robot, which is why this sits under `run` beside `lh2-calibration` rather
-than under `swarm`.
+pages that go in the corners of an area as one A4 PDF, and `collect`
+reads them back through the camera and solves the homography from image
+pixels into the site's frame. Both run on your own machine and nothing
+here reaches a robot, which is why this sits under `run` beside
+`lh2-calibration` rather than under `swarm`.
 
-opencv-python lives behind the `[calibrate]` extra, so it is imported at
-invocation and a missing extra prints an install hint instead of a
-traceback.
+opencv-python and pillow live behind the `[calibrate]` extra, so they are
+imported at invocation and a missing extra prints an install hint instead
+of a traceback.
 """
 
 from __future__ import annotations
@@ -22,8 +22,12 @@ from pathlib import Path
 
 import click
 
-from dotbot.calibration.camera import SCALE_BAR_MM, render_sheet
-from dotbot.calibration.points import CORNERS
+from dotbot.calibration.camera import (
+    SCALE_BAR_MM,
+    SHEET_FORMATS,
+    render_sheets,
+    write_sheets,
+)
 
 
 @click.group(
@@ -48,14 +52,22 @@ def cmd(ctx: click.Context) -> None:
     default=".",
     help="Where to write the sheets. Default: the current directory.",
 )
-def sheets(out_dir: str) -> None:
+@click.option(
+    "--format",
+    "sheet_format",
+    type=click.Choice(SHEET_FORMATS),
+    default="pdf",
+    show_default=True,
+    help="pdf is the four pages as one print job; png is one image per sheet.",
+)
+def sheets(out_dir: str, sheet_format: str) -> None:
     """Render the four printable ArUco sheets, one per area corner."""
     try:
-        import cv2
+        pages = render_sheets()
     except ImportError as exc:
         click.echo(
             "`dotbot run camera-calibration sheets` needs the calibration "
-            "runtime deps (opencv-python).\n"
+            "runtime deps (opencv-python, pillow).\n"
             "Install with:  pip install pydotbot[calibrate]",
             err=True,
         )
@@ -64,9 +76,7 @@ def sheets(out_dir: str) -> None:
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    for marker_id in range(len(CORNERS)):
-        path = out / f"camera-marker-{marker_id}.png"
-        cv2.imwrite(str(path), render_sheet(marker_id))
+    for path in write_sheets(pages, out, sheet_format):
         click.echo(str(path))
     click.echo(
         f"Print at 100 % (no scale-to-fit); check the {SCALE_BAR_MM:g} mm bar "

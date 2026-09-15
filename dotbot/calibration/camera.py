@@ -10,9 +10,9 @@ its outer edges on the area's edge lines, and the marker is centred on the
 page - so the centre is the corner inset by half a page, and the operator
 measures nothing.
 
-`cv2` draws the marker and `PIL` sets the type; both are imported inside
-the drawing functions, so the layout is available without the
-`[calibrate]` extra installed.
+`cv2` draws the marker and `PIL` sets the type and writes the files; both
+are imported inside the functions that need them, so the layout is
+available without the `[calibrate]` extra installed.
 """
 
 from __future__ import annotations
@@ -226,6 +226,59 @@ def render_sheet(marker_id: int) -> np.ndarray:
     page[y0 : y0 + MARKER_SIDE_PX, x0 : x0 + MARKER_SIDE_PX] = marker
     _placement_diagram(page, marker_id)
     return _caption(page, marker_id)
+
+
+SHEET_FORMATS = ("pdf", "png")
+
+
+def render_sheets() -> list[np.ndarray]:
+    """One page per area corner, in `CORNERS` order."""
+    return [render_sheet(marker_id) for marker_id in range(len(CORNERS))]
+
+
+def write_sheets(
+    pages: Sequence[np.ndarray], out_dir: Path, sheet_format: str = "pdf"
+) -> list[Path]:
+    """Write rendered pages into `out_dir`, returning the files written."""
+    if sheet_format not in SHEET_FORMATS:
+        raise ValueError(
+            f"unknown sheet format {sheet_format!r}; "
+            f"expected one of {', '.join(SHEET_FORMATS)}"
+        )
+    writer = _write_pdf if sheet_format == "pdf" else _write_pngs
+    return writer(pages, out_dir)
+
+
+def _write_pdf(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
+    """The pages as one print job, at a page size declared in points.
+
+    Saved grayscale at full quality: Pillow encodes a PDF page as JPEG,
+    and anything lower puts ringing on the fiducial's edges.
+    """
+    from PIL import Image
+
+    path = out_dir / "camera-markers.pdf"
+    images = [Image.fromarray(page) for page in pages]
+    images[0].save(
+        path,
+        save_all=True,
+        append_images=images[1:],
+        resolution=float(SHEET_DPI),
+        quality=100,
+    )
+    return [path]
+
+
+def _write_pngs(pages: Sequence[np.ndarray], out_dir: Path) -> list[Path]:
+    """One image per sheet, each carrying the print density in its header."""
+    from PIL import Image
+
+    paths = []
+    for marker_id, page in enumerate(pages):
+        path = out_dir / f"camera-marker-{marker_id}.png"
+        Image.fromarray(page).save(path, dpi=(SHEET_DPI, SHEET_DPI))
+        paths.append(path)
+    return paths
 
 
 def _caption(page: np.ndarray, marker_id: int) -> np.ndarray:

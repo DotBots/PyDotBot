@@ -5,12 +5,17 @@ camera plan works through, so a change to the page geometry or the corner
 order shows up as a coordinate a human can compare with the plan. A sheet
 is checked by decoding it back with the detector that will read it off the
 floor, which is what catches a wrong id or a marker drawn at the wrong
-scale.
+scale. The PDF is checked the same way, on pages read back out of the
+written file rather than on the arrays that went in.
 """
+
+import io
+import re
 
 import cv2
 import numpy as np
 import pytest
+from PIL import Image
 
 from dotbot.area import Area
 from dotbot.calibration import camera
@@ -18,20 +23,33 @@ from dotbot.calibration.camera import (
     MARKER_DICTIONARY,
     MARKER_SIDE_MM,
     MARKER_SIDE_PX,
+    MM_PER_INCH,
+    PAGE_HEIGHT_MM,
     PAGE_HEIGHT_PX,
+    PAGE_WIDTH_MM,
     PAGE_WIDTH_PX,
+    SHEET_DPI,
     _diagram_frame_px,
     _px,
     marker_layout,
     render_sheet,
+    render_sheets,
     sheet_marker,
     span_mm,
+    write_sheets,
 )
 from dotbot.calibration.points import CORNERS
 
 # The camera plan's worked example: 1 x 1 m, its top-left corner one metre
 # along the site's x axis.
 DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
+
+POINTS_PER_INCH = 72.0
+
+# A4 to well inside a printer's own placement tolerance. The page is a
+# whole number of pixels, so its size in points is 2480 and 3508 rounded
+# pixels back at `SHEET_DPI` rather than A4 to the micron.
+PAGE_TOLERANCE_MM = 0.05
 
 
 def test_layout_places_one_sheet_in_each_corner():
@@ -99,15 +117,19 @@ def test_sheet_is_a4_at_300_dpi():
     assert MARKER_SIDE_PX == 1772  # 150 mm at 300 dpi
 
 
+def _detector():
+    """The detector that will read these markers off the floor."""
+    return cv2.aruco.ArucoDetector(
+        cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, MARKER_DICTIONARY)),
+        cv2.aruco.DetectorParameters(),
+    )
+
+
 @pytest.mark.parametrize("marker_id", range(len(CORNERS)))
 def test_sheet_decodes_to_its_own_id(marker_id):
     """One marker per page, its own id, printed at the declared size."""
     page = render_sheet(marker_id)
-    detector = cv2.aruco.ArucoDetector(
-        cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, MARKER_DICTIONARY)),
-        cv2.aruco.DetectorParameters(),
-    )
-    corners, ids, _ = detector.detectMarkers(page)
+    corners, ids, _ = _detector().detectMarkers(page)
 
     assert ids is not None and ids.ravel().tolist() == [marker_id]
     found = corners[0].reshape(4, 2)
@@ -219,3 +241,79 @@ def test_sheet_renders_without_any_of_the_candidate_fonts(monkeypatch):
     assert page.shape == (PAGE_HEIGHT_PX, PAGE_WIDTH_PX)
     caption = page[_px(250.0) : _px(270.0), _px(30.0) : _px(150.0)]
     assert (caption < 128).any()
+
+
+def _pdf_pages(path):
+    """A written PDF read back as its page sizes in mm and one image per page.
+
+    Pillow stores a page as a single full-page image, so lifting that
+    stream out is the nearest thing to rendering the file, and the page
+    size comes from the file's own `/MediaBox` rather than from the density
+    it was written at. Pages come back in the order the catalogue lists.
+    """
+    raw = path.read_bytes()
+    starts = {}
+    for match in re.finditer(rb"\n(\d+) 0 obj<<", raw):
+        starts.setdefault(int(match[1]), match.end())
+    kids = re.search(rb"/Kids \[([^\]]*)\]", raw)[1]
+
+    sizes, pages = [], []
+    for number in (int(ref) for ref in re.findall(rb"(\d+) 0 R", kids)):
+        page = raw[starts[number] : raw.index(b">>endobj", starts[number])]
+        box = re.search(rb"/MediaBox \[([^\]]*)\]", page)[1].split()
+        sizes.append(tuple(float(v) * MM_PER_INCH / POINTS_PER_INCH for v in box[2:]))
+
+        image = starts[int(re.search(rb"/image (\d+) 0 R", page)[1])]
+        stream = raw.index(b">>stream\n", image) + len(b">>stream\n")
+        length = int(re.search(rb"/Length (\d+)", raw[image:stream])[1])
+        with Image.open(io.BytesIO(raw[stream : stream + length])) as rendered:
+            pages.append(np.array(rendered.convert("L")))
+    return sizes, pages
+
+
+def test_sheets_pdf_is_one_a4_page_per_corner(tmp_path):
+    """One file is one print job, and every page states A4 in points."""
+    written = write_sheets(render_sheets(), tmp_path)
+    assert [path.name for path in written] == ["camera-markers.pdf"]
+
+    sizes, pages = _pdf_pages(written[0])
+    assert len(pages) == len(CORNERS)
+    for width_mm, height_mm in sizes:
+        assert width_mm == pytest.approx(PAGE_WIDTH_MM, abs=PAGE_TOLERANCE_MM)
+        assert height_mm == pytest.approx(PAGE_HEIGHT_MM, abs=PAGE_TOLERANCE_MM)
+
+
+def test_sheets_pdf_pages_carry_their_own_marker_at_its_printed_size(tmp_path):
+    """Measured against the size the file declares, which is what prints."""
+    sizes, pages = _pdf_pages(write_sheets(render_sheets(), tmp_path)[0])
+    detector = _detector()
+
+    for marker_id, (page, (width_mm, _)) in enumerate(zip(pages, sizes)):
+        corners, ids, _ = detector.detectMarkers(page)
+        assert ids is not None and ids.ravel().tolist() == [marker_id]
+        found = corners[0].reshape(4, 2)
+        mm_per_px = width_mm / page.shape[1]
+        assert np.linalg.norm(found[1] - found[0]) * mm_per_px == pytest.approx(
+            MARKER_SIDE_MM, abs=0.1
+        )
+
+
+def test_sheets_png_writes_one_image_per_corner(tmp_path):
+    """The image path stays, and each file carries the density in its header."""
+    written = write_sheets(render_sheets(), tmp_path, "png")
+    assert [path.name for path in written] == [
+        f"camera-marker-{marker_id}.png" for marker_id in range(len(CORNERS))
+    ]
+
+    for marker_id, path in enumerate(written):
+        with Image.open(path) as image:
+            assert image.size == (PAGE_WIDTH_PX, PAGE_HEIGHT_PX)
+            assert image.info["dpi"] == pytest.approx((SHEET_DPI, SHEET_DPI), abs=0.01)
+            page = np.array(image.convert("L"))
+        _, ids, _ = _detector().detectMarkers(page)
+        assert ids is not None and ids.ravel().tolist() == [marker_id]
+
+
+def test_write_sheets_rejects_a_format_it_cannot_write(tmp_path):
+    with pytest.raises(ValueError, match="unknown sheet format"):
+        write_sheets([], tmp_path, "svg")
