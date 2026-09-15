@@ -649,14 +649,14 @@ def probe(
     """Open one source, settle it, and report what it sees."""
     capture = open_capture(source, open_source)
     if not capture.isOpened():
-        _release(capture)
+        release_capture(capture)
         return Probe(source=source, note="did not open")
     try:
         settled = settle(capture)
         backend = str(getattr(capture, "getBackendName", lambda: "")() or "")
-        fps = float(_capture_fps(capture))
+        fps = float(capture_fps(capture))
     finally:
-        _release(capture)
+        release_capture(capture)
     if settled.frame is None:
         return Probe(source=source, opened=True, backend=backend, note="no frames")
     gray = _gray(settled.frame)
@@ -677,7 +677,7 @@ def probe(
     )
 
 
-def _capture_fps(capture) -> float:
+def capture_fps(capture) -> float:
     """The frame rate the source declares, or zero when it declares none."""
     import cv2
 
@@ -687,7 +687,8 @@ def _capture_fps(capture) -> float:
         return 0.0
 
 
-def _release(capture) -> None:
+def release_capture(capture) -> None:
+    """Hand the device back, for a capture that has one to hand back."""
     release = getattr(capture, "release", None)
     if release is not None:
         release()
