@@ -18,7 +18,7 @@ notifications keep the order the reads arrived in.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Sequence
 
 from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
 from dotbot.calibration.points import resolve_placement_points
@@ -32,7 +32,7 @@ from dotbot.site import Site
 
 # The swarmit log-event tag a raw-count capture carries. Imported lazily so
 # the swarmit protocol registry stays out of PyDotBot test collection.
-_CAPTURE_TAG: Optional[int] = None
+_CAPTURE_TAG: int | None = None
 
 
 def capture_tag() -> int:
@@ -55,27 +55,27 @@ class SessionDriver:
     def __init__(
         self,
         client_factory: Callable[[str], Any],
-        notify: Callable[[Optional[dict]], Any],
-        site: Optional[Site] = None,
-        stale_devices: Optional[Callable[[], list[str]]] = None,
-        stream_factory: Optional[Callable[[Any, str, Callable], Any]] = None,
+        notify: Callable[[dict | None], Any],
+        site: Site | None = None,
+        stale_devices: Callable[[], list[str]] | None = None,
+        stream_factory: Callable[[Any, str, Callable], Any] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
         self._stale_devices = stale_devices or (lambda: [])
         self._stream_factory = stream_factory or _default_stream
         self.site = site or Site()
-        self.session: Optional[CalibrationSession] = None
+        self.session: CalibrationSession | None = None
         self.logger = LOGGER.bind(context=__name__)
         self._client: Any = None
         self._stream: Any = None
         self._device = ""
         self._lock = asyncio.Lock()
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # -- state
 
-    def state(self) -> Optional[dict]:
+    def state(self) -> dict | None:
         """The whole session, or None when there is none."""
         return None if self.session is None else self.session.as_dict()
 
@@ -104,15 +104,13 @@ class SessionDriver:
         specs: Sequence[str],
         device: str = "",
         area: str = "",
-        reads: Optional[int] = None,
+        reads: int | None = None,
     ) -> dict:
         """Resolve the points and open a session with point 0 outstanding."""
         async with self._lock:
             self._close_stream()
             extra = {} if reads is None else {"reads": reads}
-            session = CalibrationSession.resolve(
-                list(specs), site=self.site, **extra
-            )
+            session = CalibrationSession.resolve(list(specs), site=self.site, **extra)
             session.device = device.upper()
             session.area = area
             self.session = session
@@ -235,9 +233,7 @@ class SessionDriver:
     def _ensure_stream(self, device: str) -> Any:
         client = self._ensure_client(device)
         if self._stream is None:
-            self._stream = self._stream_factory(
-                client, device, self.on_idle_records
-            )
+            self._stream = self._stream_factory(client, device, self.on_idle_records)
             self._stream.__enter__()
         return self._stream
 

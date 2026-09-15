@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import Controller, ControllerSettings
+from dotbot.controller import ControllerSettings
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,

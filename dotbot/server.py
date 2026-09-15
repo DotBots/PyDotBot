@@ -53,7 +53,6 @@ from dotbot.models import (
     WSRgbLed,
     WSWaypoints,
 )
-from dotbot.swarm_client import conn_string
 from dotbot.protocol import (
     ApplicationType,
     PayloadCommandMoveRaw,
@@ -63,6 +62,7 @@ from dotbot.protocol import (
     PayloadLH2Location,
     PayloadLH2Waypoints,
 )
+from dotbot.swarm_client import conn_string
 
 PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
     "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"

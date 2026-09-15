@@ -238,8 +238,9 @@ class CaptureSession:
         timeout: float = CAPTURE_TIMEOUT_DEFAULT,
         retries: int = CAPTURE_RETRIES_DEFAULT,
         on_attempt: Callable[[int, int], None] | None = None,
-        on_read: Callable[[int, int, list[list[LH2CalibrationSample]]], None]
-        | None = None,
+        on_read: (
+            Callable[[int, int, list[list[LH2CalibrationSample]]], None] | None
+        ) = None,
     ) -> PointCapture:
         """Take `reads` captures at one point and group them per station."""
         collected: list[list[LH2CalibrationSample]] = []

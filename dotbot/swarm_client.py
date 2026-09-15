@@ -14,12 +14,10 @@ load during PyDotBot test collection.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
-def build_swarmit_client(
-    conn: str, swarm_id: str, device: Optional[str] = None
-) -> Any:
+def build_swarmit_client(conn: str, swarm_id: str, device: str | None = None) -> Any:
     """A swarmit client targeting one `device`, or the whole swarm when None.
 
     Transport selection is swarmit's call: `build_client` probes for a

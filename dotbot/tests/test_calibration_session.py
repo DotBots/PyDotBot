@@ -554,7 +554,9 @@ def rest():
 
 
 @pytest.mark.asyncio
-async def test_the_routes_walk_a_session_from_start_to_push(rest, monkeypatch, tmp_path):
+async def test_the_routes_walk_a_session_from_start_to_push(
+    rest, monkeypatch, tmp_path
+):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     http, controller, client = rest
 
@@ -603,9 +605,7 @@ async def test_the_routes_walk_a_session_from_start_to_push(rest, monkeypatch, t
 async def test_a_route_that_needs_a_session_refuses_without_one(rest):
     http, _, _ = rest
     for path in ("capture", "redo", "save", "push"):
-        response = await http.post(
-            f"/controller/calibration/session/{path}", json={}
-        )
+        response = await http.post(f"/controller/calibration/session/{path}", json={})
         assert response.status_code == 409
         assert "no calibration session is open" in response.json()["detail"]
 

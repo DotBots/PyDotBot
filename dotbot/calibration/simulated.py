@@ -16,7 +16,7 @@ from the declared point, so they agree with it by construction.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 
@@ -35,7 +35,7 @@ STATION_MATRIX = np.array(
 SIMULATED_STATIONS = (0, 1)
 
 # What a capture reply carries, mirroring the bootloader's log payload.
-_SAMPLE_TAG: Optional[int] = None
+_SAMPLE_TAG: int | None = None
 
 
 def _tag() -> int:
@@ -66,7 +66,7 @@ class SimulatedCaptureClient:
     def __init__(
         self,
         device: str,
-        point_provider: Callable[[], Optional[tuple[float, float]]],
+        point_provider: Callable[[], tuple[float, float] | None],
         stations: tuple[int, ...] = SIMULATED_STATIONS,
     ):
         self.device = (device or "SIMULATED").upper()

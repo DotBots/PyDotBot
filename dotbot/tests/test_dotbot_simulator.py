@@ -127,9 +127,7 @@ def test_the_grid_is_deterministic_and_stays_inside_its_area():
     first = grid_positions(area, 7)
     assert first == grid_positions(area, 7)
     assert len(set(first)) == 7
-    assert all(
-        area.x < x < area.x_max and area.y < y < area.y_max for x, y in first
-    )
+    assert all(area.x < x < area.x_max and area.y < y < area.y_max for x, y in first)
 
 
 def test_no_robots_need_no_grid():
@@ -187,6 +185,5 @@ def test_the_packaged_world_still_runs_with_no_site_at_all():
     )
     assert len(interface.dotbots) == 4
     assert all(
-        0 < bot.pos_x < 2000 and 0 < bot.pos_y < 2000
-        for bot in interface.dotbots
+        0 < bot.pos_x < 2000 and 0 < bot.pos_y < 2000 for bot in interface.dotbots
     )

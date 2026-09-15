@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Sequence
 
 from dotbot.calibration.lighthouse2 import (
     VALID_MM_DEFAULT,
@@ -57,7 +57,7 @@ class SessionPoint:
 
     index: int
     placement: PointPlacement
-    capture: Optional[PointCapture] = None
+    capture: PointCapture | None = None
     # Reads received per station while this point's capture is running.
     reads_per_station: dict[int, int] = field(default_factory=dict)
     reads_target: int = 0
@@ -88,19 +88,19 @@ class CalibrationSession:
     tag: str = ""
     stations: list[StationSolution] = field(default_factory=list)
     unsolved: list[tuple[int, int]] = field(default_factory=list)
-    saved_path: Optional[str] = None
+    saved_path: str | None = None
     saved_id: str = ""
     # The predictor of the plan's accuracy section is a later phase, so the
     # number is absent rather than guessed, and a renderer shows the line
     # only when it is one.
-    expected_error_mm: Optional[float] = None
+    expected_error_mm: float | None = None
     error: str = ""
 
     @classmethod
     def resolve(
         cls,
         specs: Sequence[str],
-        site: Optional[Site] = None,
+        site: Site | None = None,
         robot: str = ROBOT_DEFAULT,
         **kwargs: Any,
     ) -> CalibrationSession:
@@ -126,7 +126,7 @@ class CalibrationSession:
     # -- where the loop is
 
     @property
-    def outstanding(self) -> Optional[SessionPoint]:
+    def outstanding(self) -> SessionPoint | None:
         """The point waiting to be captured, or None once every one is."""
         for point in self.points:
             if not point.captured:
@@ -158,7 +158,7 @@ class CalibrationSession:
         self.saved_id = ""
         return point
 
-    def store_records(self, records: list) -> Optional[SessionPoint]:
+    def store_records(self, records: list) -> SessionPoint | None:
         """Store one arriving read set as the outstanding point.
 
         This is the robot's own trigger answering the prompt: whichever
@@ -170,7 +170,7 @@ class CalibrationSession:
             return None
         return self.store(point.index, samples_from_reads([records], point.index))
 
-    def capture(self, stream, on_progress: Optional[Callable] = None) -> SessionPoint:
+    def capture(self, stream, on_progress: Callable | None = None) -> SessionPoint:
         """Take the outstanding point's reads over `stream`, a `CaptureSession`."""
         point = self.outstanding
         if point is None:
@@ -228,7 +228,7 @@ class CalibrationSession:
             samples=samples,
         )
 
-    def manager(self, placement: Optional[Placement] = None) -> LighthouseManager:
+    def manager(self, placement: Placement | None = None) -> LighthouseManager:
         """The solver, over this session's placement and its site."""
         return LighthouseManager(
             placements=[placement or self.placement()],
@@ -249,7 +249,7 @@ class CalibrationSession:
         self.unsolved = manager.unsolved_stations
         return self.stations
 
-    def save(self, tag: Optional[str] = None) -> Calibration:
+    def save(self, tag: str | None = None) -> Calibration:
         """Solve if needed, write the schema 2 file, and read back its id."""
         placement = self.placement()
         manager = self.manager(placement)
