@@ -6,12 +6,16 @@ import {
   CameraOffset,
   CameraOpacity,
   OffsetMm,
+  RobotOpacity,
   loadCameraOffset,
   loadCameraOpacity,
+  loadRobotOpacity,
   saveCameraOffset,
   saveCameraOpacity,
+  saveRobotOpacity,
   withOffset,
   withOpacity,
+  withRobotOpacity,
 } from "./cameraLayer";
 import { isPhoneWidth, sessionRect } from "./calibration";
 import { siteExtentArea } from "./frame";
@@ -161,6 +165,19 @@ export const App: React.FC = () => {
     setCameraOffset((prev) => {
       const next = withOffset(prev, area, value);
       saveCameraOffset(next);
+      return next;
+    });
+  }, []);
+
+  // And so is how solid the robots over one are drawn, which is the same
+  // comparison from the other side: the glyph faded until the photographed
+  // robot under it can be read.
+  const [robotOpacity, setRobotOpacity] =
+    useState<RobotOpacity>(loadRobotOpacity);
+  const onRobotOpacity = useCallback((area: string, value: number) => {
+    setRobotOpacity((prev) => {
+      const next = withRobotOpacity(prev, area, value);
+      saveRobotOpacity(next);
       return next;
     });
   }, []);
@@ -635,6 +652,7 @@ export const App: React.FC = () => {
               cameras={cameras}
               cameraOpacity={cameraOpacity}
               cameraOffset={cameraOffset}
+              robotOpacity={robotOpacity}
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
@@ -738,6 +756,8 @@ export const App: React.FC = () => {
           onCameraOpacity={onCameraOpacity}
           cameraOffset={cameraOffset}
           onCameraOffset={onCameraOffset}
+          robotOpacity={robotOpacity}
+          onRobotOpacity={onRobotOpacity}
           session={session}
           calibration={calibration}
           device={capturer || session?.device || ""}

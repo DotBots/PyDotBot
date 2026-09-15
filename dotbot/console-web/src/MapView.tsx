@@ -6,11 +6,14 @@ import { CalibrationLayer } from "./CalibrationLayer";
 import {
   CameraOffset,
   CameraOpacity,
+  RobotOpacity,
   hasSpan,
   offsetFor,
   offsetTransform,
   opacityFor,
   polygonPoints,
+  robotOpacityAt,
+  robotOpacityFor,
   spanMask,
 } from "./cameraLayer";
 import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
@@ -85,6 +88,9 @@ interface MapViewProps {
   cameras?: RegisteredCamera[];
   cameraOpacity?: CameraOpacity;
   cameraOffset?: CameraOffset;
+  // How solid the robots standing on each camera's area are drawn, so the
+  // photographed robot can be read under the glyph reporting it.
+  robotOpacity?: RobotOpacity;
   // The whole site, outlined so it reads as a box rather than only a label.
   siteExtent: Area | null;
   selection: Set<string>;
@@ -247,6 +253,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const area = props.siteAreas.find((a) => a.name === camera.area);
     return area ? [{ camera, area }] : [];
   });
+
+  // The areas asked to show their robots through, which is empty on a map
+  // nobody has moved the slider on. Fading only where a camera is looking: a
+  // robot on bare floor has nothing underneath to read, so taking it down
+  // would cost legibility and buy nothing.
+  const robotFades = cameraLayers
+    .map(({ camera, area }) => ({
+      area,
+      opacity: robotOpacityFor(props.robotOpacity ?? {}, camera.area),
+    }))
+    .filter(({ opacity }) => opacity < 1);
 
   // Zoom runs free between the whole site and the ceiling the site needs.
   // The geometry is read live, so a resize that moves the ceiling moves the
@@ -787,7 +804,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             props.bots
               .filter((b) => b.position)
               .map((b) => {
-                const q = pctPos(smoothPositions.get(b.id) ?? b.position!);
+                const at = smoothPositions.get(b.id) ?? b.position!;
+                const q = pctPos(at);
+                // Only the board fades, never what marks it out: a robot has
+                // to stay findable and clickable to be driven, and at a low
+                // opacity the ring and the chip are all there is to find.
+                const solid = robotOpacityAt(robotFades, at);
                 const selected = props.selection.has(b.id);
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
@@ -892,11 +914,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     )}
                     {/* body and heading are one glyph: it rotates as a piece */}
                     <div
+                      data-testid={`glyph-${b.id}`}
                       style={{
                         position: "absolute",
                         left: "50%",
                         top: "50%",
                         transform: "translate(-50%, -50%)",
+                        opacity: solid < 1 ? solid : undefined,
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
                     >

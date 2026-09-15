@@ -14,19 +14,26 @@
 // no source to read, and the layer is cut there rather than drawn, so the map
 // shows through and the edge of the camera's view is visible.
 //
-// The opacity and the offset are both ways of looking at the map, like which
-// area outlines are drawn: they reach no controller and are remembered in this
-// browser only. The offset shifts the image and the outline drawn on it, and
-// nothing else: the glyph is the measurement, so moving it to meet the picture
-// would corrupt the thing being checked.
+// The opacity, the offset, and how solid the robots over the layer are drawn
+// are all ways of looking at the map, like which area outlines are drawn: they
+// reach no controller and are remembered in this browser only. The offset
+// shifts the image and the outline drawn on it, and nothing else: the glyph is
+// the measurement, so moving it to meet the picture would corrupt the thing
+// being checked. Fading the glyph moves nothing either, and lets the
+// photographed robot be read under the position reported for it, which is the
+// comparison the layer exists to make.
 
-import type { Area } from "./types";
+import type { Area, LH2Position } from "./types";
 
-const KEY = "dotbot.console.cameraOpacity";
+const OPACITY_KEY = "dotbot.console.cameraOpacity";
 const OFFSET_KEY = "dotbot.console.cameraOffset";
+const ROBOT_KEY = "dotbot.console.robotOpacity";
 
 /** Visible on arrival, and still plainly an underlay under the grid. */
 export const DEFAULT_CAMERA_OPACITY = 0.6;
+
+/** Robots are drawn solid until the slider is reached for. */
+export const DEFAULT_ROBOT_OPACITY = 1;
 
 // Where the falloff starts and ends, as multiples of the span's own smaller
 // side. A quarter of the span beyond it the extrapolated error is a few times
@@ -38,13 +45,15 @@ const FADE_END_OF_SPAN = 1.0;
 /** Layer opacity by area name, 0 to 1. */
 export type CameraOpacity = Record<string, number>;
 
+/** How solid the robots standing on an area are drawn, 0 to 1. */
+export type RobotOpacity = Record<string, number>;
+
 const usable = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 
-/** What this browser last set, empty when storage says nothing usable. */
-export function loadCameraOpacity(): CameraOpacity {
+const loadOpacity = (key: string): CameraOpacity => {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -56,15 +65,30 @@ export function loadCameraOpacity(): CameraOpacity {
   } catch {
     return {};
   }
+};
+
+const storeOpacity = (key: string, opacity: CameraOpacity): void => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(opacity));
+  } catch {
+    /* private window, cleared site data, storage blocked */
+  }
+};
+
+const withValue = (
+  opacity: CameraOpacity,
+  area: string,
+  value: number,
+): CameraOpacity => ({ ...opacity, [area]: Math.min(1, Math.max(0, value)) });
+
+/** What this browser last set, empty when storage says nothing usable. */
+export function loadCameraOpacity(): CameraOpacity {
+  return loadOpacity(OPACITY_KEY);
 }
 
 /** Remember it; a browser that refuses storage just forgets it. */
 export function saveCameraOpacity(opacity: CameraOpacity): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(opacity));
-  } catch {
-    /* private window, cleared site data, storage blocked */
-  }
+  storeOpacity(OPACITY_KEY, opacity);
 }
 
 /** One area's opacity, falling back to the default it arrives at. */
@@ -79,7 +103,64 @@ export function withOpacity(
   area: string,
   value: number,
 ): CameraOpacity {
-  return { ...opacity, [area]: Math.min(1, Math.max(0, value)) };
+  return withValue(opacity, area, value);
+}
+
+/** What this browser last set, empty when storage says nothing usable. */
+export function loadRobotOpacity(): RobotOpacity {
+  return loadOpacity(ROBOT_KEY);
+}
+
+/** Remember it; a browser that refuses storage just forgets it. */
+export function saveRobotOpacity(opacity: RobotOpacity): void {
+  storeOpacity(ROBOT_KEY, opacity);
+}
+
+/** One area's robots, falling back to solid. */
+export function robotOpacityFor(opacity: RobotOpacity, area: string): number {
+  const v = opacity[area];
+  return usable(v) ? v : DEFAULT_ROBOT_OPACITY;
+}
+
+/** The map with one area's robots replaced, clamped to 0..1. */
+export function withRobotOpacity(
+  opacity: RobotOpacity,
+  area: string,
+  value: number,
+): RobotOpacity {
+  return withValue(opacity, area, value);
+}
+
+/** One camera's area, and how solid the robots standing on it are drawn. */
+export interface RobotFade {
+  area: Area;
+  opacity: number;
+}
+
+/**
+ * How solid the robot reporting itself at `p` is drawn: the least any camera
+ * it stands on asks for, and solid where none does.
+ *
+ * A robot is faded whole or not at all, by the position it reports. That
+ * position is the measurement the layer is being compared against, so it is
+ * also what decides which camera the comparison belongs to; a robot straddling
+ * the boundary belongs to the area its own reading puts it in.
+ */
+export function robotOpacityAt(faded: RobotFade[], p: LH2Position): number {
+  return faded.reduce(
+    (least, f) => (inArea(p, f.area) ? Math.min(least, f.opacity) : least),
+    DEFAULT_ROBOT_OPACITY,
+  );
+}
+
+/** Whether a point of floor falls inside a rectangle of it. */
+export function inArea(p: LH2Position, area: Area): boolean {
+  return (
+    p.x >= area.x &&
+    p.x <= area.x + area.w &&
+    p.y >= area.y &&
+    p.y <= area.y + area.h
+  );
 }
 
 // Well past any parallax correction, so a mistyped value cannot throw the

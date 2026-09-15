@@ -6,26 +6,39 @@ import {
   CameraOffset,
   CameraOpacity,
   DEFAULT_CAMERA_OPACITY,
+  DEFAULT_ROBOT_OPACITY,
   NO_OFFSET,
+  RobotOpacity,
   fadeMm,
   loadCameraOffset,
   loadCameraOpacity,
+  loadRobotOpacity,
   offsetFor,
   offsetTransform,
   opacityFor,
   polygonPoints,
   reachMm,
+  robotOpacityAt,
+  robotOpacityFor,
   saveCameraOffset,
   saveCameraOpacity,
+  saveRobotOpacity,
   spanMask,
   spanSizeMm,
   withOffset,
   withOpacity,
+  withRobotOpacity,
 } from "./cameraLayer";
 import { areaToFraction } from "./frame";
 import { MapView } from "./MapView";
 import { RightPane, RightTab } from "./RightPane";
-import type { Area, RegisteredCamera, Site } from "./types";
+import type {
+  Area,
+  LH2Position,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import type { Calibration } from "./useCalibration";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
@@ -98,30 +111,58 @@ const LAYERS = {
   crashedOnly: false,
 };
 
-// The map and the Layers tab over one opacity map and one offset map, exactly
-// as App wires them.
-const Harness: React.FC<{ cameras?: RegisteredCamera[] }> = ({
-  cameras = [CAMERA],
-}) => {
+// A robot standing where it says it is, which is all the map draws it from.
+const bot = (id: string, position: LH2Position): UnifiedBot => ({
+  id,
+  state: "Running",
+  link: "active",
+  position,
+  heading: 0,
+  battery: 3.9,
+  led: null,
+  deviceType: "DotBot",
+  application: 0,
+  drivable: true,
+  nav: "drive",
+  waypoints: [],
+  trail: [],
+  image: null,
+  resetCause: null,
+  severity: "normal",
+  batteryPct: 80,
+  batteryLevel: "ok",
+  swarmit: null,
+});
+
+// The map and the Layers tab over one opacity map, one offset map and one
+// robot-opacity map, exactly as App wires them.
+const Harness: React.FC<{
+  cameras?: RegisteredCamera[];
+  bots?: UnifiedBot[];
+  selection?: Set<string>;
+}> = ({ cameras = [CAMERA], bots = [], selection = new Set() }) => {
   const [cameraOpacity, setCameraOpacity] = useState<CameraOpacity>(
     loadCameraOpacity,
   );
   const [cameraOffset, setCameraOffset] =
     useState<CameraOffset>(loadCameraOffset);
+  const [robotOpacity, setRobotOpacity] =
+    useState<RobotOpacity>(loadRobotOpacity);
   const [tab, setTab] = useState<RightTab>("layers");
   return (
     <>
       <div data-testid="map">
         <MapView
-          bots={[]}
+          bots={bots}
           viewport={VIEWPORT}
           siteAreas={C405.areas}
           hiddenAreas={new Set()}
           cameras={cameras}
           cameraOpacity={cameraOpacity}
           cameraOffset={cameraOffset}
+          robotOpacity={robotOpacity}
           siteExtent={{ x: 0, y: 0, w: 2000, h: 4000, name: C405.name }}
-          selection={new Set()}
+          selection={selection}
           layers={LAYERS}
           plannedMissions={[]}
           cam={{ scale: 1, tx: 0, ty: 0 }}
@@ -160,6 +201,14 @@ const Harness: React.FC<{ cameras?: RegisteredCamera[] }> = ({
             setCameraOffset((prev) => {
               const next = withOffset(prev, area, value);
               saveCameraOffset(next);
+              return next;
+            })
+          }
+          robotOpacity={robotOpacity}
+          onRobotOpacity={(area, value) =>
+            setRobotOpacity((prev) => {
+              const next = withRobotOpacity(prev, area, value);
+              saveRobotOpacity(next);
               return next;
             })
           }
@@ -577,5 +626,125 @@ describe("the offset as a transform", () => {
     expect(
       offsetTransform({ dx: 36, dy: 0 }, { x: 0, y: 0, w: 0, h: 0 }),
     ).toBeUndefined();
+  });
+});
+
+// One robot on the camera's own area, one on the arena beside it.
+const ON_CAMERA = bot("badcafe1111111aa", { x: 1500, y: 500 });
+const OFF_CAMERA = bot("deadbeef222222bb", { x: 200, y: 1500 });
+
+describe("the robots over a camera", () => {
+  it("draws every one of them solid until the slider is moved", () => {
+    render(<Harness bots={[ON_CAMERA, OFF_CAMERA]} />);
+    expect(screen.getByLabelText("Robot opacity on dev-corner")).toHaveValue(
+      "100",
+    );
+    for (const b of [ON_CAMERA, OFF_CAMERA]) {
+      expect(screen.getByTestId(`glyph-${b.id}`).style.opacity).toBe("");
+    }
+  });
+
+  it("fades the ones standing on the camera's area, and no others", () => {
+    render(<Harness bots={[ON_CAMERA, OFF_CAMERA]} />);
+
+    fireEvent.change(screen.getByLabelText("Robot opacity on dev-corner"), {
+      target: { value: "30" },
+    });
+
+    expect(screen.getByTestId(`glyph-${ON_CAMERA.id}`).style.opacity).toBe(
+      "0.3",
+    );
+    expect(screen.getByTestId(`glyph-${OFF_CAMERA.id}`).style.opacity).toBe("");
+    expect(window.localStorage.getItem("dotbot.console.robotOpacity")).toBe(
+      '{"dev-corner":0.3}',
+    );
+  });
+
+  it("leaves what marks a robot out at full strength", () => {
+    render(
+      <Harness
+        bots={[ON_CAMERA]}
+        selection={new Set([ON_CAMERA.id])}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Robot opacity on dev-corner"), {
+      target: { value: "10" },
+    });
+
+    // The board is nearly gone, so the ring and the label are what is left to
+    // find the robot by and click to drive it.
+    expect(screen.getByTestId(`glyph-${ON_CAMERA.id}`).style.opacity).toBe(
+      "0.1",
+    );
+    expect(screen.getByTestId(`selection-${ON_CAMERA.id}`).style.opacity).toBe(
+      "",
+    );
+    expect(screen.getByText("11AA").style.opacity).toBe("");
+  });
+
+  it("fades nothing for a camera on an area the site does not define", () => {
+    render(<Harness cameras={[{ ...CAMERA, area: "gone" }]} bots={[ON_CAMERA]} />);
+
+    fireEvent.change(screen.getByLabelText("Robot opacity on gone"), {
+      target: { value: "30" },
+    });
+
+    expect(screen.getByTestId(`glyph-${ON_CAMERA.id}`).style.opacity).toBe("");
+  });
+});
+
+describe("which robots a camera fades", () => {
+  it("takes the ones standing on its area, its boundary included", () => {
+    const faded = [{ area: DEV_CORNER, opacity: 0.3 }];
+    expect(robotOpacityAt(faded, { x: 1500, y: 500 })).toBe(0.3);
+    expect(robotOpacityAt(faded, { x: 1000, y: 0 })).toBe(0.3);
+    expect(robotOpacityAt(faded, { x: 2000, y: 1000 })).toBe(0.3);
+    expect(robotOpacityAt(faded, { x: 999.9, y: 500 })).toBe(1);
+  });
+
+  it("takes the lowest where one area lies inside another", () => {
+    const faded = [
+      { area: ARENA, opacity: 0.6 },
+      { area: DEV_CORNER, opacity: 0.2 },
+    ];
+    expect(robotOpacityAt(faded, { x: 1500, y: 500 })).toBe(0.2);
+    expect(robotOpacityAt(faded, { x: 200, y: 1500 })).toBe(0.6);
+  });
+
+  it("leaves every robot solid with no camera asking", () => {
+    expect(robotOpacityAt([], { x: 1500, y: 500 })).toBe(DEFAULT_ROBOT_OPACITY);
+  });
+});
+
+describe("the robot opacity this browser remembers", () => {
+  it("starts every camera solid", () => {
+    expect(robotOpacityFor({}, "dev-corner")).toBe(DEFAULT_ROBOT_OPACITY);
+  });
+
+  it("round-trips through storage, and keeps its own key", () => {
+    saveRobotOpacity({ "dev-corner": 0.25 });
+    saveCameraOpacity({ "dev-corner": 0.8 });
+
+    expect(robotOpacityFor(loadRobotOpacity(), "dev-corner")).toBe(0.25);
+    expect(opacityFor(loadCameraOpacity(), "dev-corner")).toBe(0.8);
+  });
+
+  it("ignores a stored value that is not an opacity", () => {
+    window.localStorage.setItem(
+      "dotbot.console.robotOpacity",
+      '{"dev-corner": "half", "arena": 2, "annex": 0.4}',
+    );
+    expect(loadRobotOpacity()).toEqual({ annex: 0.4 });
+  });
+
+  it("clamps what a caller sets, and leaves the other areas alone", () => {
+    expect(withRobotOpacity({ arena: 0.5 }, "dev-corner", 4)).toEqual({
+      arena: 0.5,
+      "dev-corner": 1,
+    });
+    expect(withRobotOpacity({}, "dev-corner", -1)).toEqual({
+      "dev-corner": 0,
+    });
   });
 });

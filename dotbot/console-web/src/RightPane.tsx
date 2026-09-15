@@ -6,8 +6,10 @@ import {
   CameraOpacity,
   NO_OFFSET,
   OffsetMm,
+  RobotOpacity,
   offsetFor,
   opacityFor,
+  robotOpacityFor,
 } from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
 import { SetupCard } from "./SetupCard";
@@ -114,20 +116,63 @@ export const CheckRow: React.FC<{
   </div>
 );
 
+// One of a camera row's two opacities: a labelled track and what it reads.
+// The label is given a width so the tracks line up under each other, the two
+// being read against one another.
+const OpacityRow: React.FC<{
+  label: string;
+  name: string;
+  value: number;
+  onChange: (value: number) => void;
+}> = ({ label, name, value, onChange }) => {
+  const pct = Math.round(value * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+      <span
+        style={{ color: "var(--muted)", fontSize: 11, width: 44, flex: "none" }}
+      >
+        {label}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={pct}
+        aria-label={name}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer" }}
+      />
+      <span
+        style={{
+          width: 32,
+          textAlign: "right",
+          font: "11px/1 var(--font-mono)",
+          color: "var(--muted)",
+        }}
+      >
+        {pct}%
+      </span>
+    </div>
+  );
+};
+
 // One registered camera: the area it covers, how well it registered, how
-// opaque its image is drawn, and how far that image is nudged. A slider for
-// the opacity rather than a tick, because the layer is a comparison
-// instrument - the useful settings are between off and on. Typed millimetres
-// for the offset, because the operator arrives at it by reading a distance
-// off the map and the arrow keys still step it one at a time.
+// opaque its image is drawn, how far that image is nudged, and how solid the
+// robots standing on it are. Sliders rather than ticks for the two opacities,
+// because the layer is a comparison instrument - the useful settings are
+// between off and on. Typed millimetres for the offset, because the operator
+// arrives at it by reading a distance off the map and the arrow keys still
+// step it one at a time.
 const CameraRow: React.FC<{
   camera: RegisteredCamera;
   opacity: number;
   onOpacity: (value: number) => void;
   offset: OffsetMm;
   onOffset: (value: OffsetMm) => void;
-}> = ({ camera, opacity, onOpacity, offset, onOffset }) => {
-  const pct = Math.round(opacity * 100);
+  robots: number;
+  onRobots: (value: number) => void;
+}> = ({ camera, opacity, onOpacity, offset, onOffset, robots, onRobots }) => {
   const nudged = offset.dx !== 0 || offset.dy !== 0;
   const axes = [
     { key: "dx" as const, label: "x" },
@@ -146,29 +191,12 @@ const CameraRow: React.FC<{
           {camera.residual_mm.toFixed(1)} mm
         </span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
-        <span style={{ color: "var(--muted)", fontSize: 11 }}>Opacity</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={pct}
-          aria-label={`Camera opacity on ${camera.area}`}
-          onChange={(e) => onOpacity(Number(e.target.value) / 100)}
-          style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer" }}
-        />
-        <span
-          style={{
-            width: 32,
-            textAlign: "right",
-            font: "11px/1 var(--font-mono)",
-            color: "var(--muted)",
-          }}
-        >
-          {pct}%
-        </span>
-      </div>
+      <OpacityRow
+        label="Opacity"
+        name={`Camera opacity on ${camera.area}`}
+        value={opacity}
+        onChange={onOpacity}
+      />
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
         <span style={{ color: "var(--muted)", fontSize: 11, flex: 1 }}>Offset</span>
         {axes.map(({ key, label }) => (
@@ -215,6 +243,12 @@ const CameraRow: React.FC<{
           ⟲
         </button>
       </div>
+      <OpacityRow
+        label="Robots"
+        name={`Robot opacity on ${camera.area}`}
+        value={robots}
+        onChange={onRobots}
+      />
     </div>
   );
 };
@@ -268,6 +302,8 @@ interface RightPaneProps {
   onCameraOpacity?: (area: string, value: number) => void;
   cameraOffset?: CameraOffset;
   onCameraOffset?: (area: string, value: OffsetMm) => void;
+  robotOpacity?: RobotOpacity;
+  onRobotOpacity?: (area: string, value: number) => void;
   session: CalibrationSession | null;
   calibration: Calibration;
   device: string;
@@ -456,6 +492,8 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                     onOpacity={(value) => props.onCameraOpacity?.(c.area, value)}
                     offset={offsetFor(props.cameraOffset ?? {}, c.area)}
                     onOffset={(value) => props.onCameraOffset?.(c.area, value)}
+                    robots={robotOpacityFor(props.robotOpacity ?? {}, c.area)}
+                    onRobots={(value) => props.onRobotOpacity?.(c.area, value)}
                   />
                 ))}
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
@@ -471,6 +509,13 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                   up. One shift fits the whole area only because this camera
                   looks in from one side; a camera hung over the middle would
                   need a correction that grows outward from the centre.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Robots takes down the glyphs standing on this area, so the
+                  photographed robot can be read under the position reported
+                  for it. Only the board fades: the selection ring, the label
+                  and the drive dot stay, so a faded robot is still findable
+                  and the dot marks the reported centre to measure from.
                 </div>
               </>
             )}
