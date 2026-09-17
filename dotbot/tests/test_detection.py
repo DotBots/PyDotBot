@@ -219,20 +219,30 @@ def test_empty_floor_is_none():
     assert detection.pose is None
 
 
-def test_a_grey_board_is_refused_by_the_verifier():
-    """A robot-sized grey object is proposed and then thrown out.
+def test_a_grey_board_is_refused_for_carrying_no_colour():
+    """A robot-sized grey object answers the matched filter and gets no further.
 
-    Stage one is a matched filter on size, so it answers for anything the
-    right size; a robot carries coloured parts and a floor does not, which
-    is the only thing that separates the two.
+    Stage one is a filter on size, so it responds to anything the right
+    size; a robot carries coloured parts and a floor does not, which is the
+    only thing that separates the two. The colourless one is dropped at its
+    peak, before anything is spent re-centring it.
     """
     grey = (110, 110, 110)
     raster = draw_robot(
         carpet(), CENTRE_PX, 37.0, board=grey, connector=(150, 150, 150)
     )
-    candidates = proposer.detect(raster, None, MM_PER_PX)
-    assert candidates, "stage one should still propose a robot-sized object"
-    assert not any(c["robot"] for c in candidates)
+
+    # The filter does respond where the object is.
+    scored, _, _, (sx, sy), _ = proposer.response(raster, None, MM_PER_PX)
+    peak = np.unravel_index(scored.argmax(), scored.shape)
+    assert scored[peak] > proposer.K_SIGMA
+    assert abs(peak[1] * sx - CENTRE_PX[0]) < 20
+    assert abs(peak[0] * sy - CENTRE_PX[1]) < 20
+
+    # And it carries no colour, so it never becomes a candidate.
+    half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
+    assert proposer._saturation(raster, CENTRE_PX, half) < proposer.PRE_SAT_MIN
+    assert proposer.detect(raster, None, MM_PER_PX) == []
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "none"
@@ -286,23 +296,24 @@ def test_jpeg_round_trip_does_not_fill_the_mask():
 # --- the keep mask ----------------------------------------------------------
 
 
-def test_a_registration_sheet_is_refused_by_the_verifier_not_masked():
-    """A printed page is a robot-sized object, and carries no colour.
+def test_a_registration_sheet_is_dropped_without_being_masked():
+    """A printed page needs no hole cut in the floor to be ignored.
 
-    Stage one answers for anything the right size, so the sheets do come
-    back as candidates; the colour verifier is what separates them from a
-    robot, which is why nothing has to be cut out of the floor for them.
+    The sheets are lifted once a camera is registered, so cutting them out
+    of the keep mask would blind an A4 of floor per corner for the rest of
+    the run. They carry no saturated colour, which is enough.
     """
     raster = carpet(300, 250)
     raster = rect_px(raster, 20, 40, 125, 188, (245, 245, 245))  # A4 at 2 mm/px
     raster = rect_px(raster, 55, 85, 90, 140, (15, 15, 15))  # its marker
     raster = draw_robot(raster, (220.0, 125.0), 37.0)
 
+    half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
+    assert proposer._saturation(raster, (72.0, 114.0), half) < proposer.PRE_SAT_MIN
+
     candidates = proposer.detect(raster, None, MM_PER_PX)
-    on_the_sheet = [c for c in candidates if c["centre"][0] < 140]
-    assert on_the_sheet, "stage one should answer for a sheet-sized object"
-    assert not any(c["robot"] for c in on_the_sheet)
-    assert max(c["sat"] for c in on_the_sheet) < proposer.SAT_MIN
+    assert [c["robot"] for c in candidates] == [True]
+    assert not any(c["centre"][0] < 140 for c in candidates)
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "found"

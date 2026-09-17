@@ -43,6 +43,12 @@ MAX_OUT = 48  # candidate budget, about a third of the cells in a square metre
 SAT_LEVEL = 90
 SAT_MIN = 2.0
 
+# What a peak must already carry, before it is worth re-centring at full
+# resolution. A quarter of `SAT_MIN`, so it can only discard what is nowhere
+# near a robot: measured on the bench photographs, robots score at least
+# 4.97 per cent at their raw peak and everything else scores 0.00.
+PRE_SAT_MIN = SAT_MIN / 4
+
 
 def as_bgr(frame):
     """`frame` as three channels, passing a colour frame straight through.
@@ -57,6 +63,22 @@ def as_bgr(frame):
     if frame.ndim == 2:
         return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
     return frame
+
+
+def _saturation(bgr, centre, half, sat_level=SAT_LEVEL):
+    """Per cent of a box around `centre` carrying saturated colour.
+
+    A robot carries coloured parts and a floor does not, which is the only
+    thing that separates the two by the time a candidate is this size.
+    """
+    import cv2  # lazy: opencv-python is only required to run the detector
+
+    x, y = int(centre[0]), int(centre[1])
+    crop = bgr[max(0, y - half) : y + half, max(0, x - half) : x + half]
+    if crop.size == 0:
+        return 0.0
+    channel = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[:, :, 1]
+    return float((channel > sat_level).mean()) * 100
 
 
 def _true_lab(bgr):
@@ -201,6 +223,8 @@ def propose(
     nms_frac=NMS_FRAC,
     min_valid=MIN_VALID,
     max_out=MAX_OUT,
+    pre_sat_min=PRE_SAT_MIN,
+    sat_level=SAT_LEVEL,
 ):
     """Candidate robot-sized objects, as dicts with `centre` in input px."""
     bgr = as_bgr(bgr)
@@ -236,6 +260,13 @@ def propose(
         fx = _subpix(scored, x, y, 1, 0)
         fy = _subpix(scored, x, y, 0, 1)
         cx, cy = (x + fx) * sx, (y + fy) * sy
+        # Re-centring is the expensive half of this loop and the response
+        # answers for anything robot-sized, printed sheets included. A peak
+        # with no colour on it at all cannot become a robot by being
+        # re-centred, so it is dropped before the work rather than after.
+        half = int(0.6 * robot_mm / mm_per_px)
+        if _saturation(bgr, (cx, cy), half, sat_level) < pre_sat_min:
+            continue
         cx, cy = _refine(bgr, cx, cy, m_out[y, x], sigma, robot_mm, mm_per_px)
         # The one-robot separation has to hold on the final centres:
         # enforcing it only on the working grid lets refinement slide several
@@ -329,25 +360,26 @@ def detect(
     """Candidates with the stage-two verdict on each, as `robot`.
 
     Colour conversions run on the candidate crop rather than the whole
-    frame, so a generous stage one stays affordable.
+    frame, so a generous stage one stays affordable. The verdict is taken at
+    the re-centred position, which is the one a pose is seeded from.
     """
-    import cv2  # lazy: opencv-python is only required to run the detector
-
     bgr = as_bgr(bgr)
-    cands = propose(bgr, keep_mask, mm_per_px, robot_mm, **kwargs)
+    cands = propose(
+        bgr,
+        keep_mask,
+        mm_per_px,
+        robot_mm,
+        pre_sat_min=sat_min / 4,
+        sat_level=sat_level,
+        **kwargs,
+    )
     if not cands:
         return []
     half = int(0.6 * robot_mm / mm_per_px)
     out = []
     for cand in cands:
         cand = dict(cand)
-        x, y = int(cand["centre"][0]), int(cand["centre"][1])
-        crop = bgr[max(0, y - half) : y + half, max(0, x - half) : x + half]
-        if crop.size == 0:
-            cand["sat"] = 0.0
-        else:
-            sat = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[:, :, 1]
-            cand["sat"] = float((sat > sat_level).mean()) * 100
+        cand["sat"] = _saturation(bgr, cand["centre"], half, sat_level)
         cand["robot"] = cand["sat"] >= sat_min
         out.append(cand)
     return out
