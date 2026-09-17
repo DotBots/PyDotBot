@@ -33,7 +33,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from dotbot.area import Area
-from dotbot.camera.detection import propose as _propose
 from dotbot.camera.detection.pose import (
     NOSE_AHEAD_MM,
     OUTLINE_MM,
@@ -45,6 +44,7 @@ from dotbot.camera.detection.pose import (
     pose_at,
     robot_mask,
 )
+from dotbot.camera.detection.propose import verify as propose_candidates
 
 # The two signals that stop the estimator reporting a pose it cannot stand
 # behind: how far the green board mass leans toward the nose from the axle,
@@ -112,7 +112,7 @@ class RobotDetector:
         started = time.perf_counter()
         candidates = [
             c
-            for c in _propose.detect(bgr, self.keep_mask, self.mm_per_px)
+            for c in propose_candidates(bgr, self.keep_mask, self.mm_per_px)
             if c["robot"]
         ]
         if not candidates:

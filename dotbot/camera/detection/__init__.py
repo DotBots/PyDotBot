@@ -10,9 +10,6 @@ runs both and reports the result in frame millimetres.
 The detector is tooling for comparing what the camera sees against what the
 lighthouse reports. It identifies nothing: one pose per frame, the strongest
 candidate, with no association to any robot address.
-
-Importing this package costs nothing without the `[calibrate]` extra: every
-`cv2` import sits inside the function that uses it.
 """
 
 from dotbot.camera.detection.robot import (

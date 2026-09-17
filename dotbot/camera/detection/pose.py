@@ -27,9 +27,6 @@ ROBOT FRAME: `OUTLINE_MM` and the offsets below are +x to the robot's right
 and +y forward, origin at the outline centre. That is the frame `poly_px`
 rotates by the heading above, and it is NOT the frame `dotbot.robots`
 measures its own offsets in.
-
-`cv2` is imported inside the functions that use it, so importing this
-module costs nothing without the `[calibrate]` extra.
 """
 
 from __future__ import annotations
@@ -503,17 +500,7 @@ def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None):
             out.update(fit_shift_mm=moved, fit_turn_deg=turned, fit_score=sv)
             if moved <= MAX_REFINE_SHIFT_MM and turned <= MAX_REFINE_TURN_DEG:
                 out["centre"], out["heading"], out["refined"] = c, float(th), True
-    _add_points(out, mm_per_px)
     return out
-
-
-def _add_points(out, mm_per_px):
-    """The derived points: the axle and the photodiode, in raster pixels."""
-    right, forward = axes(out["heading"])
-    c = np.asarray(out["centre"], float)
-    out["n"], out["d"] = forward, right
-    out["axle_pt"] = c - forward * (AXLE_BEHIND_CENTRE_MM / mm_per_px)
-    out["photodiode"] = c + forward * (PHOTODIODE_AHEAD_MM / mm_per_px)
 
 
 def pose_at(

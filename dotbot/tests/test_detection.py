@@ -236,7 +236,7 @@ def test_a_grey_board_is_refused_for_carrying_no_colour():
     # And it carries no colour, so it never becomes a candidate.
     half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
     assert proposer._saturation(raster, CENTRE_PX, half) < proposer.PRE_SAT_MIN
-    assert proposer.detect(raster, None, MM_PER_PX) == []
+    assert proposer.verify(raster, None, MM_PER_PX) == []
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "none"
@@ -305,7 +305,7 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
     assert proposer._saturation(raster, (72.0, 114.0), half) < proposer.PRE_SAT_MIN
 
-    candidates = proposer.detect(raster, None, MM_PER_PX)
+    candidates = proposer.verify(raster, None, MM_PER_PX)
     assert [c["robot"] for c in candidates] == [True]
     assert not any(c["centre"][0] < 140 for c in candidates)
 

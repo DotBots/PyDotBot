@@ -14,10 +14,8 @@ Candidates are peaks rather than connected components, taken greedily best
 first with one robot's separation enforced on the final centres, so no
 morphology can bridge two objects into one blob.
 
-Stage two is `detect`: a robot carries coloured parts and a floor does not.
-
-`cv2` is imported inside the functions that use it, so importing this
-module costs nothing without the `[calibrate]` extra.
+`verify` adds the colour check to those candidates: a robot carries
+coloured parts and a floor does not.
 """
 
 from __future__ import annotations
@@ -39,7 +37,7 @@ K_SIGMA = 6.0
 MIN_VALID = 1.00  # the robot's whole footprint must be on known floor
 MAX_OUT = 48  # candidate budget, about a third of the cells in a square metre
 
-# Stage two: how much of the candidate's crop must be saturated colour.
+# The colour check: how much of the candidate's crop must be saturated.
 SAT_LEVEL = 90
 SAT_MIN = 2.0
 
@@ -247,7 +245,6 @@ def propose(
     order = np.argsort(-z)
 
     rad = max(1, int(round(nms_frac * robot_mm / work_mmpp)))
-    px_per_robot = robot_mm / work_mmpp
     taken = np.zeros(scored.shape, bool)
     out = []
     for i in order:
@@ -278,14 +275,7 @@ def propose(
             for o in out
         ):
             continue
-        out.append(
-            {
-                "centre": np.array([cx, cy]),
-                "z": float(z[i]),
-                "score": float(z[i]),
-                "area": _footprint_mm2(scored, x, y, k, px_per_robot, work_mmpp),
-            }
-        )
+        out.append({"centre": np.array([cx, cy]), "z": float(z[i])})
         if len(out) >= max_out:
             break
     return out
@@ -296,8 +286,8 @@ def _refine(bgr, cx, cy, bg, sigma, robot_mm, mm_per_px, rfrac=REFINE_FRAC):
 
     A matched-filter peak locates an object but does not centre on it: the
     response surface is skewed wherever the object sits on some larger
-    structure's flank, far enough to walk stage two's sampling window off the
-    robot. The outline is taken at half the object's own contrast, with the
+    structure's flank, far enough to walk the colour check's sampling window
+    off the robot. The outline is taken at half the object's own contrast, with the
     99th percentile standing in for the maximum so one specular pixel on a
     tyre cannot set the level.
     """
@@ -329,26 +319,7 @@ def _subpix(scored, x, y, dx, dy):
     return float(np.clip(0.5 * (a - c) / den, -1.0, 1.0))
 
 
-def _footprint_mm2(scored, x, y, thr, px_per_robot, work_mmpp):
-    """How much floor this peak covers, measured at half its own height.
-
-    Half-height rather than the global threshold, so a strong object and a
-    faint one are measured the same way and the number means a size rather
-    than a contrast.
-    """
-    import cv2  # lazy: opencv-python is only required to run the detector
-
-    r = int(round(1.5 * px_per_robot))
-    win = scored[max(0, y - r) : y + r + 1, max(0, x - r) : x + r + 1]
-    m = (win > max(0.5 * scored[y, x], thr)).astype(np.uint8)
-    _, labels = cv2.connectedComponents(m)
-    label = labels[min(y, r), min(x, r)]
-    if label == 0:
-        return 0.0
-    return float((labels == label).sum()) * work_mmpp**2
-
-
-def detect(
+def verify(
     bgr,
     keep_mask=None,
     mm_per_px=None,
@@ -357,10 +328,10 @@ def detect(
     sat_level=SAT_LEVEL,
     **kwargs,
 ):
-    """Candidates with the stage-two verdict on each, as `robot`.
+    """`propose`'s candidates with the colour verdict on each, as `robot`.
 
     Colour conversions run on the candidate crop rather than the whole
-    frame, so a generous stage one stays affordable. The verdict is taken at
+    frame, so a generous proposer stays affordable. The verdict is taken at
     the re-centred position, which is the one a pose is seeded from.
     """
     bgr = as_bgr(bgr)
