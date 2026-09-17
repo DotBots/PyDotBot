@@ -53,6 +53,11 @@ from dotbot.detection.pose import (
 GREEN_LEVER_MIN_MM = 8.0
 TMPL_MARGIN_MIN = 0.5
 
+# How far a candidate may sit from the previous pose and still be treated as
+# the same robot one warp later. At `WARP_FPS_MAX` that is a tenth of a
+# second, in which a DotBot at full speed covers well under this.
+WARM_SEED_MAX_MM = 40.0
+
 FOUND = "found"
 REFUSED = "refused"
 NONE = "none"
@@ -106,6 +111,7 @@ class RobotDetector:
         self.mm_per_px = float(mm_per_px)
         self.keep_mask = keep_mask
         self._template = Template(self.mm_per_px)
+        self._last: Pose | None = None
 
     def detect(self, bgr) -> Detection:
         """The strongest verified candidate on this frame, fitted."""
@@ -116,20 +122,24 @@ class RobotDetector:
             if c["robot"]
         ]
         if not candidates:
+            self._last = None
             return Detection(NONE, 0, None, _ms_since(started))
         best = max(candidates, key=lambda c: c["z"])
         features_map = features(bgr, self.keep_mask)
         mask = robot_mask(features_map)
-        fitted = pose_at(
-            bgr,
-            best["centre"],
-            self.mm_per_px,
-            features_map=features_map,
-            mask=mask,
-            tmpl=self._template,
-            fit=OutlineFit(features_map, self.mm_per_px),
-        )
+        fit = OutlineFit(features_map, self.mm_per_px)
+
+        fitted = None
+        warm = self._warm_seed(best["centre"])
+        if warm is not None:
+            fitted = self._fit(bgr, best, features_map, mask, fit, warm)
+            if not _warm_holds(fitted):
+                fitted = None
         if fitted is None:
+            fitted = self._fit(bgr, best, features_map, mask, fit, None)
+
+        if fitted is None:
+            self._last = None
             return Detection(NONE, len(candidates), None, _ms_since(started))
         pose = Pose(
             centre_px=(float(fitted["centre"][0]), float(fitted["centre"][1])),
@@ -140,7 +150,59 @@ class RobotDetector:
             tmpl_margin=float(fitted.get("tmpl_margin", 0.0)),
             refined=bool(fitted["refined"]),
         )
-        return Detection(classify(pose), len(candidates), pose, _ms_since(started))
+        status = classify(pose)
+        # Only a pose the estimator stands behind seeds the next frame, so a
+        # doubtful answer can never be carried forward as if it were one.
+        self._last = pose if status == FOUND else None
+        return Detection(status, len(candidates), pose, _ms_since(started))
+
+    def _fit(self, bgr, candidate, features_map, mask, fit, warm):
+        return pose_at(
+            bgr,
+            candidate["centre"],
+            self.mm_per_px,
+            features_map=features_map,
+            mask=mask,
+            tmpl=self._template,
+            fit=fit,
+            warm=warm,
+        )
+
+    def _warm_seed(self, centre_px):
+        """The previous pose, when this frame's candidate can be the same robot.
+
+        A DotBot cannot cross `WARM_SEED_MAX_MM` of floor between two warps,
+        so a candidate further than that is a different robot or the same one
+        put down somewhere else, and neither may inherit a heading.
+        """
+        if self._last is None:
+            return None
+        moved = (
+            float(np.hypot(*(np.asarray(centre_px, float) - self._last.centre_px)))
+            * self.mm_per_px
+        )
+        if moved > WARM_SEED_MAX_MM:
+            return None
+        return (self._last.centre_px, self._last.heading_atan2_deg)
+
+
+def _warm_holds(fitted) -> bool:
+    """Whether a warm-started fit answered well enough to keep.
+
+    `refined` is the load-bearing one: it is set by measuring the fitted
+    pose against this frame's own coarse pose, so a fit that stayed near a
+    stale seed fails it no matter how confident the seed was. Anything that
+    does not hold is searched again from nothing in the same frame, so a
+    robot that was turned or moved costs one extra search and not a wrong
+    answer.
+    """
+    if fitted is None:
+        return False
+    if not fitted.get("refined"):
+        return False
+    if fitted.get("tmpl_margin", 0.0) < TMPL_MARGIN_MIN:
+        return False
+    return fitted.get("green_lever_mm", 0.0) >= GREEN_LEVER_MIN_MM
 
 
 def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
