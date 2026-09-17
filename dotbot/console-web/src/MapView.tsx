@@ -7,6 +7,7 @@ import {
   CameraOffset,
   CameraOpacity,
   RobotOpacity,
+  detectionStroke,
   hasSpan,
   offsetFor,
   offsetTransform,
@@ -35,6 +36,7 @@ import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 import {
   Area,
   CalibrationSession,
+  CameraDetection,
   LH2Position,
   RegisteredCamera,
   Site,
@@ -88,6 +90,10 @@ interface MapViewProps {
   cameras?: RegisteredCamera[];
   cameraOpacity?: CameraOpacity;
   cameraOffset?: CameraOffset;
+  // What each camera's detector last made of its own area, keyed by area.
+  // Drawn inside the camera's nudged box, so it moves with the photograph
+  // and not with the glyph: the two disagreeing is the thing being looked at.
+  cameraDetections?: Record<string, CameraDetection>;
   // How solid the robots standing on each camera's area are drawn, so the
   // photographed robot can be read under the glyph reporting it.
   robotOpacity?: RobotOpacity;
@@ -604,6 +610,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               offsetFor(props.cameraOffset ?? {}, camera.area),
               area,
             );
+            const detection = (props.cameraDetections ?? {})[camera.area];
+            const found = detectionStroke(detection);
+            const pose = found ? detection.pose! : null;
             return (
               <div
                 key={`camera-${camera.area}`}
@@ -640,20 +649,61 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     the falloff, which dims the image as the extrapolation
                     past the span grows, and by the markers in the photograph
                     underneath. */}
-                {hasSpan(camera.coverage_mm) && (
+                {(hasSpan(camera.coverage_mm) || pose) && (
                   <svg
                     viewBox={`0 0 ${area.w} ${area.h}`}
                     preserveAspectRatio="none"
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
                   >
-                    <polygon
-                      data-testid={`camera-coverage-${camera.area}`}
-                      points={polygonPoints(camera.coverage_mm, area)}
-                      fill="none"
-                      stroke="var(--muted)"
-                      strokeWidth={chrome}
-                      vectorEffect="non-scaling-stroke"
-                    />
+                    {hasSpan(camera.coverage_mm) && (
+                      <polygon
+                        data-testid={`camera-coverage-${camera.area}`}
+                        points={polygonPoints(camera.coverage_mm, area)}
+                        fill="none"
+                        stroke="var(--muted)"
+                        strokeWidth={chrome}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                    {/* What the camera makes of the robot standing on this
+                        floor: its board outline, a line from the centre to
+                        the nose so the heading is readable, and a dot on the
+                        photodiode, which is the point the lighthouse
+                        reports and so the one the two can be compared at. */}
+                    {pose && found && (
+                      <g
+                        data-testid={`camera-detection-${camera.area}`}
+                        style={{ pointerEvents: "none" }}
+                      >
+                        <polygon
+                          data-testid={`camera-detection-outline-${camera.area}`}
+                          points={polygonPoints(pose.outline_mm, area)}
+                          fill="none"
+                          stroke={found.stroke}
+                          strokeDasharray={found.dasharray}
+                          strokeWidth={chrome * 1.5}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <line
+                          data-testid={`camera-detection-nose-${camera.area}`}
+                          x1={pose.centre_mm[0] - area.x}
+                          y1={pose.centre_mm[1] - area.y}
+                          x2={pose.nose_mm[0] - area.x}
+                          y2={pose.nose_mm[1] - area.y}
+                          stroke={found.stroke}
+                          strokeDasharray={found.dasharray}
+                          strokeWidth={chrome * 1.5}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <circle
+                          data-testid={`camera-detection-diode-${camera.area}`}
+                          cx={pose.photodiode_mm[0] - area.x}
+                          cy={pose.photodiode_mm[1] - area.y}
+                          r={4}
+                          fill={found.stroke}
+                        />
+                      </g>
+                    )}
                   </svg>
                 )}
               </div>

@@ -20,6 +20,7 @@ import {
   Site,
   SwarmitNode,
   UnifiedBot,
+  CameraDetection,
   WsNotification,
 } from "./types";
 
@@ -96,10 +97,19 @@ export function merge(
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** The detections keyed by area, with `detection`'s area replaced. */
+export function withDetection(
+  previous: Record<string, CameraDetection>,
+  detection: CameraDetection,
+): Record<string, CameraDetection> {
+  return { ...previous, [detection.area]: detection };
+}
+
 export function useFleet(): {
   bots: UnifiedBot[];
   site: Site | null;
   cameras: RegisteredCamera[];
+  cameraDetections: Record<string, CameraDetection>;
   session: CalibrationSession | null;
   setSession: (session: CalibrationSession | null) => void;
   viewport: Area;
@@ -110,6 +120,9 @@ export function useFleet(): {
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
+  const [cameraDetections, setCameraDetections] = useState<
+    Record<string, CameraDetection>
+  >({});
   const [session, setSession] = useState<CalibrationSession | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
@@ -168,6 +181,11 @@ export function useFleet(): {
         }
         if (msg.cmd === 5) {
           setSession(msg.calibration_session ?? null);
+          return;
+        }
+        if (msg.cmd === 6 && msg.camera_detection) {
+          const detection = msg.camera_detection;
+          setCameraDetections((prev) => withDetection(prev, detection));
           return;
         }
         if (msg.cmd === 2 && msg.data?.address) {
@@ -235,6 +253,7 @@ export function useFleet(): {
     bots,
     site,
     cameras,
+    cameraDetections,
     session,
     setSession,
     viewport,

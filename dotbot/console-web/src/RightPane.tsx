@@ -17,6 +17,7 @@ import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
 import type {
   CalibrationSession,
+  CameraDetection,
   RegisteredCamera,
   Site,
   UnifiedBot,
@@ -116,6 +117,13 @@ export const CheckRow: React.FC<{
   </div>
 );
 
+// What the camera's own detector last said about the floor it looks at.
+const DETECTION_TEXT: Record<CameraDetection["status"], string> = {
+  found: "robot seen",
+  refused: "robot, low confidence",
+  none: "no robot",
+};
+
 // One of a camera row's two opacities: a labelled track and what it reads.
 // The label is given a width so the tracks line up under each other, the two
 // being read against one another.
@@ -172,7 +180,17 @@ const CameraRow: React.FC<{
   onOffset: (value: OffsetMm) => void;
   robots: number;
   onRobots: (value: number) => void;
-}> = ({ camera, opacity, onOpacity, offset, onOffset, robots, onRobots }) => {
+  detection?: CameraDetection;
+}> = ({
+  camera,
+  opacity,
+  onOpacity,
+  offset,
+  onOffset,
+  robots,
+  onRobots,
+  detection,
+}) => {
   const nudged = offset.dx !== 0 || offset.dy !== 0;
   const axes = [
     { key: "dx" as const, label: "x" },
@@ -191,6 +209,14 @@ const CameraRow: React.FC<{
           {camera.residual_mm.toFixed(1)} mm
         </span>
       </div>
+      {detection && (
+        <div
+          data-testid={`camera-detection-status-${camera.area}`}
+          style={{ color: "var(--muted)", fontSize: 11 }}
+        >
+          {DETECTION_TEXT[detection.status]}
+        </div>
+      )}
       <OpacityRow
         label="Opacity"
         name={`Camera opacity on ${camera.area}`}
@@ -298,6 +324,8 @@ interface RightPaneProps {
   onLayerToggle: (key: keyof Layers) => void;
   // The cameras the controller warps. None registered, no Camera heading.
   cameras?: RegisteredCamera[];
+  // What each camera's detector last made of its own area, keyed by area.
+  cameraDetections?: Record<string, CameraDetection>;
   cameraOpacity?: CameraOpacity;
   onCameraOpacity?: (area: string, value: number) => void;
   cameraOffset?: CameraOffset;
@@ -494,6 +522,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                     onOffset={(value) => props.onCameraOffset?.(c.area, value)}
                     robots={robotOpacityFor(props.robotOpacity ?? {}, c.area)}
                     onRobots={(value) => props.onRobotOpacity?.(c.area, value)}
+                    detection={(props.cameraDetections ?? {})[c.area]}
                   />
                 ))}
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>

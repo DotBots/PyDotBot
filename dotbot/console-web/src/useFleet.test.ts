@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { PyDotBot, SwarmitNode } from "./types";
-import { deriveLink, deriveState, merge, severityOf } from "./useFleet";
+import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
+import {
+  deriveLink,
+  deriveState,
+  merge,
+  severityOf,
+  withDetection,
+} from "./useFleet";
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -165,5 +171,34 @@ describe("merge takes the reset label from the server", () => {
     expect(a.resetCause).toBe("stopped");
     const [b] = merge({}, { B: { device: "DotBotV3", status: "Running", battery: 3900, pos_x: 0, pos_y: 0 } });
     expect(b.resetCause).toBeNull();
+  });
+});
+
+describe("withDetection (one camera's latest view of its own area)", () => {
+  const detection = (area: string, sequence: number): CameraDetection => ({
+    area,
+    camera_id: "7b21c0d9f3a1",
+    sequence,
+    timestamp: 1758100000.123,
+    status: "none",
+    candidates: 0,
+    elapsed_ms: 4.2,
+  });
+
+  it("keys by area", () => {
+    expect(withDetection({}, detection("dev-corner", 1))).toEqual({
+      "dev-corner": detection("dev-corner", 1),
+    });
+  });
+
+  it("replaces the area's own, and leaves the other areas alone", () => {
+    const previous = {
+      "dev-corner": detection("dev-corner", 1),
+      annex: detection("annex", 9),
+    };
+    const next = withDetection(previous, detection("dev-corner", 2));
+    expect(next["dev-corner"].sequence).toBe(2);
+    expect(next.annex.sequence).toBe(9);
+    expect(previous["dev-corner"].sequence).toBe(1);
   });
 });

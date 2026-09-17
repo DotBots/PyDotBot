@@ -60,12 +60,57 @@ export interface PyDotBot {
 }
 
 export interface WsNotification {
-  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE
+  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE,
+  // 6 CAMERA_DETECTION
   cmd: number;
   data?: Partial<PyDotBot> & {
     lh2_waypoints?: LH2Position[];
   };
   calibration_session?: CalibrationSession | null;
+  camera_detection?: CameraDetection;
+}
+
+// --- what a camera sees on its own area ------------------------------------
+//
+// One pose per frame, the strongest candidate, with no association to any
+// robot address: the layer exists to put the camera's idea of a robot over
+// the lighthouse's, and the reader makes the association by looking.
+
+// Every *_mm is frame millimetres, x right and y down, the same frame as an
+// LH2 position. `centre_mm` is the board outline's centre, which is what the
+// outline is drawn around; `photodiode_mm` is the point the lighthouse
+// reports, so it is the one to compare a position against.
+//
+// The two headings are the same angle in two conventions: `heading_deg` is
+// the robot `direction` one the glyphs are drawn in (0 along +y, growing
+// clockwise) and `heading_atan2_deg` is the detector's own (0 along +x).
+// Both are the BODY's orientation, measured moving or not, which is not the
+// same quantity as the firmware's direction of travel.
+export interface CameraPose {
+  centre_mm: [number, number];
+  photodiode_mm: [number, number];
+  nose_mm: [number, number];
+  outline_mm: number[][];
+  heading_deg: number;
+  heading_atan2_deg: number;
+  green_lever_mm: number;
+  tmpl_margin: number;
+  refined: boolean;
+}
+
+// `status` is "found" when the estimator stands behind the pose, "refused"
+// when it fitted one but a confidence signal did not clear its floor, and
+// "none" when there was nothing to fit - in which case there is no pose, so
+// key on the status and never on the field's presence.
+export interface CameraDetection {
+  area: string;
+  camera_id: string;
+  sequence: number;
+  timestamp: number;
+  status: "found" | "refused" | "none";
+  candidates: number;
+  elapsed_ms: number;
+  pose?: CameraPose;
 }
 
 // --- the calibration session the controller owns ---------------------------

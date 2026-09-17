@@ -70,7 +70,8 @@ const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 type ViewKind = "map" | "list" | "grid";
 
 export const App: React.FC = () => {
-  const { bots, site, cameras, session, setSession, viewport, wsUp } = useFleet();
+  const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
+    useFleet();
   const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -650,6 +651,7 @@ export const App: React.FC = () => {
               siteAreas={site?.areas ?? []}
               hiddenAreas={hiddenAreas}
               cameras={cameras}
+              cameraDetections={cameraDetections}
               cameraOpacity={cameraOpacity}
               cameraOffset={cameraOffset}
               robotOpacity={robotOpacity}
@@ -752,6 +754,7 @@ export const App: React.FC = () => {
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
           cameras={cameras}
+          cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}
           onCameraOpacity={onCameraOpacity}
           cameraOffset={cameraOffset}

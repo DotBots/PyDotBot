@@ -9,6 +9,7 @@ import {
   DEFAULT_ROBOT_OPACITY,
   NO_OFFSET,
   RobotOpacity,
+  detectionStroke,
   fadeMm,
   loadCameraOffset,
   loadCameraOpacity,
@@ -34,6 +35,7 @@ import { MapView } from "./MapView";
 import { RightPane, RightTab } from "./RightPane";
 import type {
   Area,
+  CameraDetection,
   LH2Position,
   RegisteredCamera,
   Site,
@@ -140,7 +142,13 @@ const Harness: React.FC<{
   cameras?: RegisteredCamera[];
   bots?: UnifiedBot[];
   selection?: Set<string>;
-}> = ({ cameras = [CAMERA], bots = [], selection = new Set() }) => {
+  cameraDetections?: Record<string, CameraDetection>;
+}> = ({
+  cameras = [CAMERA],
+  bots = [],
+  selection = new Set(),
+  cameraDetections = {},
+}) => {
   const [cameraOpacity, setCameraOpacity] = useState<CameraOpacity>(
     loadCameraOpacity,
   );
@@ -158,6 +166,7 @@ const Harness: React.FC<{
           siteAreas={C405.areas}
           hiddenAreas={new Set()}
           cameras={cameras}
+          cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}
           cameraOffset={cameraOffset}
           robotOpacity={robotOpacity}
@@ -188,6 +197,7 @@ const Harness: React.FC<{
           layerRows={[]}
           onLayerToggle={() => {}}
           cameras={cameras}
+          cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}
           onCameraOpacity={(area, value) =>
             setCameraOpacity((prev) => {
@@ -746,5 +756,154 @@ describe("the robot opacity this browser remembers", () => {
     expect(withRobotOpacity({}, "dev-corner", -1)).toEqual({
       "dev-corner": 0,
     });
+  });
+});
+
+// --- What the camera makes of the robot on its floor ------------------------
+//
+// One pose per frame, drawn inside the camera's own nudged box so it moves
+// with the photograph rather than with the glyph. Superimposing the two is
+// the whole point of the layer, so they must not be tied together.
+
+const OUTLINE: number[][] = [
+  [1481.2, 500.3],
+  [1565.2, 500.3],
+  [1565.2, 507.3],
+  [1564.2, 508.3],
+  [1560.2, 508.3],
+  [1560.2, 546.3],
+  [1541.7, 546.3],
+  [1541.7, 595.3],
+  [1484.7, 595.3],
+  [1484.7, 546.3],
+  [1466.2, 546.3],
+  [1466.2, 508.3],
+  [1470.2, 508.3],
+  [1471.2, 507.3],
+];
+
+const detection = (
+  status: CameraDetection["status"],
+  withPose = status !== "none",
+): CameraDetection => ({
+  area: "dev-corner",
+  camera_id: "7b21c0d9f3a1",
+  sequence: 412,
+  timestamp: 1758100000.123,
+  status,
+  candidates: status === "none" ? 0 : 1,
+  elapsed_ms: 48.2,
+  pose: withPose
+    ? {
+        centre_mm: [1523.4, 488.1],
+        photodiode_mm: [1540.2, 511.7],
+        nose_mm: [1551.0, 526.2],
+        outline_mm: OUTLINE,
+        heading_deg: -37.5,
+        heading_atan2_deg: 52.5,
+        green_lever_mm: 31.2,
+        tmpl_margin: 0.91,
+        refined: true,
+      }
+    : undefined,
+});
+
+describe("detectionStroke", () => {
+  it("draws a pose it stands behind solid, and one it does not dashed", () => {
+    expect(detectionStroke(detection("found"))).toEqual({
+      stroke: "var(--accent)",
+    });
+    expect(detectionStroke(detection("refused"))).toEqual({
+      stroke: "var(--muted)",
+      dasharray: "6 4",
+    });
+  });
+
+  it("draws nothing when there is no pose to draw", () => {
+    expect(detectionStroke(detection("none"))).toBeNull();
+    expect(detectionStroke(undefined)).toBeNull();
+    // A status that claims a pose it does not carry draws nothing either.
+    expect(detectionStroke(detection("found", false))).toBeNull();
+  });
+});
+
+describe("the detection on the map", () => {
+  it("draws the outline, the nose line and the photodiode in area mm", () => {
+    render(
+      <Harness cameraDetections={{ "dev-corner": detection("found") }} />,
+    );
+    const map = screen.getByTestId("map");
+    const group = within(map).getByTestId("camera-detection-dev-corner");
+
+    const outline = within(map).getByTestId("camera-detection-outline-dev-corner");
+    expect(outline.getAttribute("points")).toBe(
+      polygonPoints(OUTLINE, DEV_CORNER),
+    );
+    expect(outline.getAttribute("stroke")).toBe("var(--accent)");
+    expect(outline.getAttribute("stroke-dasharray")).toBeNull();
+
+    const nose = within(map).getByTestId("camera-detection-nose-dev-corner");
+    expect(nose.getAttribute("x1")).toBe(String(1523.4 - DEV_CORNER.x));
+    expect(nose.getAttribute("y1")).toBe(String(488.1 - DEV_CORNER.y));
+    expect(nose.getAttribute("x2")).toBe(String(1551.0 - DEV_CORNER.x));
+    expect(nose.getAttribute("y2")).toBe(String(526.2 - DEV_CORNER.y));
+
+    const diode = within(map).getByTestId("camera-detection-diode-dev-corner");
+    expect(diode.getAttribute("cx")).toBe(String(1540.2 - DEV_CORNER.x));
+    expect(diode.getAttribute("cy")).toBe(String(511.7 - DEV_CORNER.y));
+
+    // Inside the camera's own box, so the offset moves it with the image.
+    const layer = within(map).getByTestId("camera-layer-dev-corner");
+    expect(layer.contains(group)).toBe(true);
+  });
+
+  it("dashes a pose the estimator would not vouch for", () => {
+    render(
+      <Harness cameraDetections={{ "dev-corner": detection("refused") }} />,
+    );
+    const map = screen.getByTestId("map");
+    const outline = within(map).getByTestId("camera-detection-outline-dev-corner");
+    expect(outline.getAttribute("stroke")).toBe("var(--muted)");
+    expect(outline.getAttribute("stroke-dasharray")).toBe("6 4");
+  });
+
+  it("draws nothing at all when the camera sees no robot", () => {
+    render(<Harness cameraDetections={{ "dev-corner": detection("none") }} />);
+    const map = screen.getByTestId("map");
+    expect(
+      within(map).queryByTestId("camera-detection-dev-corner"),
+    ).toBeNull();
+  });
+
+  it("draws the detection on a camera that reports no coverage polygon", () => {
+    // The per-camera SVG used to exist only for the coverage outline.
+    const blind = { ...CAMERA, coverage_mm: [] };
+    render(
+      <Harness
+        cameras={[blind]}
+        cameraDetections={{ "dev-corner": detection("found") }}
+      />,
+    );
+    const map = screen.getByTestId("map");
+    expect(
+      within(map).getByTestId("camera-detection-dev-corner"),
+    ).toBeInTheDocument();
+    expect(within(map).queryByTestId("camera-coverage-dev-corner")).toBeNull();
+  });
+
+  it("says what the camera last made of the floor in the Layers tab", () => {
+    render(<Harness cameraDetections={{ "dev-corner": detection("found") }} />);
+    const pane = screen.getByTestId("pane");
+    expect(
+      within(pane).getByTestId("camera-detection-status-dev-corner").textContent,
+    ).toBe("robot seen");
+  });
+
+  it("says nothing before the first message arrives", () => {
+    render(<Harness />);
+    const pane = screen.getByTestId("pane");
+    expect(
+      within(pane).queryByTestId("camera-detection-status-dev-corner"),
+    ).toBeNull();
   });
 });
