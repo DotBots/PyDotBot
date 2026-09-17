@@ -14,14 +14,10 @@ the frame's size, both of which hold for the whole registration, so the
 camera's coverage rides in the descriptor as one polygon rather than in
 every frame as an alpha channel.
 
-A detector runs on a third thread, fed the warped array before it is
-encoded: JPEG chroma subsampling destroys the red-connector evidence the
-pose turns on. The slot between the two threads holds one frame, so a
-detector slower than the warp processes every Nth frame and neither the
-warp nor the stream ever waits on it.
-
-`cv2` is imported inside the methods that use it, so importing this module
-costs nothing without the `[calibrate]` extra.
+A detector runs on a second thread, fed the warped array and never the
+JPEG. The slot between the two threads holds one frame, so a detector
+slower than the warp processes every Nth frame and neither the warp nor
+the stream ever waits on it.
 """
 
 from __future__ import annotations
@@ -116,11 +112,6 @@ class CameraService:
     def live(self) -> bool:
         """Registered, and holding a warped frame to serve."""
         return self._jpeg is not None
-
-    @property
-    def reading(self) -> bool:
-        """The reader thread is still taking frames off the device."""
-        return self._reading
 
     def descriptor(self) -> dict:
         """What the console needs to place, mask and label the layer."""
@@ -430,9 +421,7 @@ def _keep_mask(
 
     The source frame's own rectangle through the same transform, eroded so
     the warp's interpolated edge is not counted as floor. The registration
-    sheets are not cut out: a printed page carries no saturated colour, so
-    the colour verifier rejects one, and the sheets are lifted off the floor
-    once the camera is registered anyway.
+    sheets are inside it, not cut out.
     """
     import cv2  # lazy: opencv-python is only required to warp a frame
 
