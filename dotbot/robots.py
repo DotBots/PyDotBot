@@ -20,8 +20,9 @@ class RobotGeometry:
     """One robot model's board footprint and sensor offsets, in millimetres.
 
     Distances are measured from the photodiode to a board edge with the
-    robot at heading 0, which points the nose along +y (toward the top wall
-    as the console draws the frame).
+    robot's nose toward the frame's top edge, which is the low-y one since
+    y grows down. That orientation is this class's own reference, and is
+    not the robot `direction` convention, where 0 points along +y.
     """
 
     model: str
