@@ -985,10 +985,12 @@ class Controller:
         finally:
             if self.csv_data_logger is not None:
                 self.csv_data_logger.close()
-            for camera_logger in self.camera_csv_loggers.values():
-                camera_logger.close()
+            # The detector threads write rows, so they stop before the file
+            # they write to closes.
             for camera in self.cameras:
                 camera.stop()
+            for camera_logger in self.camera_csv_loggers.values():
+                camera_logger.close()
             self.adapter.close()
             self.logger.info("Stopping controller")
             for task in tasks:
