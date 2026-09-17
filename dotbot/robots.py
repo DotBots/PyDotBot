@@ -22,7 +22,7 @@ class RobotGeometry:
     Distances are measured from the photodiode to a board edge with the
     robot's nose toward the frame's top edge, which is the low-y one since
     y grows down. That orientation is this class's own reference, and is
-    not the robot `direction` convention, where 0 points along +y.
+    not the robot `direction` convention, where 0 = +y.
     """
 
     model: str
@@ -38,16 +38,16 @@ class RobotGeometry:
         """How far the RGB LED sits toward the nose from the photodiode.
 
         A camera tracking the LED reports this offset, rotated by the
-        robot's heading, away from the photodiode's position.
+        robot's orientation, away from the photodiode's position.
         """
         return self.diode_to_front_mm - self.led_to_front_mm
 
     def clearance_mm(self, edge: str) -> float:
         """Distance from the photodiode to the body edge facing `edge`.
 
-        `edge` is one of top / bottom / left / right in frame orientation:
-        at heading 0 the nose faces the top edge and the rear faces the
-        bottom one.
+        `edge` is one of top / bottom / left / right in frame orientation,
+        with the nose toward the top edge and the rear toward the bottom
+        one, which is this class's own reference.
         """
         if edge == "top":
             return self.diode_to_front_mm

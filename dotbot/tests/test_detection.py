@@ -171,8 +171,8 @@ def test_finds_a_robot_and_reports_its_pose(heading):
 def test_direction_convention():
     """The heading the console draws is the detector's, turned by 90 degrees.
 
-    `heading_deg` is the robot `direction` convention: 0 along +y, growing
-    clockwise. `heading_atan2_deg` is the detector's: 0 along +x.
+    `heading_deg` is the robot `direction` convention: 0 = +y, +90 = -x.
+    `heading_atan2_deg` is the detector's: 0 = +x, +90 = +y.
     """
     for atan2_deg, direction_deg in ((0.0, -90.0), (90.0, 0.0), (180.0, 90.0)):
         raster = draw_robot(carpet(), CENTRE_PX, atan2_deg)

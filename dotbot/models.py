@@ -134,13 +134,10 @@ class DotBotCameraPoseModel(BaseModel):
     `centre_mm` is the board outline's centre, which is what the outline is
     drawn around; `photodiode_mm` is the point the lighthouse reports, so it
     is the one to compare a `lh2_position` against. `heading_deg` is the
-    robot `direction` convention - 0 along +y, growing clockwise - and
-    `heading_atan2_deg` is the detector's own, 0 along +x. Both ride along
-    so a sign slip in the conversion is visible rather than baked in.
-
-    This is the body's orientation, measured whether the robot is moving or
-    not. The firmware's `direction` is the direction of travel over the last
-    stretch of motion, which is a different quantity.
+    robot `direction` convention, 0 = +y and +90 = -x; `heading_atan2_deg`
+    is the detector's own, 0 = +x and +90 = +y. Both are the BODY's
+    orientation, measured moving or not, which is not the quantity the
+    firmware's `direction` reports.
     """
 
     centre_mm: List[float]

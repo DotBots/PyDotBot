@@ -8,16 +8,16 @@ classifies the result. `frame_pose` is the only place raster pixels and the
 detector's own heading become the frame millimetres and the robot
 `direction` degrees every other surface speaks.
 
-THREE HEADING CONVENTIONS MEET HERE, so each is named where it is used:
+TWO HEADING CONVENTIONS MEET HERE, so each is named where it is used:
 
 - `heading_atan2_deg`, the detector's own: `atan2(dy, dx)` in the y-down
-  frame, so 0 points along +x and +90 along +y.
+  frame, so 0 = +x and +90 = +y.
 - `heading_deg`, the robot `direction` convention the firmware advertises
-  and the console draws: 0 points along +y and angles grow clockwise, which
-  is `heading_atan2_deg - 90` wrapped to (-180, 180].
-- `dotbot.robots.RobotGeometry`, whose offset fields are measured with the
-  nose toward the frame's top edge. Nothing here converts to it; it is named
-  only so the two are not mistaken for each other.
+  and the console draws: 0 = +y, +90 = -x (clockwise as drawn with y down),
+  which is `heading_atan2_deg - 90` wrapped to (-180, 180].
+
+`dotbot.robots.RobotGeometry` carries no heading; only its scalar offsets
+are read.
 
 The pose reported is the BODY orientation of a robot standing still or
 moving. The firmware's `direction` is the direction of TRAVEL over the last

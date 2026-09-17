@@ -82,10 +82,11 @@ export interface WsNotification {
 // reports, so it is the one to compare a position against.
 //
 // The two headings are the same angle in two conventions: `heading_deg` is
-// the robot `direction` one the glyphs are drawn in (0 along +y, growing
-// clockwise) and `heading_atan2_deg` is the detector's own (0 along +x).
-// Both are the BODY's orientation, measured moving or not, which is not the
-// same quantity as the firmware's direction of travel.
+// the robot `direction` one the glyphs are drawn in (0 = +y, +90 = -x,
+// clockwise as drawn with y down) and `heading_atan2_deg` is the detector's
+// own (0 = +x, +90 = +y). Both are the BODY's orientation, measured moving
+// or not, which is not the same quantity as the firmware's direction of
+// travel.
 export interface CameraPose {
   centre_mm: [number, number];
   photodiode_mm: [number, number];
