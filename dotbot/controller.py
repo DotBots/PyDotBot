@@ -290,18 +290,42 @@ class Controller:
         service = CameraService(
             calibration, area, on_detection=self._on_camera_detection
         )
-        if service.start():
-            self.cameras.append(service)
-            if self.settings.csv_data_output is not None:
-                path = camera_log_path(self.settings.csv_data_output)
-                self.camera_csv_loggers[area.name] = CameraCSVLogger(
-                    path, area=area.name, camera_id=calibration.id
-                )
-                self.logger.info(
-                    "Camera detection log enabled",
-                    path=str(path),
-                    area=area.name,
-                )
+        # `start()` hands the detector its first frame before it returns, so
+        # the bookkeeping a detection row needs is in place first and rolled
+        # back if the camera turns out not to serve.
+        self.cameras.append(service)
+        if self.settings.csv_data_output is not None:
+            self._open_camera_log(area, calibration.id)
+        if not service.start():
+            self.cameras.remove(service)
+            rolled_back = self.camera_csv_loggers.pop(area.name, None)
+            if rolled_back is not None:
+                rolled_back.close()
+
+    def _open_camera_log(self, area, camera_id: str) -> None:
+        """The detection log for one camera, or a message saying why not.
+
+        A log that cannot be appended to is an error and no log, never a
+        stop, and the camera layer is served either way.
+        """
+        path = camera_log_path(self.settings.csv_data_output)
+        try:
+            self.camera_csv_loggers[area.name] = CameraCSVLogger(
+                path, area=area.name, camera_id=camera_id
+            )
+        except (ValueError, OSError) as exc:
+            self.logger.error(
+                "Camera detections are not logged, but the layer is served",
+                path=str(path),
+                area=area.name,
+                error=str(exc),
+            )
+            return
+        self.logger.info(
+            "Camera detection log enabled",
+            path=str(path),
+            area=area.name,
+        )
 
     def _on_camera_detection(self, record: dict) -> None:
         """One detection, logged with the lighthouse's answer for the same floor.
@@ -328,7 +352,8 @@ class Controller:
         Rectangle membership, not tracking: with more than one robot in the
         area the nearest to the detected pose is taken and `in_area` says how
         many there were, so a row that cannot mean a one-to-one comparison
-        can be filtered out.
+        can be filtered out. `packet_age_s` ages the last packet of any kind
+        from that robot, not the fix it carries.
         """
         area = next(
             (c.area for c in self.cameras if c.area.name == record.get("area")), None
@@ -356,7 +381,7 @@ class Controller:
             "x": nearest.lh2_position.x,
             "y": nearest.lh2_position.y,
             "direction": nearest.direction,
-            "age_s": round(time.time() - nearest.last_seen, 3),
+            "packet_age_s": round(time.time() - nearest.last_seen, 3),
             "in_area": len(standing),
         }
 

@@ -114,18 +114,15 @@ def camera_log_path(csv_data_output: Union[str, Path]) -> Path:
 class CameraCSVLogger:
     """One row per camera detection, with the lighthouse's own answer beside it.
 
-    The two files a run writes are keyed differently: the robot log is keyed
-    to an address and written when a packet arrives, a detection has no
-    address and arrives from another thread. So this is a second file, and
-    each row copies the latest lighthouse pose of the one robot standing in
-    the camera's area, which is what makes a single row enough to draw both
-    poses superimposed. `timestamp` joins the two files.
+    A second file rather than more columns on the robot log: that one is
+    keyed to an address and written when a packet arrives, a detection has
+    no address and arrives from another thread. Each row copies the latest
+    lighthouse pose of the one robot standing in the camera's area, which is
+    what makes a single row enough to draw both poses superimposed.
+    `timestamp` joins the two files.
 
-    The two headings are DIFFERENT PHYSICAL QUANTITIES and the column names
-    say so: `cam_body_heading_deg` is the body's orientation, measured
-    whether the robot moves or not, and `lh2_travel_direction_deg` is the
-    firmware's direction of travel over the last stretch of motion. They
-    agree only after forward motion.
+    The sidecar beside the CSV is what says what each column means; it is
+    written from `_sidecar_text` and read back by anyone analysing the log.
     """
 
     FIELDNAMES: list[str] = [
@@ -149,7 +146,7 @@ class CameraCSVLogger:
         "lh2_x_mm",
         "lh2_y_mm",
         "lh2_travel_direction_deg",
-        "lh2_age_s",
+        "lh2_packet_age_s",
         "lh2_in_area",
     ]
 
@@ -162,6 +159,8 @@ class CameraCSVLogger:
         self.camera_id = camera_id
         self.logger = LOGGER.bind(context=__name__)
         file_exists = self.file_path.exists()
+        if file_exists:
+            self._check_appendable()
         self.file: IO[str] = open(self.file_path, "a", newline="")
         self.writer: csv.DictWriter = csv.DictWriter(
             self.file, fieldnames=self.FIELDNAMES
@@ -179,6 +178,45 @@ class CameraCSVLogger:
     def write_sidecar(self) -> None:
         """Pin the constants and conventions, so an old log survives a change."""
         self.sidecar_path.write_text(self._sidecar_text(), encoding="utf-8")
+
+    def _check_appendable(self) -> None:
+        """Refuse an existing log this build's sidecar would misdescribe.
+
+        One sidecar describes the whole file, so appending rows written
+        against different columns, geometry or conventions would leave the
+        older rows described by a file that no longer fits them. Which
+        camera wrote a row is not part of the check: `camera_id` is on
+        every row, so a re-registration mid-file stays recoverable.
+        """
+        import tomllib
+
+        with open(self.file_path, newline="", encoding="utf-8") as handle:
+            header = next(csv.reader(handle), [])
+        if header and header != self.FIELDNAMES:
+            raise ValueError(
+                f"{self.file_path} has different columns than this build "
+                "writes, so its rows and new ones cannot share one sidecar. "
+                "Pass a new --csv-data-output."
+            )
+        if not self.sidecar_path.exists():
+            return
+        try:
+            existing = tomllib.loads(self.sidecar_path.read_text(encoding="utf-8"))
+            mine = tomllib.loads(self._sidecar_text())
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(
+                f"{self.sidecar_path} cannot be read, so it cannot be shown "
+                f"to describe the rows already in {self.file_path.name}: {exc}"
+            ) from exc
+        described = ("schema_version", "mm_per_px", "warp_fps_max", "frames", "robot")
+        differing = [key for key in described if existing.get(key) != mine.get(key)]
+        if differing:
+            raise ValueError(
+                f"{self.sidecar_path} describes {self.file_path.name} under a "
+                f"different {', '.join(differing)} than this build writes, so "
+                "appending would leave the rows already there misdescribed. "
+                "Pass a new --csv-data-output."
+            )
 
     def log(self, record: dict, lh2: Optional[dict] = None) -> None:
         """One detection, and the lighthouse pose it is to be compared with.
@@ -211,7 +249,7 @@ class CameraCSVLogger:
             "lh2_x_mm": lh2.get("x"),
             "lh2_y_mm": lh2.get("y"),
             "lh2_travel_direction_deg": lh2.get("direction"),
-            "lh2_age_s": lh2.get("age_s"),
+            "lh2_packet_age_s": lh2.get("packet_age_s"),
             "lh2_in_area": lh2.get("in_area", 0),
         }
         self.writer.writerow({k: "" if v is None else v for k, v in row.items()})
@@ -241,21 +279,29 @@ class CameraCSVLogger:
             f"warp_fps_max = {float(WARP_FPS_MAX)}",
             "",
             "[frames]",
-            'position = "frame millimetres, x right, y down; the frame of '
-            "lh2_x_mm/lh2_y_mm and of the site's areas\"",
+            'position = "every *_mm column: frame millimetres, x right, y '
+            "down, the frame the site's areas are measured in\"",
             "cam_body_heading_deg = \"the robot body's orientation, measured "
             "moving or not. Robot direction convention: 0 = +y, +90 = -x, "
             'wrapped to (-180, 180]; equals cam_body_heading_atan2_deg - 90"',
             'cam_body_heading_atan2_deg = "the same body orientation as '
             'atan2(dy, dx) in the same frame: 0 = +x, +90 = +y"',
-            "lh2_travel_direction_deg = \"the firmware's direction of TRAVEL "
-            "over the last >= 50 mm of motion, not a body orientation: stale "
-            "while the robot stands still, 180 out after reversing, -1000 "
-            'until it has ever moved"',
-            "lh2_position = \"the photodiode's position, whole millimetres "
-            '(the firmware truncates)"',
-            'lh2_age_s = "how long ago the lighthouse pose in this row was '
-            "received; the detection is of this row's own frame\"",
+            "lh2_x_mm = \"the photodiode's position as the robot last "
+            "advertised it, whole millimetres (the firmware truncates). The "
+            "firmware keeps the fix it holds until a new one is at least 50 "
+            'mm away, so this trails the robot by up to 50 mm of travel"',
+            'lh2_y_mm = "the same quantity on the y axis"',
+            "lh2_travel_direction_deg = \"the firmware's direction of TRAVEL, "
+            "never a body orientation. -1000 from boot until the first "
+            "lighthouse fix; from that fix until the robot has moved 50 mm it "
+            "is the bearing from the frame ORIGIN to that first fix, which "
+            "reads as a valid direction and is not one; after that, the "
+            "direction of travel over the last >= 50 mm, stale while the "
+            'robot stands still and 180 out after reversing"',
+            'lh2_packet_age_s = "seconds since the last packet of ANY kind '
+            "from this robot, not the age of the fix: the robot repeats its "
+            "last accepted fix in every advertisement, so a small age does "
+            'not mean a fresh fix"',
             'timestamp = "time.time() when the frame was read from the device"',
             "",
             "[robot]",

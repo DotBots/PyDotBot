@@ -3,6 +3,8 @@
 import csv
 import tomllib
 
+import pytest
+
 from dotbot.csv_data_logger import CameraCSVLogger, camera_log_path
 
 FOUND = {
@@ -41,7 +43,7 @@ LH2 = {
     "x": 1541,
     "y": 509,
     "direction": 315,
-    "age_s": 0.42,
+    "packet_age_s": 0.42,
     "in_area": 1,
 }
 
@@ -77,7 +79,7 @@ def test_a_found_detection_writes_every_column(tmp_path):
     assert row["refined"] == "True"
     assert row["lh2_address"] == "0000000000000001"
     assert row["lh2_travel_direction_deg"] == "315"
-    assert row["lh2_age_s"] == "0.42"
+    assert row["lh2_packet_age_s"] == "0.42"
     assert row["lh2_in_area"] == "1"
     assert all(row[name] != "" for name in CameraCSVLogger.FIELDNAMES)
 
@@ -147,4 +149,53 @@ def test_the_sidecar_separates_body_heading_from_direction_of_travel(tmp_path):
     assert "0 = +x" in frames["cam_body_heading_atan2_deg"]
     assert "TRAVEL" in frames["lh2_travel_direction_deg"]
     assert "-1000" in frames["lh2_travel_direction_deg"]
-    assert "photodiode" in frames["lh2_position"]
+    assert "photodiode" in frames["lh2_x_mm"]
+
+
+def test_the_sidecar_warns_that_a_first_fix_reads_as_a_direction(tmp_path):
+    """-1000 is not the filter that drops every pre-motion row."""
+    path = camera_log_path(tmp_path / "run.csv")
+    CameraCSVLogger(path, area="dev-corner").close()
+    frames = tomllib.loads(path.with_suffix(".toml").read_text())["frames"]
+
+    assert "ORIGIN" in frames["lh2_travel_direction_deg"]
+    assert "50 mm" in frames["lh2_travel_direction_deg"]
+    assert "ANY kind" in frames["lh2_packet_age_s"]
+    assert "fresh fix" in frames["lh2_packet_age_s"]
+
+
+def test_appending_under_a_different_sidecar_is_refused(tmp_path):
+    """One sidecar describes the whole file, so the older rows must still fit."""
+    path = camera_log_path(tmp_path / "run.csv")
+    CameraCSVLogger(path, area="dev-corner").close()
+    sidecar = path.with_suffix(".toml")
+    sidecar.write_text(
+        sidecar.read_text().replace("mm_per_px = 2.0", "mm_per_px = 1.0")
+    )
+
+    with pytest.raises(ValueError) as caught:
+        CameraCSVLogger(path, area="dev-corner")
+    assert "mm_per_px" in str(caught.value)
+    assert sidecar.name in str(caught.value)
+
+
+def test_appending_under_different_columns_is_refused(tmp_path):
+    path = camera_log_path(tmp_path / "run.csv")
+    path.write_text("timestamp,sequence\n")
+
+    with pytest.raises(ValueError) as caught:
+        CameraCSVLogger(path, area="dev-corner")
+    assert "different columns" in str(caught.value)
+
+
+def test_a_re_registered_camera_still_appends(tmp_path):
+    """`camera_id` is on every row, so a new registration is recoverable."""
+    path = camera_log_path(tmp_path / "run.csv")
+    first = CameraCSVLogger(path, area="dev-corner", camera_id="1111111111111111")
+    first.log(FOUND, LH2)
+    first.close()
+    second = CameraCSVLogger(path, area="dev-corner", camera_id="2222222222222222")
+    second.log(NOTHING, None)
+    second.close()
+
+    assert [row["sequence"] for row in rows_of(path)] == ["412", "413"]

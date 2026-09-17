@@ -630,7 +630,7 @@ def test_a_detection_is_logged_with_the_robot_standing_in_the_area(
     assert float(row["lh2_x_mm"]) == 1541
     assert row["lh2_travel_direction_deg"] == "315"
     assert row["lh2_in_area"] == "1"
-    assert float(row["lh2_age_s"]) >= 0
+    assert float(row["lh2_packet_age_s"]) >= 0
     assert row["cam_photodiode_x_mm"] == "1540.2"
     assert path.with_suffix(".toml").exists()
 
