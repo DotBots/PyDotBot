@@ -368,7 +368,14 @@ class Controller:
             await self._push_camera_detections()
 
     async def _push_camera_detections(self):
-        """One notification per camera that has detected on a newer warp."""
+        """One notification per camera that has detected on a newer warp.
+
+        A frame counts as pushed only once it has actually gone out, so a
+        console that connects after the camera has stopped delivering is
+        still told what the last frame showed.
+        """
+        if not self.websockets:
+            return
         for camera in self.cameras:
             if not camera.live:
                 continue
@@ -378,8 +385,6 @@ class Controller:
             if self._camera_pushed.get(camera.area.name) == sequence:
                 continue
             self._camera_pushed[camera.area.name] = sequence
-            if not self.websockets:
-                continue
             await self.notify_clients(
                 DotBotNotificationModel(
                     cmd=DotBotNotificationCommand.CAMERA_DETECTION,

@@ -1940,10 +1940,76 @@ async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
 
 
 @pytest.mark.asyncio
-async def test_nothing_is_pushed_with_no_console_listening(synthetic_camera):
-    """No socket, no message; the warp the record came from is still marked."""
+async def test_a_console_that_connects_late_is_told_the_last_frame(
+    synthetic_camera,
+):
+    """Nothing is sent with no socket, and nothing is marked sent either.
+
+    A camera that has stopped delivering pushes no further frame, so a
+    console arriving afterwards would otherwise draw an empty floor.
+    """
     with detecting(synthetic_camera) as controller:
         controller.websockets = []
         await controller._push_camera_detections()
         controller.notify_clients.assert_not_awaited()
+        assert controller._camera_pushed == {}
+
+        controller.websockets = [MagicMock()]
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
         assert controller._camera_pushed["dev-corner"] >= 1
+
+
+class BlockingDetector:
+    """A detector held inside `detect` until the test lets it out."""
+
+    def __init__(self):
+        import threading
+
+        self.release = threading.Event()
+        self.entered = threading.Event()
+
+    def detect(self, bgr):
+        from dotbot.detection import Detection
+
+        self.entered.set()
+        self.release.wait(timeout=5.0)
+        return Detection("none", 0, None, 0.0)
+
+
+def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):
+    """The warp and the stream never wait on the detector.
+
+    The slot between the threads holds one frame, so a detector slower than
+    the warp costs frames it never sees and nothing else. Measured against a
+    detector that does not return at all, which is the limit of slow.
+    """
+    import time
+
+    import cv2
+
+    from dotbot.camera import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    detector = BlockingDetector()
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=looping(frame),
+        detector=detector,
+    )
+    assert service.start()
+    try:
+        assert detector.entered.wait(timeout=5.0)
+        start = service.held()[1]
+        time.sleep(0.8)
+        warps = service.held()[1] - start
+        # The cap is 10 warps a second; a warp thread waiting on this
+        # detector would have managed one, and then stopped.
+        assert warps >= 4, warps
+        assert service.held()[0] is not None
+        # Nothing was ever reported, because nothing ever came back.
+        assert service.held_detection() == (None, 0)
+    finally:
+        detector.release.set()
+        service.stop()
