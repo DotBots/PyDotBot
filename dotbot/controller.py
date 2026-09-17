@@ -112,7 +112,7 @@ def load_calibration(spec: str, site: Optional[str] = None):
 
 def load_camera_calibration(spec: str, site: Optional[str] = None):
     """The camera registration `spec` names: a file path or an id prefix."""
-    from dotbot.camera.calibration import load_camera_calibration as _load
+    from dotbot.camera.registration import load_camera_calibration as _load
 
     return _load(spec, site=site)
 

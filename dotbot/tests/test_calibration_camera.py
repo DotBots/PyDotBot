@@ -19,8 +19,8 @@ from PIL import Image
 
 from dotbot.area import Area
 from dotbot.calibration.points import CORNERS
-from dotbot.camera import calibration as camera
-from dotbot.camera.calibration import (
+from dotbot.camera import sheets
+from dotbot.camera.sheets import (
     MARKER_DICTIONARY,
     MARKER_SIDE_MM,
     MARKER_SIDE_PX,
@@ -229,14 +229,14 @@ def test_sheet_diagram_clears_the_caption_beside_it():
 
 def test_sheet_renders_without_any_of_the_candidate_fonts(monkeypatch):
     """The lab machine may carry none of them; a sheet still has to print."""
-    monkeypatch.setattr(camera, "_FONT_CANDIDATES", ())
-    camera._font_file.cache_clear()
-    camera._font.cache_clear()
+    monkeypatch.setattr(sheets, "_FONT_CANDIDATES", ())
+    sheets._font_file.cache_clear()
+    sheets._font.cache_clear()
     try:
         page = render_sheet(0)
     finally:
-        camera._font_file.cache_clear()
-        camera._font.cache_clear()
+        sheets._font_file.cache_clear()
+        sheets._font.cache_clear()
 
     assert page.shape == (PAGE_HEIGHT_PX, PAGE_WIDTH_PX)
     caption = page[_px(250.0) : _px(270.0), _px(30.0) : _px(150.0)]

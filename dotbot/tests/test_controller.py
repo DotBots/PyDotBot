@@ -423,11 +423,12 @@ def test_a_controller_with_no_site_keeps_the_neutral_one(serial_mock):
 
 def _write_camera_calibration(tmp_path, monkeypatch, source, area="dev-corner"):
     """A camera registration under tmp_path, over `source`, and its id."""
-    from dotbot.camera import calibration as camera
+    from dotbot.camera import registration
+    from dotbot.camera.sheets import marker_layout, span_mm
 
-    monkeypatch.setattr(camera, "site_dir", lambda name: tmp_path / name)
-    monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
-    calibration = camera.CameraCalibration(
+    monkeypatch.setattr(registration, "site_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(registration, "calibration_root", lambda: tmp_path)
+    calibration = registration.CameraCalibration(
         site=Site(name=C405.name, anchor=C405.anchor),
         area=area,
         source=str(source),
@@ -436,20 +437,20 @@ def _write_camera_calibration(tmp_path, monkeypatch, source, area="dev-corner"):
         fps=0.0,
         reads=1,
         markers=[
-            camera.MarkerObservation(
+            registration.MarkerObservation(
                 id=marker.id,
                 centre_mm=marker.centre_mm,
                 corners_mm=marker.corners_mm,
                 corners_px=((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),
             )
-            for marker in camera.marker_layout(DEV_CORNER)
+            for marker in marker_layout(DEV_CORNER)
         ],
         matrix=[[1.0, 0.0, 1000.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
         residual_mm=0.4,
-        span_mm=camera.span_mm(camera.marker_layout(DEV_CORNER)),
+        span_mm=span_mm(marker_layout(DEV_CORNER)),
         created="2026-09-15T13:42:00Z",
     )
-    camera.write_camera_calibration(calibration)
+    registration.write_camera_calibration(calibration)
     return calibration
 
 
@@ -526,9 +527,9 @@ def test_a_camera_calibration_that_resolves_to_nothing_serves_no_layer(
     tmp_path, monkeypatch, serial_mock
 ):
     """A stale id in a config is a missing layer, never a controller that stops."""
-    from dotbot.camera import calibration as camera
+    from dotbot.camera import registration
 
-    monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
+    monkeypatch.setattr(registration, "calibration_root", lambda: tmp_path)
     controller = Controller(
         ControllerSettings(
             port="/dev/null",

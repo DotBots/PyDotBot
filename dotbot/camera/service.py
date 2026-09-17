@@ -30,8 +30,7 @@ from typing import Callable
 import numpy as np
 
 from dotbot.area import Area
-from dotbot.camera.calibration import (
-    CameraCalibration,
+from dotbot.camera.capture import (
     capture_fps,
     open_capture,
     release_capture,
@@ -47,6 +46,7 @@ from dotbot.camera.raster import (
     raster_size,
     raster_transform,
 )
+from dotbot.camera.registration import CameraCalibration
 from dotbot.logger import LOGGER
 
 JPEG_QUALITY = 80

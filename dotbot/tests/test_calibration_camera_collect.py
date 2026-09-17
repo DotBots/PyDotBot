@@ -19,34 +19,41 @@ import pytest
 from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import read_calibration_file
 from dotbot.calibration.points import CORNERS
-from dotbot.camera import calibration as camera
-from dotbot.camera.calibration import (
-    CAMERA_KIND,
-    CAMERA_SCHEMA_VERSION,
+from dotbot.camera import registration, sheets
+from dotbot.camera.capture import (
     DARK_MEAN_MAX,
     FLAT_SPREAD_MAX,
     LIT_MEAN_MIN,
-    MARKER_DICTIONARY,
     Probe,
     average_corners,
-    build_calibration,
     build_detector,
     capture_reads,
     choose,
-    corner_of,
     detect_markers,
     discover,
-    layout_ids,
-    load_camera_calibration,
-    marker_id_for,
-    marker_layout,
     parse_source,
     probe,
+)
+from dotbot.camera.registration import (
+    CAMERA_KIND,
+    CAMERA_SCHEMA_VERSION,
+    LENS_DEFAULT,
+    RESIDUAL_WARN_MM,
+    build_calibration,
+    load_camera_calibration,
     read_camera_calibration_file,
     render_camera_calibration,
     solve,
-    span_mm,
     write_camera_calibration,
+)
+from dotbot.camera.sheets import (
+    MARKER_DICTIONARY,
+    MARKER_SIDE_MM,
+    corner_of,
+    layout_ids,
+    marker_id_for,
+    marker_layout,
+    span_mm,
 )
 from dotbot.site import Site
 
@@ -142,7 +149,7 @@ def _draw_marker(
         marker, 100, 100, 100, 100, cv2.BORDER_CONSTANT, value=255
     )
     side = marker.shape[0]
-    half_mm = (camera.MARKER_SIDE_MM / 2) * (side / 600.0)
+    half_mm = (MARKER_SIDE_MM / 2) * (side / 600.0)
     x = centre_mm[0] + offset[0]
     y = centre_mm[1] + offset[1]
     quad_mm = [
@@ -242,10 +249,10 @@ def test_a_sheet_taped_outside_the_area_is_named_rather_than_averaged_away():
         marker_layout(DEV_CORNER), detect_markers(displaced, build_detector())
     )
 
-    assert solution.residual_mm > camera.RESIDUAL_WARN_MM
+    assert solution.residual_mm > RESIDUAL_WARN_MM
     worst_id, worst_mm = solution.worst
     assert worst_id == 3
-    assert worst_mm > camera.RESIDUAL_WARN_MM
+    assert worst_mm > RESIDUAL_WARN_MM
     assert corner_of(worst_id) == "bottom-right"
 
 
@@ -267,8 +274,8 @@ def test_the_seam_is_the_only_place_an_id_names_a_corner(monkeypatch):
     through `corner_of` / `marker_id_for`, so moving it moves them.
     """
     offset = len(CORNERS)
-    monkeypatch.setattr(camera, "corner_of", lambda i: CORNERS[i - offset])
-    monkeypatch.setattr(camera, "marker_id_for", lambda c: CORNERS.index(c) + offset)
+    monkeypatch.setattr(sheets, "corner_of", lambda i: CORNERS[i - offset])
+    monkeypatch.setattr(sheets, "marker_id_for", lambda c: CORNERS.index(c) + offset)
 
     layout = marker_layout(DEV_CORNER)
     assert [marker.id for marker in layout] == [4, 5, 6, 7]
@@ -278,7 +285,7 @@ def test_the_seam_is_the_only_place_an_id_names_a_corner(monkeypatch):
         (1105.0, 851.5),
         (1895.0, 851.5),
     ]
-    assert camera.layout_ids() == (4, 5, 6, 7)
+    assert layout_ids() == (4, 5, 6, 7)
     assert span_mm(layout) == span_mm(marker_layout(DEV_CORNER))
 
 
@@ -617,7 +624,7 @@ def test_the_file_round_trips_through_the_writer_and_the_reader(frame, tmp_path)
     assert back.area == "dev-corner"
     assert back.source == 0
     assert (back.width, back.height, back.fps) == (FRAME_WIDTH, FRAME_HEIGHT, 30.0)
-    assert back.lens == camera.LENS_DEFAULT
+    assert back.lens == LENS_DEFAULT
     assert back.intrinsics == ""
     assert back.reads == 25
     assert back.site.name == SITE.name and back.site.anchor == SITE.anchor
@@ -754,7 +761,7 @@ def run_collect(tmp_path, monkeypatch, args, areas=None):
     monkeypatch.setattr(
         camera_calibrate, "site_from_context", lambda ctx, flag=None: (site, "the test")
     )
-    monkeypatch.setattr(camera, "site_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(registration, "site_dir", lambda name: tmp_path / name)
     return CliRunner().invoke(camera_calibrate.collect, args, input="\n")
 
 

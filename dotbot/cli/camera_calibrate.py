@@ -23,12 +23,35 @@ from pathlib import Path
 
 import click
 
-from dotbot.camera import calibration as camera
-from dotbot.camera.calibration import (
-    LENS_DEFAULT,
+from dotbot.camera.capture import (
+    PROBE_INDEX_MAX,
     READS_DEFAULT,
+    average_corners,
+    build_detector,
+    capture_reads,
+    choose,
+    discover,
+    open_capture,
+    parse_source,
+    probe,
+    write_annotated,
+    write_probe_frames,
+)
+from dotbot.camera.registration import (
+    LENS_DEFAULT,
+    RESIDUAL_WARN_MM,
+    build_calibration,
+    collect_header,
+    sheet_prompt,
+    solve,
+    write_camera_calibration,
+)
+from dotbot.camera.sheets import (
     SCALE_BAR_MM,
     SHEET_FORMATS,
+    corner_of,
+    layout_ids,
+    marker_layout,
     render_sheets,
     write_sheets,
 )
@@ -169,7 +192,7 @@ def collect(
             "so the four sheet positions can be derived from its corners."
         )
     try:
-        detector = camera.build_detector()
+        detector = build_detector()
     except ImportError as exc:
         click.echo(
             "`dotbot run camera-calibration collect` needs the calibration "
@@ -189,11 +212,11 @@ def collect(
     if reads < 1:
         raise click.UsageError(f"--reads {reads}: at least one read is needed.")
 
-    layout = camera.marker_layout(area)
-    ids = camera.layout_ids()
-    click.echo(camera.collect_header(site, area, reads))
+    layout = marker_layout(area)
+    ids = layout_ids()
+    click.echo(collect_header(site, area, reads))
     for marker in layout:
-        click.echo("  " + camera.sheet_prompt(marker, area))
+        click.echo("  " + sheet_prompt(marker, area))
     click.prompt(
         "\nPress Enter when the four sheets are down",
         default="",
@@ -205,12 +228,12 @@ def collect(
     chosen = _find_camera(camera_spec, ids, detector)
     corners_px, tally, last = _read_sheets(chosen, ids, reads, detector, area)
     try:
-        solution = camera.solve(layout, corners_px)
+        solution = solve(layout, corners_px)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     _warn_on_residual(solution, area)
 
-    calibration = camera.build_calibration(
+    calibration = build_calibration(
         site=site,
         area=area,
         layout=layout,
@@ -220,11 +243,11 @@ def collect(
         reads=tally.target,
         lens=lens,
     )
-    path = camera.write_camera_calibration(calibration)
+    path = write_camera_calibration(calibration)
     written = str(path)
     if last is not None:
         image = path.with_suffix(".jpg")
-        camera.write_annotated(last, corners_px, image)
+        write_annotated(last, corners_px, image)
         written += f" (and {image.name})"
     click.echo(f"wrote {written}")
     click.echo(
@@ -240,18 +263,18 @@ def collect(
 def _find_camera(camera_spec, ids, detector):
     """The source that sees the sheets, with the table that chose it."""
     if camera_spec is None:
-        click.echo(f"probing sources from 0 (stopping at {camera.PROBE_INDEX_MAX})")
-        probes = camera.discover(detector=detector)
+        click.echo(f"probing sources from 0 (stopping at {PROBE_INDEX_MAX})")
+        probes = discover(detector=detector)
     else:
-        probes = [camera.probe(camera.parse_source(camera_spec), detector=detector)]
+        probes = [probe(parse_source(camera_spec), detector=detector)]
     for found in probes:
         click.echo("  " + found.row)
 
     frames = Path(tempfile.mkdtemp(prefix="dotbot-camera-probe-"))
-    if camera.write_probe_frames(probes, frames):
+    if write_probe_frames(probes, frames):
         click.echo(f"probe frames: {frames}")
 
-    choice = camera.choose(probes, ids)
+    choice = choose(probes, ids)
     if not choice.chosen:
         click.echo(f"\n{choice.reason}.", err=True)
         click.echo(
@@ -270,14 +293,14 @@ def _read_sheets(chosen, ids, reads, detector, area):
     recorded frame delivers exactly one image, so the probe exhausts it, and
     reopening is also what runs the warm-up again before the reads.
     """
-    capture = camera.open_capture(chosen.source)
+    capture = open_capture(chosen.source)
     if not capture.isOpened():
         raise click.ClickException(
             f"source {chosen.source} opened for the probe and will not open "
             "again for the reads."
         )
     try:
-        kept, tally, last = camera.capture_reads(capture, ids, reads, detector)
+        kept, tally, last = capture_reads(capture, ids, reads, detector)
     finally:
         capture.release()
     click.echo(tally.summary)
@@ -310,19 +333,19 @@ def _read_sheets(chosen, ids, reads, detector, area):
             "markers; the fit is over those.",
             err=True,
         )
-    return camera.average_corners(kept, ids), tally, last
+    return average_corners(kept, ids), tally, last
 
 
 def _warn_on_residual(solution, area):
     """Name the sheet that fits worst when the whole fit is out of tolerance."""
-    if solution.residual_mm <= camera.RESIDUAL_WARN_MM:
+    if solution.residual_mm <= RESIDUAL_WARN_MM:
         return
     worst_id, worst_mm = solution.worst
     click.echo(
         f"residual {solution.residual_mm:.1f} mm is over "
-        f"{camera.RESIDUAL_WARN_MM:g} mm, so this registration is suspect. "
+        f"{RESIDUAL_WARN_MM:g} mm, so this registration is suspect. "
         f"Marker {worst_id} sits {worst_mm:.1f} mm from where {area.name}'s "
-        f"{camera.corner_of(worst_id)} corner puts it: check that sheet is in "
+        f"{corner_of(worst_id)} corner puts it: check that sheet is in "
         "the corner it names, flush on both edge lines, printed at 100 %, and "
         "inside the area.",
         err=True,

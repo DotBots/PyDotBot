@@ -1122,14 +1122,9 @@ def synthetic_camera(tmp_path_factory):
     """
     import cv2
 
-    from dotbot.camera.calibration import (
-        build_calibration,
-        build_detector,
-        detect_markers,
-        marker_layout,
-        probe,
-        solve,
-    )
+    from dotbot.camera.capture import build_detector, detect_markers, probe
+    from dotbot.camera.registration import build_calibration, solve
+    from dotbot.camera.sheets import marker_layout
     from dotbot.tests.test_calibration_camera_collect import synthetic_frame
 
     frame = synthetic_frame(DEV_CORNER)
@@ -1153,7 +1148,7 @@ def synthetic_camera(tmp_path_factory):
 @pytest.fixture
 def real_camera(tmp_path):
     """The bench's own registration, read back through the file loader."""
-    from dotbot.camera.calibration import read_camera_calibration_file
+    from dotbot.camera.registration import read_camera_calibration_file
 
     path = tmp_path / "camera-2026-09-15T11-58-26Z-22248be4.toml"
     path.write_text(REAL_CAMERA_FILE, encoding="utf-8")
@@ -1250,8 +1245,9 @@ async def test_the_camera_stream_carries_the_area_warped_into_its_raster(
     import cv2
     import numpy as np
 
-    from dotbot.camera.calibration import build_detector, detect_markers, marker_layout
+    from dotbot.camera.capture import build_detector, detect_markers
     from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.sheets import marker_layout
 
     with registered(synthetic_camera):
         response = await client.get("/controller/cameras/dev-corner/stream")
@@ -1475,8 +1471,8 @@ def synthetic_colour_frame(area=DEV_CORNER, robots=(), seed=11):
     import cv2
     import numpy as np
 
-    from dotbot.camera.calibration import MARKER_DICTIONARY, marker_layout
     from dotbot.camera.detection.pose import CONN_MM, OUTLINE_MM, axes
+    from dotbot.camera.sheets import MARKER_DICTIONARY, marker_layout
     from dotbot.tests.test_calibration_camera_collect import (
         FRAME_HEIGHT,
         FRAME_WIDTH,
@@ -1895,14 +1891,9 @@ def test_stop_joins_the_detector_thread(synthetic_camera):
 
 def _registration_for(frame):
     """A registration solved on `frame`, the way the fixture solves one."""
-    from dotbot.camera.calibration import (
-        CameraCalibration,
-        build_detector,
-        detect_markers,
-        marker_layout,
-        solve,
-        span_mm,
-    )
+    from dotbot.camera.capture import build_detector, detect_markers
+    from dotbot.camera.registration import CameraCalibration, solve
+    from dotbot.camera.sheets import marker_layout, span_mm
 
     layout = marker_layout(DEV_CORNER)
     corners = detect_markers(frame, build_detector())
@@ -1925,7 +1916,7 @@ def _registration_for(frame):
 
 def _marker_observations(layout, corners_px):
     """The layout and what was seen of it, as the file records them."""
-    from dotbot.camera.calibration import MarkerObservation
+    from dotbot.camera.registration import MarkerObservation
 
     return [
         MarkerObservation(
