@@ -462,24 +462,13 @@ def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
     return best, scores
 
 
-def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None, warm=None):
-    """Pose of the one robot the region `reg` covers, or None.
-
-    `warm` is `(centre_px, heading_deg)` from a previous frame: the outline
-    fit starts there rather than at this frame's coarse pose.
-
-    A seed cannot carry a stale answer through: `refined` is set by
-    comparing the fitted pose against this frame's own coarse pose, which is
-    recomputed from the red connectors every time, so a fit that stayed near
-    a seed more than `MAX_REFINE_TURN_DEG` from the truth is refused here
-    whatever it was started from.
-    """
+def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None):
+    """Pose of the one robot the region `reg` covers, or None."""
     out = coarse_pose(features_map, reg, mm_per_px)
     if out is None:
         return None
     out["centre"] = out["coarse_centre"]
     out["refined"] = False
-    out["warm"] = warm is not None
     if refine and tmpl is not None:
         # The template answers one question: is the nose at the coarse
         # heading or at its flip? Two scores answer it, and nothing else the
@@ -491,12 +480,10 @@ def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None, war
     if refine:
         if fit is None:
             fit = OutlineFit(features_map, mm_per_px)
-        seed = out["centre"] if warm is None else np.asarray(warm[0], float)
-        seed_heading = out["heading"] if warm is None else float(warm[1])
         # Nelder-Mead can stop short of the optimum when the evidence is soft
         # (blurred or low-contrast scenes), leaving the answer dependent on
         # where it started. Restart from its own output until it stops moving.
-        r = fit.refine(seed, seed_heading)
+        r = fit.refine(out["centre"], out["heading"])
         for _ in range(3):
             if r is None:
                 break
@@ -509,9 +496,8 @@ def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None, war
             r = r2
         if r is not None:
             c, th, _, sv = r
-            # Measured from this frame's own coarse pose, never from the warm
-            # seed: the limits are what stop a fit wandering onto something
-            # else, and a seed from the last frame is not evidence.
+            # The limits are measured from the coarse pose, which is what
+            # stops a fit wandering off this robot onto something else.
             moved = float(np.linalg.norm(c - out["coarse_centre"])) * mm_per_px
             turned = abs(((th - out["heading"]) + 180) % 360 - 180)
             out.update(fit_shift_mm=moved, fit_turn_deg=turned, fit_score=sv)
@@ -541,7 +527,6 @@ def pose_at(
     snap_mm=45.0,
     tmpl=None,
     fit=None,
-    warm=None,
 ):
     """Pose of the robot near `seed_px`.
 
@@ -580,7 +565,7 @@ def pose_at(
         tmpl = Template(mm_per_px)
     if refine and fit is None:
         fit = OutlineFit(features_map, mm_per_px)
-    p = pose_one(features_map, labels == best, mm_per_px, tmpl, refine, fit, warm)
+    p = pose_one(features_map, labels == best, mm_per_px, tmpl, refine, fit)
     if p is not None:
         p["area_mm2"] = float(stats[best, cv2.CC_STAT_AREA] * mm_per_px**2)
         p["seed_dist_mm"] = best_dist

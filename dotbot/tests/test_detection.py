@@ -32,13 +32,7 @@ from dotbot.detection.pose import (
     features,
     robot_mask,
 )
-from dotbot.detection.robot import (
-    GREEN_LEVER_MIN_MM,
-    TMPL_MARGIN_MIN,
-    WARM_SEED_MAX_MM,
-    _warm_holds,
-    classify,
-)
+from dotbot.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
 from dotbot.robots import robot_geometry
 
 MM_PER_PX = 2.0
@@ -362,114 +356,6 @@ def test_a_detection_carries_its_own_cost():
     assert isinstance(detection, Detection)
     assert detection.elapsed_ms > 0
     print(f"detection on a 250 x 250 raster: {detection.elapsed_ms} ms")
-
-
-# --- seeding one frame from the last ----------------------------------------
-#
-# At `WARP_FPS_MAX` a robot has had a tenth of a second to move, so the
-# previous pose is a good starting point for the template sweep and the
-# outline fit. What these guard is that it is only ever a starting point: the
-# answer still has to be earned from this frame's own evidence, and a robot
-# that was moved or turned must not be held to where it used to be.
-
-
-def test_a_warm_start_agrees_with_the_cold_one():
-    """The second frame of a still robot gives the first frame's answer."""
-    raster = draw_robot(carpet(), CENTRE_PX, 37.0)
-    detector = RobotDetector(MM_PER_PX)
-
-    cold = detector.detect(raster)
-    assert cold.status == "found"
-    warm = detector.detect(raster)
-    assert warm.status == "found"
-
-    assert warm.pose.centre_px == pytest.approx(cold.pose.centre_px, abs=0.5)
-    assert wrap180(
-        warm.pose.heading_atan2_deg - cold.pose.heading_atan2_deg
-    ) == pytest.approx(0.0, abs=0.5)
-
-
-@pytest.mark.parametrize(
-    "moved_px, turned_deg",
-    [
-        ((70.0, 40.0), 0.0),  # picked up and put down elsewhere
-        ((0.0, 0.0), 90.0),  # turned in place, further than the warm sweep
-        ((30.0, 0.0), 140.0),  # both
-    ],
-)
-def test_a_robot_that_moved_is_not_held_to_where_it_was(moved_px, turned_deg):
-    """One frame to recover, and the answer is the cold one.
-
-    The seed narrows the search; it never decides the answer. A fit that
-    stayed near a stale seed fails the refinement limits, which are measured
-    against this frame's own coarse pose, and the frame is searched again
-    from nothing.
-    """
-    first = draw_robot(carpet(), CENTRE_PX, 37.0)
-    second_centre = (CENTRE_PX[0] + moved_px[0], CENTRE_PX[1] + moved_px[1])
-    second = draw_robot(carpet(), second_centre, 37.0 + turned_deg)
-
-    detector = RobotDetector(MM_PER_PX)
-    assert detector.detect(first).status == "found"
-    warm = detector.detect(second)
-
-    cold = RobotDetector(MM_PER_PX).detect(second)
-    assert cold.status == "found"
-    assert warm.status == "found"
-    assert warm.pose.centre_px == pytest.approx(cold.pose.centre_px, abs=1.0)
-    assert wrap180(
-        warm.pose.heading_atan2_deg - cold.pose.heading_atan2_deg
-    ) == pytest.approx(0.0, abs=1.0)
-    # And where the truth is, not merely where the cold path also went.
-    pose = frame_pose(warm.pose, AREA, MM_PER_PX)
-    assert np.allclose(pose["centre_mm"], truth_mm(second_centre), atol=4.0)
-    assert abs(wrap180(pose["heading_atan2_deg"] - (37.0 + turned_deg))) < 3.0
-
-
-def test_an_empty_frame_clears_the_seed():
-    """Nothing to stand behind, nothing to carry forward."""
-    detector = RobotDetector(MM_PER_PX)
-    assert detector.detect(draw_robot(carpet(), CENTRE_PX, 37.0)).status == "found"
-    assert detector._last is not None
-
-    assert detector.detect(carpet()).status == "none"
-    assert detector._last is None
-
-
-def test_a_candidate_far_from_the_last_pose_is_not_seeded():
-    """A robot cannot cross the floor between two warps, so it is another one."""
-    detector = RobotDetector(MM_PER_PX)
-    detector._last = Pose(
-        centre_px=(20.0, 20.0),
-        heading_atan2_deg=0.0,
-        green_lever_mm=30.0,
-        tmpl_margin=1.0,
-        refined=True,
-    )
-    near = (20.0 + WARM_SEED_MAX_MM / MM_PER_PX * 0.5, 20.0)
-    far = (20.0 + WARM_SEED_MAX_MM / MM_PER_PX * 2.0, 20.0)
-    assert detector._warm_seed(near) == ((20.0, 20.0), 0.0)
-    assert detector._warm_seed(far) is None
-
-
-@pytest.mark.parametrize(
-    "fitted",
-    [
-        None,
-        {"refined": False, "tmpl_margin": 1.0, "green_lever_mm": 30.0},
-        {"refined": True, "tmpl_margin": 0.2, "green_lever_mm": 30.0},
-        {"refined": True, "tmpl_margin": 1.0, "green_lever_mm": 3.0},
-    ],
-)
-def test_a_warm_fit_that_earned_nothing_is_thrown_away(fitted):
-    assert _warm_holds(fitted) is False
-
-
-def test_a_warm_fit_that_earned_its_answer_is_kept():
-    assert (
-        _warm_holds({"refined": True, "tmpl_margin": 1.0, "green_lever_mm": 30.0})
-        is True
-    )
 
 
 def test_the_template_margin_measures_the_nose_against_its_flip():
