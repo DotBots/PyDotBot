@@ -1773,6 +1773,101 @@ def test_the_keep_mask_stops_where_the_camera_stops_seeing_floor(synthetic_camer
     assert mask[250, outside] == 0
 
 
+class ThrowingCapture(ScriptedCapture):
+    """A capture that raises once it has delivered `good` frames."""
+
+    def __init__(self, frame, good=2, fps=0.0):
+        super().__init__([], fps=fps)
+        self._frame = frame
+        self._left = good
+
+    def read(self):
+        import time
+
+        time.sleep(0.01)
+        if self._left <= 0:
+            raise RuntimeError("the device went away mid-read")
+        self._left -= 1
+        return True, self._frame
+
+
+def test_a_read_that_raises_ends_the_stream_rather_than_freezing_it(
+    synthetic_camera,
+):
+    """A reader that died still holds a frame, and re-serving it is a lie."""
+    import asyncio
+    import threading
+    import time
+
+    import cv2
+
+    from dotbot.camera.service import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=lambda source: ThrowingCapture(frame),
+    )
+    assert service.start()
+    try:
+        name = f"Camera {DEV_CORNER.name}"
+        alive = lambda: any(  # noqa: E731
+            t.name == name and t.is_alive() for t in threading.enumerate()
+        )
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and alive():
+            time.sleep(0.02)
+        assert not alive()
+        assert service.held()[0] is not None
+
+        async def drain():
+            return [part async for part in service.parts()]
+
+        assert asyncio.run(asyncio.wait_for(drain(), timeout=5.0))
+    finally:
+        service.stop()
+
+
+def test_a_pose_that_will_not_convert_costs_one_record_not_the_detector(
+    synthetic_camera,
+):
+    """Building the record is inside the per-frame guard, not beside it."""
+    import cv2
+
+    from dotbot.camera.service import CameraService
+
+    class BadPoseOnce:
+        """Found on the first frame, with a pose `frame_pose` cannot read."""
+
+        def __init__(self):
+            self.calls = 0
+
+        def detect(self, bgr):
+            from dotbot.camera.detection import Detection
+
+            self.calls += 1
+            if self.calls == 1:
+                return Detection("found", 1, object(), 0.0)
+            return Detection("none", 0, None, 0.0)
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=looping(frame),
+        detector=BadPoseOnce(),
+    )
+    assert service.start()
+    try:
+        record = wait_for_detection(service)
+    finally:
+        service.stop()
+
+    assert record is not None
+    assert record["status"] == "none"
+
+
 def test_stop_joins_the_detector_thread(synthetic_camera):
     import threading
 

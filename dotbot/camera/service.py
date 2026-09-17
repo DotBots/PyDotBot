@@ -278,26 +278,41 @@ class CameraService:
         )
 
     def _read_loop(self) -> None:
-        """Take frames at the device's rate, warp at most `WARP_FPS_MAX`."""
+        """Take frames at the device's rate, warp at most `WARP_FPS_MAX`.
+
+        Whatever ends this thread ends the stream with it: a reader that
+        stopped while `_reading` stayed True would leave the stream serving
+        the same frame forever and the detector waiting for a new one.
+        """
         interval = 1.0 / WARP_FPS_MAX
         next_warp = 0.0
-        while self._reading:
-            ok, frame = self._capture.read()
-            stamp = time.time()
-            if not ok or frame is None:
-                self.logger.info(
-                    "Camera source stopped delivering frames",
-                    source=self.calibration.source,
-                    area=self.area.name,
-                )
-                break
-            now = time.monotonic()
-            if now < next_warp:
-                continue
-            next_warp = now + interval
-            self._warp(frame, stamp)
-        self._reading = False
-        self._pending_event.set()
+        try:
+            while self._reading:
+                ok, frame = self._capture.read()
+                stamp = time.time()
+                if not ok or frame is None:
+                    self.logger.info(
+                        "Camera source stopped delivering frames",
+                        source=self.calibration.source,
+                        area=self.area.name,
+                    )
+                    break
+                now = time.monotonic()
+                if now < next_warp:
+                    continue
+                next_warp = now + interval
+                self._warp(frame, stamp)
+        except Exception as exc:  # pylint:disable=broad-except
+            self.logger.error(
+                "Camera read thread stopped on an error, so the layer serves "
+                "no further frames",
+                source=self.calibration.source,
+                area=self.area.name,
+                error=str(exc),
+            )
+        finally:
+            self._reading = False
+            self._pending_event.set()
 
     def _warp(self, frame, stamp: float) -> None:
         """One frame into the area's raster, held as JPEG and offered to detect.
@@ -321,24 +336,43 @@ class CameraService:
         self._pending_event.set()
 
     def _detect_loop(self) -> None:
-        """Detect on whatever warp is waiting, dropping the ones missed."""
-        while self._reading:
-            self._pending_event.wait(timeout=0.5)
-            self._pending_event.clear()
-            with self._lock:
-                pending, self._pending = self._pending, None
-            if pending is None:
-                continue
-            warped, sequence, stamp = pending
-            try:
-                detection = self._detector.detect(warped)
-            except Exception as exc:  # pylint:disable=broad-except
-                self.logger.warning(
-                    "Camera robot detection failed on a frame",
-                    area=self.area.name,
-                    error=str(exc),
-                )
-                continue
+        """Detect on whatever warp is waiting, dropping the ones missed.
+
+        A detector that dies takes no stream with it, so the layer keeps
+        serving frames; what it must not do is die quietly, which is what
+        the outer guard is for.
+        """
+        try:
+            while self._reading:
+                self._pending_event.wait(timeout=0.5)
+                self._pending_event.clear()
+                with self._lock:
+                    pending, self._pending = self._pending, None
+                if pending is None:
+                    continue
+                record = self._detected(*pending)
+                if record is None or self._on_detection is None:
+                    continue
+                try:
+                    self._on_detection(record)
+                except Exception as exc:  # pylint:disable=broad-except
+                    self.logger.warning(
+                        "Camera detection callback raised",
+                        area=self.area.name,
+                        error=str(exc),
+                    )
+        except Exception as exc:  # pylint:disable=broad-except
+            self.logger.error(
+                "Camera detect thread stopped on an error, so the layer is "
+                "served with no further detections",
+                area=self.area.name,
+                error=str(exc),
+            )
+
+    def _detected(self, warped, sequence: int, stamp: float) -> dict | None:
+        """One warp's record, held for a late console, or None if it failed."""
+        try:
+            detection = self._detector.detect(warped)
             record = {
                 "area": self.area.name,
                 "camera_id": self.calibration.id,
@@ -350,18 +384,17 @@ class CameraService:
             }
             if detection.pose is not None:
                 record["pose"] = frame_pose(detection.pose, self.area, MM_PER_PX)
-            with self._lock:
-                self._detection = record
-                self._detection_sequence = sequence
-            if self._on_detection is not None:
-                try:
-                    self._on_detection(record)
-                except Exception as exc:  # pylint:disable=broad-except
-                    self.logger.warning(
-                        "Camera detection callback raised",
-                        area=self.area.name,
-                        error=str(exc),
-                    )
+        except Exception as exc:  # pylint:disable=broad-except
+            self.logger.warning(
+                "Camera robot detection failed on a frame",
+                area=self.area.name,
+                error=str(exc),
+            )
+            return None
+        with self._lock:
+            self._detection = record
+            self._detection_sequence = sequence
+        return record
 
 
 def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
