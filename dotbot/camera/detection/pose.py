@@ -177,9 +177,9 @@ def features(bgr, keep_mask=None):
     """Scene-adaptive evidence maps, in robust sigmas above the floor's spread.
 
     `keep_mask` restricts the floor statistics to the pixels it marks, so the
-    warp's black border and the white ArUco sheets do not shift the median a
-    camera covering part of its area is measured against. The maps themselves
-    are computed everywhere.
+    warp's black border does not shift the median a camera covering part of
+    its area is measured against. The maps themselves are computed
+    everywhere.
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 

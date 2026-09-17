@@ -105,8 +105,8 @@ def _odd(n):
 def _masked_box_mean(img, valid, ks):
     """Mean of `img` over a `ks` x `ks` box, counting only valid pixels.
 
-    Normalised convolution. A box straddling a masked-out ArUco sheet would
-    otherwise average in zeros and ring a false response around every sheet;
+    Normalised convolution. A box straddling a masked-out region would
+    otherwise average in zeros and ring a false response along its edge;
     `BORDER_CONSTANT` on both numerator and weight makes outside-the-raster
     not exist rather than mirror into structure along every edge.
     """
@@ -185,8 +185,8 @@ def response(
 
     # A robot's whole footprint must lie on known floor for its colour to
     # mean anything, and it needs at least half a surround to be measured
-    # against. That costs a half-robot band along the floor boundary and
-    # around each ArUco sheet, where a robot could not be measured anyway.
+    # against. That costs a half-robot band along the floor boundary, where
+    # a robot could not be measured anyway.
     ok = (valid > 0) & (f_in >= min_valid - 1e-6) & (f_out >= 0.5)
     if ok.sum() < 64:
         zero = np.zeros((wh, ww), np.float32)
