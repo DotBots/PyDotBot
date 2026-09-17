@@ -9,7 +9,10 @@ out would quietly loosen every tolerance below it.
 
 The probe and the choice run against a scripted capture whose `read()`
 returns a planned sequence, handed in on the `open_source` seam. Those
-exercise the rules of 2.8, never a device.
+exercise the choice rules, never a device.
+
+Both the frame and the capture come from `camera_fixtures`, which the sheet
+and detector tests share.
 """
 
 import cv2
