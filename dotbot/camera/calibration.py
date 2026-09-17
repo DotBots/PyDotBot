@@ -38,15 +38,15 @@ import numpy as np
 
 from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import (
-    _num,
-    _toml_escape,
-    _toml_matrix,
-    _toml_points,
     apply_homography,
     calibration_root,
     compute_homography_matrix,
     reprojection_residual_mm,
     site_dir,
+    toml_escape,
+    toml_matrix,
+    toml_num,
+    toml_points,
 )
 from dotbot.calibration.points import CORNERS
 from dotbot.site import SITE_DEFAULT, Site
@@ -1075,18 +1075,18 @@ def camera_canonical_serialisation(calibration: CameraCalibration) -> str:
     for marker in sorted(calibration.markers, key=lambda m: m.id):
         key = f"marker.{marker.id}"
         lines.append(f"{key}.dictionary={marker.dictionary}")
-        lines.append(f"{key}.side_mm={_num(marker.side_mm)}")
+        lines.append(f"{key}.side_mm={toml_num(marker.side_mm)}")
         lines.append(
             f"{key}.corners_mm="
-            + ";".join(f"{_num(x)},{_num(y)}" for x, y in marker.corners_mm)
+            + ";".join(f"{toml_num(x)},{toml_num(y)}" for x, y in marker.corners_mm)
         )
         lines.append(
             f"{key}.corners_px="
-            + ";".join(f"{_num(x)},{_num(y)}" for x, y in marker.corners_px)
+            + ";".join(f"{toml_num(x)},{toml_num(y)}" for x, y in marker.corners_px)
         )
     lines.append(
         "homography.matrix="
-        + ";".join(",".join(_num(v) for v in row) for row in calibration.matrix)
+        + ";".join(",".join(toml_num(v) for v in row) for row in calibration.matrix)
     )
     return "\n".join(sorted(lines))
 
@@ -1110,16 +1110,16 @@ def render_camera_calibration(calibration: CameraCalibration) -> str:
         "",
         "[site]",
         f'name = "{site.name}"',
-        f'anchor = "{_toml_escape(site.anchor)}"',
+        f'anchor = "{toml_escape(site.anchor)}"',
         "",
         "[camera]",
-        f'area = "{_toml_escape(calibration.area)}"',
+        f'area = "{toml_escape(calibration.area)}"',
         f"source = {_toml_source(calibration.source)}",
         f"width = {int(calibration.width)}",
         f"height = {int(calibration.height)}",
-        f"fps = {_num(calibration.fps)}",
-        f'lens = "{_toml_escape(calibration.lens)}"',
-        f'intrinsics = "{_toml_escape(calibration.intrinsics)}"',
+        f"fps = {toml_num(calibration.fps)}",
+        f'lens = "{toml_escape(calibration.lens)}"',
+        f'intrinsics = "{toml_escape(calibration.intrinsics)}"',
         f"reads = {int(calibration.reads)}",
     ]
     for marker in sorted(calibration.markers, key=lambda m: m.id):
@@ -1128,17 +1128,17 @@ def render_camera_calibration(calibration: CameraCalibration) -> str:
             "[[marker]]",
             f"id = {marker.id}",
             f'dictionary = "{marker.dictionary}"',
-            f"side_mm = {_num(marker.side_mm)}",
-            f"centre_mm = [{_num(marker.centre_mm[0])}, {_num(marker.centre_mm[1])}]",
-            f"corners_mm = {_toml_points(marker.corners_mm)}",
-            f"corners_px = {_toml_points(marker.corners_px)}",
+            f"side_mm = {toml_num(marker.side_mm)}",
+            f"centre_mm = [{toml_num(marker.centre_mm[0])}, {toml_num(marker.centre_mm[1])}]",
+            f"corners_mm = {toml_points(marker.corners_mm)}",
+            f"corners_px = {toml_points(marker.corners_px)}",
         ]
     out += [
         "",
         "[homography]",
-        f"matrix = {_toml_matrix(calibration.matrix)}",
-        f"residual_mm = {_num(calibration.residual_mm)}",
-        f"span_mm = {_toml_points(calibration.span_mm)}",
+        f"matrix = {toml_matrix(calibration.matrix)}",
+        f"residual_mm = {toml_num(calibration.residual_mm)}",
+        f"span_mm = {toml_points(calibration.span_mm)}",
     ]
     return "\n".join(out) + "\n"
 
@@ -1147,7 +1147,7 @@ def _toml_source(source: int | str) -> str:
     """The source as TOML: an index as a number, anything else as a string."""
     if isinstance(source, int) and not isinstance(source, bool):
         return str(source)
-    return f'"{_toml_escape(str(source))}"'
+    return f'"{toml_escape(str(source))}"'
 
 
 def read_camera_calibration_file(path: Path) -> CameraCalibration:
