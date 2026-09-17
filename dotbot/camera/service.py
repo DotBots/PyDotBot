@@ -92,6 +92,7 @@ class CameraService:
             calibration.matrix, calibration.width, calibration.height
         )
         self.keep_mask: np.ndarray | None = None
+        self._injected_detector = detector
         self._detector = detector
         self._on_detection = on_detection
         self._detect_thread: threading.Thread | None = None
@@ -179,8 +180,10 @@ class CameraService:
             (self.calibration.width, self.calibration.height),
             self.raster,
         )
-        if self._detector is None:
-            self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
+        # The mask is recomputed here, so the detector holding it is too.
+        self._detector = self._injected_detector or RobotDetector(
+            MM_PER_PX, self.keep_mask
+        )
         self._detect_thread = threading.Thread(
             target=self._detect_loop,
             name=f"Camera {self.area.name} detect",

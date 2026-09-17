@@ -267,6 +267,23 @@ def test_importing_the_detector_does_not_need_opencv():
     assert "OK" in result.stdout
 
 
+def test_the_detector_does_not_drag_in_the_controller():
+    """It is tuned by running it on saved photographs with no controller."""
+    code = (
+        "import sys;"
+        "sys.modules['cv2'] = None;"
+        "import dotbot.camera.detection;"
+        "held = {'dotbot.controller', 'dotbot.camera.service', 'dotbot.server'};"
+        "assert not held & set(sys.modules), sorted(held & set(sys.modules));"
+        "print('OK')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
 def test_a_detection_carries_its_own_cost():
     """What one frame cost, so a bench machine reports its own budget."""
     raster = draw_robot(carpet(), CENTRE_PX, 37.0)

@@ -993,13 +993,16 @@ class Controller:
                     name="Dotbots status refresh", coro=self._dotbots_status_refresh()
                 ),
                 asyncio.create_task(
-                    name="Camera detections push",
-                    coro=self._camera_detections_push(),
-                ),
-                asyncio.create_task(
                     name="Start communication adapter", coro=self._start_adapter()
                 ),
             ]
+            if self.cameras:
+                tasks.append(
+                    asyncio.create_task(
+                        name="Camera detections push",
+                        coro=self._camera_detections_push(),
+                    )
+                )
             await asyncio.gather(*tasks)
         except (
             SerialInterfaceException,

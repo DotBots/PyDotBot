@@ -21,6 +21,9 @@ from dotbot.camera.detection.pose import (
     AXLE_BEHIND_CENTRE_MM,
     CONN_MM,
     OUTLINE_MM,
+    TRACK_MM,
+    TYRE_D_MM,
+    TYRE_W_MM,
     axes,
 )
 from dotbot.camera.sheets import MARKER_DICTIONARY, MARKER_SIDE_MM
@@ -51,9 +54,6 @@ CARPET_BGR = (150, 150, 150)
 BOARD_BGR = (60, 140, 40)
 CONNECTOR_BGR = (40, 40, 200)
 TYRE_BGR = (30, 30, 30)
-
-# The tyres the estimator's own template carries.
-TRACK_MM, TYRE_W_MM, TYRE_D_MM = 85.0, 18.0, 40.0
 
 
 # --- The sheets, through a plausible overhead view ---------------------------

@@ -46,9 +46,6 @@ AXLE_BEHIND_CENTRE_MM = 24.5
 # and the lighthouse's point the same point.
 PHOTODIODE_AHEAD_MM = _GEOMETRY.board_length_mm / 2 - _GEOMETRY.diode_to_front_mm
 
-# Outline centre to the tip of the nose, forwards: the outline's own extent.
-NOSE_AHEAD_MM = 47.5
-
 # Board outline in the robot frame, transcribed from the Edge.Cuts layer of
 # the v3 main board: an 84 mm nose and the step down to the 57 mm tail at
 # y = +1.5.
@@ -72,11 +69,20 @@ OUTLINE_MM = np.array(
     float,
 )
 
+# Outline centre to the tip of the nose, forwards: the outline's own extent.
+NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
+
 # The two motor connectors, in the same robot frame.
 CONN_MM = [
     np.array([(-19.5, -29.5), (-7.5, -29.5), (-7.5, -19.5), (-19.5, -19.5)], float),
     np.array([(7.5, -29.5), (19.5, -29.5), (19.5, -19.5), (7.5, -19.5)], float),
 ]
+
+# The tyres, as the template draws them: the track between their centres,
+# and one tyre's width and depth.
+TRACK_MM = 85.0
+TYRE_W_MM = 18.0
+TYRE_D_MM = 40.0
 
 SS = 4  # supersampling for anti-aliased template rendering
 
@@ -363,7 +369,14 @@ class OutlineFit:
 class Template:
     """Synthetic top-down DotBot, used only for the 180 degree margin check."""
 
-    def __init__(self, mm_per_px, half_mm=78.0, track=85.0, tyre_w=18.0, tyre_d=40.0):
+    def __init__(
+        self,
+        mm_per_px,
+        half_mm=78.0,
+        track=TRACK_MM,
+        tyre_w=TYRE_W_MM,
+        tyre_d=TYRE_D_MM,
+    ):
         import cv2  # lazy: opencv-python is only required to run the detector
 
         self.mmpp = float(mm_per_px)
@@ -460,7 +473,12 @@ def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
 
 
 def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None):
-    """Pose of the one robot the region `reg` covers, or None."""
+    """Pose of the one robot the region `reg` covers, or None.
+
+    `centre`, `heading`, `green_lever_mm`, `tmpl_margin` and `refined` are
+    what a caller reads; the rest of the dict is tuning diagnostics and may
+    go without notice.
+    """
     out = coarse_pose(features_map, reg, mm_per_px)
     if out is None:
         return None
