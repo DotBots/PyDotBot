@@ -14,6 +14,12 @@ the frame's size, both of which hold for the whole registration, so the
 camera's coverage rides in the descriptor as one polygon rather than in
 every frame as an alpha channel.
 
+A detector runs on a third thread, fed the warped array before it is
+encoded: JPEG chroma subsampling destroys the red-connector evidence the
+pose turns on. The slot between the two threads holds one frame, so a
+detector slower than the warp processes every Nth frame and neither the
+warp nor the stream ever waits on it.
+
 `cv2` is imported inside the methods that use it, so importing this module
 costs nothing without the `[calibrate]` extra.
 """
@@ -29,12 +35,15 @@ import numpy as np
 
 from dotbot.area import Area
 from dotbot.calibration.camera import (
+    PAGE_HEIGHT_MM,
+    PAGE_WIDTH_MM,
     CameraCalibration,
     capture_fps,
     open_capture,
     release_capture,
     settle,
 )
+from dotbot.detection import RobotDetector, frame_pose
 from dotbot.logger import LOGGER
 
 # The raster a camera is warped into: one pixel per two millimetres of
@@ -60,7 +69,9 @@ class CameraService:
 
     `open_source` is the seam a scripted capture is handed in on, the same
     one `collect` probes through, so the mode check and the warp are
-    exercisable without a device.
+    exercisable without a device. `detector` is the same seam for the robot
+    detector, and `on_detection` is called with every record it produces,
+    on the detector's own thread.
     """
 
     def __init__(
@@ -69,6 +80,8 @@ class CameraService:
         area: Area,
         open_source: Callable | None = None,
         logger=None,
+        detector: RobotDetector | None = None,
+        on_detection: Callable[[dict], None] | None = None,
     ):
         self.calibration = calibration
         self.area = area
@@ -84,6 +97,14 @@ class CameraService:
         self.coverage_mm = _coverage_mm(
             calibration.matrix, calibration.width, calibration.height
         )
+        self.keep_mask: np.ndarray | None = None
+        self._detector = detector
+        self._on_detection = on_detection
+        self._detect_thread: threading.Thread | None = None
+        self._pending: tuple[np.ndarray, int, float] | None = None
+        self._pending_event = threading.Event()
+        self._detection: dict | None = None
+        self._detection_sequence = 0
 
     @property
     def raster(self) -> tuple[int, int]:
@@ -167,7 +188,18 @@ class CameraService:
 
         self._capture = capture
         self._reading = True
-        self._warp(settled.frame)
+        self.keep_mask = _keep_mask(
+            self.transform, self.calibration, self.area, self.raster
+        )
+        if self._detector is None:
+            self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
+        self._detect_thread = threading.Thread(
+            target=self._detect_loop,
+            name=f"Camera {self.area.name} detect",
+            daemon=True,
+        )
+        self._detect_thread.start()
+        self._warp(settled.frame, time.time())
         self._thread = threading.Thread(
             target=self._read_loop,
             name=f"Camera {self.area.name}",
@@ -179,6 +211,10 @@ class CameraService:
     def stop(self) -> None:
         """Stop reading, drop the held frame and release the device."""
         self._reading = False
+        self._pending_event.set()
+        detect_thread, self._detect_thread = self._detect_thread, None
+        if detect_thread is not None:
+            detect_thread.join(timeout=2.0)
         thread, self._thread = self._thread, None
         if thread is not None:
             thread.join(timeout=2.0)
@@ -187,11 +223,19 @@ class CameraService:
             release_capture(capture)
         with self._lock:
             self._jpeg = None
+            self._pending = None
+            self._detection = None
+            self._detection_sequence = 0
 
     def held(self) -> tuple[bytes | None, int]:
         """The latest warped JPEG and the count of warps behind it."""
         with self._lock:
             return self._jpeg, self._sequence
+
+    def held_detection(self) -> tuple[dict | None, int]:
+        """The latest detection record and the warp it was taken from."""
+        with self._lock:
+            return self._detection, self._detection_sequence
 
     async def parts(self):
         """The held frame as `multipart/x-mixed-replace` parts.
@@ -241,6 +285,7 @@ class CameraService:
         next_warp = 0.0
         while self._reading:
             ok, frame = self._capture.read()
+            stamp = time.time()
             if not ok or frame is None:
                 self.logger.info(
                     "Camera source stopped delivering frames",
@@ -252,11 +297,16 @@ class CameraService:
             if now < next_warp:
                 continue
             next_warp = now + interval
-            self._warp(frame)
+            self._warp(frame, stamp)
         self._reading = False
+        self._pending_event.set()
 
-    def _warp(self, frame) -> None:
-        """One frame into the area's raster, held as JPEG."""
+    def _warp(self, frame, stamp: float) -> None:
+        """One frame into the area's raster, held as JPEG and offered to detect.
+
+        `warpPerspective` allocates its own output and nothing mutates it
+        afterwards, so the detector reads the same array rather than a copy.
+        """
         import cv2  # lazy: opencv-python is only required to warp a frame
 
         width, height = self.raster
@@ -269,6 +319,51 @@ class CameraService:
         with self._lock:
             self._jpeg = buffer.tobytes()
             self._sequence += 1
+            self._pending = (warped, self._sequence, stamp)
+        self._pending_event.set()
+
+    def _detect_loop(self) -> None:
+        """Detect on whatever warp is waiting, dropping the ones missed."""
+        while self._reading:
+            self._pending_event.wait(timeout=0.5)
+            self._pending_event.clear()
+            with self._lock:
+                pending, self._pending = self._pending, None
+            if pending is None:
+                continue
+            warped, sequence, stamp = pending
+            try:
+                detection = self._detector.detect(warped)
+            except Exception as exc:  # pylint:disable=broad-except
+                self.logger.warning(
+                    "Camera robot detection failed on a frame",
+                    area=self.area.name,
+                    error=str(exc),
+                )
+                continue
+            record = {
+                "area": self.area.name,
+                "camera_id": self.calibration.id,
+                "sequence": sequence,
+                "timestamp": stamp,
+                "status": detection.status,
+                "candidates": detection.candidates,
+                "elapsed_ms": detection.elapsed_ms,
+            }
+            if detection.pose is not None:
+                record["pose"] = frame_pose(detection.pose, self.area, MM_PER_PX)
+            with self._lock:
+                self._detection = record
+                self._detection_sequence = sequence
+            if self._on_detection is not None:
+                try:
+                    self._on_detection(record)
+                except Exception as exc:  # pylint:disable=broad-except
+                    self.logger.warning(
+                        "Camera detection callback raised",
+                        area=self.area.name,
+                        error=str(exc),
+                    )
 
 
 def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
@@ -295,6 +390,38 @@ def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
         return []
     points = mapped[:, :2] / divisor[:, None]
     return [[float(x), float(y)] for x, y in points]
+
+
+def _keep_mask(
+    transform, calibration: CameraCalibration, area: Area, raster: tuple[int, int]
+) -> np.ndarray:
+    """The raster pixels that are floor this camera can be believed about.
+
+    The source frame's own rectangle through the same transform, eroded so
+    the warp's interpolated edge is not floor, minus one A4 page per marker:
+    a printed sheet is a robot-sized high-contrast object and reads as a
+    candidate. Masking a page the operator has since removed costs a robot
+    standing exactly on that corner.
+    """
+    import cv2  # lazy: opencv-python is only required to warp a frame
+
+    width, height = raster
+    source = np.full((int(calibration.height), int(calibration.width)), 255, np.uint8)
+    valid = cv2.warpPerspective(
+        source, transform, (width, height), flags=cv2.INTER_NEAREST
+    )
+    mask = cv2.erode(valid, np.ones((3, 3), np.uint8))
+    half = np.array([PAGE_WIDTH_MM / 2, PAGE_HEIGHT_MM / 2])
+    origin = np.array([float(area.x), float(area.y)])
+    for marker in calibration.markers:
+        centre = np.asarray(marker.centre_mm, float)
+        low = (centre - half - origin) / MM_PER_PX
+        high = (centre + half - origin) / MM_PER_PX
+        mask[
+            max(0, int(np.floor(low[1]))) : max(0, int(np.ceil(high[1]))),
+            max(0, int(np.floor(low[0]))) : max(0, int(np.ceil(high[0]))),
+        ] = 0
+    return mask
 
 
 def _raster_transform(matrix, area: Area) -> np.ndarray:

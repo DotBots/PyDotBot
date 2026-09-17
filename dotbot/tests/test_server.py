@@ -1442,3 +1442,399 @@ async def test_the_warp_has_no_source_outside_the_coverage_polygon(
     outside = int((edge + 40 - DEV_CORNER.x) / MM_PER_PX)
     assert grey[250, inside] > 192  # the bare floor between the sheets
     assert grey[250, outside] == 0  # no source, so the warp's border fill
+
+
+# --- The robot detector on the camera layer ---------------------------------
+#
+# The detector runs on its own thread inside the service, fed the warped
+# array before it is encoded. These tests drive it through the same
+# `open_source` seam the warp tests use, on a colour variant of the
+# synthetic frame: the four sheets as the registration was solved on, plus
+# one robot drawn from the estimator's own outline at a known place on the
+# floor. That makes the whole path frame -> warp -> raster -> detect ->
+# frame millimetres checkable with no camera in the room, and the accuracy
+# it shows is the plumbing's, not a lens's.
+
+CARPET_BGR = (150, 150, 150)
+BOARD_BGR = (60, 140, 40)
+CONNECTOR_BGR = (40, 40, 200)
+TYRE_BGR = (30, 30, 30)
+
+# The source frame is drawn at this multiple and box-filtered down, the same
+# way the grayscale fixture is, so the robot's edges carry anti-aliasing.
+COLOUR_SUPERSAMPLE = 2
+
+
+def synthetic_colour_frame(area=DEV_CORNER, robots=(), seed=11):
+    """The area's sheets and `robots` through the fixture's own homography.
+
+    Each robot is `(centre_mm, heading_atan2_deg)` in frame millimetres and
+    the detector's heading convention: 0 along +x, +90 along +y.
+    """
+    import cv2
+    import numpy as np
+
+    from dotbot.calibration.camera import MARKER_DICTIONARY, marker_layout
+    from dotbot.detection.pose import CONN_MM, OUTLINE_MM, axes
+    from dotbot.tests.test_calibration_camera_collect import (
+        FRAME_HEIGHT,
+        FRAME_WIDTH,
+        _draw_marker,
+        ground_truth_mm_to_px,
+        project,
+    )
+    from dotbot.tests.test_detection import tyre_polygons_mm
+
+    scale = COLOUR_SUPERSAMPLE
+    mm_to_px = ground_truth_mm_to_px()
+    dictionary = cv2.aruco.getPredefinedDictionary(
+        getattr(cv2.aruco, MARKER_DICTIONARY)
+    )
+    big = np.full((FRAME_HEIGHT * scale, FRAME_WIDTH * scale, 3), CARPET_BGR, np.uint8)
+
+    # Each sheet is drawn on its own grey plane and then painted in where it
+    # landed, so the marker's white border reaches the colour canvas as the
+    # page rather than as a transparent nothing.
+    for marker in marker_layout(area):
+        plane = np.zeros(big.shape[:2], np.uint8)
+        _draw_marker(
+            plane, dictionary, marker.id, marker.centre_mm, mm_to_px, (0.0, 0.0), scale
+        )
+        painted = plane > 0
+        big[painted] = np.repeat(plane[painted][:, None], 3, axis=1)
+
+    for centre_mm, heading in robots:
+        right, forward = axes(heading)
+
+        def fill(polygon_mm, colour, centre=centre_mm, r=right, f=forward):
+            points_mm = [
+                (
+                    centre[0] + p[0] * r[0] + p[1] * f[0],
+                    centre[1] + p[0] * r[1] + p[1] * f[1],
+                )
+                for p in polygon_mm
+            ]
+            q = project(mm_to_px, points_mm) * scale + (scale - 1) / 2.0
+            cv2.fillPoly(big, [np.round(q).astype(np.int32)], colour)
+
+        fill(OUTLINE_MM, BOARD_BGR)
+        for tyre in tyre_polygons_mm():
+            fill(tyre, TYRE_BGR)
+        for connector in CONN_MM:
+            fill(connector, CONNECTOR_BGR)
+
+    frame = cv2.resize(big, (FRAME_WIDTH, FRAME_HEIGHT), interpolation=cv2.INTER_AREA)
+    rng = np.random.default_rng(seed)
+    noisy = frame.astype(np.float32) + rng.normal(0.0, 4.0, frame.shape)
+    return np.clip(noisy, 0, 255).astype(np.uint8)
+
+
+def wait_for_detection(service, timeout=10.0):
+    """The service's first detection record, or None if it never produced one."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record, _ = service.held_detection()
+        if record is not None:
+            return record
+        time.sleep(0.02)
+    return None
+
+
+class LoopingCapture(ScriptedCapture):
+    """A capture delivering one frame for as long as it is read.
+
+    A scripted list runs out in microseconds, which is one warp; a camera
+    that keeps delivering is what a test about rates needs.
+    """
+
+    def __init__(self, frame, fps=0.0, interval=0.01):
+        super().__init__([], fps=fps)
+        self._frame = frame
+        self._interval = interval
+
+    def read(self):
+        import time
+
+        time.sleep(self._interval)
+        return True, self._frame
+
+
+def looping(frame, **mode):
+    """An `open_source` handing back a capture that never runs out."""
+    return lambda source: LoopingCapture(frame, **mode)
+
+
+class RecordingDetector:
+    """A detector that keeps what it was handed and finds nothing."""
+
+    def __init__(self):
+        self.frames = []
+
+    def detect(self, bgr):
+        from dotbot.detection import Detection
+
+        self.frames.append(bgr)
+        return Detection("none", 0, None, 0.0)
+
+
+def test_the_detector_sees_the_uncompressed_warp(synthetic_camera):
+    """What the detector reads is the warp itself, never the served JPEG.
+
+    JPEG chroma subsampling destroys the red-connector evidence the 180
+    degree decision turns on, so the detector is fed before the encode.
+    """
+    import cv2
+    import numpy as np
+
+    from dotbot.camera import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    detector = RecordingDetector()
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+        detector=detector,
+    )
+    assert service.start()
+    try:
+        assert wait_for_detection(service) is not None
+    finally:
+        service.stop()
+
+    assert detector.frames
+    seen = detector.frames[0]
+    assert isinstance(seen, np.ndarray)
+    expected = cv2.warpPerspective(frame, service.transform, service.raster)
+    assert np.array_equal(seen, expected)
+
+
+def test_a_colour_frame_with_a_robot_is_detected_in_frame_millimetres():
+    """One robot on the floor, reported where it was drawn.
+
+    The truth is in frame millimetres, so this exercises the whole path
+    from the source frame through the warp and the raster back to
+    millimetres, including the origin of the area.
+    """
+    import numpy as np
+
+    from dotbot.camera import CameraService
+    from dotbot.detection.pose import axes
+
+    truth_mm = (1500.0, 500.0)
+    heading = 37.0
+    frame = synthetic_colour_frame(DEV_CORNER, [(truth_mm, heading)])
+    calibration = _registration_for(frame)
+    service = CameraService(
+        calibration,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+    )
+    assert service.start()
+    try:
+        record = wait_for_detection(service)
+    finally:
+        service.stop()
+
+    assert record is not None
+    assert record["status"] == "found"
+    assert record["area"] == "dev-corner"
+    assert record["camera_id"] == calibration.id
+    pose = record["pose"]
+    assert np.allclose(pose["centre_mm"], truth_mm, atol=4.0)
+    assert abs(((pose["heading_atan2_deg"] - heading) + 180) % 360 - 180) < 3.0
+    assert abs(((pose["heading_deg"] - (heading - 90)) + 180) % 360 - 180) < 3.0
+    _, forward = axes(pose["heading_atan2_deg"])
+    centre = np.asarray(pose["centre_mm"])
+    assert np.allclose(pose["photodiode_mm"], centre + forward * 29.0, atol=0.1)
+
+
+def test_no_robot_reports_none_not_nothing(synthetic_camera):
+    """An empty floor produces records saying so, not an absence of records."""
+    import cv2
+
+    from dotbot.camera import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+    )
+    assert service.start()
+    try:
+        record = wait_for_detection(service)
+    finally:
+        service.stop()
+
+    assert record is not None
+    assert record["status"] == "none"
+    assert "pose" not in record
+    assert record["candidates"] == 0
+
+
+def test_on_detection_is_called_off_the_warp_thread_and_survives_an_exception(
+    synthetic_camera,
+):
+    """A callback that raises costs one record, never the stream."""
+    import time
+
+    import cv2
+
+    from dotbot.camera import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    seen = []
+
+    def on_detection(record):
+        seen.append(record)
+        if len(seen) == 1:
+            raise RuntimeError("the consumer fell over")
+
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=looping(frame),
+        on_detection=on_detection,
+    )
+    assert service.start()
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and len(seen) < 3:
+            time.sleep(0.02)
+        warps = service.held()[1]
+        while time.monotonic() < deadline and service.held()[1] <= warps:
+            time.sleep(0.02)
+        assert len(seen) >= 3
+        assert service.held()[1] > warps
+    finally:
+        service.stop()
+
+
+def test_the_keep_mask_covers_the_area_minus_the_sheets(synthetic_camera):
+    """Floor the camera can see, with the four printed pages cut out of it."""
+    import cv2
+
+    from dotbot.calibration.camera import PAGE_HEIGHT_MM, PAGE_WIDTH_MM
+    from dotbot.camera import MM_PER_PX, CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=delivering(frame, fps=0.0),
+    )
+    assert service.start()
+    try:
+        mask = service.keep_mask
+    finally:
+        service.stop()
+
+    width, height = service.raster
+    assert mask.shape == (height, width)
+    assert mask[height // 2, width // 2] == 255
+    for marker in synthetic_camera.markers:
+        x = int((marker.centre_mm[0] - DEV_CORNER.x) / MM_PER_PX)
+        y = int((marker.centre_mm[1] - DEV_CORNER.y) / MM_PER_PX)
+        assert mask[y, x] == 0
+        # A corner of the page, just inside it.
+        dx = int((PAGE_WIDTH_MM / 2 - 5) / MM_PER_PX)
+        dy = int((PAGE_HEIGHT_MM / 2 - 5) / MM_PER_PX)
+        assert (
+            mask[min(max(y - dy, 0), height - 1), min(max(x - dx, 0), width - 1)] == 0
+        )
+
+
+def test_the_keep_mask_stops_where_the_camera_stops_seeing_floor(synthetic_camera):
+    """The same crop the coverage test uses: no source, so not floor."""
+    import dataclasses
+
+    import cv2
+
+    from dotbot.camera import MM_PER_PX, CameraService
+
+    columns = 900
+    frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
+    cropped = dataclasses.replace(synthetic_camera, width=columns)
+    service = CameraService(cropped, DEV_CORNER, open_source=delivering(frame, fps=0.0))
+    assert service.start()
+    try:
+        mask = service.keep_mask
+    finally:
+        service.stop()
+
+    edge = max(x for x, _ in service.coverage_mm)
+    inside = int((edge - 40 - DEV_CORNER.x) / MM_PER_PX)
+    outside = int((edge + 40 - DEV_CORNER.x) / MM_PER_PX)
+    assert mask[250, inside] == 255
+    assert mask[250, outside] == 0
+
+
+def test_stop_joins_the_detector_thread(synthetic_camera):
+    import threading
+
+    import cv2
+
+    from dotbot.camera import CameraService
+
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+    )
+    assert service.start()
+    assert wait_for_detection(service) is not None
+    service.stop()
+
+    name = f"Camera {DEV_CORNER.name} detect"
+    assert not any(t.name == name and t.is_alive() for t in threading.enumerate())
+    assert service.held_detection() == (None, 0)
+
+
+def _registration_for(frame):
+    """A registration solved on `frame`, the way the fixture solves one."""
+    from dotbot.calibration.camera import (
+        CameraCalibration,
+        build_detector,
+        detect_markers,
+        marker_layout,
+        solve,
+        span_mm,
+    )
+
+    layout = marker_layout(DEV_CORNER)
+    corners = detect_markers(frame, build_detector())
+    solution = solve(layout, corners)
+    height, width = frame.shape[:2]
+    return CameraCalibration(
+        site=Site(name="c405-arena", anchor="the arena's top-left corner"),
+        area=DEV_CORNER.name,
+        source="synthetic-colour",
+        width=width,
+        height=height,
+        fps=0.0,
+        markers=_marker_observations(layout, corners),
+        matrix=solution.matrix,
+        residual_mm=solution.residual_mm,
+        span_mm=span_mm(layout),
+        created="2026-09-15T13:42:00Z",
+    )
+
+
+def _marker_observations(layout, corners_px):
+    """The layout and what was seen of it, as the file records them."""
+    from dotbot.calibration.camera import MarkerObservation
+
+    return [
+        MarkerObservation(
+            id=marker.id,
+            centre_mm=marker.centre_mm,
+            corners_mm=marker.corners_mm,
+            corners_px=tuple(tuple(p) for p in corners_px[marker.id]),
+        )
+        for marker in layout
+        if marker.id in corners_px
+    ]
