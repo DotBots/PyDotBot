@@ -11,8 +11,9 @@ Three steps, each one settling a different thing:
    abort signals - `green_lever_mm` and `tmpl_margin` - are what stop the
    estimator lying when it is out of its depth.
 2. `template_search` scores a synthetic top-down robot against the frame's
-   evidence maps, at the coarse heading and at the coarse heading plus 180,
-   and reports the margin between them.
+   evidence maps, at the coarse heading and at the coarse heading plus 180.
+   The difference, `tmpl_margin`, is the only thing the template produces:
+   it says how much better the nose fits one way round than the other.
 3. `OutlineFit` does a sub-pixel rigid fit of the real board outline to a
    signed board-versus-floor evidence map, which is what puts the centre and
    the heading where they are finally reported from.
@@ -88,11 +89,6 @@ SS = 4  # supersampling for anti-aliased template rendering
 MAX_REFINE_SHIFT_MM = 14.0
 MAX_REFINE_TURN_DEG = 18.0
 
-# How far either side of its starting heading the template sweep looks. The
-# cold window is wide enough to cover the coarse pose's own error; the warm
-# one is a bound on how far a DotBot turns between two warps.
-COLD_SWEEP_DEG = 30.0
-WARM_SWEEP_DEG = 10.0
 
 # The outline fit's window, in millimetres: a 95 mm robot plus the shift
 # tolerance either side.
@@ -469,9 +465,8 @@ def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
 def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None, warm=None):
     """Pose of the one robot the region `reg` covers, or None.
 
-    `warm` is `(centre_px, heading_deg)` from a previous frame. It narrows
-    the template sweep to `WARM_SWEEP_DEG` either side of that heading and
-    starts the outline fit there.
+    `warm` is `(centre_px, heading_deg)` from a previous frame: the outline
+    fit starts there rather than at this frame's coarse pose.
 
     A seed cannot carry a stale answer through: `refined` is set by
     comparing the fitted pose against this frame's own coarse pose, which is
@@ -486,26 +481,13 @@ def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None, war
     out["refined"] = False
     out["warm"] = warm is not None
     if refine and tmpl is not None:
-        if warm is None:
-            sweep_centre, sweep_half = out["heading"], COLD_SWEEP_DEG
-        else:
-            sweep_centre, sweep_half = float(warm[1]), WARM_SWEEP_DEG
-        coarse = np.arange(
-            sweep_centre - sweep_half, sweep_centre + sweep_half + 0.01, 2.0
-        )
-        b, _ = template_search(features_map, out["centre"], tmpl, coarse)
-        fine = np.arange(b[1] - 2, b[1] + 2.01, 0.5)
-        b, _ = template_search(features_map, out["centre"], tmpl, fine)
-        opp, _ = template_search(
-            features_map, out["centre"], tmpl, [out["heading"] + 180.0]
-        )
-        out.update(
-            tmpl_heading=b[1],
-            tmpl_score=b[0],
-            tmpl_score_opp=opp[0],
-            tmpl_margin=b[0] - opp[0],
-            tmpl_centre=np.array([b[2], b[3]], float),
-        )
+        # The template answers one question: is the nose at the coarse
+        # heading or at its flip? Two scores answer it, and nothing else the
+        # template could say is used - the pose comes from the outline fit
+        # below, seeded and bounded by the coarse heading, never by this.
+        ahead, behind = out["heading"], out["heading"] + 180.0
+        _, scores = template_search(features_map, out["centre"], tmpl, [ahead, behind])
+        out["tmpl_margin"] = scores[float(ahead)] - scores[float(behind)]
     if refine:
         if fit is None:
             fit = OutlineFit(features_map, mm_per_px)

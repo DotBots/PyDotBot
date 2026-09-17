@@ -459,3 +459,69 @@ def test_a_warm_fit_that_earned_its_answer_is_kept():
         _warm_holds({"refined": True, "tmpl_margin": 1.0, "green_lever_mm": 30.0})
         is True
     )
+
+
+def test_the_template_margin_measures_the_nose_against_its_flip():
+    """The margin is the one thing the template says, and which way round.
+
+    Inverting the two scores would refuse every correct pose and accept
+    every backwards one, and the drawn outline would be 180 degrees out with
+    nothing else looking wrong.
+    """
+    from dotbot.detection.pose import (
+        Template,
+        coarse_pose,
+        features,
+        robot_mask,
+        template_search,
+    )
+
+    raster = draw_robot(carpet(), CENTRE_PX, 37.0)
+    detection = RobotDetector(MM_PER_PX).detect(raster)
+    assert detection.status == "found"
+    assert detection.pose.tmpl_margin > 0
+
+    features_map = features(raster)
+    region = robot_mask(features_map) > 0
+    coarse = coarse_pose(features_map, region, MM_PER_PX)
+    ahead = coarse["heading"]
+    _, scores = template_search(
+        features_map,
+        coarse["coarse_centre"],
+        Template(MM_PER_PX),
+        [ahead, ahead + 180.0],
+    )
+    assert scores[float(ahead)] > scores[float(ahead + 180.0)]
+    assert detection.pose.tmpl_margin == pytest.approx(
+        scores[float(ahead)] - scores[float(ahead + 180.0)], abs=0.05
+    )
+
+
+def test_a_lower_scoring_heading_understates_the_margin():
+    """A coarse heading off the true best can only make the gate stricter.
+
+    The margin is scored at the coarse heading, not at the best one, so it
+    is bounded above by what a search would have found. The gate therefore
+    fails closed when the coarse pose is a few degrees out.
+    """
+    from dotbot.detection.pose import (
+        Template,
+        coarse_pose,
+        features,
+        robot_mask,
+        template_search,
+    )
+
+    raster = draw_robot(carpet(), CENTRE_PX, 37.0)
+    features_map = features(raster)
+    region = robot_mask(features_map) > 0
+    coarse = coarse_pose(features_map, region, MM_PER_PX)
+    centre, ahead = coarse["coarse_centre"], coarse["heading"]
+    template = Template(MM_PER_PX)
+
+    _, scores = template_search(features_map, centre, template, [ahead, ahead + 180.0])
+    reported = scores[float(ahead)] - scores[float(ahead + 180.0)]
+
+    swept = np.arange(ahead - 10.0, ahead + 10.01, 2.0)
+    best, _ = template_search(features_map, centre, template, swept)
+    assert reported <= best[0] - scores[float(ahead + 180.0)] + 1e-9
