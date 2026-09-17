@@ -15,6 +15,12 @@ Importing this package costs nothing without the `[calibrate]` extra: every
 `cv2` import sits inside the function that uses it.
 """
 
-from dotbot.detection.robot import Detection, Pose, RobotDetector, frame_pose, wrap180
+from dotbot.camera.detection.robot import (
+    Detection,
+    Pose,
+    RobotDetector,
+    frame_pose,
+    wrap180,
+)
 
 __all__ = ["Detection", "Pose", "RobotDetector", "frame_pose", "wrap180"]

@@ -51,7 +51,7 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
-from dotbot.camera import WARP_FPS_MAX, CameraService
+from dotbot.camera.service import WARP_FPS_MAX, CameraService
 from dotbot.csv_data_logger import (
     CameraCSVLogger,
     CSVDataLogger,
@@ -111,7 +111,7 @@ def load_calibration(spec: str, site: Optional[str] = None):
 
 def load_camera_calibration(spec: str, site: Optional[str] = None):
     """The camera registration `spec` names: a file path or an id prefix."""
-    from dotbot.calibration.camera import load_camera_calibration as _load
+    from dotbot.camera.calibration import load_camera_calibration as _load
 
     return _load(spec, site=site)
 

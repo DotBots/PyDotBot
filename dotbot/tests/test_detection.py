@@ -19,10 +19,10 @@ import numpy as np
 import pytest
 
 from dotbot.area import Area
-from dotbot.detection import Detection, Pose, RobotDetector, frame_pose
-from dotbot.detection import propose as proposer
-from dotbot.detection import wrap180
-from dotbot.detection.pose import (
+from dotbot.camera.detection import Detection, Pose, RobotDetector, frame_pose
+from dotbot.camera.detection import propose as proposer
+from dotbot.camera.detection import wrap180
+from dotbot.camera.detection.pose import (
     AXLE_BEHIND_CENTRE_MM,
     CONN_MM,
     NOSE_AHEAD_MM,
@@ -32,7 +32,7 @@ from dotbot.detection.pose import (
     features,
     robot_mask,
 )
-from dotbot.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
+from dotbot.camera.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
 from dotbot.robots import robot_geometry
 
 MM_PER_PX = 2.0
@@ -335,11 +335,11 @@ def test_keep_mask_excludes_the_border_the_warp_had_no_source_for():
 
 
 def test_importing_the_detector_does_not_need_opencv():
-    """`import dotbot.detection` must cost nothing without the extra."""
+    """`import dotbot.camera.detection` must cost nothing without the extra."""
     code = (
         "import sys;"
         "sys.modules['cv2'] = None;"
-        "import dotbot.detection, dotbot.camera;"
+        "import dotbot.camera, dotbot.camera.detection, dotbot.camera.service;"
         "print('OK')"
     )
     result = subprocess.run(
@@ -365,7 +365,7 @@ def test_the_template_margin_measures_the_nose_against_its_flip():
     every backwards one, and the drawn outline would be 180 degrees out with
     nothing else looking wrong.
     """
-    from dotbot.detection.pose import (
+    from dotbot.camera.detection.pose import (
         Template,
         coarse_pose,
         features,
@@ -401,7 +401,7 @@ def test_a_lower_scoring_heading_understates_the_margin():
     is bounded above by what a search would have found. The gate therefore
     fails closed when the coarse pose is a few degrees out.
     """
-    from dotbot.detection.pose import (
+    from dotbot.camera.detection.pose import (
         Template,
         coarse_pose,
         features,

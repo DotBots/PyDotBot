@@ -33,8 +33,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from dotbot.area import Area
-from dotbot.detection import propose as _propose
-from dotbot.detection.pose import (
+from dotbot.camera.detection import propose as _propose
+from dotbot.camera.detection.pose import (
     NOSE_AHEAD_MM,
     OUTLINE_MM,
     PHOTODIODE_AHEAD_MM,

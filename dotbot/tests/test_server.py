@@ -1122,7 +1122,7 @@ def synthetic_camera(tmp_path_factory):
     """
     import cv2
 
-    from dotbot.calibration.camera import (
+    from dotbot.camera.calibration import (
         build_calibration,
         build_detector,
         detect_markers,
@@ -1153,7 +1153,7 @@ def synthetic_camera(tmp_path_factory):
 @pytest.fixture
 def real_camera(tmp_path):
     """The bench's own registration, read back through the file loader."""
-    from dotbot.calibration.camera import read_camera_calibration_file
+    from dotbot.camera.calibration import read_camera_calibration_file
 
     path = tmp_path / "camera-2026-09-15T11-58-26Z-22248be4.toml"
     path.write_text(REAL_CAMERA_FILE, encoding="utf-8")
@@ -1172,7 +1172,7 @@ def registered(calibration, open_source=None, area=DEV_CORNER):
     Registered whether or not it started, so what the routes serve is the
     service's own `live`, not the fixture's choice of what to hand them.
     """
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     service = CameraService(calibration, area, open_source=open_source)
     started = service.start()
@@ -1250,8 +1250,8 @@ async def test_the_camera_stream_carries_the_area_warped_into_its_raster(
     import cv2
     import numpy as np
 
-    from dotbot.calibration.camera import build_detector, detect_markers, marker_layout
-    from dotbot.camera import MM_PER_PX
+    from dotbot.camera.calibration import build_detector, detect_markers, marker_layout
+    from dotbot.camera.service import MM_PER_PX
 
     with registered(synthetic_camera):
         response = await client.get("/controller/cameras/dev-corner/stream")
@@ -1385,7 +1385,7 @@ def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
     """
     import numpy as np
 
-    from dotbot.camera import _coverage_mm
+    from dotbot.camera.service import _coverage_mm
 
     coverage = _coverage_mm(real_camera.matrix, real_camera.width, real_camera.height)
     inverse = np.linalg.inv(np.array(real_camera.matrix))
@@ -1398,7 +1398,7 @@ def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
 
 def test_a_frame_crossing_the_horizon_describes_no_coverage_polygon():
     """Its image is not a polygon there, and no mask beats a wrong one."""
-    from dotbot.camera import _coverage_mm
+    from dotbot.camera.service import _coverage_mm
 
     crossing = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.01, -5.0]]
     assert _coverage_mm(crossing, 1920, 1080) == []
@@ -1421,7 +1421,7 @@ async def test_the_warp_has_no_source_outside_the_coverage_polygon(
     import cv2
     import numpy as np
 
-    from dotbot.camera import MM_PER_PX, CameraService
+    from dotbot.camera.service import MM_PER_PX, CameraService
 
     columns = 900
     frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
@@ -1474,8 +1474,8 @@ def synthetic_colour_frame(area=DEV_CORNER, robots=(), seed=11):
     import cv2
     import numpy as np
 
-    from dotbot.calibration.camera import MARKER_DICTIONARY, marker_layout
-    from dotbot.detection.pose import CONN_MM, OUTLINE_MM, axes
+    from dotbot.camera.calibration import MARKER_DICTIONARY, marker_layout
+    from dotbot.camera.detection.pose import CONN_MM, OUTLINE_MM, axes
     from dotbot.tests.test_calibration_camera_collect import (
         FRAME_HEIGHT,
         FRAME_WIDTH,
@@ -1573,7 +1573,7 @@ class RecordingDetector:
         self.frames = []
 
     def detect(self, bgr):
-        from dotbot.detection import Detection
+        from dotbot.camera.detection import Detection
 
         self.frames.append(bgr)
         return Detection("none", 0, None, 0.0)
@@ -1588,7 +1588,7 @@ def test_the_detector_sees_the_uncompressed_warp(synthetic_camera):
     import cv2
     import numpy as np
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     detector = RecordingDetector()
@@ -1620,8 +1620,8 @@ def test_a_colour_frame_with_a_robot_is_detected_in_frame_millimetres():
     """
     import numpy as np
 
-    from dotbot.camera import CameraService
-    from dotbot.detection.pose import axes
+    from dotbot.camera.detection.pose import axes
+    from dotbot.camera.service import CameraService
 
     truth_mm = (1500.0, 500.0)
     heading = 37.0
@@ -1657,7 +1657,7 @@ def test_no_robot_reports_none_not_nothing(synthetic_camera):
     """An empty floor produces records saying so, not an absence of records."""
     import cv2
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -1685,7 +1685,7 @@ def test_on_detection_is_called_off_the_warp_thread_and_survives_an_exception(
 
     import cv2
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     seen = []
@@ -1725,7 +1725,7 @@ def test_the_keep_mask_is_the_floor_the_camera_can_see(synthetic_camera):
     """
     import cv2
 
-    from dotbot.camera import MM_PER_PX, CameraService
+    from dotbot.camera.service import MM_PER_PX, CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -1754,7 +1754,7 @@ def test_the_keep_mask_stops_where_the_camera_stops_seeing_floor(synthetic_camer
 
     import cv2
 
-    from dotbot.camera import MM_PER_PX, CameraService
+    from dotbot.camera.service import MM_PER_PX, CameraService
 
     columns = 900
     frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
@@ -1778,7 +1778,7 @@ def test_stop_joins_the_detector_thread(synthetic_camera):
 
     import cv2
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -1797,7 +1797,7 @@ def test_stop_joins_the_detector_thread(synthetic_camera):
 
 def _registration_for(frame):
     """A registration solved on `frame`, the way the fixture solves one."""
-    from dotbot.calibration.camera import (
+    from dotbot.camera.calibration import (
         CameraCalibration,
         build_detector,
         detect_markers,
@@ -1827,7 +1827,7 @@ def _registration_for(frame):
 
 def _marker_observations(layout, corners_px):
     """The layout and what was seen of it, as the file records them."""
-    from dotbot.calibration.camera import MarkerObservation
+    from dotbot.camera.calibration import MarkerObservation
 
     return [
         MarkerObservation(
@@ -1851,7 +1851,7 @@ class CannedDetector:
         self.status = status
 
     def detect(self, bgr):
-        from dotbot.detection import Detection, Pose
+        from dotbot.camera.detection import Detection, Pose
 
         if self.status == "none":
             return Detection("none", 0, None, 1.0)
@@ -1874,7 +1874,7 @@ def detecting(calibration, status="found"):
     """One camera on a real controller, detecting whatever `status` says."""
     import cv2
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
     from dotbot.controller import Controller, ControllerSettings
 
     frame = cv2.imread(str(calibration.source))
@@ -1971,7 +1971,7 @@ class BlockingDetector:
         self.entered = threading.Event()
 
     def detect(self, bgr):
-        from dotbot.detection import Detection
+        from dotbot.camera.detection import Detection
 
         self.entered.set()
         self.release.wait(timeout=5.0)
@@ -1989,7 +1989,7 @@ def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):
 
     import cv2
 
-    from dotbot.camera import CameraService
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     detector = BlockingDetector()

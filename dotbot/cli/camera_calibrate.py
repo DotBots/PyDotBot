@@ -23,8 +23,8 @@ from pathlib import Path
 
 import click
 
-from dotbot.calibration import camera
-from dotbot.calibration.camera import (
+from dotbot.camera import calibration as camera
+from dotbot.camera.calibration import (
     LENS_DEFAULT,
     READS_DEFAULT,
     SCALE_BAR_MM,

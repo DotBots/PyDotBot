@@ -423,7 +423,7 @@ def test_a_controller_with_no_site_keeps_the_neutral_one(serial_mock):
 
 def _write_camera_calibration(tmp_path, monkeypatch, source, area="dev-corner"):
     """A camera registration under tmp_path, over `source`, and its id."""
-    from dotbot.calibration import camera
+    from dotbot.camera import calibration as camera
 
     monkeypatch.setattr(camera, "site_dir", lambda name: tmp_path / name)
     monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
@@ -526,7 +526,7 @@ def test_a_camera_calibration_that_resolves_to_nothing_serves_no_layer(
     tmp_path, monkeypatch, serial_mock
 ):
     """A stale id in a config is a missing layer, never a controller that stops."""
-    from dotbot.calibration import camera
+    from dotbot.camera import calibration as camera
 
     monkeypatch.setattr(camera, "calibration_root", lambda: tmp_path)
     controller = Controller(

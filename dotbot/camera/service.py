@@ -34,14 +34,14 @@ from typing import Callable
 import numpy as np
 
 from dotbot.area import Area
-from dotbot.calibration.camera import (
+from dotbot.camera.calibration import (
     CameraCalibration,
     capture_fps,
     open_capture,
     release_capture,
     settle,
 )
-from dotbot.detection import RobotDetector, frame_pose
+from dotbot.camera.detection import RobotDetector, frame_pose
 from dotbot.logger import LOGGER
 
 # The raster a camera is warped into: one pixel per two millimetres of

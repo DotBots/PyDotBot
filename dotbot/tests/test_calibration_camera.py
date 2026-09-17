@@ -18,8 +18,9 @@ import pytest
 from PIL import Image
 
 from dotbot.area import Area
-from dotbot.calibration import camera
-from dotbot.calibration.camera import (
+from dotbot.calibration.points import CORNERS
+from dotbot.camera import calibration as camera
+from dotbot.camera.calibration import (
     MARKER_DICTIONARY,
     MARKER_SIDE_MM,
     MARKER_SIDE_PX,
@@ -38,7 +39,6 @@ from dotbot.calibration.camera import (
     span_mm,
     write_sheets,
 )
-from dotbot.calibration.points import CORNERS
 
 # The camera plan's worked example: 1 x 1 m, its top-left corner one metre
 # along the site's x axis.

@@ -223,13 +223,13 @@ class CameraCSVLogger:
             self.file.close()
 
     def _sidecar_text(self) -> str:
-        from dotbot.camera import MM_PER_PX, WARP_FPS_MAX
-        from dotbot.detection.pose import (
+        from dotbot.camera.detection.pose import (
             AXLE_BEHIND_CENTRE_MM,
             NOSE_AHEAD_MM,
             OUTLINE_MM,
             PHOTODIODE_AHEAD_MM,
         )
+        from dotbot.camera.service import MM_PER_PX, WARP_FPS_MAX
 
         outline = ", ".join(f"[{float(x)}, {float(y)}]" for x, y in OUTLINE_MM)
         lines = [

@@ -17,8 +17,10 @@ import numpy as np
 import pytest
 
 from dotbot.area import Area
-from dotbot.calibration import camera
-from dotbot.calibration.camera import (
+from dotbot.calibration.lighthouse2 import read_calibration_file
+from dotbot.calibration.points import CORNERS
+from dotbot.camera import calibration as camera
+from dotbot.camera.calibration import (
     CAMERA_KIND,
     CAMERA_SCHEMA_VERSION,
     DARK_MEAN_MAX,
@@ -46,8 +48,6 @@ from dotbot.calibration.camera import (
     span_mm,
     write_camera_calibration,
 )
-from dotbot.calibration.lighthouse2 import read_calibration_file
-from dotbot.calibration.points import CORNERS
 from dotbot.site import Site
 
 DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")

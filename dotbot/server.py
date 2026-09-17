@@ -26,7 +26,7 @@ from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
-from dotbot.camera import STREAM_MEDIA_TYPE
+from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,

@@ -112,8 +112,12 @@ def test_rows_append_to_an_existing_file(tmp_path):
 
 def test_the_sidecar_pins_the_geometry_the_log_was_written_against(tmp_path):
     """An old log outlives a change to the outline only if this file exists."""
-    from dotbot.camera import MM_PER_PX
-    from dotbot.detection.pose import NOSE_AHEAD_MM, OUTLINE_MM, PHOTODIODE_AHEAD_MM
+    from dotbot.camera.detection.pose import (
+        NOSE_AHEAD_MM,
+        OUTLINE_MM,
+        PHOTODIODE_AHEAD_MM,
+    )
+    from dotbot.camera.service import MM_PER_PX
 
     path = camera_log_path(tmp_path / "run.csv")
     logger = CameraCSVLogger(path, area="dev-corner", camera_id="22248be43bde6d93")

@@ -20,7 +20,7 @@ Three steps, each one settling a different thing:
 
 HEADING CONVENTION IN THIS MODULE: degrees, `atan2(dy, dx)` with image y
 growing down, so 0 points along +x (frame right) and +90 along +y (frame
-down). `dotbot.detection.robot` converts it to the robot `direction`
+down). `dotbot.camera.detection.robot` converts it to the robot `direction`
 convention the firmware and the console use; nothing here does.
 
 ROBOT FRAME: `OUTLINE_MM` and the offsets below are +x to the robot's right
@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from dotbot.detection.propose import as_bgr
+from dotbot.camera.detection.propose import as_bgr
 from dotbot.robots import robot_geometry
 
 _GEOMETRY = robot_geometry()
