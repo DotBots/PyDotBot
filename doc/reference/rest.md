@@ -46,6 +46,8 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `PUT` | `/controller/dotbots/{address}/{application}/rgb_led` | Set the RGB LED |
 | `PUT` | `/controller/dotbots/{address}/{application}/waypoints` | Set navigation waypoints |
 | `DELETE` | `/controller/dotbots/{address}/positions` | Clear position history |
+| `GET` | `/controller/cameras` | Registered overhead cameras currently serving a layer |
+| `GET` | `/controller/cameras/{area}/stream` | That area's camera, warped into its raster, as `multipart/x-mixed-replace` JPEG |
 
 Two WebSocket endpoints push live updates: `/controller/ws/status` (state
 stream) and `/controller/ws/dotbots` (send `move_raw` / `rgb_led` / `waypoints`

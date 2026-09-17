@@ -15,6 +15,7 @@ dotbot run --help        # the full list
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
 | `lh2-calibration` | LH2 calibration on one cabled board (capture / apply); deployed DotBots use `swarm lh2-calibration`. |
+| `camera-calibration` | Register an overhead camera against four printed ArUco sheets (sheets / collect). |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
@@ -40,7 +41,9 @@ dotbot run controller --conn /dev/ttyACM0
 | `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
 | `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
 | `--headless` | don't open the console in a browser (it's still served) |
-| `--csv-data-output` | record DotBot data to a CSV file |
+| `--csv-data-output` | record DotBot data to a CSV file. A registered camera also writes `<name>-camera.csv` beside it, with a `<name>-camera.toml` sidecar saying what the columns mean. |
+| `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run camera-calibration collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
+| `--calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] calibration`. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
 | `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
 
@@ -85,6 +88,37 @@ dotbot run lh2-calibration apply ./lh2_calibration.h
 See [the cabled LH2 calibration guide](../guides/lh2-calibration-cabled.md). To
 capture without a cable, or to push a saved calibration to the fleet over the
 air, use [`swarm lh2-calibration`](swarm.md).
+
+## `camera-calibration` - register an overhead camera
+
+An overhead camera is registered against four printed ArUco sheets, one taped
+inside each corner of the area it covers. `sheets` renders the pages; `collect`
+finds the camera that sees them, reads them back and solves the homography from
+image pixels into the site's frame. Both run on your own machine and nothing
+here reaches a robot, which is why this sits under `run` beside
+`lh2-calibration`.
+
+```bash
+dotbot run camera-calibration sheets --out ./sheets     # print these at 100 %
+dotbot run camera-calibration collect --area dev-corner
+```
+
+| Flag (`collect`) | Meaning |
+|---|---|
+| `--area` | the one area this camera covers; the four sheet positions come from its corners |
+| `--site` | the site the area belongs to, and the directory the registration is saved under |
+| `--camera` | skip the search: an OpenCV index, or a path (a `/dev/v4l/by-id/` symlink, or a recorded frame) |
+| `--reads` | frames averaged; only a frame carrying all four markers counts |
+| `--lens` | the lens mode the camera is set to, recorded in the file |
+
+`collect` prints the id of what it wrote. Pass it to the controller to draw the
+camera on the console map:
+
+```bash
+dotbot run controller --camera-calibration <id> --headless
+```
+
+Needs the calibration extra: `pip install pydotbot[calibrate]`.
 
 ## `demo` - built-in demos
 
