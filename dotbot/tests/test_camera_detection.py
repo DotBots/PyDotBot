@@ -18,15 +18,11 @@ import cv2
 import numpy as np
 import pytest
 
-from dotbot.area import Area
 from dotbot.camera.detection import Detection, Pose, RobotDetector, frame_pose
 from dotbot.camera.detection import propose as proposer
 from dotbot.camera.detection import wrap180
 from dotbot.camera.detection.pose import (
-    AXLE_BEHIND_CENTRE_MM,
-    CONN_MM,
     NOSE_AHEAD_MM,
-    OUTLINE_MM,
     PHOTODIODE_AHEAD_MM,
     axes,
     features,
@@ -34,93 +30,15 @@ from dotbot.camera.detection.pose import (
 )
 from dotbot.camera.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
 from dotbot.robots import robot_geometry
-
-MM_PER_PX = 2.0
-SUPERSAMPLE = 4
-
-# One area of floor to place the raster in, so a frame millimetre is never
-# the same number as a raster pixel and a missing origin shows up.
-AREA = Area(1000, 0, 500, 500, "detection")
-
-CARPET = (150, 150, 150)
-BOARD = (60, 140, 40)
-CONNECTOR = (40, 40, 200)
-TYRE = (30, 30, 30)
-
-# The tyres the estimator's own template carries.
-TRACK_MM, TYRE_W_MM, TYRE_D_MM = 85.0, 18.0, 40.0
+from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
+from dotbot.tests.camera_fixtures import (
+    MM_PER_PX,
+    carpet,
+    draw_robot,
+)
 
 # The middle of the default raster, in raster pixels.
 CENTRE_PX = (125.0, 125.0)
-
-
-def tyre_polygons_mm():
-    """The two tyres in the robot frame, as the template places them."""
-    out = []
-    axle = -AXLE_BEHIND_CENTRE_MM
-    for side in (-1, 1):
-        x0 = side * TRACK_MM / 2 - TYRE_W_MM / 2
-        x1 = side * TRACK_MM / 2 + TYRE_W_MM / 2
-        out.append(
-            np.array(
-                [
-                    (x0, axle - TYRE_D_MM / 2),
-                    (x1, axle - TYRE_D_MM / 2),
-                    (x1, axle + TYRE_D_MM / 2),
-                    (x0, axle + TYRE_D_MM / 2),
-                ],
-                float,
-            )
-        )
-    return out
-
-
-def carpet(width_px=250, height_px=250, seed=7):
-    """Grey floor with the speckle a proposer has to average away."""
-    rng = np.random.default_rng(seed)
-    base = np.full((height_px, width_px, 3), CARPET, np.float32)
-    return np.clip(base + rng.normal(0.0, 6.0, base.shape), 0, 255).astype(np.uint8)
-
-
-def draw_robot(
-    raster, centre_px, heading_atan2_deg, board=BOARD, connector=CONNECTOR, tyre=TYRE
-):
-    """One robot at `centre_px`, facing `heading_atan2_deg`.
-
-    The heading is the detector's own convention: 0 along +x, +90 along +y.
-    """
-    height, width = raster.shape[:2]
-    big = cv2.resize(
-        raster,
-        (width * SUPERSAMPLE, height * SUPERSAMPLE),
-        interpolation=cv2.INTER_NEAREST,
-    )
-    right, forward = axes(heading_atan2_deg)
-
-    def fill(polygon_mm, colour):
-        points = np.array(
-            [
-                [
-                    (
-                        centre_px[i]
-                        + (p[0] * right[i] + p[1] * forward[i]) / MM_PER_PX
-                        + 0.5
-                    )
-                    * SUPERSAMPLE
-                    for i in (0, 1)
-                ]
-                for p in polygon_mm
-            ],
-            np.float32,
-        )
-        cv2.fillPoly(big, [np.round(points).astype(np.int32)], colour)
-
-    fill(OUTLINE_MM, board)
-    for polygon in tyre_polygons_mm():
-        fill(polygon, tyre)
-    for polygon in CONN_MM:
-        fill(polygon, connector)
-    return cv2.resize(big, (width, height), interpolation=cv2.INTER_AREA)
 
 
 def rect_px(raster, x0, y0, x1, y1, colour):

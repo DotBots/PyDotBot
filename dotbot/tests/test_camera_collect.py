@@ -48,7 +48,6 @@ from dotbot.camera.registration import (
 )
 from dotbot.camera.sheets import (
     MARKER_DICTIONARY,
-    MARKER_SIDE_MM,
     corner_of,
     layout_ids,
     marker_id_for,
@@ -56,129 +55,22 @@ from dotbot.camera.sheets import (
     span_mm,
 )
 from dotbot.site import Site
-
-DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
-SITE = Site(name="c405-arena", anchor="the arena's top-left corner")
-
-FRAME_WIDTH, FRAME_HEIGHT = 1920, 1080
+from dotbot.tests.camera_fixtures import (
+    DEV_CORNER,
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+    SITE,
+    ScriptedCapture,
+    draw_marker,
+    ground_truth_mm_to_px,
+    project,
+    synthetic_frame,
+)
 
 # The plan's gates for the synthetic check: a residual under 0.3 mm and the
 # area's own corners recovered within 0.5 mm of the truth.
 RESIDUAL_MAX_MM = 0.3
 AREA_CORNER_MAX_MM = 0.5
-
-# The frame is drawn at this multiple and box-filtered down, so the marker
-# edges carry the anti-aliasing a real lens gives the corner refiner. Drawn
-# at 1x the same fit lands an order of magnitude worse.
-SUPERSAMPLE = 3
-
-
-# --- The synthetic frame ----------------------------------------------------
-
-
-def ground_truth_px_to_mm() -> np.ndarray:
-    """A plausible overhead view of `dev-corner`, as pixels to millimetres.
-
-    Built by inverting the millimetre-to-pixel matrix below: about one pixel
-    per millimetre with the area near the middle of the frame, plus a
-    projective term, so the fit has to recover a homography rather than an
-    affine.
-    """
-    matrix = np.linalg.inv(ground_truth_mm_to_px())
-    return matrix / matrix[2, 2]
-
-
-def ground_truth_mm_to_px() -> np.ndarray:
-    return np.array(
-        [
-            [1.0, 0.0, -1000.0 + 460.0],
-            [0.0, 1.0, 40.0],
-            [2.0e-5, 1.2e-5, 1.0],
-        ]
-    )
-
-
-def project(matrix: np.ndarray, points) -> np.ndarray:
-    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
-    homogeneous = np.hstack([points, np.ones((len(points), 1))])
-    out = (np.asarray(matrix) @ homogeneous.T).T
-    return out[:, :2] / out[:, 2:3]
-
-
-def synthetic_frame(
-    area: Area = DEV_CORNER, displace: dict[int, tuple[float, float]] | None = None
-) -> np.ndarray:
-    """The four sheets of `area` seen through the ground-truth homography.
-
-    `displace` shifts one marker by a millimetre offset before it is drawn,
-    which is how a sheet taped somewhere other than the corner it names is
-    put in front of the solver.
-    """
-    mm_to_px = ground_truth_mm_to_px()
-    dictionary = cv2.aruco.getPredefinedDictionary(
-        getattr(cv2.aruco, MARKER_DICTIONARY)
-    )
-    canvas = np.full(
-        (FRAME_HEIGHT * SUPERSAMPLE, FRAME_WIDTH * SUPERSAMPLE), 235, np.uint8
-    )
-    for marker in marker_layout(area):
-        _draw_marker(
-            canvas,
-            dictionary,
-            marker.id,
-            marker.centre_mm,
-            mm_to_px,
-            (displace or {}).get(marker.id, (0.0, 0.0)),
-        )
-    return cv2.resize(canvas, (FRAME_WIDTH, FRAME_HEIGHT), interpolation=cv2.INTER_AREA)
-
-
-def _draw_marker(
-    canvas, dictionary, marker_id, centre_mm, mm_to_px, offset, supersample=SUPERSAMPLE
-):
-    """One marker warped onto the supersampled canvas, with its quiet zone.
-
-    Both coordinate conventions matter to a tenth of a millimetre: a source
-    pixel covers [i - 0.5, i + 0.5], and `INTER_AREA` maps a supersampled
-    coordinate P to (P + 0.5) / n - 0.5. Getting either wrong biases every
-    corner the same way, which reads as a scale error in the fit rather than
-    as noise.
-    """
-    marker = cv2.aruco.generateImageMarker(dictionary, marker_id, 600)
-    marker = cv2.copyMakeBorder(
-        marker, 100, 100, 100, 100, cv2.BORDER_CONSTANT, value=255
-    )
-    side = marker.shape[0]
-    half_mm = (MARKER_SIDE_MM / 2) * (side / 600.0)
-    x = centre_mm[0] + offset[0]
-    y = centre_mm[1] + offset[1]
-    quad_mm = [
-        (x - half_mm, y - half_mm),
-        (x + half_mm, y - half_mm),
-        (x + half_mm, y + half_mm),
-        (x - half_mm, y + half_mm),
-    ]
-    quad_px = project(mm_to_px, quad_mm) * supersample + (supersample - 1) / 2.0
-    transform = cv2.getPerspectiveTransform(
-        np.array(
-            [
-                [-0.5, -0.5],
-                [side - 0.5, -0.5],
-                [side - 0.5, side - 0.5],
-                [-0.5, side - 0.5],
-            ],
-            np.float32,
-        ),
-        quad_px.astype(np.float32),
-    )
-    cv2.warpPerspective(
-        marker,
-        transform,
-        (canvas.shape[1], canvas.shape[0]),
-        canvas,
-        flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_TRANSPARENT,
-    )
 
 
 @pytest.fixture(scope="module")
@@ -297,34 +189,6 @@ def test_the_seam_refuses_an_id_that_names_no_corner():
 
 
 # --- Scripted captures: the probe, the warm-up and the choice ---------------
-
-
-class ScriptedCapture:
-    """A `cv2.VideoCapture` stand-in whose `read()` returns a planned list."""
-
-    def __init__(self, frames, backend="SCRIPTED", fps=30.0, opens=True):
-        self.frames = list(frames)
-        self.backend = backend
-        self.fps = fps
-        self.opens = opens
-        self.released = False
-
-    def isOpened(self):  # noqa: N802 - the cv2 spelling
-        return self.opens
-
-    def read(self):
-        if not self.frames:
-            return False, None
-        return True, self.frames.pop(0)
-
-    def get(self, prop):
-        return self.fps
-
-    def getBackendName(self):  # noqa: N802 - the cv2 spelling
-        return self.backend
-
-    def release(self):
-        self.released = True
 
 
 def black():
@@ -548,7 +412,7 @@ def _paste_second_copy(frame, marker_id):
 def test_a_marker_outside_this_layout_is_reported_and_left_out(frame):
     """A stray print, or another area's sheets under a widened seam."""
     stray = frame.copy()
-    _draw_marker(
+    draw_marker(
         stray,
         cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, MARKER_DICTIONARY)),
         7,

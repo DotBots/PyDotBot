@@ -2,6 +2,8 @@
 
 import pytest
 
+from dotbot.tests.camera_fixtures import synthetic_camera  # noqa: F401
+
 
 @pytest.fixture(autouse=True)
 def never_open_a_browser(monkeypatch):

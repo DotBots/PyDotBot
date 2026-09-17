@@ -39,10 +39,7 @@ from dotbot.camera.sheets import (
     span_mm,
     write_sheets,
 )
-
-# The camera plan's worked example: 1 x 1 m, its top-left corner one metre
-# along the site's x axis.
-DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
+from dotbot.tests.camera_fixtures import DEV_CORNER
 
 POINTS_PER_INCH = 72.0
 
