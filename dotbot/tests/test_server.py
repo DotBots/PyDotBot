@@ -1838,3 +1838,112 @@ def _marker_observations(layout, corners_px):
         for marker in layout
         if marker.id in corners_px
     ]
+
+
+# --- The detection on the status WebSocket ----------------------------------
+
+
+class CannedDetector:
+    """A detector reporting the same pose on every frame."""
+
+    def __init__(self, status="found"):
+        self.status = status
+
+    def detect(self, bgr):
+        from dotbot.detection import Detection, Pose
+
+        if self.status == "none":
+            return Detection("none", 0, None, 1.0)
+        return Detection(
+            self.status,
+            1,
+            Pose(
+                centre_px=(250.0, 250.0),
+                heading_atan2_deg=52.5,
+                green_lever_mm=31.2,
+                tmpl_margin=0.91,
+                refined=True,
+            ),
+            12.5,
+        )
+
+
+@contextlib.contextmanager
+def detecting(calibration, status="found"):
+    """One camera on a real controller, detecting whatever `status` says."""
+    import cv2
+
+    from dotbot.camera import CameraService
+    from dotbot.controller import Controller, ControllerSettings
+
+    frame = cv2.imread(str(calibration.source))
+    service = CameraService(
+        calibration,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+        detector=CannedDetector(status),
+    )
+    controller = Controller.__new__(Controller)
+    controller.settings = ControllerSettings()
+    controller.cameras = [service]
+    controller.websockets = [MagicMock()]
+    controller._camera_pushed = {}
+    controller.notify_clients = AsyncMock()
+    assert service.start()
+    assert wait_for_detection(service) is not None
+    try:
+        yield controller
+    finally:
+        service.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
+    """One notification per new warp, and none for a warp already pushed."""
+    from dotbot.models import DotBotNotificationCommand
+
+    with detecting(synthetic_camera) as controller:
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
+        notification = controller.notify_clients.await_args[0][0]
+        assert notification.cmd == DotBotNotificationCommand.CAMERA_DETECTION
+
+        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        assert message["area"] == "dev-corner"
+        assert message["camera_id"] == synthetic_camera.id
+        assert message["status"] == "found"
+        assert message["candidates"] == 1
+        assert message["elapsed_ms"] == 12.5
+        assert message["sequence"] >= 1
+        assert message["timestamp"] > 0
+
+        pose = message["pose"]
+        assert pose["heading_atan2_deg"] == 52.5
+        assert pose["heading_deg"] == -37.5
+        assert len(pose["outline_mm"]) == 14
+        # The raster's (250, 250) is the middle of a 1000 mm area at 2 mm/px.
+        assert pose["centre_mm"] == [1500.0, 500.0]
+
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
+    """`model_dump(exclude_none=True)` drops a null pose, so status is the key."""
+    with detecting(synthetic_camera, status="none") as controller:
+        await controller._push_camera_detections()
+        notification = controller.notify_clients.await_args[0][0]
+        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        assert message["status"] == "none"
+        assert "pose" not in message
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_pushed_with_no_console_listening(synthetic_camera):
+    """No socket, no message; the warp the record came from is still marked."""
+    with detecting(synthetic_camera) as controller:
+        controller.websockets = []
+        await controller._push_camera_detections()
+        controller.notify_clients.assert_not_awaited()
+        assert controller._camera_pushed["dev-corner"] >= 1

@@ -51,13 +51,14 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
-from dotbot.camera import CameraService
+from dotbot.camera import WARP_FPS_MAX, CameraService
 from dotbot.csv_data_logger import CSVDataLogger, CSVLog
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotCalibrationSessionModel,
+    DotBotCameraDetectionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -225,6 +226,9 @@ class Controller:
                 "Pass --calibration <path|id> or set [run.controller] calibration."
             )
         self.cameras: List[CameraService] = []
+        # The warp each camera's last pushed detection came from, so a
+        # console is told about a frame once.
+        self._camera_pushed: Dict[str, int] = {}
         if settings.camera_calibration:
             self._start_camera(settings.camera_calibration)
         self.calibration_session = SessionDriver(
@@ -280,6 +284,33 @@ class Controller:
         service = CameraService(calibration, area)
         if service.start():
             self.cameras.append(service)
+
+    async def _camera_detections_push(self):
+        """Coroutine that pushes every new camera detection to the console."""
+        interval = 1.0 / WARP_FPS_MAX
+        while 1:
+            await asyncio.sleep(interval)
+            await self._push_camera_detections()
+
+    async def _push_camera_detections(self):
+        """One notification per camera that has detected on a newer warp."""
+        for camera in self.cameras:
+            if not camera.live:
+                continue
+            record, sequence = camera.held_detection()
+            if record is None:
+                continue
+            if self._camera_pushed.get(camera.area.name) == sequence:
+                continue
+            self._camera_pushed[camera.area.name] = sequence
+            if not self.websockets:
+                continue
+            await self.notify_clients(
+                DotBotNotificationModel(
+                    cmd=DotBotNotificationCommand.CAMERA_DETECTION,
+                    camera_detection=DotBotCameraDetectionModel(**record),
+                )
+            )
 
     def _update_dotbot_twin(
         self,
@@ -854,6 +885,10 @@ class Controller:
                 asyncio.create_task(name="Web browser", coro=self._open_webbrowser()),
                 asyncio.create_task(
                     name="Dotbots status refresh", coro=self._dotbots_status_refresh()
+                ),
+                asyncio.create_task(
+                    name="Camera detections push",
+                    coro=self._camera_detections_push(),
                 ),
                 asyncio.create_task(
                     name="Start communication adapter", coro=self._start_adapter()
