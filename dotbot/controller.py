@@ -51,7 +51,8 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
-from dotbot.camera.service import WARP_FPS_MAX, CameraService
+from dotbot.camera.raster import WARP_FPS_MAX
+from dotbot.camera.service import CameraService
 from dotbot.csv_data_logger import (
     CameraCSVLogger,
     CSVDataLogger,

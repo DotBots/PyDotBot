@@ -267,7 +267,7 @@ class CameraCSVLogger:
             OUTLINE_MM,
             PHOTODIODE_AHEAD_MM,
         )
-        from dotbot.camera.service import MM_PER_PX, WARP_FPS_MAX
+        from dotbot.camera.raster import MM_PER_PX, WARP_FPS_MAX
 
         outline = ", ".join(f"[{float(x)}, {float(y)}]" for x, y in OUTLINE_MM)
         lines = [

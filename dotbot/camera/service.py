@@ -38,16 +38,16 @@ from dotbot.camera.calibration import (
     settle,
 )
 from dotbot.camera.detection import RobotDetector, frame_pose
+from dotbot.camera.raster import (
+    MM_PER_PX,
+    WARP_FPS_MAX,
+    coverage_mm,
+    keep_mask,
+    mode_string,
+    raster_size,
+    raster_transform,
+)
 from dotbot.logger import LOGGER
-
-# The raster a camera is warped into: one pixel per two millimetres of
-# floor, so a 1 x 1 m area is 500 x 500. Halving it costs four times the
-# pixels per frame.
-MM_PER_PX = 2.0
-
-# Warps per second. The device is read at its own rate; this is how often
-# one of those frames is paid for.
-WARP_FPS_MAX = 10.0
 
 JPEG_QUALITY = 80
 
@@ -87,8 +87,8 @@ class CameraService:
         self._lock = threading.Lock()
         self._jpeg: bytes | None = None
         self._sequence = 0
-        self.transform = _raster_transform(calibration.matrix, area)
-        self.coverage_mm = _coverage_mm(
+        self.transform = raster_transform(calibration.matrix, area)
+        self.coverage_mm = coverage_mm(
             calibration.matrix, calibration.width, calibration.height
         )
         self.keep_mask: np.ndarray | None = None
@@ -103,10 +103,7 @@ class CameraService:
     @property
     def raster(self) -> tuple[int, int]:
         """The area's size in raster pixels, as (width, height)."""
-        return (
-            round(self.area.w / MM_PER_PX),
-            round(self.area.h / MM_PER_PX),
-        )
+        return raster_size(self.area)
 
     @property
     def live(self) -> bool:
@@ -177,8 +174,10 @@ class CameraService:
 
         self._capture = capture
         self._reading = True
-        self.keep_mask = _keep_mask(
-            self.transform, self.calibration, self.area, self.raster
+        self.keep_mask = keep_mask(
+            self.transform,
+            (self.calibration.width, self.calibration.height),
+            self.raster,
         )
         if self._detector is None:
             self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
@@ -264,8 +263,8 @@ class CameraService:
         if (width, height) == (recorded.width, recorded.height) and not rate_differs:
             return None
         return (
-            _mode(width, height, fps),
-            _mode(recorded.width, recorded.height, recorded.fps),
+            mode_string(width, height, fps),
+            mode_string(recorded.width, recorded.height, recorded.fps),
         )
 
     def _read_loop(self) -> None:
@@ -386,73 +385,6 @@ class CameraService:
             self._detection = record
             self._detection_sequence = sequence
         return record
-
-
-def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
-    """The floor the camera can see, as a polygon in frame millimetres.
-
-    The source frame's own rectangle through the homography. Empty when
-    the rectangle crosses the homography's horizon, where its image is not
-    a polygon at all: the sign of the homogeneous divisor is constant over
-    a convex hull exactly when it is constant at every corner.
-    """
-    if not matrix or width < 2 or height < 2:
-        return []
-    corners = np.array(
-        [
-            [0.0, 0.0, 1.0],
-            [width - 1.0, 0.0, 1.0],
-            [width - 1.0, height - 1.0, 1.0],
-            [0.0, height - 1.0, 1.0],
-        ]
-    )
-    mapped = corners @ np.array(matrix, dtype=np.float64).T
-    divisor = mapped[:, 2]
-    if not (np.all(divisor > 0) or np.all(divisor < 0)):
-        return []
-    points = mapped[:, :2] / divisor[:, None]
-    return [[float(x), float(y)] for x, y in points]
-
-
-def _keep_mask(
-    transform, calibration: CameraCalibration, area: Area, raster: tuple[int, int]
-) -> np.ndarray:
-    """The raster pixels the warp had a source for, as the detector's floor.
-
-    The source frame's own rectangle through the same transform, eroded so
-    the warp's interpolated edge is not counted as floor. The registration
-    sheets are inside it, not cut out.
-    """
-    import cv2  # lazy: opencv-python is only required to warp a frame
-
-    width, height = raster
-    source = np.full((int(calibration.height), int(calibration.width)), 255, np.uint8)
-    valid = cv2.warpPerspective(
-        source, transform, (width, height), flags=cv2.INTER_NEAREST
-    )
-    return cv2.erode(valid, np.ones((3, 3), np.uint8))
-
-
-def _raster_transform(matrix, area: Area) -> np.ndarray:
-    """Image pixels to raster pixels: the homography, then the area's scale.
-
-    The file maps image pixels to frame millimetres; this puts the area's
-    own origin at the raster's (0, 0) and scales to `MM_PER_PX`.
-    """
-    scale = np.array(
-        [
-            [1.0 / MM_PER_PX, 0.0, -area.x / MM_PER_PX],
-            [0.0, 1.0 / MM_PER_PX, -area.y / MM_PER_PX],
-            [0.0, 0.0, 1.0],
-        ]
-    )
-    return scale @ np.array(matrix, dtype=np.float64)
-
-
-def _mode(width: int, height: int, fps: float) -> str:
-    """One video mode as the operator reads it off a camera's menu."""
-    rate = f"{float(fps):g} fps" if fps else "an undeclared rate"
-    return f"{int(width)} x {int(height)} at {rate}"
 
 
 def _part(jpeg: bytes) -> bytes:

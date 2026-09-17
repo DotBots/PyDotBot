@@ -1251,7 +1251,7 @@ async def test_the_camera_stream_carries_the_area_warped_into_its_raster(
     import numpy as np
 
     from dotbot.camera.calibration import build_detector, detect_markers, marker_layout
-    from dotbot.camera.service import MM_PER_PX
+    from dotbot.camera.raster import MM_PER_PX
 
     with registered(synthetic_camera):
         response = await client.get("/controller/cameras/dev-corner/stream")
@@ -1385,9 +1385,9 @@ def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
     """
     import numpy as np
 
-    from dotbot.camera.service import _coverage_mm
+    from dotbot.camera.raster import coverage_mm
 
-    coverage = _coverage_mm(real_camera.matrix, real_camera.width, real_camera.height)
+    coverage = coverage_mm(real_camera.matrix, real_camera.width, real_camera.height)
     inverse = np.linalg.inv(np.array(real_camera.matrix))
     mapped = np.array([inverse @ [x, y, 1.0] for x, y in coverage])
     assert (mapped[:, :2] / mapped[:, 2:]) == pytest.approx(
@@ -1398,11 +1398,11 @@ def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
 
 def test_a_frame_crossing_the_horizon_describes_no_coverage_polygon():
     """Its image is not a polygon there, and no mask beats a wrong one."""
-    from dotbot.camera.service import _coverage_mm
+    from dotbot.camera.raster import coverage_mm
 
     crossing = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.01, -5.0]]
-    assert _coverage_mm(crossing, 1920, 1080) == []
-    assert _coverage_mm([], 1920, 1080) == []
+    assert coverage_mm(crossing, 1920, 1080) == []
+    assert coverage_mm([], 1920, 1080) == []
 
 
 @pytest.mark.asyncio
@@ -1421,7 +1421,8 @@ async def test_the_warp_has_no_source_outside_the_coverage_polygon(
     import cv2
     import numpy as np
 
-    from dotbot.camera.service import MM_PER_PX, CameraService
+    from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.service import CameraService
 
     columns = 900
     frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
@@ -1725,7 +1726,8 @@ def test_the_keep_mask_is_the_floor_the_camera_can_see(synthetic_camera):
     """
     import cv2
 
-    from dotbot.camera.service import MM_PER_PX, CameraService
+    from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.service import CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -1754,7 +1756,8 @@ def test_the_keep_mask_stops_where_the_camera_stops_seeing_floor(synthetic_camer
 
     import cv2
 
-    from dotbot.camera.service import MM_PER_PX, CameraService
+    from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.service import CameraService
 
     columns = 900
     frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
