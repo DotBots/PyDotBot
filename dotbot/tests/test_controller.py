@@ -540,3 +540,159 @@ def test_a_camera_calibration_that_resolves_to_nothing_serves_no_layer(
         )
     )
     assert controller.cameras == []
+
+
+# --- The camera detection log -----------------------------------------------
+
+
+CAMERA_RECORD = {
+    "area": "dev-corner",
+    "camera_id": "22248be43bde6d93",
+    "sequence": 7,
+    "timestamp": 1758100000.123,
+    "status": "found",
+    "candidates": 1,
+    "elapsed_ms": 48.2,
+    "pose": {
+        "centre_mm": [1523.4, 488.1],
+        "photodiode_mm": [1540.2, 511.7],
+        "nose_mm": [1551.0, 526.2],
+        "outline_mm": [[1481.2, 500.3]],
+        "heading_deg": -37.5,
+        "heading_atan2_deg": 52.5,
+        "green_lever_mm": 31.2,
+        "tmpl_margin": 0.91,
+        "refined": True,
+    },
+}
+
+
+def _camera_controller(tmp_path, monkeypatch, csv_output=None):
+    """A controller with the camera layer served, optionally logging."""
+    import cv2
+    import numpy as np
+
+    source = tmp_path / "frame.png"
+    cv2.imwrite(str(source), np.full((48, 64), 180, np.uint8))
+    written = _write_camera_calibration(tmp_path, monkeypatch, source)
+    controller = Controller(
+        ControllerSettings(
+            port="/dev/null",
+            baudrate=115200,
+            network_id="0",
+            gw_address="78",
+            site=_camera_site(),
+            camera_calibration=written.id8,
+            csv_data_output=None if csv_output is None else str(csv_output),
+        )
+    )
+    return controller, written
+
+
+def _bot(address, x, y, direction=315):
+    return DotBotModel(
+        address=address,
+        application=ApplicationType.DotBot,
+        swarm="0000",
+        last_seen=time.time(),
+        direction=direction,
+        lh2_position=DotBotLH2Position(x=x, y=y),
+    )
+
+
+def test_a_detection_is_logged_with_the_robot_standing_in_the_area(
+    tmp_path, monkeypatch, serial_mock
+):
+    """The row carries the lighthouse's answer for the same floor, and the count."""
+    import csv
+
+    from dotbot.csv_data_logger import camera_log_path
+
+    csv_output = tmp_path / "run.csv"
+    controller, written = _camera_controller(tmp_path, monkeypatch, csv_output)
+    try:
+        assert set(controller.camera_csv_loggers) == {"dev-corner"}
+        controller.dotbots = {
+            "0000000000000001": _bot("0000000000000001", 1541, 509),
+            "0000000000000002": _bot("0000000000000002", 100, 100),
+        }
+        controller._on_camera_detection(CAMERA_RECORD)
+        for logger in controller.camera_csv_loggers.values():
+            logger.close()
+    finally:
+        for camera_service in controller.cameras:
+            camera_service.stop()
+
+    path = camera_log_path(csv_output)
+    with open(path, newline="") as handle:
+        (row,) = list(csv.DictReader(handle))
+    assert row["lh2_address"] == "0000000000000001"
+    assert float(row["lh2_x_mm"]) == 1541
+    assert row["lh2_travel_direction_deg"] == "315"
+    assert row["lh2_in_area"] == "1"
+    assert float(row["lh2_age_s"]) >= 0
+    assert row["cam_photodiode_x_mm"] == "1540.2"
+    assert path.with_suffix(".toml").exists()
+
+
+def test_a_detection_with_no_robot_in_the_area_still_writes_a_row(
+    tmp_path, monkeypatch, serial_mock
+):
+    import csv
+
+    from dotbot.csv_data_logger import camera_log_path
+
+    csv_output = tmp_path / "run.csv"
+    controller, _ = _camera_controller(tmp_path, monkeypatch, csv_output)
+    try:
+        controller.dotbots = {"0000000000000002": _bot("0000000000000002", 100, 100)}
+        controller._on_camera_detection(CAMERA_RECORD)
+        for logger in controller.camera_csv_loggers.values():
+            logger.close()
+    finally:
+        for camera_service in controller.cameras:
+            camera_service.stop()
+
+    with open(camera_log_path(csv_output), newline="") as handle:
+        (row,) = list(csv.DictReader(handle))
+    assert row["lh2_address"] == ""
+    assert row["lh2_in_area"] == "0"
+    assert row["status"] == "found"
+
+
+def test_two_robots_in_the_area_log_the_nearer_one_and_say_so(
+    tmp_path, monkeypatch, serial_mock
+):
+    """Rectangle membership, not association: the count is what filters a row."""
+    import csv
+
+    from dotbot.csv_data_logger import camera_log_path
+
+    csv_output = tmp_path / "run.csv"
+    controller, _ = _camera_controller(tmp_path, monkeypatch, csv_output)
+    try:
+        controller.dotbots = {
+            "0000000000000001": _bot("0000000000000001", 1900, 900),
+            "0000000000000002": _bot("0000000000000002", 1530, 495),
+        }
+        controller._on_camera_detection(CAMERA_RECORD)
+        for logger in controller.camera_csv_loggers.values():
+            logger.close()
+    finally:
+        for camera_service in controller.cameras:
+            camera_service.stop()
+
+    with open(camera_log_path(csv_output), newline="") as handle:
+        (row,) = list(csv.DictReader(handle))
+    assert row["lh2_address"] == "0000000000000002"
+    assert row["lh2_in_area"] == "2"
+
+
+def test_no_csv_output_means_no_camera_log(tmp_path, monkeypatch, serial_mock):
+    controller, _ = _camera_controller(tmp_path, monkeypatch, None)
+    try:
+        assert controller.camera_csv_loggers == {}
+        controller._on_camera_detection(CAMERA_RECORD)  # a no-op, not a crash
+    finally:
+        for camera_service in controller.cameras:
+            camera_service.stop()

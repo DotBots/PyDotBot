@@ -52,7 +52,12 @@ from dotbot.adapter import (
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
 from dotbot.camera import WARP_FPS_MAX, CameraService
-from dotbot.csv_data_logger import CSVDataLogger, CSVLog
+from dotbot.csv_data_logger import (
+    CameraCSVLogger,
+    CSVDataLogger,
+    CSVLog,
+    camera_log_path,
+)
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
@@ -229,6 +234,7 @@ class Controller:
         # The warp each camera's last pushed detection came from, so a
         # console is told about a frame once.
         self._camera_pushed: Dict[str, int] = {}
+        self.camera_csv_loggers: Dict[str, CameraCSVLogger] = {}
         if settings.camera_calibration:
             self._start_camera(settings.camera_calibration)
         self.calibration_session = SessionDriver(
@@ -281,9 +287,78 @@ class Controller:
             camera_id=calibration.id,
             residual_mm=round(calibration.residual_mm, 2),
         )
-        service = CameraService(calibration, area)
+        service = CameraService(
+            calibration, area, on_detection=self._on_camera_detection
+        )
         if service.start():
             self.cameras.append(service)
+            if self.settings.csv_data_output is not None:
+                path = camera_log_path(self.settings.csv_data_output)
+                self.camera_csv_loggers[area.name] = CameraCSVLogger(
+                    path, area=area.name, camera_id=calibration.id
+                )
+                self.logger.info(
+                    "Camera detection log enabled",
+                    path=str(path),
+                    area=area.name,
+                )
+
+    def _on_camera_detection(self, record: dict) -> None:
+        """One detection, logged with the lighthouse's answer for the same floor.
+
+        Runs on the camera's detector thread. `list(dict.values())` is atomic
+        under the GIL and the model fields are reassigned whole, so the robot
+        table is read without a lock.
+        """
+        logger = self.camera_csv_loggers.get(record.get("area", ""))
+        if logger is None:
+            return
+        try:
+            logger.log(record, self._lh2_in_area(record))
+        except Exception as exc:  # pylint:disable=broad-except
+            self.logger.warning(
+                "Camera detection row not written",
+                area=record.get("area"),
+                error=str(exc),
+            )
+
+    def _lh2_in_area(self, record: dict) -> Optional[dict]:
+        """The lighthouse pose of the robot the camera is looking at.
+
+        Rectangle membership, not tracking: with more than one robot in the
+        area the nearest to the detected pose is taken and `in_area` says how
+        many there were, so a row that cannot mean a one-to-one comparison
+        can be filtered out.
+        """
+        area = next(
+            (c.area for c in self.cameras if c.area.name == record.get("area")), None
+        )
+        if area is None:
+            return None
+        standing = [
+            dotbot
+            for dotbot in list(self.dotbots.values())
+            if dotbot.lh2_position is not None
+            and area.x <= dotbot.lh2_position.x <= area.x_max
+            and area.y <= dotbot.lh2_position.y <= area.y_max
+        ]
+        if not standing:
+            return {"in_area": 0}
+        pose = record.get("pose") or {}
+        target = pose.get("centre_mm") or area.centre
+        nearest = min(
+            standing,
+            key=lambda d: (d.lh2_position.x - target[0]) ** 2
+            + (d.lh2_position.y - target[1]) ** 2,
+        )
+        return {
+            "address": nearest.address,
+            "x": nearest.lh2_position.x,
+            "y": nearest.lh2_position.y,
+            "direction": nearest.direction,
+            "age_s": round(time.time() - nearest.last_seen, 3),
+            "in_area": len(standing),
+        }
 
     async def _camera_detections_push(self):
         """Coroutine that pushes every new camera detection to the console."""
@@ -905,6 +980,8 @@ class Controller:
         finally:
             if self.csv_data_logger is not None:
                 self.csv_data_logger.close()
+            for camera_logger in self.camera_csv_loggers.values():
+                camera_logger.close()
             for camera in self.cameras:
                 camera.stop()
             self.adapter.close()
