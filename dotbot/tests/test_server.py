@@ -1642,6 +1642,8 @@ def test_a_colour_frame_with_a_robot_is_detected_in_frame_millimetres():
     assert record["status"] == "found"
     assert record["area"] == "dev-corner"
     assert record["camera_id"] == calibration.id
+    # The four sheets are in plain view and none of them is a robot.
+    assert record["candidates"] == 1
     pose = record["pose"]
     assert np.allclose(pose["centre_mm"], truth_mm, atol=4.0)
     assert abs(((pose["heading_atan2_deg"] - heading) + 180) % 360 - 180) < 3.0
@@ -1713,11 +1715,16 @@ def test_on_detection_is_called_off_the_warp_thread_and_survives_an_exception(
         service.stop()
 
 
-def test_the_keep_mask_covers_the_area_minus_the_sheets(synthetic_camera):
-    """Floor the camera can see, with the four printed pages cut out of it."""
+def test_the_keep_mask_is_the_floor_the_camera_can_see(synthetic_camera):
+    """Every pixel the warp had a source for, the printed sheets included.
+
+    A sheet is not cut out: it carries no saturated colour, so the verifier
+    throws it out on its own, and the sheets are lifted once the camera is
+    registered anyway. Cutting them would blind an A4 of floor per corner
+    for the rest of the run.
+    """
     import cv2
 
-    from dotbot.calibration.camera import PAGE_HEIGHT_MM, PAGE_WIDTH_MM
     from dotbot.camera import MM_PER_PX, CameraService
 
     frame = cv2.imread(str(synthetic_camera.source))
@@ -1738,13 +1745,7 @@ def test_the_keep_mask_covers_the_area_minus_the_sheets(synthetic_camera):
     for marker in synthetic_camera.markers:
         x = int((marker.centre_mm[0] - DEV_CORNER.x) / MM_PER_PX)
         y = int((marker.centre_mm[1] - DEV_CORNER.y) / MM_PER_PX)
-        assert mask[y, x] == 0
-        # A corner of the page, just inside it.
-        dx = int((PAGE_WIDTH_MM / 2 - 5) / MM_PER_PX)
-        dy = int((PAGE_HEIGHT_MM / 2 - 5) / MM_PER_PX)
-        assert (
-            mask[min(max(y - dy, 0), height - 1), min(max(x - dx, 0), width - 1)] == 0
-        )
+        assert mask[y, x] == 255
 
 
 def test_the_keep_mask_stops_where_the_camera_stops_seeing_floor(synthetic_camera):

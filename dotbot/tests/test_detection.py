@@ -280,20 +280,25 @@ def test_jpeg_round_trip_does_not_fill_the_mask():
 # --- the keep mask ----------------------------------------------------------
 
 
-def test_keep_mask_excludes_a_sheet_the_camera_can_see():
-    """An ArUco sheet is a robot-sized high-contrast object; the mask hides it."""
+def test_a_registration_sheet_is_refused_by_the_verifier_not_masked():
+    """A printed page is a robot-sized object, and carries no colour.
+
+    Stage one answers for anything the right size, so the sheets do come
+    back as candidates; the colour verifier is what separates them from a
+    robot, which is why nothing has to be cut out of the floor for them.
+    """
     raster = carpet(300, 250)
     raster = rect_px(raster, 20, 40, 125, 188, (245, 245, 245))  # A4 at 2 mm/px
     raster = rect_px(raster, 55, 85, 90, 140, (15, 15, 15))  # its marker
     raster = draw_robot(raster, (220.0, 125.0), 37.0)
 
-    masked = np.full(raster.shape[:2], 255, np.uint8)
-    masked[40:188, 20:125] = 0
+    candidates = proposer.detect(raster, None, MM_PER_PX)
+    on_the_sheet = [c for c in candidates if c["centre"][0] < 140]
+    assert on_the_sheet, "stage one should answer for a sheet-sized object"
+    assert not any(c["robot"] for c in on_the_sheet)
+    assert max(c["sat"] for c in on_the_sheet) < proposer.SAT_MIN
 
-    unmasked = proposer.detect(raster, None, MM_PER_PX)
-    assert len(unmasked) >= 2, "the sheet should be a candidate when nothing hides it"
-
-    detection = RobotDetector(MM_PER_PX, masked).detect(raster)
+    detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "found"
     assert detection.candidates == 1
     pose = frame_pose(detection.pose, AREA, MM_PER_PX)

@@ -35,8 +35,6 @@ import numpy as np
 
 from dotbot.area import Area
 from dotbot.calibration.camera import (
-    PAGE_HEIGHT_MM,
-    PAGE_WIDTH_MM,
     CameraCalibration,
     capture_fps,
     open_capture,
@@ -395,13 +393,13 @@ def _coverage_mm(matrix, width: int, height: int) -> list[list[float]]:
 def _keep_mask(
     transform, calibration: CameraCalibration, area: Area, raster: tuple[int, int]
 ) -> np.ndarray:
-    """The raster pixels that are floor this camera can be believed about.
+    """The raster pixels the warp had a source for, as the detector's floor.
 
     The source frame's own rectangle through the same transform, eroded so
-    the warp's interpolated edge is not floor, minus one A4 page per marker:
-    a printed sheet is a robot-sized high-contrast object and reads as a
-    candidate. Masking a page the operator has since removed costs a robot
-    standing exactly on that corner.
+    the warp's interpolated edge is not counted as floor. The registration
+    sheets are not cut out: a printed page carries no saturated colour, so
+    the colour verifier rejects one, and the sheets are lifted off the floor
+    once the camera is registered anyway.
     """
     import cv2  # lazy: opencv-python is only required to warp a frame
 
@@ -410,18 +408,7 @@ def _keep_mask(
     valid = cv2.warpPerspective(
         source, transform, (width, height), flags=cv2.INTER_NEAREST
     )
-    mask = cv2.erode(valid, np.ones((3, 3), np.uint8))
-    half = np.array([PAGE_WIDTH_MM / 2, PAGE_HEIGHT_MM / 2])
-    origin = np.array([float(area.x), float(area.y)])
-    for marker in calibration.markers:
-        centre = np.asarray(marker.centre_mm, float)
-        low = (centre - half - origin) / MM_PER_PX
-        high = (centre + half - origin) / MM_PER_PX
-        mask[
-            max(0, int(np.floor(low[1]))) : max(0, int(np.ceil(high[1]))),
-            max(0, int(np.floor(low[0]))) : max(0, int(np.ceil(high[0]))),
-        ] = 0
-    return mask
+    return cv2.erode(valid, np.ones((3, 3), np.uint8))
 
 
 def _raster_transform(matrix, area: Area) -> np.ndarray:
