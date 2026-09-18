@@ -53,6 +53,16 @@ from dotbot.camera.detection.propose import verify as propose_candidates
 GREEN_LEVER_MIN_MM = 8.0
 TMPL_MARGIN_MIN = 0.5
 
+# A registration sheet is white paper, and white paper only reads as neutral
+# under light the white balance matches. Off neutral it carries far more
+# saturation than `SAT_MIN`, so every sheet left on the floor proposes a
+# candidate and is fitted into a pose. The sheets are found frame by frame
+# from the markers that make them sheets, never remembered from the
+# registration, so lifting them stops the exclusion on the next frame and no
+# floor is given up for the rest of the run. Grown about its centre, the
+# marker quad covers the page it is printed on.
+SHEET_GROW = 1.4
+
 FOUND = "found"
 REFUSED = "refused"
 NONE = "none"
@@ -94,6 +104,27 @@ def classify(pose: Pose) -> str:
     return FOUND
 
 
+def _off_sheets(candidates, quads):
+    """The candidates whose centre is not standing on one of `quads`.
+
+    Only the centre is tested, so a robot parked against a sheet is still
+    proposed. Cutting the pages out of the keep mask instead would take a
+    robot's width of floor with each of them, since a candidate needs its
+    whole footprint on known floor.
+    """
+    if not quads:
+        return candidates
+    import cv2  # lazy: opencv-python is only required to run the detector
+
+    kept = []
+    for candidate in candidates:
+        point = (float(candidate["centre"][0]), float(candidate["centre"][1]))
+        if any(cv2.pointPolygonTest(quad, point, False) >= 0 for quad in quads):
+            continue
+        kept.append(candidate)
+    return kept
+
+
 class RobotDetector:
     """The detector one camera runs, holding what is the same every frame.
 
@@ -102,10 +133,33 @@ class RobotDetector:
     measured inside it.
     """
 
-    def __init__(self, mm_per_px: float, keep_mask=None):
+    def __init__(self, mm_per_px: float, keep_mask=None, exclude_sheets: bool = True):
         self.mm_per_px = float(mm_per_px)
         self.keep_mask = keep_mask
+        self.exclude_sheets = bool(exclude_sheets)
         self._template = Template(self.mm_per_px)
+        self._markers = None
+
+    def sheet_quads(self, bgr) -> list:
+        """The registration pages in this frame, as raster-pixel polygons.
+
+        Each marker quad grown by `SHEET_GROW` about its own centre, which
+        is what reaches past the marker to the paper around it.
+        """
+        if not self.exclude_sheets:
+            return []
+        # lazy: importing the capture module pulls in the ArUco detector, and
+        # a detector built per frame costs more than the search it runs.
+        from dotbot.camera.capture import build_detector, detect_markers
+
+        if self._markers is None:
+            self._markers = build_detector()
+        quads = []
+        for quad in detect_markers(bgr, self._markers).values():
+            quad = np.asarray(quad, dtype=np.float32)
+            centre = quad.mean(axis=0)
+            quads.append(centre + (quad - centre) * SHEET_GROW)
+        return quads
 
     def detect(self, bgr) -> Detection:
         """The strongest verified candidate on this frame, fitted."""
@@ -115,6 +169,7 @@ class RobotDetector:
             for c in propose_candidates(bgr, self.keep_mask, self.mm_per_px)
             if c["robot"]
         ]
+        candidates = _off_sheets(candidates, self.sheet_quads(bgr))
         if not candidates:
             return Detection(NONE, 0, None, _ms_since(started))
         best = max(candidates, key=lambda c: c["z"])

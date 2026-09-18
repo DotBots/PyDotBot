@@ -29,6 +29,7 @@ from dotbot.camera.detection.pose import (
     robot_mask,
 )
 from dotbot.camera.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
+from dotbot.camera.sheets import MARKER_DICTIONARY
 from dotbot.robots import robot_geometry
 from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
 from dotbot.tests.camera_fixtures import (
@@ -209,11 +210,13 @@ def test_jpeg_round_trip_does_not_fill_the_mask():
 
 
 def test_a_registration_sheet_is_dropped_without_being_masked():
-    """A printed page needs no hole cut in the floor to be ignored.
+    """A printed page under neutral light needs no hole cut in the floor.
 
-    The sheets are lifted once a camera is registered, so cutting them out
-    of the keep mask would blind an A4 of floor per corner for the rest of
-    the run. They carry no saturated colour, which is enough.
+    Cutting the pages out of the keep mask would blind a robot's width of
+    floor around each of them, since a candidate needs its whole footprint
+    on known floor. Under light the white balance matches, a page carries no
+    saturated colour and the colour check is enough on its own. Off neutral
+    it is not, which the test below covers.
     """
     raster = carpet(300, 250)
     raster = rect_px(raster, 20, 40, 125, 188, (245, 245, 245))  # A4 at 2 mm/px
@@ -232,6 +235,59 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     assert detection.candidates == 1
     pose = frame_pose(detection.pose, AREA, MM_PER_PX)
     assert np.allclose(pose["centre_mm"], truth_mm((220.0, 125.0)), atol=4.0)
+
+
+def test_a_sheet_off_neutral_is_taken_out_by_the_marker_printed_on_it():
+    """White paper is only colourless under light the white balance matches.
+
+    Off neutral the page carries saturation of its own, the colour check
+    stops separating it from a robot, and the sheet is proposed and fitted.
+    It costs more than a phantom row: the sheet's candidate can win, and the
+    detection is refused rather than reported. What takes the page back out
+    is the marker that made it a sheet, decoded on the same frame.
+    """
+    raster = carpet(300, 250)
+    raster = rect_px(raster, 20, 40, 140, 200, (245, 245, 245))  # the page
+    marker = cv2.aruco.generateImageMarker(
+        cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, MARKER_DICTIONARY)),
+        0,
+        75,
+    )
+    raster[95:170, 45:120] = np.repeat(marker[:, :, None], 3, axis=2)
+    raster = draw_robot(raster, (220.0, 125.0), 37.0)
+    # The blue cast a warm white balance gives a lit floor.
+    raster = np.clip(
+        raster.astype(np.float32) * np.array([1.35, 1.0, 0.62]), 0, 255
+    ).astype(np.uint8)
+
+    half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
+    assert proposer._saturation(raster, (80.0, 120.0), half) > proposer.SAT_MIN
+
+    loose = RobotDetector(MM_PER_PX, exclude_sheets=False).detect(raster)
+    assert loose.candidates == 2
+    assert loose.status == "refused"
+
+    detector = RobotDetector(MM_PER_PX)
+    assert len(detector.sheet_quads(raster)) == 1
+    detection = detector.detect(raster)
+    assert detection.status == "found"
+    assert detection.candidates == 1
+
+
+def test_a_lifted_sheet_gives_its_floor_straight_back():
+    """Nothing is remembered from the registration, so nothing stays blind.
+
+    The pages are found frame by frame, which is what lets a robot stand
+    where a sheet used to be as soon as it is picked up.
+    """
+    raster = draw_robot(carpet(300, 250), (72.0, 114.0), 37.0)
+
+    detector = RobotDetector(MM_PER_PX)
+    assert detector.sheet_quads(raster) == []
+    detection = detector.detect(raster)
+    assert detection.status == "found"
+    pose = frame_pose(detection.pose, AREA, MM_PER_PX)
+    assert np.allclose(pose["centre_mm"], truth_mm((72.0, 114.0)), atol=4.0)
 
 
 def test_keep_mask_excludes_the_border_the_warp_had_no_source_for():
