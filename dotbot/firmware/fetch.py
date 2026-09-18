@@ -290,13 +290,23 @@ def _link_local_assets(source: str, local_root: Path, bin_dir: Path) -> Path:
             f"Missing local build artifacts: {', '.join(missing)}"
         )
     for name, src in mapping.items():
-        dest = out_dir / name
-        if dest.exists() or dest.is_symlink():
-            dest.unlink()
-        try:
-            os.symlink(src, dest)
-            click.echo(f"[LINK] {dest} -> {src}")
-        except OSError:
-            shutil.copy2(src, dest)
-            click.echo(f"[COPY] {dest} <- {src}")
+        _link_or_copy(src, out_dir / name)
+    # One gateway net-core image per Mari schedule, as build-schedules.sh
+    # files them. Optional: a tree that never ran it has none, and only
+    # `--schedule` looks for them.
+    schedules_dir = local_root / "mari/firmware/Output/schedules"
+    for src in sorted(schedules_dir.glob("03app_gateway_net-*.hex")):
+        _link_or_copy(src, out_dir / src.name)
     return out_dir
+
+
+def _link_or_copy(src: Path, dest: Path) -> None:
+    """Symlink ``src`` at ``dest``, falling back to a copy where links fail."""
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    try:
+        os.symlink(src, dest)
+        click.echo(f"[LINK] {dest} -> {src}")
+    except OSError:
+        shutil.copy2(src, dest)
+        click.echo(f"[COPY] {dest} <- {src}")
