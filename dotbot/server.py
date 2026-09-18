@@ -26,12 +26,14 @@ from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
+from dotbot.build import build_info
 from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotAreaModel,
     DotBotBackgroundMapModel,
+    DotBotBuildModel,
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
@@ -468,6 +470,18 @@ async def connection():
         swarm_id=settings.network_id,
         gw_address=settings.gw_address,
     )
+
+
+@api.get(
+    path="/controller/build",
+    response_model=DotBotBuildModel,
+    response_model_exclude_none=True,
+    summary="Return the build of pydotbot the controller runs",
+    tags=["controller"],
+)
+async def build():
+    """Build HTTP GET handler."""
+    return DotBotBuildModel(**build_info())
 
 
 @api.get(

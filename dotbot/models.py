@@ -308,6 +308,18 @@ class DotBotConnectionModel(BaseModel):
     gw_address: str
 
 
+class DotBotBuildModel(BaseModel):
+    """Which build of pydotbot the controller runs.
+
+    `commit` and `dirty` are present only when the package runs from its own
+    git checkout; an installed package reports the version alone.
+    """
+
+    version: str
+    commit: Optional[str] = None
+    dirty: Optional[bool] = None
+
+
 class DotBotBackgroundMapModel(BaseModel):
     """Background map model."""
 
