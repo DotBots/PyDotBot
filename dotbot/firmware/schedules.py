@@ -8,17 +8,18 @@ A gateway's schedule is a compile-time pointer in Mari's
 changing schedule means reflashing the gateway. Nodes are never reflashed for
 it: they adopt whatever schedule the gateway's beacon advertises.
 
-Leaf module with no imports, so the CLI can name the schedules without
-pulling in the flashing engine.
+The names and capacities are marilib's, which mirror Mari's own schedule
+tables, so a schedule added or renamed upstream shows up here with no edit.
 """
 
-# Names and node capacities mirror Mari's firmware/mari/all_schedules.c; keep
-# them in step with it.
+from marilib.model import SCHEDULES as _MARILIB_SCHEDULES
+
+# Schedule name -> node capacity, smallest first so help text reads as a ladder.
 MARI_SCHEDULES = {
-    "tiny": 10,
-    "medium": 44,
-    "big": 66,
-    "huge": 102,
+    schedule["name"]: schedule["max_nodes"]
+    for schedule in sorted(
+        _MARILIB_SCHEDULES.values(), key=lambda schedule: schedule["max_nodes"]
+    )
 }
 
 

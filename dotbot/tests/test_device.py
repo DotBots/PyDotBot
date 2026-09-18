@@ -605,6 +605,18 @@ def _gateway_argv(*extra):
     return ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.9.0", *extra]
 
 
+def test_schedules_are_marilibs_in_capacity_order():
+    """A schedule added or renamed in marilib reaches the CLI without an edit here."""
+    from marilib.model import SCHEDULES as marilib_schedules
+
+    assert flash.MARI_SCHEDULES == {
+        schedule["name"]: schedule["max_nodes"]
+        for schedule in marilib_schedules.values()
+    }
+    capacities = list(flash.MARI_SCHEDULES.values())
+    assert capacities == sorted(capacities)
+
+
 def test_flash_mari_gateway_passes_schedule_to_engine(
     runner, _no_nrfjprog_gate, monkeypatch
 ):
