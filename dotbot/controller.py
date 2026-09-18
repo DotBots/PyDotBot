@@ -405,9 +405,10 @@ class Controller:
         for camera in self.cameras:
             if not camera.live:
                 continue
-            record, sequence = camera.held_detection()
+            record = camera.held_detection()
             if record is None:
                 continue
+            sequence = record["sequence"]
             if self._camera_pushed.get(camera.area.name) == sequence:
                 continue
             self._camera_pushed[camera.area.name] = sequence

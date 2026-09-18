@@ -44,16 +44,6 @@ class ThrowingCapture(ScriptedCapture):
         return True, self._frame
 
 
-# The detector runs on its own thread inside the service, fed the warped
-# array before it is encoded. These tests drive it through the same
-# `open_source` seam the warp tests use, on a colour variant of the
-# synthetic frame: the four sheets as the registration was solved on, plus
-# one robot drawn from the estimator's own outline at a known place on the
-# floor. That makes the whole path frame -> warp -> raster -> detect ->
-# frame millimetres checkable with no camera in the room, and the accuracy
-# it shows is the plumbing's, not a lens's.
-
-
 class StubbornCapture(ScriptedCapture):
     """A device reporting colour controls it will not accept being set to."""
 
@@ -437,7 +427,7 @@ def test_stop_joins_the_detector_thread(synthetic_camera):
 
     name = f"Camera {DEV_CORNER.name} detect"
     assert not any(t.name == name and t.is_alive() for t in threading.enumerate())
-    assert service.held_detection() == (None, 0)
+    assert service.held_detection() is None
 
 
 class BlockingDetector:
@@ -485,7 +475,7 @@ def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):
         assert warps >= 4, warps
         assert service.held()[0] is not None
         # Nothing was ever reported, because nothing ever came back.
-        assert service.held_detection() == (None, 0)
+        assert service.held_detection() is None
     finally:
         detector.release.set()
         service.stop()

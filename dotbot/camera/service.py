@@ -96,14 +96,12 @@ class CameraService:
             calibration.matrix, calibration.width, calibration.height
         )
         self.keep_mask: np.ndarray | None = None
-        self._injected_detector = detector
         self._detector = detector
         self._on_detection = on_detection
         self._detect_thread: threading.Thread | None = None
         self._pending: tuple[np.ndarray, int, float] | None = None
         self._pending_event = threading.Event()
         self._detection: dict | None = None
-        self._detection_sequence = 0
 
     @property
     def raster(self) -> tuple[int, int]:
@@ -202,10 +200,9 @@ class CameraService:
             (self.calibration.width, self.calibration.height),
             self.raster,
         )
-        # The mask is recomputed here, so the detector holding it is too.
-        self._detector = self._injected_detector or RobotDetector(
-            MM_PER_PX, self.keep_mask
-        )
+        # Built here rather than in __init__, because it holds the mask.
+        if self._detector is None:
+            self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
         self._detect_thread = threading.Thread(
             target=self._detect_loop,
             name=f"Camera {self.area.name} detect",
@@ -238,17 +235,16 @@ class CameraService:
             self._jpeg = None
             self._pending = None
             self._detection = None
-            self._detection_sequence = 0
 
     def held(self) -> tuple[bytes | None, int]:
         """The latest warped JPEG and the count of warps behind it."""
         with self._lock:
             return self._jpeg, self._sequence
 
-    def held_detection(self) -> tuple[dict | None, int]:
-        """The latest detection record and the warp it was taken from."""
+    def held_detection(self) -> dict | None:
+        """The latest detection record, which carries its own `sequence`."""
         with self._lock:
-            return self._detection, self._detection_sequence
+            return self._detection
 
     async def parts(self):
         """The held frame as `multipart/x-mixed-replace` parts.
@@ -408,7 +404,6 @@ class CameraService:
             return None
         with self._lock:
             self._detection = record
-            self._detection_sequence = sequence
         return record
 
 

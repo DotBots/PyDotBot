@@ -381,7 +381,7 @@ def wait_for_detection(service, timeout=10.0):
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        record, _ = service.held_detection()
+        record = service.held_detection()
         if record is not None:
             return record
         time.sleep(0.02)
