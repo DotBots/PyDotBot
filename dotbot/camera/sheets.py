@@ -407,11 +407,9 @@ def _placement_diagram(page: np.ndarray, sheet_corner: str) -> None:
             cv2.rectangle(page, (x, y), far, ink, 3, cv2.LINE_AA)
             continue
         cv2.rectangle(page, (x, y), far, ink, -1, cv2.LINE_AA)
-        # The notch has to reach the seat's top edge. A filled seat is a
-        # marker-shaped candidate, and one that keeps an unbroken rim of
-        # black around a light shape passes the detector's border check
-        # and decodes as some other id. Breaking the rim is what rejects
-        # it; `test_sheet_decodes_to_its_own_id` is the guard.
+        # The notch has to reach the seat's top edge: a filled seat keeping
+        # an unbroken rim of black around a light shape passes the
+        # detector's border check and decodes as some other id.
         centre = x + seat_width / 2
         notch = np.array(
             [

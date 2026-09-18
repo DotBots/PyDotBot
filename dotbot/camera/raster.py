@@ -78,8 +78,7 @@ def keep_mask(
 
     `source_size` is the camera frame's (width, height). Its own rectangle
     goes through the same transform, eroded so the warp's interpolated edge
-    is not counted as floor. The registration sheets are inside it, not cut
-    out.
+    is not counted as floor.
     """
     import cv2  # lazy: opencv-python is only required to warp a frame
 

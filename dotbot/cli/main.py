@@ -112,10 +112,7 @@ def cli(ctx, config_path, deployment_name):
     `~/.dotbot/config.toml` (the per-machine fallback). `fw` reads its `[fw]`
     keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
 
-    Certificate checking is settled here, before any subcommand runs: a
-    command reaches a broker through marilib, through swarmit, or through
-    a client it builds itself, and the dispatcher is the one point every
-    one of them passes.
+    Certificate checking is settled here, before any subcommand runs.
     """
     allow_unverified_broker()
 
