@@ -25,6 +25,7 @@ from dotbot.cli._artifacts import (
     resolve_app_artifact,
 )
 from dotbot.cli._cfg import from_config
+from dotbot.firmware.schedules import MARI_SCHEDULES, describe_schedules
 
 
 @click.group(
@@ -187,11 +188,23 @@ def flash_swarmit_sandbox(
     default=None,
     help="16-bit hex swarm id (e.g. 0100); defaults to your config's swarm_id.",
 )
+@click.option(
+    "--schedule",
+    type=click.Choice(tuple(MARI_SCHEDULES)),
+    default=None,
+    help=(
+        "Mari TSCH schedule to put on the gateway: "
+        f"{describe_schedules()}. The schedule is compiled into the net-core "
+        "image, so this selects the per-schedule image that Mari's "
+        "build-schedules.sh produces. Omit it to flash whichever schedule the "
+        "artifact was built with."
+    ),
+)
 @_fw_version_option
 @_local_root_option
 @_probe_option
 @click.pass_context
-def flash_mari_gateway(ctx, swarm_id, fw_version, local_root, probe):
+def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, local_root, probe):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
@@ -222,6 +235,7 @@ def flash_mari_gateway(ctx, swarm_id, fw_version, local_root, probe):
         bin_dir=artifacts_dir(),
         sn_starting_digits=probe,
         local_root=local_root,
+        schedule=schedule,
     )
 
 

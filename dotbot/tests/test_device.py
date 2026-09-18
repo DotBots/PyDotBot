@@ -596,3 +596,170 @@ def test_fetch_explicit_version_overrides_pin(monkeypatch):
     assert res.exit_code == 0, res.output
     assert calls == [("dotbot-firmware", "1.21.0")]
     assert pin_called == []  # explicit -f never consults the pin
+
+
+# ── --schedule: the gateway's compile-time Mari TSCH schedule ───────────
+
+
+def _gateway_argv(*extra):
+    return ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.9.0", *extra]
+
+
+def test_flash_mari_gateway_passes_schedule_to_engine(
+    runner, _no_nrfjprog_gate, monkeypatch
+):
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    result = runner.invoke(device_cmd, _gateway_argv("--schedule", "tiny"))
+    assert result.exit_code == 0, result.output
+    assert calls["kw"]["schedule"] == "tiny"
+
+
+def test_flash_mari_gateway_without_schedule_selects_nothing(
+    runner, _no_nrfjprog_gate, monkeypatch
+):
+    """No --schedule leaves the artifact's own schedule alone, rather than
+    defaulting to one the release may not have been built with."""
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    result = runner.invoke(device_cmd, _gateway_argv())
+    assert result.exit_code == 0, result.output
+    assert calls["kw"]["schedule"] is None
+
+
+def test_flash_mari_gateway_rejects_unknown_schedule(runner, _no_nrfjprog_gate):
+    result = runner.invoke(device_cmd, _gateway_argv("--schedule", "gigantic"))
+    assert result.exit_code != 0
+    for name in flash.MARI_SCHEDULES:
+        assert name in result.output
+
+
+def test_flash_swarmit_sandbox_has_no_schedule_option(runner):
+    """The schedule is the gateway's; a node adopts whatever the beacon says."""
+    result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "--help"])
+    assert result.exit_code == 0
+    assert "--schedule" not in result.output
+
+
+def test_flash_role_rejects_schedule_for_a_non_gateway_role(tmp_path):
+    with pytest.raises(click.ClickException) as exc:
+        flash.flash_role(
+            "dotbot-v3",
+            net_id=(0x1234, "1234"),
+            fw_version="local",
+            bin_dir=tmp_path,
+            schedule="tiny",
+        )
+    assert "gateway" in exc.value.format_message()
+
+
+def test_flash_role_rejects_unknown_schedule_listing_the_valid_ones(tmp_path):
+    with pytest.raises(click.ClickException) as exc:
+        flash.flash_role(
+            "gateway",
+            net_id=(0x1234, "1234"),
+            fw_version="local",
+            bin_dir=tmp_path,
+            schedule="gigantic",
+        )
+    message = exc.value.format_message()
+    for name in flash.MARI_SCHEDULES:
+        assert name in message
+
+
+def test_flash_role_missing_schedule_image_says_how_to_build_it(tmp_path, monkeypatch):
+    """A schedule with no image stops before flashing, naming the image and
+    the script that produces it."""
+    monkeypatch.setattr(flash, "pick_last_jlink_snr", lambda: "100200300")
+    (tmp_path / "swarmit-local").mkdir()
+    with pytest.raises(click.ClickException) as exc:
+        flash.flash_role(
+            "gateway",
+            net_id=(0x1234, "1234"),
+            fw_version="local",
+            bin_dir=tmp_path,
+            schedule="tiny",
+        )
+    message = exc.value.format_message()
+    assert "03app_gateway_net-tiny.hex" in message
+    assert "build-schedules.sh" in message
+
+
+def test_flash_role_programs_the_selected_schedule_image(tmp_path, monkeypatch):
+    """--schedule programs 03app_gateway_net-<name>.hex, not the role's default."""
+    fw_root = tmp_path / "swarmit-local"
+    fw_root.mkdir()
+    for name in (
+        "03app_gateway_app-nrf5340-app.hex",
+        "03app_gateway_net-nrf5340-net.hex",
+        "03app_gateway_net-tiny.hex",
+    ):
+        (fw_root / name).write_text("")
+    programmed = {}
+    monkeypatch.setattr(flash, "pick_last_jlink_snr", lambda: "100200300")
+    monkeypatch.setattr(
+        flash,
+        "flash_nrf_both_cores",
+        lambda app_hex, net_hex, **kw: programmed.update(app=app_hex, net=net_hex),
+    )
+    monkeypatch.setattr(flash, "flash_nrf_one_core", lambda **kw: None)
+    monkeypatch.setattr(flash, "read_net_id", lambda snr=None: "1234")
+    monkeypatch.setattr(flash, "read_device_id", lambda snr=None: "BDF2B04BC00D2725")
+    monkeypatch.setattr(flash, "reset_device", lambda snr=None: None)
+    monkeypatch.setattr(
+        flash,
+        "create_config_hex",
+        lambda dest, net_id_value, calibration=None: dest.write_text(""),
+    )
+    flash.flash_role(
+        "gateway",
+        net_id=(0x1234, "1234"),
+        fw_version="local",
+        bin_dir=tmp_path,
+        schedule="tiny",
+    )
+    assert programmed["net"].name == "03app_gateway_net-tiny.hex"
+    assert programmed["app"].name == "03app_gateway_app-nrf5340-app.hex"
+
+
+_LOCAL_TREE_FILES = (
+    "device/bootloader/Output/dotbot-v3/Debug/Exe/bootloader-dotbot-v3.hex",
+    "device/network_core/Output/nrf5340-net/Debug/Exe/netcore-nrf5340-net.hex",
+    "mari/firmware/app/03app_gateway_app/Output/nrf5340-app/Debug/Exe/03app_gateway_app-nrf5340-app.hex",
+    "mari/firmware/app/03app_gateway_net/Output/nrf5340-net/Debug/Exe/03app_gateway_net-nrf5340-net.hex",
+)
+
+
+def _local_tree(root, *extra):
+    for rel in (*_LOCAL_TREE_FILES, *extra):
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    return root
+
+
+def test_link_local_assets_links_the_per_schedule_gateway_images(tmp_path):
+    """build-schedules.sh output is linked into the cache, so --schedule finds it."""
+    root = _local_tree(
+        tmp_path / "tree",
+        "mari/firmware/Output/schedules/03app_gateway_net-tiny.hex",
+        "mari/firmware/Output/schedules/03app_gateway_net-huge.hex",
+    )
+    out = fetch._link_local_assets("swarmit", root, tmp_path / "cache")
+    assert (out / "03app_gateway_net-tiny.hex").exists()
+    assert (out / "03app_gateway_net-huge.hex").exists()
+    assert (out / "03app_gateway_net-nrf5340-net.hex").exists()
+
+
+def test_link_local_assets_without_schedule_images_still_links_the_role(tmp_path):
+    """A tree that never ran build-schedules.sh links the four required images."""
+    root = _local_tree(tmp_path / "tree")
+    out = fetch._link_local_assets("swarmit", root, tmp_path / "cache")
+    assert (out / "03app_gateway_net-nrf5340-net.hex").exists()
+    assert not (out / "03app_gateway_net-tiny.hex").exists()
