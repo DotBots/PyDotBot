@@ -210,10 +210,14 @@ def draw_robot(
     board=BOARD_BGR,
     connector=CONNECTOR_BGR,
     tyre=TYRE_BGR,
+    board_offset_mm=(0.0, 0.0),
 ):
     """One robot at `centre_px`, facing `heading_atan2_deg`.
 
     The heading is the detector's own convention: 0 = +x, +90 = +y.
+    `board_offset_mm` displaces the green board alone, in frame millimetres
+    rather than the robot's own frame, which is how anything that moves the
+    board against the parts it is measured from shows up.
     """
     height, width = raster.shape[:2]
     big = cv2.resize(
@@ -223,13 +227,14 @@ def draw_robot(
     )
     right, forward = axes(heading_atan2_deg)
 
-    def fill(polygon_mm, colour):
+    def fill(polygon_mm, colour, offset_mm=(0.0, 0.0)):
         points = np.array(
             [
                 [
                     (
                         centre_px[i]
-                        + (p[0] * right[i] + p[1] * forward[i]) / MM_PER_PX
+                        + (p[0] * right[i] + p[1] * forward[i] + offset_mm[i])
+                        / MM_PER_PX
                         + 0.5
                     )
                     * ROBOT_SUPERSAMPLE
@@ -241,7 +246,7 @@ def draw_robot(
         )
         cv2.fillPoly(big, [np.round(points).astype(np.int32)], colour)
 
-    fill(OUTLINE_MM, board)
+    fill(OUTLINE_MM, board, board_offset_mm)
     for polygon in tyre_polygons_mm():
         fill(polygon, tyre)
     for polygon in CONN_MM:

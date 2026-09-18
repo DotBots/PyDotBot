@@ -23,12 +23,15 @@ from dotbot.camera.detection import propose as proposer
 from dotbot.camera.detection import wrap180
 from dotbot.camera.detection.pose import (
     NOSE_AHEAD_MM,
+    NOSE_BAND_MM,
     PHOTODIODE_AHEAD_MM,
+    TAIL_HALF_MM,
+    _nose_flare,
     axes,
     features,
     robot_mask,
 )
-from dotbot.camera.detection.robot import GREEN_LEVER_MIN_MM, TMPL_MARGIN_MIN, classify
+from dotbot.camera.detection.robot import GREEN_FLARE_MIN, TMPL_MARGIN_MIN, classify
 from dotbot.camera.sheets import MARKER_DICTIONARY
 from dotbot.robots import robot_geometry
 from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
@@ -163,10 +166,10 @@ def test_a_grey_board_is_refused_for_carrying_no_colour():
 
 
 @pytest.mark.parametrize(
-    "green_lever_mm, tmpl_margin",
-    [(GREEN_LEVER_MIN_MM - 3.0, 1.0), (30.0, TMPL_MARGIN_MIN - 0.2)],
+    "green_flare, tmpl_margin",
+    [(GREEN_FLARE_MIN - 0.1, 1.0), (0.8, TMPL_MARGIN_MIN - 0.2)],
 )
-def test_low_confidence_is_refused_not_hidden(green_lever_mm, tmpl_margin):
+def test_low_confidence_is_refused_not_hidden(green_flare, tmpl_margin):
     """A pose that clears neither threshold is still reported, marked refused.
 
     The console draws it dashed rather than dropping it, so an operator
@@ -175,7 +178,7 @@ def test_low_confidence_is_refused_not_hidden(green_lever_mm, tmpl_margin):
     pose = Pose(
         centre_px=(10.0, 10.0),
         heading_atan2_deg=0.0,
-        green_lever_mm=green_lever_mm,
+        green_flare=green_flare,
         tmpl_margin=tmpl_margin,
         refined=True,
     )
@@ -186,7 +189,7 @@ def test_a_confident_pose_is_found():
     pose = Pose(
         centre_px=(10.0, 10.0),
         heading_atan2_deg=0.0,
-        green_lever_mm=GREEN_LEVER_MIN_MM,
+        green_flare=GREEN_FLARE_MIN,
         tmpl_margin=TMPL_MARGIN_MIN,
         refined=True,
     )
@@ -431,3 +434,58 @@ def test_a_lower_scoring_heading_understates_the_margin():
     swept = np.arange(ahead - 10.0, ahead + 10.01, 2.0)
     best, _ = template_search(features_map, centre, template, swept)
     assert reported <= best[0] - scores[float(ahead + 180.0)] + 1e-9
+
+
+def test_the_nose_band_only_counts_what_the_tail_cannot_reach():
+    """The band has to sit outside the tail and inside the nose.
+
+    Below the tail's half-width it counts mass both ends carry and stops
+    separating them; above the nose's it counts nothing at all.
+    """
+    assert TAIL_HALF_MM == 28.5
+    assert TAIL_HALF_MM < NOSE_BAND_MM < 47.0
+
+
+def test_the_nose_signal_ignores_a_translated_green_mass():
+    """Displacing the whole mass must not move the signal at all.
+
+    It is measured about the mass's own centroid, so the shift moves the mass
+    and the point it is measured about together.
+    """
+    points = np.array(
+        [(x, y) for x in np.arange(-47, 47.5, 1.0) for y in np.arange(-47, 48.5, 1.0)]
+    )
+    keep = np.abs(points[:, 0]) <= np.where(points[:, 1] > 1.5, 47.0, 28.5)
+    gx, gy = points[keep, 0], points[keep, 1]
+    gw = np.ones(len(gx))
+    forward = np.array([0.0, 1.0])
+    centre = np.array([gx.mean(), gy.mean()])
+    here = _nose_flare(gx, gy, gw, centre, forward, 1.0)
+    moved = _nose_flare(
+        gx + 13.0, gy - 8.0, gw, centre + np.array([13.0, -8.0]), forward, 1.0
+    )
+    assert here > 0.7
+    assert moved == pytest.approx(here)
+    assert _nose_flare(gx, gy, gw, centre, -forward, 1.0) == pytest.approx(-here)
+
+
+def test_the_nose_signal_holds_when_the_board_is_displaced():
+    """A board displaced in the FRAME, not the robot, must not sway the gate.
+
+    The green mass and the axle are different colours in different places, so
+    anything displacing one against the other adds a fixed frame vector to
+    the distance between them. That reads as a cosine in the body heading and
+    sinks a whole heading band below the floor; the flare is built not to see
+    it.
+    """
+    flares = []
+    for heading in range(0, 360, 30):
+        raster = draw_robot(
+            carpet(), CENTRE_PX, float(heading), board_offset_mm=(24.0, 0.0)
+        )
+        detection = RobotDetector(MM_PER_PX).detect(raster)
+        assert detection.pose is not None
+        flares.append(detection.pose.green_flare)
+    # The lever this replaced swings 25 mm under the same displacement and
+    # dips under its own 8 mm floor; the flare keeps several times its margin.
+    assert min(flares) > 3 * GREEN_FLARE_MIN

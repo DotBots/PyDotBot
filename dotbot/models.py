@@ -146,7 +146,7 @@ class DotBotCameraPoseModel(BaseModel):
     outline_mm: List[List[float]] = []
     heading_deg: float
     heading_atan2_deg: float
-    green_lever_mm: float = 0.0
+    green_flare: float = 0.0
     tmpl_margin: float = 0.0
     refined: bool = False
 

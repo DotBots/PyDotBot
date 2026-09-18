@@ -561,7 +561,7 @@ CAMERA_RECORD = {
         "outline_mm": [[1481.2, 500.3]],
         "heading_deg": -37.5,
         "heading_atan2_deg": 52.5,
-        "green_lever_mm": 31.2,
+        "green_flare": 0.82,
         "tmpl_margin": 0.91,
         "refined": True,
     },

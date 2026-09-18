@@ -8,7 +8,7 @@ Three steps, each one settling a different thing:
 1. `coarse_pose` puts the axle on the two red motor connectors and decides
    which end is the nose from where the green board mass lies relative to
    that axle. This is what settles the 180 degree question, and its two
-   abort signals - `green_lever_mm` and `tmpl_margin` - are what stop the
+   abort signals - `green_flare` and `tmpl_margin` - are what stop the
    estimator lying when it is out of its depth.
 2. `template_search` scores a synthetic top-down robot against the frame's
    evidence maps, at the coarse heading and at the coarse heading plus 180.
@@ -71,6 +71,13 @@ OUTLINE_MM = np.array(
 
 # Outline centre to the tip of the nose, forwards: the outline's own extent.
 NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
+
+# The board is 94 mm across at the nose and 57 mm at the tail, so green mass
+# further from the centre line than the tail's own half-width belongs to the
+# nose and to nothing else. The margin is two raster pixels at 2 mm/px, which
+# is what the board edge is blurred over.
+TAIL_HALF_MM = float(np.abs(OUTLINE_MM[OUTLINE_MM[:, 1] < 1.5][:, 0]).max())
+NOSE_BAND_MM = TAIL_HALF_MM + 4.5
 
 # The two motor connectors, in the same robot frame.
 CONN_MM = [
@@ -245,12 +252,34 @@ def _wpca(px, py, w):
     return mu, evec[:, -1], np.sqrt(np.maximum(ev, 0))
 
 
-def coarse_pose(features_map, reg, mm_per_px):
-    """Axle from the red motor connectors, nose from the green mass ahead of it.
+def _nose_flare(gx, gy, gw, centre, n, mm_per_px):
+    """Signed share of the wide green mass lying ahead of `centre`, in [-1, 1].
 
-    `green_lever_mm` is how far the green board mass sits toward the nose
-    from the axle. It is the signal that decides the nose end, so a small
-    value means the estimator could not tell the two ends apart.
+    Only mass further from the centre line than `NOSE_BAND_MM` counts, which
+    on this board is nose and never tail, and it is measured about the green
+    mass's own centroid. A displacement of the whole mass therefore moves the
+    mass and the point it is measured about together and cancels, which a
+    distance from the differently-coloured axle does not.
+    """
+    d = np.array([-n[1], n[0]])
+    ahead = (gx - centre[0]) * n[0] + (gy - centre[1]) * n[1]
+    across = np.abs((gx - centre[0]) * d[0] + (gy - centre[1]) * d[1]) * mm_per_px
+    wide = across > NOSE_BAND_MM
+    front = gw[wide & (ahead > 0)].sum()
+    back = gw[wide & (ahead < 0)].sum()
+    if front + back <= 0:
+        return 0.0
+    return float((front - back) / (front + back))
+
+
+def coarse_pose(features_map, reg, mm_per_px):
+    """Axle from the red motor connectors, nose from the green board's shape.
+
+    `green_lever_mm` is how far the green mass sits toward the nose from the
+    axle, and it picks which end leads. `green_flare` is what a caller gates
+    on: the board is wide at the nose and narrow at the tail, so the share of
+    the wide green mass lying forward says which end is the nose without
+    depending on where that mass sits relative to the axle.
     """
     red = features_map["red"] * reg
     ry, rx = np.nonzero(red > 0)
@@ -282,6 +311,7 @@ def coarse_pose(features_map, reg, mm_per_px):
     v = ((mx - mu[0]) * d[0] + (my - mu[1]) * d[1]) * mm_per_px
     corr = np.abs(v) < 26.0
     su = (gx - mu[0]) * n[0] + (gy - mu[1]) * n[1]
+    gc = np.array([(gx * gw).sum() / gw.sum(), (gy * gw).sum() / gw.sum()])
     out = dict(
         heading=heading,
         axle_pt=mu,
@@ -293,8 +323,8 @@ def coarse_pose(features_map, reg, mm_per_px):
         ext_fwd_mm=float(u[corr].max()),
         ext_rear_mm=float(-u[corr].min()),
         green_ratio=float(gw[su > 0].sum() / max(gw[su <= 0].sum(), 1e-9)),
+        green_flare=_nose_flare(gx, gy, gw, gc, n, mm_per_px),
     )
-    gc = np.array([(gx * gw).sum() / gw.sum(), (gy * gw).sum() / gw.sum()])
     lat = float(np.median([(gc - mu) @ d, 0.0, 0.5 * (v.max() + v.min()) / mm_per_px]))
     out["coarse_centre"] = mu + d * lat + n * (AXLE_BEHIND_CENTRE_MM / mm_per_px)
     return out
@@ -475,7 +505,7 @@ def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
 def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None):
     """Pose of the one robot the region `reg` covers, or None.
 
-    `centre`, `heading`, `green_lever_mm`, `tmpl_margin` and `refined` are
+    `centre`, `heading`, `green_flare`, `tmpl_margin` and `refined` are
     what a caller reads; the rest of the dict is tuning diagnostics and may
     go without notice.
     """

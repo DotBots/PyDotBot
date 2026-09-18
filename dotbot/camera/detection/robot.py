@@ -47,10 +47,11 @@ from dotbot.camera.detection.pose import (
 from dotbot.camera.detection.propose import verify as propose_candidates
 
 # The two signals that stop the estimator reporting a pose it cannot stand
-# behind: how far the green board mass leans toward the nose from the axle,
-# and how much better the template scores at the reported heading than at
-# that heading turned 180 degrees.
-GREEN_LEVER_MIN_MM = 8.0
+# behind: the share of the wide green mass lying toward the nose, and how much
+# better the template scores at the reported heading than at that heading
+# turned 180 degrees. A robot the right way round scores about 0.8 and one
+# turned around scores its negative, so this floor is a long way from both.
+GREEN_FLARE_MIN = 0.15
 TMPL_MARGIN_MIN = 0.5
 
 # A registration sheet is white paper, and white paper only reads as neutral
@@ -74,7 +75,7 @@ class Pose:
 
     centre_px: tuple[float, float]
     heading_atan2_deg: float
-    green_lever_mm: float
+    green_flare: float
     tmpl_margin: float
     refined: bool
 
@@ -97,7 +98,7 @@ def wrap180(deg: float) -> float:
 
 def classify(pose: Pose) -> str:
     """`found` when both confidence signals clear their floor, else `refused`."""
-    if pose.green_lever_mm < GREEN_LEVER_MIN_MM:
+    if pose.green_flare < GREEN_FLARE_MIN:
         return REFUSED
     if pose.tmpl_margin < TMPL_MARGIN_MIN:
         return REFUSED
@@ -189,7 +190,7 @@ class RobotDetector:
         pose = Pose(
             centre_px=(float(fitted["centre"][0]), float(fitted["centre"][1])),
             heading_atan2_deg=float(fitted["heading"]),
-            green_lever_mm=float(fitted["green_lever_mm"]),
+            green_flare=float(fitted["green_flare"]),
             # A pose fitted without the template check has no margin to
             # stand on, so it is refused rather than passed through.
             tmpl_margin=float(fitted.get("tmpl_margin", 0.0)),
@@ -217,7 +218,7 @@ def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
         "outline_mm": [_mm(p) for p in outline],
         "heading_deg": round(wrap180(pose.heading_atan2_deg - 90.0), 1),
         "heading_atan2_deg": round(wrap180(pose.heading_atan2_deg), 1),
-        "green_lever_mm": round(pose.green_lever_mm, 1),
+        "green_flare": round(pose.green_flare, 3),
         "tmpl_margin": round(pose.tmpl_margin, 3),
         "refined": pose.refined,
     }

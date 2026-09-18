@@ -94,7 +94,7 @@ export interface CameraPose {
   outline_mm: number[][];
   heading_deg: number;
   heading_atan2_deg: number;
-  green_lever_mm: number;
+  green_flare: number;
   tmpl_margin: number;
   refined: boolean;
 }
