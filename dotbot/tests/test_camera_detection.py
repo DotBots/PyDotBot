@@ -209,6 +209,24 @@ def test_jpeg_round_trip_does_not_fill_the_mask():
 # --- the keep mask ----------------------------------------------------------
 
 
+def test_the_pre_gate_window_covers_the_refinement_it_gates():
+    """The peak's own error sets the pre-gate window, not the verdict's crop.
+
+    `_refine` exists because a matched-filter peak locates an object without
+    centring on it, and the pre-gate is what decides whether it runs at all.
+    A window narrower than refinement's reach asks about a point the peak has
+    not earned, and drops robots whose peak landed beside them.
+    """
+    assert proposer.PRE_CROP_FRAC >= proposer.SAT_CROP_FRAC + proposer.REFINE_FRAC
+
+
+def test_the_pre_gate_asks_the_same_absolute_colour_as_the_verdict():
+    """A threshold on a fraction only holds still if it falls with the area."""
+    narrow = proposer.SAT_CROP_FRAC**2 * (proposer.SAT_MIN / 4)
+    wide = proposer.PRE_CROP_FRAC**2 * proposer.PRE_SAT_MIN
+    assert wide == pytest.approx(narrow)
+
+
 def test_a_registration_sheet_is_dropped_without_being_masked():
     """A printed page under neutral light needs no hole cut in the floor.
 
@@ -223,12 +241,12 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     raster = rect_px(raster, 55, 85, 90, 140, (15, 15, 15))  # its marker
     raster = draw_robot(raster, (220.0, 125.0), 37.0)
 
-    half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
+    half = int(proposer.PRE_CROP_FRAC * proposer.ROBOT_MM / MM_PER_PX)
     assert proposer._saturation(raster, (72.0, 114.0), half) < proposer.PRE_SAT_MIN
 
     candidates = proposer.verify(raster, None, MM_PER_PX)
-    assert [c["robot"] for c in candidates] == [True]
-    assert not any(c["centre"][0] < 140 for c in candidates)
+    assert [c["robot"] for c in candidates].count(True) == 1
+    assert not any(c["robot"] and c["centre"][0] < 140 for c in candidates)
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "found"

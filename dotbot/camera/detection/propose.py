@@ -40,12 +40,17 @@ MAX_OUT = 48  # candidate budget, about a third of the cells in a square metre
 # The colour check: how much of the candidate's crop must be saturated.
 SAT_LEVEL = 90
 SAT_MIN = 2.0
+SAT_CROP_FRAC = 0.6  # the verdict's window, in robots either side of the centre
 
 # What a peak must already carry, before it is worth re-centring at full
-# resolution. A quarter of `SAT_MIN`, so it can only discard what is nowhere
-# near a robot: measured on the bench photographs, robots score at least
-# 4.97 per cent at their raw peak and everything else scores 0.00.
-PRE_SAT_MIN = SAT_MIN / 4
+# resolution. A peak sits up to half a robot from the object it found, so this
+# window spans the verdict's own window plus how far `_refine` can move the
+# centre; measured over it on the bench a robot scores at least 0.54 per cent
+# and bare floor 0.00. The threshold is a quarter of `SAT_MIN` rescaled by the
+# area ratio, so it asks for the same absolute colour over the larger window.
+PRE_CROP_FRAC = SAT_CROP_FRAC + REFINE_FRAC
+PRE_SAT_SCALE = (SAT_CROP_FRAC / PRE_CROP_FRAC) ** 2
+PRE_SAT_MIN = SAT_MIN / 4 * PRE_SAT_SCALE
 
 
 def as_bgr(frame):
@@ -257,11 +262,13 @@ def propose(
         fx = _subpix(scored, x, y, 1, 0)
         fy = _subpix(scored, x, y, 0, 1)
         cx, cy = (x + fx) * sx, (y + fy) * sy
-        # Re-centring is the expensive half of this loop and the response
-        # answers for anything robot-sized, printed sheets included. A peak
-        # with no colour on it at all cannot become a robot by being
-        # re-centred, so it is dropped before the work rather than after.
-        half = int(0.6 * robot_mm / mm_per_px)
+        # The response answers for anything robot-sized, printed sheets
+        # included. A peak carrying no colour anywhere `_refine` could take it
+        # cannot become a robot, so it is dropped before the work rather than
+        # after. The window is the peak's own uncertainty, not the verdict's:
+        # testing the verdict's window here asks about a point the peak has
+        # not earned, and drops robots whose peak sat beside them.
+        half = int(PRE_CROP_FRAC * robot_mm / mm_per_px)
         if _saturation(bgr, (cx, cy), half, sat_level) < pre_sat_min:
             continue
         cx, cy = _refine(bgr, cx, cy, m_out[y, x], sigma, robot_mm, mm_per_px)
@@ -340,13 +347,13 @@ def verify(
         keep_mask,
         mm_per_px,
         robot_mm,
-        pre_sat_min=sat_min / 4,
+        pre_sat_min=sat_min / 4 * PRE_SAT_SCALE,
         sat_level=sat_level,
         **kwargs,
     )
     if not cands:
         return []
-    half = int(0.6 * robot_mm / mm_per_px)
+    half = int(SAT_CROP_FRAC * robot_mm / mm_per_px)
     out = []
     for cand in cands:
         cand = dict(cand)
