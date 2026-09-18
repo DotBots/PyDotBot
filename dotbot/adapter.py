@@ -24,6 +24,7 @@ from marilib.model import EdgeEvent, MariNode
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
 from dotbot.logger import LOGGER
+from dotbot.mqtt_tls import allow_unverified_broker
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
 from dotbot.site import Site
 
@@ -202,6 +203,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                     queue.put_nowait, Frame(header=event_data.header, packet=packet)
                 )
 
+        allow_unverified_broker()
         # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
         # threaded down by controller_app) are passed only when set.
         # NOTE: requires the marilib companion that adds username/password
