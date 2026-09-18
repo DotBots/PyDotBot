@@ -13,6 +13,7 @@
 // this browser's own like the other map layers: it reaches no controller.
 // `?zoom=` outranks it, being an instruction where this is only a default.
 
+import { loadRecord, store } from "./persisted";
 import type { Area } from "./types";
 
 const KEY = "dotbot.console.mapView";
@@ -46,28 +47,12 @@ const usable = (v: unknown): v is ViewRect => {
 
 /** What this browser last looked at, empty when storage says nothing usable. */
 export function loadSavedViews(): SavedViews {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter(([, v]) => usable(v))
-        .map(([site, v]) => [site, { ...(v as ViewRect) }]),
-    ) as SavedViews;
-  } catch {
-    return {};
-  }
+  return loadRecord(KEY, usable, (rect) => ({ ...rect }));
 }
 
 /** Remember them; a browser that refuses storage just forgets. */
 export function saveSavedViews(views: SavedViews): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(views));
-  } catch {
-    /* private window, cleared site data, storage blocked */
-  }
+  store(KEY, views);
 }
 
 /** The map with one site's view replaced. */

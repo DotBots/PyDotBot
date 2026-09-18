@@ -23,6 +23,7 @@
 // photographed robot be read under the position reported for it, which is the
 // comparison the layer exists to make.
 
+import { loadRecord, store } from "./persisted";
 import type { Area, CameraDetection, LH2Position } from "./types";
 
 const OPACITY_KEY = "dotbot.console.cameraOpacity";
@@ -51,30 +52,6 @@ export type RobotOpacity = Record<string, number>;
 const usable = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 
-const loadOpacity = (key: string): CameraOpacity => {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(([, v]) =>
-        usable(v),
-      ),
-    ) as CameraOpacity;
-  } catch {
-    return {};
-  }
-};
-
-const storeOpacity = (key: string, opacity: CameraOpacity): void => {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(opacity));
-  } catch {
-    /* private window, cleared site data, storage blocked */
-  }
-};
-
 const withValue = (
   opacity: CameraOpacity,
   area: string,
@@ -83,12 +60,12 @@ const withValue = (
 
 /** What this browser last set, empty when storage says nothing usable. */
 export function loadCameraOpacity(): CameraOpacity {
-  return loadOpacity(OPACITY_KEY);
+  return loadRecord(OPACITY_KEY, usable);
 }
 
 /** Remember it; a browser that refuses storage just forgets it. */
 export function saveCameraOpacity(opacity: CameraOpacity): void {
-  storeOpacity(OPACITY_KEY, opacity);
+  store(OPACITY_KEY, opacity);
 }
 
 /** One area's opacity, falling back to the default it arrives at. */
@@ -108,12 +85,12 @@ export function withOpacity(
 
 /** What this browser last set, empty when storage says nothing usable. */
 export function loadRobotOpacity(): RobotOpacity {
-  return loadOpacity(ROBOT_KEY);
+  return loadRecord(ROBOT_KEY, usable);
 }
 
 /** Remember it; a browser that refuses storage just forgets it. */
 export function saveRobotOpacity(opacity: RobotOpacity): void {
-  storeOpacity(ROBOT_KEY, opacity);
+  store(ROBOT_KEY, opacity);
 }
 
 /** One area's robots, falling back to solid. */
@@ -195,31 +172,15 @@ const usableOffset = (v: unknown): v is OffsetMm =>
 
 /** What this browser last set, empty when storage says nothing usable. */
 export function loadCameraOffset(): CameraOffset {
-  try {
-    const raw = window.localStorage.getItem(OFFSET_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter(([, v]) => usableOffset(v))
-        .map(([area, v]) => [
-          area,
-          { dx: clampMm((v as OffsetMm).dx), dy: clampMm((v as OffsetMm).dy) },
-        ]),
-    ) as CameraOffset;
-  } catch {
-    return {};
-  }
+  return loadRecord(OFFSET_KEY, usableOffset, (v) => ({
+    dx: clampMm(v.dx),
+    dy: clampMm(v.dy),
+  }));
 }
 
 /** Remember it; a browser that refuses storage just forgets it. */
 export function saveCameraOffset(offset: CameraOffset): void {
-  try {
-    window.localStorage.setItem(OFFSET_KEY, JSON.stringify(offset));
-  } catch {
-    /* private window, cleared site data, storage blocked */
-  }
+  store(OFFSET_KEY, offset);
 }
 
 /** One area's offset, falling back to no nudge at all. */

@@ -84,6 +84,21 @@ const buildTitle = (b: ControllerBuild) =>
 
 type ViewKind = "map" | "list" | "grid";
 
+/** State written back to this browser's own storage whenever it changes. */
+function usePersisted<T>(load: () => T, save: (value: T) => void) {
+  const [value, setValue] = useState<T>(load);
+  const update = useCallback(
+    (next: (prev: T) => T) =>
+      setValue((prev) => {
+        const updated = next(prev);
+        save(updated);
+        return updated;
+      }),
+    [save],
+  );
+  return [value, update] as const;
+}
+
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
@@ -153,51 +168,51 @@ export const App: React.FC = () => {
 
   // Area visibility is a map layer, not shared state: no controller call, and
   // the set is this browser's.
-  const [hiddenAreas, setHiddenAreas] = useState<Set<string>>(loadHiddenAreas);
-  const onAreaToggle = useCallback((name: string) => {
-    setHiddenAreas((prev) => {
-      const next = toggleHidden(prev, name);
-      saveHiddenAreas(next);
-      return next;
-    });
-  }, []);
+  const [hiddenAreas, updateHiddenAreas] = usePersisted<Set<string>>(
+    loadHiddenAreas,
+    saveHiddenAreas,
+  );
+  const onAreaToggle = useCallback(
+    (name: string) => updateHiddenAreas((prev) => toggleHidden(prev, name)),
+    [updateHiddenAreas],
+  );
 
   // So is the camera layer's opacity: a way of looking at the map, and this
   // browser's own.
-  const [cameraOpacity, setCameraOpacity] =
-    useState<CameraOpacity>(loadCameraOpacity);
-  const onCameraOpacity = useCallback((area: string, value: number) => {
-    setCameraOpacity((prev) => {
-      const next = withOpacity(prev, area, value);
-      saveCameraOpacity(next);
-      return next;
-    });
-  }, []);
+  const [cameraOpacity, updateCameraOpacity] = usePersisted<CameraOpacity>(
+    loadCameraOpacity,
+    saveCameraOpacity,
+  );
+  const onCameraOpacity = useCallback(
+    (area: string, value: number) =>
+      updateCameraOpacity((prev) => withOpacity(prev, area, value)),
+    [updateCameraOpacity],
+  );
 
   // And so is the nudge that lines its image up with the robots, which
   // corrects for the camera not hanging straight over the floor.
-  const [cameraOffset, setCameraOffset] =
-    useState<CameraOffset>(loadCameraOffset);
-  const onCameraOffset = useCallback((area: string, value: OffsetMm) => {
-    setCameraOffset((prev) => {
-      const next = withOffset(prev, area, value);
-      saveCameraOffset(next);
-      return next;
-    });
-  }, []);
+  const [cameraOffset, updateCameraOffset] = usePersisted<CameraOffset>(
+    loadCameraOffset,
+    saveCameraOffset,
+  );
+  const onCameraOffset = useCallback(
+    (area: string, value: OffsetMm) =>
+      updateCameraOffset((prev) => withOffset(prev, area, value)),
+    [updateCameraOffset],
+  );
 
   // And so is how solid the robots over one are drawn, which is the same
   // comparison from the other side: the glyph faded until the photographed
   // robot under it can be read.
-  const [robotOpacity, setRobotOpacity] =
-    useState<RobotOpacity>(loadRobotOpacity);
-  const onRobotOpacity = useCallback((area: string, value: number) => {
-    setRobotOpacity((prev) => {
-      const next = withRobotOpacity(prev, area, value);
-      saveRobotOpacity(next);
-      return next;
-    });
-  }, []);
+  const [robotOpacity, updateRobotOpacity] = usePersisted<RobotOpacity>(
+    loadRobotOpacity,
+    saveRobotOpacity,
+  );
+  const onRobotOpacity = useCallback(
+    (area: string, value: number) =>
+      updateRobotOpacity((prev) => withRobotOpacity(prev, area, value)),
+    [updateRobotOpacity],
+  );
 
   // The rail's action opens the tab that sets a session up; the session
   // itself is started from there, once its rectangle and reads are chosen.

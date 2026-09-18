@@ -612,7 +612,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             );
             const detection = (props.cameraDetections ?? {})[camera.area];
             const found = detectionStroke(detection);
-            const pose = found ? detection.pose! : null;
+            const pose = detection?.pose;
             return (
               <div
                 key={`camera-${camera.area}`}
@@ -670,7 +670,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         the nose so the heading is readable, and a dot on the
                         photodiode, which is the point the lighthouse
                         reports and so the one the two can be compared at. */}
-                    {pose && found && (
+                    {found && pose && (
                       <g
                         data-testid={`camera-detection-${camera.area}`}
                         style={{ pointerEvents: "none" }}

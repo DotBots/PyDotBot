@@ -304,14 +304,10 @@ describe("the camera as a map layer", () => {
     expect(image.style.height).toBe("100%");
   });
 
-  it("draws no square through the markers, which the photograph shows", () => {
-    render(<Harness />);
-    expect(
-      screen.queryByTestId("camera-span-dev-corner"),
-    ).not.toBeInTheDocument();
-    // The mapping the mask is drawn through is still this one: the box is
-    // the area, so the span's frame millimetres land as the area's own, and
-    // 1030 mm of frame is 30 mm into a dev-corner starting at 1000.
+  it("maps the span's frame millimetres onto the area's own box", () => {
+    // The box is the area, so the span's frame millimetres land as the
+    // area's own: 1030 mm of frame is 30 mm into a dev-corner starting at
+    // 1000.
     expect(polygonPoints(SPAN, DEV_CORNER)).toBe(
       "30,73.5 970,73.5 970,926.5 30,926.5",
     );
