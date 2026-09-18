@@ -1,4 +1,5 @@
 import asyncio
+import ssl
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.mqtt_tls import INSECURE_ENV
 from dotbot.protocol import PayloadAdvertisement
 
 
@@ -124,6 +126,27 @@ async def test_marilib_cloud_adapter(_):
             next_proto=NextProto.DOTBOT_APP,
         )
         adapter.close()
+
+
+@pytest.mark.asyncio
+@patch("dotbot.adapter.MarilibCloud")
+async def test_a_broker_failing_verification_names_the_way_past_it(cloud):
+    """A rejected certificate is one line naming the opt-out, not a traceback.
+
+    marilib connects while it is constructed, so the handshake raises out of
+    the constructor and only this adapter is placed to say what to do about
+    it.
+    """
+    cloud.side_effect = ssl.SSLError("certificate has expired")
+    adapter = MarilibCloudAdapter(host="h", port=8883, use_tls=True, network_id=2)
+
+    with pytest.raises(ConnectionError) as raised:
+        await adapter.start(lambda _frame: None)
+
+    message = str(raised.value)
+    assert "h:8883" in message
+    assert "certificate has expired" in message
+    assert INSECURE_ENV in message
 
 
 @pytest.mark.asyncio

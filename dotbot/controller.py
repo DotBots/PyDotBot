@@ -1005,6 +1005,7 @@ class Controller:
                 )
             await asyncio.gather(*tasks)
         except (
+            ConnectionError,
             SerialInterfaceException,
             serial.serialutil.SerialException,
         ) as exc:
