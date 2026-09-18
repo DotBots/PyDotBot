@@ -801,7 +801,7 @@ const detection = (
         outline_mm: OUTLINE,
         heading_deg: -37.5,
         heading_atan2_deg: 52.5,
-        green_lever_mm: 31.2,
+        green_flare: 0.83,
         tmpl_margin: 0.91,
         refined: true,
       }
