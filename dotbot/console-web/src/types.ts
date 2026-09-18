@@ -263,6 +263,14 @@ export interface UnifiedBot {
 }
 
 // GET /controller/connection - how the controller reaches the swarm.
+// Which build of pydotbot the controller runs. `commit` and `dirty` are there
+// only when it runs from a git checkout.
+export interface ControllerBuild {
+  version: string;
+  commit?: string;
+  dirty?: boolean;
+}
+
 export interface ControllerConnection {
   adapter: string;
   connection: string;

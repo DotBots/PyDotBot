@@ -3,6 +3,7 @@ import {
   CalibrationPushed,
   CalibrationSaved,
   CalibrationSession,
+  ControllerBuild,
   ControllerConnection,
   LH2Position,
   PyDotBot,
@@ -50,6 +51,16 @@ export function cameraStreamUrl(area: string): string {
 export async function fetchConnection(): Promise<ControllerConnection | null> {
   try {
     const res = await fetch(`${CONTROLLER}/connection`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null; // an older controller has no such route; the bar just omits it
+  }
+}
+
+export async function fetchBuild(): Promise<ControllerBuild | null> {
+  try {
+    const res = await fetch(`${CONTROLLER}/build`);
     if (!res.ok) return null;
     return await res.json();
   } catch {

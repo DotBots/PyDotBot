@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchConnection, putWaypoints } from "./api";
+import { fetchBuild, fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
 import {
   CameraOffset,
@@ -47,6 +47,7 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
+  ControllerBuild,
   ControllerConnection,
   LH2Position,
   PlannedMission,
@@ -66,6 +67,18 @@ import {
 } from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
+
+// Build provenance, quiet enough to ignore until it is the question:
+// `v0.30.0`, `v0.30.0 6573d53`, or `v0.30.0 6573d53*` for a dirty checkout.
+const buildLabel = (b: ControllerBuild) =>
+  `v${b.version}${b.commit ? ` ${b.commit}${b.dirty ? "*" : ""}` : ""}`;
+
+const buildTitle = (b: ControllerBuild) =>
+  b.commit
+    ? `pydotbot ${b.version}, from a git checkout at ${b.commit}${
+        b.dirty ? " with uncommitted changes (*)" : ""
+      }`
+    : `pydotbot ${b.version} (installed, not a git checkout)`;
 
 type ViewKind = "map" | "list" | "grid";
 
@@ -124,6 +137,7 @@ export const App: React.FC = () => {
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [conn, setConn] = useState<ControllerConnection | null>(null);
+  const [build, setBuild] = useState<ControllerBuild | null>(null);
 
   // Below this width the step card is the whole screen: calibration day
   // happens on the floor, and the console does not reflow - at 390 px the
@@ -279,6 +293,7 @@ export const App: React.FC = () => {
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
     fetchConnection().then(setConn);
+    fetchBuild().then(setBuild);
   }, []);
 
   // The shortcuts panel: its key opens it with nothing selected and closes
@@ -558,6 +573,14 @@ export const App: React.FC = () => {
               swarm id {conn.swarm_id}
             </span>
           </>
+        )}
+        {build && (
+          <span
+            title={buildTitle(build)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}
+          >
+            {buildLabel(build)}
+          </span>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
           <div
