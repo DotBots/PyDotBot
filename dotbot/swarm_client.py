@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from dotbot.mqtt_tls import allow_unverified_broker
+
 
 def build_swarmit_client(conn: str, swarm_id: str, device: str | None = None) -> Any:
     """A swarmit client targeting one `device`, or the whole swarm when None.
@@ -23,7 +25,12 @@ def build_swarmit_client(conn: str, swarm_id: str, device: str | None = None) ->
     Transport selection is swarmit's call: `build_client` probes for a
     running swarmit server and falls back to an in-process controller on its
     own, so there is nothing to choose here.
+
+    swarmit connects while its controller is constructed, so certificate
+    checking is settled before `build_client` is reached.
     """
+    allow_unverified_broker()
+
     from swarmit.cli.main import DEFAULTS, _conn_to_config
     from swarmit.client import build_client
     from swarmit.testbed.controller import ControllerSettings
