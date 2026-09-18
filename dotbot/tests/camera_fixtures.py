@@ -318,6 +318,7 @@ class ScriptedCapture:
         self.fps = fps
         self.opens = opens
         self.released = False
+        self.controls_set = {}
 
     def isOpened(self):  # noqa: N802 - the cv2 spelling
         return self.opens
@@ -328,7 +329,15 @@ class ScriptedCapture:
         return True, self.frames.pop(0)
 
     def get(self, prop):
-        return self.fps
+        # A real device answers negative for a control it does not carry,
+        # which is what keeps a scripted source out of a registration.
+        if prop == cv2.CAP_PROP_FPS:
+            return self.fps
+        return self.controls_set.get(prop, -1.0)
+
+    def set(self, prop, value):
+        self.controls_set[prop] = value
+        return True
 
     def getBackendName(self):  # noqa: N802 - the cv2 spelling
         return self.backend

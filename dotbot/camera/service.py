@@ -31,8 +31,12 @@ import numpy as np
 
 from dotbot.area import Area
 from dotbot.camera.capture import (
+    apply_controls,
     capture_fps,
+    control_drift,
+    controls_string,
     open_capture,
+    read_controls,
     release_capture,
     settle,
 )
@@ -147,6 +151,10 @@ class CameraService:
             )
             return False
 
+        # Set what the registration recorded before any frame is kept, so
+        # what settles is what the camera was registered under.
+        apply_controls(capture, self.calibration.controls)
+
         settled = settle(capture)
         if settled.frame is None:
             release_capture(capture)
@@ -172,6 +180,20 @@ class CameraService:
                 calibrated=mismatch[1],
             )
             return False
+
+        drift = control_drift(read_controls(capture), self.calibration.controls)
+        if drift:
+            self.logger.warning(
+                "Camera delivers different colour controls than its "
+                "calibration recorded, so the floor it is detecting against "
+                "is not the floor it was registered under. Set them on the "
+                "device, or register it again with `dotbot run "
+                "camera-calibration collect`.",
+                source=source,
+                area=self.area.name,
+                delivered=controls_string({n: got for n, (got, _) in drift.items()}),
+                calibrated=controls_string({n: want for n, (_, want) in drift.items()}),
+            )
 
         self._capture = capture
         self._reading = True

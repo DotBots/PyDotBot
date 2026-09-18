@@ -528,6 +528,72 @@ def test_the_id_is_unchanged_by_a_rewrite(frame, tmp_path):
     assert rewritten.id == before
 
 
+def test_the_file_records_the_cameras_colour_controls(frame, tmp_path):
+    """Nothing else records the light the colour check was measured under."""
+    written = a_calibration(frame)
+    written.controls = {"auto_wb": 0.0, "wb_temperature": 4780.0}
+    back = read_camera_calibration_file(
+        write_camera_calibration(written, root=tmp_path)
+    )
+    assert back.controls == {"auto_wb": 0.0, "wb_temperature": 4780.0}
+
+
+def test_a_registration_written_without_controls_still_reads(frame, tmp_path):
+    """A file from before the controls were recorded stays readable."""
+    written = a_calibration(frame)
+    assert written.controls == {}
+    path = write_camera_calibration(written, root=tmp_path)
+    assert "[camera.controls]" not in path.read_text(encoding="utf-8")
+    assert read_camera_calibration_file(path).controls == {}
+
+
+def test_the_controls_do_not_change_the_id(frame):
+    """The light a camera was registered under cannot move its homography."""
+    written = a_calibration(frame)
+    before = written.id
+    written.controls = {"auto_wb": 0.0, "wb_temperature": 4780.0}
+    assert written.id == before
+
+
+def test_a_white_balance_that_walked_away_is_named():
+    """A camera back on automatic drifts far from what was recorded."""
+    from dotbot.camera.capture import control_drift
+
+    recorded = {"auto_wb": 0.0, "wb_temperature": 4780.0}
+    drift = control_drift({"auto_wb": 1.0, "wb_temperature": 6500.0}, recorded)
+
+    assert drift["auto_wb"] == (1.0, 0.0)
+    assert drift["wb_temperature"] == (6500.0, 4780.0)
+    # A driver quantises a temperature to its own step, which is not drift.
+    assert control_drift({"auto_wb": 0.0, "wb_temperature": 4800.0}, recorded) == {}
+
+
+def test_exposure_is_compared_only_when_it_was_a_setting():
+    """Under an automatic mode the exposure is an outcome, not a setting.
+
+    Holding a camera to an exposure its own driver is choosing would warn on
+    every change of light in the room.
+    """
+    from dotbot.camera.capture import comparable_controls, control_drift
+
+    auto = {"auto_wb": 0.0, "auto_exposure": 3.0, "exposure": 83.0, "gain": 241.0}
+    manual = dict(auto, auto_exposure=1.0)
+
+    assert "exposure" not in comparable_controls(auto)
+    assert "exposure" in comparable_controls(manual)
+    assert control_drift(dict(auto, exposure=300.0), auto) == {}
+    assert control_drift(dict(manual, exposure=300.0), manual)["exposure"] == (
+        300.0,
+        83.0,
+    )
+
+
+def test_a_source_reporting_no_controls_records_none(frame):
+    """A device answers negative for a control it does not carry."""
+    found = probe(0, sources({0: [frame]}))
+    assert found.controls == {}
+
+
 def test_the_id_changes_when_one_pixel_corner_does(frame):
     written = a_calibration(frame)
     before = written.id

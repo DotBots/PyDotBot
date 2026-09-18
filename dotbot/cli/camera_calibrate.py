@@ -30,6 +30,7 @@ from dotbot.camera.capture import (
     build_detector,
     capture_reads,
     choose,
+    controls_string,
     discover,
     open_capture,
     parse_source,
@@ -254,6 +255,8 @@ def collect(
         f"residual {solution.residual_mm:.1f} mm over {4 * len(layout)} "
         f"corners, id {calibration.id}, site {site.name}"
     )
+    if calibration.controls:
+        click.echo(f"colour controls recorded: {controls_string(calibration.controls)}")
     click.echo(
         "To draw it on the console map:\n"
         f"  dotbot run controller --camera-calibration {calibration.id8}"

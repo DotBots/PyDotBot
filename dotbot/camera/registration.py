@@ -135,6 +135,10 @@ class CameraCalibration:
     lens: str = LENS_DEFAULT
     intrinsics: str = ""
     reads: int = 0
+    # The camera's colour controls as `collect` read them back. Empty for a
+    # registration written before they were recorded, which applies and
+    # compares nothing.
+    controls: dict = field(default_factory=dict)
     markers: list[MarkerObservation] = field(default_factory=list)
     matrix: list[list[float]] = field(default_factory=list)
     residual_mm: float = 0.0
@@ -218,6 +222,12 @@ def render_camera_calibration(calibration: CameraCalibration) -> str:
         f'intrinsics = "{toml_escape(calibration.intrinsics)}"',
         f"reads = {int(calibration.reads)}",
     ]
+    if calibration.controls:
+        out += ["", "[camera.controls]"]
+        out += [
+            f"{name} = {toml_num(value)}"
+            for name, value in sorted(calibration.controls.items())
+        ]
     for marker in sorted(calibration.markers, key=lambda m: m.id):
         out += [
             "",
@@ -284,6 +294,10 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
         lens=camera_data.get("lens", ""),
         intrinsics=camera_data.get("intrinsics", ""),
         reads=int(camera_data.get("reads", 0)),
+        controls={
+            str(name): float(value)
+            for name, value in (camera_data.get("controls", {}) or {}).items()
+        },
         markers=[
             MarkerObservation(
                 id=int(raw["id"]),
@@ -401,6 +415,7 @@ def build_calibration(
         lens=lens,
         intrinsics=intrinsics,
         reads=reads,
+        controls=dict(probe_result.controls),
         markers=[
             MarkerObservation(
                 id=marker.id,

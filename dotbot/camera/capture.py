@@ -10,7 +10,7 @@ sheets `--reads` times. Nothing here knows about the homography.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -40,6 +40,38 @@ DARK_MEAN_MAX = 20.0
 FLAT_SPREAD_MAX = 12.0
 
 READS_DEFAULT = 25
+
+# The colour-relevant controls a registration records, as the OpenCV property
+# each one is read and written through.
+CONTROL_PROPERTIES = {
+    "auto_wb": "CAP_PROP_AUTO_WB",
+    "wb_temperature": "CAP_PROP_WB_TEMPERATURE",
+    "auto_exposure": "CAP_PROP_AUTO_EXPOSURE",
+    "exposure": "CAP_PROP_EXPOSURE",
+    "gain": "CAP_PROP_GAIN",
+}
+
+# What the runtime sets when a registration records it. White balance only:
+# the detector measures a candidate against the floor's own colour, and
+# automatic white balance walks that colour away while the camera watches.
+# Exposure and gain are recorded and compared but never set - a manual
+# exposure request is rounded to the driver's own steps, and on this bench
+# asking for 83 and 214 returned 77 and 255, a frame mean of 221 and nothing
+# detectable in it. A warning costs a log line; that costs every detection.
+APPLIED_CONTROLS = ("auto_wb", "wb_temperature")
+
+# V4L2 reports manual exposure as 1 and its automatic modes above it.
+EXPOSURE_MANUAL = 1.0
+
+# How far a device may land from what it was asked for before it is worth a
+# line in the log. A temperature is quantised to the driver's own step.
+CONTROL_TOLERANCE = {
+    "auto_wb": 0.5,
+    "wb_temperature": 50.0,
+    "auto_exposure": 0.5,
+    "exposure": 0.5,
+    "gain": 0.5,
+}
 
 
 def open_capture(source: int | str, open_source: Callable | None = None):
@@ -160,6 +192,7 @@ class Probe:
     width: int = 0
     height: int = 0
     fps: float = 0.0
+    controls: dict = field(default_factory=dict)
     discarded: int = 0
     mean: float = 0.0
     spread: float = 0.0
@@ -218,6 +251,7 @@ def probe(
         settled = settle(capture)
         backend = str(getattr(capture, "getBackendName", lambda: "")() or "")
         fps = float(capture_fps(capture))
+        controls = read_controls(capture)
     finally:
         release_capture(capture)
     if settled.frame is None:
@@ -232,6 +266,7 @@ def probe(
         width=int(width),
         height=int(height),
         fps=fps,
+        controls=controls,
         discarded=settled.discarded,
         mean=float(np.mean(gray)),
         spread=float(np.std(gray)),
@@ -248,6 +283,87 @@ def capture_fps(capture) -> float:
         return float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
     except Exception:  # noqa: BLE001 - a scripted or exotic source may not
         return 0.0
+
+
+def _control_property(name: str):
+    """The OpenCV property a control is read and written through."""
+    import cv2
+
+    return getattr(cv2, CONTROL_PROPERTIES.get(name, ""), None)
+
+
+def read_controls(capture) -> dict[str, float]:
+    """The colour-relevant controls this device reports, by name.
+
+    A control the device does not implement answers negative and is left
+    out, so a registration records only what was really read back.
+    """
+    found: dict[str, float] = {}
+    for name in CONTROL_PROPERTIES:
+        prop = _control_property(name)
+        if prop is None:
+            continue
+        try:
+            value = float(capture.get(prop))
+        except Exception:  # noqa: BLE001 - a scripted or exotic source may not
+            continue
+        if value >= 0:
+            found[name] = value
+    return found
+
+
+def apply_controls(capture, controls: dict | None) -> tuple[str, ...]:
+    """Set the controls that are safe to set, and name the ones that took."""
+    applied = []
+    for name in APPLIED_CONTROLS:
+        if name not in (controls or {}):
+            continue
+        prop = _control_property(name)
+        if prop is None:
+            continue
+        try:
+            if capture.set(prop, float(controls[name])):
+                applied.append(name)
+        except Exception:  # noqa: BLE001 - a scripted or exotic source may not
+            continue
+    return tuple(applied)
+
+
+def comparable_controls(recorded: dict) -> tuple[str, ...]:
+    """The recorded controls worth holding a device to.
+
+    Exposure and gain are outcomes rather than settings whenever the
+    registration recorded an automatic exposure mode, so they are compared
+    only when it recorded a manual one. A white balance temperature means
+    nothing while the device is choosing its own.
+    """
+    names = [name for name in ("auto_wb", "auto_exposure") if name in recorded]
+    if recorded.get("auto_wb") == 0.0 and "wb_temperature" in recorded:
+        names.append("wb_temperature")
+    if recorded.get("auto_exposure") == EXPOSURE_MANUAL:
+        names += [name for name in ("exposure", "gain") if name in recorded]
+    return tuple(names)
+
+
+def control_drift(
+    delivered: dict, recorded: dict | None
+) -> dict[str, tuple[float, float]]:
+    """Each comparable control the device does not deliver, as (got, wanted)."""
+    drift: dict[str, tuple[float, float]] = {}
+    for name in comparable_controls(recorded or {}):
+        if name not in delivered:
+            continue
+        got, wanted = float(delivered[name]), float(recorded[name])
+        if abs(got - wanted) > CONTROL_TOLERANCE.get(name, 0.5):
+            drift[name] = (got, wanted)
+    return drift
+
+
+def controls_string(controls: dict) -> str:
+    """One set of controls as the operator reads them off a camera's menu."""
+    if not controls:
+        return "no colour controls"
+    return ", ".join(f"{name} {value:g}" for name, value in sorted(controls.items()))
 
 
 def release_capture(capture) -> None:

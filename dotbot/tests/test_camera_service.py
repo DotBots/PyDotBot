@@ -54,6 +54,118 @@ class ThrowingCapture(ScriptedCapture):
 # it shows is the plumbing's, not a lens's.
 
 
+class StubbornCapture(ScriptedCapture):
+    """A device reporting colour controls it will not accept being set to."""
+
+    def __init__(self, frame, reports):
+        super().__init__([frame] * 20, fps=0.0)
+        self._reports = reports
+
+    def get(self, prop):
+        if prop in self._reports:
+            return self._reports[prop]
+        return super().get(prop)
+
+    def set(self, prop, value):
+        return False
+
+
+class RecordingLogger:
+    """A logger that keeps what it was told, so a test can read it back."""
+
+    def __init__(self):
+        self.warnings = []
+
+    def bind(self, **kwargs):
+        return self
+
+    def warning(self, message, **kwargs):
+        self.warnings.append((message, kwargs))
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def error(self, *args, **kwargs):
+        pass
+
+
+def test_the_registered_white_balance_is_set_before_the_first_frame(synthetic_camera):
+    """What settles is the light the camera was registered under.
+
+    Exposure is recorded and compared but never set: a manual exposure the
+    driver rounds to its own step can blow the image out, which costs every
+    detection on the layer.
+    """
+    frame = cv2.imread(str(synthetic_camera.source))
+    opened = []
+
+    def open_source(source):
+        capture = ScriptedCapture([frame] * 20, fps=0.0)
+        opened.append(capture)
+        return capture
+
+    calibration = dataclasses.replace(
+        synthetic_camera,
+        controls={"auto_wb": 0.0, "wb_temperature": 4780.0, "exposure": 83.0},
+    )
+    service = CameraService(calibration, DEV_CORNER, open_source=open_source)
+    assert service.start()
+    try:
+        was_set = opened[0].controls_set
+        assert was_set[cv2.CAP_PROP_AUTO_WB] == 0.0
+        assert was_set[cv2.CAP_PROP_WB_TEMPERATURE] == 4780.0
+        assert cv2.CAP_PROP_EXPOSURE not in was_set
+    finally:
+        service.stop()
+
+
+def test_colour_controls_that_will_not_take_are_warned_about_and_still_served(
+    synthetic_camera,
+):
+    """A colour drift degrades detection; it does not invalidate the geometry.
+
+    So it is a warning and a layer, where a mode mismatch is a warning and no
+    layer at all.
+    """
+    frame = cv2.imread(str(synthetic_camera.source))
+    reports = {cv2.CAP_PROP_AUTO_WB: 1.0, cv2.CAP_PROP_WB_TEMPERATURE: 6500.0}
+    calibration = dataclasses.replace(
+        synthetic_camera, controls={"auto_wb": 0.0, "wb_temperature": 4780.0}
+    )
+    logger = RecordingLogger()
+    service = CameraService(
+        calibration,
+        DEV_CORNER,
+        open_source=lambda source: StubbornCapture(frame, reports),
+        logger=logger,
+    )
+    assert service.start()
+    try:
+        assert service.live
+        assert any("colour controls" in message for message, _ in logger.warnings)
+    finally:
+        service.stop()
+
+
+def test_a_registration_without_controls_warns_about_nothing(synthetic_camera):
+    """An older registration holds the camera to nothing, and says nothing."""
+    frame = cv2.imread(str(synthetic_camera.source))
+    reports = {cv2.CAP_PROP_AUTO_WB: 1.0, cv2.CAP_PROP_WB_TEMPERATURE: 6500.0}
+    assert synthetic_camera.controls == {}
+    logger = RecordingLogger()
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=lambda source: StubbornCapture(frame, reports),
+        logger=logger,
+    )
+    assert service.start()
+    try:
+        assert logger.warnings == []
+    finally:
+        service.stop()
+
+
 class RecordingDetector:
     """A detector that keeps what it was handed and finds nothing."""
 
