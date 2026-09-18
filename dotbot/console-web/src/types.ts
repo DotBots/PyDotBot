@@ -262,6 +262,19 @@ export interface UnifiedBot {
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 
+// The targets of the last mission sent to this bot. The controller stores
+// [own-start, ...targets] and keeps the list once the bot arrives, so the tail
+// is the mission to repeat. A one-entry list is what stopping leaves behind -
+// the bot's own position, nothing to repeat.
+export function lastMissionTargets(bot: UnifiedBot): LH2Position[] {
+  return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
+}
+
+// A bot under way is already running its last mission, so it is left alone.
+export function canRedoMission(bot: UnifiedBot): boolean {
+  return bot.drivable && bot.nav !== "auto" && lastMissionTargets(bot).length > 0;
+}
+
 // GET /controller/connection - how the controller reaches the swarm.
 // Which build of pydotbot the controller runs. `commit` and `dirty` are there
 // only when it runs from a git checkout.

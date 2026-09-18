@@ -47,8 +47,10 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
+  canRedoMission,
   ControllerBuild,
   ControllerConnection,
+  lastMissionTargets,
   LH2Position,
   PlannedMission,
 } from "./types";
@@ -387,6 +389,18 @@ export const App: React.FC = () => {
     });
     if (drivableSelected.length > 0) showToast("Navigation stopped");
   }, [drivableSelected, showToast]);
+
+  // Redo sends each bot the mission it last ran, which the controller still
+  // holds after the bot arrived. Each bot gets its own list, so a selection
+  // that ran different missions repeats each of them.
+  const onRedo = useCallback(() => {
+    const again = selectedBots.filter(canRedoMission);
+    if (again.length === 0) return;
+    again.forEach((b) => {
+      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, lastMissionTargets(b)).catch(() => {});
+    });
+    showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
+  }, [selectedBots, showToast]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -806,6 +820,7 @@ export const App: React.FC = () => {
         onSelectState={(ids) => onSelect(ids, "replace")}
         onGo={onGo}
         onStopNav={onStopNav}
+        onRedo={onRedo}
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
         onToast={showToast}
