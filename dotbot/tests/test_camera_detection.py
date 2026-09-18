@@ -155,9 +155,11 @@ def test_a_grey_board_is_refused_for_carrying_no_colour():
     assert abs(peak[1] * sx - CENTRE_PX[0]) < 20
     assert abs(peak[0] * sy - CENTRE_PX[1]) < 20
 
-    # And it carries no colour, so it never becomes a candidate.
+    # And it carries no colour the floor does not, so it never becomes a
+    # candidate.
     half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
-    assert proposer._saturation(raster, CENTRE_PX, half) < proposer.PRE_SAT_MIN
+    chroma = proposer.chroma_sigmas(raster)
+    assert proposer._coloured(chroma, CENTRE_PX, half) < proposer.PRE_CHROMA_MIN
     assert proposer.verify(raster, None, MM_PER_PX) == []
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
@@ -220,13 +222,13 @@ def test_the_pre_gate_window_covers_the_refinement_it_gates():
     A window narrower than refinement's reach asks about a point the peak has
     not earned, and drops robots whose peak landed beside them.
     """
-    assert proposer.PRE_CROP_FRAC >= proposer.SAT_CROP_FRAC + proposer.REFINE_FRAC
+    assert proposer.PRE_CROP_FRAC >= proposer.CHROMA_CROP_FRAC + proposer.REFINE_FRAC
 
 
 def test_the_pre_gate_asks_the_same_absolute_colour_as_the_verdict():
     """A threshold on a fraction only holds still if it falls with the area."""
-    narrow = proposer.SAT_CROP_FRAC**2 * (proposer.SAT_MIN / 4)
-    wide = proposer.PRE_CROP_FRAC**2 * proposer.PRE_SAT_MIN
+    narrow = proposer.CHROMA_CROP_FRAC**2 * (proposer.CHROMA_MIN / 4)
+    wide = proposer.PRE_CROP_FRAC**2 * proposer.PRE_CHROMA_MIN
     assert wide == pytest.approx(narrow)
 
 
@@ -245,7 +247,8 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     raster = draw_robot(raster, (220.0, 125.0), 37.0)
 
     half = int(proposer.PRE_CROP_FRAC * proposer.ROBOT_MM / MM_PER_PX)
-    assert proposer._saturation(raster, (72.0, 114.0), half) < proposer.PRE_SAT_MIN
+    chroma = proposer.chroma_sigmas(raster)
+    assert proposer._coloured(chroma, (72.0, 114.0), half) < proposer.PRE_CHROMA_MIN
 
     candidates = proposer.verify(raster, None, MM_PER_PX)
     assert [c["robot"] for c in candidates].count(True) == 1
@@ -258,14 +261,13 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     assert np.allclose(pose["centre_mm"], truth_mm((220.0, 125.0)), atol=4.0)
 
 
-def test_a_sheet_off_neutral_is_taken_out_by_the_marker_printed_on_it():
-    """White paper is only colourless under light the white balance matches.
+def test_a_white_balance_cast_does_not_turn_a_sheet_into_a_robot():
+    """The colour check moves with the light, so a cast cannot fake a robot.
 
-    Off neutral the page carries saturation of its own, the colour check
-    stops separating it from a robot, and the sheet is proposed and fitted.
-    It costs more than a phantom row: the sheet's candidate can win, and the
-    detection is refused rather than reported. What takes the page back out
-    is the marker that made it a sheet, decoded on the same frame.
+    A cast lands on the page and on the floor together, and the check is
+    measured against the floor's own colour, so the page goes on reading as
+    floor. An absolute saturation level cannot do that: it puts page and
+    floor over the threshold together and stops separating anything.
     """
     raster = carpet(300, 250)
     raster = rect_px(raster, 20, 40, 140, 200, (245, 245, 245))  # the page
@@ -281,18 +283,35 @@ def test_a_sheet_off_neutral_is_taken_out_by_the_marker_printed_on_it():
         raster.astype(np.float32) * np.array([1.35, 1.0, 0.62]), 0, 255
     ).astype(np.uint8)
 
-    half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
-    assert proposer._saturation(raster, (80.0, 120.0), half) > proposer.SAT_MIN
+    half = int(proposer.CHROMA_CROP_FRAC * proposer.ROBOT_MM / MM_PER_PX)
+    chroma = proposer.chroma_sigmas(raster)
+    assert proposer._coloured(chroma, (80.0, 120.0), half) < proposer.CHROMA_MIN
+    assert proposer._coloured(chroma, (220.0, 125.0), half) > proposer.CHROMA_MIN
 
+    # The page never becomes a candidate, so nothing has to take it back out.
     loose = RobotDetector(MM_PER_PX, exclude_sheets=False).detect(raster)
-    assert loose.candidates == 2
-    assert loose.status == "refused"
+    assert loose.candidates == 1
+    assert loose.status == "found"
 
     detector = RobotDetector(MM_PER_PX)
     assert len(detector.sheet_quads(raster)) == 1
     detection = detector.detect(raster)
     assert detection.status == "found"
     assert detection.candidates == 1
+
+
+def test_a_candidate_standing_on_a_sheet_is_dropped():
+    """Only the centre is tested, so a robot parked beside a page survives."""
+    from dotbot.camera.detection.robot import _off_sheets
+
+    quad = np.array(
+        [(40.0, 80.0), (120.0, 80.0), (120.0, 170.0), (40.0, 170.0)], np.float32
+    )
+    on_page = {"centre": np.array([80.0, 125.0]), "z": 9.0}
+    beside = {"centre": np.array([220.0, 125.0]), "z": 9.0}
+
+    assert [c["centre"][0] for c in _off_sheets([on_page, beside], [quad])] == [220.0]
+    assert _off_sheets([on_page, beside], []) == [on_page, beside]
 
 
 def test_a_lifted_sheet_gives_its_floor_straight_back():

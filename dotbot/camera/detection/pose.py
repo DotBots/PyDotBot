@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from dotbot.camera.detection.propose import as_bgr
+from dotbot.camera.detection.propose import as_bgr, floor_ab, floor_selector
 from dotbot.robots import robot_geometry
 
 _GEOMETRY = robot_geometry()
@@ -103,15 +103,6 @@ MAX_REFINE_TURN_DEG = 18.0
 # The outline fit's window, in millimetres: a 95 mm robot plus the shift
 # tolerance either side.
 FIT_ROI_MM = 170.0
-
-
-def _mad(x, med):
-    """Robust scale, floored at one 8-bit step.
-
-    An 8-bit chroma channel's smallest real spread is one step; below that
-    the floor itself reads as outliers and the evidence maps saturate.
-    """
-    return max(1.4826 * float(np.median(np.abs(x - med))), 1.0)
 
 
 def axes(heading_deg):
@@ -194,20 +185,11 @@ def features(bgr, keep_mask=None):
     import cv2  # lazy: opencv-python is only required to run the detector
 
     bgr = as_bgr(bgr)
-    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
     value = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[:, :, 2].astype(np.float32)
-    a, b = lab[:, :, 1], lab[:, :, 2]
+    a, b, (ma, mb, sa, sb) = floor_ab(bgr, keep_mask)
 
-    if keep_mask is None:
-        floor_of = lambda m: m[::3, ::3].ravel()  # noqa: E731
-    else:
-        kept = np.asarray(keep_mask)[::3, ::3] > 0
-        if kept.sum() < 64:
-            kept = np.ones_like(kept, bool)
-        floor_of = lambda m: m[::3, ::3][kept]  # noqa: E731
-
-    ma, mb, mv = (float(np.median(floor_of(m))) for m in (a, b, value))
-    sa, sb = _mad(floor_of(a), ma), _mad(floor_of(b), mb)
+    floor_of = floor_selector(keep_mask)
+    mv = float(np.median(floor_of(value)))
     sv = max(mv - float(np.percentile(floor_of(value), 16.0)), 1.0)
     sab = float(np.hypot(sa, sb))
     chroma = np.hypot(a - ma, b - mb) / sab

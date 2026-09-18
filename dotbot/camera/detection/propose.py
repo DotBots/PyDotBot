@@ -15,7 +15,9 @@ first with one robot's separation enforced on the final centres, so no
 morphology can bridge two objects into one blob.
 
 `verify` adds the colour check to those candidates: a robot carries
-coloured parts and a floor does not.
+coloured parts and a floor does not. That check is measured against the
+floor this camera is actually seeing, in the floor's own chroma spread, so
+it is the same kind of quantity as the response above it.
 """
 
 from __future__ import annotations
@@ -37,20 +39,25 @@ K_SIGMA = 6.0
 MIN_VALID = 1.00  # the robot's whole footprint must be on known floor
 MAX_OUT = 48  # candidate budget, about a third of the cells in a square metre
 
-# The colour check: how much of the candidate's crop must be saturated.
-SAT_LEVEL = 90
-SAT_MIN = 2.0
-SAT_CROP_FRAC = 0.6  # the verdict's window, in robots either side of the centre
+# The colour check: how much of the candidate's crop carries colour the floor
+# does not. A pixel counts once its a*/b* distance from the floor's own centre
+# clears `CHROMA_K` of the floor's own chroma spread, which is the same
+# self-calibrating metric the response above is scored in. White balance,
+# exposure and the compression of the source all move a candidate's chroma and
+# the floor's together, so they cancel here; an absolute level cannot, and the
+# level that separates the two is a property of the room, not of the detector.
+CHROMA_K = 6.0
+CHROMA_MIN = 2.0
+CHROMA_CROP_FRAC = 0.6  # the verdict's window, in robots either side of the centre
 
 # What a peak must already carry, before it is worth re-centring at full
 # resolution. A peak sits up to half a robot from the object it found, so this
 # window spans the verdict's own window plus how far `_refine` can move the
-# centre; measured over it on the bench a robot scores at least 0.54 per cent
-# and bare floor 0.00. The threshold is a quarter of `SAT_MIN` rescaled by the
-# area ratio, so it asks for the same absolute colour over the larger window.
-PRE_CROP_FRAC = SAT_CROP_FRAC + REFINE_FRAC
-PRE_SAT_SCALE = (SAT_CROP_FRAC / PRE_CROP_FRAC) ** 2
-PRE_SAT_MIN = SAT_MIN / 4 * PRE_SAT_SCALE
+# centre. The threshold is a quarter of `CHROMA_MIN` rescaled by the area
+# ratio, so it asks for the same absolute colour over the larger window.
+PRE_CROP_FRAC = CHROMA_CROP_FRAC + REFINE_FRAC
+PRE_CHROMA_SCALE = (CHROMA_CROP_FRAC / PRE_CROP_FRAC) ** 2
+PRE_CHROMA_MIN = CHROMA_MIN / 4 * PRE_CHROMA_SCALE
 
 
 def as_bgr(frame):
@@ -68,20 +75,62 @@ def as_bgr(frame):
     return frame
 
 
-def _saturation(bgr, centre, half, sat_level=SAT_LEVEL):
-    """Per cent of a box around `centre` carrying saturated colour.
+def _mad(x, med):
+    """Robust scale, floored at one 8-bit step.
+
+    An 8-bit chroma channel's smallest real spread is one step; below that
+    the floor itself reads as outliers and the evidence maps saturate.
+    """
+    return max(1.4826 * float(np.median(np.abs(x - med))), 1.0)
+
+
+def floor_selector(keep_mask):
+    """The subsample of pixels the floor statistics are taken over.
+
+    `keep_mask` marks the floor a camera can see, so the warp's black border
+    does not shift the median every chroma is measured against.
+    """
+    if keep_mask is None:
+        return lambda m: m[::3, ::3].ravel()  # noqa: E731
+    kept = np.asarray(keep_mask)[::3, ::3] > 0
+    if kept.sum() < 64:
+        kept = np.ones_like(kept, bool)
+    return lambda m: m[::3, ::3][kept]  # noqa: E731
+
+
+def floor_ab(bgr, keep_mask=None):
+    """The a* and b* planes, and the floor's own centre and spread in them.
+
+    Returns `(a, b, (ma, mb, sa, sb))` in OpenCV's 8-bit Lab units. Only
+    differences from the floor's centre are ever taken, so the 128 offset
+    those channels carry cancels and is left in place.
+    """
+    import cv2  # lazy: opencv-python is only required to run the detector
+
+    lab = cv2.cvtColor(as_bgr(bgr), cv2.COLOR_BGR2LAB).astype(np.float32)
+    a, b = lab[:, :, 1], lab[:, :, 2]
+    floor_of = floor_selector(keep_mask)
+    ma, mb = (float(np.median(floor_of(m))) for m in (a, b))
+    return a, b, (ma, mb, _mad(floor_of(a), ma), _mad(floor_of(b), mb))
+
+
+def chroma_sigmas(bgr, keep_mask=None):
+    """Every pixel's a*/b* distance from the floor, in floor-chroma sigmas."""
+    a, b, (ma, mb, sa, sb) = floor_ab(bgr, keep_mask)
+    return np.hypot(a - ma, b - mb) / float(np.hypot(sa, sb))
+
+
+def _coloured(chroma, centre, half, k=CHROMA_K):
+    """Per cent of a box around `centre` carrying colour the floor does not.
 
     A robot carries coloured parts and a floor does not, which is the only
     thing that separates the two by the time a candidate is this size.
     """
-    import cv2  # lazy: opencv-python is only required to run the detector
-
     x, y = int(centre[0]), int(centre[1])
-    crop = bgr[max(0, y - half) : y + half, max(0, x - half) : x + half]
+    crop = chroma[max(0, y - half) : y + half, max(0, x - half) : x + half]
     if crop.size == 0:
         return 0.0
-    channel = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[:, :, 1]
-    return float((channel > sat_level).mean()) * 100
+    return float((crop > k).mean()) * 100
 
 
 def _true_lab(bgr):
@@ -226,11 +275,18 @@ def propose(
     nms_frac=NMS_FRAC,
     min_valid=MIN_VALID,
     max_out=MAX_OUT,
-    pre_sat_min=PRE_SAT_MIN,
-    sat_level=SAT_LEVEL,
+    pre_chroma_min=PRE_CHROMA_MIN,
+    chroma=None,
+    chroma_k=CHROMA_K,
 ):
-    """Candidate robot-sized objects, as dicts with `centre` in input px."""
+    """Candidate robot-sized objects, as dicts with `centre` in input px.
+
+    `chroma` is the floor-relative chroma field of this frame, which a
+    caller that has already measured it passes in rather than paying twice.
+    """
     bgr = as_bgr(bgr)
+    if chroma is None:
+        chroma = chroma_sigmas(bgr, keep_mask)
     scored, ok, work_mmpp, (sx, sy), sigma, m_out = response(
         bgr,
         keep_mask,
@@ -269,7 +325,7 @@ def propose(
         # testing the verdict's window here asks about a point the peak has
         # not earned, and drops robots whose peak sat beside them.
         half = int(PRE_CROP_FRAC * robot_mm / mm_per_px)
-        if _saturation(bgr, (cx, cy), half, sat_level) < pre_sat_min:
+        if _coloured(chroma, (cx, cy), half, chroma_k) < pre_chroma_min:
             continue
         cx, cy = _refine(bgr, cx, cy, m_out[y, x], sigma, robot_mm, mm_per_px)
         # The one-robot separation has to hold on the final centres:
@@ -331,33 +387,37 @@ def verify(
     keep_mask=None,
     mm_per_px=None,
     robot_mm=ROBOT_MM,
-    sat_min=SAT_MIN,
-    sat_level=SAT_LEVEL,
+    chroma_min=CHROMA_MIN,
+    chroma=None,
+    chroma_k=CHROMA_K,
     **kwargs,
 ):
     """`propose`'s candidates with the colour verdict on each, as `robot`.
 
-    Colour conversions run on the candidate crop rather than the whole
-    frame, so a generous proposer stays affordable. The verdict is taken at
-    the re-centred position, which is the one a pose is seeded from.
+    The frame's chroma field is measured once and read per candidate, so a
+    generous proposer stays affordable. The verdict is taken at the
+    re-centred position, which is the one a pose is seeded from.
     """
     bgr = as_bgr(bgr)
+    if chroma is None:
+        chroma = chroma_sigmas(bgr, keep_mask)
     cands = propose(
         bgr,
         keep_mask,
         mm_per_px,
         robot_mm,
-        pre_sat_min=sat_min / 4 * PRE_SAT_SCALE,
-        sat_level=sat_level,
+        pre_chroma_min=chroma_min / 4 * PRE_CHROMA_SCALE,
+        chroma=chroma,
+        chroma_k=chroma_k,
         **kwargs,
     )
     if not cands:
         return []
-    half = int(SAT_CROP_FRAC * robot_mm / mm_per_px)
+    half = int(CHROMA_CROP_FRAC * robot_mm / mm_per_px)
     out = []
     for cand in cands:
         cand = dict(cand)
-        cand["sat"] = _saturation(bgr, cand["centre"], half, sat_level)
-        cand["robot"] = cand["sat"] >= sat_min
+        cand["chroma"] = _coloured(chroma, cand["centre"], half, chroma_k)
+        cand["robot"] = cand["chroma"] >= chroma_min
         out.append(cand)
     return out

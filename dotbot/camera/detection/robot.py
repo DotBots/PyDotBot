@@ -54,10 +54,11 @@ from dotbot.camera.detection.propose import verify as propose_candidates
 GREEN_FLARE_MIN = 0.15
 TMPL_MARGIN_MIN = 0.5
 
-# A registration sheet is white paper, and white paper only reads as neutral
-# under light the white balance matches. Off neutral it carries far more
-# saturation than `SAT_MIN`, so every sheet left on the floor proposes a
-# candidate and is fitted into a pose. The sheets are found frame by frame
+# A registration sheet is white paper, which the colour check reads as floor
+# whenever the page and the floor sit under the same light. What it cannot
+# read as floor is a page carrying ink, a gloss highlight or a cast the floor
+# does not share, so a sheet can still propose a candidate and be fitted into
+# a pose, and a sheet's candidate can win. The sheets are found frame by frame
 # from the markers that make them sheets, never remembered from the
 # registration, so lifting them stops the exclusion on the next frame and no
 # floor is given up for the rest of the run. Grown about its centre, the
@@ -165,16 +166,20 @@ class RobotDetector:
     def detect(self, bgr) -> Detection:
         """The strongest verified candidate on this frame, fitted."""
         started = time.perf_counter()
+        # The evidence maps carry the frame's floor-relative chroma, which is
+        # what the colour check reads, so both stages measure one field.
+        features_map = features(bgr, self.keep_mask)
         candidates = [
             c
-            for c in propose_candidates(bgr, self.keep_mask, self.mm_per_px)
+            for c in propose_candidates(
+                bgr, self.keep_mask, self.mm_per_px, chroma=features_map["chroma"]
+            )
             if c["robot"]
         ]
         candidates = _off_sheets(candidates, self.sheet_quads(bgr))
         if not candidates:
             return Detection(NONE, 0, None, _ms_since(started))
         best = max(candidates, key=lambda c: c["z"])
-        features_map = features(bgr, self.keep_mask)
         mask = robot_mask(features_map)
         fitted = pose_at(
             bgr,
