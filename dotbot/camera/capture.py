@@ -24,18 +24,15 @@ from dotbot.camera.sheets import MARKER_DICTIONARY, layout_ids
 PROBE_INDEX_MAX = 10
 PROBE_MISSES_MAX = 2
 
-# Two of three cameras on the bench return a black first frame and a live
-# second, and ArUco on black reports zero markers - which reads as "no
-# sheets" when the truth is "not ready". Frames are read until one is lit,
-# or until the budget runs out.
+# A camera can return a black first frame and a live second, and ArUco on
+# black reports zero markers, which reads as "no sheets" when the truth is
+# "not ready". Frames are read until one is lit, or the budget runs out.
 LIT_MEAN_MIN = 8.0
 SETTLE_FRAMES_MAX = 10
 SETTLE_SECONDS_MAX = 2.0
 
 # What disqualifies a source when nothing sees markers: a lens cap or a dark
-# room, and a blank wall or a ceiling. Telling a floor from a face is not
-# attempted - both are lit and structured, and a rule ranking them would be
-# a guess dressed as a measurement.
+# room, and a blank wall or a ceiling.
 DARK_MEAN_MAX = 20.0
 FLAT_SPREAD_MAX = 12.0
 
@@ -55,9 +52,8 @@ CONTROL_PROPERTIES = {
 # the detector measures a candidate against the floor's own colour, and
 # automatic white balance walks that colour away while the camera watches.
 # Exposure and gain are recorded and compared but never set - a manual
-# exposure request is rounded to the driver's own steps, and on this bench
-# asking for 83 and 214 returned 77 and 255, a frame mean of 221 and nothing
-# detectable in it. A warning costs a log line; that costs every detection.
+# exposure request is rounded to the driver's own steps, which can blow the
+# image out and cost every detection on the layer.
 APPLIED_CONTROLS = ("auto_wb", "wb_temperature")
 
 # V4L2 reports manual exposure as 1 and its automatic modes above it.
@@ -117,8 +113,10 @@ def build_detector(dictionary: str = MARKER_DICTIONARY):
     )
 
 
-def detect_markers(frame: np.ndarray, detector) -> dict[int, np.ndarray]:
-    """Every marker in one frame, as id to its four pixel corners.
+def decode_markers(
+    frame: np.ndarray, detector
+) -> tuple[dict[int, np.ndarray], tuple[int, ...]]:
+    """One frame's markers by id, and the ids it decoded more than once.
 
     An id the detector returns more than once is dropped rather than
     arbitrated: two candidates decoding to one id means one of them is not
@@ -126,25 +124,19 @@ def detect_markers(frame: np.ndarray, detector) -> dict[int, np.ndarray]:
     """
     corners, ids, _ = detector.detectMarkers(_gray(frame))
     if ids is None:
-        return {}
-    found: dict[int, np.ndarray] = {}
-    seen: set[int] = set()
-    for marker_id, quad in zip((int(i) for i in ids.ravel()), corners):
-        if marker_id in seen:
-            found.pop(marker_id, None)
-            continue
-        seen.add(marker_id)
-        found[marker_id] = np.asarray(quad, dtype=np.float64).reshape(4, 2)
-    return found
-
-
-def duplicate_ids(frame: np.ndarray, detector) -> tuple[int, ...]:
-    """The ids this frame decoded more than once."""
-    _, ids, _ = detector.detectMarkers(_gray(frame))
-    if ids is None:
-        return ()
+        return {}, ()
     flat = [int(i) for i in ids.ravel()]
-    return tuple(sorted({i for i in flat if flat.count(i) > 1}))
+    found = {
+        marker_id: np.asarray(quad, dtype=np.float64).reshape(4, 2)
+        for marker_id, quad in zip(flat, corners)
+        if flat.count(marker_id) == 1
+    }
+    return found, tuple(sorted({i for i in flat if flat.count(i) > 1}))
+
+
+def detect_markers(frame: np.ndarray, detector) -> dict[int, np.ndarray]:
+    """Every marker in one frame, as id to its four pixel corners."""
+    return decode_markers(frame, detector)[0]
 
 
 @dataclass
@@ -153,7 +145,6 @@ class Settled:
 
     frame: np.ndarray | None = None
     discarded: int = 0
-    lit: bool = False
 
 
 def settle(capture, frames_max: int = SETTLE_FRAMES_MAX) -> Settled:
@@ -174,12 +165,12 @@ def settle(capture, frames_max: int = SETTLE_FRAMES_MAX) -> Settled:
             break
         gray = _gray(frame)
         if float(np.mean(gray)) >= LIT_MEAN_MIN:
-            return Settled(frame=frame, discarded=discarded, lit=True)
+            return Settled(frame=frame, discarded=discarded)
         last = frame
         discarded += 1
         if time.monotonic() >= deadline:
             break
-    return Settled(frame=last, discarded=max(discarded - 1, 0), lit=False)
+    return Settled(frame=last, discarded=max(discarded - 1, 0))
 
 
 @dataclass
@@ -198,7 +189,6 @@ class Probe:
     spread: float = 0.0
     marker_ids: tuple[int, ...] = ()
     frame: np.ndarray | None = None
-    note: str = ""
 
     @property
     def dark(self) -> bool:
@@ -246,7 +236,7 @@ def probe(
     capture = open_capture(source, open_source)
     if not capture.isOpened():
         release_capture(capture)
-        return Probe(source=source, note="did not open")
+        return Probe(source=source)
     try:
         settled = settle(capture)
         backend = str(getattr(capture, "getBackendName", lambda: "")() or "")
@@ -255,7 +245,7 @@ def probe(
     finally:
         release_capture(capture)
     if settled.frame is None:
-        return Probe(source=source, opened=True, backend=backend, note="no frames")
+        return Probe(source=source, opened=True, backend=backend)
     gray = _gray(settled.frame)
     height, width = gray.shape[:2]
     found = detect_markers(settled.frame, detector or build_detector())
@@ -354,7 +344,7 @@ def control_drift(
         if name not in delivered:
             continue
         got, wanted = float(delivered[name]), float(recorded[name])
-        if abs(got - wanted) > CONTROL_TOLERANCE.get(name, 0.5):
+        if abs(got - wanted) > CONTROL_TOLERANCE[name]:
             drift[name] = (got, wanted)
     return drift
 
@@ -389,15 +379,10 @@ def discover(
     misses = 0
     for index in range(index_max):
         found = probe(index, open_source, detector)
-        if not found.opened:
-            misses += 1
-            if misses >= PROBE_MISSES_MAX:
-                probes.append(found)
-                break
-            probes.append(found)
-            continue
-        misses = 0
         probes.append(found)
+        misses = 0 if found.opened else misses + 1
+        if misses >= PROBE_MISSES_MAX:
+            break
     return probes
 
 
@@ -407,7 +392,6 @@ class Choice:
 
     probe: Probe | None = None
     reason: str = ""
-    missing: tuple[int, ...] = ()
 
     @property
     def chosen(self) -> bool:
@@ -415,7 +399,7 @@ class Choice:
 
 
 def choose(probes: Sequence[Probe], ids: Sequence[int] | None = None) -> Choice:
-    """The source that sees the sheets, in the order of 2.8's rules.
+    """The source that sees the sheets, in this order.
 
     Markers decide when exactly one source sees any; a subset of the layout
     is named and accepted, since the reads will show whether it was the
@@ -432,7 +416,7 @@ def choose(probes: Sequence[Probe], ids: Sequence[int] | None = None) -> Choice:
         reason = f"source {found.source} sees sheets {sheets}: chosen"
         if missing:
             reason += f"; missing {' '.join(str(i) for i in missing)}"
-        return Choice(probe=found, reason=reason, missing=missing)
+        return Choice(probe=found, reason=reason)
     if len(seeing) > 1:
         sources = ", ".join(str(p.source) for p in seeing)
         return Choice(
@@ -448,7 +432,6 @@ def choose(probes: Sequence[Probe], ids: Sequence[int] | None = None) -> Choice:
         return Choice(
             probe=found,
             reason=f"source {found.source} sees no markers; the one lit scene",
-            missing=ids,
         )
     if len(scenes) > 1:
         sources = ", ".join(str(p.source) for p in scenes)
@@ -597,8 +580,7 @@ def capture_reads(
         if float(np.mean(gray)) < LIT_MEAN_MIN:
             tally.black += 1
         else:
-            duplicates = duplicate_ids(frame, detector)
-            found = detect_markers(frame, detector)
+            found, duplicates = decode_markers(frame, detector)
             extra.update(i for i in found if i not in ids)
             wanted = {i: found[i] for i in ids if i in found}
             if duplicates:

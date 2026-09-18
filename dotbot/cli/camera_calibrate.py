@@ -187,11 +187,6 @@ def collect(
     lens: str,
 ) -> None:
     """Capture the sheets through the camera and solve the homography."""
-    if not area_name:
-        raise click.UsageError(
-            "Missing option '--area'. Name the one area this camera covers, "
-            "so the four sheet positions can be derived from its corners."
-        )
     try:
         detector = build_detector()
     except ImportError as exc:

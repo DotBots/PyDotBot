@@ -133,7 +133,6 @@ class CameraCalibration:
     height: int = 0
     fps: float = 0.0
     lens: str = LENS_DEFAULT
-    intrinsics: str = ""
     reads: int = 0
     # The camera's colour controls as `collect` read them back. Empty for a
     # registration written before they were recorded, which applies and
@@ -145,9 +144,6 @@ class CameraCalibration:
     span_mm: list[tuple[float, float]] = field(default_factory=list)
     created: str = ""
     path: Path | None = None
-    # The id the file on disk declares. A mismatch with `id` means the file
-    # was hand-edited into a different registration.
-    stored_id: str = ""
 
     @property
     def id(self) -> str:
@@ -219,7 +215,6 @@ def render_camera_calibration(calibration: CameraCalibration) -> str:
         f"height = {int(calibration.height)}",
         f"fps = {toml_num(calibration.fps)}",
         f'lens = "{toml_escape(calibration.lens)}"',
-        f'intrinsics = "{toml_escape(calibration.intrinsics)}"',
         f"reads = {int(calibration.reads)}",
     ]
     if calibration.controls:
@@ -292,7 +287,6 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
         height=int(camera_data.get("height", 0)),
         fps=float(camera_data.get("fps", 0.0)),
         lens=camera_data.get("lens", ""),
-        intrinsics=camera_data.get("intrinsics", ""),
         reads=int(camera_data.get("reads", 0)),
         controls={
             str(name): float(value)
@@ -315,7 +309,6 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
         created=data.get("created", ""),
         path=path,
     )
-    calibration.stored_id = str(data.get("id", ""))
     return calibration
 
 
@@ -398,7 +391,6 @@ def build_calibration(
     probe_result: Probe,
     reads: int,
     lens: str = LENS_DEFAULT,
-    intrinsics: str = "",
     created: str = "",
 ) -> CameraCalibration:
     """Everything the file records, assembled from one collect run."""
@@ -413,7 +405,6 @@ def build_calibration(
         height=probe_result.height,
         fps=probe_result.fps,
         lens=lens,
-        intrinsics=intrinsics,
         reads=reads,
         controls=dict(probe_result.controls),
         markers=[

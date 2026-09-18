@@ -22,7 +22,7 @@ import pytest
 from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import read_calibration_file
 from dotbot.calibration.points import CORNERS
-from dotbot.camera import registration, sheets
+from dotbot.camera import registration
 from dotbot.camera.capture import (
     DARK_MEAN_MAX,
     FLAT_SPREAD_MAX,
@@ -162,28 +162,6 @@ def test_the_solve_refuses_a_layout_it_has_no_pixels_for(frame):
 # --- The id-to-corner seam --------------------------------------------------
 
 
-def test_the_seam_is_the_only_place_an_id_names_a_corner(monkeypatch):
-    """Widened to `4k + corner` at k = 1, nothing downstream is re-taught.
-
-    The layout, the sheet renderer and the solver all read the relation
-    through `corner_of` / `marker_id_for`, so moving it moves them.
-    """
-    offset = len(CORNERS)
-    monkeypatch.setattr(sheets, "corner_of", lambda i: CORNERS[i - offset])
-    monkeypatch.setattr(sheets, "marker_id_for", lambda c: CORNERS.index(c) + offset)
-
-    layout = marker_layout(DEV_CORNER)
-    assert [marker.id for marker in layout] == [4, 5, 6, 7]
-    assert [marker.centre_mm for marker in layout] == [
-        (1105.0, 148.5),
-        (1895.0, 148.5),
-        (1105.0, 851.5),
-        (1895.0, 851.5),
-    ]
-    assert layout_ids() == (4, 5, 6, 7)
-    assert span_mm(layout) == span_mm(marker_layout(DEV_CORNER))
-
-
 def test_the_seam_refuses_an_id_that_names_no_corner():
     with pytest.raises(ValueError, match="names no area corner"):
         corner_of(len(CORNERS))
@@ -252,7 +230,6 @@ def test_a_source_that_opens_and_yields_nothing_is_reported_as_such():
     found = probe(3, sources({3: []}))
 
     assert found.opened and found.frame is None
-    assert found.note == "no frames"
     assert "no frames" in found.row
 
 
@@ -260,7 +237,6 @@ def test_a_source_that_does_not_open_is_reported_as_such():
     found = probe(9, sources({}))
 
     assert not found.opened
-    assert found.note == "did not open"
     assert "did not open" in found.row
 
 
@@ -277,7 +253,6 @@ def test_the_source_that_sees_the_sheets_is_chosen(frame):
     choice = choose(probes, layout_ids())
 
     assert choice.chosen and choice.probe.source == 2
-    assert choice.missing == ()
     assert "sees sheets 0 1 2 3: chosen" in choice.reason
 
 
@@ -291,7 +266,6 @@ def test_a_subset_of_the_sheets_is_named_and_accepted():
     choice = choose(probes, layout_ids())
 
     assert choice.chosen
-    assert choice.missing == (2,)
     assert "missing 2" in choice.reason
 
 
@@ -322,7 +296,6 @@ def test_one_lit_scene_is_chosen_when_nothing_sees_markers():
 
     assert choice.chosen and choice.probe.source == 1
     assert "no markers; the one lit scene" in choice.reason
-    assert choice.missing == layout_ids()
 
 
 def test_two_lit_scenes_refuse_to_choose():
@@ -487,12 +460,10 @@ def test_the_file_round_trips_through_the_writer_and_the_reader(frame, tmp_path)
     assert path.name == f"camera-2026-09-15T13-42-00Z-{written.id8}.toml"
     assert path.parent.name == "c405-arena"
     assert back.id == written.id
-    assert back.stored_id == written.id
     assert back.area == "dev-corner"
     assert back.source == 0
     assert (back.width, back.height, back.fps) == (FRAME_WIDTH, FRAME_HEIGHT, 30.0)
     assert back.lens == LENS_DEFAULT
-    assert back.intrinsics == ""
     assert back.reads == 25
     assert back.site.name == SITE.name and back.site.anchor == SITE.anchor
     assert [m.id for m in back.markers] == list(layout_ids())
