@@ -19,9 +19,8 @@ Three steps, each one settling a different thing:
    the heading where they are finally reported from.
 
 HEADING CONVENTION IN THIS MODULE: degrees, `atan2(dy, dx)` with image y
-growing down, so 0 points along +x (frame right) and +90 along +y (frame
-down). `dotbot.camera.detection.robot` converts it to the robot `direction`
-convention the firmware and the console use; nothing here does.
+growing down. `dotbot.camera.detection.robot.frame_pose` has the two
+conventions and the conversion between them.
 
 ROBOT FRAME: `OUTLINE_MM` and the offsets below are +x to the robot's right
 and +y forward, origin at the outline centre. That is the frame `poly_px`
@@ -33,7 +32,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from dotbot.camera.detection.propose import as_bgr, floor_ab, floor_selector
+from dotbot.camera.detection.propose import floor_ab, floor_selector
 from dotbot.robots import robot_geometry
 
 _GEOMETRY = robot_geometry()
@@ -74,8 +73,8 @@ NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
 
 # The board is 94 mm across at the nose and 57 mm at the tail, so green mass
 # further from the centre line than the tail's own half-width belongs to the
-# nose and to nothing else. The margin is two raster pixels at 2 mm/px, which
-# is what the board edge is blurred over.
+# nose and to nothing else. The 4.5 mm margin is a little over two raster
+# pixels at 2 mm/px, which is what the board edge is blurred over.
 TAIL_HALF_MM = float(np.abs(OUTLINE_MM[OUTLINE_MM[:, 1] < 1.5][:, 0]).max())
 NOSE_BAND_MM = TAIL_HALF_MM + 4.5
 
@@ -91,7 +90,18 @@ TRACK_MM = 85.0
 TYRE_W_MM = 18.0
 TYRE_D_MM = 40.0
 
+# The template's canvas, as a half-width in millimetres: the robot at any
+# heading, with room for the search to slide it.
+TEMPLATE_HALF_MM = 78.0
+
 SS = 4  # supersampling for anti-aliased template rendering
+
+# Weighted pixels a coloured mass needs before a direction is fitted to it.
+MIN_EVIDENCE_PX = 25
+
+# A mask component smaller than this is not a robot: the footprint is about
+# 9000 mm2, so this admits a badly cut one and rejects a marker or a cable.
+MIN_COMPONENT_MM2 = 2500.0
 
 # A refinement that wandered further than this is reporting something other
 # than the robot the coarse pose found, so it is dropped and the coarse
@@ -100,8 +110,8 @@ MAX_REFINE_SHIFT_MM = 14.0
 MAX_REFINE_TURN_DEG = 18.0
 
 
-# The outline fit's window, in millimetres: a 95 mm robot plus the shift
-# tolerance either side.
+# The outline fit's window, in millimetres: the board's 134 mm diagonal, so
+# it holds the robot at any heading, plus the shift tolerance either side.
 FIT_ROI_MM = 170.0
 
 
@@ -149,10 +159,10 @@ def _nelder_mead(f, x0, step, tol=1e-5, maxfev=1200):
     return sim[best], float(val[best])
 
 
-def poly_px(pts_mm, cx, cy, heading_deg, mm_per_px, scale=1.0):
+def poly_px(pts_mm, cx, cy, heading_deg, mm_per_px):
     """Robot-frame millimetres to image pixels, at one pose."""
     right, forward = axes(heading_deg)
-    p = np.asarray(pts_mm, float) * scale / mm_per_px
+    p = np.asarray(pts_mm, float) / mm_per_px
     return np.stack(
         [
             cx + p[:, 0] * right[0] + p[:, 1] * forward[0],
@@ -162,13 +172,13 @@ def poly_px(pts_mm, cx, cy, heading_deg, mm_per_px, scale=1.0):
     )
 
 
-def render(polys, n, cx, cy, heading_deg, mm_per_px, scale=1.0):
+def render(polys, n, cx, cy, heading_deg, mm_per_px):
     """Anti-aliased coverage of one or more polygons on an n x n grid."""
     import cv2  # lazy: opencv-python is only required to run the detector
 
     buf = np.zeros((n * SS, n * SS), np.uint8)
     for p in polys if isinstance(polys, (list, tuple)) else [polys]:
-        q = poly_px(p, cx, cy, heading_deg, mm_per_px, scale)
+        q = poly_px(p, cx, cy, heading_deg, mm_per_px)
         cv2.fillPoly(buf, [np.round((q + 0.5) * SS).astype(np.int32)], 255)
     resized = cv2.resize(buf, (n, n), interpolation=cv2.INTER_AREA)
     return resized.astype(np.float32) / 255.0
@@ -184,7 +194,6 @@ def features(bgr, keep_mask=None):
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 
-    bgr = as_bgr(bgr)
     value = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[:, :, 2].astype(np.float32)
     a, b, (ma, mb, sa, sb) = floor_ab(bgr, keep_mask)
 
@@ -194,10 +203,6 @@ def features(bgr, keep_mask=None):
     sab = float(np.hypot(sa, sb))
     chroma = np.hypot(a - ma, b - mb) / sab
     return dict(
-        a=a,
-        b=b,
-        V=value,
-        floor=(ma, mb, mv, sa, sb, sv),
         chroma=chroma,
         # Signed board-versus-floor evidence: +1 well inside the PCB, -1 on
         # carpet. The outline fit's gradient lives only on the polygon
@@ -211,16 +216,16 @@ def features(bgr, keep_mask=None):
     )
 
 
-def robot_mask(features_map, chroma_sigma=2.5, close_px=5):
+def robot_mask(features_map):
     """Anything coloured, dark or bright enough not to be floor."""
     import cv2  # lazy: opencv-python is only required to run the detector
 
     m = (
-        (features_map["chroma"] > chroma_sigma)
+        (features_map["chroma"] > 2.5)
         | (features_map["dark"] > 0)
         | (features_map["bright"] > 0)
     ).astype(np.uint8)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_px, close_px))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, kernel)
     return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
 
@@ -257,28 +262,26 @@ def _nose_flare(gx, gy, gw, centre, n, mm_per_px):
 def coarse_pose(features_map, reg, mm_per_px):
     """Axle from the red motor connectors, nose from the green board's shape.
 
-    `green_lever_mm` is how far the green mass sits toward the nose from the
-    axle, and it picks which end leads. `green_flare` is what a caller gates
-    on: the board is wide at the nose and narrow at the tail, so the share of
-    the wide green mass lying forward says which end is the nose without
+    The lever, how far the green mass sits toward the nose from the axle, is
+    what picks which end leads. `green_flare` is what a caller gates on: the
+    board is wide at the nose and narrow at the tail, so the share of the
+    wide green mass lying forward says which end is the nose without
     depending on where that mass sits relative to the axle.
     """
     red = features_map["red"] * reg
     ry, rx = np.nonzero(red > 0)
-    if len(rx) >= 25:
-        mu, d, ex = _wpca(rx.astype(float), ry.astype(float), red[ry, rx].astype(float))
-        axis_src = "red-bar"
+    if len(rx) >= MIN_EVIDENCE_PX:
+        mu, d, _ = _wpca(rx.astype(float), ry.astype(float), red[ry, rx].astype(float))
     else:
         dk = features_map["dark"] * reg
         dy, dx = np.nonzero(dk > 0)
-        if len(dx) < 25:
+        if len(dx) < MIN_EVIDENCE_PX:
             return None
-        mu, d, ex = _wpca(dx.astype(float), dy.astype(float), dk[dy, dx].astype(float))
-        axis_src = "tyres"
+        mu, d, _ = _wpca(dx.astype(float), dy.astype(float), dk[dy, dx].astype(float))
     n = np.array([-d[1], d[0]])
     green = features_map["green"] * reg
     gy, gx = np.nonzero(green > 0)
-    if len(gx) < 25:
+    if len(gx) < MIN_EVIDENCE_PX:
         return None
     gw = green[gy, gx].astype(float)
     lever = (
@@ -289,22 +292,10 @@ def coarse_pose(features_map, reg, mm_per_px):
     d = np.array([-n[1], n[0]])
     heading = float(np.degrees(np.arctan2(n[1], n[0])))
     my, mx = np.nonzero(reg)
-    u = ((mx - mu[0]) * n[0] + (my - mu[1]) * n[1]) * mm_per_px
     v = ((mx - mu[0]) * d[0] + (my - mu[1]) * d[1]) * mm_per_px
-    corr = np.abs(v) < 26.0
-    su = (gx - mu[0]) * n[0] + (gy - mu[1]) * n[1]
     gc = np.array([(gx * gw).sum() / gw.sum(), (gy * gw).sum() / gw.sum()])
     out = dict(
         heading=heading,
-        axle_pt=mu,
-        n=n,
-        d=d,
-        axis_src=axis_src,
-        axis_len_mm=float(ex[-1] * mm_per_px),
-        green_lever_mm=float(lever),
-        ext_fwd_mm=float(u[corr].max()),
-        ext_rear_mm=float(-u[corr].min()),
-        green_ratio=float(gw[su > 0].sum() / max(gw[su <= 0].sum(), 1e-9)),
         green_flare=_nose_flare(gx, gy, gw, gc, n, mm_per_px),
     )
     lat = float(np.median([(gc - mu) @ d, 0.0, 0.5 * (v.max() + v.min()) / mm_per_px]))
@@ -334,7 +325,7 @@ class OutlineFit:
         y0 = min(max(int(round(c[1])) - n // 2, 0), h - n)
         return self.bev[y0 : y0 + n, x0 : x0 + n], x0, y0
 
-    def score(self, c, heading, scale=1.0, win=None):
+    def score(self, c, heading, win=None):
         """Board evidence under the outline at one pose, normalised by its area."""
         if win is None:
             win = self._win(c)
@@ -342,16 +333,14 @@ class OutlineFit:
             return -1e9
         board, x0, y0 = win
         n = self.roi
-        template = render(
-            OUTLINE_MM, n, c[0] - x0, c[1] - y0, heading, self.mmpp, scale
-        )
+        template = render(OUTLINE_MM, n, c[0] - x0, c[1] - y0, heading, self.mmpp)
         s = float(template.sum())
         if s < 1:
             return -1e9
         return float((board * template).sum()) / np.sqrt(s)
 
-    def refine(self, c0, heading0, scale=1.0, free_scale=False):
-        """The best pose near `(c0, heading0)`, or None off the raster."""
+    def refine(self, c0, heading0):
+        """The best pose near `(c0, heading0)` as (centre, heading), or None."""
         win = self._win(c0)
         if win is None:
             return None
@@ -361,38 +350,22 @@ class OutlineFit:
         def neg(p):
             if not (8 < p[0] - x0 < n - 8 and 8 < p[1] - y0 < n - 8):
                 return 1e9
-            sc = p[3] if free_scale else scale
-            if free_scale and not (0.85 < sc < 1.15):
-                return 1e9
-            return -self.score((p[0], p[1]), p[2], sc, win)
+            return -self.score((p[0], p[1]), p[2], win)
 
-        p0 = [c0[0], c0[1], heading0] + ([scale] if free_scale else [])
-        st = [0.8, 0.8, 2.0] + ([0.01] if free_scale else [])
-        p, _ = _nelder_mead(neg, p0, st)
-        p, v = _nelder_mead(neg, p, [s * 0.25 for s in st])
-        return (
-            np.array([p[0], p[1]]),
-            float(p[2]),
-            float(p[3] if free_scale else scale),
-            -v,
-        )
+        st = [0.8, 0.8, 2.0]
+        p, _ = _nelder_mead(neg, [c0[0], c0[1], heading0], st)
+        p, _ = _nelder_mead(neg, p, [s * 0.25 for s in st])
+        return np.array([p[0], p[1]]), float(p[2])
 
 
 class Template:
     """Synthetic top-down DotBot, used only for the 180 degree margin check."""
 
-    def __init__(
-        self,
-        mm_per_px,
-        half_mm=78.0,
-        track=TRACK_MM,
-        tyre_w=TYRE_W_MM,
-        tyre_d=TYRE_D_MM,
-    ):
+    def __init__(self, mm_per_px):
         import cv2  # lazy: opencv-python is only required to run the detector
 
         self.mmpp = float(mm_per_px)
-        n = int(2 * half_mm / self.mmpp) // 2 * 2 + 1
+        n = int(2 * TEMPLATE_HALF_MM / self.mmpp) // 2 * 2 + 1
         self.n = n
 
         def poly(canvas, pts):
@@ -414,15 +387,15 @@ class Template:
         poly(board, OUTLINE_MM)
         axle = -AXLE_BEHIND_CENTRE_MM
         for side in (-1, 1):
-            x0 = side * track / 2 - tyre_w / 2
-            x1 = side * track / 2 + tyre_w / 2
+            x0 = side * TRACK_MM / 2 - TYRE_W_MM / 2
+            x1 = side * TRACK_MM / 2 + TYRE_W_MM / 2
             poly(
                 wheel,
                 [
-                    (x0, axle - tyre_d / 2),
-                    (x1, axle - tyre_d / 2),
-                    (x1, axle + tyre_d / 2),
-                    (x0, axle + tyre_d / 2),
+                    (x0, axle - TYRE_D_MM / 2),
+                    (x1, axle - TYRE_D_MM / 2),
+                    (x1, axle + TYRE_D_MM / 2),
+                    (x0, axle + TYRE_D_MM / 2),
                 ],
             )
         for side in (-13.5, 13.5):
@@ -452,7 +425,7 @@ class Template:
 
 
 def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
-    """Best template match over `angles`, as (score, angle, x, y)."""
+    """The best score the template reaches at each of `angles`."""
     import cv2  # lazy: opencv-python is only required to run the detector
 
     ev = {
@@ -470,80 +443,68 @@ def template_search(features_map, centre, tmpl, angles, search_mm=10.0):
     half = n // 2
     x0, y0 = cx - half - s, cy - half - s
     win = {k: v[y0 : y0 + n + 2 * s, x0 : x0 + n + 2 * s].copy() for k, v in ev.items()}
-    best, scores = None, {}
+    scores = {}
     for ang in angles:
         tot = None
         for k in ("green", "dark", "red"):
             r = cv2.matchTemplate(win[k], tmpl.rot(k, float(ang)), cv2.TM_CCOEFF_NORMED)
             tot = r if tot is None else tot + r
-        mx = float(tot.max())
-        iy, ix = np.unravel_index(tot.argmax(), tot.shape)
-        scores[float(ang)] = mx
-        if best is None or mx > best[0]:
-            best = (mx, float(ang), x0 + ix + half - pad, y0 + iy + half - pad)
-    return best, scores
+        scores[float(ang)] = float(tot.max())
+    return scores
 
 
-def pose_one(features_map, reg, mm_per_px, tmpl=None, refine=True, fit=None):
+def pose_one(features_map, reg, mm_per_px, tmpl, fit):
     """Pose of the one robot the region `reg` covers, or None.
 
-    `centre`, `heading`, `green_flare`, `tmpl_margin` and `refined` are
-    what a caller reads; the rest of the dict is tuning diagnostics and may
-    go without notice.
+    `centre`, `heading`, `green_flare`, `tmpl_margin` and `refined` are what
+    a caller reads.
     """
     out = coarse_pose(features_map, reg, mm_per_px)
     if out is None:
         return None
     out["centre"] = out["coarse_centre"]
     out["refined"] = False
-    if refine and tmpl is not None:
-        # The template answers one question: is the nose at the coarse
-        # heading or at its flip? Two scores answer it, and nothing else the
-        # template could say is used - the pose comes from the outline fit
-        # below, seeded and bounded by the coarse heading, never by this.
-        ahead, behind = out["heading"], out["heading"] + 180.0
-        _, scores = template_search(features_map, out["centre"], tmpl, [ahead, behind])
-        out["tmpl_margin"] = scores[float(ahead)] - scores[float(behind)]
-    if refine:
-        if fit is None:
-            fit = OutlineFit(features_map, mm_per_px)
-        # Nelder-Mead can stop short of the optimum when the evidence is soft
-        # (blurred or low-contrast scenes), leaving the answer dependent on
-        # where it started. Restart from its own output until it stops moving.
-        r = fit.refine(out["centre"], out["heading"])
-        for _ in range(3):
-            if r is None:
-                break
-            r2 = fit.refine(r[0], r[1])
-            if r2 is None:
-                break
-            if np.linalg.norm(r2[0] - r[0]) < 0.02 and abs(r2[1] - r[1]) < 0.02:
-                r = r2
-                break
+    # The template answers one question: is the nose at the coarse heading or
+    # at its flip? Two scores answer it, and nothing else the template could
+    # say is used - the pose comes from the outline fit below, seeded and
+    # bounded by the coarse heading, never by this.
+    ahead, behind = out["heading"], out["heading"] + 180.0
+    scores = template_search(features_map, out["centre"], tmpl, [ahead, behind])
+    out["tmpl_margin"] = scores[float(ahead)] - scores[float(behind)]
+    # Nelder-Mead can stop short of the optimum when the evidence is soft
+    # (blurred or low-contrast scenes), leaving the answer dependent on
+    # where it started. Restart from its own output until it stops moving.
+    r = fit.refine(out["centre"], out["heading"])
+    for _ in range(3):
+        if r is None:
+            break
+        r2 = fit.refine(r[0], r[1])
+        if r2 is None:
+            break
+        if np.linalg.norm(r2[0] - r[0]) < 0.02 and abs(r2[1] - r[1]) < 0.02:
             r = r2
-        if r is not None:
-            c, th, _, sv = r
-            # The limits are measured from the coarse pose, which is what
-            # stops a fit wandering off this robot onto something else.
-            moved = float(np.linalg.norm(c - out["coarse_centre"])) * mm_per_px
-            turned = abs(((th - out["heading"]) + 180) % 360 - 180)
-            out.update(fit_shift_mm=moved, fit_turn_deg=turned, fit_score=sv)
-            if moved <= MAX_REFINE_SHIFT_MM and turned <= MAX_REFINE_TURN_DEG:
-                out["centre"], out["heading"], out["refined"] = c, float(th), True
+            break
+        r = r2
+    if r is not None:
+        c, th = r
+        # The limits are measured from the coarse pose, which is what
+        # stops a fit wandering off this robot onto something else.
+        moved = float(np.linalg.norm(c - out["coarse_centre"])) * mm_per_px
+        turned = abs(((th - out["heading"]) + 180) % 360 - 180)
+        if moved <= MAX_REFINE_SHIFT_MM and turned <= MAX_REFINE_TURN_DEG:
+            out["centre"], out["heading"], out["refined"] = c, float(th), True
     return out
 
 
 def pose_at(
-    bgr,
     seed_px,
     mm_per_px,
-    refine=True,
-    features_map=None,
-    mask=None,
+    features_map,
+    mask,
+    tmpl,
+    fit,
     win_mm=110.0,
     snap_mm=45.0,
-    tmpl=None,
-    fit=None,
 ):
     """Pose of the robot near `seed_px`.
 
@@ -552,11 +513,6 @@ def pose_at(
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 
-    bgr = as_bgr(bgr)
-    if features_map is None:
-        features_map = features(bgr)
-    if mask is None:
-        mask = robot_mask(features_map)
     h, w = mask.shape
     r = int(round(win_mm / mm_per_px))
     x0, y0 = max(0, int(seed_px[0]) - r), max(0, int(seed_px[1]) - r)
@@ -566,7 +522,7 @@ def pose_at(
     n, labels, stats, centroids = cv2.connectedComponentsWithStats(sub, 8)
     best, best_dist = None, None
     for k in range(1, n):
-        if stats[k, cv2.CC_STAT_AREA] * mm_per_px**2 < 2500:
+        if stats[k, cv2.CC_STAT_AREA] * mm_per_px**2 < MIN_COMPONENT_MM2:
             continue
         dd = (
             float(np.hypot(centroids[k][0] - seed_px[0], centroids[k][1] - seed_px[1]))
@@ -578,12 +534,4 @@ def pose_at(
             best, best_dist = k, dd
     if best is None:
         return None
-    if refine and tmpl is None:
-        tmpl = Template(mm_per_px)
-    if refine and fit is None:
-        fit = OutlineFit(features_map, mm_per_px)
-    p = pose_one(features_map, labels == best, mm_per_px, tmpl, refine, fit)
-    if p is not None:
-        p["area_mm2"] = float(stats[best, cv2.CC_STAT_AREA] * mm_per_px**2)
-        p["seed_dist_mm"] = best_dist
-    return p
+    return pose_one(features_map, labels == best, mm_per_px, tmpl, fit)

@@ -75,13 +75,11 @@ def as_bgr(frame):
     return frame
 
 
-def _mad(x, med):
-    """Robust scale, floored at one 8-bit step.
-
-    An 8-bit chroma channel's smallest real spread is one step; below that
-    the floor itself reads as outliers and the evidence maps saturate.
-    """
-    return max(1.4826 * float(np.median(np.abs(x - med))), 1.0)
+def _robust_sigma(values, med=None):
+    """MAD-based scale, about `med` or about the values' own median."""
+    if med is None:
+        med = float(np.median(values))
+    return 1.4826 * float(np.median(np.abs(values - med)))
 
 
 def floor_selector(keep_mask):
@@ -107,17 +105,17 @@ def floor_ab(bgr, keep_mask=None):
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 
-    lab = cv2.cvtColor(as_bgr(bgr), cv2.COLOR_BGR2LAB).astype(np.float32)
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
     a, b = lab[:, :, 1], lab[:, :, 2]
     floor_of = floor_selector(keep_mask)
     ma, mb = (float(np.median(floor_of(m))) for m in (a, b))
-    return a, b, (ma, mb, _mad(floor_of(a), ma), _mad(floor_of(b), mb))
-
-
-def chroma_sigmas(bgr, keep_mask=None):
-    """Every pixel's a*/b* distance from the floor, in floor-chroma sigmas."""
-    a, b, (ma, mb, sa, sb) = floor_ab(bgr, keep_mask)
-    return np.hypot(a - ma, b - mb) / float(np.hypot(sa, sb))
+    # Floored at one 8-bit step, which is a chroma channel's smallest real
+    # spread; below it the floor reads as outliers and the maps saturate.
+    sa, sb = (
+        max(_robust_sigma(floor_of(plane), med), 1.0)
+        for plane, med in ((a, ma), (b, mb))
+    )
+    return a, b, (ma, mb, sa, sb)
 
 
 def _coloured(chroma, centre, half, k=CHROMA_K):
@@ -172,41 +170,23 @@ def _masked_box_mean(img, valid, ks):
     return num / np.maximum(weight, 1e-6)[:, :, None], weight / float(ks * ks)
 
 
-def _robust_sigma(values):
-    """MAD-based scale and median; robots are a few per cent of the frame."""
-    med = float(np.median(values))
-    return float(np.median(np.abs(values - med))) * 1.4826, med
-
-
-def response(
-    bgr,
-    keep_mask=None,
-    mm_per_px=None,
-    robot_mm=ROBOT_MM,
-    samples_per_robot=SAMPLES_PER_ROBOT,
-    inner_frac=INNER_FRAC,
-    outer_frac=OUTER_FRAC,
-    min_valid=MIN_VALID,
-    _want_bg=False,
-):
+def response(bgr, keep_mask, mm_per_px):
     """Whitened matched-filter response, in floor-sigmas.
 
-    Returns `(R, ok, work_mmpp, (sx, sy), sigma)`, where `R` is a
+    Returns `(R, ok, work_mmpp, (sx, sy), sigma, background)`, where `R` is a
     Mahalanobis distance in the floor's own per-channel noise metric and
     `(sx, sy)` scales working-grid pixels back to input pixels.
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 
-    if mm_per_px is None:
-        raise ValueError("mm_per_px is required")
-    bgr = as_bgr(bgr)
+    robot_mm = ROBOT_MM
     # Work at a fixed number of samples per robot. The robust noise estimate
     # below needs a median over every floor pixel, which is an order of
     # magnitude cheaper here than at full resolution, and box-averaging
     # before decimating is both the anti-alias low-pass and the first half of
     # the band-pass. Never upsample: a camera already coarser than the grid
     # is used as it is.
-    work_mmpp = max(robot_mm / samples_per_robot, mm_per_px)
+    work_mmpp = max(robot_mm / SAMPLES_PER_ROBOT, mm_per_px)
     h, w = bgr.shape[:2]
     sc = work_mmpp / mm_per_px
     ww, wh = max(8, int(round(w / sc))), max(8, int(round(h / sc)))
@@ -231,81 +211,52 @@ def response(
     )
 
     lab = _true_lab(small)
-    m_in, f_in = _masked_box_mean(lab, valid, _odd(inner_frac * robot_mm / work_mmpp))
-    m_out, f_out = _masked_box_mean(lab, valid, _odd(outer_frac * robot_mm / work_mmpp))
+    m_in, f_in = _masked_box_mean(lab, valid, _odd(INNER_FRAC * robot_mm / work_mmpp))
+    m_out, f_out = _masked_box_mean(lab, valid, _odd(OUTER_FRAC * robot_mm / work_mmpp))
     diff = m_in - m_out
 
     # A robot's whole footprint must lie on known floor for its colour to
     # mean anything, and it needs at least half a surround to be measured
     # against. That costs a half-robot band along the floor boundary, where
     # a robot could not be measured anyway.
-    ok = (valid > 0) & (f_in >= min_valid - 1e-6) & (f_out >= 0.5)
+    ok = (valid > 0) & (f_in >= MIN_VALID - 1e-6) & (f_out >= 0.5)
     if ok.sum() < 64:
         zero = np.zeros((wh, ww), np.float32)
-        out = (zero, ok, work_mmpp, (sx, sy), np.ones(3, np.float32))
-        return out + (m_out,) if _want_bg else out
+        return zero, ok, work_mmpp, (sx, sy), np.ones(3, np.float32), m_out
 
     # Whiten per channel by the floor's own spread, which is self-calibrating
     # since the floor is whatever the median of the frame is. The clamp is the
     # 8-bit quantisation limit propagated through the averaging, below which a
     # measured spread is only rounding: one LSB is 1/sqrt(12) uniform,
     # averaged over the inner box, doubled for the difference of two means.
-    n_in = max(1.0, (inner_frac * robot_mm / work_mmpp) ** 2)
+    n_in = max(1.0, (INNER_FRAC * robot_mm / work_mmpp) ** 2)
     floor_q = np.sqrt(2.0 / (12.0 * n_in))
     sigma = np.empty(3, np.float32)
     for channel in range(3):
-        spread, _ = _robust_sigma(diff[:, :, channel][ok])
+        spread = _robust_sigma(diff[:, :, channel][ok])
         sigma[channel] = max(spread, floor_q * (100.0 / 255.0 if channel == 0 else 1.0))
 
     scored = np.sqrt(((diff / sigma) ** 2).sum(axis=2)).astype(np.float32)
     scored[~ok] = 0.0
-    out = (scored, ok, work_mmpp, (sx, sy), sigma)
-    return out + (m_out,) if _want_bg else out
+    return scored, ok, work_mmpp, (sx, sy), sigma, m_out
 
 
-def propose(
-    bgr,
-    keep_mask=None,
-    mm_per_px=None,
-    robot_mm=ROBOT_MM,
-    k=K_SIGMA,
-    samples_per_robot=SAMPLES_PER_ROBOT,
-    inner_frac=INNER_FRAC,
-    outer_frac=OUTER_FRAC,
-    nms_frac=NMS_FRAC,
-    min_valid=MIN_VALID,
-    max_out=MAX_OUT,
-    pre_chroma_min=PRE_CHROMA_MIN,
-    chroma=None,
-    chroma_k=CHROMA_K,
-):
+def propose(bgr, keep_mask, mm_per_px, chroma):
     """Candidate robot-sized objects, as dicts with `centre` in input px.
 
-    `chroma` is the floor-relative chroma field of this frame, which a
-    caller that has already measured it passes in rather than paying twice.
+    `chroma` is the floor-relative chroma field of this frame, measured once
+    by the caller and read here rather than paid for twice.
     """
-    bgr = as_bgr(bgr)
-    if chroma is None:
-        chroma = chroma_sigmas(bgr, keep_mask)
-    scored, ok, work_mmpp, (sx, sy), sigma, m_out = response(
-        bgr,
-        keep_mask,
-        mm_per_px,
-        robot_mm,
-        samples_per_robot,
-        inner_frac,
-        outer_frac,
-        min_valid,
-        _want_bg=True,
-    )
+    robot_mm = ROBOT_MM
+    scored, ok, work_mmpp, (sx, sy), sigma, m_out = response(bgr, keep_mask, mm_per_px)
 
-    hits = np.argwhere(scored > k)
+    hits = np.argwhere(scored > K_SIGMA)
     if hits.size == 0:
         return []
     z = scored[hits[:, 0], hits[:, 1]]
     order = np.argsort(-z)
 
-    rad = max(1, int(round(nms_frac * robot_mm / work_mmpp)))
+    rad = max(1, int(round(NMS_FRAC * robot_mm / work_mmpp)))
     taken = np.zeros(scored.shape, bool)
     out = []
     for i in order:
@@ -325,7 +276,7 @@ def propose(
         # testing the verdict's window here asks about a point the peak has
         # not earned, and drops robots whose peak sat beside them.
         half = int(PRE_CROP_FRAC * robot_mm / mm_per_px)
-        if _coloured(chroma, (cx, cy), half, chroma_k) < pre_chroma_min:
+        if _coloured(chroma, (cx, cy), half) < PRE_CHROMA_MIN:
             continue
         cx, cy = _refine(bgr, cx, cy, m_out[y, x], sigma, robot_mm, mm_per_px)
         # The one-robot separation has to hold on the final centres:
@@ -339,7 +290,7 @@ def propose(
         ):
             continue
         out.append({"centre": np.array([cx, cy]), "z": float(z[i])})
-        if len(out) >= max_out:
+        if len(out) >= MAX_OUT:
             break
     return out
 
@@ -382,42 +333,21 @@ def _subpix(scored, x, y, dx, dy):
     return float(np.clip(0.5 * (a - c) / den, -1.0, 1.0))
 
 
-def verify(
-    bgr,
-    keep_mask=None,
-    mm_per_px=None,
-    robot_mm=ROBOT_MM,
-    chroma_min=CHROMA_MIN,
-    chroma=None,
-    chroma_k=CHROMA_K,
-    **kwargs,
-):
+def verify(bgr, keep_mask, mm_per_px, chroma):
     """`propose`'s candidates with the colour verdict on each, as `robot`.
 
     The frame's chroma field is measured once and read per candidate, so a
     generous proposer stays affordable. The verdict is taken at the
     re-centred position, which is the one a pose is seeded from.
     """
-    bgr = as_bgr(bgr)
-    if chroma is None:
-        chroma = chroma_sigmas(bgr, keep_mask)
-    cands = propose(
-        bgr,
-        keep_mask,
-        mm_per_px,
-        robot_mm,
-        pre_chroma_min=chroma_min / 4 * PRE_CHROMA_SCALE,
-        chroma=chroma,
-        chroma_k=chroma_k,
-        **kwargs,
-    )
+    cands = propose(bgr, keep_mask, mm_per_px, chroma)
     if not cands:
         return []
-    half = int(CHROMA_CROP_FRAC * robot_mm / mm_per_px)
+    half = int(CHROMA_CROP_FRAC * ROBOT_MM / mm_per_px)
     out = []
     for cand in cands:
         cand = dict(cand)
-        cand["chroma"] = _coloured(chroma, cand["centre"], half, chroma_k)
-        cand["robot"] = cand["chroma"] >= chroma_min
+        cand["chroma"] = _coloured(chroma, cand["centre"], half)
+        cand["robot"] = cand["chroma"] >= CHROMA_MIN
         out.append(cand)
     return out

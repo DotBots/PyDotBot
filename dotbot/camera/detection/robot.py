@@ -8,16 +8,7 @@ classifies the result. `frame_pose` is the only place raster pixels and the
 detector's own heading become the frame millimetres and the robot
 `direction` degrees every other surface speaks.
 
-TWO HEADING CONVENTIONS MEET HERE, so each is named where it is used:
-
-- `heading_atan2_deg`, the detector's own: `atan2(dy, dx)` in the y-down
-  frame, so 0 = +x and +90 = +y.
-- `heading_deg`, the robot `direction` convention the firmware advertises
-  and the console draws: 0 = +y, +90 = -x (clockwise as drawn with y down),
-  which is `heading_atan2_deg - 90` wrapped to (-180, 180].
-
-`dotbot.robots.RobotGeometry` carries no heading; only its scalar offsets
-are read.
+Two heading conventions meet here; `frame_pose` names both and converts.
 
 The pose reported is the BODY orientation of a robot standing still or
 moving. The firmware's `direction` is the direction of TRAVEL over the last
@@ -44,6 +35,7 @@ from dotbot.camera.detection.pose import (
     pose_at,
     robot_mask,
 )
+from dotbot.camera.detection.propose import as_bgr
 from dotbot.camera.detection.propose import verify as propose_candidates
 
 # The two signals that stop the estimator reporting a pose it cannot stand
@@ -166,13 +158,14 @@ class RobotDetector:
     def detect(self, bgr) -> Detection:
         """The strongest verified candidate on this frame, fitted."""
         started = time.perf_counter()
+        bgr = as_bgr(bgr)
         # The evidence maps carry the frame's floor-relative chroma, which is
         # what the colour check reads, so both stages measure one field.
         features_map = features(bgr, self.keep_mask)
         candidates = [
             c
             for c in propose_candidates(
-                bgr, self.keep_mask, self.mm_per_px, chroma=features_map["chroma"]
+                bgr, self.keep_mask, self.mm_per_px, features_map["chroma"]
             )
             if c["robot"]
         ]
@@ -180,15 +173,13 @@ class RobotDetector:
         if not candidates:
             return Detection(NONE, 0, None, _ms_since(started))
         best = max(candidates, key=lambda c: c["z"])
-        mask = robot_mask(features_map)
         fitted = pose_at(
-            bgr,
             best["centre"],
             self.mm_per_px,
-            features_map=features_map,
-            mask=mask,
-            tmpl=self._template,
-            fit=OutlineFit(features_map, self.mm_per_px),
+            features_map,
+            robot_mask(features_map),
+            self._template,
+            OutlineFit(features_map, self.mm_per_px),
         )
         if fitted is None:
             return Detection(NONE, len(candidates), None, _ms_since(started))
@@ -196,9 +187,7 @@ class RobotDetector:
             centre_px=(float(fitted["centre"][0]), float(fitted["centre"][1])),
             heading_atan2_deg=float(fitted["heading"]),
             green_flare=float(fitted["green_flare"]),
-            # A pose fitted without the template check has no margin to
-            # stand on, so it is refused rather than passed through.
-            tmpl_margin=float(fitted.get("tmpl_margin", 0.0)),
+            tmpl_margin=float(fitted["tmpl_margin"]),
             refined=bool(fitted["refined"]),
         )
         return Detection(classify(pose), len(candidates), pose, _ms_since(started))
@@ -209,6 +198,12 @@ def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
 
     Every `*_mm` is frame millimetres, x right and y down, the same frame as
     the area and as an LH2 position.
+
+    `heading_atan2_deg` is the detector's own convention: `atan2(dy, dx)` in
+    the y-down frame, so 0 = +x and +90 = +y. `heading_deg` is the robot
+    `direction` convention the firmware advertises and the console draws:
+    0 = +y, +90 = -x (clockwise as drawn with y down), which is
+    `heading_atan2_deg - 90` wrapped to (-180, 180].
     """
     origin = np.array([float(area.x), float(area.y)])
     centre = origin + np.asarray(pose.centre_px, float) * mm_per_px

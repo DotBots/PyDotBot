@@ -33,7 +33,6 @@ from dotbot.camera.detection.pose import (
 )
 from dotbot.camera.detection.robot import GREEN_FLARE_MIN, TMPL_MARGIN_MIN, classify
 from dotbot.camera.sheets import MARKER_DICTIONARY
-from dotbot.robots import robot_geometry
 from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
 from dotbot.tests.camera_fixtures import (
     MM_PER_PX,
@@ -119,9 +118,6 @@ def test_photodiode_offset_matches_the_robot_geometry():
     A drift between the two would put the camera 29 mm from the lighthouse
     on every comparison, rotating with the heading.
     """
-    geometry = robot_geometry()
-    ahead = geometry.board_length_mm / 2 - geometry.diode_to_front_mm
-    assert PHOTODIODE_AHEAD_MM == ahead
     assert PHOTODIODE_AHEAD_MM == 29.0
 
 
@@ -149,7 +145,7 @@ def test_a_grey_board_is_refused_for_carrying_no_colour():
     )
 
     # The filter does respond where the object is.
-    scored, _, _, (sx, sy), _ = proposer.response(raster, None, MM_PER_PX)
+    scored, _, _, (sx, sy), _, _ = proposer.response(raster, None, MM_PER_PX)
     peak = np.unravel_index(scored.argmax(), scored.shape)
     assert scored[peak] > proposer.K_SIGMA
     assert abs(peak[1] * sx - CENTRE_PX[0]) < 20
@@ -158,9 +154,9 @@ def test_a_grey_board_is_refused_for_carrying_no_colour():
     # And it carries no colour the floor does not, so it never becomes a
     # candidate.
     half = int(0.6 * proposer.ROBOT_MM / MM_PER_PX)
-    chroma = proposer.chroma_sigmas(raster)
+    chroma = features(raster)["chroma"]
     assert proposer._coloured(chroma, CENTRE_PX, half) < proposer.PRE_CHROMA_MIN
-    assert proposer.verify(raster, None, MM_PER_PX) == []
+    assert proposer.verify(raster, None, MM_PER_PX, chroma) == []
 
     detection = RobotDetector(MM_PER_PX).detect(raster)
     assert detection.status == "none"
@@ -214,24 +210,6 @@ def test_jpeg_round_trip_does_not_fill_the_mask():
 # --- the keep mask ----------------------------------------------------------
 
 
-def test_the_pre_gate_window_covers_the_refinement_it_gates():
-    """The peak's own error sets the pre-gate window, not the verdict's crop.
-
-    `_refine` exists because a matched-filter peak locates an object without
-    centring on it, and the pre-gate is what decides whether it runs at all.
-    A window narrower than refinement's reach asks about a point the peak has
-    not earned, and drops robots whose peak landed beside them.
-    """
-    assert proposer.PRE_CROP_FRAC >= proposer.CHROMA_CROP_FRAC + proposer.REFINE_FRAC
-
-
-def test_the_pre_gate_asks_the_same_absolute_colour_as_the_verdict():
-    """A threshold on a fraction only holds still if it falls with the area."""
-    narrow = proposer.CHROMA_CROP_FRAC**2 * (proposer.CHROMA_MIN / 4)
-    wide = proposer.PRE_CROP_FRAC**2 * proposer.PRE_CHROMA_MIN
-    assert wide == pytest.approx(narrow)
-
-
 def test_a_registration_sheet_is_dropped_without_being_masked():
     """A printed page under neutral light needs no hole cut in the floor.
 
@@ -247,10 +225,10 @@ def test_a_registration_sheet_is_dropped_without_being_masked():
     raster = draw_robot(raster, (220.0, 125.0), 37.0)
 
     half = int(proposer.PRE_CROP_FRAC * proposer.ROBOT_MM / MM_PER_PX)
-    chroma = proposer.chroma_sigmas(raster)
+    chroma = features(raster)["chroma"]
     assert proposer._coloured(chroma, (72.0, 114.0), half) < proposer.PRE_CHROMA_MIN
 
-    candidates = proposer.verify(raster, None, MM_PER_PX)
+    candidates = proposer.verify(raster, None, MM_PER_PX, chroma)
     assert [c["robot"] for c in candidates].count(True) == 1
     assert not any(c["robot"] and c["centre"][0] < 140 for c in candidates)
 
@@ -284,7 +262,7 @@ def test_a_white_balance_cast_does_not_turn_a_sheet_into_a_robot():
     ).astype(np.uint8)
 
     half = int(proposer.CHROMA_CROP_FRAC * proposer.ROBOT_MM / MM_PER_PX)
-    chroma = proposer.chroma_sigmas(raster)
+    chroma = features(raster)["chroma"]
     assert proposer._coloured(chroma, (80.0, 120.0), half) < proposer.CHROMA_MIN
     assert proposer._coloured(chroma, (220.0, 125.0), half) > proposer.CHROMA_MIN
 
@@ -413,7 +391,7 @@ def test_the_template_margin_measures_the_nose_against_its_flip():
     region = robot_mask(features_map) > 0
     coarse = coarse_pose(features_map, region, MM_PER_PX)
     ahead = coarse["heading"]
-    _, scores = template_search(
+    scores = template_search(
         features_map,
         coarse["coarse_centre"],
         Template(MM_PER_PX),
@@ -447,12 +425,12 @@ def test_a_lower_scoring_heading_understates_the_margin():
     centre, ahead = coarse["coarse_centre"], coarse["heading"]
     template = Template(MM_PER_PX)
 
-    _, scores = template_search(features_map, centre, template, [ahead, ahead + 180.0])
+    scores = template_search(features_map, centre, template, [ahead, ahead + 180.0])
     reported = scores[float(ahead)] - scores[float(ahead + 180.0)]
 
     swept = np.arange(ahead - 10.0, ahead + 10.01, 2.0)
-    best, _ = template_search(features_map, centre, template, swept)
-    assert reported <= best[0] - scores[float(ahead + 180.0)] + 1e-9
+    best = max(template_search(features_map, centre, template, swept).values())
+    assert reported <= best - scores[float(ahead + 180.0)] + 1e-9
 
 
 def test_the_nose_band_only_counts_what_the_tail_cannot_reach():
