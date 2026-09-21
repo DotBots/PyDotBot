@@ -104,6 +104,77 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
 
 
+class DotBotCameraModel(BaseModel):
+    """One registered camera, as the console needs it to draw the layer.
+
+    `width` and `height` are the raster's, not the device's: the stream
+    carries the area warped at `mm_per_px`, so they are the area's own size
+    in raster pixels. `span_mm` is the quadrilateral through the four
+    markers' outer corners, in frame millimetres, which is the region the
+    registration is trustworthy inside. `coverage_mm` is the source frame's
+    own rectangle in the same millimetres, so it is the floor the camera
+    can see; empty when the homography maps it to no polygon.
+    """
+
+    area: str
+    source: Union[int, str]
+    mm_per_px: float
+    width: int
+    height: int
+    span_mm: List[List[float]] = []
+    coverage_mm: List[List[float]] = []
+    residual_mm: float = 0.0
+    id: str = ""
+    lens: str = ""
+    detect: bool = True
+
+
+class DotBotCameraPoseModel(BaseModel):
+    """Where one camera says a robot stands, in frame millimetres.
+
+    `centre_mm` is the board outline's centre, which is what the outline is
+    drawn around; `photodiode_mm` is the point the lighthouse reports, so it
+    is the one to compare a `lh2_position` against. The two heading
+    conventions are named in `dotbot.camera.detection.robot.frame_pose`.
+    Both are the BODY's orientation, measured moving or not, which is not
+    the quantity the firmware's `direction` reports.
+    """
+
+    centre_mm: List[float]
+    photodiode_mm: List[float]
+    nose_mm: List[float]
+    outline_mm: List[List[float]] = []
+    heading_deg: float
+    heading_atan2_deg: float
+    green_flare: float = 0.0
+    tmpl_margin: float = 0.0
+    refined: bool = False
+
+
+class DotBotCameraDetectionModel(BaseModel):
+    """One camera frame's verdict on whether a robot stands on its area.
+
+    `status` is `found` when both confidence signals clear their floor,
+    `refused` when a pose was fitted but one of them did not, and `none`
+    when there was nothing to fit, in which case there is no `pose`.
+    `sequence` is the warp counter, so a detection can be matched to the
+    frame the stream showed, and `timestamp` is when that frame was read
+    off the device.
+
+    The detector identifies nothing: one pose per frame, the strongest
+    candidate, with no association to any robot address.
+    """
+
+    area: str
+    camera_id: str = ""
+    sequence: int = 0
+    timestamp: float = 0.0
+    status: str = "none"
+    candidates: int = 0
+    elapsed_ms: float = 0.0
+    pose: Optional[DotBotCameraPoseModel] = None
+
+
 class DotBotCalibrationReadsModel(BaseModel):
     """How many reads one station contributed to one point."""
 
@@ -237,6 +308,18 @@ class DotBotConnectionModel(BaseModel):
     gw_address: str
 
 
+class DotBotBuildModel(BaseModel):
+    """Which build of pydotbot the controller runs.
+
+    `commit` and `dirty` are present only when the package runs from its own
+    git checkout; an installed package reports the version alone.
+    """
+
+    version: str
+    commit: Optional[str] = None
+    dirty: Optional[bool] = None
+
+
 class DotBotBackgroundMapModel(BaseModel):
     """Background map model."""
 
@@ -321,6 +404,7 @@ class DotBotNotificationCommand(IntEnum):
     PIN_CODE_UPDATE: int = 3
     NEW_DOTBOT: int = 4
     CALIBRATION_SESSION_UPDATE: int = 5
+    CAMERA_DETECTION: int = 6
 
 
 class DotBotNotificationUpdate(BaseModel):
@@ -349,6 +433,8 @@ class DotBotNotificationModel(BaseModel):
     pin_code: Optional[int] = None
     # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
     calibration_session: Optional[DotBotCalibrationSessionModel] = None
+    # Carried by CAMERA_DETECTION, one message per camera per new warp.
+    camera_detection: Optional[DotBotCameraDetectionModel] = None
 
 
 class WSBase(BaseModel):

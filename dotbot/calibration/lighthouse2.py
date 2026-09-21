@@ -365,7 +365,7 @@ def _slug_tag(tag: str) -> str:
 # --- Identity ---------------------------------------------------------------
 
 
-def _num(value: float) -> str:
+def toml_num(value: float) -> str:
     """A float in the form that round-trips through the file byte for byte."""
     return repr(float(value))
 
@@ -386,13 +386,13 @@ def canonical_serialisation(calibration: Calibration) -> str:
     lines = [
         f"schema_version={CALIBRATION_SCHEMA_VERSION}",
         f"site.name={calibration.site.name}",
-        "validity.valid_mm=" + ",".join(_num(v) for v in calibration.valid_mm),
+        "validity.valid_mm=" + ",".join(toml_num(v) for v in calibration.valid_mm),
     ]
     for placement in calibration.placements:
         key = f"placement.{placement.index}"
         lines.append(
             f"{key}.points_mm="
-            + ";".join(f"{_num(x)},{_num(y)}" for x, y in placement.points_mm)
+            + ";".join(f"{toml_num(x)},{toml_num(y)}" for x, y in placement.points_mm)
         )
         for sample in sorted(placement.samples, key=lambda s: (s.station, s.point)):
             base = f"{key}.sample.{sample.station}.{sample.point}"
@@ -402,10 +402,10 @@ def canonical_serialisation(calibration: Calibration) -> str:
         key = f"station.{station.index}"
         lines.append(f"{key}.solved_from={station.solved_from}")
         lines.append(f"{key}.points={station.points}")
-        lines.append(f"{key}.residual_mm={_num(station.residual_mm)}")
+        lines.append(f"{key}.residual_mm={toml_num(station.residual_mm)}")
         lines.append(
             f"{key}.homography="
-            + ";".join(",".join(_num(v) for v in row) for row in station.homography)
+            + ";".join(",".join(toml_num(v) for v in row) for row in station.homography)
         )
     return "\n".join(sorted(lines))
 
@@ -435,16 +435,21 @@ def _toml_int_list(values: Iterable[float]) -> str:
     return "[" + ", ".join(str(int(v)) for v in values) + "]"
 
 
-def _toml_points(points: Sequence[Sequence[float]]) -> str:
-    return "[" + ", ".join(f"[{_num(p[0])}, {_num(p[1])}]" for p in points) + "]"
+def toml_points(points: Sequence[Sequence[float]]) -> str:
+    """A sequence of (x, y) as a TOML array of two-element arrays."""
+    return (
+        "[" + ", ".join(f"[{toml_num(p[0])}, {toml_num(p[1])}]" for p in points) + "]"
+    )
 
 
-def _toml_matrix(matrix: Sequence[Sequence[float]]) -> str:
-    rows = ", ".join("[" + ", ".join(_num(v) for v in row) + "]" for row in matrix)
+def toml_matrix(matrix: Sequence[Sequence[float]]) -> str:
+    """A matrix as a TOML array of row arrays."""
+    rows = ", ".join("[" + ", ".join(toml_num(v) for v in row) + "]" for row in matrix)
     return f"[{rows}]"
 
 
-def _toml_escape(text: str) -> str:
+def toml_escape(text: str) -> str:
+    """`text` as the body of a TOML basic string."""
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
@@ -460,12 +465,12 @@ def render_calibration(calibration: Calibration) -> str:
         f'robot = "{calibration.robot}"',
     ]
     if calibration.tag:
-        out.append(f'tag = "{_toml_escape(calibration.tag)}"')
+        out.append(f'tag = "{toml_escape(calibration.tag)}"')
     out += [
         "",
         "[site]",
         f'name = "{site.name}"',
-        f'anchor = "{_toml_escape(site.anchor)}"',
+        f'anchor = "{toml_escape(site.anchor)}"',
         "",
         "[validity]",
         f"valid_mm = {_toml_int_list(calibration.valid_mm)}",
@@ -475,8 +480,8 @@ def render_calibration(calibration: Calibration) -> str:
             "",
             "[[placement]]",
             f"index = {placement.index}",
-            f'at = "{_toml_escape(placement.at)}"',
-            f"points_mm = {_toml_points(placement.points_mm)}",
+            f'at = "{toml_escape(placement.at)}"',
+            f"points_mm = {toml_points(placement.points_mm)}",
             f'captured_at = "{placement.captured_at}"',
             "samples = [",
         ]
@@ -495,8 +500,8 @@ def render_calibration(calibration: Calibration) -> str:
             f"index = {station.index}",
             f'solved_from = "{station.solved_from}"',
             f"points = {station.points}",
-            f"residual_mm = {_num(station.residual_mm)}",
-            f"homography = {_toml_matrix(station.homography)}",
+            f"residual_mm = {toml_num(station.residual_mm)}",
+            f"homography = {toml_matrix(station.homography)}",
         ]
     return "\n".join(out) + "\n"
 

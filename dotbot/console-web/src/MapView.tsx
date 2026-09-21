@@ -1,7 +1,22 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 
+import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
+import {
+  CameraOffset,
+  CameraOpacity,
+  RobotOpacity,
+  detectionStroke,
+  hasSpan,
+  offsetFor,
+  offsetTransform,
+  opacityFor,
+  polygonPoints,
+  robotOpacityAt,
+  robotOpacityFor,
+  spanMask,
+} from "./cameraLayer";
 import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
 import {
   axisTicks,
@@ -18,7 +33,15 @@ import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
 import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
-import { Area, CalibrationSession, LH2Position, Site, UnifiedBot } from "./types";
+import {
+  Area,
+  CalibrationSession,
+  CameraDetection,
+  LH2Position,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 import {
   Camera,
@@ -62,6 +85,18 @@ interface MapViewProps {
   siteAreas: Area[];
   // The area names this browser hides, ticked under Layers > Areas.
   hiddenAreas: Set<string>;
+  // The cameras the controller warps, one per area, drawn under the grid at
+  // the opacity Layers > Camera sets. None listed, nothing drawn.
+  cameras?: RegisteredCamera[];
+  cameraOpacity?: CameraOpacity;
+  cameraOffset?: CameraOffset;
+  // What each camera's detector last made of its own area, keyed by area.
+  // Drawn inside the camera's nudged box, so it moves with the photograph
+  // and not with the glyph: the two disagreeing is the thing being looked at.
+  cameraDetections?: Record<string, CameraDetection>;
+  // How solid the robots standing on each camera's area are drawn, so the
+  // photographed robot can be read under the glyph reporting it.
+  robotOpacity?: RobotOpacity;
   // The whole site, outlined so it reads as a box rather than only a label.
   siteExtent: Area | null;
   selection: Set<string>;
@@ -217,6 +252,24 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   );
   const colorOf = (a: Area) =>
     areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
+
+  // A camera is drawn on the area it covers, so one the site does not define
+  // has nowhere to land and is left out.
+  const cameraLayers = (props.cameras ?? []).flatMap((camera) => {
+    const area = props.siteAreas.find((a) => a.name === camera.area);
+    return area ? [{ camera, area }] : [];
+  });
+
+  // The areas asked to show their robots through, which is empty on a map
+  // nobody has moved the slider on. Fading only where a camera is looking: a
+  // robot on bare floor has nothing underneath to read, so taking it down
+  // would cost legibility and buy nothing.
+  const robotFades = cameraLayers
+    .map(({ camera, area }) => ({
+      area,
+      opacity: robotOpacityFor(props.robotOpacity ?? {}, camera.area),
+    }))
+    .filter(({ opacity }) => opacity < 1);
 
   // Zoom runs free between the whole site and the ceiling the site needs.
   // The geometry is read live, so a resize that moves the ceiling moves the
@@ -544,6 +597,119 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             transform: "translate(-50%, -50%)",
           }}
         >
+          {/* The camera, first so it lies under the grid and under every
+              glyph: the layer exists to compare what the camera sees against
+              what the lighthouse reports, which needs the glyphs on top of
+              the photograph and legible at any opacity. The stream is the
+              area warped into its own raster, so the box is the area, and the
+              offset nudges that box: the image and the outlines drawn on it
+              move together, and the glyphs above them do not move at all. */}
+          {cameraLayers.map(({ camera, area }) => {
+            const mask = spanMask(camera.span_mm, area, camera.coverage_mm);
+            const transform = offsetTransform(
+              offsetFor(props.cameraOffset ?? {}, camera.area),
+              area,
+            );
+            const detection = (props.cameraDetections ?? {})[camera.area];
+            const found = detectionStroke(detection);
+            const pose = detection?.pose;
+            return (
+              <div
+                key={`camera-${camera.area}`}
+                data-testid={`camera-layer-${camera.area}`}
+                style={{
+                  position: "absolute",
+                  ...pctArea(area),
+                  opacity: opacityFor(props.cameraOpacity ?? {}, camera.area),
+                  transform,
+                  pointerEvents: "none",
+                }}
+              >
+                <img
+                  data-testid={`camera-image-${camera.area}`}
+                  src={cameraStreamUrl(camera.area)}
+                  alt={`Camera on ${camera.area}`}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    height: "100%",
+                    maskImage: mask,
+                    WebkitMaskImage: mask,
+                    maskSize: "100% 100%",
+                    WebkitMaskSize: "100% 100%",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskRepeat: "no-repeat",
+                  }}
+                />
+                {/* One boundary: where the camera's own view of the floor
+                    ends, drawn only where that falls inside the area, so an
+                    area it covers whole carries no line at all. It answers
+                    whether this camera reaches the floor it is registered
+                    on. Where the registration itself was fitted is carried by
+                    the falloff, which dims the image as the extrapolation
+                    past the span grows, and by the markers in the photograph
+                    underneath. */}
+                {(hasSpan(camera.coverage_mm) || pose) && (
+                  <svg
+                    viewBox={`0 0 ${area.w} ${area.h}`}
+                    preserveAspectRatio="none"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+                  >
+                    {hasSpan(camera.coverage_mm) && (
+                      <polygon
+                        data-testid={`camera-coverage-${camera.area}`}
+                        points={polygonPoints(camera.coverage_mm, area)}
+                        fill="none"
+                        stroke="var(--muted)"
+                        strokeWidth={chrome}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                    {/* What the camera makes of the robot standing on this
+                        floor: its board outline, a line from the centre to
+                        the nose so the heading is readable, and a dot on the
+                        photodiode, which is the point the lighthouse
+                        reports and so the one the two can be compared at. */}
+                    {found && pose && (
+                      <g
+                        data-testid={`camera-detection-${camera.area}`}
+                        style={{ pointerEvents: "none" }}
+                      >
+                        <polygon
+                          data-testid={`camera-detection-outline-${camera.area}`}
+                          points={polygonPoints(pose.outline_mm, area)}
+                          fill="none"
+                          stroke={found.stroke}
+                          strokeDasharray={found.dasharray}
+                          strokeWidth={chrome * 1.5}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <line
+                          data-testid={`camera-detection-nose-${camera.area}`}
+                          x1={pose.centre_mm[0] - area.x}
+                          y1={pose.centre_mm[1] - area.y}
+                          x2={pose.nose_mm[0] - area.x}
+                          y2={pose.nose_mm[1] - area.y}
+                          stroke={found.stroke}
+                          strokeDasharray={found.dasharray}
+                          strokeWidth={chrome * 1.5}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <circle
+                          data-testid={`camera-detection-diode-${camera.area}`}
+                          cx={pose.photodiode_mm[0] - area.x}
+                          cy={pose.photodiode_mm[1] - area.y}
+                          r={4}
+                          fill={found.stroke}
+                        />
+                      </g>
+                    )}
+                  </svg>
+                )}
+              </div>
+            );
+          })}
+
           {/* the site, which the grid lies on */}
           <div
             data-testid="map-grid"
@@ -688,7 +854,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             props.bots
               .filter((b) => b.position)
               .map((b) => {
-                const q = pctPos(smoothPositions.get(b.id) ?? b.position!);
+                const at = smoothPositions.get(b.id) ?? b.position!;
+                const q = pctPos(at);
+                // Only the board fades, never what marks it out: a robot has
+                // to stay findable and clickable to be driven, and at a low
+                // opacity the ring and the chip are all there is to find.
+                const solid = robotOpacityAt(robotFades, at);
                 const selected = props.selection.has(b.id);
                 const hovered = hoverId === b.id;
                 const led = ledCss(b);
@@ -793,11 +964,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     )}
                     {/* body and heading are one glyph: it rotates as a piece */}
                     <div
+                      data-testid={`glyph-${b.id}`}
                       style={{
                         position: "absolute",
                         left: "50%",
                         top: "50%",
                         transform: "translate(-50%, -50%)",
+                        opacity: solid < 1 ? solid : undefined,
                         animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
                       }}
                     >

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -30,6 +31,11 @@ from dotbot.protocol import (
 )
 from dotbot.server import api
 from dotbot.site import Site
+from dotbot.tests.camera_fixtures import (
+    DEV_CORNER,
+    delivering,
+    wait_for_detection,
+)
 
 client = AsyncClient(transport=ASGITransport(app=api), base_url="http://testserver")
 
@@ -1012,3 +1018,480 @@ async def test_get_controller_site_with_nothing_measured():
         "extent_mm": None,
         "areas": [],
     }
+
+
+# --- The camera layer -------------------------------------------------------
+
+# A registration the bench wrote: a GoPro over four sheets taped into
+# dev-corner, kept verbatim. The synthetic fixture cannot stand in for it -
+# it carries an integer source rather than a path, a camera mounted at
+# right angles to the frame, and a millimetre residual off a real lens.
+REAL_CAMERA_FILE = """
+schema_version = 1
+kind = "camera"
+created = "2026-09-15T11:58:26Z"
+id = "22248be43bde6d93"
+
+[site]
+name = "c405-arena"
+anchor = "the corner where the arena's top wall meets the door wall of C405"
+
+[camera]
+area = "dev-corner"
+source = 0
+width = 1920
+height = 1080
+fps = 30.0
+lens = "linear"
+intrinsics = ""
+reads = 25
+
+[[marker]]
+id = 0
+dictionary = "DICT_4X4_50"
+side_mm = 150.0
+centre_mm = [1105.0, 148.5]
+corners_mm = [[1030.0, 73.5], [1180.0, 73.5], [1180.0, 223.5], [1030.0, 223.5]]
+corners_px = [[1242.114697265625, 231.2410723876953], [1256.7383544921875, 293.572138671875], [1178.2674755859375, 296.226279296875], [1166.2070458984374, 233.71604919433594]]
+
+[[marker]]
+id = 1
+dictionary = "DICT_4X4_50"
+side_mm = 150.0
+centre_mm = [1895.0, 148.5]
+corners_mm = [[1820.0, 73.5], [1970.0, 73.5], [1970.0, 223.5], [1820.0, 223.5]]
+corners_px = [[1341.7293994140625, 640.3177685546875], [1365.4220361328125, 738.3996533203125], [1265.2443017578125, 744.503134765625], [1245.754013671875, 645.6232080078125]]
+
+[[marker]]
+id = 2
+dictionary = "DICT_4X4_50"
+side_mm = 150.0
+centre_mm = [1105.0, 851.5]
+corners_mm = [[1030.0, 776.5], [1180.0, 776.5], [1180.0, 926.5], [1030.0, 926.5]]
+corners_px = [[861.4837182617188, 242.1832373046875], [863.3884350585937, 309.0532653808594], [777.52103515625, 311.58351806640627], [778.7485498046875, 243.72177368164063]]
+
+[[marker]]
+id = 3
+dictionary = "DICT_4X4_50"
+side_mm = 150.0
+centre_mm = [1895.0, 851.5]
+corners_mm = [[1820.0, 776.5], [1970.0, 776.5], [1970.0, 926.5], [1820.0, 926.5]]
+corners_px = [[875.7261181640625, 665.2610791015625], [879.4344018554688, 767.0706884765625], [773.3879418945312, 774.3927294921875], [774.234970703125, 671.5585180664062]]
+
+[homography]
+matrix = [[0.026072884758520428, 3.1429353231686856, 355.3471468990013], [-2.023927532764786, 0.5321569056318636, 2473.0438679636], [-4.8016552004033726e-05, 0.0005987887309469123, 1.0]]
+residual_mm = 3.125575236970499
+span_mm = [[1030.0, 73.5], [1970.0, 73.5], [1970.0, 926.5], [1030.0, 926.5]]
+"""
+
+
+@pytest.fixture
+def real_camera(tmp_path):
+    """The bench's own registration, read back through the file loader."""
+    from dotbot.camera.registration import read_camera_calibration_file
+
+    path = tmp_path / "camera-2026-09-15T11-58-26Z-22248be4.toml"
+    path.write_text(REAL_CAMERA_FILE, encoding="utf-8")
+    return read_camera_calibration_file(path)
+
+
+@contextlib.contextmanager
+def registered(calibration, open_source=None, area=DEV_CORNER):
+    """One camera service on the controller, started and torn down.
+
+    Registered whether or not it started, so what the routes serve is the
+    service's own `live`, not the fixture's choice of what to hand them.
+    """
+    from dotbot.camera.service import CameraService
+
+    service = CameraService(calibration, area, open_source=open_source)
+    started = service.start()
+    api.controller.cameras = [service]
+    try:
+        yield service, started
+    finally:
+        service.stop()
+
+
+def stream_parts(body):
+    """The (head, payload) pairs of a `multipart/x-mixed-replace` body."""
+    parts = []
+    for chunk in body.split(b"--frame\r\n")[1:]:
+        head, _, rest = chunk.partition(b"\r\n\r\n")
+        assert b"Content-Type: image/jpeg" in head
+        payload = rest[: -len(b"\r\n")]
+        assert f"Content-Length: {len(payload)}".encode() in head
+        parts.append((head, payload))
+    return parts
+
+
+@pytest.mark.asyncio
+async def test_get_controller_cameras(synthetic_camera):
+    """One descriptor per registered camera, keyed by the area it covers."""
+    with registered(synthetic_camera) as (service, started):
+        assert started
+        response = await client.get("/controller/cameras")
+
+    import numpy as np
+
+    assert response.status_code == 200
+    (described,) = response.json()
+    # The synthetic frame looks down on a floor wider than the area, so the
+    # camera's coverage swallows dev-corner whole.
+    assert np.array(described.pop("coverage_mm")) == pytest.approx(
+        np.array(
+            [
+                [540.1, -40.1],
+                [2556.3, -40.0],
+                [2583.7, 1109.2],
+                [540.1, 1064.4],
+            ]
+        ),
+        abs=0.1,
+    )
+    assert described == {
+        "area": "dev-corner",
+        "source": str(synthetic_camera.source),
+        "mm_per_px": 2.0,
+        "width": 500,
+        "height": 500,
+        "span_mm": [
+            [1030.0, 73.5],
+            [1970.0, 73.5],
+            [1970.0, 926.5],
+            [1030.0, 926.5],
+        ],
+        "residual_mm": synthetic_camera.residual_mm,
+        "id": synthetic_camera.id,
+        "lens": "linear",
+        "detect": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_camera_stream_carries_the_area_warped_into_its_raster(
+    synthetic_camera,
+):
+    """The registration, end to end: the sheets land where the layout puts them.
+
+    Decoding the four markers back out of the warped raster is what
+    separates a stream that carries an image from one that carries the
+    right image: a transposed or unscaled warp still returns a JPEG.
+    """
+    import cv2
+    import numpy as np
+
+    from dotbot.camera.capture import build_detector, detect_markers
+    from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.sheets import marker_layout
+
+    with registered(synthetic_camera):
+        response = await client.get("/controller/cameras/dev-corner/stream")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == (
+        "multipart/x-mixed-replace; boundary=frame"
+    )
+    parts = stream_parts(response.content)
+    assert parts
+
+    raster = cv2.imdecode(np.frombuffer(parts[0][1], np.uint8), cv2.IMREAD_COLOR)
+    assert raster.shape == (500, 500, 3)
+
+    found = detect_markers(raster, build_detector())
+    assert sorted(found) == [0, 1, 2, 3]
+    for marker in marker_layout(DEV_CORNER):
+        expected = np.array(
+            [
+                ((x - DEV_CORNER.x) / MM_PER_PX, (y - DEV_CORNER.y) / MM_PER_PX)
+                for x, y in marker.corners_mm
+            ]
+        )
+        assert found[marker.id] == pytest.approx(expected, abs=1.0)
+
+    grey = cv2.cvtColor(raster, cv2.COLOR_BGR2GRAY)
+    assert grey[250, 250] > 192  # the bare floor between the sheets
+
+
+@pytest.mark.asyncio
+async def test_one_camera_warp_serves_every_client(synthetic_camera):
+    """Two viewers, one warp: the held frame is what both are sent."""
+    with registered(synthetic_camera) as (service, _):
+        first = await client.get("/controller/cameras/dev-corner/stream")
+        warps = service.held()[1]
+        second = await client.get("/controller/cameras/dev-corner/stream")
+
+        assert service.held()[1] == warps
+    assert stream_parts(first.content)[0][1] == stream_parts(second.content)[0][1]
+
+
+@pytest.mark.asyncio
+async def test_a_camera_that_does_not_open_is_a_missing_layer(real_camera):
+    """Ordinary, not an error state: the controller serves everything else."""
+    with registered(real_camera, open_source=delivering(opens=False)) as (
+        service,
+        started,
+    ):
+        assert not started
+        assert not service.live
+
+        listed = await client.get("/controller/cameras")
+        stream = await client.get("/controller/cameras/dev-corner/stream")
+
+    assert listed.json() == []
+    assert stream.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_camera_delivering_another_mode_is_not_served(real_camera):
+    """The homography describes the pixel grid it was solved on, and no other.
+
+    A source back on a different mode still delivers a plausible picture,
+    so serving it would put every position it implies out by the scale
+    ratio. A missing layer makes someone look; a wrong one does not.
+    """
+    import numpy as np
+
+    other_mode = np.full((720, 1280), 180, np.uint8)
+    with registered(real_camera, open_source=delivering(other_mode)) as (
+        service,
+        started,
+    ):
+        assert not started
+        assert service.live is False
+
+        listed = await client.get("/controller/cameras")
+        stream = await client.get("/controller/cameras/dev-corner/stream")
+
+    assert listed.json() == []
+    assert stream.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_camera_at_another_frame_rate_is_not_served(real_camera):
+    """Same pixel grid, another rate: still not the camera that was solved."""
+    import numpy as np
+
+    lit = np.full((1080, 1920), 180, np.uint8)
+    with registered(real_camera, open_source=delivering(lit, fps=60.0)) as (_, started):
+        assert not started
+        listed = await client.get("/controller/cameras")
+
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
+async def test_the_camera_stream_404s_for_an_area_no_camera_covers(synthetic_camera):
+    with registered(synthetic_camera):
+        response = await client.get("/controller/cameras/annex/stream")
+
+    assert response.status_code == 404
+    assert "annex" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_camera_registered_on_the_bench_describes_itself(real_camera):
+    """The bench's own file: an integer source, and a real residual."""
+    import numpy as np
+
+    lit = np.full((1080, 1920), 180, np.uint8)
+    with registered(real_camera, open_source=delivering(lit)) as (_, started):
+        assert started
+        response = await client.get("/controller/cameras")
+
+    descriptor = response.json()[0]
+    assert descriptor["source"] == 0
+    assert descriptor["id"] == "22248be43bde6d93"
+    assert descriptor["residual_mm"] == pytest.approx(3.1256, abs=1e-4)
+    assert descriptor["width"] == 500 and descriptor["height"] == 500
+    assert descriptor["span_mm"][0] == [1030.0, 73.5]
+
+
+def test_the_camera_coverage_is_the_frame_rectangle_on_the_floor(real_camera):
+    """The floor the camera can see, in the frame's own millimetres.
+
+    The homography and the frame's size both hold for the whole
+    registration, so this is one polygon per camera rather than an alpha
+    channel on every frame. Checked by mapping it back through the inverse
+    homography, which must land on the frame's four pixel corners.
+    """
+    import numpy as np
+
+    from dotbot.camera.raster import coverage_mm
+
+    coverage = coverage_mm(real_camera.matrix, real_camera.width, real_camera.height)
+    inverse = np.linalg.inv(np.array(real_camera.matrix))
+    mapped = np.array([inverse @ [x, y, 1.0] for x, y in coverage])
+    assert (mapped[:, :2] / mapped[:, 2:]) == pytest.approx(
+        np.array([[0.0, 0.0], [1919.0, 0.0], [1919.0, 1079.0], [0.0, 1079.0]]),
+        abs=1e-6,
+    )
+
+
+def test_a_frame_crossing_the_horizon_describes_no_coverage_polygon():
+    """Its image is not a polygon there, and no mask beats a wrong one."""
+    from dotbot.camera.raster import coverage_mm
+
+    crossing = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.01, -5.0]]
+    assert coverage_mm(crossing, 1920, 1080) == []
+    assert coverage_mm([], 1920, 1080) == []
+
+
+@pytest.mark.asyncio
+async def test_the_warp_has_no_source_outside_the_coverage_polygon(
+    synthetic_camera,
+):
+    """What the polygon claims is what the warp does, on the same frame.
+
+    The same registration on a frame cropped to its left 900 columns sees
+    only part of dev-corner. Inside the polygon the raster carries floor;
+    outside it the warp had nothing to read and left its border fill, which
+    is what the console cuts away.
+    """
+    import dataclasses
+
+    import cv2
+    import numpy as np
+
+    from dotbot.camera.raster import MM_PER_PX
+    from dotbot.camera.service import CameraService
+
+    columns = 900
+    frame = cv2.imread(str(synthetic_camera.source))[:, :columns]
+    cropped = dataclasses.replace(synthetic_camera, width=columns)
+    service = CameraService(cropped, DEV_CORNER, open_source=delivering(frame, fps=0.0))
+    assert service.start()
+    try:
+        jpeg, _ = service.held()
+    finally:
+        service.stop()
+
+    raster = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    grey = cv2.cvtColor(raster, cv2.COLOR_BGR2GRAY)
+
+    edge = max(x for x, _ in service.coverage_mm)
+    assert DEV_CORNER.x < edge < DEV_CORNER.x + DEV_CORNER.w
+    inside = int((edge - 40 - DEV_CORNER.x) / MM_PER_PX)
+    outside = int((edge + 40 - DEV_CORNER.x) / MM_PER_PX)
+    assert grey[250, inside] > 192  # the bare floor between the sheets
+    assert grey[250, outside] == 0  # no source, so the warp's border fill
+
+
+# --- The detection on the status WebSocket ----------------------------------
+
+
+class CannedDetector:
+    """A detector reporting the same pose on every frame."""
+
+    def __init__(self, status="found"):
+        self.status = status
+
+    def detect(self, bgr):
+        from dotbot.camera.detection import Detection, Pose
+
+        if self.status == "none":
+            return Detection("none", 0, None, 1.0)
+        return Detection(
+            self.status,
+            1,
+            Pose(
+                centre_px=(250.0, 250.0),
+                heading_atan2_deg=52.5,
+                green_flare=0.82,
+                tmpl_margin=0.91,
+                refined=True,
+            ),
+            12.5,
+        )
+
+
+@contextlib.contextmanager
+def detecting(calibration, status="found"):
+    """One camera on a real controller, detecting whatever `status` says."""
+    import cv2
+
+    from dotbot.camera.service import CameraService
+    from dotbot.controller import Controller, ControllerSettings
+
+    frame = cv2.imread(str(calibration.source))
+    service = CameraService(
+        calibration,
+        DEV_CORNER,
+        open_source=delivering(*([frame] * 20), fps=0.0),
+        detector=CannedDetector(status),
+    )
+    controller = Controller.__new__(Controller)
+    controller.settings = ControllerSettings()
+    controller.cameras = [service]
+    controller.websockets = [MagicMock()]
+    controller._camera_pushed = {}
+    controller.notify_clients = AsyncMock()
+    assert service.start()
+    assert wait_for_detection(service) is not None
+    try:
+        yield controller
+    finally:
+        service.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
+    """One notification per new warp, and none for a warp already pushed."""
+    from dotbot.models import DotBotNotificationCommand
+
+    with detecting(synthetic_camera) as controller:
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
+        notification = controller.notify_clients.await_args[0][0]
+        assert notification.cmd == DotBotNotificationCommand.CAMERA_DETECTION
+
+        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        assert message["area"] == "dev-corner"
+        assert message["camera_id"] == synthetic_camera.id
+        assert message["status"] == "found"
+        assert message["candidates"] == 1
+        assert message["elapsed_ms"] == 12.5
+        assert message["sequence"] >= 1
+        assert message["timestamp"] > 0
+
+        pose = message["pose"]
+        assert pose["heading_atan2_deg"] == 52.5
+        assert pose["heading_deg"] == -37.5
+        assert len(pose["outline_mm"]) == 14
+        # The raster's (250, 250) is the middle of a 1000 mm area at 2 mm/px.
+        assert pose["centre_mm"] == [1500.0, 500.0]
+
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
+    """`model_dump(exclude_none=True)` drops a null pose, so status is the key."""
+    with detecting(synthetic_camera, status="none") as controller:
+        await controller._push_camera_detections()
+        notification = controller.notify_clients.await_args[0][0]
+        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        assert message["status"] == "none"
+        assert "pose" not in message
+
+
+@pytest.mark.asyncio
+async def test_a_console_that_connects_late_is_told_the_last_frame(
+    synthetic_camera,
+):
+    """Nothing is sent with no socket, and nothing is marked sent either.
+
+    A camera that has stopped delivering pushes no further frame, so a
+    console arriving afterwards would otherwise draw an empty floor.
+    """
+    with detecting(synthetic_camera) as controller:
+        controller.websockets = []
+        await controller._push_camera_detections()
+        controller.notify_clients.assert_not_awaited()
+        assert controller._camera_pushed == {}
+
+        controller.websockets = [MagicMock()]
+        await controller._push_camera_detections()
+        assert controller.notify_clients.await_count == 1
+        assert controller._camera_pushed["dev-corner"] >= 1

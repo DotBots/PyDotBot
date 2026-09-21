@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveMissions } from "./TestbedRail";
-import { PlannedMission, UnifiedBot } from "./types";
+import {
+  canRedoMission,
+  lastMissionTargets,
+  PlannedMission,
+  UnifiedBot,
+} from "./types";
 
 const bot = (id: string, over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   id,
@@ -76,5 +81,40 @@ describe("deriveMissions", () => {
   it("ignores bots that are not navigating", () => {
     const a = bot("aaaa", { waypoints: [{ x: 1, y: 1 }] }); // nav=drive
     expect(deriveMissions([a], [])).toEqual([]);
+  });
+});
+
+describe("the last mission a bot can repeat", () => {
+  const targets = [
+    { x: 900, y: 900 },
+    { x: 1200, y: 300 },
+  ];
+
+  it("is the tail the controller kept after the bot arrived", () => {
+    const a = bot("aaaa", { waypoints: [{ x: 500, y: 500 }, ...targets] });
+    expect(lastMissionTargets(a)).toEqual(targets);
+    expect(canRedoMission(a)).toBe(true);
+  });
+
+  it("is nothing for a bot that has run none", () => {
+    const a = bot("aaaa");
+    expect(lastMissionTargets(a)).toEqual([]);
+    expect(canRedoMission(a)).toBe(false);
+  });
+
+  it("is nothing when a stop left only the bot's own position", () => {
+    const a = bot("aaaa", { waypoints: [{ x: 700, y: 700 }] });
+    expect(lastMissionTargets(a)).toEqual([]);
+    expect(canRedoMission(a)).toBe(false);
+  });
+
+  it("is refused while the bot is still under way", () => {
+    const a = bot("aaaa", { nav: "auto", waypoints: [{ x: 1, y: 1 }, ...targets] });
+    expect(canRedoMission(a)).toBe(false);
+  });
+
+  it("is refused for a bot that cannot be driven", () => {
+    const a = bot("aaaa", { drivable: false, waypoints: [{ x: 1, y: 1 }, ...targets] });
+    expect(canRedoMission(a)).toBe(false);
   });
 });

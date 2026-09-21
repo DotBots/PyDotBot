@@ -61,6 +61,7 @@ vi.mock("./useMrta", () => ({
 
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
+  fetchBuild: vi.fn(async () => null),
   putWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),

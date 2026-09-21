@@ -1,6 +1,7 @@
 """Module containing classes for interfacing with the DotBot gateway."""
 
 import asyncio
+import ssl
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -24,6 +25,7 @@ from marilib.model import EdgeEvent, MariNode
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
 from dotbot.logger import LOGGER
+from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
 from dotbot.site import Site
 
@@ -202,6 +204,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                     queue.put_nowait, Frame(header=event_data.header, packet=packet)
                 )
 
+        allow_unverified_broker()
         # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
         # threaded down by controller_app) are passed only when set.
         # NOTE: requires the marilib companion that adds username/password
@@ -212,17 +215,31 @@ class MarilibCloudAdapter(GatewayAdapterBase):
             mqtt_kwargs["username"] = self.username
         if self.password is not None:
             mqtt_kwargs["password"] = self.password
-        self.mari = MarilibCloud(
-            _on_mari_event,
-            MarilibMQTTAdapter(
-                self.host,
-                self.port,
-                use_tls=self.use_tls,
-                is_edge=False,
-                **mqtt_kwargs,
-            ),
-            self.network_id,
-        )
+        try:
+            self.mari = MarilibCloud(
+                _on_mari_event,
+                MarilibMQTTAdapter(
+                    self.host,
+                    self.port,
+                    use_tls=self.use_tls,
+                    is_edge=False,
+                    **mqtt_kwargs,
+                ),
+                self.network_id,
+            )
+        except ssl.SSLError as exc:
+            # marilib connects while it is constructed, so the handshake
+            # fails here rather than anywhere a caller could report it.
+            detail = (
+                getattr(exc, "verify_message", None)
+                or getattr(exc, "reason", None)
+                or exc
+            )
+            raise ConnectionError(
+                f"the broker at {self.host}:{self.port} did not pass TLS "
+                f"verification ({detail}). Renew its certificate, or set "
+                f"{INSECURE_ENV}=1 to connect without checking it."
+            ) from exc
         await asyncio.sleep(3)
 
         while 1:

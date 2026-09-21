@@ -6,7 +6,7 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { Area, BotState, LH2Position, LINK_LABEL, STATE_ORDER, Site, UnifiedBot } from "./types";
+import { Area, BotState, canRedoMission, LH2Position, LINK_LABEL, STATE_ORDER, Site, UnifiedBot } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -47,6 +47,7 @@ interface FooterProps {
   onSelectState: (ids: string[]) => void;
   onGo: () => void;
   onStopNav: () => void;
+  onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (index: number) => void;
   onToast: (msg: string) => void;
@@ -97,15 +98,17 @@ const ControlDock: React.FC<{
   selCount: number;
   onGo: () => void;
   onStopNav: () => void;
+  onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (i: number) => void;
   onToast: (msg: string) => void;
-}> = ({ targets, pending, isGroup, selCount, onGo, onStopNav, onClearQueue, onRemovePending, onToast }) => {
+}> = ({ targets, pending, isGroup, selCount, onGo, onStopNav, onRedo, onClearQueue, onRemovePending, onToast }) => {
   const [ledOpen, setLedOpen] = useState(false);
   const [wpOpen, setWpOpen] = useState(false);
   const drivable = targets.filter((b) => b.drivable);
   const enabled = drivable.length > 0;
   const anyAuto = drivable.some((b) => b.nav === "auto");
+  const redoable = targets.filter(canRedoMission);
   // The controller stores [own-start, ...targets]; count the targets.
   const activeCount = Math.max(
     ...drivable.map((b) => (b.waypoints.length > 1 ? b.waypoints.length - 1 : b.waypoints.length)),
@@ -213,6 +216,29 @@ const ControlDock: React.FC<{
                 }}
               >
                 {anyAuto ? "■ Stop nav" : "▶ Go"}
+              </div>
+            )}
+            {pending.length === 0 && !anyAuto && (
+              <div
+                data-testid="redo-mission"
+                title={
+                  redoable.length
+                    ? `Send the last mission again${isGroup ? ` · ${redoable.length} bots` : ""}`
+                    : "No previous mission to repeat"
+                }
+                onClick={() => redoable.length > 0 && onRedo()}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "6px 11px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                  borderLeft: "1px solid var(--hairline)",
+                  ...(redoable.length ? {} : gateOff),
+                }}
+              >
+                &#8635; Redo
               </div>
             )}
             {pending.length > 0 && (
@@ -503,6 +529,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
               selCount={1}
               onGo={props.onGo}
               onStopNav={props.onStopNav}
+              onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
               onToast={props.onToast}
@@ -563,6 +590,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
               selCount={selected.length}
               onGo={props.onGo}
               onStopNav={props.onStopNav}
+              onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
               onToast={props.onToast}

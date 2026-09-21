@@ -43,9 +43,15 @@ _RUN_SUBCOMMANDS = (
         "Standalone simulator (≡ run controller --conn simulator).",
     ),
     (
-        "lh2-calibration",
+        "calibrate-lh2",
         "dotbot.cli.calibrate",
-        "LH2 calibration: capture, apply, export (serial-side / single device).",
+        "DEPRECATED - cabled single-device LH2 calibration; prefer "
+        "`swarm calibrate-lh2`.",
+    ),
+    (
+        "calibrate-camera",
+        "dotbot.cli.camera_calibrate",
+        "Overhead-camera registration: printable ArUco sheets, capture.",
     ),
     (
         "demo",
@@ -63,9 +69,9 @@ _RUN_SUBCOMMANDS = (
     subcommands=_RUN_SUBCOMMANDS,
     help=(
         "Launch host-side processes: the controller (+ REST/WS + UI), the "
-        "gateway bridge, a simulator, LH2 calibration, demos, and teleop "
-        "drivers. These run on your computer; `fw` / `device` / `swarm` are "
-        "the things you manage."
+        "gateway bridge, a simulator, LH2 and camera calibration, demos, and "
+        "teleop drivers. These run on your computer; `fw` / `device` / "
+        "`swarm` are the things you manage."
     ),
 )
 def cmd():

@@ -51,12 +51,20 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_bytes
-from dotbot.csv_data_logger import CSVDataLogger, CSVLog
+from dotbot.camera.raster import WARP_FPS_MAX
+from dotbot.camera.service import CameraService
+from dotbot.csv_data_logger import (
+    CameraCSVLogger,
+    CSVDataLogger,
+    CSVLog,
+    camera_log_path,
+)
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotCalibrationSessionModel,
+    DotBotCameraDetectionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
@@ -102,6 +110,13 @@ def load_calibration(spec: str, site: Optional[str] = None):
     return _load(spec, site=site)
 
 
+def load_camera_calibration(spec: str, site: Optional[str] = None):
+    """The camera registration `spec` names: a file path or an id prefix."""
+    from dotbot.camera.registration import load_camera_calibration as _load
+
+    return _load(spec, site=site)
+
+
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
 
@@ -123,7 +138,9 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
-    calibration: Optional[str] = None
+    lh2_calibration: Optional[str] = None
+    camera_calibration: Optional[str] = None
+    camera_detect: bool = True
     background_map: str = ""
     headless: bool = False
     verbose: bool = False
@@ -198,9 +215,9 @@ class Controller:
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
-        if settings.calibration:
+        if settings.lh2_calibration:
             self.calibration = load_calibration(
-                settings.calibration, site=self.site.name
+                settings.lh2_calibration, site=self.site.name
             )
             self.lh2_calibration = self.calibration.stations
             self.logger.info(
@@ -213,8 +230,15 @@ class Controller:
         else:
             self.logger.info(
                 "No calibration selected: robots keep whatever they hold. "
-                "Pass --calibration <path|id> or set [run.controller] calibration."
+                "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
+        self.cameras: List[CameraService] = []
+        # The warp each camera's last pushed detection came from, so a
+        # console is told about a frame once.
+        self._camera_pushed: Dict[str, int] = {}
+        self.camera_csv_loggers: Dict[str, CameraCSVLogger] = {}
+        if settings.camera_calibration:
+            self._start_camera(settings.camera_calibration)
         self.calibration_session = SessionDriver(
             client_factory=self._swarmit_client,
             notify=self._notify_calibration_session,
@@ -230,6 +254,179 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotSimulator] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def _start_camera(self, spec: str) -> None:
+        """Open the camera layer one registration describes.
+
+        Every way this can fail is a warning and no layer, never a stop: a
+        controller without a camera is a missing layer, not a broken console.
+        """
+        try:
+            calibration = load_camera_calibration(spec, site=self.site.name)
+        except (ValueError, OSError) as exc:
+            self.logger.warning(
+                "Camera calibration not loaded, so no camera layer is served",
+                camera_calibration=spec,
+                error=str(exc),
+            )
+            return
+        try:
+            area = self.site.registry().resolve(calibration.area)
+        except ValueError as exc:
+            self.logger.warning(
+                "Camera calibration names an area this site does not define, "
+                "so no camera layer is served",
+                path=str(calibration.path),
+                area=calibration.area,
+                error=str(exc),
+            )
+            return
+        self.logger.info(
+            "Camera calibration loaded",
+            path=str(calibration.path),
+            site=calibration.site.name,
+            area=area.name,
+            camera_id=calibration.id,
+            residual_mm=round(calibration.residual_mm, 2),
+        )
+        if not self.settings.camera_detect:
+            self.logger.info(
+                "Camera detection disabled, so the layer is served without it",
+                area=area.name,
+            )
+        service = CameraService(
+            calibration,
+            area,
+            detect=self.settings.camera_detect,
+            on_detection=self._on_camera_detection,
+        )
+        # `start()` hands the detector its first frame before it returns, so
+        # the bookkeeping a detection row needs is in place first and rolled
+        # back if the camera turns out not to serve.
+        self.cameras.append(service)
+        if self.settings.csv_data_output is not None and self.settings.camera_detect:
+            self._open_camera_log(area, calibration.id)
+        if not service.start():
+            self.cameras.remove(service)
+            rolled_back = self.camera_csv_loggers.pop(area.name, None)
+            if rolled_back is not None:
+                rolled_back.close()
+
+    def _open_camera_log(self, area, camera_id: str) -> None:
+        """The detection log for one camera, or a message saying why not.
+
+        A log that cannot be appended to is an error and no log, never a
+        stop, and the camera layer is served either way.
+        """
+        path = camera_log_path(self.settings.csv_data_output)
+        try:
+            self.camera_csv_loggers[area.name] = CameraCSVLogger(
+                path, area=area.name, camera_id=camera_id
+            )
+        except (ValueError, OSError) as exc:
+            self.logger.error(
+                "Camera detections are not logged, but the layer is served",
+                path=str(path),
+                area=area.name,
+                error=str(exc),
+            )
+            return
+        self.logger.info(
+            "Camera detection log enabled",
+            path=str(path),
+            area=area.name,
+        )
+
+    def _on_camera_detection(self, record: dict) -> None:
+        """One detection, logged with the lighthouse's answer for the same floor.
+
+        Runs on the camera's detector thread. `list(dict.values())` is atomic
+        under the GIL and the model fields are reassigned whole, so the robot
+        table is read without a lock.
+        """
+        logger = self.camera_csv_loggers.get(record.get("area", ""))
+        if logger is None:
+            return
+        try:
+            logger.log(record, self._lh2_in_area(record))
+        except Exception as exc:  # pylint:disable=broad-except
+            self.logger.warning(
+                "Camera detection row not written",
+                area=record.get("area"),
+                error=str(exc),
+            )
+
+    def _lh2_in_area(self, record: dict) -> Optional[dict]:
+        """The lighthouse pose of the robot the camera is looking at.
+
+        Rectangle membership, not tracking: with more than one robot in the
+        area the nearest to the detected pose is taken and `in_area` says how
+        many there were, so a row that cannot mean a one-to-one comparison
+        can be filtered out. `packet_age_s` ages the last packet of any kind
+        from that robot, not the fix it carries.
+        """
+        area = next(
+            (c.area for c in self.cameras if c.area.name == record.get("area")), None
+        )
+        if area is None:
+            return None
+        standing = [
+            dotbot
+            for dotbot in list(self.dotbots.values())
+            if dotbot.lh2_position is not None
+            and area.x <= dotbot.lh2_position.x <= area.x_max
+            and area.y <= dotbot.lh2_position.y <= area.y_max
+        ]
+        if not standing:
+            return {"in_area": 0}
+        pose = record.get("pose") or {}
+        target = pose.get("centre_mm") or area.centre
+        nearest = min(
+            standing,
+            key=lambda d: (d.lh2_position.x - target[0]) ** 2
+            + (d.lh2_position.y - target[1]) ** 2,
+        )
+        return {
+            "address": nearest.address,
+            "x": nearest.lh2_position.x,
+            "y": nearest.lh2_position.y,
+            "direction": nearest.direction,
+            "packet_age_s": round(time.time() - nearest.last_seen, 3),
+            "in_area": len(standing),
+        }
+
+    async def _camera_detections_push(self):
+        """Coroutine that pushes every new camera detection to the console."""
+        interval = 1.0 / WARP_FPS_MAX
+        while 1:
+            await asyncio.sleep(interval)
+            await self._push_camera_detections()
+
+    async def _push_camera_detections(self):
+        """One notification per camera that has detected on a newer warp.
+
+        A frame counts as pushed only once it has actually gone out, so a
+        console that connects after the camera has stopped delivering is
+        still told what the last frame showed.
+        """
+        if not self.websockets:
+            return
+        for camera in self.cameras:
+            if not camera.live:
+                continue
+            record = camera.held_detection()
+            if record is None:
+                continue
+            sequence = record["sequence"]
+            if self._camera_pushed.get(camera.area.name) == sequence:
+                continue
+            self._camera_pushed[camera.area.name] = sequence
+            await self.notify_clients(
+                DotBotNotificationModel(
+                    cmd=DotBotNotificationCommand.CAMERA_DETECTION,
+                    camera_detection=DotBotCameraDetectionModel(**record),
+                )
+            )
 
     def _update_dotbot_twin(
         self,
@@ -809,8 +1006,16 @@ class Controller:
                     name="Start communication adapter", coro=self._start_adapter()
                 ),
             ]
+            if self.cameras:
+                tasks.append(
+                    asyncio.create_task(
+                        name="Camera detections push",
+                        coro=self._camera_detections_push(),
+                    )
+                )
             await asyncio.gather(*tasks)
         except (
+            ConnectionError,
             SerialInterfaceException,
             serial.serialutil.SerialException,
         ) as exc:
@@ -820,6 +1025,12 @@ class Controller:
         finally:
             if self.csv_data_logger is not None:
                 self.csv_data_logger.close()
+            # The detector threads write rows, so they stop before the file
+            # they write to closes.
+            for camera in self.cameras:
+                camera.stop()
+            for camera_logger in self.camera_csv_loggers.values():
+                camera_logger.close()
             self.adapter.close()
             self.logger.info("Stopping controller")
             for task in tasks:

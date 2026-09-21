@@ -175,7 +175,9 @@ class SiteSection(_Strict):
 class ControllerSection(_Strict):
     http_port: int | None = None
     http_host: str | None = None
-    calibration: str | None = None
+    lh2_calibration: str | None = None
+    camera_calibration: str | None = None
+    camera_detect: bool | None = None
     background_map: str | None = None
     log_output: str | None = None
     csv_data_output: str | None = None
@@ -206,7 +208,7 @@ class DotbotConfig(_Strict):
     conn: Conn = None
     swarm_id: str | None = None
     # The active site, and with it the coordinate frame this session's
-    # positions and calibrations live in. Read by `swarm lh2-calibration` and
+    # positions and calibrations live in. Read by `swarm calibrate-lh2` and
     # by the controller's calibration lookup, so it is shared rather than
     # per-command.
     site: str | None = None

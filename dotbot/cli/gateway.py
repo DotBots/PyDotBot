@@ -29,6 +29,7 @@ import click
 from dotbot import addr_to_hex
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import parse_connection
+from dotbot.mqtt_tls import allow_unverified_broker
 
 
 def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gateway
@@ -52,6 +53,7 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
 
     mqtt_interface = None
     if mqtt_url is not None:
+        allow_unverified_broker()
         # Broker credentials come from the environment (DOTBOT_MQTT_USER /
         # DOTBOT_MQTT_PASS); they override any user:pass in the URL.
         mqtt_interface = MQTTAdapter.from_url(

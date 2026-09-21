@@ -168,7 +168,7 @@ First, collect from one DotBot. Get its address from `dotbot swarm status` (the
 ```bash
 dotbot swarm status                                           # pick one Device Addr, e.g., BDF2B04BC00D2725
 dotbot swarm stop                                             # DotBots must be idle to capture
-dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve + save
+dotbot swarm calibrate-lh2 collect --device <addr> -d 500     # capture + solve + save
 ```
 
 `-d` is your reference square's side, in mm. This saves a
@@ -176,7 +176,7 @@ dotbot swarm lh2-calibration collect --device <addr> -d 500   # capture + solve 
 whole fleet:
 
 ```bash
-dotbot swarm lh2-calibration push ~/.dotbot/calibrations/calibration-<UTC>.toml
+dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml
 ```
 
 Full walkthrough - arena sizing and the cabled alternative - is in the

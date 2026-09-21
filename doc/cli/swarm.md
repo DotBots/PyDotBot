@@ -129,8 +129,8 @@ driving it over the swarm. The arena geometry and `-d` sizing live in the
 
 ```bash
 dotbot swarm stop                                              # capture only runs in READY
-dotbot swarm lh2-calibration collect --device BC3D... -d 500   # capture from one DotBot -> solve -> save
-dotbot swarm lh2-calibration push ~/.dotbot/calibrations/calibration-<UTC>.toml   # apply to every ready DotBot
+dotbot swarm calibrate-lh2 collect --device BC3D... -d 500     # capture from one DotBot -> solve -> save
+dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml   # apply to every ready DotBot
 ```
 
 `collect` walks one DotBot through the four arena corners over the air, solves the

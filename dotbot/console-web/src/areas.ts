@@ -4,6 +4,8 @@
 // visible. Nothing reaches the controller, so the set is remembered locally
 // and a browser that refuses storage still renders every outline.
 
+import { store } from "./persisted";
+
 const KEY = "dotbot.console.hiddenAreas";
 
 /** The area names this browser hides, empty when storage says nothing. */
@@ -22,11 +24,7 @@ export function loadHiddenAreas(): Set<string> {
 
 /** Remember the hidden set; a browser that refuses storage just forgets it. */
 export function saveHiddenAreas(hidden: Set<string>): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify([...hidden]));
-  } catch {
-    /* private window, cleared site data, storage blocked */
-  }
+  store(KEY, [...hidden]);
 }
 
 /** The hidden set with `name` flipped. */

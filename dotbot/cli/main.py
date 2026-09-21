@@ -31,6 +31,7 @@ import click
 
 from dotbot import pydotbot_version
 from dotbot.cli._lazygroup import LazyGroup
+from dotbot.mqtt_tls import allow_unverified_broker
 
 # (cli-name, dotted module path, short help shown by `dotbot --help`)
 _SUBCOMMANDS = (
@@ -52,7 +53,8 @@ _SUBCOMMANDS = (
     (
         "run",
         "dotbot.cli.run",
-        "Host-side processes: controller, gateway, simulator, calibration, demos, teleop.",
+        "Host-side processes: controller, gateway, simulator, LH2 and "
+        "camera calibration, demos, teleop.",
     ),
     (
         "config",
@@ -110,7 +112,11 @@ def cli(ctx, config_path, deployment_name):
     Discovery order: `-c` / `DOTBOT_CONFIG` > a `dotbot.toml` in the cwd >
     `~/.dotbot/config.toml` (the per-machine fallback). `fw` reads its `[fw]`
     keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
+
+    Certificate checking is settled here, before any subcommand runs.
     """
+    allow_unverified_broker()
+
     from dotbot.config import (
         PROJECT_CONFIG_NAME,
         USER_CONFIG_PATH,

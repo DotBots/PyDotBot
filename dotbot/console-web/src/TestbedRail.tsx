@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 
 import { LocalizationPanel } from "./LocalizationPanel";
-import { CalibrationSession, PlannedMission, Site, UnifiedBot } from "./types";
+import {
+  CalibrationSession,
+  CameraDetection,
+  PlannedMission,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import { FirmwareSection } from "./FirmwareSection";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
@@ -48,6 +55,8 @@ interface TestbedRailProps {
   onStopMission: (ids: string[]) => void;
   site: Site | null;
   session: CalibrationSession | null;
+  cameras?: RegisteredCamera[];
+  cameraDetections?: Record<string, CameraDetection>;
   calibrationBusy: boolean;
   calibrationError: string;
   onCalibrate: () => void;
@@ -584,6 +593,8 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               site={props.site}
               bots={props.bots}
               session={props.session}
+              cameras={props.cameras}
+              cameraDetections={props.cameraDetections}
               busy={props.calibrationBusy}
               error={props.calibrationError}
               onCalibrate={props.onCalibrate}

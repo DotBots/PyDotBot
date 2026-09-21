@@ -26,11 +26,14 @@ from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from dotbot import pydotbot_version
+from dotbot.build import build_info
+from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_POSITION_HISTORY_SIZE,
     DotBotAreaModel,
     DotBotBackgroundMapModel,
+    DotBotBuildModel,
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
@@ -38,6 +41,7 @@ from dotbot.models import (
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
     DotBotCalibrationStartModel,
+    DotBotCameraModel,
     DotBotConnectionModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -311,6 +315,35 @@ async def site():
     )
 
 
+@api.get(
+    path="/controller/cameras",
+    response_model=List[DotBotCameraModel],
+    summary="Return the cameras the controller warps into the map",
+    tags=["controller"],
+)
+async def cameras():
+    """Cameras HTTP GET handler."""
+    return [
+        DotBotCameraModel(**camera.descriptor())
+        for camera in api.controller.cameras
+        if camera.live
+    ]
+
+
+@api.get(
+    path="/controller/cameras/{area}/stream",
+    response_class=StreamingResponse,
+    summary="Stream the camera covering one area, warped into its raster",
+    tags=["controller"],
+)
+async def camera_stream(area: str):
+    """Camera stream HTTP GET handler."""
+    for camera in api.controller.cameras:
+        if camera.live and camera.area.name == area:
+            return StreamingResponse(camera.parts(), media_type=STREAM_MEDIA_TYPE)
+    raise HTTPException(status_code=404, detail=f"No camera covers area {area!r}")
+
+
 @api.post(
     path="/controller/calibration/session",
     response_model=DotBotCalibrationSessionModel,
@@ -437,6 +470,18 @@ async def connection():
         swarm_id=settings.network_id,
         gw_address=settings.gw_address,
     )
+
+
+@api.get(
+    path="/controller/build",
+    response_model=DotBotBuildModel,
+    response_model_exclude_none=True,
+    summary="Return the build of pydotbot the controller runs",
+    tags=["controller"],
+)
+async def build():
+    """Build HTTP GET handler."""
+    return DotBotBuildModel(**build_info())
 
 
 @api.get(

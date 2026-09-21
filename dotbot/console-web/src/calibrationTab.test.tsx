@@ -49,6 +49,7 @@ vi.mock("./useMrta", () => ({
 
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
+  fetchBuild: vi.fn(async () => null),
   putWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
@@ -146,7 +147,7 @@ describe("the Calibrate tab", () => {
     });
 
     fireEvent.click(screen.getByText("Layers"));
-    expect(screen.getByText("Camera layer")).toBeInTheDocument();
+    expect(screen.getByText("Areas")).toBeInTheDocument();
     // The card left with the tab; it is not stacked above the others.
     expect(screen.queryByText("Capture")).not.toBeInTheDocument();
   });

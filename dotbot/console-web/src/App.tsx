@@ -1,7 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchConnection, putWaypoints } from "./api";
+import { fetchBuild, fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import {
+  CameraOffset,
+  CameraOpacity,
+  OffsetMm,
+  RobotOpacity,
+  loadCameraOffset,
+  loadCameraOpacity,
+  loadRobotOpacity,
+  saveCameraOffset,
+  saveCameraOpacity,
+  saveRobotOpacity,
+  withOffset,
+  withOpacity,
+  withRobotOpacity,
+} from "./cameraLayer";
 import { isPhoneWidth, sessionRect } from "./calibration";
 import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
@@ -10,6 +25,13 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
+import {
+  VIEW_SETTLE_MS,
+  loadSavedViews,
+  saveSavedViews,
+  viewFor,
+  withView,
+} from "./savedView";
 import { SetupCard } from "./SetupCard";
 import {
   ACTION_KEY,
@@ -25,7 +47,10 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
+  canRedoMission,
+  ControllerBuild,
   ControllerConnection,
+  lastMissionTargets,
   LH2Position,
   PlannedMission,
 } from "./types";
@@ -38,16 +63,45 @@ import {
   cameraForArea,
   cameraForZoom,
   padArea,
+  visibleArea,
   zoomFromSearch,
   zoomMax,
 } from "./zoom";
 
 const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
+// Build provenance, quiet enough to ignore until it is the question:
+// `v0.30.0`, `v0.30.0 6573d53`, or `v0.30.0 6573d53*` for a dirty checkout.
+const buildLabel = (b: ControllerBuild) =>
+  `v${b.version}${b.commit ? ` ${b.commit}${b.dirty ? "*" : ""}` : ""}`;
+
+const buildTitle = (b: ControllerBuild) =>
+  b.commit
+    ? `pydotbot ${b.version}, from a git checkout at ${b.commit}${
+        b.dirty ? " with uncommitted changes (*)" : ""
+      }`
+    : `pydotbot ${b.version} (installed, not a git checkout)`;
+
 type ViewKind = "map" | "list" | "grid";
 
+/** State written back to this browser's own storage whenever it changes. */
+function usePersisted<T>(load: () => T, save: (value: T) => void) {
+  const [value, setValue] = useState<T>(load);
+  const update = useCallback(
+    (next: (prev: T) => T) =>
+      setValue((prev) => {
+        const updated = next(prev);
+        save(updated);
+        return updated;
+      }),
+    [save],
+  );
+  return [value, update] as const;
+}
+
 export const App: React.FC = () => {
-  const { bots, site, session, setSession, viewport, wsUp } = useFleet();
+  const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
+    useFleet();
   const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -100,6 +154,7 @@ export const App: React.FC = () => {
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [conn, setConn] = useState<ControllerConnection | null>(null);
+  const [build, setBuild] = useState<ControllerBuild | null>(null);
 
   // Below this width the step card is the whole screen: calibration day
   // happens on the floor, and the console does not reflow - at 390 px the
@@ -113,14 +168,51 @@ export const App: React.FC = () => {
 
   // Area visibility is a map layer, not shared state: no controller call, and
   // the set is this browser's.
-  const [hiddenAreas, setHiddenAreas] = useState<Set<string>>(loadHiddenAreas);
-  const onAreaToggle = useCallback((name: string) => {
-    setHiddenAreas((prev) => {
-      const next = toggleHidden(prev, name);
-      saveHiddenAreas(next);
-      return next;
-    });
-  }, []);
+  const [hiddenAreas, updateHiddenAreas] = usePersisted<Set<string>>(
+    loadHiddenAreas,
+    saveHiddenAreas,
+  );
+  const onAreaToggle = useCallback(
+    (name: string) => updateHiddenAreas((prev) => toggleHidden(prev, name)),
+    [updateHiddenAreas],
+  );
+
+  // So is the camera layer's opacity: a way of looking at the map, and this
+  // browser's own.
+  const [cameraOpacity, updateCameraOpacity] = usePersisted<CameraOpacity>(
+    loadCameraOpacity,
+    saveCameraOpacity,
+  );
+  const onCameraOpacity = useCallback(
+    (area: string, value: number) =>
+      updateCameraOpacity((prev) => withOpacity(prev, area, value)),
+    [updateCameraOpacity],
+  );
+
+  // And so is the nudge that lines its image up with the robots, which
+  // corrects for the camera not hanging straight over the floor.
+  const [cameraOffset, updateCameraOffset] = usePersisted<CameraOffset>(
+    loadCameraOffset,
+    saveCameraOffset,
+  );
+  const onCameraOffset = useCallback(
+    (area: string, value: OffsetMm) =>
+      updateCameraOffset((prev) => withOffset(prev, area, value)),
+    [updateCameraOffset],
+  );
+
+  // And so is how solid the robots over one are drawn, which is the same
+  // comparison from the other side: the glyph faded until the photographed
+  // robot under it can be read.
+  const [robotOpacity, updateRobotOpacity] = usePersisted<RobotOpacity>(
+    loadRobotOpacity,
+    saveRobotOpacity,
+  );
+  const onRobotOpacity = useCallback(
+    (area: string, value: number) =>
+      updateRobotOpacity((prev) => withRobotOpacity(prev, area, value)),
+    [updateRobotOpacity],
+  );
 
   // The rail's action opens the tab that sets a session up; the session
   // itself is started from there, once its rectangle and reads are chosen.
@@ -139,14 +231,40 @@ export const App: React.FC = () => {
     [geom, site, viewport],
   );
 
-  // ?zoom=<site|area-name> presets the view, once the canvas has a size.
-  const presetZoomRef = useRef(false);
+  // What the map opens on, once the canvas has a size and the site is known.
+  // `?zoom=<site|area-name>` is an instruction and wins; failing that the map
+  // returns to the floor this browser was last looking at, which is stored as
+  // a rectangle and fitted here, so a window of another size lands on the
+  // same floor rather than on the same pixels. Neither, and it opens on the
+  // whole site, as a map with nothing remembered always has.
+  const [openingViews] = useState(loadSavedViews);
+  const openedRef = useRef(false);
   useEffect(() => {
-    if (presetZoomRef.current || !geom || !site) return;
+    if (openedRef.current || !geom || !site) return;
+    openedRef.current = true;
     const asked = zoomFromSearch(window.location.search, site);
-    if (asked) zoomTo(asked);
-    presetZoomRef.current = true;
-  }, [geom, site, zoomTo]);
+    if (asked) {
+      zoomTo(asked);
+      return;
+    }
+    const rect = viewFor(openingViews, site.name, viewport);
+    if (rect) {
+      setCam(cameraForArea(rect, viewport, geom, zoomMax(site, viewport, geom)));
+    }
+  }, [geom, site, viewport, openingViews, zoomTo]);
+
+  // Remembered once the camera settles: a pan would otherwise write storage
+  // on every frame of the drag. Storage is re-read rather than carried in
+  // state, so a second tab on another site keeps its own view.
+  useEffect(() => {
+    if (!openedRef.current || !geom || !site) return;
+    const timer = window.setTimeout(() => {
+      saveSavedViews(
+        withView(loadSavedViews(), site.name, visibleArea(cam, viewport, geom)),
+      );
+    }, VIEW_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [cam, geom, site, viewport]);
 
   // Calibration mode takes over the right pane and the viewport, and gives
   // both back on Done: the tab that was open before, and the camera that was
@@ -192,6 +310,7 @@ export const App: React.FC = () => {
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
     fetchConnection().then(setConn);
+    fetchBuild().then(setBuild);
   }, []);
 
   // The shortcuts panel: its key opens it with nothing selected and closes
@@ -285,6 +404,18 @@ export const App: React.FC = () => {
     });
     if (drivableSelected.length > 0) showToast("Navigation stopped");
   }, [drivableSelected, showToast]);
+
+  // Redo sends each bot the mission it last ran, which the controller still
+  // holds after the bot arrived. Each bot gets its own list, so a selection
+  // that ran different missions repeats each of them.
+  const onRedo = useCallback(() => {
+    const again = selectedBots.filter(canRedoMission);
+    if (again.length === 0) return;
+    again.forEach((b) => {
+      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, lastMissionTargets(b)).catch(() => {});
+    });
+    showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
+  }, [selectedBots, showToast]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -472,6 +603,14 @@ export const App: React.FC = () => {
             </span>
           </>
         )}
+        {build && (
+          <span
+            title={buildTitle(build)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}
+          >
+            {buildLabel(build)}
+          </span>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
           <div
             style={{
@@ -549,6 +688,8 @@ export const App: React.FC = () => {
           onStopMission={onStopMission}
           site={site}
           session={session}
+          cameras={cameras}
+          cameraDetections={cameraDetections}
           calibrationBusy={calibration.busy}
           calibrationError={calibration.error}
           onCalibrate={onCalibrate}
@@ -563,6 +704,11 @@ export const App: React.FC = () => {
               viewport={viewport}
               siteAreas={site?.areas ?? []}
               hiddenAreas={hiddenAreas}
+              cameras={cameras}
+              cameraDetections={cameraDetections}
+              cameraOpacity={cameraOpacity}
+              cameraOffset={cameraOffset}
+              robotOpacity={robotOpacity}
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
@@ -661,6 +807,14 @@ export const App: React.FC = () => {
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          cameras={cameras}
+          cameraDetections={cameraDetections}
+          cameraOpacity={cameraOpacity}
+          onCameraOpacity={onCameraOpacity}
+          cameraOffset={cameraOffset}
+          onCameraOffset={onCameraOffset}
+          robotOpacity={robotOpacity}
+          onRobotOpacity={onRobotOpacity}
           session={session}
           calibration={calibration}
           device={capturer || session?.device || ""}
@@ -683,6 +837,7 @@ export const App: React.FC = () => {
         onSelectState={(ids) => onSelect(ids, "replace")}
         onGo={onGo}
         onStopNav={onStopNav}
+        onRedo={onRedo}
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
         onToast={showToast}

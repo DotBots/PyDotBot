@@ -3,7 +3,7 @@
 
 """Helper for mounting subcommands that live in optional sibling packages.
 
-Each subcommand sits behind a `pip install dotbot[<extra>]` boundary so
+Each subcommand sits behind a `pip install pydotbot[<extra>]` boundary so
 the core install stays lean. When the extra is missing we still want
 `dotbot --help` to list the subcommand (so users see what exists) and
 running it should print an actionable install hint instead of a
@@ -57,7 +57,7 @@ def _missing_extra_stub(
 ) -> click.Command:
     @click.command(
         name=name,
-        help=f"{help} [install: pip install dotbot[{extra}]]",
+        help=f"{help} [install: pip install pydotbot[{extra}]]",
         context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
     )
     @click.pass_context
@@ -67,7 +67,7 @@ def _missing_extra_stub(
             f"(not installed in this environment).",
             err=True,
         )
-        click.echo(f"Install with:  pip install dotbot[{extra}]", err=True)
+        click.echo(f"Install with:  pip install pydotbot[{extra}]", err=True)
         if error:
             click.echo(f"(import error was: {error})", err=True)
         sys.exit(1)

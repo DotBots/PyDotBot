@@ -60,12 +60,58 @@ export interface PyDotBot {
 }
 
 export interface WsNotification {
-  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE
+  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE,
+  // 6 CAMERA_DETECTION
   cmd: number;
   data?: Partial<PyDotBot> & {
     lh2_waypoints?: LH2Position[];
   };
   calibration_session?: CalibrationSession | null;
+  camera_detection?: CameraDetection;
+}
+
+// --- what a camera sees on its own area ------------------------------------
+//
+// One pose per frame, the strongest candidate, with no association to any
+// robot address: the layer exists to put the camera's idea of a robot over
+// the lighthouse's, and the reader makes the association by looking.
+
+// Every *_mm is frame millimetres, x right and y down, the same frame as an
+// LH2 position. `centre_mm` is the board outline's centre, which is what the
+// outline is drawn around; `photodiode_mm` is the point the lighthouse
+// reports, so it is the one to compare a position against.
+//
+// The two headings are the same angle in two conventions: `heading_deg` is
+// the robot `direction` one the glyphs are drawn in (0 = +y, +90 = -x,
+// clockwise as drawn with y down) and `heading_atan2_deg` is the detector's
+// own (0 = +x, +90 = +y). Both are the BODY's orientation, measured moving
+// or not, which is not the same quantity as the firmware's direction of
+// travel.
+export interface CameraPose {
+  centre_mm: [number, number];
+  photodiode_mm: [number, number];
+  nose_mm: [number, number];
+  outline_mm: number[][];
+  heading_deg: number;
+  heading_atan2_deg: number;
+  green_flare: number;
+  tmpl_margin: number;
+  refined: boolean;
+}
+
+// `status` is "found" when the estimator stands behind the pose, "refused"
+// when it fitted one but a confidence signal did not clear its floor, and
+// "none" when there was nothing to fit - in which case there is no pose, so
+// key on the status and never on the field's presence.
+export interface CameraDetection {
+  area: string;
+  camera_id: string;
+  sequence: number;
+  timestamp: number;
+  status: "found" | "refused" | "none";
+  candidates: number;
+  elapsed_ms: number;
+  pose?: CameraPose;
 }
 
 // --- the calibration session the controller owns ---------------------------
@@ -216,7 +262,28 @@ export interface UnifiedBot {
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 
+// The targets of the last mission sent to this bot. The controller stores
+// [own-start, ...targets] and keeps the list once the bot arrives, so the tail
+// is the mission to repeat. A one-entry list is what stopping leaves behind -
+// the bot's own position, nothing to repeat.
+export function lastMissionTargets(bot: UnifiedBot): LH2Position[] {
+  return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
+}
+
+// A bot under way is already running its last mission, so it is left alone.
+export function canRedoMission(bot: UnifiedBot): boolean {
+  return bot.drivable && bot.nav !== "auto" && lastMissionTargets(bot).length > 0;
+}
+
 // GET /controller/connection - how the controller reaches the swarm.
+// Which build of pydotbot the controller runs. `commit` and `dirty` are there
+// only when it runs from a git checkout.
+export interface ControllerBuild {
+  version: string;
+  commit?: string;
+  dirty?: boolean;
+}
+
 export interface ControllerConnection {
   adapter: string;
   connection: string;
@@ -243,6 +310,28 @@ export interface Site {
   anchor: string;
   extent_mm: [number, number] | null;
   areas: Area[];
+}
+
+// GET /controller/cameras - one registered camera, one area. `width` and
+// `height` are the raster's rather than the device's: the stream carries the
+// area warped at `mm_per_px`, so they are the area's own size in pixels.
+// `span_mm` is the quadrilateral through the four markers' outer corners, in
+// frame mm, which is where the registration is trustworthy.
+export interface RegisteredCamera {
+  area: string;
+  source: number | string;
+  mm_per_px: number;
+  width: number;
+  height: number;
+  span_mm: number[][];
+  // The source frame's rectangle through the homography: the floor this
+  // camera can see. Empty when the homography maps it to no polygon.
+  coverage_mm: number[][];
+  residual_mm: number;
+  id: string;
+  lens: string;
+  // False when the controller runs this camera with its detector off.
+  detect: boolean;
 }
 
 // A waypoint mission queued locally but not yet sent: bound to the bots that

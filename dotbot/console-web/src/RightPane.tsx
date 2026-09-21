@@ -1,19 +1,36 @@
 import React from "react";
 
 import { areaColor } from "./areaColor";
+import {
+  CameraOffset,
+  CameraOpacity,
+  NO_OFFSET,
+  OffsetMm,
+  RobotOpacity,
+  offsetFor,
+  opacityFor,
+  robotOpacityFor,
+} from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
+import { DETECTION_TEXT } from "./localization";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
-import type { CalibrationSession, Site, UnifiedBot } from "./types";
+import type {
+  CalibrationSession,
+  CameraDetection,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 import type { Calibration } from "./useCalibration";
 
 // The right pane: always present, collapsible like the rail.
 //
 // Robot is the inspector, which selecting a robot on the map switches to.
-// Layers holds three headings - Robots, Areas and Camera - so which area
-// outlines the map draws is ticked in the same place the map's other layers
-// are, and the view switch stands alone at the top right. Calibrate is the
+// Layers holds Robots and Areas, plus Camera once one is registered, so which
+// area outlines the map draws is ticked in the same place the map's other
+// layers are, and the view switch stands alone at the top right. Calibrate is the
 // setup card until a session is open and the step card while one is, so a
 // session is always started from the tab that then runs it, and Robot and
 // Layers stay reachable throughout.
@@ -101,6 +118,170 @@ export const CheckRow: React.FC<{
   </div>
 );
 
+// One of a camera row's two opacities: a labelled track and what it reads.
+// The label is given a width so the tracks line up under each other, the two
+// being read against one another.
+const OpacityRow: React.FC<{
+  label: string;
+  name: string;
+  value: number;
+  onChange: (value: number) => void;
+}> = ({ label, name, value, onChange }) => {
+  const pct = Math.round(value * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+      <span
+        style={{ color: "var(--muted)", fontSize: 11, width: 44, flex: "none" }}
+      >
+        {label}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={pct}
+        aria-label={name}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer" }}
+      />
+      <span
+        style={{
+          width: 32,
+          textAlign: "right",
+          font: "11px/1 var(--font-mono)",
+          color: "var(--muted)",
+        }}
+      >
+        {pct}%
+      </span>
+    </div>
+  );
+};
+
+// One registered camera: the area it covers, how well it registered, how
+// opaque its image is drawn, how far that image is nudged, and how solid the
+// robots standing on it are. Sliders rather than ticks for the two opacities,
+// because the layer is a comparison instrument - the useful settings are
+// between off and on. Typed millimetres for the offset, because the operator
+// arrives at it by reading a distance off the map and the arrow keys still
+// step it one at a time.
+const CameraRow: React.FC<{
+  camera: RegisteredCamera;
+  opacity: number;
+  onOpacity: (value: number) => void;
+  offset: OffsetMm;
+  onOffset: (value: OffsetMm) => void;
+  robots: number;
+  onRobots: (value: number) => void;
+  detection?: CameraDetection;
+}> = ({
+  camera,
+  opacity,
+  onOpacity,
+  offset,
+  onOffset,
+  robots,
+  onRobots,
+  detection,
+}) => {
+  const nudged = offset.dx !== 0 || offset.dy !== 0;
+  const axes = [
+    { key: "dx" as const, label: "x" },
+    { key: "dy" as const, label: "y" },
+  ];
+  return (
+    <div data-testid={`camera-row-${camera.area}`} style={{ padding: "5px 4px", fontSize: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ flex: 1, font: "600 12px/1.4 var(--font-mono)", color: "var(--text)" }}>
+          {camera.area}
+        </span>
+        <span
+          title={`Registration id ${camera.id.slice(0, 8)}, source ${camera.source}, ${camera.width} x ${camera.height} px at ${camera.mm_per_px} mm/px`}
+          style={{ color: "var(--muted)", fontSize: 11 }}
+        >
+          {camera.residual_mm.toFixed(1)} mm
+        </span>
+      </div>
+      {camera.detect === false ? (
+        <div
+          data-testid={`camera-detection-status-${camera.area}`}
+          style={{ color: "var(--muted)", fontSize: 11 }}
+        >
+          detection off
+        </div>
+      ) : (
+        detection && (
+          <div
+            data-testid={`camera-detection-status-${camera.area}`}
+            style={{ color: "var(--muted)", fontSize: 11 }}
+          >
+            {DETECTION_TEXT[detection.status]}
+          </div>
+        )
+      )}
+      <OpacityRow
+        label="Opacity"
+        name={`Camera opacity on ${camera.area}`}
+        value={opacity}
+        onChange={onOpacity}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+        <span style={{ color: "var(--muted)", fontSize: 11, flex: 1 }}>Offset</span>
+        {axes.map(({ key, label }) => (
+          <span key={key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ color: "var(--muted)", font: "11px/1 var(--font-mono)" }}>
+              {label}
+            </span>
+            <input
+              type="number"
+              step={1}
+              value={offset[key]}
+              aria-label={`Camera offset ${label} on ${camera.area}`}
+              onChange={(e) => onOffset({ ...offset, [key]: Number(e.target.value) })}
+              style={{
+                width: 46,
+                padding: "1px 3px",
+                border: "1px solid var(--hairline)",
+                borderRadius: 4,
+                background: "var(--canvas)",
+                color: "var(--text)",
+                font: "11px/1.4 var(--font-mono)",
+              }}
+            />
+          </span>
+        ))}
+        <span style={{ color: "var(--muted)", font: "11px/1 var(--font-mono)" }}>mm</span>
+        <button
+          type="button"
+          title={`Reset the camera offset on ${camera.area}`}
+          aria-label={`Reset camera offset on ${camera.area}`}
+          disabled={!nudged}
+          onClick={() => onOffset(NO_OFFSET)}
+          style={{
+            padding: "0 4px",
+            border: "none",
+            borderRadius: 4,
+            background: "transparent",
+            color: "var(--muted)",
+            font: "13px/1 var(--font-ui)",
+            cursor: nudged ? "pointer" : "default",
+            opacity: nudged ? 1 : 0.35,
+          }}
+        >
+          ⟲
+        </button>
+      </div>
+      <OpacityRow
+        label="Robots"
+        name={`Robot opacity on ${camera.area}`}
+        value={robots}
+        onChange={onRobots}
+      />
+    </div>
+  );
+};
+
 export type RightTab = "robot" | "layers" | "calibrate";
 
 const TAB_LABEL: Record<RightTab, string> = {
@@ -144,6 +325,16 @@ interface RightPaneProps {
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
+  // The cameras the controller warps. None registered, no Camera heading.
+  cameras?: RegisteredCamera[];
+  // What each camera's detector last made of its own area, keyed by area.
+  cameraDetections?: Record<string, CameraDetection>;
+  cameraOpacity?: CameraOpacity;
+  onCameraOpacity?: (area: string, value: number) => void;
+  cameraOffset?: CameraOffset;
+  onCameraOffset?: (area: string, value: OffsetMm) => void;
+  robotOpacity?: RobotOpacity;
+  onRobotOpacity?: (area: string, value: number) => void;
   session: CalibrationSession | null;
   calibration: Calibration;
   device: string;
@@ -153,6 +344,7 @@ interface RightPaneProps {
 
 export const RightPane: React.FC<RightPaneProps> = (props) => {
   const siteAreas = props.site?.areas ?? [];
+  const cameras = props.cameras ?? [];
   const tabs: RightTab[] = ["robot", "layers", "calibrate"];
 
   const open = (tab: RightTab) => {
@@ -320,11 +512,45 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               </div>
             )}
 
-            <div style={{ ...label10, margin: "14px 0 4px" }}>Camera</div>
-            <CheckRow label="Camera layer" on={false} disabled hint="No camera registered" />
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-              no camera registered
-            </div>
+            {cameras.length > 0 && (
+              <>
+                <div style={{ ...label10, margin: "14px 0 4px" }}>Camera</div>
+                {cameras.map((c) => (
+                  <CameraRow
+                    key={c.area}
+                    camera={c}
+                    opacity={opacityFor(props.cameraOpacity ?? {}, c.area)}
+                    onOpacity={(value) => props.onCameraOpacity?.(c.area, value)}
+                    offset={offsetFor(props.cameraOffset ?? {}, c.area)}
+                    onOffset={(value) => props.onCameraOffset?.(c.area, value)}
+                    robots={robotOpacityFor(props.robotOpacity ?? {}, c.area)}
+                    onRobots={(value) => props.onRobotOpacity?.(c.area, value)}
+                    detection={(props.cameraDetections ?? {})[c.area]}
+                  />
+                ))}
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Drawn under the grid and under the robots, in this browser
+                  only. It stops where the camera stops seeing floor, so
+                  anywhere the map shows through is outside its view. The
+                  millimetres are how well it registered.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Offset moves the picture, never the glyph: the warp flattens
+                  the robots' tops onto the floor, so a robot draws a few
+                  centimetres from where it stands. Nudge until the two line
+                  up. One shift fits the whole area only because this camera
+                  looks in from one side; a camera hung over the middle would
+                  need a correction that grows outward from the centre.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Robots takes down the glyphs standing on this area, so the
+                  photographed robot can be read under the position reported
+                  for it. Only the board fades: the selection ring, the label
+                  and the drive dot stay, so a faded robot is still findable
+                  and the dot marks the reported centre to measure from.
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

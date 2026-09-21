@@ -5,7 +5,7 @@
 
 Mounts the upstream `swarmit` Click group as the `dotbot swarm` parent:
 operators get `status|start|stop|flash|monitor|reset|message|serve` with their
-existing flags, plus the PyDotBot-native `lh2-calibration collect|push`.
+existing flags, plus the PyDotBot-native `calibrate-lh2 collect|push`.
 `swarm` is strictly the *many-devices, over-the-radio* namespace.
 
 Single-device, cabled operations moved out: firmware-artifact build/fetch/
@@ -26,7 +26,7 @@ from dotbot.cli._swarm_inject import inject_config
 
 _HELP = (
     "Fleet ops over the air: status, start/stop, OTA-flash, monitor, "
-    "reset, lh2-calibration. Wraps swarmit."
+    "reset, calibrate-lh2. Wraps swarmit."
 )
 
 
@@ -42,6 +42,21 @@ def _run_swarmit(
     swarmit_group.main(args=args, prog_name="dotbot swarm", standalone_mode=True)
 
 
+def _mount_native_lh2(swarmit_group) -> None:
+    """List PyDotBot's `calibrate-lh2` among swarmit's own commands.
+
+    `dotbot swarm --help` is rendered by swarmit's group, so a command the
+    passthrough intercepts never reaches that listing. Registering it here is
+    what puts it there; dispatch still goes through the intercept, which is
+    what carries the resolved config. swarmit ships a `calibrate-lh2` of its
+    own that only takes a file path, and this registration replaces it, so it
+    must overwrite rather than skip an existing entry.
+    """
+    from dotbot.cli.swarm_lh2 import cmd as lh2_group
+
+    swarmit_group.add_command(lh2_group)
+
+
 def _with_config_injection(swarmit_group):
     """Wrap the swarmit group so `dotbot swarm` injects config-driven conn/swarm_id.
 
@@ -49,6 +64,7 @@ def _with_config_injection(swarmit_group):
     connection (unless the user gave it explicitly), and re-invokes swarmit.
     `--help` and subcommand help flow straight through.
     """
+    _mount_native_lh2(swarmit_group)
 
     @click.command(
         name="swarm",
@@ -60,15 +76,15 @@ def _with_config_injection(swarmit_group):
     @click.pass_context
     def cmd(ctx, args):
         args = list(args)
-        # `lh2-calibration` is PyDotBot-native (the homography solve lives
+        # `calibrate-lh2` is PyDotBot-native (the homography solve lives
         # here, not in swarmit), so intercept it before the passthrough and
         # hand off to our own group, carrying the resolved config along.
-        if args and args[0] == "lh2-calibration":
+        if args and args[0] == "calibrate-lh2":
             from dotbot.cli.swarm_lh2 import cmd as lh2_group
 
             lh2_group.main(
                 args=args[1:],
-                prog_name="dotbot swarm lh2-calibration",
+                prog_name="dotbot swarm calibrate-lh2",
                 standalone_mode=True,
                 obj=ctx.obj,
             )

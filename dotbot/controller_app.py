@@ -239,12 +239,31 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     ),
 )
 @click.option(
-    "--calibration",
+    "--lh2-calibration",
     type=str,
     help=(
         "The LH2 calibration this session runs on: a file path or the id "
         "prefix of a file under ~/.dotbot/calibrations/<site>/. With none "
         "given, no calibration is loaded and robots keep whatever they hold."
+    ),
+)
+@click.option(
+    "--camera-calibration",
+    type=str,
+    help=(
+        "The overhead-camera registration to draw on the map: a file path or "
+        "the id prefix of a file under ~/.dotbot/calibrations/<site>/. Write "
+        "one with `dotbot run calibrate-camera collect`. With none given, "
+        "the map carries no camera layer."
+    ),
+)
+@click.option(
+    "--camera-detect/--no-camera-detect",
+    default=None,
+    help=(
+        "Run the robot detector on a registered camera's frames, on by "
+        "default. Off serves the camera layer as a picture only: nothing "
+        "is detected, drawn, pushed to the console or logged."
     ),
 )
 @click.option(
@@ -300,7 +319,9 @@ def main(
     controller_http_port,
     controller_http_host,
     site,
-    calibration,
+    lh2_calibration,
+    camera_calibration,
+    camera_detect,
     background_map,
     simulator_init_state,
     swarmit_url,
@@ -334,15 +355,31 @@ def main(
 
     unified = (ctx.obj or {}).get("config")
     site, site_source = site_from_context(ctx, site)
-    calibration, calibration_source = _resolve_controller_key(
-        "calibration", calibration, unified, None
+    lh2_calibration, calibration_source = _resolve_controller_key(
+        "lh2_calibration", lh2_calibration, unified, None
     )
     print(f"Site: {site.name} (from {site_source})")
     print(
-        f"Calibration: {calibration} (from {calibration_source})"
-        if calibration
-        else "Calibration: none selected"
+        f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
+        if lh2_calibration
+        else "LH2 calibration: none selected"
     )
+    camera_calibration, camera_source = _resolve_controller_key(
+        "camera_calibration", camera_calibration, unified, None
+    )
+    print(
+        f"Camera calibration: {camera_calibration} (from {camera_source})"
+        if camera_calibration
+        else "Camera calibration: none selected"
+    )
+    camera_detect, detect_source = _resolve_controller_key(
+        "camera_detect", camera_detect, unified, True
+    )
+    if camera_calibration:
+        print(
+            f"Camera detection: {'on' if camera_detect else 'off'} "
+            f"(from {detect_source})"
+        )
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -377,7 +414,9 @@ def main(
         "controller_http_port": controller_http_port,
         "controller_http_host": controller_http_host,
         "site": site,
-        "calibration": calibration,
+        "lh2_calibration": lh2_calibration,
+        "camera_calibration": camera_calibration,
+        "camera_detect": camera_detect,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,

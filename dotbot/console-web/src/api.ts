@@ -3,9 +3,11 @@ import {
   CalibrationPushed,
   CalibrationSaved,
   CalibrationSession,
+  ControllerBuild,
   ControllerConnection,
   LH2Position,
   PyDotBot,
+  RegisteredCamera,
   RgbLed,
   Site,
   SwarmitNode,
@@ -27,9 +29,38 @@ export async function fetchSite(): Promise<Site> {
   return res.json();
 }
 
+// A controller with no registered camera answers with an empty list, and one
+// too old to know the route answers 404; both mean the same thing to the
+// console - no camera layer - so neither is an error.
+export async function fetchCameras(): Promise<RegisteredCamera[]> {
+  try {
+    const res = await fetch(`${CONTROLLER}/cameras`);
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body) ? body : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The MJPEG stream of one area, warped into the area's own raster. */
+export function cameraStreamUrl(area: string): string {
+  return `${CONTROLLER}/cameras/${encodeURIComponent(area)}/stream`;
+}
+
 export async function fetchConnection(): Promise<ControllerConnection | null> {
   try {
     const res = await fetch(`${CONTROLLER}/connection`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null; // an older controller has no such route; the bar just omits it
+  }
+}
+
+export async function fetchBuild(): Promise<ControllerBuild | null> {
+  try {
+    const res = await fetch(`${CONTROLLER}/build`);
     if (!res.ok) return null;
     return await res.json();
   } catch {

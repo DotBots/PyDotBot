@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot run lh2-calibration` - LH2 calibration.
+"""`dotbot run calibrate-lh2` - LH2 calibration (deprecated).
+
+Deprecated in favour of `dotbot swarm calibrate-lh2`, which calibrates
+over the air with no cable and no firmware swap. This path stays for a
+single board on the bench, before a swarm exists.
 
 Native subgroup mounting the vendored `dotbot.calibration` package, for
 single-device calibration over either transport.
@@ -13,7 +17,7 @@ Subcommands:
                under ~/.dotbot/calibrations/<site>/.
 
 Cable-free, over-the-air calibration of a DotBot in the arena lives under
-`dotbot swarm lh2-calibration` (it drives the fleet transport, not a serial
+`dotbot swarm calibrate-lh2` (it drives the fleet transport, not a serial
 DK).
 
 Calibration runtime deps (`opencv-python`, `textual`) live behind the
@@ -32,9 +36,9 @@ def _run_tui(ctx: click.Context) -> None:
         from dotbot.calibration.cli import main as _tui_main
     except ImportError as exc:
         click.echo(
-            "`dotbot run lh2-calibration collect` needs the calibration "
+            "`dotbot run calibrate-lh2 collect` needs the calibration "
             "runtime deps (opencv-python, textual).\n"
-            "Install with:  pip install dotbot[calibrate]",
+            "Install with:  pip install pydotbot[calibrate]",
             err=True,
         )
         click.echo(f"(import error was: {exc})", err=True)
@@ -47,15 +51,18 @@ def _run_tui(ctx: click.Context) -> None:
 
 
 @click.group(
-    name="lh2-calibration",
-    help="LH2 calibration for one serial-attached device: capture.",
+    name="calibrate-lh2",
+    help=(
+        "DEPRECATED - cabled LH2 calibration for one serial-attached "
+        "device. Prefer `dotbot swarm calibrate-lh2`, which needs no cable."
+    ),
     invoke_without_command=True,
 )
 @click.pass_context
 def cmd(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
-    # Bare `dotbot run lh2-calibration` with no subcommand defaults to
+    # Bare `dotbot run calibrate-lh2` with no subcommand defaults to
     # collect — the most common action — so it works without recalling
     # the subcommand name.
     _run_tui(ctx)

@@ -2,18 +2,26 @@ import React from "react";
 
 import {
   calibrationCoverage,
+  camerasSummary,
+  cameraStatusRows,
   coverageLabel,
   extentLabel,
   stationRows,
   stationsSummary,
 } from "./localization";
-import type { CalibrationSession, Site, UnifiedBot } from "./types";
+import type {
+  CalibrationSession,
+  CameraDetection,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 
 // The Localization panel, behind the rail's third tab.
 //
 // Two facts have no home in the console today and each is the first thing an
 // operator asks: which site the positions belong to, and which robots carry
-// the calibration in use. The two actions that change them sit at the bottom.
+// the calibration in use. The action that changes them sits at the bottom.
 
 const label10 = {
   fontSize: 10,
@@ -60,6 +68,10 @@ interface LocalizationPanelProps {
   site: Site | null;
   bots: UnifiedBot[];
   session: CalibrationSession | null;
+  /** The cameras the controller warps. None registered, no rows. */
+  cameras?: RegisteredCamera[];
+  /** What each camera's detector last made of its area, keyed by area. */
+  cameraDetections?: Record<string, CameraDetection>;
   busy: boolean;
   /** Why the last action was refused; a session carries its own. */
   error: string;
@@ -71,6 +83,8 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   site,
   bots,
   session,
+  cameras = [],
+  cameraDetections = {},
   busy,
   error,
   onCalibrate,
@@ -78,6 +92,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
 }) => {
   const coverage = calibrationCoverage(bots, session?.stations.length ?? 0);
   const rows = stationRows(session);
+  const cameraRows = cameraStatusRows(cameras, cameraDetections);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
@@ -147,7 +162,21 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
         </Section>
 
         <Section title="Camera">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>not registered</div>
+          <div style={{ fontSize: 13 }}>{camerasSummary(cameras)}</div>
+          {cameraRows.map((row) => (
+            <div
+              key={row.area}
+              data-testid={`localization-camera-${row.area}`}
+              style={{ ...mono, fontSize: 11, color: "var(--muted)", marginTop: 4 }}
+            >
+              {row.area} · {row.label}
+            </div>
+          ))}
+          {cameraRows.length === 0 && (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+              Register one with dotbot run calibrate-camera collect.
+            </div>
+          )}
         </Section>
       </div>
 
@@ -180,9 +209,6 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           title="Open a calibration session over the site"
         >
           Calibrate lighthouse
-        </div>
-        <div style={actionButton(false, true)} title="Later">
-          Register camera
         </div>
       </div>
     </div>

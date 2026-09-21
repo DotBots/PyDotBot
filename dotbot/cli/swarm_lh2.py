@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot swarm lh2-calibration` - over-the-air LH2 calibration.
+"""`dotbot swarm calibrate-lh2` - over-the-air LH2 calibration.
 
 The fleet-side home for LH2 calibration: capture and send a calibration
 without a serial cable, driving DotBots through the swarmit transport. Two
@@ -17,7 +17,7 @@ The homography solve lives in PyDotBot (`dotbot.calibration.lighthouse2`);
 the transport lives in swarmit.
 
 Serial-cable (single DK) calibration stays under
-`dotbot run lh2-calibration`.
+`dotbot run calibrate-lh2`.
 
 Calibration runtime deps (`opencv-python`) live behind the `[calibrate]`
 extra; ImportError at invocation prints an install hint instead of a
@@ -57,7 +57,7 @@ def _swarmit_client(ctx, conn, swarm_id, device=None):
 
 
 @click.group(
-    name="lh2-calibration",
+    name="calibrate-lh2",
     help="Over-the-air LH2 calibration: collect, push.",
 )
 def cmd() -> None:
@@ -179,7 +179,7 @@ def _collect(
         from dotbot.calibration.session import CalibrationSession, SessionError
     except ImportError as exc:
         click.echo(
-            "`dotbot swarm lh2-calibration collect` needs the calibration "
+            "`dotbot swarm calibrate-lh2 collect` needs the calibration "
             "runtime deps (opencv-python).\n"
             "Install with:  pip install pydotbot[calibrate]",
             err=True,
@@ -270,7 +270,7 @@ def _collect(
         else:
             click.echo(
                 "To send it to the robots over the air:\n"
-                f"  dotbot swarm lh2-calibration push {calibration.id8}"
+                f"  dotbot swarm calibrate-lh2 push {calibration.id8}"
             )
 
 

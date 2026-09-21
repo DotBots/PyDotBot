@@ -4,8 +4,8 @@
 """Which site this session works in.
 
 A site names a deployment and its coordinate frame, so it is read across
-namespaces - `swarm lh2-calibration collect` writes into it, `push` and
-`run controller --calibration` look an id up under it - and resolves as a
+namespaces - `swarm calibrate-lh2 collect` writes into it, `push` and
+`run controller --lh2-calibration` look an id up under it - and resolves as a
 top-level config key next to `conn` and `swarm_id`. The package default is
 deliberately neutral: a real site is named by the config, never by PyDotBot.
 """

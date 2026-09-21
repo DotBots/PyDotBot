@@ -1,8 +1,8 @@
 # `dotbot run` - host-side processes
 
 `dotbot run` launches the things that run **on your computer**: the control
-plane, the gateway bridge, a simulator, calibration, demos, and teleop
-drivers. (`fw` / [`device`](device.md) / [`swarm`](swarm.md) are the things you
+plane, the gateway bridge, a simulator, LH2 and camera calibration, demos,
+and teleop drivers. (`fw` / [`device`](device.md) / [`swarm`](swarm.md) are the things you
 *manage*; `run` is the long-lived processes that talk to them.)
 
 ```bash
@@ -14,7 +14,8 @@ dotbot run --help        # the full list
 | `controller` | Control plane: REST/WS API + web dashboard. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
-| `lh2-calibration` | LH2 calibration on one cabled board (capture / apply); deployed DotBots use `swarm lh2-calibration`. |
+| `calibrate-lh2` | **Deprecated.** Cabled LH2 calibration on one board (capture / apply). Use [`swarm calibrate-lh2`](swarm.md) instead. |
+| `calibrate-camera` | Register an overhead camera against four printed ArUco sheets (sheets / collect). |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
@@ -40,7 +41,10 @@ dotbot run controller --conn /dev/ttyACM0
 | `-s/--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial/simulator |
 | `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
 | `--headless` | don't open the console in a browser (it's still served) |
-| `--csv-data-output` | record DotBot data to a CSV file |
+| `--csv-data-output` | record DotBot data to a CSV file. A registered camera also writes `<name>-camera.csv` beside it, with a `<name>-camera.toml` sidecar saying what the columns mean. |
+| `--lh2-calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] lh2_calibration`. |
+| `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run calibrate-camera collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
+| `--camera-detect` / `--no-camera-detect` | run the robot detector on that camera's frames (default on). Off serves the layer as a picture only: nothing detected, drawn, pushed or logged. Also `[run.controller] camera_detect` in dotbot.toml. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
 | `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
 
@@ -70,21 +74,56 @@ so it shares the controller's flags and serves the same console.
 dotbot run simulator
 ```
 
-## `lh2-calibration` - capture & apply (cabled)
+## `calibrate-lh2` - capture & apply (cabled, deprecated)
+
+> **Deprecated.** Use [`swarm calibrate-lh2`](swarm.md), which calibrates
+> over the air with no cable and no firmware swap. This path stays for a
+> single board on the bench, before a swarm exists.
 
 Lighthouse v2 calibration against a single serial-attached board. `collect`
 opens a TUI to capture LH2 counts; `apply` writes the saved calibration out as
 a C header. This is the cabled, bench path - for deployed DotBots, capture over
-the air with [`swarm lh2-calibration`](swarm.md) instead.
+the air with [`swarm calibrate-lh2`](swarm.md) instead.
 
 ```bash
-dotbot run lh2-calibration collect
-dotbot run lh2-calibration apply ./lh2_calibration.h
+dotbot run calibrate-lh2 collect
+dotbot run calibrate-lh2 apply ./lh2_calibration.h
 ```
 
 See [the cabled LH2 calibration guide](../guides/lh2-calibration-cabled.md). To
 capture without a cable, or to push a saved calibration to the fleet over the
-air, use [`swarm lh2-calibration`](swarm.md).
+air, use [`swarm calibrate-lh2`](swarm.md).
+
+## `calibrate-camera` - register an overhead camera
+
+An overhead camera is registered against four printed ArUco sheets, one taped
+inside each corner of the area it covers. `sheets` renders the pages; `collect`
+finds the camera that sees them, reads them back and solves the homography from
+image pixels into the site's frame. Both run on your own machine and nothing
+here reaches a robot, which is why this sits under `run` beside
+`calibrate-lh2`.
+
+```bash
+dotbot run calibrate-camera sheets --out ./sheets     # print these at 100 %
+dotbot run calibrate-camera collect --area dev-corner
+```
+
+| Flag (`collect`) | Meaning |
+|---|---|
+| `--area` | the one area this camera covers; the four sheet positions come from its corners |
+| `--site` | the site the area belongs to, and the directory the registration is saved under |
+| `--camera` | skip the search: an OpenCV index, or a path (a `/dev/v4l/by-id/` symlink, or a recorded frame) |
+| `--reads` | frames averaged; only a frame carrying all four markers counts |
+| `--lens` | the lens mode the camera is set to, recorded in the file |
+
+`collect` prints the id of what it wrote. Pass it to the controller to draw the
+camera on the console map:
+
+```bash
+dotbot run controller --camera-calibration <id> --headless
+```
+
+Needs the calibration extra: `pip install pydotbot[calibrate]`.
 
 ## `demo` - built-in demos
 
