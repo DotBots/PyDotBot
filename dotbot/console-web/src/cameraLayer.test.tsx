@@ -90,6 +90,7 @@ const CAMERA: RegisteredCamera = {
   residual_mm: 0.1495,
   id: "7b21c0d9f3a1",
   lens: "linear",
+  detect: true,
 };
 
 const calibration = {
