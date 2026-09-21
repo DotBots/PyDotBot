@@ -13,7 +13,7 @@ import type { CalibrationSession, Site, UnifiedBot } from "./types";
 //
 // Two facts have no home in the console today and each is the first thing an
 // operator asks: which site the positions belong to, and which robots carry
-// the calibration in use. The two actions that change them sit at the bottom.
+// the calibration in use. The action that changes them sits at the bottom.
 
 const label10 = {
   fontSize: 10,
@@ -145,10 +145,6 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
             </div>
           ))}
         </Section>
-
-        <Section title="Camera">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>not registered</div>
-        </Section>
       </div>
 
       <div
@@ -180,9 +176,6 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           title="Open a calibration session over the site"
         >
           Calibrate lighthouse
-        </div>
-        <div style={actionButton(false, true)} title="Later">
-          Register camera
         </div>
       </div>
     </div>
