@@ -13,6 +13,7 @@ import {
   Area,
   BotState,
   CalibrationSession,
+  LH2Position,
   LinkState,
   PyDotBot,
   RegisteredCamera,
@@ -49,6 +50,20 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
+// The controller keeps the last position an app advertised, so it is only
+// the live one while the link is active; otherwise swarmit's is, and the
+// controller's stale one is still better than none. swarmit reports (0, 0)
+// for a bot it has never located, which is not a position.
+export function derivePosition(
+  py: PyDotBot | undefined,
+  sw: SwarmitNode | undefined,
+  link: LinkState,
+): LH2Position | null {
+  if (link === "active" && py?.lh2_position) return py.lh2_position;
+  if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) return { x: sw.pos_x, y: sw.pos_y };
+  return py?.lh2_position ?? null;
+}
+
 // Either signal is enough: swarmit knows the board even in its bootloader,
 // and the controller knows the firmware even on a board swarmit cannot name.
 export function isDotBot(
@@ -73,13 +88,7 @@ export function merge(
       id,
       state,
       link,
-      // swarmit reports (0, 0) for a bot it has never located, and the arena
-      // never contains the origin, so drawing it would invent a position.
-      position:
-        py?.lh2_position ??
-        (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)
-          ? { x: sw.pos_x, y: sw.pos_y }
-          : null),
+      position: derivePosition(py, sw, link),
       heading:
         py?.direction !== undefined && py.direction !== -1000
           ? py.direction

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
+  derivePosition,
   deriveState,
   isDotBot,
   merge,
@@ -227,5 +228,35 @@ describe("isDotBot (drawn as the robot)", () => {
     );
     expect(b.heading).toBeNull();
     expect(b.footprint).toBe(true);
+  });
+});
+
+describe("derivePosition (whose position is live)", () => {
+  const stale = { x: 1500, y: 300 };
+
+  it("takes the controller's while its link is active", () => {
+    expect(derivePosition(py({ lh2_position: stale }), sw(), "active")).toEqual(stale);
+  });
+
+  it("takes swarmit's once the controller stops hearing the app", () => {
+    for (const link of ["inactive", "lost"] as const) {
+      expect(derivePosition(py({ lh2_position: stale }), sw(), link)).toEqual({ x: 100, y: 200 });
+    }
+  });
+
+  it("takes swarmit's for a bot in its bootloader the merge still has an app record for", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", status: 2, lh2_position: stale }) },
+      { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
+    );
+    expect(b.position).toEqual({ x: 700, y: 800 });
+  });
+
+  it("keeps the controller's stale position when swarmit has never located the bot", () => {
+    expect(derivePosition(py({ lh2_position: stale }), sw({ pos_x: 0, pos_y: 0 }), "lost")).toEqual(stale);
+  });
+
+  it("does not draw swarmit's unlocated origin", () => {
+    expect(derivePosition(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown")).toBeNull();
   });
 });
