@@ -385,6 +385,8 @@ def test_capture_session_hands_a_button_press_from_any_device_over_once():
         done.set()
 
     events = _button_events(2, _TWO_STATIONS) * 3
-    with CaptureSession(_ButtonClient(events), "ABCD", _TAG, on_button_capture=on_button):
+    with CaptureSession(
+        _ButtonClient(events), "ABCD", _TAG, on_button_capture=on_button
+    ):
         assert done.wait(timeout=2.0)
     assert [(c.device, c.press, len(c.reads)) for c in got] == [("FEED", 2, 25)]

@@ -149,7 +149,10 @@ class ButtonAssembler:
         )
         self._completed[device] = (chunk.press, now)
         return ButtonCapture(
-            device=device, press=chunk.press, reads=_reads_by_station(records), lost=lost
+            device=device,
+            press=chunk.press,
+            reads=_reads_by_station(records),
+            lost=lost,
         )
 
     def expired(self) -> list[tuple[str, int]]:

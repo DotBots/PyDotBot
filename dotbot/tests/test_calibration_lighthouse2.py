@@ -630,7 +630,9 @@ def test_a_hand_edited_file_is_not_pushed_under_its_old_id(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "name", ["", "a-site-name-longer-than-16", "caf\u00e9"], ids=["empty", "long", "ascii"]
+    "name",
+    ["", "a-site-name-longer-than-16", "caf\u00e9"],
+    ids=["empty", "long", "ascii"],
 )
 def test_a_site_name_a_robot_cannot_store_is_refused(name):
     from dotbot.calibration.lighthouse2 import site_name_as_bytes
@@ -711,18 +713,26 @@ def test_reframe_with_a_rotation_turns_about_the_first_point(tmp_path):
 
 def _five_point_placement():
     """Five points of one station, so the residual is not trivially zero."""
-    from dotbot.calibration.lighthouse2 import Placement, Sample, counts_for_camera_point
+    from dotbot.calibration.lighthouse2 import (
+        Placement,
+        Sample,
+        counts_for_camera_point,
+    )
 
     matrix = np.array(
         [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
     )
-    points = [(47.0, 18.5), (1953.0, 18.5), (47.0, 1981.5), (1953.0, 1981.5), (1000, 1000)]
+    points = [
+        (47.0, 18.5),
+        (1953.0, 18.5),
+        (47.0, 1981.5),
+        (1953.0, 1981.5),
+        (1000, 1000),
+    ]
     samples = []
     for index, (x, y) in enumerate(points):
         camera = np.linalg.inv(matrix) @ np.array([x, y, 1.0])
         camera /= camera[2]
         counts = counts_for_camera_point(camera[0] + 0.002 * index, camera[1], 0)
-        samples.append(
-            Sample(0, index, [round(counts.count1)], [round(counts.count2)])
-        )
+        samples.append(Sample(0, index, [round(counts.count1)], [round(counts.count2)]))
     return Placement(index=0, points_mm=points, samples=samples)
