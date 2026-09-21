@@ -3,7 +3,7 @@
 
 """`dotbot run lh2-calibration` - LH2 calibration (deprecated).
 
-Deprecated in favour of `dotbot swarm lh2-calibration`, which calibrates
+Deprecated in favour of `dotbot swarm calibrate-lh2`, which calibrates
 over the air with no cable and no firmware swap. This path stays for a
 single board on the bench, before a swarm exists.
 
@@ -17,7 +17,7 @@ Subcommands:
                under ~/.dotbot/calibrations/<site>/.
 
 Cable-free, over-the-air calibration of a DotBot in the arena lives under
-`dotbot swarm lh2-calibration` (it drives the fleet transport, not a serial
+`dotbot swarm calibrate-lh2` (it drives the fleet transport, not a serial
 DK).
 
 Calibration runtime deps (`opencv-python`, `textual`) live behind the
@@ -54,7 +54,7 @@ def _run_tui(ctx: click.Context) -> None:
     name="lh2-calibration",
     help=(
         "DEPRECATED - cabled LH2 calibration for one serial-attached "
-        "device. Prefer `dotbot swarm lh2-calibration`, which needs no cable."
+        "device. Prefer `dotbot swarm calibrate-lh2`, which needs no cable."
     ),
     invoke_without_command=True,
 )

@@ -207,7 +207,7 @@ class DotbotConfig(_Strict):
     conn: Conn = None
     swarm_id: str | None = None
     # The active site, and with it the coordinate frame this session's
-    # positions and calibrations live in. Read by `swarm lh2-calibration` and
+    # positions and calibrations live in. Read by `swarm calibrate-lh2` and
     # by the controller's calibration lookup, so it is shared rather than
     # per-command.
     site: str | None = None
