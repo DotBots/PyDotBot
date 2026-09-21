@@ -14,6 +14,8 @@ subcommands:
 - `push <path|id>` - check the robots' device info, send a saved
               calibration over the air, and list the robots still on
               another id.
+- `reframe <path|id>` - re-express a saved calibration in another site's
+              frame and re-solve it from its stored samples.
 
 The homography solve lives in PyDotBot (`dotbot.calibration.lighthouse2`);
 the transport lives in swarmit.
@@ -60,7 +62,7 @@ def _swarmit_client(ctx, conn, swarm_id, device=None):
 
 @click.group(
     name="calibrate-lh2",
-    help="Over-the-air LH2 calibration: collect, push.",
+    help="Over-the-air LH2 calibration: collect, push, reframe.",
 )
 def cmd() -> None:
     pass
@@ -372,3 +374,94 @@ def _gated_push(client, calibration, site_changed=False, devices=None):
         )
     else:
         click.echo(f"Every robot reports {calibration.id8}.")
+
+
+def _parse_shift(_ctx, _param, value):
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError as exc:
+        raise click.BadParameter("takes two numbers in mm, `x,y`") from exc
+    return (x, y)
+
+
+@cmd.command(
+    name="reframe",
+    help=(
+        "Re-express a saved calibration in another site's frame, without a "
+        "capture: shift (and turn) every placement's points, re-solve every "
+        "station from the stored samples, and save a new file with a new id "
+        "under ~/.dotbot/calibrations/<site>/."
+    ),
+)
+@click.argument("calibration")
+@click.option(
+    "--site",
+    "site_name",
+    required=True,
+    help="The site to re-express it in, as declared in the dotbot config.",
+)
+@click.option(
+    "--shift",
+    required=True,
+    callback=_parse_shift,
+    help="Where the old frame's zero lands in the new one, `x,y` in mm.",
+)
+@click.option(
+    "--rotate",
+    type=float,
+    default=0.0,
+    show_default=True,
+    help=(
+        "Degrees to turn the points about the first placement's first point "
+        "before shifting; positive turns x toward y."
+    ),
+)
+@click.pass_context
+def _reframe(ctx, calibration, site_name, shift, rotate):
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        reframe_calibration,
+        resolve_calibration_path,
+        write_calibration,
+    )
+
+    site, _ = site_from_context(ctx, site_name)
+    if site.extent_mm is None and not site.anchor:
+        raise click.ClickException(
+            f"site {site_name!r} is not declared in the dotbot config; add a "
+            f"[sites.{site_name}] table with its anchor and extent first"
+        )
+    try:
+        source = read_calibration_file(resolve_calibration_path(calibration))
+        reframed = reframe_calibration(source, site, shift, rotate)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    path = write_calibration(reframed)
+    click.echo(
+        f"Reframed {source.id8} (site {source.site.name}) into site {site.name}: "
+        f"shift {shift[0]:g},{shift[1]:g} mm, rotate {rotate:g} deg"
+    )
+    before = {s.index: s.residual_mm for s in source.stations}
+    for station in reframed.stations:
+        was = before.get(station.index)
+        was_text = "" if was is None else f" (was {was:.6f})"
+        click.echo(
+            f"station {station.index}: {station.points} points, "
+            f"residual {station.residual_mm:.6f} mm{was_text}"
+        )
+    x0, y0, x1, y1 = reframed.valid_mm
+    outside = [
+        (x, y)
+        for placement in reframed.placements
+        for x, y in placement.points_mm
+        if not (x0 <= x <= x1 and y0 <= y <= y1)
+    ]
+    if outside:
+        click.echo(
+            f"warning: {len(outside)} point(s) fall outside the site's "
+            f"valid_mm {list(reframed.valid_mm)}; robots there would drop "
+            "their positions",
+            err=True,
+        )
+    click.echo(f"\nCalibration saved to {path}")
+    click.echo(f"Calibration id {reframed.id}, site {site.name}")

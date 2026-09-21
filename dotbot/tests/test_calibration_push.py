@@ -7,11 +7,13 @@ The swarmit client is faked at its `status()` / `send_lh2_calibration`
 surface; none of this is hardware validation.
 """
 
+import tomllib
 from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
+from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import read_calibration_file
 from dotbot.calibration.push import PushRefused, check_push, gate_push
 from dotbot.cli import swarm_lh2
@@ -150,3 +152,56 @@ def test_push_refuses_a_robot_on_int32_firmware(monkeypatch, calibration_file):
     assert result.exit_code != 0
     assert "OLD" in result.output
     assert fleet.pushed == []
+
+
+def test_reframe_writes_a_new_file_in_the_target_site(
+    monkeypatch, tmp_path, calibration_file
+):
+    pytest.importorskip("cv2")
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    result = CliRunner().invoke(
+        swarm_lh2.cmd,
+        [
+            "reframe",
+            str(calibration_file),
+            "--site",
+            "inria-aio-c",
+            "--shift",
+            "5000,7000",
+        ],
+        obj={"config": load_config_text(CONFIG)},
+    )
+    assert result.exit_code == 0, result.output
+
+    written = list((tmp_path / "home" / "calibrations" / "inria-aio-c").glob("*.toml"))
+    assert len(written) == 1
+    with open(written[0], "rb") as handle:
+        data = tomllib.load(handle)
+    assert data["site"] == {"name": "inria-aio-c", "anchor": "floor top-left corner"}
+    assert data["validity"]["valid_mm"] == [0, 0, 12000, 20000]
+    assert data["placement"][0]["points_mm"][0] == [5047.0, 7018.5]
+    assert data["metadata"]["id"] != FIXTURE_ID
+    assert data["metadata"]["id"] in result.output
+    # The fixture's matrices were not solved from its samples, so only
+    # station 0, the one the samples cover, is re-solved.
+    assert [s["index"] for s in data["station"]] == [0]
+
+
+def test_reframe_into_an_undeclared_site_is_refused(calibration_file):
+    result = CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["reframe", str(calibration_file), "--site", "nowhere", "--shift", "1,2"],
+        obj={"config": load_config_text(CONFIG)},
+    )
+    assert result.exit_code != 0
+    assert "not declared" in result.output
+
+
+def test_reframe_takes_two_numbers_for_the_shift(calibration_file):
+    result = CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["reframe", str(calibration_file), "--site", "inria-aio-c", "--shift", "1"],
+        obj={"config": load_config_text(CONFIG)},
+    )
+    assert result.exit_code != 0
+    assert "x,y" in result.output

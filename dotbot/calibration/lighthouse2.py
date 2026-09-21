@@ -879,6 +879,60 @@ class LighthouseManager:
         return write_calibration(calibration)
 
 
+def transform_points(
+    points: Sequence[tuple[float, float]],
+    shift: tuple[float, float],
+    rotate_deg: float = 0.0,
+    pivot: tuple[float, float] = (0.0, 0.0),
+) -> list[tuple[float, float]]:
+    """Turn points about `pivot` by `rotate_deg`, then translate by `shift`.
+
+    Positive angles turn +x toward +y, which with y pointing down is
+    clockwise as drawn.
+    """
+    theta = math.radians(rotate_deg)
+    c, s = math.cos(theta), math.sin(theta)
+    px, py = pivot
+    out = []
+    for x, y in points:
+        dx, dy = x - px, y - py
+        out.append((px + c * dx - s * dy + shift[0], py + s * dx + c * dy + shift[1]))
+    return out
+
+
+def reframe_calibration(
+    calibration: Calibration,
+    site: Site,
+    shift: tuple[float, float],
+    rotate_deg: float = 0.0,
+) -> Calibration:
+    """`calibration` re-expressed in `site`'s frame, re-solved from its samples.
+
+    Every placement's points are turned about the first placement's first
+    point, so the placements keep their geometry relative to one another, and
+    then shifted. The validity fence becomes the new site's extent.
+    """
+    if not calibration.placements or not calibration.placements[0].points_mm:
+        raise ValueError("calibration has no placement points to reframe")
+    pivot = calibration.placements[0].points_mm[0]
+    placements = [
+        dataclasses.replace(
+            placement,
+            points_mm=transform_points(placement.points_mm, shift, rotate_deg, pivot),
+            samples=[dataclasses.replace(s) for s in placement.samples],
+        )
+        for placement in calibration.placements
+    ]
+    manager = LighthouseManager(
+        placements=placements,
+        site=site,
+        valid_mm=site.valid_mm or VALID_MM_DEFAULT,
+        robot=calibration.robot,
+    )
+    manager.solve()
+    return manager.calibration(tag=calibration.tag or None)
+
+
 def write_calibration(calibration: Calibration) -> Path:
     """Write `calibration` to `calibrations/<site>/calibration-<stamp>-<id8>.toml`."""
     stamp = (calibration.created_at or "").replace(":", "-")

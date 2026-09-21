@@ -633,3 +633,86 @@ def test_a_sixteen_character_site_name_fills_the_field_without_a_nul():
     from dotbot.calibration.lighthouse2 import site_name_as_bytes
 
     assert site_name_as_bytes("demo-dcoss-2026x") == b"demo-dcoss-2026x"
+
+
+def test_reframe_shifts_the_points_resolves_and_keeps_the_residual(tmp_path):
+    """A shift moves no point relative to another, so the fit is as good as before."""
+    from dotbot.calibration.lighthouse2 import (
+        LighthouseManager,
+        Placement,
+        Sample,
+        apply_homography,
+        reframe_calibration,
+    )
+
+    pytest.importorskip("cv2")
+    placement = _five_point_placement()
+    manager = LighthouseManager(placements=[placement], site=Site(name="c405-arena"))
+    manager.solve()
+    source = manager.calibration()
+    floor = Site(name="inria-aio-c", anchor="floor top-left", extent_mm=(12000, 20000))
+
+    reframed = reframe_calibration(source, floor, (5000.0, 7000.0))
+
+    assert reframed.site.name == "inria-aio-c"
+    assert reframed.valid_mm == (0, 0, 12000, 20000)
+    assert reframed.id != source.id
+    for (x0, y0), (x1, y1) in zip(
+        source.placements[0].points_mm, reframed.placements[0].points_mm
+    ):
+        assert (x1, y1) == pytest.approx((x0 + 5000.0, y0 + 7000.0))
+    old, new = source.stations[0], reframed.stations[0]
+    assert new.residual_mm == pytest.approx(old.residual_mm, abs=1e-6)
+    # A camera point lands where it did, plus the shift, to the solver's
+    # own numerical noise.
+    camera = np.array([[0.1, -0.2]])
+    assert apply_homography(new.matrix, camera)[0] == pytest.approx(
+        apply_homography(old.matrix, camera)[0] + [5000.0, 7000.0], abs=1e-3
+    )
+    assert isinstance(reframed.placements[0], Placement)
+    assert isinstance(reframed.placements[0].samples[0], Sample)
+    # The source is left as it was.
+    assert source.placements[0].points_mm[0] == placement.points_mm[0]
+
+
+def test_reframe_with_a_rotation_turns_about_the_first_point(tmp_path):
+    from dotbot.calibration.lighthouse2 import LighthouseManager, reframe_calibration
+
+    pytest.importorskip("cv2")
+    manager = LighthouseManager(
+        placements=[_five_point_placement()], site=Site(name="c405-arena")
+    )
+    manager.solve()
+    source = manager.calibration()
+
+    reframed = reframe_calibration(
+        source, Site(name="tilted", extent_mm=(9000, 9000)), (100.0, 200.0), 90.0
+    )
+
+    (px, py), (qx, qy) = source.placements[0].points_mm[:2]
+    (rx, ry), (sx, sy) = reframed.placements[0].points_mm[:2]
+    assert (rx, ry) == pytest.approx((px + 100.0, py + 200.0))
+    # +90 degrees turns +x into +y.
+    assert (sx - rx, sy - ry) == pytest.approx((-(qy - py), qx - px), abs=1e-9)
+    assert reframed.stations[0].residual_mm == pytest.approx(
+        source.stations[0].residual_mm, abs=1e-6
+    )
+
+
+def _five_point_placement():
+    """Five points of one station, so the residual is not trivially zero."""
+    from dotbot.calibration.lighthouse2 import Placement, Sample, counts_for_camera_point
+
+    matrix = np.array(
+        [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
+    )
+    points = [(47.0, 18.5), (1953.0, 18.5), (47.0, 1981.5), (1953.0, 1981.5), (1000, 1000)]
+    samples = []
+    for index, (x, y) in enumerate(points):
+        camera = np.linalg.inv(matrix) @ np.array([x, y, 1.0])
+        camera /= camera[2]
+        counts = counts_for_camera_point(camera[0] + 0.002 * index, camera[1], 0)
+        samples.append(
+            Sample(0, index, [round(counts.count1)], [round(counts.count2)])
+        )
+    return Placement(index=0, points_mm=points, samples=samples)
