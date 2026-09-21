@@ -2,13 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   calibrationCoverage,
+  camerasSummary,
+  cameraStatusRows,
   coverageLabel,
   extentLabel,
   minimapLabel,
   stationRows,
   stationsSummary,
 } from "./localization";
-import type { Area, CalibrationSession, Site, SwarmitNode, UnifiedBot } from "./types";
+import type {
+  Area,
+  CalibrationSession,
+  CameraDetection,
+  RegisteredCamera,
+  Site,
+  SwarmitNode,
+  UnifiedBot,
+} from "./types";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
 const ANNEX: Area = { x: 0, y: 2000, w: 2000, h: 2000, name: "annex" };
@@ -157,5 +167,43 @@ describe("the station rows", () => {
   it("has nothing to say with no session", () => {
     expect(stationRows(null)).toEqual([]);
     expect(stationsSummary(null)).toBe("no calibration loaded");
+  });
+});
+
+const camera = (area: string) => ({ area }) as RegisteredCamera;
+const detection = (area: string, status: CameraDetection["status"]) =>
+  ({ area, status }) as CameraDetection;
+
+describe("the camera rows", () => {
+  it("names each camera's area and what it last saw", () => {
+    expect(
+      cameraStatusRows([camera("dev-corner"), camera("arena")], {
+        "dev-corner": detection("dev-corner", "found"),
+      }),
+    ).toEqual([
+      { area: "dev-corner", label: "robot seen" },
+      { area: "arena", label: "no frame yet" },
+    ]);
+  });
+
+  it("tells a refused pose from an empty floor", () => {
+    expect(
+      cameraStatusRows([camera("a"), camera("b")], {
+        a: detection("a", "refused"),
+        b: detection("b", "none"),
+      }),
+    ).toEqual([
+      { area: "a", label: "robot, low confidence" },
+      { area: "b", label: "no robot" },
+    ]);
+  });
+
+  it("has nothing to say with no camera registered", () => {
+    expect(cameraStatusRows([], {})).toEqual([]);
+    expect(camerasSummary([])).toBe("none registered");
+  });
+
+  it("counts the cameras that are registered", () => {
+    expect(camerasSummary([camera("a"), camera("b")])).toBe("2 registered");
   });
 });

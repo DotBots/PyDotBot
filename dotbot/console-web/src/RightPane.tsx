@@ -12,6 +12,7 @@ import {
   robotOpacityFor,
 } from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
+import { DETECTION_TEXT } from "./localization";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
@@ -116,13 +117,6 @@ export const CheckRow: React.FC<{
     </span>
   </div>
 );
-
-// What the camera's own detector last said about the floor it looks at.
-const DETECTION_TEXT: Record<CameraDetection["status"], string> = {
-  found: "robot seen",
-  refused: "robot, low confidence",
-  none: "no robot",
-};
 
 // One of a camera row's two opacities: a labelled track and what it reads.
 // The label is given a width so the tracks line up under each other, the two

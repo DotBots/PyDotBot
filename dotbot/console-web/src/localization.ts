@@ -1,4 +1,10 @@
-import type { CalibrationSession, Site, UnifiedBot } from "./types";
+import type {
+  CalibrationSession,
+  CameraDetection,
+  RegisteredCamera,
+  Site,
+  UnifiedBot,
+} from "./types";
 
 // What the Localization panel and the footer minimap say, derived from the
 // site and the fleet. Kept out of the markup so the wording is readable in a
@@ -87,4 +93,39 @@ export function stationsSummary(session: CalibrationSession | null): string {
   if (!session) return "no calibration loaded";
   const seen = session.stations.length + session.unsolved.length;
   return `${seen} seen · ${session.stations.length} solved`;
+}
+
+// --- what the overhead cameras see -----------------------------------------
+
+/** What a camera's own detector last made of the floor it looks at. */
+export const DETECTION_TEXT: Record<CameraDetection["status"], string> = {
+  found: "robot seen",
+  refused: "robot, low confidence",
+  none: "no robot",
+};
+
+export interface CameraStatusRow {
+  area: string;
+  /** What the detector last said, or the absence before its first frame. */
+  label: string;
+}
+
+/** One row per registered camera: the area it covers, and what it last saw. */
+export function cameraStatusRows(
+  cameras: RegisteredCamera[],
+  detections: Record<string, CameraDetection>,
+): CameraStatusRow[] {
+  return cameras.map((camera) => {
+    const detection = detections[camera.area];
+    return {
+      area: camera.area,
+      label: detection ? DETECTION_TEXT[detection.status] : "no frame yet",
+    };
+  });
+}
+
+/** "2 registered", or the honest absence for a console with no camera. */
+export function camerasSummary(cameras: RegisteredCamera[]): string {
+  if (cameras.length === 0) return "none registered";
+  return `${cameras.length} registered`;
 }

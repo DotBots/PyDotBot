@@ -688,6 +688,8 @@ export const App: React.FC = () => {
           onStopMission={onStopMission}
           site={site}
           session={session}
+          cameras={cameras}
+          cameraDetections={cameraDetections}
           calibrationBusy={calibration.busy}
           calibrationError={calibration.error}
           onCalibrate={onCalibrate}
