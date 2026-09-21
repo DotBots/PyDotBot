@@ -330,6 +330,8 @@ export interface RegisteredCamera {
   residual_mm: number;
   id: string;
   lens: string;
+  // False when the controller runs this camera with its detector off.
+  detect: boolean;
 }
 
 // A waypoint mission queued locally but not yet sent: bound to the bots that

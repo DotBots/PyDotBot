@@ -203,13 +203,22 @@ const CameraRow: React.FC<{
           {camera.residual_mm.toFixed(1)} mm
         </span>
       </div>
-      {detection && (
+      {camera.detect === false ? (
         <div
           data-testid={`camera-detection-status-${camera.area}`}
           style={{ color: "var(--muted)", fontSize: 11 }}
         >
-          {DETECTION_TEXT[detection.status]}
+          detection off
         </div>
+      ) : (
+        detection && (
+          <div
+            data-testid={`camera-detection-status-${camera.area}`}
+            style={{ color: "var(--muted)", fontSize: 11 }}
+          >
+            {DETECTION_TEXT[detection.status]}
+          </div>
+        )
       )}
       <OpacityRow
         label="Opacity"

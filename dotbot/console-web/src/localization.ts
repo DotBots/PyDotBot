@@ -106,7 +106,8 @@ export const DETECTION_TEXT: Record<CameraDetection["status"], string> = {
 
 export interface CameraStatusRow {
   area: string;
-  /** What the detector last said, or the absence before its first frame. */
+  /** What the detector last said, the absence before its first frame, or
+   * that the controller runs this camera with the detector off. */
   label: string;
 }
 
@@ -117,10 +118,11 @@ export function cameraStatusRows(
 ): CameraStatusRow[] {
   return cameras.map((camera) => {
     const detection = detections[camera.area];
-    return {
-      area: camera.area,
-      label: detection ? DETECTION_TEXT[detection.status] : "no frame yet",
-    };
+    let label: string;
+    if (camera.detect === false) label = "detection off";
+    else if (detection) label = DETECTION_TEXT[detection.status];
+    else label = "no frame yet";
+    return { area: camera.area, label };
   });
 }
 

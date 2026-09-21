@@ -207,3 +207,22 @@ describe("the camera rows", () => {
     expect(camerasSummary([camera("a"), camera("b")])).toBe("2 registered");
   });
 });
+
+describe("a camera with its detector off", () => {
+  const off = (area: string) =>
+    ({ area, detect: false }) as RegisteredCamera;
+
+  it("says so rather than reading as an empty floor", () => {
+    expect(cameraStatusRows([off("dev-corner")], {})).toEqual([
+      { area: "dev-corner", label: "detection off" },
+    ]);
+  });
+
+  it("says so even while a stale detection is still held", () => {
+    expect(
+      cameraStatusRows([off("dev-corner")], {
+        "dev-corner": detection("dev-corner", "found"),
+      }),
+    ).toEqual([{ area: "dev-corner", label: "detection off" }]);
+  });
+});
