@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import time
 from pathlib import Path
 
@@ -46,13 +47,26 @@ DEFAULT_BIN_DIR = Path("bin")
 VALID_DEVICES = ("dotbot-v3", "gateway")
 VALID_PROGRAMMERS = ("jlink", "daplink")
 CONFIG_ADDR = 0x0103F800
-CONFIG_MAGIC = 0x5753524D
+# The config page's magic is per role. The gateway's page is mari's
+# `mari_app_config_t` (MARI_APP_CONFIG_MAGIC_VALUE); the sandbox host's is
+# swarmit's `swarmit_config_t` (SWARMIT_CONFIG_MAGIC_VALUE), which moved when
+# its matrices went float32, so a netcore never reads a page of the other
+# layout as valid. Each value must match its firmware's.
+CONFIG_MAGIC_BY_ROLE = {
+    "dotbot-v3": 0x5753524E,
+    "gateway": 0x5753524D,
+}
 CONFIG_MANIFEST_NAME = "config-manifest.json"
-# LH2 calibration is appended to the swarmit config page after (magic, net_id).
-# Matches swarmit's swarmit_config_t: a homography count then N matrices of
-# 3x3 int32 LE.
-LH2_MATRIX_BYTES = 3 * 3 * 4  # 3x3 int32 matrix
+# swarmit_config_t, little-endian and packed: magic, has_net_id, net_id,
+# homography_count, sixteen 3x3 float32 matrices, valid_mm[4], site_name[16],
+# calibration_id[8]. Every byte the calibration does not set is 0xFF, the
+# erase state the firmware reads as "absent".
+LH2_MATRIX_BYTES = 3 * 3 * 4
 LH2_MAX_HOMOGRAPHIES = 16
+SWARMIT_CONFIG_BYTES = 632
+SWARMIT_CONFIG_COUNT_OFFSET = 12
+SWARMIT_CONFIG_MATRICES_OFFSET = 16
+SWARMIT_CONFIG_SITE_OFFSET = 592
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
@@ -146,80 +160,69 @@ def make_config_hex_path(
     return fw_root / f"config-{device}-{fw_version}-{net_id_hex}-{ts}.hex"
 
 
-def load_calibration_file(path: Path) -> tuple[int, bytes]:
-    """Read a schema 2 calibration file into the config page's matrix bytes.
-
-    The page still carries int32 x 1e3 matrices, so the station matrices go
-    through the calibration package's int32 shim. The page layout follows the
-    element type when the firmware moves to float32.
-    """
+def load_calibration_file(path: Path):
+    """Read a schema 2 calibration file, refused when a robot could not take it."""
     from dotbot.calibration.lighthouse2 import (
-        homography_as_bytes,
+        pushable_stations,
         read_calibration_file,
+        site_fields_as_bytes,
     )
 
     try:
         calibration = read_calibration_file(Path(path))
+        pushable_stations(calibration)
+        site_fields_as_bytes(calibration)
     except (OSError, ValueError) as exc:
         raise click.ClickException(
-            f"Cannot read calibration file {path}: {exc}"
+            f"Cannot use calibration file {path}: {exc}"
         ) from exc
-
-    stations = sorted(calibration.stations, key=lambda s: s.index)
-    if not stations:
-        raise click.ClickException(
-            f"Calibration file {path} has no solved [[station]] table"
-        )
-    if len(stations) > LH2_MAX_HOMOGRAPHIES:
-        raise click.ClickException(
-            f"Invalid calibration file: homography count {len(stations)} exceeds "
-            f"LH2 limit ({LH2_MAX_HOMOGRAPHIES})"
-        )
-    if [s.index for s in stations] != list(range(len(stations))):
-        got = ", ".join(str(s.index) for s in stations)
-        raise click.ClickException(
-            f"Invalid calibration file: the config page keys matrices by position, "
-            f"so stations must be numbered from zero without gaps, got {got}"
-        )
-    matrices = bytearray()
-    for station in stations:
-        matrices += homography_as_bytes(station.matrix)
-    return len(stations), bytes(matrices)
+    return calibration
 
 
-def _write_word_le(ih, addr: int, word: int) -> None:
-    ih[addr + 0] = (word >> 0) & 0xFF
-    ih[addr + 1] = (word >> 8) & 0xFF
-    ih[addr + 2] = (word >> 16) & 0xFF
-    ih[addr + 3] = (word >> 24) & 0xFF
+def swarmit_config_page(net_id_value: int, calibration=None) -> bytes:
+    """The sandbox host's whole config page, `swarmit_config_t`."""
+    from dotbot.calibration.lighthouse2 import (
+        homography_as_float32,
+        pushable_stations,
+        site_fields_as_bytes,
+    )
+
+    page = bytearray(b"\xff" * SWARMIT_CONFIG_BYTES)
+    page[0:12] = struct.pack("<III", CONFIG_MAGIC_BY_ROLE["dotbot-v3"], 1, net_id_value)
+    if calibration is not None:
+        stations = pushable_stations(calibration)
+        page[12:16] = struct.pack("<I", len(stations))
+        for station in stations:
+            offset = SWARMIT_CONFIG_MATRICES_OFFSET + station.index * LH2_MATRIX_BYTES
+            page[offset : offset + LH2_MATRIX_BYTES] = homography_as_float32(
+                station.homography
+            )
+        site = site_fields_as_bytes(calibration)
+        page[SWARMIT_CONFIG_SITE_OFFSET : SWARMIT_CONFIG_SITE_OFFSET + len(site)] = site
+    return bytes(page)
 
 
-def create_config_hex(
-    dest: Path,
-    net_id_value: int,
-    calibration: tuple[int, bytes] | None = None,
-) -> None:
+def gateway_config_page(net_id_value: int) -> bytes:
+    """The gateway's config page, mari's `mari_app_config_t`."""
+    return struct.pack("<III", CONFIG_MAGIC_BY_ROLE["gateway"], 1, net_id_value)
+
+
+def config_page(role: str, net_id_value: int, calibration=None) -> bytes:
+    """The config page `role` boots from."""
+    if role == "gateway":
+        return gateway_config_page(net_id_value)
+    return swarmit_config_page(net_id_value, calibration)
+
+
+def create_config_hex(dest: Path, page: bytes) -> None:
+    """Write `page` at the network core's config address as an Intel hex."""
     if IntelHex is None:
         raise click.ClickException(
             "intelhex not available; install it to build config hex."
         )
     ih = IntelHex()
-    # Layout matches swarmit_config_t in repos/swarmit/device/network_core/Source/main.c
-    # and mari_app_config_t in repos/mari/firmware/app/03app_gateway_net/main.c:
-    #   offset 0:  magic (uint32 LE)
-    #   offset 4:  has_net_id (uint32 LE)        — 1 means the net_id below is provisioned
-    #   offset 8:  net_id (uint32 LE)
-    #   offset 12: homography_count (uint32 LE)  - swarmit only; meaningful only with --calibration
-    #   offset 16: the matrices, in whatever element type
-    #              lighthouse2.homography_as_bytes emits - swarmit only
-    _write_word_le(ih, CONFIG_ADDR + 0, CONFIG_MAGIC)
-    _write_word_le(ih, CONFIG_ADDR + 4, 1)
-    _write_word_le(ih, CONFIG_ADDR + 8, net_id_value)
-    if calibration is not None:
-        count, matrices = calibration
-        _write_word_le(ih, CONFIG_ADDR + 12, count)
-        for i, b in enumerate(matrices):
-            ih[CONFIG_ADDR + 16 + i] = b
+    for i, b in enumerate(page):
+        ih[CONFIG_ADDR + i] = b
     dest.parent.mkdir(parents=True, exist_ok=True)
     ih.tofile(str(dest), "hex")
 
@@ -253,11 +256,9 @@ def build_manifest_payload(
         "fw_version": fw_version,
         "network_id": net_id_hex,
         "config_addr": f"0x{CONFIG_ADDR:08X}",
-        "magic": f"0x{CONFIG_MAGIC:08X}",
-        # Stored inline as hex (count byte + matrices, same bytes as the
-        # input file). Calibration data is small (typically <100 B, capped
-        # well under 1 kB at 16 matrices), so inlining keeps the manifest
-        # self-contained and human-inspectable.
+        "magic": f"0x{CONFIG_MAGIC_BY_ROLE[device]:08X}",
+        # The calibration's part of the page, inline as hex (620 bytes at
+        # most), so a changed calibration never reuses a cached page.
         "calibration": calibration_hex,
         "created_at": created_at,
     }
@@ -277,7 +278,7 @@ def manifest_matches(
         and payload.get("fw_version") == fw_version
         and payload.get("network_id") == net_id_hex
         and payload.get("config_addr") == f"0x{CONFIG_ADDR:08X}"
-        and payload.get("magic") == f"0x{CONFIG_MAGIC:08X}"
+        and payload.get("magic") == f"0x{CONFIG_MAGIC_BY_ROLE[device]:08X}"
         and payload.get("calibration") == calibration_hex
         and isinstance(payload.get("config_hex"), str)
     )
@@ -382,18 +383,22 @@ def flash_role(
         ):
             raise click.ClickException("Aborting.")
 
-    calibration_data: tuple[int, bytes] | None = None
+    calibration = None
     calibration_hex: str | None = None
     if calibration_path is not None:
         if role != "dotbot-v3":
             raise click.ClickException(
-                "--calibration is only valid for the sandbox host (dotbot-v3); "
+                "--lh2-calibration is only valid for the sandbox host (dotbot-v3); "
                 "gateway firmware does not have LH2 homographies."
             )
-        count, matrices = load_calibration_file(calibration_path)
-        calibration_data = (count, matrices)
-        calibration_hex = (bytes([count]) + matrices).hex()
-        click.echo(f"[INFO] calibration: {count} matrices from {calibration_path}")
+        calibration = load_calibration_file(calibration_path)
+        page = swarmit_config_page(net_id_val, calibration)
+        calibration_hex = page[SWARMIT_CONFIG_COUNT_OFFSET:].hex()
+        click.echo(
+            f"[INFO] calibration: {len(calibration.stations)} matrices, "
+            f"site {calibration.site.name}, id {calibration.id} "
+            f"from {calibration_path}"
+        )
 
     fw_root = resolve_fw_root(bin_dir, "swarmit", fw_version)
     # Auto-fetch: if the role's images aren't already present, pull the
@@ -505,7 +510,7 @@ def flash_role(
     click.echo(f"[INFO] config hex: {config_hex}")
 
     if not config_hex.exists():
-        create_config_hex(config_hex, net_id_val, calibration=calibration_data)
+        create_config_hex(config_hex, config_page(role, net_id_val, calibration))
         click.echo(f"[OK  ] wrote config hex: {config_hex}")
         manifest_payload = build_manifest_payload(
             config_hex,

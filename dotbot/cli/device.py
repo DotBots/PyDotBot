@@ -135,11 +135,10 @@ def _local_root_option(f):
     help="16-bit hex swarm id (e.g. 0100); defaults to your config's swarm_id.",
 )
 @click.option(
-    "--calibration",
-    "-l",
+    "--lh2-calibration",
     "calibration_path",
     type=click.Path(path_type=Path, dir_okay=False, exists=True),
-    help="Optional LH2 calibration file to bake into the config page.",
+    help="Optional LH2 calibration file (schema 2) to bake into the config page.",
 )
 @_fw_version_option
 @_local_root_option
