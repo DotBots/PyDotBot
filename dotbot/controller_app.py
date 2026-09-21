@@ -258,6 +258,15 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     ),
 )
 @click.option(
+    "--camera-detect/--no-camera-detect",
+    default=None,
+    help=(
+        "Run the robot detector on a registered camera's frames, on by "
+        "default. Off serves the camera layer as a picture only: nothing "
+        "is detected, drawn, pushed to the console or logged."
+    ),
+)
+@click.option(
     "-M",
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
@@ -312,6 +321,7 @@ def main(
     site,
     lh2_calibration,
     camera_calibration,
+    camera_detect,
     background_map,
     simulator_init_state,
     swarmit_url,
@@ -362,6 +372,14 @@ def main(
         if camera_calibration
         else "Camera calibration: none selected"
     )
+    camera_detect, detect_source = _resolve_controller_key(
+        "camera_detect", camera_detect, unified, True
+    )
+    if camera_calibration:
+        print(
+            f"Camera detection: {'on' if camera_detect else 'off'} "
+            f"(from {detect_source})"
+        )
 
     conn = conn if conn is not None else file_data.get("conn")
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
@@ -398,6 +416,7 @@ def main(
         "site": site,
         "lh2_calibration": lh2_calibration,
         "camera_calibration": camera_calibration,
+        "camera_detect": camera_detect,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,

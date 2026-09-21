@@ -140,6 +140,7 @@ class ControllerSettings:
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
     camera_calibration: Optional[str] = None
+    camera_detect: bool = True
     background_map: str = ""
     headless: bool = False
     verbose: bool = False
@@ -288,14 +289,22 @@ class Controller:
             camera_id=calibration.id,
             residual_mm=round(calibration.residual_mm, 2),
         )
+        if not self.settings.camera_detect:
+            self.logger.info(
+                "Camera detection disabled, so the layer is served without it",
+                area=area.name,
+            )
         service = CameraService(
-            calibration, area, on_detection=self._on_camera_detection
+            calibration,
+            area,
+            detect=self.settings.camera_detect,
+            on_detection=self._on_camera_detection,
         )
         # `start()` hands the detector its first frame before it returns, so
         # the bookkeeping a detection row needs is in place first and rolled
         # back if the camera turns out not to serve.
         self.cameras.append(service)
-        if self.settings.csv_data_output is not None:
+        if self.settings.csv_data_output is not None and self.settings.camera_detect:
             self._open_camera_log(area, calibration.id)
         if not service.start():
             self.cameras.remove(service)

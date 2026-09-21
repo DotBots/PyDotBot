@@ -479,3 +479,42 @@ def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):
     finally:
         detector.release.set()
         service.stop()
+
+
+def test_a_camera_is_served_with_its_detector_off(synthetic_camera):
+    """`--no-camera-detect` keeps the layer and drops the detector entirely.
+
+    The detector is the per-frame cost, so turning it off must leave the warp
+    and the served frame untouched while starting no detect thread at all.
+    That thread is the thing being avoided, which is why it is what is
+    asserted on.
+    """
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera,
+        DEV_CORNER,
+        open_source=delivering(frame, fps=0.0),
+        detect=False,
+    )
+    assert service.start()
+    try:
+        assert service.live
+        assert service.held()[0] is not None
+        assert service.descriptor()["detect"] is False
+        assert service._detect_thread is None  # pylint: disable=protected-access
+        assert service.held_detection() is None
+    finally:
+        service.stop()
+
+
+def test_a_camera_reports_its_detector_on_by_default(synthetic_camera):
+    """The descriptor carries the state, because the console draws from it."""
+    frame = cv2.imread(str(synthetic_camera.source))
+    service = CameraService(
+        synthetic_camera, DEV_CORNER, open_source=delivering(frame, fps=0.0)
+    )
+    assert service.start()
+    try:
+        assert service.descriptor()["detect"] is True
+    finally:
+        service.stop()

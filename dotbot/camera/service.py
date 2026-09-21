@@ -80,6 +80,7 @@ class CameraService:
         logger=None,
         detector: RobotDetector | None = None,
         on_detection: Callable[[dict], None] | None = None,
+        detect: bool = True,
     ):
         self.calibration = calibration
         self.area = area
@@ -96,6 +97,7 @@ class CameraService:
             calibration.matrix, calibration.width, calibration.height
         )
         self.keep_mask: np.ndarray | None = None
+        self.detect = detect
         self._detector = detector
         self._on_detection = on_detection
         self._detect_thread: threading.Thread | None = None
@@ -127,6 +129,7 @@ class CameraService:
             "residual_mm": float(self.calibration.residual_mm),
             "id": self.calibration.id,
             "lens": self.calibration.lens,
+            "detect": self.detect,
         }
 
     def start(self) -> bool:
@@ -200,15 +203,16 @@ class CameraService:
             (self.calibration.width, self.calibration.height),
             self.raster,
         )
-        # Built here rather than in __init__, because it holds the mask.
-        if self._detector is None:
-            self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
-        self._detect_thread = threading.Thread(
-            target=self._detect_loop,
-            name=f"Camera {self.area.name} detect",
-            daemon=True,
-        )
-        self._detect_thread.start()
+        if self.detect:
+            # Built here rather than in __init__, because it holds the mask.
+            if self._detector is None:
+                self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
+            self._detect_thread = threading.Thread(
+                target=self._detect_loop,
+                name=f"Camera {self.area.name} detect",
+                daemon=True,
+            )
+            self._detect_thread.start()
         self._warp(settled.frame, time.time())
         self._thread = threading.Thread(
             target=self._read_loop,

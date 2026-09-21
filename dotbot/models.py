@@ -126,6 +126,7 @@ class DotBotCameraModel(BaseModel):
     residual_mm: float = 0.0
     id: str = ""
     lens: str = ""
+    detect: bool = True
 
 
 class DotBotCameraPoseModel(BaseModel):

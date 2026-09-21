@@ -1164,6 +1164,7 @@ async def test_get_controller_cameras(synthetic_camera):
         "residual_mm": synthetic_camera.residual_mm,
         "id": synthetic_camera.id,
         "lens": "linear",
+        "detect": True,
     }
 
 

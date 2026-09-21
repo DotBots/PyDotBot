@@ -177,6 +177,7 @@ class ControllerSection(_Strict):
     http_host: str | None = None
     lh2_calibration: str | None = None
     camera_calibration: str | None = None
+    camera_detect: bool | None = None
     background_map: str | None = None
     log_output: str | None = None
     csv_data_output: str | None = None
