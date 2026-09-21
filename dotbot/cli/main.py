@@ -53,7 +53,8 @@ _SUBCOMMANDS = (
     (
         "run",
         "dotbot.cli.run",
-        "Host-side processes: controller, gateway, simulator, calibration, demos, teleop.",
+        "Host-side processes: controller, gateway, simulator, LH2 and "
+        "camera calibration, demos, teleop.",
     ),
     (
         "config",

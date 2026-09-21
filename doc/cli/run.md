@@ -1,8 +1,8 @@
 # `dotbot run` - host-side processes
 
 `dotbot run` launches the things that run **on your computer**: the control
-plane, the gateway bridge, a simulator, calibration, demos, and teleop
-drivers. (`fw` / [`device`](device.md) / [`swarm`](swarm.md) are the things you
+plane, the gateway bridge, a simulator, LH2 and camera calibration, demos,
+and teleop drivers. (`fw` / [`device`](device.md) / [`swarm`](swarm.md) are the things you
 *manage*; `run` is the long-lived processes that talk to them.)
 
 ```bash
