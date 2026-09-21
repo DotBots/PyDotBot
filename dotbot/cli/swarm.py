@@ -60,6 +60,20 @@ def _deprecate_swarmit_calibrate(swarmit_group) -> None:
     )
 
 
+def _mount_native_lh2(swarmit_group) -> None:
+    """List PyDotBot's `lh2-calibration` among swarmit's own commands.
+
+    `dotbot swarm --help` is rendered by swarmit's group, so a command the
+    passthrough intercepts never reaches that listing. Registering it here is
+    what puts it there; dispatch still goes through the intercept, which is
+    what carries the resolved config.
+    """
+    from dotbot.cli.swarm_lh2 import cmd as lh2_group
+
+    if "lh2-calibration" not in swarmit_group.commands:
+        swarmit_group.add_command(lh2_group)
+
+
 def _with_config_injection(swarmit_group):
     """Wrap the swarmit group so `dotbot swarm` injects config-driven conn/swarm_id.
 
@@ -68,6 +82,7 @@ def _with_config_injection(swarmit_group):
     `--help` and subcommand help flow straight through.
     """
     _deprecate_swarmit_calibrate(swarmit_group)
+    _mount_native_lh2(swarmit_group)
 
     @click.command(
         name="swarm",
