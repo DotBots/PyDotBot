@@ -30,6 +30,7 @@ from .nrf import (
     read_net_id,
     reset_device,
 )
+from .schedules import MARI_SCHEDULES, describe_schedules, net_image_name
 
 try:
     from intelhex import IntelHex
@@ -309,6 +310,7 @@ def flash_role(
     sn_starting_digits: str | None = None,
     default_app_name: str | None = None,
     local_root: Path | None = None,
+    schedule: str | None = None,
 ) -> None:
     """Flash a device's role: system firmware bundle (app+net cores) + config.
 
@@ -323,6 +325,10 @@ def flash_role(
     ``local_root`` (only with ``fw_version="local"``) re-points the local
     symlinks at that build tree before flashing, so a one-liner can target a
     worktree instead of whichever tree a previous `dotbot fw fetch` linked.
+
+    ``schedule`` (gateway only) selects the per-schedule net-core image rather
+    than the role's default one. The schedule is compiled into the image, so
+    naming it here names the image it was built into.
     """
     assets = DEVICE_ASSETS[role]
     net_id_val, net_id_hex = net_id
@@ -331,6 +337,18 @@ def flash_role(
     # instantly rather than after hardware selection.
     if local_root is not None and fw_version != "local":
         raise click.ClickException("--local-root requires --fw-version local.")
+    if schedule is not None:
+        if role != "gateway":
+            raise click.ClickException(
+                "--schedule is only valid for the Mari gateway; a node adopts "
+                "whatever schedule the gateway's beacon advertises."
+            )
+        if schedule not in MARI_SCHEDULES:
+            raise click.ClickException(
+                f"Unknown schedule '{schedule}'. Valid schedules: "
+                f"{describe_schedules()}."
+            )
+    net_asset = net_image_name(schedule) if schedule else assets["net"]
 
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
@@ -381,7 +399,7 @@ def flash_role(
     # Auto-fetch: if the role's images aren't already present, pull the
     # swarmit release into bin_dir/swarmit-<version>/ before flashing.
     pre_app = fw_root / assets["app"]
-    pre_net = fw_root / assets["net"]
+    pre_net = fw_root / net_asset
     if fw_version == "local" and local_root is not None:
         fetch_assets("swarmit", "local", bin_dir, local_root)
     elif fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
@@ -389,6 +407,16 @@ def flash_role(
         fetch_assets("swarmit", fw_version, bin_dir)
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
+    if schedule is not None and not (fw_root / net_asset).exists():
+        raise click.ClickException(
+            f"No gateway net-core image for the {schedule} schedule: "
+            f"{fw_root / net_asset} is not there.\n"
+            "A swarmit release publishes a single gateway net-core image, "
+            "built with one schedule, so --schedule needs a tree where the "
+            "per-schedule images have been built:\n"
+            f"  \u2022 build it: <local-root>/mari/firmware/build-schedules.sh {schedule}\n"
+            "  \u2022 then flash with -f local --local-root <that tree>"
+        )
 
     device = role
 
@@ -416,7 +444,7 @@ def flash_role(
             )
 
     app_hex = fw_root / assets["app"]
-    net_hex = fw_root / assets["net"]
+    net_hex = fw_root / net_asset
     manifest_path = fw_root / CONFIG_MANIFEST_NAME
     manifest = load_config_manifest(manifest_path)
     config_hex = None
@@ -463,6 +491,17 @@ def flash_role(
     click.echo(f"[INFO] network_id: 0x{net_id_hex}")
     click.echo(f"[INFO] app hex: {describe_image(app_hex)}")
     click.echo(f"[INFO] net hex: {describe_image(net_hex)}")
+    if role == "gateway":
+        if schedule is None:
+            click.echo(
+                "[INFO] schedule: whichever one this image was built with "
+                "(every schedule is linked in, so the image does not say)"
+            )
+        else:
+            click.echo(
+                f"[INFO] schedule: {schedule} "
+                f"(up to {MARI_SCHEDULES[schedule]} nodes)"
+            )
     click.echo(f"[INFO] config hex: {config_hex}")
 
     if not config_hex.exists():
