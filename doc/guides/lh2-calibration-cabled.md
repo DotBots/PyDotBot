@@ -40,7 +40,7 @@ Place the DotBot on the floor square and run the TUI. `-d` is the side length of
 the square, in millimeters:
 
 ```bash
-dotbot run lh2-calibration collect -p /dev/cu.usbmodem... -d 500
+dotbot run calibrate-lh2 collect -p /dev/cu.usbmodem... -d 500
 ```
 
 Move the DotBot to each corner - Top left -> Top right -> Bottom left -> Bottom
@@ -55,7 +55,7 @@ captured, save. The calibration is written under `~/.dotbot/calibrations/` (a
 | `-n`, `--extra-lh-num` | `0` | Extra base stations beyond the first (0–5). |
 | `--input-data` | - | Re-process a saved capture instead of capturing live. |
 
-See `dotbot run lh2-calibration collect --help` for the full list.
+See `dotbot run calibrate-lh2 collect --help` for the full list.
 
 ## 3. Use the calibration
 
@@ -64,7 +64,7 @@ over-the-air flow uses - stop any running app first):
 
 ```bash
 dotbot swarm stop
-dotbot swarm lh2-calibration push ~/.dotbot/calibrations/calibration-<UTC>.toml
+dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml
 ```
 
 ### Bake it into the bootloader (header path)
@@ -74,7 +74,7 @@ For a fresh board whose bootloader bakes the calibration in at compile time
 header instead:
 
 ```bash
-dotbot run lh2-calibration apply ./lh2_calibration.h
+dotbot run calibrate-lh2 apply ./lh2_calibration.h
 ```
 
 The swarmit secure bootloader `#include`s this file; rebuild and reflash the

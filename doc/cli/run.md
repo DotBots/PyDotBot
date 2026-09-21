@@ -14,8 +14,8 @@ dotbot run --help        # the full list
 | `controller` | Control plane: REST/WS API + web dashboard. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
-| `lh2-calibration` | **Deprecated.** Cabled LH2 calibration on one board (capture / apply). Use [`swarm lh2-calibration`](swarm.md) instead. |
-| `camera-calibration` | Register an overhead camera against four printed ArUco sheets (sheets / collect). |
+| `calibrate-lh2` | **Deprecated.** Cabled LH2 calibration on one board (capture / apply). Use [`swarm calibrate-lh2`](swarm.md) instead. |
+| `calibrate-camera` | Register an overhead camera against four printed ArUco sheets (sheets / collect). |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
 | `joystick` | Drive a DotBot from a joystick. |
@@ -43,7 +43,7 @@ dotbot run controller --conn /dev/ttyACM0
 | `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file. A registered camera also writes `<name>-camera.csv` beside it, with a `<name>-camera.toml` sidecar saying what the columns mean. |
 | `--lh2-calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] lh2_calibration`. |
-| `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run camera-calibration collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
+| `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run calibrate-camera collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
 | `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
 
@@ -73,38 +73,38 @@ so it shares the controller's flags and serves the same console.
 dotbot run simulator
 ```
 
-## `lh2-calibration` - capture & apply (cabled, deprecated)
+## `calibrate-lh2` - capture & apply (cabled, deprecated)
 
-> **Deprecated.** Use [`swarm lh2-calibration`](swarm.md), which calibrates
+> **Deprecated.** Use [`swarm calibrate-lh2`](swarm.md), which calibrates
 > over the air with no cable and no firmware swap. This path stays for a
 > single board on the bench, before a swarm exists.
 
 Lighthouse v2 calibration against a single serial-attached board. `collect`
 opens a TUI to capture LH2 counts; `apply` writes the saved calibration out as
 a C header. This is the cabled, bench path - for deployed DotBots, capture over
-the air with [`swarm lh2-calibration`](swarm.md) instead.
+the air with [`swarm calibrate-lh2`](swarm.md) instead.
 
 ```bash
-dotbot run lh2-calibration collect
-dotbot run lh2-calibration apply ./lh2_calibration.h
+dotbot run calibrate-lh2 collect
+dotbot run calibrate-lh2 apply ./lh2_calibration.h
 ```
 
 See [the cabled LH2 calibration guide](../guides/lh2-calibration-cabled.md). To
 capture without a cable, or to push a saved calibration to the fleet over the
-air, use [`swarm lh2-calibration`](swarm.md).
+air, use [`swarm calibrate-lh2`](swarm.md).
 
-## `camera-calibration` - register an overhead camera
+## `calibrate-camera` - register an overhead camera
 
 An overhead camera is registered against four printed ArUco sheets, one taped
 inside each corner of the area it covers. `sheets` renders the pages; `collect`
 finds the camera that sees them, reads them back and solves the homography from
 image pixels into the site's frame. Both run on your own machine and nothing
 here reaches a robot, which is why this sits under `run` beside
-`lh2-calibration`.
+`calibrate-lh2`.
 
 ```bash
-dotbot run camera-calibration sheets --out ./sheets     # print these at 100 %
-dotbot run camera-calibration collect --area dev-corner
+dotbot run calibrate-camera sheets --out ./sheets     # print these at 100 %
+dotbot run calibrate-camera collect --area dev-corner
 ```
 
 | Flag (`collect`) | Meaning |

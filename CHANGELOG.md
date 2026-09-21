@@ -21,10 +21,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   subcommands available as `dotbot testbed provision <fetch|flash|
   flash-hex|read-config|flash-bringup>`.
 - **Vendored `dotbot-lh2-calibration` (Python side)** into
-  `dotbot/calibration/`. Surfaced as `dotbot run lh2-calibration` with
+  `dotbot/calibration/`. Surfaced as `dotbot run calibrate-lh2` with
   two subcommands:
   - `collect` — runs the Textual TUI (default — bare
-    `dotbot run lh2-calibration` invokes this for muscle memory)
+    `dotbot run calibrate-lh2` invokes this for muscle memory)
   - `apply <path>` — write the saved calibration as a C header to
     `<path>` (replaces the previous `dotbot-calibration-exporter`;
     today the only consumer is the swarmit secure bootloader which
@@ -81,7 +81,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   device), `swarm` (the fleet), and `run` (host-side processes). The flat
   process verbs moved under `run`: `dotbot controller` → `dotbot run
   controller`, and likewise `gateway` / `simulator` / `demo` / `keyboard` /
-  `joystick`; `dotbot calibrate-lh2` → `dotbot run lh2-calibration`. The
+  `joystick`; `dotbot calibrate-lh2` → `dotbot run calibrate-lh2`. The
   Makefile escape hatch moved from `dotbot make` to `dotbot fw make`.
   `run` subcommands are still loaded lazily, so `dotbot run --help` stays
   cheap.

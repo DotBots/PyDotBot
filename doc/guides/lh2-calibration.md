@@ -33,9 +33,9 @@ to the whole fleet. Two steps:
 
 ```bash
 dotbot swarm stop                                  # put the DotBots in READY
-dotbot swarm lh2-calibration collect \
+dotbot swarm calibrate-lh2 collect \
     --device BC3D3C8A2A6F8E68 -d 500               # capture from one DotBot -> solve -> save
-dotbot swarm lh2-calibration push \
+dotbot swarm calibrate-lh2 push \
     ~/.dotbot/calibrations/calibration-<UTC>.toml  # apply to every ready DotBot
 ```
 
@@ -72,7 +72,7 @@ Once pushed, the DotBots report positions, which show up live in the
 | `--tag` | - | Arena/setup label (e.g. `office-2x2m`) added to the filename + metadata. |
 | `--push` | off | After solving, send to the captured `--device` DotBot **only** (use the standalone `push` for the whole fleet). |
 
-See `dotbot swarm lh2-calibration collect --help` for the full list.
+See `dotbot swarm calibrate-lh2 collect --help` for the full list.
 
 ## Sizing `-d`
 
