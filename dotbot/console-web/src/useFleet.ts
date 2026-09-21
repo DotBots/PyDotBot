@@ -49,6 +49,15 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
+// Either signal is enough: swarmit knows the board even in its bootloader,
+// and the controller knows the firmware even on a board swarmit cannot name.
+export function isDotBot(
+  py: PyDotBot | undefined,
+  sw: SwarmitNode | undefined,
+): boolean {
+  return (sw?.device.startsWith("DotBot") ?? false) || py?.application === 0;
+}
+
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
@@ -79,6 +88,7 @@ export function merge(
       led: py?.rgb_led ?? null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
+      footprint: isDotBot(py, sw),
       // Drivable = a DBP-speaking image is running. The control plane must be
       // hearing the bot, and either its sandbox is Running or it has no
       // sandbox at all (a bare-mode bot swarmit does not manage).

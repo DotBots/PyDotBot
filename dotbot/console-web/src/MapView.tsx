@@ -977,6 +977,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       <BotGlyph
                         color={stc}
                         heading={b.heading}
+                        footprint={b.footprint}
                         size={glyphPx}
                         level={level}
                       />
