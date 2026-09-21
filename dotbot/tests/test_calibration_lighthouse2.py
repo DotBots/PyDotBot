@@ -557,52 +557,79 @@ homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 
 """
 
 
-def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
-    """The receiver keys matrices by position, so station 2 in slot 1 is a 1.2 m error."""
-    import pytest
-
-    from dotbot.calibration.lighthouse2 import calibration_payload_int32
+def _wire_fixture(tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML as WIRE_TOML
 
     path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
-    only = read_calibration_file(path).stations[0]
-    gapped = replace(only, index=2)
+    path.write_text(WIRE_TOML, encoding="utf-8")
+    return read_calibration_file(path)
+
+
+def test_the_calibration_messages_are_pinned(tmp_path):
+    """The 84-byte messages, byte for byte; swarmit's packer pins the same."""
+    from dotbot.calibration.lighthouse2 import calibration_messages
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_ID, MESSAGE_HEX
+
+    calibration = _wire_fixture(tmp_path)
+    assert calibration.id == FIXTURE_ID
+
+    messages = calibration_messages(calibration)
+    assert [m.hex() for m in messages] == MESSAGE_HEX
+    assert all(len(m) == 84 for m in messages)
+
+
+def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
+    import struct
+
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _wire_fixture(tmp_path)
+    message = calibration_messages(calibration)[1]
+    count, index = struct.unpack_from("<II", message, 0)
+    assert (count, index) == (2, 1)
+    assert np.allclose(
+        np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3),
+        calibration.station(1).homography,
+        rtol=1e-7,
+    )
+    assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
+    assert message[60:76] == b"c405-arena" + bytes(6)
+    assert message[76:84] == bytes.fromhex("ac893d2d85e3068c")
+
+
+def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
+    """The receiver trusts slots 0 to count - 1, so station 2 alone leaves slot 0 empty."""
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _wire_fixture(tmp_path)
+    calibration.stations = [replace(calibration.stations[1], index=2)]
+    calibration.stored_id = ""
 
     with pytest.raises(ValueError, match="numbered from zero without gaps"):
-        calibration_payload_int32([gapped])
-
-    assert calibration_payload_int32([replace(only, index=0)])[0] == 1
+        calibration_messages(calibration)
 
 
-def test_the_cli_push_payload_goes_through_the_shim(tmp_path):
-    """`push` and `collect --push` send int32 x 1e3, never float32, until the firmware wave."""
-    from dotbot.calibration.lighthouse2 import (
-        calibration_payload_int32,
-        homography_as_bytes,
-    )
+def test_a_hand_edited_file_is_not_pushed_under_its_old_id(tmp_path):
+    from dotbot.calibration.lighthouse2 import calibration_messages
 
-    path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
-    calibration = read_calibration_file(path)
+    calibration = _wire_fixture(tmp_path)
+    calibration.stations[0].homography[0][0] = 1600.0
 
-    payload = calibration_payload_int32(calibration.stations)
-    assert payload == bytes([1]) + homography_as_bytes(calibration.stations[0].matrix)
-    assert len(payload) == 37
+    with pytest.raises(ValueError, match="does not match its content"):
+        calibration_messages(calibration)
 
 
-def test_the_int32_shim_is_the_only_quantised_path(tmp_path):
-    """The shim carries a schema 2 file to firmware that still reads int32."""
-    from dotbot.calibration.lighthouse2 import homography_as_bytes
+@pytest.mark.parametrize(
+    "name", ["", "a-site-name-longer-than-16", "caf\u00e9"], ids=["empty", "long", "ascii"]
+)
+def test_a_site_name_a_robot_cannot_store_is_refused(name):
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
 
-    path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
-    calibration = read_calibration_file(path)
+    with pytest.raises(ValueError):
+        site_name_as_bytes(name)
 
-    packed = homography_as_bytes(calibration.stations[0].matrix)
-    assert len(packed) == 36
-    elements = [
-        int.from_bytes(packed[i : i + 4], "little", signed=True)
-        for i in range(0, 36, 4)
-    ]
-    assert elements[0] == 1523400
-    assert elements[8] == 1000
+
+def test_a_sixteen_character_site_name_fills_the_field_without_a_nul():
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
+
+    assert site_name_as_bytes("demo-dcoss-2026x") == b"demo-dcoss-2026x"

@@ -26,7 +26,7 @@ from dotbot.calibration.lighthouse2 import (
     LighthouseManager,
     Placement,
     StationSolution,
-    calibration_payload_int32,
+    calibration_payload,
     read_calibration_file,
 )
 from dotbot.calibration.ota import (
@@ -90,6 +90,7 @@ class CalibrationSession:
     unsolved: list[tuple[int, int]] = field(default_factory=list)
     saved_path: str | None = None
     saved_id: str = ""
+    saved: Calibration | None = None
     # The predictor of the plan's accuracy section is a later phase, so the
     # number is absent rather than guessed, and a renderer shows the line
     # only when it is one.
@@ -156,6 +157,7 @@ class CalibrationSession:
         self.stations = []
         self.saved_path = None
         self.saved_id = ""
+        self.saved = None
         return point
 
     def store_records(self, records: list) -> SessionPoint | None:
@@ -208,6 +210,7 @@ class CalibrationSession:
         self.stations = []
         self.saved_path = None
         self.saved_id = ""
+        self.saved = None
         return point
 
     # -- solving and saving
@@ -259,6 +262,7 @@ class CalibrationSession:
         calibration = read_calibration_file(path)
         self.saved_path = str(path)
         self.saved_id = calibration.id
+        self.saved = calibration
         return calibration
 
     # -- the shape every client renders
@@ -304,15 +308,10 @@ class CalibrationSession:
         return "collecting"
 
     def push_payload(self) -> bytes:
-        """The bytes a saved calibration reaches today's firmware as.
-
-        The int32 shim: matrices go out scaled by 1e3, which is what the
-        bootloader in the field reads. The firmware wave replaces it with
-        float32.
-        """
-        if not self.stations:
-            raise SessionError("nothing solved yet, so there is nothing to push")
-        return calibration_payload_int32(self.stations)
+        """The saved calibration as the float32 calibration messages."""
+        if self.saved is None:
+            raise SessionError("nothing saved yet, so there is nothing to push")
+        return calibration_payload(self.saved)
 
 
 def placement_dict(index: int, placement: PointPlacement) -> dict:

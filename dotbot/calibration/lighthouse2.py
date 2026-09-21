@@ -19,6 +19,7 @@ import datetime
 import hashlib
 import math
 import re
+import struct
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -309,46 +310,128 @@ def reprojection_residual_mm(
     return float(np.sqrt(np.mean(errors**2)))
 
 
-def homography_as_bytes(matrix: np.ndarray) -> bytes:
-    """THE SHIM: pack a homography as nine int32, the value times 1e3, truncated.
+# --- Wire -------------------------------------------------------------------
 
-    The only place a homography is quantised, and it exists solely so a
-    schema 2 calibration can reach firmware that still reads the int32 x 1e3
-    encoding. It is deleted in the float32 firmware wave, along with its
-    callers: the controller's push payload, the config-page writer and
-    `calibration_payload_int32`, which the CLI push sends.
-    """
-    matrix_bytes = bytearray()
+# One calibration message per station, `swrmt_lh2_calibration_data_t` in the
+# swarmit netcore: count, index, the matrix, then the site fields every
+# message of a push repeats. swarmit's `helpers.py` packs the same bytes; the
+# fixture test in each repo pins them.
+LH2_SITE_NAME_BYTES = 16
+LH2_CALIBRATION_ID_BYTES = 8
+LH2_CALIBRATION_MESSAGE_BYTES = 84
+
+
+def homography_as_float32(matrix: Sequence[Sequence[float]]) -> bytes:
+    """A 3x3 homography as nine little-endian float32, row-major."""
+    flat = [float(v) for row in np.asarray(matrix, dtype=np.float64) for v in row]
+    if len(flat) != 9:
+        raise ValueError(f"a homography is 3x3, got {len(flat)} elements")
+    return struct.pack("<9f", *flat)
+
+
+def valid_mm_as_bytes(valid_mm: Sequence[int]) -> bytes:
+    """`[x_min, y_min, x_max, y_max]` as four little-endian uint32."""
+    values = [int(v) for v in valid_mm]
+    if len(values) != 4:
+        raise ValueError(f"valid_mm takes four values, got {len(values)}")
+    if any(v < 0 or v > 0xFFFFFFFF for v in values):
+        raise ValueError(f"valid_mm values must fit a uint32, got {values}")
+    if values[0] > values[2] or values[1] > values[3]:
+        raise ValueError(f"valid_mm is [x_min, y_min, x_max, y_max], got {values}")
+    return struct.pack("<4I", *values)
+
+
+def site_name_as_bytes(name: str) -> bytes:
+    """The site name as the bot stores it: ASCII, NUL-padded to 16 bytes."""
     try:
-        for bytes_block in [
-            int(n * 1e3).to_bytes(4, "little", signed=True) for n in matrix.ravel()
-        ]:
-            matrix_bytes += bytes_block
-    except Exception:  # noqa: BLE001 - defensive fallback for overflow
-        matrix_bytes = bytearray(36)
-    return matrix_bytes
+        raw = name.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"site name {name!r} is not ASCII") from exc
+    if not raw or len(raw) > LH2_SITE_NAME_BYTES:
+        raise ValueError(
+            f"site name {name!r} must be 1 to {LH2_SITE_NAME_BYTES} characters "
+            "to reach a robot"
+        )
+    return raw.ljust(LH2_SITE_NAME_BYTES, b"\x00")
 
 
-def calibration_payload_int32(stations) -> bytes:
-    """The push payload for firmware that reads int32 x 1e3.
+def calibration_id_as_bytes(calibration_id: str) -> bytes:
+    """The first 8 bytes of a 16-hex-character calibration id."""
+    try:
+        raw = bytes.fromhex(calibration_id[: 2 * LH2_CALIBRATION_ID_BYTES])
+    except ValueError as exc:
+        raise ValueError(f"calibration id {calibration_id!r} is not hex") from exc
+    if len(raw) != LH2_CALIBRATION_ID_BYTES:
+        raise ValueError(
+            f"calibration id {calibration_id!r} is shorter than "
+            f"{2 * LH2_CALIBRATION_ID_BYTES} hex characters"
+        )
+    return raw
 
-    A count byte, then `homography_as_bytes` per station in index order.
-    The receiver keys the matrices by position, so a station's index must
-    equal its position: a gap would hand one station's map to another,
-    which no length check can see.
+
+def pushed_id(calibration: Calibration) -> str:
+    """The id a robot stores for `calibration`: the one its file declares.
+
+    A declared id that is not the content's own means the file was edited by
+    hand into a different calibration, and a robot holding it would name a
+    file that does not describe what it runs.
     """
-    ordered = sorted(stations, key=lambda s: s.index)
+    if calibration.stored_id and calibration.stored_id.lower() != calibration.id:
+        raise ValueError(
+            f"{calibration.path or 'calibration'}: metadata.id "
+            f"{calibration.stored_id} does not match its content "
+            f"({calibration.id}); the file was edited after it was written"
+        )
+    return calibration.id
+
+
+def pushable_stations(calibration: Calibration) -> list[StationSolution]:
+    """The stations in index order, refused when a robot would mis-key them.
+
+    The receiver stores a matrix at its index and takes the count as "slots
+    0 to count - 1 are valid", so a gap in the numbering would leave a slot
+    the count claims and nothing filled.
+    """
+    ordered = sorted(calibration.stations, key=lambda s: s.index)
     if not ordered:
         raise ValueError("calibration carries no solved station")
+    if len(ordered) > LH2_BASESTATION_COUNT_MAX:
+        raise ValueError(
+            f"{len(ordered)} stations exceeds the LH2 limit "
+            f"({LH2_BASESTATION_COUNT_MAX})"
+        )
     if [s.index for s in ordered] != list(range(len(ordered))):
         got = ", ".join(str(s.index) for s in ordered)
         raise ValueError(
             f"stations must be numbered from zero without gaps to be pushed, got {got}"
         )
-    payload = bytearray([len(ordered)])
-    for station in ordered:
-        payload += homography_as_bytes(station.matrix)
-    return bytes(payload)
+    return ordered
+
+
+def site_fields_as_bytes(calibration: Calibration) -> bytes:
+    """valid_mm, site name and id: the 40 bytes after every matrix."""
+    return (
+        valid_mm_as_bytes(calibration.valid_mm)
+        + site_name_as_bytes(calibration.site.name)
+        + calibration_id_as_bytes(pushed_id(calibration))
+    )
+
+
+def calibration_messages(calibration: Calibration) -> list[bytes]:
+    """One 84-byte calibration message per station, in index order."""
+    stations = pushable_stations(calibration)
+    site_fields = site_fields_as_bytes(calibration)
+    return [
+        struct.pack("<II", len(stations), station.index)
+        + homography_as_float32(station.homography)
+        + site_fields
+        for station in stations
+    ]
+
+
+def calibration_payload(calibration: Calibration) -> bytes:
+    """What `send_lh2_calibration` takes: the messages, concatenated."""
+    return b"".join(calibration_messages(calibration))
 
 
 def _slug_tag(tag: str) -> str:
