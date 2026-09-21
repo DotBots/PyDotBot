@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot run lh2-calibration` - LH2 calibration.
+"""`dotbot run lh2-calibration` - LH2 calibration (deprecated).
+
+Deprecated in favour of `dotbot swarm lh2-calibration`, which calibrates
+over the air with no cable and no firmware swap. This path stays for a
+single board on the bench, before a swarm exists.
 
 Native subgroup mounting the vendored `dotbot.calibration` package, for
 single-device calibration over either transport.
@@ -48,7 +52,10 @@ def _run_tui(ctx: click.Context) -> None:
 
 @click.group(
     name="lh2-calibration",
-    help="LH2 calibration for one serial-attached device: capture.",
+    help=(
+        "DEPRECATED - cabled LH2 calibration for one serial-attached "
+        "device. Prefer `dotbot swarm lh2-calibration`, which needs no cable."
+    ),
     invoke_without_command=True,
 )
 @click.pass_context

@@ -6,6 +6,9 @@ you're working with one DotBot on the bench, or before the fleet is set up. For
 already-deployed DotBots, prefer the over-the-air flow - no cable, no firmware
 swap.
 
+> **Deprecated.** The cabled path is kept for bench work before a swarm
+> exists. The supported path is [over the air](lh2-calibration.md).
+
 What LH2 calibration is, and the arena geometry (the `-d` square sizing), are
 covered in the [main guide](lh2-calibration.md); this page is just the cabled
 capture path.

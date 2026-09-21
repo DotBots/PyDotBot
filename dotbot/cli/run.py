@@ -45,7 +45,8 @@ _RUN_SUBCOMMANDS = (
     (
         "lh2-calibration",
         "dotbot.cli.calibrate",
-        "LH2 calibration: capture, apply, export (serial-side / single device).",
+        "DEPRECATED - cabled single-device LH2 calibration; prefer "
+        "`swarm lh2-calibration`.",
     ),
     (
         "camera-calibration",
