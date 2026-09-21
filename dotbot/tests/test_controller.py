@@ -350,7 +350,7 @@ def test_controller_loads_the_calibration_named_by_id(
         network_id="0",
         gw_address="78",
         site=Site(name="site-a"),
-        calibration=written.id8,
+        lh2_calibration=written.id8,
     )
     controller = Controller(settings)
 
@@ -387,7 +387,7 @@ def test_controller_loads_the_calibration_named_by_id(
 
 
 def test_controller_with_no_calibration_loads_nothing(serial_mock):
-    """No --calibration and no config key: nothing is loaded, and it is said."""
+    """No --lh2-calibration and no config key: nothing is loaded, and it is said."""
     settings = ControllerSettings(
         port="/dev/null", baudrate=115200, network_id="0", gw_address="78"
     )
@@ -466,7 +466,7 @@ def _camera_site():
 def test_controller_serves_the_camera_layer_named_by_id(
     tmp_path, monkeypatch, serial_mock
 ):
-    """An id prefix resolves under calibrations/<site>/, as --calibration does."""
+    """An id prefix resolves under calibrations/<site>/, as --lh2-calibration does."""
     import cv2
     import numpy as np
 

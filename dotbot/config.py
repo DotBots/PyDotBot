@@ -175,7 +175,7 @@ class SiteSection(_Strict):
 class ControllerSection(_Strict):
     http_port: int | None = None
     http_host: str | None = None
-    calibration: str | None = None
+    lh2_calibration: str | None = None
     camera_calibration: str | None = None
     background_map: str | None = None
     log_output: str | None = None

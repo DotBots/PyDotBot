@@ -265,7 +265,7 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
     if kind != CAMERA_KIND:
         raise ValueError(
             f"{path}: not a camera calibration (kind {kind!r}). A lighthouse "
-            "calibration goes to --calibration, a camera one here."
+            "calibration goes to --lh2-calibration, a camera one here."
         )
     schema = data.get("schema_version", 0)
     if schema != CAMERA_SCHEMA_VERSION:

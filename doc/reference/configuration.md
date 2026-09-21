@@ -124,7 +124,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] http_port` | REST/WebSocket port (default 8000). |
 | `[run.controller] http_host` | Interface the REST/WebSocket API binds to (default `127.0.0.1`). `0.0.0.0` exposes it to the network; the API is unauthenticated. |
 | `[run.controller] background_map` | Background map image. |
-| `[run.controller] calibration` | Lighthouse calibration to run on: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. |
+| `[run.controller] lh2_calibration` | Lighthouse calibration to run on: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. |
 | `[run.controller] camera_calibration` | Overhead camera registration to draw on the map, same form. Written by `dotbot run camera-calibration collect`. |
 | `[run.controller] log_output` | Log output path. |
 | `[run.controller] csv_data_output` | CSV data output path. A registered camera writes a second file, `<name>-camera.csv`, beside it, with a `<name>-camera.toml` sidecar pinning the geometry and the frames its columns are in. |

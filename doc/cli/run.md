@@ -42,8 +42,8 @@ dotbot run controller --conn /dev/ttyACM0
 | `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
 | `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file. A registered camera also writes `<name>-camera.csv` beside it, with a `<name>-camera.toml` sidecar saying what the columns mean. |
+| `--lh2-calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] lh2_calibration`. |
 | `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run camera-calibration collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
-| `--calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] calibration`. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
 | `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
 

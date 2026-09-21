@@ -138,7 +138,7 @@ class ControllerSettings:
     controller_http_port: int = CONTROLLER_HTTP_PORT_DEFAULT
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
-    calibration: Optional[str] = None
+    lh2_calibration: Optional[str] = None
     camera_calibration: Optional[str] = None
     background_map: str = ""
     headless: bool = False
@@ -214,9 +214,9 @@ class Controller:
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
-        if settings.calibration:
+        if settings.lh2_calibration:
             self.calibration = load_calibration(
-                settings.calibration, site=self.site.name
+                settings.lh2_calibration, site=self.site.name
             )
             self.lh2_calibration = self.calibration.stations
             self.logger.info(
@@ -229,7 +229,7 @@ class Controller:
         else:
             self.logger.info(
                 "No calibration selected: robots keep whatever they hold. "
-                "Pass --calibration <path|id> or set [run.controller] calibration."
+                "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
         self.cameras: List[CameraService] = []
         # The warp each camera's last pushed detection came from, so a

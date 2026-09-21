@@ -239,7 +239,7 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     ),
 )
 @click.option(
-    "--calibration",
+    "--lh2-calibration",
     type=str,
     help=(
         "The LH2 calibration this session runs on: a file path or the id "
@@ -310,7 +310,7 @@ def main(
     controller_http_port,
     controller_http_host,
     site,
-    calibration,
+    lh2_calibration,
     camera_calibration,
     background_map,
     simulator_init_state,
@@ -345,14 +345,14 @@ def main(
 
     unified = (ctx.obj or {}).get("config")
     site, site_source = site_from_context(ctx, site)
-    calibration, calibration_source = _resolve_controller_key(
-        "calibration", calibration, unified, None
+    lh2_calibration, calibration_source = _resolve_controller_key(
+        "lh2_calibration", lh2_calibration, unified, None
     )
     print(f"Site: {site.name} (from {site_source})")
     print(
-        f"Calibration: {calibration} (from {calibration_source})"
-        if calibration
-        else "Calibration: none selected"
+        f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
+        if lh2_calibration
+        else "LH2 calibration: none selected"
     )
     camera_calibration, camera_source = _resolve_controller_key(
         "camera_calibration", camera_calibration, unified, None
@@ -396,7 +396,7 @@ def main(
         "controller_http_port": controller_http_port,
         "controller_http_host": controller_http_host,
         "site": site,
-        "calibration": calibration,
+        "lh2_calibration": lh2_calibration,
         "camera_calibration": camera_calibration,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
