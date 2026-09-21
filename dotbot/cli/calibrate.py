@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot run lh2-calibration` - LH2 calibration (deprecated).
+"""`dotbot run calibrate-lh2` - LH2 calibration (deprecated).
 
 Deprecated in favour of `dotbot swarm calibrate-lh2`, which calibrates
 over the air with no cable and no firmware swap. This path stays for a
@@ -36,7 +36,7 @@ def _run_tui(ctx: click.Context) -> None:
         from dotbot.calibration.cli import main as _tui_main
     except ImportError as exc:
         click.echo(
-            "`dotbot run lh2-calibration collect` needs the calibration "
+            "`dotbot run calibrate-lh2 collect` needs the calibration "
             "runtime deps (opencv-python, textual).\n"
             "Install with:  pip install pydotbot[calibrate]",
             err=True,
@@ -51,7 +51,7 @@ def _run_tui(ctx: click.Context) -> None:
 
 
 @click.group(
-    name="lh2-calibration",
+    name="calibrate-lh2",
     help=(
         "DEPRECATED - cabled LH2 calibration for one serial-attached "
         "device. Prefer `dotbot swarm calibrate-lh2`, which needs no cable."
@@ -62,7 +62,7 @@ def _run_tui(ctx: click.Context) -> None:
 def cmd(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
-    # Bare `dotbot run lh2-calibration` with no subcommand defaults to
+    # Bare `dotbot run calibrate-lh2` with no subcommand defaults to
     # collect — the most common action — so it works without recalling
     # the subcommand name.
     _run_tui(ctx)

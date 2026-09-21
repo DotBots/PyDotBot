@@ -50,7 +50,7 @@ EXPECTED_RUN_SUBCOMMANDS = {
     "controller",
     "gateway",
     "simulator",
-    "lh2-calibration",
+    "calibrate-lh2",
     "camera-calibration",
     "demo",
     "keyboard",
@@ -296,7 +296,7 @@ def test_python_m_dotbot_cli_version_subprocess():
 
 
 def test_lh2_calibration_missing_extras_prints_hint(runner, monkeypatch):
-    """When [calibrate] extras aren't installed, `dotbot run lh2-calibration`
+    """When [calibrate] extras aren't installed, `dotbot run calibrate-lh2`
     (default `collect`) exits 1 with a pip-install hint instead of a
     traceback."""
     # Simulate the dotbot.calibration.cli module being unavailable.
@@ -304,15 +304,15 @@ def test_lh2_calibration_missing_extras_prints_hint(runner, monkeypatch):
     # `from name import ...` raise ImportError per CPython's import
     # protocol — same condition as a real missing extra.
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
-    result = runner.invoke(cli, ["run", "lh2-calibration"])
+    result = runner.invoke(cli, ["run", "calibrate-lh2"])
     assert result.exit_code == 1, result.output
     assert "pip install pydotbot[calibrate]" in result.output
 
 
 def test_lh2_calibration_collect_missing_extras_prints_hint(runner, monkeypatch):
-    """`dotbot run lh2-calibration collect` is the explicit alias for the
+    """`dotbot run calibrate-lh2 collect` is the explicit alias for the
     default; same install-hint fallback when extras are missing."""
     monkeypatch.setitem(sys.modules, "dotbot.calibration.cli", None)
-    result = runner.invoke(cli, ["run", "lh2-calibration", "collect"])
+    result = runner.invoke(cli, ["run", "calibrate-lh2", "collect"])
     assert result.exit_code == 1, result.output
     assert "pip install pydotbot[calibrate]" in result.output

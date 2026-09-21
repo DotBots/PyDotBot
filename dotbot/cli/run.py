@@ -43,7 +43,7 @@ _RUN_SUBCOMMANDS = (
         "Standalone simulator (≡ run controller --conn simulator).",
     ),
     (
-        "lh2-calibration",
+        "calibrate-lh2",
         "dotbot.cli.calibrate",
         "DEPRECATED - cabled single-device LH2 calibration; prefer "
         "`swarm calibrate-lh2`.",
