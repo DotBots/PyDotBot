@@ -42,6 +42,24 @@ def _run_swarmit(
     swarmit_group.main(args=args, prog_name="dotbot swarm", standalone_mode=True)
 
 
+def _deprecate_swarmit_calibrate(swarmit_group) -> None:
+    """Point swarmit's own `calibrate-lh2` at the PyDotBot-native command.
+
+    swarmit owns `calibrate-lh2`, but collecting and solving a calibration
+    lives here, so `swarm lh2-calibration push` is what an operator wants.
+    The mount boundary is the only place `dotbot swarm` users see it.
+    """
+    legacy = swarmit_group.commands.get("calibrate-lh2")
+    if legacy is None:
+        return
+    legacy.short_help = "Do not use; prefer `dotbot swarm lh2-calibration`."
+    legacy.epilog = (
+        "\b\n"
+        "Prefer `dotbot swarm lh2-calibration push <FILE>`, which resolves a\n"
+        "calibration by id prefix and shares the site config."
+    )
+
+
 def _with_config_injection(swarmit_group):
     """Wrap the swarmit group so `dotbot swarm` injects config-driven conn/swarm_id.
 
@@ -49,6 +67,7 @@ def _with_config_injection(swarmit_group):
     connection (unless the user gave it explicitly), and re-invokes swarmit.
     `--help` and subcommand help flow straight through.
     """
+    _deprecate_swarmit_calibrate(swarmit_group)
 
     @click.command(
         name="swarm",
