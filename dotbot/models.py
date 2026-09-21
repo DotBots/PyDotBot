@@ -12,7 +12,7 @@
 from enum import IntEnum
 from typing import Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dotbot.protocol import ApplicationType, ControlModeType
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
@@ -39,6 +39,13 @@ class DotBotMoveRawCommandModel(BaseModel):
     left_y: int
     right_x: int
     right_y: int
+
+
+class DotBotWheelVelocityCommandModel(BaseModel):
+    """Model class that defines a wheel velocity command, in mm/s per wheel."""
+
+    left_mm_s: int = Field(ge=-800, le=800)
+    right_mm_s: int = Field(ge=-800, le=800)
 
 
 class DotBotRgbLedCommandModel(BaseModel):

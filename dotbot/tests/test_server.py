@@ -15,6 +15,7 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotMoveRawCommandModel,
+    DotBotWheelVelocityCommandModel,
     DotBotRgbLedCommandModel,
     DotBotWaypoints,
     WSMoveRaw,
@@ -24,6 +25,7 @@ from dotbot.models import (
 from dotbot.protocol import (
     ApplicationType,
     PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
     PayloadCommandRgbLed,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
@@ -60,6 +62,63 @@ def controller():
 async def test_openapi_exists():
     response = await client.get("/api")
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "dotbots,code,found",
+    [
+        pytest.param(
+            {
+                "4242": DotBotModel(
+                    address="4242",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            200,
+            True,
+            id="found",
+        ),
+        pytest.param(
+            {
+                "56789": DotBotModel(
+                    address="56789",
+                    application=ApplicationType.DotBot,
+                    swarm="0000",
+                    last_seen=123.4,
+                ),
+            },
+            404,
+            False,
+            id="not_found",
+        ),
+    ],
+)
+async def test_set_dotbots_wheel_velocity(dotbots, code, found):
+    api.controller.dotbots = dotbots
+    address = "4242"
+    command = DotBotWheelVelocityCommandModel(left_mm_s=-150, right_mm_s=200)
+    payload = PayloadCommandWheelVelocity(left_mm_s=-150, right_mm_s=200)
+    response = await client.put(
+        f"/controller/dotbots/{address}/0/wheel_velocity",
+        json=command.model_dump(),
+    )
+    assert response.status_code == code
+    if found is True:
+        api.controller.send_payload.assert_called_with(int(address, 16), payload)
+    else:
+        api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_dotbots_wheel_velocity_out_of_range():
+    response = await client.put(
+        "/controller/dotbots/4242/0/wheel_velocity",
+        json={"left_mm_s": 900, "right_mm_s": 0},
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

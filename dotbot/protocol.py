@@ -33,6 +33,7 @@ class PayloadType(IntEnum):
     CMD_XGO_ACTION = 0x0B
     LH2_PROCESSED_DATA = 0x0C
     LH2_CALIBRATION_HOMOGRAPHY = 0x0E
+    CMD_WHEEL_VELOCITY = 0x0F
     RAW_DATA = 0x10
     DOTBOT_SIMULATOR_DATA = 0xFA
 
@@ -125,6 +126,21 @@ class PayloadCommandMoveRaw(Payload):
     left_y: int = 0
     right_x: int = 0
     right_y: int = 0
+
+
+@dataclass
+class PayloadCommandWheelVelocity(Payload):
+    """Dataclass that holds a wheel velocity command, in mm/s per wheel."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="left_mm_s", disp="l", length=2, signed=True),
+            PayloadFieldMetadata(name="right_mm_s", disp="r", length=2, signed=True),
+        ]
+    )
+
+    left_mm_s: int = 0
+    right_mm_s: int = 0
 
 
 @dataclass
@@ -335,6 +351,7 @@ class PayloadRawData(Payload):
 register_parser(PayloadType.ADVERTISEMENT, PayloadAdvertisement)
 register_parser(PayloadType.CMD_MOVE_RAW, PayloadCommandMoveRaw)
 register_parser(PayloadType.CMD_RGB_LED, PayloadCommandRgbLed)
+register_parser(PayloadType.CMD_WHEEL_VELOCITY, PayloadCommandWheelVelocity)
 register_parser(PayloadType.CMD_XGO_ACTION, PayloadCommandXgoAction)
 register_parser(PayloadType.LH2_PROCESSED_DATA, PayloadLh2ProcessedLocation)
 register_parser(PayloadType.DOTBOT_ADVERTISEMENT, PayloadDotBotAdvertisement)
