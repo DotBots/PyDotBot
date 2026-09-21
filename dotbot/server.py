@@ -47,6 +47,7 @@ from dotbot.models import (
     DotBotConnectionModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
+    DotBotWheelVelocityCommandModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
@@ -63,6 +64,7 @@ from dotbot.models import (
 from dotbot.protocol import (
     ApplicationType,
     PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
     PayloadCommandRgbLed,
     PayloadGPSPosition,
     PayloadGPSWaypoints,
@@ -147,6 +149,25 @@ def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
     )
     api.controller.send_payload(int(address, 16), payload)
     api.controller.dotbots[address].move_raw = command
+
+
+@api.put(
+    path="/controller/dotbots/{address}/{application}/wheel_velocity",
+    summary="Set the speed of each wheel, in mm/s",
+    tags=["dotbots"],
+)
+async def dotbots_wheel_velocity(
+    address: str, application: int, command: DotBotWheelVelocityCommandModel
+):
+    """Hand the DotBot's wheel speeds to its onboard wheel loop."""
+    if address not in api.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+    api.controller.send_payload(
+        int(address, 16),
+        PayloadCommandWheelVelocity(
+            left_mm_s=command.left_mm_s, right_mm_s=command.right_mm_s
+        ),
+    )
 
 
 @api.put(

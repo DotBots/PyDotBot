@@ -17,6 +17,7 @@ from dotbot.protocol import (
     ControlModeType,
     PayloadAdvertisement,
     PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
     PayloadCommandRgbLed,
     PayloadCommandXgoAction,
     PayloadControlMode,
@@ -108,6 +109,18 @@ def test_parse_header(bytes_, expected):
             PayloadType.CMD_MOVE_RAW,
             PayloadCommandMoveRaw(left_x=0, left_y=66, right_x=0, right_y=66),
             id="PayloadMoveRaw",
+        ),
+        pytest.param(
+            b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x0f\x6a\xff\xc8\x00",
+            Header(
+                version=4,
+                type_=2,
+                destination=0x1122221111111111,
+                source=0x1212121212121212,
+            ),
+            PayloadType.CMD_WHEEL_VELOCITY,
+            PayloadCommandWheelVelocity(left_mm_s=-150, right_mm_s=200),
+            id="PayloadWheelVelocity",
         ),
         pytest.param(
             b"\x04\x02\x11\x11\x11\x11\x11\x22\x22\x11\x12\x12\x12\x12\x12\x12\x12\x12\x01\x42\x42\x42",

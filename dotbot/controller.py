@@ -611,6 +611,7 @@ class Controller:
         if frame.packet.payload_type in [
             PayloadType.CMD_MOVE_RAW,
             PayloadType.CMD_RGB_LED,
+            PayloadType.CMD_WHEEL_VELOCITY,
         ]:
             return
         source = addr_to_hex(int(frame.header.source))

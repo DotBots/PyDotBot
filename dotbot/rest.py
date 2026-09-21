@@ -125,6 +125,10 @@ class RestClient:
         """Send a move raw command to a DotBot."""
         await self._send_command(address, application, "move_raw", command)
 
+    async def send_wheel_velocity_command(self, address, application, command):
+        """Send a wheel velocity command, in mm/s per wheel, to a DotBot."""
+        await self._send_command(address, application, "wheel_velocity", command)
+
     async def send_rgb_led_command(self, address, command):
         """Send an RGB LED command to a DotBot."""
         await self._send_command(address, ApplicationType.SailBot, "rgb_led", command)
