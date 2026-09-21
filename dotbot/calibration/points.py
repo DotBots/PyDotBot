@@ -183,6 +183,7 @@ def collect_header(
         "where the photodiode lands with the robot inside the rectangle, its "
         "PCB edges resting on the rectangle's edge lines and its nose toward "
         "the nearest top or bottom edge.\n"
-        "Stop the robot's app first (capture only runs in READY).\n"
+        "Enter captures with the robot's app stopped (READY); with the calibrate "
+        "app running, the robot's own button captures instead.\n"
         f"{total} point(s), {reads} reads each, in the order listed.\n"
     )

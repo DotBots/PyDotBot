@@ -28,7 +28,9 @@ extra; ImportError at invocation prints an install hint instead of a
 traceback.
 """
 
+import queue
 import sys
+import threading
 import time
 
 import click
@@ -66,6 +68,50 @@ def _swarmit_client(ctx, conn, swarm_id, device=None):
 )
 def cmd() -> None:
     pass
+
+
+def _await_point(session, stream, arrivals: queue.Queue):
+    """Capture the outstanding point from whichever trigger comes first.
+
+    Enter runs the READY-mode capture of the named device; a capture from any
+    robot's button is stored as the point directly.
+    """
+    from dotbot.calibration.session import SessionError
+
+    while True:
+        try:
+            kind, capture = arrivals.get(timeout=0.5)
+        except queue.Empty:
+            for addr, press in stream.expired_presses():
+                click.echo(
+                    f"  ! incomplete capture from {addr} (press {press}): a "
+                    "chunk never arrived; press again",
+                    err=True,
+                )
+            continue
+        if kind == "eof":
+            raise click.Abort()
+        if kind == "enter":
+            try:
+                return session.capture(stream)
+            except TimeoutError as exc:
+                click.echo(f"  ! {exc}", err=True)
+                raise click.Abort()
+        if capture.lost:
+            click.echo(
+                f"  ! {capture.device}: {capture.lost} capture(s) lost before "
+                f"press {capture.press}",
+                err=True,
+            )
+        try:
+            point = session.store_reads(capture.reads)
+        except SessionError as exc:
+            click.echo(f"  ! {exc}", err=True)
+            continue
+        if point is None:
+            continue
+        click.echo(f"  received from {capture.device} as point {point.index}")
+        return point
 
 
 @cmd.command(
@@ -213,8 +259,20 @@ def _collect(
         click.echo(f"Could not reach the swarm: {exc}", err=True)
         sys.exit(1)
 
+    arrivals: queue.Queue = queue.Queue()
+
+    def on_button_capture(capture) -> None:
+        arrivals.put(("button", capture))
+
+    def read_enter() -> None:
+        for _ in iter(sys.stdin.readline, ""):
+            arrivals.put(("enter", None))
+        arrivals.put(("eof", None))
+
     with client:
-        with CaptureSession(client, device, LH2_CALIB_TAG) as stream:
+        with CaptureSession(
+            client, device, LH2_CALIB_TAG, on_button_capture=on_button_capture
+        ) as stream:
             # Give the transport's own connect/subscribe log lines a beat to
             # print before our prompts, so the two don't interleave on screen.
             time.sleep(0.2)
@@ -223,24 +281,18 @@ def _collect(
                     site, site_source, len(session.points), session.reads, device
                 )
             )
+            threading.Thread(target=read_enter, daemon=True).start()
             while not session.complete:
                 outstanding = session.outstanding
-                click.prompt(
+                click.echo(
                     "  "
                     + point_prompt(
                         outstanding.index,
                         len(session.points),
                         outstanding.placement,
-                    ),
-                    default="",
-                    show_default=False,
-                    prompt_suffix="",
+                    )
                 )
-                try:
-                    point = session.capture(stream)
-                except TimeoutError as exc:
-                    click.echo(f"  ! {exc}", err=True)
-                    raise click.Abort()
+                point = _await_point(session, stream, arrivals)
                 for sample in point.capture.samples:
                     counts = sample.mean_counts()
                     click.echo(

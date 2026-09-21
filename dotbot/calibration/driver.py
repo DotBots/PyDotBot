@@ -8,7 +8,7 @@ routes. It owns the swarmit client, built on first capture rather than at
 start so a controller with no fleet in reach still serves the routes; it
 turns every state change into exactly one WebSocket notification, in the
 order the changes happened; and it routes a capture that arrives from the
-robot's own trigger to the outstanding point.
+robot's own button to the outstanding point.
 
 The blocking capture runs in a worker thread. Progress is published from
 there by handing the coroutine back to the loop and waiting for it, so the
@@ -198,25 +198,37 @@ class SessionDriver:
 
     # -- the robot's own trigger
 
-    def on_idle_records(self, records: list) -> None:
-        """A capture that arrived without a request: point k, or dropped."""
+    def on_button_capture(self, capture: Any) -> None:
+        """A capture from the robot's own button: point k, or dropped."""
         session = self.session
         if session is None:
             self.logger.info(
-                "LH2 capture arrived with no calibration session open; dropped",
-                records=len(records),
+                "LH2 button capture arrived with no calibration session open; dropped",
+                device=capture.device,
             )
             return
-        point = session.store_records(records)
-        if point is None:
+        if capture.lost:
+            self.logger.warning(
+                "LH2 button captures lost", device=capture.device, lost=capture.lost
+            )
+        try:
+            point = session.store_reads(capture.reads)
+        except SessionError as exc:
+            session.error = str(exc)
+            point = None
+        else:
+            if point is None:
+                self.logger.info(
+                    "LH2 button capture arrived with every point captured; dropped",
+                    device=capture.device,
+                )
+                return
+            session.error = ""
             self.logger.info(
-                "LH2 capture arrived with every point captured; dropped",
-                records=len(records),
+                "LH2 capture stored from the robot's own button",
+                device=capture.device,
+                point=point.index,
             )
-            return
-        self.logger.info(
-            "LH2 capture stored from the robot's own trigger", point=point.index
-        )
         if self._loop is not None:
             asyncio.run_coroutine_threadsafe(self._emit(), self._loop)
 
@@ -241,7 +253,7 @@ class SessionDriver:
     def _ensure_stream(self, device: str) -> Any:
         client = self._ensure_client(device)
         if self._stream is None:
-            self._stream = self._stream_factory(client, device, self.on_idle_records)
+            self._stream = self._stream_factory(client, device, self.on_button_capture)
             self._stream.__enter__()
         return self._stream
 
@@ -255,9 +267,9 @@ class SessionDriver:
         self._loop = loop
 
 
-def _default_stream(client: Any, device: str, on_idle_records: Callable) -> Any:
+def _default_stream(client: Any, device: str, on_button_capture: Callable) -> Any:
     from dotbot.calibration.ota import CaptureSession
 
     return CaptureSession(
-        client, device, capture_tag(), on_idle_records=on_idle_records
+        client, device, capture_tag(), on_button_capture=on_button_capture
     )

@@ -20,7 +20,11 @@ import pytest
 from dotbot.area import Area
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.driver import SessionDriver
-from dotbot.calibration.ota import CaptureSession, parse_capture_payload
+from dotbot.calibration.ota import (
+    ButtonCapture,
+    CaptureSession,
+    parse_capture_payload,
+)
 from dotbot.calibration.points import CORNERS
 from dotbot.calibration.session import CalibrationSession, SessionError
 from dotbot.site import Site
@@ -59,6 +63,13 @@ def _payload(*records: bytes) -> bytes:
 def _reads(lh_index: int, count1: int, count2: int, n: int = 1) -> list:
     """One capture's worth of decoded records, `n` of them."""
     return parse_capture_payload(_payload(_record(lh_index, count1, count2)), _TAG)
+
+
+def _press(lh_index: int, count1: int, count2: int, n: int = 1) -> ButtonCapture:
+    """One button capture of `n` identical reads from one station."""
+    return ButtonCapture(
+        device="ABCD", press=0, reads=[_reads(lh_index, count1, count2)] * n
+    )
 
 
 def _info(version=2, site="", calibration_id=""):
@@ -133,8 +144,8 @@ def _driver(client=None, site=C405, notify=None):
         client_factory=lambda device: client,
         notify=notify or record,
         site=site,
-        stream_factory=lambda c, device, on_idle: CaptureSession(
-            c, device, _TAG, on_idle_records=on_idle
+        stream_factory=lambda c, device, on_button: CaptureSession(
+            c, device, _TAG, on_button_capture=on_button
         ),
     )
     return driver, client, seen
@@ -297,7 +308,7 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
     await driver.capture("ABCD")  # point 0 the requested way
     assert driver.state()["outstanding"] == 1
 
-    driver.on_idle_records(_reads(0, *CORNER_COUNTS[1]))
+    driver.on_button_capture(_press(0, *CORNER_COUNTS[1]))
 
     state = driver.state()
     assert state["outstanding"] == 2
@@ -308,7 +319,7 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
 def test_a_capture_arriving_with_no_session_is_dropped():
     driver, _, _ = _driver()
     assert driver.session is None
-    driver.on_idle_records(_reads(0, 41290, 51728))
+    driver.on_button_capture(_press(0, 41290, 51728))
     assert driver.state() is None
 
 
@@ -319,7 +330,7 @@ async def test_a_capture_arriving_with_every_point_captured_is_dropped():
     await _walk(driver, client)
     before = driver.state()
 
-    driver.on_idle_records(_reads(0, 44444, 55555))
+    driver.on_button_capture(_press(0, 44444, 55555))
 
     assert driver.state() == before
 
@@ -774,8 +785,8 @@ async def test_the_simulated_client_answers_the_point_the_session_is_asking_abou
         ),
         notify=_noop,
         site=C405,
-        stream_factory=lambda c, device, on_idle: CaptureSession(
-            c, device, _TAG, on_idle_records=on_idle
+        stream_factory=lambda c, device, on_button: CaptureSession(
+            c, device, _TAG, on_button_capture=on_button
         ),
     )
     holder["driver"] = driver
@@ -796,3 +807,57 @@ async def test_the_simulated_client_answers_the_point_the_session_is_asking_abou
 
 async def _noop(_state):
     return None
+
+
+def test_a_button_capture_missing_a_station_an_earlier_point_saw_is_not_stored():
+    session = CalibrationSession.resolve(["arena:corners"], site=C405)
+    two = parse_capture_payload(
+        _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
+    )
+    assert session.store_reads([two] * 3).index == 0
+
+    with pytest.raises(SessionError, match="missing station 1"):
+        session.store_reads([_reads(0, *CORNER_COUNTS[1])] * 3)
+
+    assert session.outstanding.index == 1
+    assert session.points[1].capture is None
+
+
+@pytest.mark.asyncio
+async def test_a_refused_button_capture_leaves_the_point_outstanding_with_the_error():
+    driver, client, _ = _driver()
+    await driver.start(["arena:corners"])
+    two = parse_capture_payload(
+        _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
+    )
+    driver.on_button_capture(ButtonCapture(device="ABCD", press=0, reads=[two]))
+    driver.on_button_capture(_press(0, *CORNER_COUNTS[1]))
+
+    state = driver.state()
+    assert state["outstanding"] == 1
+    assert "missing station 1" in state["error"]
+
+
+def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
+    import queue
+
+    from dotbot.cli.swarm_lh2 import _await_point
+
+    session = CalibrationSession.resolve(["arena:corners"], site=C405)
+    stream = SimpleNamespace(expired_presses=lambda: [("FEED", 7)])
+    arrivals: queue.Queue = queue.Queue()
+    arrivals.put(
+        (
+            "button",
+            ButtonCapture(
+                device="FEED", press=2, reads=[_reads(0, *CORNER_COUNTS[0])] * 3, lost=1
+            ),
+        )
+    )
+
+    point = _await_point(session, stream, arrivals)
+
+    assert point.index == 0
+    captured = capsys.readouterr()
+    assert "received from FEED as point 0" in captured.out
+    assert "1 capture(s) lost before press 2" in captured.err

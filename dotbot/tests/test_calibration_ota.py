@@ -14,7 +14,9 @@ import threading
 
 from dotbot.calibration.lighthouse2 import LH_PERIODS
 from dotbot.calibration.ota import (
+    ButtonAssembler,
     CaptureSession,
+    parse_button_payload,
     parse_capture_payload,
     samples_from_reads,
 )
@@ -242,3 +244,147 @@ def test_a_genuine_second_station_in_every_read_is_kept():
     capture = samples_from_reads(reads, point=0)
     assert {s.station: s.reads for s in capture.samples} == {0: 25, 1: 25}
     assert capture.dropped == {}
+
+
+# --- captures from the calibrate app's button -------------------------------
+
+_BUTTON_TAG = 0xCB
+
+
+def _button_events(press: int, stations: dict[int, tuple[int, int]], reads: int = 25):
+    """The log events of one press, one copy: records read by read, 13 per chunk."""
+    records = [
+        _record(index, count1 + i, count2 + i)
+        for i in range(reads)
+        for index, (count1, count2) in stations.items()
+    ]
+    chunks = [records[i : i + 13] for i in range(0, len(records), 13)]
+    if len(records) % 13 == 0:
+        chunks.append([])
+    return [
+        bytes([_BUTTON_TAG, (press << 3) | index]) + b"".join(chunk)
+        for index, chunk in enumerate(chunks)
+    ]
+
+
+_TWO_STATIONS = {0: (43800, 81450), 1: (51000, 62000)}
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_parse_button_payload_reads_press_chunk_and_records():
+    events = _button_events(3, {0: (10, 20)}, reads=1)
+    chunk = parse_button_payload(events[0])
+    assert (chunk.press, chunk.chunk) == (3, 0)
+    assert [(r.lh_index, r.count1, r.count2) for r in chunk.records] == [(0, 10, 20)]
+    # The READY tag, a text line and a truncated record are not button chunks.
+    assert parse_button_payload(_payload(_record(0, 1, 2))) is None
+    assert parse_button_payload(b"R12 n30/60") is None
+    assert parse_button_payload(events[0][:-1]) is None
+
+
+def test_two_stations_arrive_as_four_chunks_of_13_13_13_11():
+    events = _button_events(0, _TWO_STATIONS)
+    assert [len(parse_button_payload(e).records) for e in events] == [13, 13, 13, 11]
+
+
+def test_three_copies_with_a_lost_and_a_duplicated_chunk_assemble_once():
+    copy = _button_events(0, _TWO_STATIONS)
+    # Copy 1 lacks chunk 1, copy 2 carries chunk 2 twice, copy 3 is whole:
+    # twelve events once the duplicate replaces the lost one.
+    stream = copy[:1] + copy[2:] + copy[:2] + copy[2:3] + copy[2:] + copy
+    assembler = ButtonAssembler()
+    captures = [
+        c
+        for c in (assembler.add("abcd", parse_button_payload(e)) for e in stream)
+        if c is not None
+    ]
+    assert len(captures) == 1
+    capture = captures[0]
+    assert (capture.device, capture.press, capture.lost) == ("ABCD", 0, 0)
+    assert len(capture.reads) == 25
+    point = samples_from_reads(capture.reads, point=0)
+    assert [(s.station, s.reads) for s in point.samples] == [(0, 25), (1, 25)]
+    assert point.samples[0].count1[:3] == [43800, 43801, 43802]
+
+
+def test_a_chunk_missing_from_every_copy_yields_nothing_and_expires():
+    copy = _button_events(4, _TWO_STATIONS)
+    clock = _Clock()
+    assembler = ButtonAssembler(timeout=5.0, clock=clock)
+    for _ in range(3):
+        for event in copy[:1] + copy[2:]:
+            assert assembler.add("ABCD", parse_button_payload(event)) is None
+    clock.now = 4.0
+    assert assembler.expired() == []
+    clock.now = 6.0
+    assert assembler.expired() == [("ABCD", 4)]
+    assert assembler.expired() == []
+
+
+def test_a_jump_in_the_press_counter_reports_the_lost_presses():
+    assembler = ButtonAssembler()
+    results = []
+    for press in (3, 5):
+        for event in _button_events(press, {0: (100, 200)}):
+            capture = assembler.add("ABCD", parse_button_payload(event))
+            if capture is not None:
+                results.append((capture.press, capture.lost))
+    assert results == [(3, 0), (5, 1)]
+
+
+def test_a_late_copy_of_a_completed_press_is_not_a_new_press():
+    clock = _Clock()
+    assembler = ButtonAssembler(clock=clock)
+    copy = _button_events(1, {0: (100, 200)})
+    captures = [assembler.add("ABCD", parse_button_payload(e)) for e in copy]
+    clock.now = 6.0
+    captures += [assembler.add("ABCD", parse_button_payload(e)) for e in copy * 2]
+    assert [c.press for c in captures if c is not None] == [1]
+
+
+def test_an_app_restart_reusing_press_0_is_a_new_press_with_nothing_lost():
+    clock = _Clock()
+    assembler = ButtonAssembler(clock=clock)
+    captures = []
+    for at, press in ((0.0, 0), (20.0, 1), (60.0, 0)):
+        clock.now = at
+        for event in _button_events(press, {0: (100, 200)}):
+            captures.append(assembler.add("ABCD", parse_button_payload(event)))
+    assert [(c.press, c.lost) for c in captures if c is not None] == [
+        (0, 0),
+        (1, 0),
+        (0, 0),
+    ]
+
+
+class _ButtonClient:
+    """Emits one press's events, three copies, from a device the session did not name."""
+
+    def __init__(self, events: list[bytes]):
+        self._events = events
+
+    def watch_log_events(self):
+        for data in self._events:
+            yield {"addr": "FEED", "data_hex": data.hex()}
+        threading.Event().wait()
+
+
+def test_capture_session_hands_a_button_press_from_any_device_over_once():
+    got = []
+    done = threading.Event()
+
+    def on_button(capture):
+        got.append(capture)
+        done.set()
+
+    events = _button_events(2, _TWO_STATIONS) * 3
+    with CaptureSession(_ButtonClient(events), "ABCD", _TAG, on_button_capture=on_button):
+        assert done.wait(timeout=2.0)
+    assert [(c.device, c.press, len(c.reads)) for c in got] == [("FEED", 2, 25)]
