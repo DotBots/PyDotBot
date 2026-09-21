@@ -111,6 +111,9 @@ def resolve_devices(payload_devices) -> list:
 # twice looks the same.
 
 SANDBOX_FW = "0.8.0rc3-87-gb8957de"
+# What a calibrated bot reports it holds (device info v2).
+FAKE_SITE = "c405-arena"
+FAKE_CALIBRATION_ID = "3f9a1c07e2b845d6"
 
 # (image_name, image_digest, image_size)
 IMAGES = [
@@ -169,7 +172,8 @@ def device_info(addr: str) -> dict:
     name, digest, size = IMAGES[seed % len(IMAGES)]
     # A minority are uncalibrated, which is the state an operator acts on.
     homographies = 0 if seed % 9 == 0 else (2 if seed % 5 == 0 else 1)
-    flags = 0 if not homographies else 0b11
+    # Float32 firmware sets SWRMT_LH2_FLAG_FLOAT32 whatever it holds.
+    flags = 0b100 if not homographies else 0b111
     noun = "basestation" if homographies == 1 else "basestations"
     summary = (
         "uncalibrated"
@@ -177,7 +181,7 @@ def device_info(addr: str) -> dict:
         else f"{homographies} {noun} (valid, from flash)"
     )
     return {
-        "info_version": 1,
+        "info_version": 2,
         "info_gen": 4,
         "boot_count": 2 + seed % 30,
         "uptime_s": 60 + seed % 9000,
@@ -193,6 +197,8 @@ def device_info(addr: str) -> dict:
         "image_version": "",
         "lh2_homography_count": homographies,
         "lh2_flags": flags,
+        "lh2_site_name": FAKE_SITE if homographies else "",
+        "lh2_calibration_id": FAKE_CALIBRATION_ID if homographies else "",
         "lh2_summary": summary,
         "raw": "8f0104" + f"{seed:08x}" * 4,
     }
