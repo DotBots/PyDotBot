@@ -174,7 +174,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           ))}
           {cameraRows.length === 0 && (
             <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
-              Register one with dotbot run camera-calibration collect.
+              Register one with dotbot run calibrate-camera collect.
             </div>
           )}
         </Section>

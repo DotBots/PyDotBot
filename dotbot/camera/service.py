@@ -171,7 +171,7 @@ class CameraService:
             self.logger.warning(
                 "Camera delivers a different mode than its calibration was "
                 "solved on, so no camera layer is served. Register it again "
-                "with `dotbot run camera-calibration collect`.",
+                "with `dotbot run calibrate-camera collect`.",
                 source=source,
                 area=self.area.name,
                 delivered=mismatch[0],
@@ -186,7 +186,7 @@ class CameraService:
                 "calibration recorded, so the floor it is detecting against "
                 "is not the floor it was registered under. Set them on the "
                 "device, or register it again with `dotbot run "
-                "camera-calibration collect`.",
+                "calibrate-camera collect`.",
                 source=source,
                 area=self.area.name,
                 delivered=controls_string({n: got for n, (got, _) in drift.items()}),

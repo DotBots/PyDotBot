@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot run camera-calibration` - register an overhead camera.
+"""`dotbot run calibrate-camera` - register an overhead camera.
 
 Two steps, one subcommand each: `sheets` renders the four printable ArUco
 pages that go in the corners of an area, and `collect` finds the camera
 that sees them, reads them back and solves the homography from image
 pixels into the site's frame. Both run on your own machine and nothing
 here reaches a robot, which is why this sits under `run` beside
-`lh2-calibration` rather than under `swarm`.
+`calibrate-lh2` rather than under `swarm`.
 
 opencv-python and pillow live behind the `[calibrate]` extra, so they are
 imported at invocation and a missing extra prints an install hint instead
@@ -60,7 +60,7 @@ from dotbot.cli._site import site_from_context
 
 
 @click.group(
-    name="camera-calibration",
+    name="calibrate-camera",
     help="Overhead-camera registration: print the ArUco sheets, then capture.",
     invoke_without_command=True,
 )
@@ -68,8 +68,8 @@ from dotbot.cli._site import site_from_context
 def cmd(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
-    # Bare `dotbot run camera-calibration` defaults to collect, the step
-    # run again every time the camera moves, as `run lh2-calibration` does.
+    # Bare `dotbot run calibrate-camera` defaults to collect, the step
+    # run again every time the camera moves, as `run calibrate-lh2` does.
     ctx.invoke(collect)
 
 
@@ -105,7 +105,7 @@ def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
         pages = render_sheets()
     except ImportError as exc:
         click.echo(
-            "`dotbot run camera-calibration sheets` needs the calibration "
+            "`dotbot run calibrate-camera sheets` needs the calibration "
             "runtime deps (opencv-python, pillow).\n"
             "Install with:  pip install pydotbot[calibrate]",
             err=True,
@@ -191,7 +191,7 @@ def collect(
         detector = build_detector()
     except ImportError as exc:
         click.echo(
-            "`dotbot run camera-calibration collect` needs the calibration "
+            "`dotbot run calibrate-camera collect` needs the calibration "
             "runtime deps (opencv-python).\n"
             "Install with:  pip install pydotbot[calibrate]",
             err=True,

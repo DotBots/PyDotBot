@@ -253,7 +253,7 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help=(
         "The overhead-camera registration to draw on the map: a file path or "
         "the id prefix of a file under ~/.dotbot/calibrations/<site>/. Write "
-        "one with `dotbot run camera-calibration collect`. With none given, "
+        "one with `dotbot run calibrate-camera collect`. With none given, "
         "the map carries no camera layer."
     ),
 )

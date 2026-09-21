@@ -49,7 +49,7 @@ _RUN_SUBCOMMANDS = (
         "`swarm calibrate-lh2`.",
     ),
     (
-        "camera-calibration",
+        "calibrate-camera",
         "dotbot.cli.camera_calibrate",
         "Overhead-camera registration: printable ArUco sheets, capture.",
     ),

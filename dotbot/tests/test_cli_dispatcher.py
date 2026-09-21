@@ -51,7 +51,7 @@ EXPECTED_RUN_SUBCOMMANDS = {
     "gateway",
     "simulator",
     "calibrate-lh2",
-    "camera-calibration",
+    "calibrate-camera",
     "demo",
     "keyboard",
     "joystick",
