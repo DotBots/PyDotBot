@@ -22,6 +22,7 @@ from typing import Any, Callable, Sequence
 
 from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
 from dotbot.calibration.points import resolve_placement_points
+from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
     CalibrationSession,
     SessionError,
@@ -47,9 +48,8 @@ def capture_tag() -> int:
 class SessionDriver:
     """One calibration session at a time, with its transport and its events.
 
-    `client_factory` takes the device address and returns a swarmit client;
-    `stale_devices` reports which robots do not hold the calibration in use.
-    Both are injected so a test drives the whole loop without a fleet.
+    `client_factory` takes the device address and returns a swarmit client,
+    injected so a test drives the whole loop without a fleet.
     """
 
     def __init__(
@@ -57,12 +57,10 @@ class SessionDriver:
         client_factory: Callable[[str], Any],
         notify: Callable[[dict | None], Any],
         site: Site | None = None,
-        stale_devices: Callable[[], list[str]] | None = None,
         stream_factory: Callable[[Any, str, Callable], Any] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
-        self._stale_devices = stale_devices or (lambda: [])
         self._stream_factory = stream_factory or _default_stream
         self.site = site or Site()
         self.session: CalibrationSession | None = None
@@ -166,18 +164,28 @@ class SessionDriver:
                 "session": session.as_dict(),
             }
 
-    async def push(self) -> dict:
-        """Send the saved calibration and report which robots are still stale."""
+    async def push(self, site_changed: bool = False) -> dict:
+        """Check the robots, send the saved calibration, report who is still stale."""
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
+            devices = [session.device] if session.device else None
             client = await asyncio.to_thread(self._ensure_client, session.device)
+            try:
+                await asyncio.to_thread(
+                    gate_push, client, session.saved, site_changed, devices
+                )
+            except PushRefused as exc:
+                raise SessionError(f"push refused: {exc}") from exc
             await asyncio.to_thread(client.send_lh2_calibration, payload)
+            stale = await asyncio.to_thread(
+                push_worklist, client, session.saved, devices
+            )
             await self._emit()
             return {
                 "id": session.saved_id,
                 "bytes": len(payload),
-                "stale": self._stale_devices(),
+                "stale": stale,
             }
 
     async def abandon(self) -> dict:

@@ -11,7 +11,9 @@ subcommands:
               raw-count capture per point over the air, solve every visible
               station by least squares, and save a schema 2 calibration
               under ~/.dotbot/calibrations/<site>/.
-- `push <path|id>` - send a saved calibration to the robots over the air.
+- `push <path|id>` - check the robots' device info, send a saved
+              calibration over the air, and list the robots still on
+              another id.
 
 The homography solve lives in PyDotBot (`dotbot.calibration.lighthouse2`);
 the transport lives in swarmit.
@@ -265,8 +267,7 @@ def _collect(
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            client.send_lh2_calibration(session.push_payload())
-            click.echo("Sent the calibration to the robots over the air.")
+            _gated_push(client, calibration, devices=[device])
         else:
             click.echo(
                 "To send it to the robots over the air:\n"
@@ -279,7 +280,9 @@ def _collect(
     help=(
         "Send a saved LH2 calibration to the robots over the air. Takes a "
         "file path or the id prefix of a file under "
-        "~/.dotbot/calibrations/<site>/."
+        "~/.dotbot/calibrations/<site>/. Reads device info first: refuses "
+        "robots on firmware older than float32 and robots that report "
+        "another site, then lists the robots still on another id."
     ),
 )
 @click.argument("calibration")
@@ -309,10 +312,17 @@ def _collect(
         "The site to look the id up under. Defaults to `site` in the dotbot " "config."
     ),
 )
+@click.option(
+    "--site-changed",
+    is_flag=True,
+    help=(
+        "The robots really moved to the file's site: push even where they "
+        "report another one."
+    ),
+)
 @click.pass_context
-def _push(ctx, calibration, conn, swarm_id, site_name):
+def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
     from dotbot.calibration.lighthouse2 import (
-        calibration_payload_int32,
         read_calibration_file,
         resolve_calibration_path,
     )
@@ -320,15 +330,45 @@ def _push(ctx, calibration, conn, swarm_id, site_name):
     site, _ = site_from_context(ctx, site_name)
     try:
         path = resolve_calibration_path(calibration, site=site.name)
+        loaded = read_calibration_file(path)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    loaded = read_calibration_file(path)
-    payload = calibration_payload_int32(loaded.stations)
-    click.echo(
-        f"Sending {len(loaded.stations)} calibration matrix/matrices "
-        f"({len(payload)} B, id {loaded.id8}, site {site.name}) to the swarm..."
-    )
     client = _swarmit_client(ctx, conn, swarm_id)
     with client:
-        client.send_lh2_calibration(payload)
+        _gated_push(client, loaded, site_changed=site_changed)
+
+
+def _gated_push(client, calibration, site_changed=False, devices=None):
+    """Check the robots' device info, push, and print the stale-id worklist."""
+    from dotbot.calibration.lighthouse2 import calibration_payload
+    from dotbot.calibration.push import PushRefused, gate_push, push_worklist
+
+    try:
+        payload = calibration_payload(calibration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo("Reading device info...")
+    try:
+        check = gate_push(client, calibration, site_changed, devices)
+    except PushRefused as exc:
+        raise click.ClickException(f"push refused:\n{exc}") from exc
+    if check.other_site:
+        click.echo(
+            f"{len(check.other_site)} robot(s) move to site "
+            f"{calibration.site.name} (--site-changed)."
+        )
+    click.echo(
+        f"Sending {len(calibration.stations)} calibration matrix/matrices "
+        f"({len(payload)} B, id {calibration.id8}, site {calibration.site.name}) "
+        f"to the swarm; {len(check.stale)} robot(s) hold another id..."
+    )
+    client.send_lh2_calibration(payload)
     click.echo("Sent.")
+    stale = push_worklist(client, calibration, devices)
+    if stale:
+        click.echo(
+            f"Still not on {calibration.id8} ({len(stale)}), push again: "
+            + ", ".join(stale)
+        )
+    else:
+        click.echo(f"Every robot reports {calibration.id8}.")

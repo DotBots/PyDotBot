@@ -13,6 +13,7 @@ behaviour - none of this is hardware validation.
 import asyncio
 import re
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -60,6 +61,13 @@ def _reads(lh_index: int, count1: int, count2: int, n: int = 1) -> list:
     return parse_capture_payload(_payload(_record(lh_index, count1, count2)), _TAG)
 
 
+def _info(version=2, site="", calibration_id=""):
+    """A robot's device info as swarmit decodes it."""
+    return SimpleNamespace(
+        info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
+    )
+
+
 class _FakeClient:
     """Emits one tagged event per trigger, for whichever counts are set.
 
@@ -74,6 +82,7 @@ class _FakeClient:
         self.pushed: list[bytes] = []
         self.entered = 0
         self._triggered = threading.Event()
+        self.infos = {self.device: _info()}
 
     def at_corner(self, index: int, station: int = 0) -> None:
         self.records = _record(station, *CORNER_COUNTS[index])
@@ -84,6 +93,20 @@ class _FakeClient:
 
     def send_lh2_calibration(self, payload: bytes) -> None:
         self.pushed.append(payload)
+        # The bot commits the push and reports its site and id from then on.
+        for info in self.infos.values():
+            if info is not None and info.info_version >= 2:
+                info.lh2_site_name = payload[60:76].rstrip(b"\x00").decode()
+                info.lh2_calibration_id = payload[76:84].hex()
+
+    def refresh_device_info(self, devices=None) -> None:
+        pass
+
+    def status(self):
+        return {
+            addr: SimpleNamespace(info_gen=1, info=info)
+            for addr, info in self.infos.items()
+        }
 
     def watch_log_events(self):
         while True:
@@ -99,7 +122,7 @@ class _FakeClient:
         return False
 
 
-def _driver(client=None, site=C405, stale=None, notify=None):
+def _driver(client=None, site=C405, notify=None):
     client = client or _FakeClient()
     seen: list = []
 
@@ -110,7 +133,6 @@ def _driver(client=None, site=C405, stale=None, notify=None):
         client_factory=lambda device: client,
         notify=notify or record,
         site=site,
-        stale_devices=(lambda: list(stale or [])),
         stream_factory=lambda c, device, on_idle: CaptureSession(
             c, device, _TAG, on_idle_records=on_idle
         ),
@@ -362,24 +384,38 @@ async def test_solving_before_every_point_is_captured_is_refused():
 
 
 @pytest.mark.asyncio
-async def test_push_sends_the_int32_payload_and_returns_the_stale_worklist(
+async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    driver, client, _ = _driver(stale=["BADC0DE4", "DEADBEEF"])
+    driver, client, _ = _driver()
     await driver.start(["arena:corners"])
     await _walk(driver, client)
     await driver.save()
 
     pushed = await driver.push()
 
-    assert client.pushed
-    assert pushed["stale"] == ["BADC0DE4", "DEADBEEF"]
-    assert pushed["bytes"] == len(client.pushed[0])
-    # The shim today's firmware reads: int32 x 1e3, one matrix per station.
-    assert client.pushed[0] == lighthouse2.calibration_payload_int32(
-        driver.session.stations
-    )
+    assert client.pushed[0] == lighthouse2.calibration_payload(driver.session.saved)
+    assert pushed["bytes"] == len(client.pushed[0]) == 84
+    # The robot now reports the pushed id, so nothing is left to re-push.
+    assert pushed["stale"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_console_push_to_a_robot_of_another_site_is_refused(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["ABCD"] = _info(site="demo-dcoss-2026", calibration_id="00" * 8)
+    await driver.start(["arena:corners"])
+    await _walk(driver, client)
+    await driver.save()
+
+    with pytest.raises(SessionError) as exc:
+        await driver.push()
+    assert "demo-dcoss-2026" in str(exc.value)
+    assert client.pushed == []
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from the declared point, so they agree with it by construction.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Callable
 
 import numpy as np
@@ -95,6 +96,21 @@ class SimulatedCaptureClient:
 
     def send_lh2_calibration(self, payload: bytes) -> None:
         self.pushed.append(payload)
+
+    def refresh_device_info(self, devices: list[str] | None = None) -> None:
+        pass
+
+    def status(self) -> dict[str, Any]:
+        """The one simulated robot, on float32 firmware, holding the last push."""
+        site, calibration_id = "", ""
+        if self.pushed:
+            last = self.pushed[-1]
+            site = last[60:76].split(b"\x00", 1)[0].decode("ascii")
+            calibration_id = last[76:84].hex()
+        info = SimpleNamespace(
+            info_version=2, lh2_site_name=site, lh2_calibration_id=calibration_id
+        )
+        return {self.device: SimpleNamespace(info_gen=1, info=info)}
 
     def watch_log_events(self):
         import time
