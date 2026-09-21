@@ -182,6 +182,16 @@ def test_reads_are_averaged_before_the_solve():
     assert sample.mean_counts().count1 == pytest.approx(102.0)
 
 
+def test_reads_with_swapped_sweeps_are_ordered_before_averaging():
+    sample = _sample(0, 0, 40661, 80988, reads=1)
+    sample.count1 = [40661, 80992]
+    sample.count2 = [80988, 40664]
+    counts = sample.mean_counts()
+    assert counts.count1 == pytest.approx(40662.5)
+    assert counts.count2 == pytest.approx(80990.0)
+    assert sample.spread_mm() == (pytest.approx(1.5), pytest.approx(2.0))
+
+
 # --- the file ---------------------------------------------------------------
 
 

@@ -123,26 +123,31 @@ class Sample:
     def reads(self) -> int:
         return min(len(self.count1), len(self.count2))
 
+    def _ordered_reads(self) -> tuple[np.ndarray, np.ndarray]:
+        """Each read as (lower, higher): the two sweeps can arrive in either order."""
+        pairs = np.array([self.count1[: self.reads], self.count2[: self.reads]])
+        low, high = np.sort(pairs, axis=0)
+        return low, high
+
     def mean_counts(self) -> LH2Counts:
         """The reads averaged, which is what reaches the solver."""
         if self.reads == 0:
             raise ValueError(
                 f"station {self.station} point {self.point}: no reads to average"
             )
+        low, high = self._ordered_reads()
         return LH2Counts(
             lh_index=self.station,
-            count1=float(np.mean(self.count1[: self.reads])),
-            count2=float(np.mean(self.count2[: self.reads])),
+            count1=float(np.mean(low)),
+            count2=float(np.mean(high)),
         )
 
     def spread_mm(self) -> tuple[float, float]:
         """Per-count standard deviation of the reads, the stillness guard's input."""
         if self.reads < 2:
             return (0.0, 0.0)
-        return (
-            float(np.std(self.count1[: self.reads])),
-            float(np.std(self.count2[: self.reads])),
-        )
+        low, high = self._ordered_reads()
+        return (float(np.std(low)), float(np.std(high)))
 
 
 @dataclass
