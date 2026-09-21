@@ -126,6 +126,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] background_map` | Background map image. |
 | `[run.controller] lh2_calibration` | Lighthouse calibration to run on: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. |
 | `[run.controller] camera_calibration` | Overhead camera registration to draw on the map, same form. Written by `dotbot run calibrate-camera collect`. |
+| `[run.controller] camera_detect` | Run the robot detector on a registered camera (default true). False serves the layer as a picture only, and writes no `-camera.csv`. |
 | `[run.controller] log_output` | Log output path. |
 | `[run.controller] csv_data_output` | CSV data output path. A registered camera writes a second file, `<name>-camera.csv`, beside it, with a `<name>-camera.toml` sidecar pinning the geometry and the frames its columns are in. |
 | `[run.controller] headless` | Stay headless - don't open the web UI in a browser on start (default false; it's still served). |
