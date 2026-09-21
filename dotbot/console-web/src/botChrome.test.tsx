@@ -48,6 +48,7 @@ interface HarnessProps {
   selection?: Set<string>;
   from?: Camera;
   planned?: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
+  robotShapes?: boolean;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -55,6 +56,7 @@ const Harness: React.FC<HarnessProps> = ({
   selection = new Set(),
   from = SITE_CAMERA,
   planned = [],
+  robotShapes,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -73,6 +75,7 @@ const Harness: React.FC<HarnessProps> = ({
         trails: false,
         crashedOnly: false,
       }}
+      robotShapes={robotShapes}
       plannedMissions={planned}
       cam={cam}
       setCam={setCam}
@@ -183,5 +186,27 @@ describe("what is drawn around a robot", () => {
     render(<Harness bots={fleet} selection={new Set(["a"])} from={near} />);
     const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, near));
     expect(parseFloat(screen.getByTestId("waypoint-a-0").style.width)).toBeCloseTo(footprint * 0.35, 3);
+  });
+});
+
+describe("the robot shapes toggle", () => {
+  const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+
+  it("draws a DotBot as the robot by default, heading or not", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { heading: null })]} />);
+    expect(glyph("a").querySelector("circle")).toBeNull();
+  });
+
+  it("draws every bot as a plain mark when turned off", () => {
+    render(
+      <Harness
+        bots={[bot("a", { x: 500, y: 500 }), bot("b", { x: 900, y: 900 }, { heading: null })]}
+        robotShapes={false}
+      />,
+    );
+    for (const id of ["a", "b"]) {
+      expect(glyph(id).querySelector("circle")).not.toBeNull();
+      expect(glyph(id).querySelector("svg")!.style.transform).toBe("");
+    }
   });
 });

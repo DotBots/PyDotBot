@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchBuild, fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import { loadRobotShapes, saveRobotShapes } from "./BotGlyph";
 import {
   CameraOffset,
   CameraOpacity,
@@ -212,6 +213,16 @@ export const App: React.FC = () => {
     (area: string, value: number) =>
       updateRobotOpacity((prev) => withRobotOpacity(prev, area, value)),
     [updateRobotOpacity],
+  );
+
+  // Whether DotBots are drawn as the robot or as a plain mark, per browser.
+  const [robotShapes, updateRobotShapes] = usePersisted<boolean>(
+    loadRobotShapes,
+    saveRobotShapes,
+  );
+  const onRobotShapesToggle = useCallback(
+    () => updateRobotShapes((prev) => !prev),
+    [updateRobotShapes],
   );
 
   // The rail's action opens the tab that sets a session up; the session
@@ -712,6 +723,7 @@ export const App: React.FC = () => {
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
+              robotShapes={robotShapes}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
@@ -807,6 +819,8 @@ export const App: React.FC = () => {
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          robotShapes={robotShapes}
+          onRobotShapesToggle={onRobotShapesToggle}
           cameras={cameras}
           cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}

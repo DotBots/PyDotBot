@@ -101,6 +101,8 @@ interface MapViewProps {
   siteExtent: Area | null;
   selection: Set<string>;
   layers: Layers;
+  // False draws every bot as a plain mark, whatever it is and wherever it faces.
+  robotShapes?: boolean;
   // Local queues, not yet sent: the robots each is bound to, and its points.
   plannedMissions: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
   cam: Camera;
@@ -868,7 +870,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const blink = b.state === "Programming" || b.state === "Resetting";
                 // The board turns with the heading; the ring around it turns
                 // too, so it hugs the board whichever way the robot faces.
-                const turned = level === "detail" && b.heading !== null;
+                const shaped = props.robotShapes ?? true;
+                const turned = shaped && level === "detail" && b.heading !== null;
                 const turn = turned ? headingToGlyphRotation(b.heading!) : 0;
                 // How far below the centre a turned box reaches, as a
                 // fraction of its half side.
@@ -976,8 +979,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     >
                       <BotGlyph
                         color={stc}
-                        heading={b.heading}
-                        footprint={b.footprint}
+                        heading={shaped ? b.heading : null}
+                        footprint={shaped && b.footprint}
                         size={glyphPx}
                         level={level}
                       />
