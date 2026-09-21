@@ -69,14 +69,14 @@ export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
 interface BotGlyphProps {
   color: string;
   heading: number | null; // degrees, 0 = +y, positive clockwise in the arena frame
+  // A DotBot: drawn as the board even when it reports no heading, nose-up.
+  footprint?: boolean;
   size?: number;
   level?: GlyphLevel;
 }
 
-const body = (color: string, heading: number | null, level: GlyphLevel) => {
-  // Drawing an outline unrotated would assert a north the bot never reported,
-  // so a headingless bot gets a body with no front.
-  if (heading === null) return <circle r="8.5" fill={color} />;
+const body = (color: string, board: boolean, level: GlyphLevel) => {
+  if (!board) return <circle r="8.5" fill={color} />;
   // Too small for a front to read: position and state are all that is left.
   if (level === "dot") return <rect x="-10" y="-10" width="20" height="20" rx="3" fill={color} />;
   return (
@@ -101,23 +101,27 @@ const body = (color: string, heading: number | null, level: GlyphLevel) => {
 export const BotGlyph: React.FC<BotGlyphProps> = ({
   color,
   heading,
+  footprint = false,
   size = BOT_GLYPH_BOX,
   level = "detail",
-}) => (
-  <svg
-    viewBox="-16 -16 32 32"
-    width={size}
-    height={size}
-    style={{
-      display: "block",
-      overflow: "visible",
-      filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
-      transform:
-        heading === null || level === "dot"
-          ? undefined
-          : `rotate(${headingToGlyphRotation(heading)}deg)`,
-    }}
-  >
-    {body(color, heading, level)}
-  </svg>
-);
+}) => {
+  const board = footprint || heading !== null;
+  return (
+    <svg
+      viewBox="-16 -16 32 32"
+      width={size}
+      height={size}
+      style={{
+        display: "block",
+        overflow: "visible",
+        filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
+        transform:
+          heading === null || level === "dot"
+            ? undefined
+            : `rotate(${headingToGlyphRotation(heading)}deg)`,
+      }}
+    >
+      {body(color, board, level)}
+    </svg>
+  );
+};

@@ -4,6 +4,7 @@ import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
   deriveState,
+  isDotBot,
   merge,
   severityOf,
   withDetection,
@@ -200,5 +201,31 @@ describe("withDetection (one camera's latest view of its own area)", () => {
     expect(next["dev-corner"].sequence).toBe(2);
     expect(next.annex.sequence).toBe(9);
     expect(previous["dev-corner"].sequence).toBe(1);
+  });
+});
+
+describe("isDotBot (drawn as the robot)", () => {
+  it("takes swarmit's device type alone, as in the bootloader", () => {
+    expect(isDotBot(undefined, sw({ device: "DotBotV3", status: "Bootloader" }))).toBe(true);
+    expect(isDotBot(undefined, sw({ device: "DotBotV2" }))).toBe(true);
+  });
+
+  it("takes the controller's application alone, whatever image advertises it", () => {
+    expect(isDotBot(py({ application: 0 }), undefined)).toBe(true);
+    expect(isDotBot(py({ application: 0 }), sw({ device: "Unknown" }))).toBe(true);
+  });
+
+  it("is not a DotBot when neither signal says so", () => {
+    expect(isDotBot(py({ application: 1 }), sw({ device: "nRF5340DK" }))).toBe(false);
+    expect(isDotBot(undefined, sw({ device: "Unknown" }))).toBe(false);
+  });
+
+  it("keeps a headingless DotBot a robot on the merged bot", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", direction: -1000 }) },
+      { aaaa: sw({ status: "Running" }) },
+    );
+    expect(b.heading).toBeNull();
+    expect(b.footprint).toBe(true);
   });
 });
