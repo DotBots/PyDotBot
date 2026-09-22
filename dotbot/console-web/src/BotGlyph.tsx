@@ -1,7 +1,6 @@
 import React from "react";
 
 import { headingToGlyphRotation } from "./frame";
-import { store } from "./persisted";
 
 // The map marker, traced from the DotBot v3 board outline: one PCB, wide at the
 // front and narrower between the wheels, with the tyres outboard of the narrow
@@ -65,22 +64,6 @@ export const GLYPH_CROWD_BOTS = 200;
 export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
   if (botCount > GLYPH_CROWD_BOTS) return "dot";
   return footprintPx >= GLYPH_DETAIL_PX ? "detail" : "dot";
-}
-
-const ROBOT_SHAPES_KEY = "dotbot.console.robotShapes";
-
-/** Whether this browser draws DotBots as the robot; true unless it said otherwise. */
-export function loadRobotShapes(): boolean {
-  try {
-    return window.localStorage.getItem(ROBOT_SHAPES_KEY) !== "false";
-  } catch {
-    return true;
-  }
-}
-
-/** Remember the choice; a browser that refuses storage just forgets it. */
-export function saveRobotShapes(on: boolean): void {
-  store(ROBOT_SHAPES_KEY, on);
 }
 
 interface BotGlyphProps {

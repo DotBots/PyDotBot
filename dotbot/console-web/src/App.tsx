@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchBuild, fetchConnection, putWaypoints } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
-import { loadRobotShapes, saveRobotShapes } from "./BotGlyph";
 import {
   CameraOffset,
   CameraOpacity,
@@ -26,6 +25,7 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
+import { loadRobotShapes, saveRobotShapes } from "./robotShapes";
 import {
   VIEW_SETTLE_MS,
   loadSavedViews,
