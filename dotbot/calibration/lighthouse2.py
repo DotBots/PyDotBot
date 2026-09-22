@@ -42,7 +42,7 @@ CALIBRATION_SCHEMA_VERSION = 2
 # [x_min, y_min, x_max, y_max] in frame mm: outside it a reported position is
 # implausible and the bot drops it. A site with a known extent supplies its
 # own fence; this is what a site without one falls back to.
-VALID_MM_DEFAULT = (0, 0, 4000, 4500)
+VALID_MM_DEFAULT = (0, 0, 10000, 10000)
 
 LH2_BASESTATION_COUNT_MAX = 16
 

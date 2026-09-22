@@ -214,7 +214,7 @@ def test_save_writes_schema_2_into_the_site_directory(monkeypatch, tmp_path):
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
     assert "false_origin_mm" not in parsed["site"]
-    assert parsed["validity"]["valid_mm"] == [0, 0, 4000, 4500]
+    assert parsed["validity"]["valid_mm"] == [0, 0, 10000, 10000]
     assert parsed["metadata"]["robot"] == "dotbot-v3"
     assert len(parsed["metadata"]["id"]) == 16
     assert path.name.endswith(f"-{parsed['metadata']['id'][:8]}.toml")
