@@ -36,37 +36,25 @@ from dotbot.camera.detection.propose import floor_ab, floor_selector
 from dotbot.robots import robot_geometry
 
 _GEOMETRY = robot_geometry()
+_CENTRE = _GEOMETRY.outline_centre
+
+
+def _robot_frame(point):
+    """A board-frame point in this module's robot frame (y flipped to forward)."""
+    return (point.x - _CENTRE.x, _CENTRE.y - point.y)
+
 
 # Outline centre to the axle, backwards.
-AXLE_BEHIND_CENTRE_MM = 24.5
+AXLE_BEHIND_CENTRE_MM = -_robot_frame(_GEOMETRY.axle_midpoint)[1]
 
 # Outline centre to the LH2 photodiode, forwards. The lighthouse reports the
 # photodiode's position, so this is the offset that makes the camera's point
 # and the lighthouse's point the same point.
-PHOTODIODE_AHEAD_MM = _GEOMETRY.board_length_mm / 2 - _GEOMETRY.diode_to_front_mm
+PHOTODIODE_AHEAD_MM = _GEOMETRY.diode_ahead_of_centre_mm
 
-# Board outline in the robot frame, transcribed from the Edge.Cuts layer of
-# the v3 main board: an 84 mm nose and the step down to the 57 mm tail at
-# y = +1.5.
-OUTLINE_MM = np.array(
-    [
-        (-42.0, 47.5),
-        (42.0, 47.5),
-        (42.0, 40.5),
-        (43.0, 39.5),
-        (47.0, 39.5),
-        (47.0, 1.5),
-        (28.5, 1.5),
-        (28.5, -47.5),
-        (-28.5, -47.5),
-        (-28.5, 1.5),
-        (-47.0, 1.5),
-        (-47.0, 39.5),
-        (-43.0, 39.5),
-        (-42.0, 40.5),
-    ],
-    float,
-)
+# Board outline in the robot frame: an 84 mm nose and the step down to the
+# 57 mm tail at y = +1.5.
+OUTLINE_MM = np.array([_robot_frame(p) for p in _GEOMETRY.outline_path], float)
 
 # Outline centre to the tip of the nose, forwards: the outline's own extent.
 NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
@@ -86,8 +74,8 @@ CONN_MM = [
 
 # The tyres, as the template draws them: the track between their centres,
 # and one tyre's width and depth.
-TRACK_MM = 85.0
-TYRE_W_MM = 18.0
+TRACK_MM = _GEOMETRY.track_mm
+TYRE_W_MM = _GEOMETRY.tyre_width_mm
 TYRE_D_MM = 40.0
 
 # The template's canvas, as a half-width in millimetres: the robot at any
