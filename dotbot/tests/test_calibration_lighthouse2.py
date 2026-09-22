@@ -588,6 +588,21 @@ def test_the_calibration_messages_are_pinned(tmp_path):
     assert all(len(m) == 84 for m in messages)
 
 
+def test_a_file_without_site_or_validity_takes_the_defaults_swarmit_takes(tmp_path):
+    from dotbot.calibration.lighthouse2 import calibration_messages
+    from dotbot.tests.lh2_wire_fixture import (
+        DEFAULTS_FIXTURE_ID,
+        DEFAULTS_FIXTURE_TOML,
+        DEFAULTS_MESSAGE_HEX,
+    )
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(DEFAULTS_FIXTURE_TOML, encoding="utf-8")
+    calibration = read_calibration_file(path)
+    assert calibration.id == DEFAULTS_FIXTURE_ID
+    assert [m.hex() for m in calibration_messages(calibration)] == DEFAULTS_MESSAGE_HEX
+
+
 def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     import struct
 

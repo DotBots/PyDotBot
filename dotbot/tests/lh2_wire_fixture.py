@@ -65,3 +65,30 @@ MESSAGE_HEX = [
         "2d6172656e61000000000000ac893d2d85e3068c"
     ),
 ]
+
+# The same file without [site] and [validity], so each reader's defaults reach
+# the wire: site "default" and valid_mm [0, 0, 4000, 4500].
+DEFAULTS_FIXTURE_ID = "fdabb6bc7cceab09"
+
+DEFAULTS_FIXTURE_TOML = (
+    FIXTURE_TOML.replace(
+        '[site]\nname = "c405-arena"\n'
+        'anchor = "arena top-left corner, against the door wall of C405"\n\n',
+        "",
+    )
+    .replace("[validity]\nvalid_mm = [0, 0, 3330, 4000]\n\n", "")
+    .replace(f'id = "{FIXTURE_ID}"', f'id = "{DEFAULTS_FIXTURE_ID}"')
+)
+
+DEFAULTS_MESSAGE_HEX = [
+    (
+        "0200000000000000cd6cbe44cdcc18c2cd2c7d449a9927429a79bf4433137744"
+        "88855a3e7c61b2bd0000803f0000000000000000a00f00009411000064656661"
+        "756c74000000000000000000fdabb6bc7cceab09"
+    ),
+    (
+        "02000000010000000008b9c400004841006038450000a6c100c4bb4400a07c44"
+        "000040be0000803d0000803f0000000000000000a00f00009411000064656661"
+        "756c74000000000000000000fdabb6bc7cceab09"
+    ),
+]
