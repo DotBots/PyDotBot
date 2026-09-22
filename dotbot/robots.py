@@ -52,6 +52,14 @@ class BodyPose:
     wheels: tuple[tuple[Point, ...], ...]
 
 
+def _rect(centre: Point, width_mm: float, length_mm: float) -> tuple[Point, ...]:
+    """An axis-aligned rectangle about `centre`, `width_mm` in x by `length_mm`
+    in y, wound from its low-x low-y corner."""
+    x0, x1 = centre.x - width_mm / 2, centre.x + width_mm / 2
+    y0, y1 = centre.y - length_mm / 2, centre.y + length_mm / 2
+    return (Point(x0, y0), Point(x1, y0), Point(x1, y1), Point(x0, y1))
+
+
 @dataclass(frozen=True)
 class RobotGeometry:
     """One board revision's outline, points and drivetrain, in the board frame.
@@ -72,6 +80,11 @@ class RobotGeometry:
     track_mm: float
     wheel_diameter_mm: float
     tyre_width_mm: float
+    # The motor connector pin block, whose red housing is the axle the camera
+    # detector fits: M1 to M2 centre to centre, then one housing's footprint.
+    connector_spacing_mm: float
+    connector_width_mm: float
+    connector_length_mm: float
     encoder_cpr: int
     gear_ratio: float
     # The plan-view square for anything that needs a size rather than a shape.
@@ -106,30 +119,46 @@ class RobotGeometry:
         _, y_min, _, y_max = self.outline_bbox
         return y_max - y_min
 
+    def _axle_pair(
+        self, spacing_mm: float, width_mm: float, length_mm: float
+    ) -> tuple[tuple[Point, ...], ...]:
+        """One rectangle either side of the axle midpoint, the -x one first.
+
+        `width_mm` is across the robot and `length_mm` along it, and each
+        rectangle's centre sits half of `spacing_mm` off the centreline on the
+        axle line.
+        """
+        return tuple(
+            _rect(Point(cx, self.axle_midpoint.y), width_mm, length_mm)
+            for cx in (
+                self.axle_midpoint.x - spacing_mm / 2,
+                self.axle_midpoint.x + spacing_mm / 2,
+            )
+        )
+
     @property
     def wheel_paths(self) -> tuple[tuple[Point, ...], ...]:
         """Each driven wheel in plan view, as a rectangle in the board frame.
 
         A wheel is `tyre_width_mm` across the robot and `wheel_diameter_mm`
-        along it, centred on the axle line at half the track either side of
-        the axle midpoint. The left wheel comes first, left being -x.
+        along it, at half the track either side of the axle midpoint. The left
+        wheel comes first, left being -x.
         """
-        half_track = self.track_mm / 2
-        half_width = self.tyre_width_mm / 2
-        half_dia = self.wheel_diameter_mm / 2
-        y0 = self.axle_midpoint.y - half_dia
-        y1 = self.axle_midpoint.y + half_dia
-        return tuple(
-            (
-                Point(cx - half_width, y0),
-                Point(cx + half_width, y0),
-                Point(cx + half_width, y1),
-                Point(cx - half_width, y1),
-            )
-            for cx in (
-                self.axle_midpoint.x - half_track,
-                self.axle_midpoint.x + half_track,
-            )
+        return self._axle_pair(
+            self.track_mm, self.tyre_width_mm, self.wheel_diameter_mm
+        )
+
+    @property
+    def connector_paths(self) -> tuple[tuple[Point, ...], ...]:
+        """Each motor connector in plan view, as a rectangle in the board frame.
+
+        The pair the camera detector reads as the axle, in the same order and
+        the same frame as `wheel_paths`.
+        """
+        return self._axle_pair(
+            self.connector_spacing_mm,
+            self.connector_width_mm,
+            self.connector_length_mm,
         )
 
     @property
@@ -258,6 +287,9 @@ ROBOTS: dict[str, RobotGeometry] = {
         track_mm=78.0,
         wheel_diameter_mm=44.0,
         tyre_width_mm=17.5,
+        connector_spacing_mm=27.0,  # M1 to M2
+        connector_width_mm=12.0,
+        connector_length_mm=10.0,
         encoder_cpr=28,
         gear_ratio=50.0,
         envelope_mm=95.0,

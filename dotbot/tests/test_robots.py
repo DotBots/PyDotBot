@@ -70,6 +70,9 @@ def test_an_off_centre_photodiode_is_refused():
             track_mm=V3.track_mm,
             wheel_diameter_mm=V3.wheel_diameter_mm,
             tyre_width_mm=V3.tyre_width_mm,
+            connector_spacing_mm=V3.connector_spacing_mm,
+            connector_width_mm=V3.connector_width_mm,
+            connector_length_mm=V3.connector_length_mm,
             encoder_cpr=V3.encoder_cpr,
             gear_ratio=V3.gear_ratio,
             envelope_mm=V3.envelope_mm,
@@ -117,16 +120,22 @@ def test_the_robot_s_left_side_is_on_its_left():
 
 
 @pytest.mark.parametrize("heading", [0.0, 37.0, 90.0, -123.0, 180.0])
-def test_the_outline_is_the_camera_detector_s_outline(heading):
-    """The detector draws the same board from its centre and its own heading
-    convention; the two must agree point for point."""
-    from dotbot.camera.detection.pose import OUTLINE_MM, axes
+def test_the_body_is_the_camera_detector_s_body(heading):
+    """The detector draws the same board and the same tyres from its centre
+    and its own heading convention; the two must agree point for point."""
+    from dotbot.camera.detection.pose import OUTLINE_MM, WHEELS_MM, axes
 
     pose = V3.body_pose(SENSOR, heading, HeadingSource.TRAVEL)
     right, forward = axes(heading + 90.0)
     centre = np.asarray(pose.centre)
-    detector = [centre + p[0] * right + p[1] * forward for p in OUTLINE_MM]
-    assert np.allclose(np.asarray(pose.outline), detector, atol=1e-9)
+
+    def detector(path):
+        return [centre + p[0] * right + p[1] * forward for p in path]
+
+    assert np.allclose(np.asarray(pose.outline), detector(OUTLINE_MM), atol=1e-9)
+    assert len(pose.wheels) == len(WHEELS_MM)
+    for wheel, tyre in zip(pose.wheels, WHEELS_MM):
+        assert np.allclose(np.asarray(wheel), detector(tyre), atol=1e-9)
 
 
 def test_an_unknown_model_has_no_body():

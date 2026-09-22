@@ -44,6 +44,11 @@ def _robot_frame(point):
     return (point.x - _CENTRE.x, _CENTRE.y - point.y)
 
 
+def _robot_frame_path(path):
+    """One board-frame path as an array in this module's robot frame."""
+    return np.array([_robot_frame(p) for p in path], float)
+
+
 # Outline centre to the axle, backwards.
 AXLE_BEHIND_CENTRE_MM = -_robot_frame(_GEOMETRY.axle_midpoint)[1]
 
@@ -54,7 +59,7 @@ PHOTODIODE_AHEAD_MM = _GEOMETRY.diode_ahead_of_centre_mm
 
 # Board outline in the robot frame: an 84 mm nose and the step down to the
 # 57 mm tail at y = +1.5.
-OUTLINE_MM = np.array([_robot_frame(p) for p in _GEOMETRY.outline_path], float)
+OUTLINE_MM = _robot_frame_path(_GEOMETRY.outline_path)
 
 # Outline centre to the tip of the nose, forwards: the outline's own extent.
 NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
@@ -66,17 +71,9 @@ NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
 TAIL_HALF_MM = float(np.abs(OUTLINE_MM[OUTLINE_MM[:, 1] < 1.5][:, 0]).max())
 NOSE_BAND_MM = TAIL_HALF_MM + 4.5
 
-# The two motor connectors, in the same robot frame.
-CONN_MM = [
-    np.array([(-19.5, -29.5), (-7.5, -29.5), (-7.5, -19.5), (-19.5, -19.5)], float),
-    np.array([(7.5, -29.5), (19.5, -29.5), (19.5, -19.5), (7.5, -19.5)], float),
-]
-
-# The tyres, as the template draws them: the track between their centres,
-# and one tyre's width and depth.
-TRACK_MM = _GEOMETRY.track_mm
-TYRE_W_MM = _GEOMETRY.tyre_width_mm
-TYRE_D_MM = 40.0
+# The two motor connectors and the two tyres, in the same robot frame.
+CONN_MM = [_robot_frame_path(c) for c in _GEOMETRY.connector_paths]
+WHEELS_MM = [_robot_frame_path(w) for w in _GEOMETRY.wheel_paths]
 
 # The template's canvas, as a half-width in millimetres: the robot at any
 # heading, with room for the search to slide it.
@@ -373,29 +370,10 @@ class Template:
         wheel = np.zeros_like(board)
         conn = np.zeros_like(board)
         poly(board, OUTLINE_MM)
-        axle = -AXLE_BEHIND_CENTRE_MM
-        for side in (-1, 1):
-            x0 = side * TRACK_MM / 2 - TYRE_W_MM / 2
-            x1 = side * TRACK_MM / 2 + TYRE_W_MM / 2
-            poly(
-                wheel,
-                [
-                    (x0, axle - TYRE_D_MM / 2),
-                    (x1, axle - TYRE_D_MM / 2),
-                    (x1, axle + TYRE_D_MM / 2),
-                    (x0, axle + TYRE_D_MM / 2),
-                ],
-            )
-        for side in (-13.5, 13.5):
-            poly(
-                conn,
-                [
-                    (side - 6, axle - 5),
-                    (side + 6, axle - 5),
-                    (side + 6, axle + 5),
-                    (side - 6, axle + 5),
-                ],
-            )
+        for tyre in WHEELS_MM:
+            poly(wheel, tyre)
+        for connector in CONN_MM:
+            poly(conn, connector)
         self.maps = dict(
             green=np.clip(board - wheel - conn, 0, 1), dark=wheel, red=conn
         )
