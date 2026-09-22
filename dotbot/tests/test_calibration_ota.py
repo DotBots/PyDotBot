@@ -14,6 +14,7 @@ import threading
 
 from dotbot.calibration.lighthouse2 import LH_PERIODS
 from dotbot.calibration.ota import (
+    BUTTON_CAPTURE_TIMEOUT_DEFAULT,
     ButtonAssembler,
     CaptureSession,
     parse_button_payload,
@@ -340,6 +341,26 @@ def test_an_incomplete_press_expires_without_anyone_polling():
     captures = [assembler.add("ABCD", parse_button_payload(e)) for e in new]
     assert [c.reads[0][0].count1 for c in captures if c is not None] == [1000]
     assert assembler.expired() == [("ABCD", 4)]
+
+
+def test_late_copies_of_a_given_up_press_are_not_reported_again():
+    clock = _Clock()
+    assembler = ButtonAssembler(timeout=5.0, clock=clock)
+    copy = _button_events(4, _TWO_STATIONS)
+    for event in copy[:1] + copy[2:]:
+        assembler.add("ABCD", parse_button_payload(event))
+    clock.now = 6.0
+    assert assembler.expired() == [("ABCD", 4)]
+    clock.now = 7.0
+    for event in copy[2:]:
+        assert assembler.add("ABCD", parse_button_payload(event)) is None
+    clock.now = 13.0
+    assert assembler.expired() == []
+
+
+def test_the_last_copy_arrives_within_the_press_timeout():
+    """Four stations' 24 events at half of huge's 3.77 packets/s."""
+    assert BUTTON_CAPTURE_TIMEOUT_DEFAULT > 24 / (3.77 / 2)
 
 
 def test_a_chunk_that_differs_from_its_stored_copy_starts_a_new_press():

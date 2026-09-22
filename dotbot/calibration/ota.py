@@ -41,11 +41,9 @@ BUTTON_CAPTURE_TAG = 0xCB
 BUTTON_CHUNK_RECORDS = 13
 BUTTON_PRESS_MODULUS = 32
 # Seconds from a press's first chunk to its last before the press is given up.
-BUTTON_CAPTURE_TIMEOUT_DEFAULT = 5.0
-# Seconds a completed press is remembered, so a late copy is not a new press:
-# past the copies' spread (24 events at 3.77/s on huge for four stations),
-# short enough that an app restarting its counter from 0 is heard again.
-BUTTON_DUPLICATE_WINDOW = 10.0
+# Must stay above the copies' spread: the app sends at half the uplink budget,
+# so four stations' 24 events take 12.7 s on huge (3.77 packets/s).
+BUTTON_CAPTURE_TIMEOUT_DEFAULT = 20.0
 
 # A station really in view is decoded on nearly every read, so a station under
 # this share of a point's reads is a decode artefact rather than a station.
@@ -122,21 +120,31 @@ class ButtonAssembler:
         self._clock = clock
         self._pending: dict[tuple[str, int], tuple[float, dict[int, list]]] = {}
         self._given_up: list[tuple[str, int]] = []
-        # Per device: the last completed press and when it completed.
-        self._completed: dict[str, tuple[int, float]] = {}
+        # Each given-up press's chunks and when, so its late copies stay quiet.
+        self._given_up_chunks: dict[tuple[str, int], tuple[float, dict[int, list]]] = {}
+        # Per device: the last completed press and its chunks.
+        self._completed: dict[str, tuple[int, dict[int, list]]] = {}
 
     def add(self, device: str, chunk: ButtonChunk) -> ButtonCapture | None:
         device = device.upper()
         now = self._clock()
         self._give_up_stale(now)
         last = self._completed.get(device)
+        # A copy is identical to the chunk it repeats; two captures never are.
         if (
             last is not None
             and last[0] == chunk.press
-            and now - last[1] < BUTTON_DUPLICATE_WINDOW
+            and last[1].get(chunk.chunk) == chunk.records
         ):
             return None
         key = (device, chunk.press)
+        given_up = self._given_up_chunks.get(key)
+        if given_up is not None:
+            stored = given_up[1].get(chunk.chunk)
+            if stored is None or stored == chunk.records:
+                return None
+            # A chunk unlike the given-up press's is a new press on that number.
+            del self._given_up_chunks[key]
         started, chunks = self._pending.setdefault(key, (now, {}))
         stored = chunks.get(chunk.chunk)
         if stored is not None and stored != chunk.records:
@@ -155,7 +163,7 @@ class ButtonAssembler:
             if last is not None and chunk.press != 0
             else 0
         )
-        self._completed[device] = (chunk.press, now)
+        self._completed[device] = (chunk.press, chunks)
         return ButtonCapture(
             device=device,
             press=chunk.press,
@@ -170,10 +178,14 @@ class ButtonAssembler:
         return given_up
 
     def _give_up_stale(self, now: float) -> None:
-        for key, (started, _) in list(self._pending.items()):
+        for key, (started, chunks) in list(self._pending.items()):
             if now - started > self._timeout:
                 del self._pending[key]
                 self._given_up.append(key)
+                self._given_up_chunks[key] = (now, chunks)
+        for key, (at, _) in list(self._given_up_chunks.items()):
+            if now - at > self._timeout:
+                del self._given_up_chunks[key]
 
 
 def _whole_press(chunks: dict[int, list]) -> list[LH2CalibrationSample] | None:
