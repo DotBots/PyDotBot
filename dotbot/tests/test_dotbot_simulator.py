@@ -217,16 +217,16 @@ def test_a_fully_positioned_fleet_is_returned_unchanged():
 
 
 def test_the_packaged_world_spreads_its_fleet_over_the_active_arena():
-    """End to end from the shipped world file: the default four robots must
-    start inside the site's arena, not in a corner of the floor."""
+    """End to end from the shipped world file: every declared robot must start
+    inside the site's arena, not in a corner of the floor."""
     interface = DotBotSimulatorCommunicationInterface(
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
         site=HALL,
     )
     arena = HALL.areas["arena"]
-    assert len(interface.dotbots) == 4
-    assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 4
+    assert len(interface.dotbots) == 5
+    assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 5
     assert all(
         arena.x < bot.pos_x < arena.x_max and arena.y < bot.pos_y < arena.y_max
         for bot in interface.dotbots
@@ -238,7 +238,17 @@ def test_the_packaged_world_still_runs_with_no_site_at_all():
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
     )
-    assert len(interface.dotbots) == 4
+    assert len(interface.dotbots) == 5
     assert all(
         0 < bot.pos_x < 2000 and 0 < bot.pos_y < 2000 for bot in interface.dotbots
     )
+
+
+def test_the_packaged_world_ships_a_robot_with_no_heading():
+    """`dotbot run simulator` must be able to show the no-heading case."""
+    interface = DotBotSimulatorCommunicationInterface(
+        on_frame_received=lambda *_: None,
+        simulator_init_state=str(packaged_init_state_path()),
+        site=HALL,
+    )
+    assert [bot.direction for bot in interface.dotbots].count(DIRECTION_NONE) == 1

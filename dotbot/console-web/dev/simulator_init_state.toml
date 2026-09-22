@@ -45,3 +45,11 @@ calibrated = 0xff
 pos_x = 250
 pos_y = 900
 direction = 135
+
+# No `direction`: advertises no heading, so the console's no-heading rendering
+# has a live producer.
+[[dotbots]]
+address = "F00DFACE77777777"
+calibrated = 0xff
+pos_x = 900
+pos_y = 1400
