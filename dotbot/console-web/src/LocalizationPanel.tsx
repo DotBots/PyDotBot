@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 import {
   calibrationCoverage,
@@ -9,6 +9,7 @@ import {
   stationRows,
   stationsSummary,
 } from "./localization";
+import { loadPushTarget, pushPlan, savePushTarget, type PushTarget } from "./pushTarget";
 import type {
   CalibrationSession,
   CameraDetection,
@@ -76,8 +77,72 @@ interface LocalizationPanelProps {
   /** Why the last action was refused; a session carries its own. */
   error: string;
   onCalibrate: () => void;
-  onPushStale: () => void;
+  /** The robots the push acts on under the selection rule. */
+  selection: ReadonlySet<string>;
+  /** Push the saved calibration: to `stale` when given, else by the selection rule. */
+  onPush: (stale?: string[]) => void;
 }
+
+const TARGETS: { value: PushTarget; text: string; title: string }[] = [
+  {
+    value: "selection",
+    text: "Selection",
+    title: "Push to the selected bots, or to all of them when none is selected",
+  },
+  {
+    value: "stale",
+    text: "Stale",
+    title: "Push only to the bots that report another calibration, or none",
+  },
+];
+
+// The two-option push target.
+const TargetToggle: React.FC<{
+  value: PushTarget;
+  onChange: (value: PushTarget) => void;
+}> = ({ value, onChange }) => (
+  <div
+    role="radiogroup"
+    aria-label="Push target"
+    style={{
+      flex: "none",
+      display: "flex",
+      background: "var(--elevated)",
+      borderRadius: 7,
+      padding: 2,
+      gap: 2,
+      border: "1px solid var(--hairline)",
+    }}
+  >
+    {TARGETS.map((t) => (
+      <div
+        key={t.value}
+        role="radio"
+        aria-checked={value === t.value}
+        tabIndex={0}
+        title={t.title}
+        onClick={() => onChange(t.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onChange(t.value);
+          }
+        }}
+        style={{
+          padding: "5px 9px",
+          borderRadius: 5,
+          fontSize: 11.5,
+          fontWeight: 500,
+          cursor: "pointer",
+          background: value === t.value ? "var(--accent)" : "transparent",
+          color: value === t.value ? "#fff" : "var(--muted)",
+        }}
+      >
+        {t.text}
+      </div>
+    ))}
+  </div>
+);
 
 export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   site,
@@ -88,9 +153,17 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   busy,
   error,
   onCalibrate,
-  onPushStale,
+  selection,
+  onPush,
 }) => {
-  const coverage = calibrationCoverage(bots, session?.stations.length ?? 0);
+  const coverage = calibrationCoverage(bots, session?.saved_id ?? "");
+  const [target, setTarget] = useState<PushTarget>(loadPushTarget);
+  const chooseTarget = (next: PushTarget) => {
+    setTarget(next);
+    savePushTarget(next);
+  };
+  const plan = pushPlan(target, selection, bots.length, coverage.stale, session?.saved_id ?? "");
+  const pushDisabled = busy || plan.blocked !== "";
   const rows = stationRows(session);
   const cameraRows = cameraStatusRows(cameras, cameraDetections);
 
@@ -113,17 +186,17 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
 
         <Section title="Calibration on the fleet">
           <div style={{ ...mono, fontSize: 14, fontWeight: 600 }}>
-            {coverage.unknown ? "unknown" : coverage.id}
+            {coverage.unknown ? "not compared" : coverage.id.slice(0, 8)}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown
-              ? "today's firmware advertises how many matrices a bot holds, not which calibration"
+              ? "save a calibration in this session to compare the fleet against it"
               : coverageLabel(coverage)}
           </div>
           {coverage.stale.length > 0 && (
             <>
               <div style={{ ...label10, margin: "10px 0 4px" }}>
-                Missing a matrix ({coverage.stale.length})
+                Stale ({coverage.stale.length})
               </div>
               {coverage.stale.slice(0, 6).map((id) => (
                 <div key={id} style={{ ...mono, fontSize: 11, color: "var(--muted)", padding: "2px 0" }}>
@@ -135,19 +208,33 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
                   and {coverage.stale.length - 6} more
                 </div>
               )}
-              <div style={{ marginTop: 8 }}>
+            </>
+          )}
+          {coverage.unchecked.length > 0 && (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
+              {coverage.unchecked.length} bot(s) cannot report a calibration (no device info,
+              or firmware older than device info v2); a push that includes them is refused.
+            </div>
+          )}
+          {session && (
+            <>
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <TargetToggle value={target} onChange={chooseTarget} />
                 <div
-                  onClick={() => !busy && session?.saved_id && onPushStale()}
-                  style={actionButton(false, busy || !session?.saved_id)}
-                  title={
-                    session?.saved_id
-                      ? "Send the saved calibration to the swarm"
-                      : "Save a calibration first"
-                  }
+                  data-testid="localization-push"
+                  aria-disabled={pushDisabled}
+                  onClick={() => !pushDisabled && onPush(plan.stale)}
+                  style={{ ...actionButton(false, pushDisabled), flex: 1, width: "auto" }}
+                  title="Send the saved calibration over the air"
                 >
-                  Push to the {coverage.stale.length} missing
+                  {plan.label}
                 </div>
               </div>
+              {plan.blocked && (
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+                  {plan.blocked}
+                </div>
+              )}
             </>
           )}
         </Section>

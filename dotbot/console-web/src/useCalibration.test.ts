@@ -29,4 +29,18 @@ describe("useCalibration push", () => {
     expect(pushCalibration).toHaveBeenCalledWith(["AA", "BB"]);
     expect(result.current.pushed).toBe("Sent 84 B to 2 selected bot(s).");
   });
+
+  it("pushes to an explicit stale list, whatever is selected", async () => {
+    const { result } = renderHook(() => useCalibration(() => {}, new Set(["AA"])));
+    await act(() => result.current.push(["BB", "CC"]));
+    expect(pushCalibration).toHaveBeenCalledWith(["BB", "CC"]);
+    expect(result.current.pushed).toBe("Sent 84 B to 2 stale bot(s).");
+  });
+
+  it("refuses an empty stale list rather than sending it to the whole swarm", async () => {
+    const { result } = renderHook(() => useCalibration(() => {}, new Set()));
+    await act(() => result.current.push([]));
+    expect(pushCalibration).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("No stale bot to push to.");
+  });
 });

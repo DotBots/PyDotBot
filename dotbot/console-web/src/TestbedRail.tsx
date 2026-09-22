@@ -60,7 +60,7 @@ interface TestbedRailProps {
   calibrationBusy: boolean;
   calibrationError: string;
   onCalibrate: () => void;
-  onPushStale: () => void;
+  onPushCalibration: (stale?: string[]) => void;
 }
 
 const ledCss = (b: UnifiedBot) =>
@@ -598,7 +598,8 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               busy={props.calibrationBusy}
               error={props.calibrationError}
               onCalibrate={props.onCalibrate}
-              onPushStale={props.onPushStale}
+              selection={props.selection}
+              onPush={props.onPushCalibration}
             />
           )}
         </div>

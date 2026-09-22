@@ -28,12 +28,12 @@ export interface Calibration {
   capture: (device: string) => Promise<void>;
   redo: () => Promise<void>;
   save: (tag?: string) => Promise<void>;
-  push: () => Promise<void>;
+  push: (stale?: string[]) => Promise<void>;
   abandon: () => Promise<void>;
 }
 
 // A push goes to the selected robots, or to the whole swarm when none is
-// selected, as flash and start/stop do.
+// selected, as flash and start/stop do; or to an explicit stale list.
 export function useCalibration(
   onSession: (session: CalibrationSession | null) => void,
   selection: ReadonlySet<string>,
@@ -73,11 +73,17 @@ export function useCalibration(
         const saved = await saveCalibration(tag);
         onSession(saved.session);
       }),
-    push: () =>
+    push: (stale) =>
       run(async () => {
-        const devices = [...selection];
+        // The route reads an empty list as the whole swarm.
+        if (stale && !stale.length) throw new Error("No stale bot to push to.");
+        const devices = stale ?? [...selection];
         const result = await pushCalibration(devices);
-        const target = devices.length ? `${devices.length} selected bot(s)` : "the swarm";
+        const target = stale
+          ? `${devices.length} stale bot(s)`
+          : devices.length
+            ? `${devices.length} selected bot(s)`
+            : "the swarm";
         setPushed(
           result.stale.length
             ? `Sent ${result.bytes} B to ${target}. ${result.stale.length} bot(s) still stale.`

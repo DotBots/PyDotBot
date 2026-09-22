@@ -704,7 +704,7 @@ export const App: React.FC = () => {
           calibrationBusy={calibration.busy}
           calibrationError={calibration.error}
           onCalibrate={onCalibrate}
-          onPushStale={() => calibration.push()}
+          onPushCalibration={(stale) => calibration.push(stale)}
         />
 
         {/* view area */}

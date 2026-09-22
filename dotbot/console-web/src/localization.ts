@@ -24,48 +24,40 @@ export function minimapLabel(site: Site | null): string {
 }
 
 export interface Coverage {
-  /** The id the robots report, when every robot that reports one agrees. */
+  /** The saved calibration's id the fleet is compared against, "" for none. */
   id: string;
   /** How many robots report that id. */
   carrying: number;
   /** How many robots the console knows about at all. */
   total: number;
-  /** The robots that do not carry it. */
+  /** The robots that report another id, or none: the worklist a push acts on. */
   stale: string[];
-  /** True when no robot reports an id, so the console must not invent one. */
+  /** The robots whose device info cannot say, which a push refuses to go to. */
+  unchecked: string[];
+  /** True when nothing is saved, so there is no id to compare against. */
   unknown: boolean;
 }
 
-/**
- * Who carries which calibration.
- *
- * Today's firmware advertises a per-station bitmask, not the calibration's
- * id, so "which id is on this robot" has no answer on the wire yet and the
- * panel says so rather than showing a number it guessed. What it can say is
- * which robots are missing a matrix, which is the worklist a push acts on.
- */
-export function calibrationCoverage(
-  bots: UnifiedBot[],
-  stations: number,
-): Coverage {
+/** The device-info version that reports a calibration id; older firmware cannot. */
+const DEVICE_INFO_VERSION_MIN = 2;
+
+/** Who carries `savedId`, from the calibration id each robot's device info reports. */
+export function calibrationCoverage(bots: UnifiedBot[], savedId: string): Coverage {
   const stale: string[] = [];
+  const unchecked: string[] = [];
   let carrying = 0;
-  // With nothing solved there is nothing for a robot to be missing, so the
+  const wanted = savedId.toLowerCase();
+  // With nothing saved there is nothing for a robot to be missing, so the
   // worklist is empty rather than the whole fleet.
-  if (stations > 0) {
+  if (wanted) {
     for (const bot of bots) {
-      const held = bot.swarmit?.info?.lh2_homography_count ?? 0;
-      if (held >= stations) carrying += 1;
+      const info = bot.swarmit?.info;
+      if (!info || (info.info_version ?? 0) < DEVICE_INFO_VERSION_MIN) unchecked.push(bot.id);
+      else if ((info.lh2_calibration_id ?? "").toLowerCase() === wanted) carrying += 1;
       else stale.push(bot.id);
     }
   }
-  return {
-    id: "",
-    carrying,
-    total: bots.length,
-    stale,
-    unknown: true,
-  };
+  return { id: savedId, carrying, total: bots.length, stale, unchecked, unknown: !wanted };
 }
 
 /** "11 of 12 bots", or the absence when the fleet is empty. */

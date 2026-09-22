@@ -31,7 +31,7 @@ const C405: Site = {
   areas: [ARENA, ANNEX, DEV],
 };
 
-const bot = (id: string, homographies?: number): UnifiedBot =>
+const bot = (id: string, calibrationId?: string): UnifiedBot =>
   ({
     id,
     state: "Running",
@@ -53,10 +53,10 @@ const bot = (id: string, homographies?: number): UnifiedBot =>
     batteryPct: null,
     batteryLevel: null,
     swarmit:
-      homographies === undefined
+      calibrationId === undefined
         ? null
         : ({
-            info: { lh2_homography_count: homographies },
+            info: { info_version: 2, lh2_calibration_id: calibrationId },
           } as unknown as SwarmitNode),
   }) as UnifiedBot;
 
@@ -101,38 +101,49 @@ describe("the footer minimap label", () => {
   });
 });
 
+const SAVED = "3f9a1c07e2b845d6";
+
 describe("what the fleet carries", () => {
-  it("cannot name the id, because today's firmware does not report one", () => {
-    // The bitmask says how many matrices a robot holds, not which
-    // calibration; the panel says "unknown" rather than showing a guess.
-    const coverage = calibrationCoverage([bot("a", 2), bot("b", 2)], 2);
-    expect(coverage.unknown).toBe(true);
-    expect(coverage.id).toBe("");
+  it("compares the fleet against the saved calibration's id", () => {
+    const coverage = calibrationCoverage([bot("a", SAVED), bot("b", SAVED)], SAVED);
+    expect(coverage.unknown).toBe(false);
+    expect(coverage.id).toBe(SAVED);
+    expect(coverage.carrying).toBe(2);
   });
 
-  it("lists the robots missing a matrix as the worklist a push acts on", () => {
+  it("lists the robots reporting another id, or none, as the worklist a push acts on", () => {
     const coverage = calibrationCoverage(
-      [bot("aaaa", 2), bot("bbbb", 1), bot("cccc")],
-      2,
+      [bot("aaaa", SAVED.toUpperCase()), bot("bbbb", "1111111111111111"), bot("cccc", ""), bot("dddd")],
+      SAVED,
     );
     expect(coverage.carrying).toBe(1);
-    expect(coverage.total).toBe(3);
+    expect(coverage.total).toBe(4);
     expect(coverage.stale).toEqual(["bbbb", "cccc"]);
+    expect(coverage.unchecked).toEqual(["dddd"]);
   });
 
-  it("calls nobody stale while no calibration is solved", () => {
-    // With nothing solved there is nothing to be missing, so the panel does
-    // not offer a push worklist that is the whole fleet.
-    const coverage = calibrationCoverage([bot("aaaa", 2)], 0);
+  it("keeps the robots whose device info cannot say off the worklist", () => {
+    const old = { ...bot("eeee"), swarmit: { info: { info_version: 1 } } as unknown as SwarmitNode };
+    const silent = { ...bot("ffff"), swarmit: { info: null } as unknown as SwarmitNode };
+    const coverage = calibrationCoverage([bot("aaaa", "1111111111111111"), old, silent], SAVED);
+    expect(coverage.stale).toEqual(["aaaa"]);
+    expect(coverage.unchecked).toEqual(["eeee", "ffff"]);
+  });
+
+  it("calls nobody stale while nothing is saved", () => {
+    // With no id to compare against, the panel does not offer a push
+    // worklist that is the whole fleet.
+    const coverage = calibrationCoverage([bot("aaaa", SAVED)], "");
+    expect(coverage.unknown).toBe(true);
     expect(coverage.carrying).toBe(0);
     expect(coverage.stale).toEqual([]);
   });
 
   it("words the coverage, and the empty fleet", () => {
-    expect(coverageLabel(calibrationCoverage([bot("a", 2), bot("b", 2)], 2))).toBe(
+    expect(coverageLabel(calibrationCoverage([bot("a", SAVED), bot("b", SAVED)], SAVED))).toBe(
       "on 2 of 2 bots",
     );
-    expect(coverageLabel(calibrationCoverage([], 2))).toBe(
+    expect(coverageLabel(calibrationCoverage([], SAVED))).toBe(
       "no bots on the control plane",
     );
   });
