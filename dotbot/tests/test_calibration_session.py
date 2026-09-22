@@ -106,7 +106,9 @@ class _FakeClient:
         self.pushed.append(payload)
         self.pushed_to = devices
         # The bot commits the push and reports its site and id from then on.
-        for info in self.infos.values():
+        for addr, info in self.infos.items():
+            if devices is not None and addr not in devices:
+                continue
             if info is not None and info.info_version >= 2:
                 info.lh2_site_name = payload[60:76].rstrip(b"\x00").decode()
                 info.lh2_calibration_id = payload[76:84].hex()
@@ -440,7 +442,40 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
     assert pushed["bytes"] == len(client.pushed[0]) == 84
     # The robot now reports the pushed id, so nothing is left to re-push.
     assert pushed["stale"] == []
-    assert client.pushed_to == [driver.session.device]
+
+
+@pytest.mark.asyncio
+async def test_a_console_push_goes_to_the_fleet_not_the_capture_robot(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    client = _FakeClient()
+    client.infos["EFGH"] = _info()
+    built_for: list[str] = []
+
+    def factory(device):
+        built_for.append(device)
+        return client
+
+    driver = SessionDriver(
+        client_factory=factory,
+        notify=lambda state: asyncio.sleep(0),
+        site=C405,
+        stream_factory=lambda c, device, on_button: CaptureSession(
+            c, device, _TAG, on_button_capture=on_button
+        ),
+    )
+    await driver.start(["arena:corners"])
+    await _walk(driver, client)
+    assert driver.session.device == "ABCD"
+    await driver.save()
+
+    pushed = await driver.push()
+
+    assert built_for[-1] == ""
+    wanted = lighthouse2.pushed_id(driver.session.saved)
+    assert client.infos["EFGH"].lh2_calibration_id == wanted
+    assert pushed["stale"] == []
 
 
 @pytest.mark.asyncio

@@ -115,13 +115,7 @@ class SessionDriver:
             self._loop = asyncio.get_running_loop()
             # Button captures come unrequested from any robot, so the stream
             # is listening from the start rather than from the first capture.
-            try:
-                await asyncio.to_thread(self._ensure_stream, session.device)
-            except Exception as exc:  # a fleet out of reach is not a failed start
-                self.logger.warning(
-                    "Not listening for button captures until a capture reaches the fleet",
-                    error=str(exc),
-                )
+            await asyncio.to_thread(self._listen_for_buttons, session.device)
             await self._emit()
             return session.as_dict()
 
@@ -175,24 +169,29 @@ class SessionDriver:
             }
 
     async def push(self, site_changed: bool = False) -> dict:
-        """Check the robots, send the saved calibration, report who is still stale."""
+        """Check the fleet, send it the saved calibration, report who is still stale.
+
+        Always the whole fleet, whichever robot the session captures from.
+        """
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            devices = [session.device] if session.device else None
-            client = await asyncio.to_thread(self._ensure_client, session.device)
+            client = await asyncio.to_thread(self._ensure_client, "")
             try:
-                check = await asyncio.to_thread(
-                    gate_push, client, session.saved, site_changed, devices
+                try:
+                    check = await asyncio.to_thread(
+                        gate_push, client, session.saved, site_changed
+                    )
+                except PushRefused as exc:
+                    raise SessionError(f"push refused: {exc}") from exc
+                await asyncio.to_thread(
+                    client.send_lh2_calibration, payload, check.addresses
                 )
-            except PushRefused as exc:
-                raise SessionError(f"push refused: {exc}") from exc
-            await asyncio.to_thread(
-                client.send_lh2_calibration, payload, check.addresses
-            )
-            stale = await asyncio.to_thread(
-                push_worklist, client, session.saved, check.addresses
-            )
+                stale = await asyncio.to_thread(
+                    push_worklist, client, session.saved, check.addresses
+                )
+            finally:
+                await asyncio.to_thread(self._listen_for_buttons, "")
             await self._emit()
             return {
                 "id": session.saved_id,
@@ -286,6 +285,15 @@ class SessionDriver:
             self._stream = self._stream_factory(client, device, self.on_button_capture)
             self._stream.__enter__()
         return self._stream
+
+    def _listen_for_buttons(self, device: str) -> None:
+        try:
+            self._ensure_stream(device)
+        except Exception as exc:  # a fleet out of reach is not a failure
+            self.logger.warning(
+                "Not listening for button captures until a capture reaches the fleet",
+                error=str(exc),
+            )
 
     def _close_stream(self) -> None:
         if self._stream is not None:
