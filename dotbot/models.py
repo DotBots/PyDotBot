@@ -150,6 +150,7 @@ class DotBotCameraPoseModel(BaseModel):
     photodiode_mm: List[float]
     nose_mm: List[float]
     outline_mm: List[List[float]] = []
+    wheels_mm: List[List[List[float]]] = []
     heading_deg: float
     heading_atan2_deg: float
     green_flare: float = 0.0

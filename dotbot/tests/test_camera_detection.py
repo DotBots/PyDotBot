@@ -89,6 +89,27 @@ def test_finds_a_robot_and_reports_its_pose(heading):
     assert across.min() == pytest.approx(-47.0, abs=0.2)
 
 
+def test_the_pose_carries_the_tyres_the_template_matched():
+    """The camera reports the same two rectangles the record hands the console,
+    turned to the reported heading, so the overlay and the glyph draw one
+    robot."""
+    from dotbot.camera.detection.pose import WHEELS_MM
+
+    raster = draw_robot(carpet(), CENTRE_PX, 37.0)
+    detection = RobotDetector(MM_PER_PX).detect(raster)
+    assert detection.status == "found"
+
+    pose = frame_pose(detection.pose, AREA, MM_PER_PX)
+    right, forward = axes(pose["heading_atan2_deg"])
+    centre = np.asarray(pose["centre_mm"])
+    expected = [
+        [centre + p[0] * right + p[1] * forward for p in tyre] for tyre in WHEELS_MM
+    ]
+    # Both sides are reported rounded, the heading to a tenth of a degree,
+    # which a tyre corner 47 mm out turns into a tenth of a millimetre.
+    assert np.allclose(pose["wheels_mm"], expected, atol=0.15)
+
+
 def test_direction_convention():
     """The heading the console draws is the detector's, turned by 90 degrees.
 
