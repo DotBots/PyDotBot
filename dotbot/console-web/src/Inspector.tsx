@@ -67,10 +67,6 @@ export function infoText(bot: UnifiedBot): string {
   }
   out.push("");
   out.push(`LH2 calibration   ${formatLh2(bot)}`);
-  if (sw?.tx_dropped !== undefined) {
-    out.push("");
-    out.push(`Frames dropped    ${sw.tx_dropped} not joined, ${sw.ipc_timeouts ?? 0} net core timeouts`);
-  }
   if (sw?.reset_reason !== undefined) {
     out.push("");
     out.push(`Last reset        ${bot.resetCause}`);
@@ -181,13 +177,6 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
 
       <div style={{ height: 8 }} />
       <Row k="LH2 calib" v={formatLh2(bot)} />
-
-      {sw?.tx_dropped !== undefined && (
-        <>
-          <div style={{ height: 8 }} />
-          <Row k="Frames dropped" v={`${sw.tx_dropped} not joined, ${sw.ipc_timeouts ?? 0} net core timeouts`} />
-        </>
-      )}
 
       {sw?.reset_reason !== undefined && (
         <>

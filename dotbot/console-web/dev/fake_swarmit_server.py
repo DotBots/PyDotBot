@@ -185,8 +185,6 @@ def device_info(addr: str) -> dict:
     return {
         "info_version": 2,
         "info_gen": 4,
-        "ipc_timeouts": 0,
-        "tx_dropped": 0,
         "boot_count": 2 + seed % 30,
         "uptime_s": 60 + seed % 9000,
         "bl_version": SANDBOX_FW,
@@ -240,8 +238,6 @@ def node(addr: str, status: str, battery_mv: int, x: int, y: int) -> dict:
         "raw": "8001" + f"{seed:08x}" * 3,
         "last_updated_at": time.time(),
         "info_gen": 4,
-        "ipc_timeouts": 0,
-        "tx_dropped": 0,
         "info": device_info(addr),
         **battery_fields(battery_mv),
     }
