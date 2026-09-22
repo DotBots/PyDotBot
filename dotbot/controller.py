@@ -697,7 +697,7 @@ class Controller:
                 "Advertisement Data",
                 direction=frame.packet.payload.direction,
                 X=frame.packet.payload.pos_x,
-                Y=frame.packet.payload.pos_x,
+                Y=frame.packet.payload.pos_y,
                 battery=frame.packet.payload.battery,
             )
             if (

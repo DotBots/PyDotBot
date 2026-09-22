@@ -9,6 +9,7 @@ import pytest
 from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot_utils.serial_interface import SerialInterface
+from structlog.testing import capture_logs
 
 from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
@@ -785,3 +786,12 @@ async def test_an_advertisement_without_a_heading_keeps_the_last_one(controller)
     )
     assert controller.dotbots[addr_to_hex(BOT)].direction == 90
 
+
+@pytest.mark.asyncio
+async def test_the_advertisement_debug_log_reports_y(controller):
+    with capture_logs() as logs:
+        controller.handle_received_frame(
+            _advertised(BOT, direction=90, pos_x=1000, pos_y=2000)
+        )
+    (entry,) = [e for e in logs if e["event"] == "Advertisement Data"]
+    assert (entry["X"], entry["Y"]) == (1000, 2000)
