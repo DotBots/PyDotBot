@@ -98,14 +98,14 @@ describe("the glyph a level draws", () => {
   });
 
   it("draws a headingless DotBot as the board, nose-up", () => {
-    const el = svg({ color: "red", heading: null, footprint: true, level: "detail" });
+    const el = svg({ color: "red", heading: null, dotBot: true, level: "detail" });
     expect(el.querySelectorAll("circle")).toHaveLength(0);
     expect(el.querySelectorAll("path")).toHaveLength(1);
     expect(el.style.transform).toBe("");
   });
 
   it("draws a headingless DotBot as the square where a front would not read", () => {
-    const el = svg({ color: "red", heading: null, footprint: true, level: "dot" });
+    const el = svg({ color: "red", heading: null, dotBot: true, level: "dot" });
     expect(el.querySelectorAll("circle")).toHaveLength(0);
     expect(el.querySelectorAll("rect")).toHaveLength(1);
   });

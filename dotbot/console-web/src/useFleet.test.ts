@@ -227,7 +227,7 @@ describe("isDotBot (drawn as the robot)", () => {
       { aaaa: sw({ status: "Running" }) },
     );
     expect(b.heading).toBeNull();
-    expect(b.footprint).toBe(true);
+    expect(b.isDotBot).toBe(true);
   });
 });
 

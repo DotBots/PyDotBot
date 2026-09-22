@@ -250,9 +250,7 @@ export interface UnifiedBot {
   led: RgbLed | null;
   deviceType: string;
   application: number;
-  // A DotBot, by swarmit's device type or by the controller's application:
-  // drawn as the robot whatever image it runs.
-  footprint: boolean;
+  isDotBot: boolean; // drawn as the robot outline
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
   waypoints: LH2Position[]; // active mission (as reported by the controller)
