@@ -115,6 +115,8 @@ export interface CameraPose {
   photodiode_mm: [number, number];
   nose_mm: [number, number];
   outline_mm: number[][];
+  /** Each tyre in plan view, as a rectangle; empty on an older host. */
+  wheels_mm?: number[][][];
   heading_deg: number;
   heading_atan2_deg: number;
   green_flare: number;

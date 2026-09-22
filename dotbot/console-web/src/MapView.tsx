@@ -687,7 +687,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       />
                     )}
                     {/* What the camera makes of the robot standing on this
-                        floor: its board outline, a line from the centre to
+                        floor: its board outline and its two tyres, the same
+                        parts the map glyph draws, a line from the centre to
                         the nose so the heading is readable, and a dot on the
                         photodiode, which is the point the lighthouse
                         reports and so the one the two can be compared at. */}
@@ -696,6 +697,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         data-testid={`camera-detection-${camera.area}`}
                         style={{ pointerEvents: "none" }}
                       >
+                        {(pose.wheels_mm ?? []).map((wheel, i) => (
+                          <polygon
+                            key={i}
+                            data-layer="wheel"
+                            data-testid={`camera-detection-wheel-${camera.area}-${i}`}
+                            points={polygonPoints(wheel, area)}
+                            fill="none"
+                            stroke={found.stroke}
+                            strokeDasharray={found.dasharray}
+                            strokeWidth={chrome}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        ))}
                         <polygon
                           data-testid={`camera-detection-outline-${camera.area}`}
                           points={polygonPoints(pose.outline_mm, area)}
