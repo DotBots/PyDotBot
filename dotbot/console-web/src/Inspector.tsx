@@ -29,6 +29,17 @@ export function formatLh2(bot: UnifiedBot): string {
   return bot.swarmit?.info?.lh2_summary ?? "unknown (no device info)";
 }
 
+/**
+ * The body heading, and where it came from. A travel bearing is the robot's
+ * direction of motion, so it is its heading only while it drives straight;
+ * saying which it is here is what lets a reader believe the drawn body or not.
+ */
+export function formatHeading(bot: UnifiedBot): string {
+  const pose = bot.pose;
+  if (!pose || pose.heading_source === "none") return "unknown";
+  return `${Math.round(pose.heading_deg)} deg (${pose.heading_source})`;
+}
+
 const hex32 = (v: number) => `0x${(v >>> 0).toString(16).padStart(8, "0")}`;
 
 // FaultType values that actually populate the fault status registers. A
@@ -52,6 +63,7 @@ export function infoText(bot: UnifiedBot): string {
   out.push(
     `Position          ${bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}`,
   );
+  out.push(`Heading           ${formatHeading(bot)}`);
   if (info) {
     out.push("");
     out.push(`Image             ${info.image_name || "(unnamed)"}`);
@@ -156,6 +168,7 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
         k="Position"
         v={bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}
       />
+      <Row k="Heading" v={formatHeading(bot)} />
 
       {info && (
         <>
