@@ -325,6 +325,8 @@ interface RightPaneProps {
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
+  robotShapes?: boolean;
+  onRobotShapesToggle?: () => void;
   // The cameras the controller warps. None registered, no Camera heading.
   cameras?: RegisteredCamera[];
   // What each camera's detector last made of its own area, keyed by area.
@@ -465,6 +467,14 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                 onToggle={() => props.onLayerToggle(row.key)}
               />
             ))}
+            {props.onRobotShapesToggle && (
+              <CheckRow
+                label="Robot shapes"
+                hint="Draw DotBots as the robot rather than a dot"
+                on={props.robotShapes ?? true}
+                onToggle={props.onRobotShapesToggle}
+              />
+            )}
 
             <div style={{ ...label10, margin: "14px 0 4px" }}>Areas</div>
             {siteAreas.length === 0 && (

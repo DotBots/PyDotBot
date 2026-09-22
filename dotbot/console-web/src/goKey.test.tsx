@@ -24,6 +24,7 @@ const bot = (id: string, extra: Partial<UnifiedBot> = {}): UnifiedBot => ({
   led: null,
   deviceType: "DotBotV3",
   application: 0,
+  isDotBot: true,
   drivable: true,
   nav: "drive",
   waypoints: [],

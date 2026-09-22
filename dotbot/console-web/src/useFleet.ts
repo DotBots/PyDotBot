@@ -13,6 +13,7 @@ import {
   Area,
   BotState,
   CalibrationSession,
+  LH2Position,
   LinkState,
   PyDotBot,
   RegisteredCamera,
@@ -49,6 +50,35 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
+// The controller's pose while the link is active, else swarmit's position if
+// it has located the bot, else the controller's last pose. swarmit reports
+// (0, 0) for a bot it has never located, and no heading at all.
+export function derivePose(
+  py: PyDotBot | undefined,
+  sw: SwarmitNode | undefined,
+  link: LinkState,
+): { position: LH2Position | null; heading: number | null } {
+  const pyHeading =
+    py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
+  if (link === "active" && py?.lh2_position) {
+    return { position: py.lh2_position, heading: pyHeading };
+  }
+  if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
+    return { position: { x: sw.pos_x, y: sw.pos_y }, heading: null };
+  }
+  const position = py?.lh2_position ?? null;
+  return { position, heading: position ? pyHeading : null };
+}
+
+// Either signal is enough: swarmit knows the board even in its bootloader,
+// and the controller knows the firmware even on a board swarmit cannot name.
+export function isDotBot(
+  py: PyDotBot | undefined,
+  sw: SwarmitNode | undefined,
+): boolean {
+  return (sw?.device.startsWith("DotBot") ?? false) || py?.application === 0;
+}
+
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
@@ -60,25 +90,18 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
+    const { position, heading } = derivePose(py, sw, link);
     out.push({
       id,
       state,
       link,
-      // swarmit reports (0, 0) for a bot it has never located, and the arena
-      // never contains the origin, so drawing it would invent a position.
-      position:
-        py?.lh2_position ??
-        (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)
-          ? { x: sw.pos_x, y: sw.pos_y }
-          : null),
-      heading:
-        py?.direction !== undefined && py.direction !== -1000
-          ? py.direction
-          : null,
+      position,
+      heading,
       battery: py?.battery ?? (sw ? sw.battery / 1000 : 0),
       led: py?.rgb_led ?? null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
+      isDotBot: isDotBot(py, sw),
       // Drivable = a DBP-speaking image is running. The control plane must be
       // hearing the bot, and either its sandbox is Running or it has no
       // sandbox at all (a bare-mode bot swarmit does not manage).

@@ -247,6 +247,7 @@ export interface UnifiedBot {
   led: RgbLed | null;
   deviceType: string;
   application: number;
+  isDotBot: boolean; // drawn as the robot outline
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
   waypoints: LH2Position[]; // active mission (as reported by the controller)

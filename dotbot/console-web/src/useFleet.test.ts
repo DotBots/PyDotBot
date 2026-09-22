@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
+  derivePose,
   deriveState,
+  isDotBot,
   merge,
   severityOf,
   withDetection,
@@ -111,7 +113,7 @@ describe("merge", () => {
   it("treats direction -1000 (unknown) as no heading", () => {
     const [a] = merge({ a: py({ address: "a", direction: -1000 }) }, {});
     expect(a.heading).toBeNull();
-    const [b] = merge({ b: py({ address: "b", direction: 45 }) }, {});
+    const [b] = merge({ b: py({ address: "b", direction: 45, lh2_position: { x: 1, y: 1 } }) }, {});
     expect(b.heading).toBe(45);
   });
 
@@ -200,5 +202,70 @@ describe("withDetection (one camera's latest view of its own area)", () => {
     expect(next["dev-corner"].sequence).toBe(2);
     expect(next.annex.sequence).toBe(9);
     expect(previous["dev-corner"].sequence).toBe(1);
+  });
+});
+
+describe("isDotBot (drawn as the robot)", () => {
+  it("takes swarmit's device type alone, as in the bootloader", () => {
+    expect(isDotBot(undefined, sw({ device: "DotBotV3", status: "Bootloader" }))).toBe(true);
+    expect(isDotBot(undefined, sw({ device: "DotBotV2" }))).toBe(true);
+  });
+
+  it("takes the controller's application alone, whatever image advertises it", () => {
+    expect(isDotBot(py({ application: 0 }), undefined)).toBe(true);
+    expect(isDotBot(py({ application: 0 }), sw({ device: "Unknown" }))).toBe(true);
+  });
+
+  it("is not a DotBot when neither signal says so", () => {
+    expect(isDotBot(py({ application: 1 }), sw({ device: "nRF5340DK" }))).toBe(false);
+    expect(isDotBot(undefined, sw({ device: "Unknown" }))).toBe(false);
+  });
+
+  it("keeps a headingless DotBot a robot on the merged bot", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", direction: -1000 }) },
+      { aaaa: sw({ status: "Running" }) },
+    );
+    expect(b.heading).toBeNull();
+    expect(b.isDotBot).toBe(true);
+  });
+});
+
+describe("derivePose (whose pose is live)", () => {
+  const stale = { x: 1500, y: 300 };
+
+  it("takes the controller's while its link is active", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw(), "active").position).toEqual(stale);
+  });
+
+  it("takes swarmit's once the controller stops hearing the app", () => {
+    for (const link of ["inactive", "lost"] as const) {
+      expect(derivePose(py({ lh2_position: stale }), sw(), link).position).toEqual({ x: 100, y: 200 });
+    }
+  });
+
+  it("takes swarmit's for a bot in its bootloader the merge still has an app record for", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", status: 2, lh2_position: stale }) },
+      { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
+    );
+    expect(b.position).toEqual({ x: 700, y: 800 });
+  });
+
+  it("keeps the controller's stale position when swarmit has never located the bot", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw({ pos_x: 0, pos_y: 0 }), "lost").position).toEqual(stale);
+  });
+
+  it("takes the controller's heading only with its position", () => {
+    const heard = py({ lh2_position: stale, direction: 90 });
+    expect(derivePose(heard, sw(), "active").heading).toBe(90);
+    expect(derivePose(heard, sw(), "lost")).toEqual({ position: { x: 100, y: 200 }, heading: null });
+    expect(derivePose(heard, sw({ pos_x: 0, pos_y: 0 }), "lost").heading).toBe(90);
+    const unplaced = py({ direction: 90 });
+    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({ position: null, heading: null });
+  });
+
+  it("does not draw swarmit's unlocated origin", () => {
+    expect(derivePose(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown").position).toBeNull();
   });
 });
