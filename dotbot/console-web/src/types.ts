@@ -235,6 +235,8 @@ export interface SwarmitNode {
   cfsr?: number; // configurable fault status
   sfsr?: number; // secure fault status
   last_updated_at?: number; // unix seconds
+  ipc_timeouts?: number; // requests the app core stopped waiting on the net core for, since boot
+  tx_dropped?: number; // uplink frames the net core discarded while not joined, since boot
   raw?: string; // hex of the status packet, only on /status
   info?: SwarmitDeviceInfo | null;
 }
