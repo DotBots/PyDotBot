@@ -15,6 +15,7 @@ from typing import Any, List, Literal, Optional, Union
 from pydantic import BaseModel
 
 from dotbot.protocol import ApplicationType, ControlModeType
+from dotbot.robots import ROBOT_DEFAULT, BodyPose
 
 MAX_POSITION_HISTORY_SIZE = 1000
 
@@ -75,7 +76,12 @@ class DotBotGPSPosition(BaseModel):
 
 
 class DotBotWaypoints(BaseModel):
-    """Waypoints model."""
+    """Waypoints model.
+
+    An LH2 waypoint is a target for the robot's LH2 photodiode, not for its
+    body: the robot has arrived when its photodiode is within `threshold` mm
+    of it.
+    """
 
     threshold: int
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]]
@@ -377,6 +383,38 @@ class DotBotReplyModel(BaseModel):
     data: Any
 
 
+class DotBotPoseModel(BaseModel):
+    """A robot's body in the arena frame, expanded from its photodiode fix.
+
+    `heading_source` says how `heading_deg` was made: "travel" is the bearing
+    between fixes, "ekf" the robot's own estimate, and "none" means there was
+    no heading and `heading_deg` is a placeholder.
+    """
+
+    heading_deg: float
+    heading_source: Literal["none", "travel", "ekf"]
+    axle: DotBotLH2Position
+    centre: DotBotLH2Position
+    nose: DotBotLH2Position
+    led: DotBotLH2Position
+    outline: List[DotBotLH2Position]
+
+    @classmethod
+    def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
+        def point(p):
+            return DotBotLH2Position(x=p.x, y=p.y)
+
+        return cls(
+            heading_deg=pose.heading_deg,
+            heading_source=pose.heading_source.name.lower(),
+            axle=point(pose.axle),
+            centre=point(pose.centre),
+            nose=point(pose.nose),
+            led=point(pose.led),
+            outline=[point(p) for p in pose.outline],
+        )
+
+
 class DotBotModel(BaseModel):
     """Model class that defines a DotBot."""
 
@@ -392,7 +430,10 @@ class DotBotModel(BaseModel):
     sail_angle: Optional[int] = None
     move_raw: Optional[DotBotMoveRawCommandModel] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
+    model: str = ROBOT_DEFAULT  # the geometry record's key
+    # The LH2 photodiode, not a body point; `pose` is the body.
     lh2_position: Optional[DotBotLH2Position] = None
+    pose: Optional[DotBotPoseModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 100  # in mm
@@ -422,6 +463,7 @@ class DotBotNotificationUpdate(BaseModel):
     rudder_angle: Optional[int] = None
     sail_angle: Optional[int] = None
     lh2_position: Optional[DotBotLH2Position] = None
+    pose: Optional[DotBotPoseModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
     battery: Optional[float] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
