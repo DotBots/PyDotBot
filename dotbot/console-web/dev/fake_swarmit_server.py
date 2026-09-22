@@ -114,6 +114,10 @@ SANDBOX_FW = "0.8.0rc3-87-gb8957de"
 # What a calibrated bot reports it holds (device info v2).
 FAKE_SITE = "c405-arena"
 FAKE_CALIBRATION_ID = "3f9a1c07e2b845d6"
+# The lh2_flags bits, as swarmit.testbed.protocol names them.
+LH2_FLAG_VALID = 1 << 0
+LH2_FLAG_FROM_FLASH = 1 << 1
+LH2_FLAG_FLOAT32 = 1 << 2
 
 # (image_name, image_digest, image_size)
 IMAGES = [
@@ -172,8 +176,9 @@ def device_info(addr: str) -> dict:
     name, digest, size = IMAGES[seed % len(IMAGES)]
     # A minority are uncalibrated, which is the state an operator acts on.
     homographies = 0 if seed % 9 == 0 else (2 if seed % 5 == 0 else 1)
-    # Float32 firmware sets SWRMT_LH2_FLAG_FLOAT32 whatever it holds.
-    flags = 0b100 if not homographies else 0b111
+    flags = LH2_FLAG_FLOAT32
+    if homographies:
+        flags |= LH2_FLAG_VALID | LH2_FLAG_FROM_FLASH
     noun = "basestation" if homographies == 1 else "basestations"
     summary = (
         "uncalibrated"
