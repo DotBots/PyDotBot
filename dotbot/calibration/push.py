@@ -75,6 +75,10 @@ class PushCheck:
         return "\n".join(reasons)
 
 
+def _reported_id(info: Any) -> str:
+    return getattr(info, "lh2_calibration_id", "") or ""
+
+
 def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck:
     """Sort the fleet by what a push of `calibration` would do to it."""
     check = PushCheck(addresses=sorted(status))
@@ -95,7 +99,7 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
         site = getattr(info, "lh2_site_name", "") or ""
         if site and site != calibration.site.name:
             check.other_site[addr] = site
-        if (getattr(info, "lh2_calibration_id", "") or "") != wanted_id:
+        if _reported_id(info) != wanted_id:
             check.stale.append(addr)
     return check
 
@@ -151,7 +155,7 @@ def push_worklist(
         status = client.status()
         for addr in list(pending):
             info = getattr(status.get(addr), "info", None)
-            if info is not None and (info.lh2_calibration_id or "") == wanted_id:
+            if info is not None and _reported_id(info) == wanted_id:
                 pending.discard(addr)
         if not pending or time.monotonic() >= deadline:
             break
