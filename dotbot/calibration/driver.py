@@ -172,12 +172,14 @@ class SessionDriver:
             devices = [session.device] if session.device else None
             client = await asyncio.to_thread(self._ensure_client, session.device)
             try:
-                await asyncio.to_thread(
+                check = await asyncio.to_thread(
                     gate_push, client, session.saved, site_changed, devices
                 )
             except PushRefused as exc:
                 raise SessionError(f"push refused: {exc}") from exc
-            await asyncio.to_thread(client.send_lh2_calibration, payload)
+            await asyncio.to_thread(
+                client.send_lh2_calibration, payload, check.addresses
+            )
             stale = await asyncio.to_thread(
                 push_worklist, client, session.saved, devices
             )

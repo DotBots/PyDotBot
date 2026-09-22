@@ -94,7 +94,9 @@ class SimulatedCaptureClient:
             body += count2.to_bytes(4, "little")
         self._pending.append({"addr": self.device, "data_hex": bytes(body).hex()})
 
-    def send_lh2_calibration(self, payload: bytes) -> None:
+    def send_lh2_calibration(
+        self, payload: bytes, devices: list[str] | None = None
+    ) -> None:
         self.pushed.append(payload)
 
     def refresh_device_info(self, devices: list[str] | None = None) -> None:

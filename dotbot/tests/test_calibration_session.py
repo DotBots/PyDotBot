@@ -102,8 +102,9 @@ class _FakeClient:
         self.triggers += 1
         self._triggered.set()
 
-    def send_lh2_calibration(self, payload: bytes) -> None:
+    def send_lh2_calibration(self, payload: bytes, devices=None) -> None:
         self.pushed.append(payload)
+        self.pushed_to = devices
         # The bot commits the push and reports its site and id from then on.
         for info in self.infos.values():
             if info is not None and info.info_version >= 2:
@@ -410,6 +411,7 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
     assert pushed["bytes"] == len(client.pushed[0]) == 84
     # The robot now reports the pushed id, so nothing is left to re-push.
     assert pushed["stale"] == []
+    assert client.pushed_to == [driver.session.device]
 
 
 @pytest.mark.asyncio

@@ -44,6 +44,7 @@ class _Fleet:
     def __init__(self, nodes):
         self.nodes = nodes
         self.pushed: list[bytes] = []
+        self.pushed_to: list[list[str] | None] = []
 
     def __enter__(self):
         return self
@@ -57,9 +58,12 @@ class _Fleet:
     def status(self):
         return dict(self.nodes)
 
-    def send_lh2_calibration(self, payload):
+    def send_lh2_calibration(self, payload, devices=None):
         self.pushed.append(payload)
+        self.pushed_to.append(devices)
         for addr, node in self.nodes.items():
+            if devices is not None and addr not in devices:
+                continue
             if addr == "LAGGARD" or node.info is None:
                 continue
             node.info.lh2_site_name = payload[60:76].rstrip(b"\x00").decode()
@@ -125,6 +129,7 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
 
     assert result.exit_code == 0, result.output
     assert fleet.pushed == [b"".join(bytes.fromhex(h) for h in MESSAGE_HEX)]
+    assert fleet.pushed_to == [["FRESH", "LAGGARD"]]
     assert "2 robot(s) hold another id" in result.output
     assert "Still not on ac893d2d (1), push again: LAGGARD" in result.output
 

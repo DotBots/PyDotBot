@@ -32,6 +32,7 @@ class PushRefused(Exception):
 class PushCheck:
     """What the pre-push sweep found, per robot."""
 
+    addresses: list[str] = field(default_factory=list)
     old_firmware: list[str] = field(default_factory=list)
     unanswered: list[str] = field(default_factory=list)
     other_site: dict[str, str] = field(default_factory=dict)
@@ -71,7 +72,7 @@ def reported_info(status: Mapping[str, Any]) -> dict[str, Any]:
 
 def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck:
     """Sort the fleet by what a push of `calibration` would do to it."""
-    check = PushCheck()
+    check = PushCheck(addresses=sorted(status))
     wanted_id = pushed_id(calibration)
     for addr, node in sorted(status.items()):
         info = getattr(node, "info", None)
@@ -121,7 +122,8 @@ def gate_push(
 ) -> PushCheck:
     """Read device info and raise `PushRefused` if the push is unsafe.
 
-    `devices` limits the check to the robots the push is addressed to.
+    `devices` limits the check to those robots. The push must go to exactly
+    the returned check's `addresses`, the robots that were checked.
     """
     status = _status(client, devices)
     if not status:
