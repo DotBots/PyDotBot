@@ -210,39 +210,54 @@ class SessionDriver:
 
     # -- the robot's own trigger
 
-    def on_button_capture(self, capture: Any) -> None:
-        """A capture from the robot's own button: point k, or dropped."""
-        session = self.session
-        if session is None:
+    def on_button_capture(self, capture: Any) -> Any:
+        """A capture from the robot's own button, from the stream's reader thread.
+
+        Stored on the event loop under the session lock; returns the
+        concurrent future of that, or None when no session ever started.
+        """
+        if self._loop is None:
             self.logger.info(
                 "LH2 button capture arrived with no calibration session open; dropped",
                 device=capture.device,
             )
-            return
-        if capture.lost:
-            self.logger.warning(
-                "LH2 button captures lost", device=capture.device, lost=capture.lost
-            )
-        try:
-            point = session.store_reads(capture.reads)
-        except SessionError as exc:
-            session.error = str(exc)
-            point = None
-        else:
-            if point is None:
+            return None
+        return asyncio.run_coroutine_threadsafe(
+            self._store_button_capture(capture), self._loop
+        )
+
+    async def _store_button_capture(self, capture: Any) -> None:
+        """Point k, or dropped."""
+        async with self._lock:
+            session = self.session
+            if session is None:
                 self.logger.info(
-                    "LH2 button capture arrived with every point captured; dropped",
+                    "LH2 button capture arrived with no calibration session open; dropped",
                     device=capture.device,
                 )
                 return
-            session.error = ""
-            self.logger.info(
-                "LH2 capture stored from the robot's own button",
-                device=capture.device,
-                point=point.index,
-            )
-        if self._loop is not None:
-            asyncio.run_coroutine_threadsafe(self._emit(), self._loop)
+            if capture.lost:
+                self.logger.warning(
+                    "LH2 button captures lost", device=capture.device, lost=capture.lost
+                )
+            try:
+                point = session.store_reads(capture.reads)
+            except SessionError as exc:
+                session.error = str(exc)
+            else:
+                if point is None:
+                    self.logger.info(
+                        "LH2 button capture arrived with every point captured; dropped",
+                        device=capture.device,
+                    )
+                    return
+                session.error = ""
+                self.logger.info(
+                    "LH2 capture stored from the robot's own button",
+                    device=capture.device,
+                    point=point.index,
+                )
+            await self._emit()
 
     # -- transport
 

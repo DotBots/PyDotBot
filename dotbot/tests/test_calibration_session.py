@@ -326,7 +326,7 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
     await driver.capture("ABCD")  # point 0 the requested way
     assert driver.state()["outstanding"] == 1
 
-    driver.on_button_capture(_press(0, *CORNER_COUNTS[1]))
+    await asyncio.wrap_future(driver.on_button_capture(_press(0, *CORNER_COUNTS[1])))
 
     state = driver.state()
     assert state["outstanding"] == 2
@@ -334,10 +334,22 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
     assert state["points"][1]["reads"] == [{"station": 0, "reads": 1, "target": 1}]
 
 
+@pytest.mark.asyncio
+async def test_a_button_capture_waits_for_a_save_in_progress():
+    driver, _, _ = _driver()
+    await driver.start(["arena:corners"])
+    async with driver._lock:
+        stored = driver.on_button_capture(_press(0, *CORNER_COUNTS[0]))
+        await asyncio.sleep(0.05)
+        assert driver.state()["outstanding"] == 0
+    await asyncio.wrap_future(stored)
+    assert driver.state()["outstanding"] == 1
+
+
 def test_a_capture_arriving_with_no_session_is_dropped():
     driver, _, _ = _driver()
     assert driver.session is None
-    driver.on_button_capture(_press(0, 41290, 51728))
+    assert driver.on_button_capture(_press(0, 41290, 51728)) is None
     assert driver.state() is None
 
 
@@ -348,7 +360,7 @@ async def test_a_capture_arriving_with_every_point_captured_is_dropped():
     await _walk(driver, client)
     before = driver.state()
 
-    driver.on_button_capture(_press(0, 44444, 55555))
+    await asyncio.wrap_future(driver.on_button_capture(_press(0, 44444, 55555)))
 
     assert driver.state() == before
 
@@ -849,8 +861,10 @@ async def test_a_refused_button_capture_leaves_the_point_outstanding_with_the_er
     two = parse_capture_payload(
         _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
     )
-    driver.on_button_capture(ButtonCapture(device="ABCD", press=0, reads=[two]))
-    driver.on_button_capture(_press(0, *CORNER_COUNTS[1]))
+    await asyncio.wrap_future(
+        driver.on_button_capture(ButtonCapture(device="ABCD", press=0, reads=[two]))
+    )
+    await asyncio.wrap_future(driver.on_button_capture(_press(0, *CORNER_COUNTS[1])))
 
     state = driver.state()
     assert state["outstanding"] == 1
