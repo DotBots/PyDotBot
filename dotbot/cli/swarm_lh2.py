@@ -38,7 +38,7 @@ import click
 from dotbot.cli._site import site_from_context
 
 
-def _swarmit_client(ctx, conn, swarm_id, device=None):
+def _swarmit_client(ctx, conn, swarm_id):
     """A swarmit client for this CLI invocation.
 
     Falls back to the unified dotbot config's `conn` / `swarm_id` (like
@@ -59,7 +59,7 @@ def _swarmit_client(ctx, conn, swarm_id, device=None):
 
     from dotbot.swarm_client import build_swarmit_client
 
-    return build_swarmit_client(conn, swarm_id, device)
+    return build_swarmit_client(conn, swarm_id)
 
 
 @click.group(
@@ -252,7 +252,7 @@ def _collect(
         raise click.ClickException(str(exc)) from exc
 
     try:
-        client = _swarmit_client(ctx, conn, swarm_id, device)
+        client = _swarmit_client(ctx, conn, swarm_id)
     except click.ClickException:
         raise
     except Exception as exc:

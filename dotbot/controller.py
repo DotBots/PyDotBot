@@ -804,7 +804,7 @@ class Controller:
 
             return SimulatedCaptureClient(device, self._outstanding_point)
         return build_swarmit_client(
-            conn_string(self.settings), self.settings.network_id, device or None
+            conn_string(self.settings), self.settings.network_id
         )
 
     def _outstanding_point(self):
