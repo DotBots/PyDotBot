@@ -279,6 +279,30 @@ class _Clock:
         return self.now
 
 
+def test_the_firmwares_button_press_assembles_into_its_reads():
+    from dotbot.tests.lh2_button_fixture import (
+        EVENTS_HEX,
+        PRESS,
+        READS,
+        STATION_COUNTS,
+    )
+
+    assembler = ButtonAssembler()
+    captures = [
+        assembler.add("feed", parse_button_payload(bytes.fromhex(event)))
+        for event in EVENTS_HEX
+    ]
+    assert captures[:-1] == [None] * (len(EVENTS_HEX) - 1)
+    capture = captures[-1]
+    assert capture.press == PRESS
+    assert len(capture.reads) == READS
+    for i, read in enumerate(capture.reads):
+        assert [(r.lh_index, r.count1, r.count2) for r in read] == [
+            (station, count1 + i, count2 + i)
+            for station, (count1, count2) in STATION_COUNTS.items()
+        ]
+
+
 def test_parse_button_payload_reads_press_chunk_and_records():
     events = _button_events(3, {0: (10, 20)}, reads=1)
     chunk = parse_button_payload(events[0])

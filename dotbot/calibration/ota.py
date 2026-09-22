@@ -37,8 +37,10 @@ _SAMPLE_SIZE = 9
 # A capture from the calibrate app's button: [tag][header][records], the header
 # packing the press counter (high five bits) and the chunk index (low three).
 # The last chunk of a press carries fewer than BUTTON_CHUNK_RECORDS records.
+# tests/lh2_button_fixture.py pins the layout against that app.
 BUTTON_CAPTURE_TAG = 0xCB
-BUTTON_CHUNK_RECORDS = 13
+BUTTON_LOG_SIZE_MAX = 127
+BUTTON_CHUNK_RECORDS = (BUTTON_LOG_SIZE_MAX - 2) // _SAMPLE_SIZE
 BUTTON_PRESS_MODULUS = 32
 # Seconds from a press's first chunk to its last before the press is given up.
 # Must stay above the copies' spread: the app sends at half the uplink budget,
