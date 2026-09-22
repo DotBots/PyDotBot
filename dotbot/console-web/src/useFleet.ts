@@ -50,11 +50,9 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
-// The controller keeps the last pose an app advertised, so it is only the
-// live one while the link is active; otherwise swarmit's position is, and the
-// controller's stale pose is still better than none. swarmit reports (0, 0)
-// for a bot it has never located, which is not a position, and no heading at
-// all, so the heading comes from the controller only with its position.
+// The controller's pose while the link is active, else swarmit's position if
+// it has located the bot, else the controller's last pose. swarmit reports
+// (0, 0) for a bot it has never located, and no heading at all.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
@@ -68,7 +66,8 @@ export function derivePose(
   if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
     return { position: { x: sw.pos_x, y: sw.pos_y }, heading: null };
   }
-  return { position: py?.lh2_position ?? null, heading: pyHeading };
+  const position = py?.lh2_position ?? null;
+  return { position, heading: position ? pyHeading : null };
 }
 
 // Either signal is enough: swarmit knows the board even in its bootloader,
