@@ -4,8 +4,8 @@
 """The controller's side of a calibration session: one at a time, with events.
 
 The capture loop itself is `CalibrationSession`; this drives it from async
-routes. It owns the swarmit client, built on first capture rather than at
-start so a controller with no fleet in reach still serves the routes; it
+routes. It owns the swarmit client, built when a session starts and rebuilt
+when the robot changes, and a start with no fleet in reach still opens; it
 turns every state change into exactly one WebSocket notification, in the
 order the changes happened; and it routes a capture that arrives from the
 robot's own button to the outstanding point.
@@ -112,6 +112,16 @@ class SessionDriver:
             session.device = device.upper()
             session.area = area
             self.session = session
+            self._loop = asyncio.get_running_loop()
+            # Button captures come unrequested from any robot, so the stream
+            # is listening from the start rather than from the first capture.
+            try:
+                await asyncio.to_thread(self._ensure_stream, session.device)
+            except Exception as exc:  # a fleet out of reach is not a failed start
+                self.logger.warning(
+                    "Not listening for button captures until a capture reaches the fleet",
+                    error=str(exc),
+                )
             await self._emit()
             return session.as_dict()
 
@@ -247,6 +257,9 @@ class SessionDriver:
     def _ensure_client(self, device: str) -> Any:
         if self._client is None or device != self._device:
             self._close_stream()
+            if self._client is not None:
+                self._client.__exit__(None, None, None)
+                self._client = None
             self._client = self._client_factory(device)
             self._client.__enter__()
             self._device = device

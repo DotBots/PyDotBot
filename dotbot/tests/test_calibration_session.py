@@ -300,6 +300,23 @@ async def test_a_capture_timeout_is_reported_as_a_line_not_an_exception():
 
 
 @pytest.mark.asyncio
+async def test_a_session_listens_for_the_button_before_any_capture():
+    # One press, one read: a single short chunk, press 0 chunk 0.
+    events = [bytes([0xCB, 0]) + _record(0, *CORNER_COUNTS[0])]
+    client = _FakeClient()
+    client.watch_log_events = lambda: iter(
+        {"addr": "FEED", "data_hex": e.hex()} for e in events
+    )
+    driver, _, _ = _driver(client)
+    await driver.start(["arena:corners"])
+    for _ in range(100):
+        if driver.state()["outstanding"] == 1:
+            break
+        await asyncio.sleep(0.02)
+    assert driver.state()["points"][0]["captured"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
@@ -542,10 +559,10 @@ def _phase(state):
 
 @pytest.mark.asyncio
 async def test_the_session_survives_a_client_that_is_built_only_once():
-    """The transport is built lazily, on the first capture, and reused."""
+    """The transport is built at start, for the button, and reused by captures."""
     driver, client, _ = _driver()
-    await driver.start(["arena:corners"])
-    assert client.entered == 0
+    await driver.start(["arena:corners"], device="ABCD")
+    assert client.entered == 1
     driver.session.reads = 1
     driver.session.timeout = 2.0
     driver.session.retries = 0
