@@ -1,8 +1,8 @@
-"""Guards the robot dimensions the simulator duplicates from the C control loop.
+"""Pins the Python geometry record to the C one in DotBot-libs `drv/geometry.h`.
 
-The compiled loop is the source: it is what runs on a robot. `dotbot_simulator`
-keeps a copy so it can generate encoder counts that loop will read back
-correctly, and nothing enforces the copy at build time.
+The two cannot share a file at build time, so the record for the board the
+library was built for is checked against the compiled
+`control_loop_get_geometry()`, and so is the simulator that reads the record.
 
 Skips unless the library is built. Point `DOTBOT_CONTROL_LOOP_LIBRARY` at it, or
 build it into `build/` per `utils/control_loop/README.md`.
@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from dotbot.dotbot_simulator import ENCODER_CPR, MM_PER_COUNT, D, L, R
+from dotbot.robots import ROBOTS
 
 LIBRARY_ENV = "DOTBOT_CONTROL_LOOP_LIBRARY"
 DEFAULT_BUILD_DIR = Path(__file__).resolve().parents[2] / "build"
@@ -45,11 +46,32 @@ def _library_path() -> Path | None:
     return None
 
 
-@pytest.fixture(name="geometry")
-def geometry_fixture() -> ControlLoopGeometry:
+def _built_model(path: Path) -> str:
+    """The robot model the library was built for, from its CMake cache.
+
+    Falls back to the CMake default, version 3, when there is no cache beside
+    the library.
+    """
+    version = "3"
+    cache = path.parent / "CMakeCache.txt"
+    if cache.exists():
+        for line in cache.read_text().splitlines():
+            if line.startswith("DOTBOT_VERSION:"):
+                version = line.partition("=")[2].strip()
+    return f"dotbot-v{version}"
+
+
+@pytest.fixture(name="library_path")
+def library_path_fixture() -> Path:
     path = _library_path()
     if path is None or not path.exists():
         pytest.skip(f"control loop library not built; set {LIBRARY_ENV}")
+    return path
+
+
+@pytest.fixture(name="geometry")
+def geometry_fixture(library_path) -> ControlLoopGeometry:
+    path = library_path
     library = ctypes.CDLL(str(path))
     if not hasattr(library, "control_loop_get_geometry"):
         pytest.skip("library predates control_loop_get_geometry")
@@ -72,7 +94,27 @@ def test_simulator_matches_compiled_geometry(geometry, field, python_value):
     assert getattr(geometry, field) == pytest.approx(python_value, rel=1e-6)
 
 
-def test_lever_arm_is_exported(geometry):
-    """Phase-5 estimator input: it is not in the Python copy yet, so only the
-    export is checked."""
-    assert geometry.lh2_lever_arm_mm > 0.0
+@pytest.fixture(name="record")
+def record_fixture(library_path):
+    model = _built_model(library_path)
+    if model not in ROBOTS:
+        pytest.skip(f"no geometry record for {model}")
+    return ROBOTS[model]
+
+
+@pytest.mark.parametrize(
+    "field,record_field",
+    [
+        ("lh2_lever_arm_mm", "lever_arm_mm"),
+        ("lh2_lever_angle_deg", "lever_angle_deg"),
+        ("track_mm", "track_mm"),
+        ("wheel_diameter_mm", "wheel_diameter_mm"),
+        ("encoder_cpr", "encoder_cpr"),
+        ("gear_ratio", "gear_ratio"),
+        ("mm_per_count", "mm_per_count"),
+    ],
+)
+def test_record_matches_compiled_geometry(geometry, record, field, record_field):
+    assert getattr(geometry, field) == pytest.approx(
+        getattr(record, record_field), rel=1e-6
+    )
