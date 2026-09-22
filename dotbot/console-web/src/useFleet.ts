@@ -50,18 +50,25 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
-// The controller keeps the last position an app advertised, so it is only
-// the live one while the link is active; otherwise swarmit's is, and the
-// controller's stale one is still better than none. swarmit reports (0, 0)
-// for a bot it has never located, which is not a position.
-export function derivePosition(
+// The controller keeps the last pose an app advertised, so it is only the
+// live one while the link is active; otherwise swarmit's position is, and the
+// controller's stale pose is still better than none. swarmit reports (0, 0)
+// for a bot it has never located, which is not a position, and no heading at
+// all, so the heading comes from the controller only with its position.
+export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
-): LH2Position | null {
-  if (link === "active" && py?.lh2_position) return py.lh2_position;
-  if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) return { x: sw.pos_x, y: sw.pos_y };
-  return py?.lh2_position ?? null;
+): { position: LH2Position | null; heading: number | null } {
+  const pyHeading =
+    py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
+  if (link === "active" && py?.lh2_position) {
+    return { position: py.lh2_position, heading: pyHeading };
+  }
+  if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
+    return { position: { x: sw.pos_x, y: sw.pos_y }, heading: null };
+  }
+  return { position: py?.lh2_position ?? null, heading: pyHeading };
 }
 
 // Either signal is enough: swarmit knows the board even in its bootloader,
@@ -84,15 +91,13 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
+    const { position, heading } = derivePose(py, sw, link);
     out.push({
       id,
       state,
       link,
-      position: derivePosition(py, sw, link),
-      heading:
-        py?.direction !== undefined && py.direction !== -1000
-          ? py.direction
-          : null,
+      position,
+      heading,
       battery: py?.battery ?? (sw ? sw.battery / 1000 : 0),
       led: py?.rgb_led ?? null,
       deviceType: sw?.device ?? "DotBot",
