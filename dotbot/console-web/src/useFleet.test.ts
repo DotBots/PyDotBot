@@ -113,7 +113,7 @@ describe("merge", () => {
   it("treats direction -1000 (unknown) as no heading", () => {
     const [a] = merge({ a: py({ address: "a", direction: -1000 }) }, {});
     expect(a.heading).toBeNull();
-    const [b] = merge({ b: py({ address: "b", direction: 45 }) }, {});
+    const [b] = merge({ b: py({ address: "b", direction: 45, lh2_position: { x: 1, y: 1 } }) }, {});
     expect(b.heading).toBe(45);
   });
 
@@ -261,6 +261,8 @@ describe("derivePose (whose pose is live)", () => {
     expect(derivePose(heard, sw(), "active").heading).toBe(90);
     expect(derivePose(heard, sw(), "lost")).toEqual({ position: { x: 100, y: 200 }, heading: null });
     expect(derivePose(heard, sw({ pos_x: 0, pos_y: 0 }), "lost").heading).toBe(90);
+    const unplaced = py({ direction: 90 });
+    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({ position: null, heading: null });
   });
 
   it("does not draw swarmit's unlocated origin", () => {
