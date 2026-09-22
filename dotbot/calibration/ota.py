@@ -109,7 +109,8 @@ class ButtonAssembler:
     """Keeps one copy of each chunk and hands back a press once it is whole.
 
     The app sends every press three times, so the same (device, press, chunk)
-    arrives up to three times and any copy of a chunk will do.
+    arrives up to three times and any copy of a chunk will do. A press still
+    incomplete after `timeout` is given up on the next `add` or `expired`.
     """
 
     def __init__(
@@ -120,12 +121,14 @@ class ButtonAssembler:
         self._timeout = timeout
         self._clock = clock
         self._pending: dict[tuple[str, int], tuple[float, dict[int, list]]] = {}
+        self._given_up: list[tuple[str, int]] = []
         # Per device: the last completed press and when it completed.
         self._completed: dict[str, tuple[int, float]] = {}
 
     def add(self, device: str, chunk: ButtonChunk) -> ButtonCapture | None:
         device = device.upper()
         now = self._clock()
+        self._give_up_stale(now)
         last = self._completed.get(device)
         if (
             last is not None
@@ -135,6 +138,11 @@ class ButtonAssembler:
             return None
         key = (device, chunk.press)
         started, chunks = self._pending.setdefault(key, (now, {}))
+        stored = chunks.get(chunk.chunk)
+        if stored is not None and stored != chunk.records:
+            # Every copy of a chunk is identical, so a different one is a new
+            # press reusing the number.
+            started, chunks = self._pending[key] = (now, {})
         chunks.setdefault(chunk.chunk, chunk.records)
         records = _whole_press(chunks)
         if records is None:
@@ -156,16 +164,16 @@ class ButtonAssembler:
         )
 
     def expired(self) -> list[tuple[str, int]]:
-        """Drop and return the presses that stayed incomplete past the timeout."""
-        now = self._clock()
-        stale = [
-            key
-            for key, (started, _) in self._pending.items()
-            if now - started > self._timeout
-        ]
-        for key in stale:
-            del self._pending[key]
-        return stale
+        """The presses given up on since the last call, as (device, press)."""
+        self._give_up_stale(self._clock())
+        given_up, self._given_up = self._given_up, []
+        return given_up
+
+    def _give_up_stale(self, now: float) -> None:
+        for key, (started, _) in list(self._pending.items()):
+            if now - started > self._timeout:
+                del self._pending[key]
+                self._given_up.append(key)
 
 
 def _whole_press(chunks: dict[int, list]) -> list[LH2CalibrationSample] | None:

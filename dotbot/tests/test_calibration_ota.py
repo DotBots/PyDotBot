@@ -328,6 +328,30 @@ def test_a_chunk_missing_from_every_copy_yields_nothing_and_expires():
     assert assembler.expired() == []
 
 
+def test_an_incomplete_press_expires_without_anyone_polling():
+    """A reused press number starts over instead of merging into the stale one."""
+    clock = _Clock()
+    assembler = ButtonAssembler(timeout=5.0, clock=clock)
+    old = _button_events(4, _TWO_STATIONS)
+    for event in old[:1] + old[2:]:
+        assembler.add("ABCD", parse_button_payload(event))
+    clock.now = 6.0
+    new = _button_events(4, {0: (1000, 2000), 1: (3000, 4000)})
+    captures = [assembler.add("ABCD", parse_button_payload(e)) for e in new]
+    assert [c.reads[0][0].count1 for c in captures if c is not None] == [1000]
+    assert assembler.expired() == [("ABCD", 4)]
+
+
+def test_a_chunk_that_differs_from_its_stored_copy_starts_a_new_press():
+    assembler = ButtonAssembler()
+    old = _button_events(4, _TWO_STATIONS)
+    for event in old[:1] + old[2:]:
+        assembler.add("ABCD", parse_button_payload(event))
+    new = _button_events(4, {0: (1000, 2000), 1: (3000, 4000)})
+    captures = [assembler.add("ABCD", parse_button_payload(e)) for e in new]
+    assert [c.reads[0][0].count1 for c in captures if c is not None] == [1000]
+
+
 def test_a_jump_in_the_press_counter_reports_the_lost_presses():
     assembler = ButtonAssembler()
     results = []
