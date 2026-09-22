@@ -41,6 +41,12 @@ class PushCheck:
     unanswered: list[str] = field(default_factory=list)
     other_site: dict[str, str] = field(default_factory=dict)
     stale: list[str] = field(default_factory=list)
+    fleet: bool = False
+
+    @property
+    def send_to(self) -> list[str] | None:
+        """The `devices` to send to; None, a broadcast, when the fleet was checked."""
+        return None if self.fleet else self.addresses
 
     def refusal(self, site: str, site_changed: bool) -> str:
         """Why the push must not go out, or "" when it may."""
@@ -111,8 +117,8 @@ def gate_push(
 ) -> PushCheck:
     """Read device info and raise `PushRefused` if the push is unsafe.
 
-    `devices` limits the check to those robots. The push must go to exactly
-    the returned check's `addresses`, the robots that were checked.
+    `devices` limits the check to those robots. The push must go to the
+    returned check's `send_to`.
     """
     status = _status(client, devices)
     if not status:
@@ -121,6 +127,7 @@ def gate_push(
             "receive the calibration"
         )
     check = check_push(status, calibration)
+    check.fleet = not devices
     refusal = check.refusal(calibration.site.name, site_changed)
     if refusal:
         raise PushRefused(refusal)
@@ -133,13 +140,15 @@ def push_worklist(
     """The pushed robots that do not report the file's id after the push.
 
     A push resets every robot that takes it, so each gets PUSH_REJOIN_TIMEOUT
-    to rejoin and report; one not heard by then is listed too.
+    to rejoin and report; one not heard by then is listed too. Nothing is
+    requested here: a rejoin moves the robot's device-info generation, and
+    swarmit then refreshes its device info by one broadcast.
     """
     wanted_id = pushed_id(calibration)
     pending = {addr.upper() for addr in addresses}
     deadline = time.monotonic() + PUSH_REJOIN_TIMEOUT
     while pending:
-        status = _status(client, sorted(pending))
+        status = client.status()
         for addr in list(pending):
             info = getattr(status.get(addr), "info", None)
             if info is not None and (info.lh2_calibration_id or "") == wanted_id:

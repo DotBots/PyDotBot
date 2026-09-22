@@ -416,7 +416,7 @@ def _gated_push(client, calibration, site_changed=False, devices=None):
         f"({len(payload)} B, id {calibration.id8}, site {calibration.site.name}) "
         f"to the swarm; {len(check.stale)} robot(s) hold another id..."
     )
-    client.send_lh2_calibration(payload, check.addresses)
+    client.send_lh2_calibration(payload, check.send_to)
     click.echo("Sent. Waiting for the robots to report the new id...")
     stale = push_worklist(client, calibration, check.addresses)
     if stale:

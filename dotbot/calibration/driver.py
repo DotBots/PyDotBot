@@ -185,7 +185,7 @@ class SessionDriver:
                 except PushRefused as exc:
                     raise SessionError(f"push refused: {exc}") from exc
                 await asyncio.to_thread(
-                    client.send_lh2_calibration, payload, check.addresses
+                    client.send_lh2_calibration, payload, check.send_to
                 )
                 stale = await asyncio.to_thread(
                     push_worklist, client, session.saved, check.addresses
