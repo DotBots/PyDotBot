@@ -116,10 +116,10 @@ def test_the_check_sorts_the_fleet(calibration_file):
     assert check.stale == ["C", "F"]
 
 
-def test_a_robot_on_device_info_v1_is_refused(calibration_file):
+def test_a_robot_on_device_info_v1_is_refused_with_a_reflash(calibration_file):
     calibration = read_calibration_file(calibration_file)
     fleet = _Fleet({"A": _info(1), "B": _info()})
-    with pytest.raises(PushRefused, match="version below 2"):
+    with pytest.raises(PushRefused, match="Reflash them with `dotbot device"):
         gate_push(fleet, calibration)
     assert fleet.pushed == []
 
@@ -184,7 +184,7 @@ def test_push_to_another_site_is_refused_without_site_changed(
     assert "Every robot reports ac893d2d." in moved.output
 
 
-def test_push_refuses_a_robot_on_int32_firmware(monkeypatch, calibration_file):
+def test_push_refuses_a_robot_on_older_firmware(monkeypatch, calibration_file):
     fleet = _Fleet({"OLD": _info(1)})
     result = _push(monkeypatch, fleet, str(calibration_file))
     assert result.exit_code != 0

@@ -3,10 +3,10 @@
 
 """The checks a calibration push makes against what the robots report.
 
-A push reads device info first. It refuses when any robot runs firmware that
-cannot take a float32 calibration (device-info version below 2, or no reply
-at all), and when a robot reports another site than the file's unless the
-operator says the site really changed. After the push, the robots whose
+A push reads device info first. It refuses when any robot runs firmware older
+than this host expects (device-info version below 2, or no device info at
+all), naming the robots to reflash, and when a robot reports another site
+than the file's unless the operator says the site really changed. After the push, the robots whose
 reported calibration id is not the file's are the worklist.
 
 Everything here takes the `status()` mapping of a swarmit client, duck-typed:
@@ -53,10 +53,10 @@ class PushCheck:
         reasons = []
         if self.old_firmware:
             reasons.append(
-                "firmware too old for a float32 calibration (device info "
-                f"version below {DEVICE_INFO_VERSION_MIN}): "
+                "firmware older than this host expects (device info version "
+                f"below {DEVICE_INFO_VERSION_MIN}): "
                 + ", ".join(self.old_firmware)
-                + ". Re-flash them with `dotbot device flash-swarmit-sandbox`."
+                + ". Reflash them with `dotbot device flash-swarmit-sandbox`."
             )
         if self.unanswered:
             reasons.append(

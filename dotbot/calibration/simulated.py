@@ -108,7 +108,7 @@ class SimulatedCaptureClient:
         pass
 
     def status(self) -> dict[str, Any]:
-        """The one simulated robot, on float32 firmware, holding the last push."""
+        """The one simulated robot, on current firmware, holding the last push."""
         site, calibration_id = "", ""
         if self.pushed:
             site, calibration_id = message_site(

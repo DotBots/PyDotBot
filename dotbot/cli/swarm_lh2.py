@@ -350,8 +350,9 @@ def _collect(
         "Send a saved LH2 calibration to the robots over the air. Takes a "
         "file path or the id prefix of a file under "
         "~/.dotbot/calibrations/<site>/. Reads device info first: refuses "
-        "robots on firmware older than float32 and robots that report "
-        "another site, then lists the robots still on another id."
+        "robots on firmware older than this host, which need a reflash, and "
+        "robots that report another site, then lists the robots still on "
+        "another id."
     ),
 )
 @click.argument("calibration")
