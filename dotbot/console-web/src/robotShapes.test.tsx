@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadRobotShapes, saveRobotShapes } from "./BotGlyph";
+import { loadRobotShapes, saveRobotShapes } from "./robotShapes";
 import { RightPane } from "./RightPane";
 import type { Calibration } from "./useCalibration";
 
@@ -21,6 +21,13 @@ describe("the robot shapes choice, per browser", () => {
     saveRobotShapes(false);
     expect(loadRobotShapes()).toBe(false);
     saveRobotShapes(true);
+    expect(loadRobotShapes()).toBe(true);
+  });
+
+  it("reads anything but a stored boolean as the robot shape", () => {
+    window.localStorage.setItem("dotbot.console.robotShapes", "0");
+    expect(loadRobotShapes()).toBe(true);
+    window.localStorage.setItem("dotbot.console.robotShapes", "not json");
     expect(loadRobotShapes()).toBe(true);
   });
 
