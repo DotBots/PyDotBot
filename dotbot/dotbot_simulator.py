@@ -30,17 +30,17 @@ from dotbot import (
 from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
+from dotbot.robots import robot_geometry
 from dotbot.site import Site
 
-Kv = 700  # motor speed constant in RPM
-R = 50  # motor reduction ratio
-D = 44  # wheel diameter in mm
-L = 78  # distance between the two wheels in mm
+_GEOMETRY = robot_geometry()
 
-# Encoder model: counts per mm of wheel travel (must match C-side DB_MM_PER_COUNT)
-# mm_per_count = pi * D / (CPR * R)
-ENCODER_CPR = 28  # counts per motor shaft revolution (7 PPR decoded x4)
-MM_PER_COUNT = (pi * D) / (ENCODER_CPR * R)  # ~0.0987 mm/count
+Kv = 700  # motor speed constant in RPM
+R = _GEOMETRY.gear_ratio  # motor reduction ratio
+D = _GEOMETRY.wheel_diameter_mm
+L = _GEOMETRY.track_mm  # distance between the two wheels in mm
+ENCODER_CPR = _GEOMETRY.encoder_cpr  # counts per motor shaft revolution
+MM_PER_COUNT = _GEOMETRY.mm_per_count
 
 # Control parameters for the automatic mode
 MOTOR_SPEED = 60
