@@ -49,6 +49,7 @@ class BodyPose:
     nose: Point
     led: Point
     outline: tuple[Point, ...]
+    wheels: tuple[tuple[Point, ...], ...]
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,32 @@ class RobotGeometry:
     def board_length_mm(self) -> float:
         _, y_min, _, y_max = self.outline_bbox
         return y_max - y_min
+
+    @property
+    def wheel_paths(self) -> tuple[tuple[Point, ...], ...]:
+        """Each driven wheel in plan view, as a rectangle in the board frame.
+
+        A wheel is `tyre_width_mm` across the robot and `wheel_diameter_mm`
+        along it, centred on the axle line at half the track either side of
+        the axle midpoint. The left wheel comes first, left being -x.
+        """
+        half_track = self.track_mm / 2
+        half_width = self.tyre_width_mm / 2
+        half_dia = self.wheel_diameter_mm / 2
+        y0 = self.axle_midpoint.y - half_dia
+        y1 = self.axle_midpoint.y + half_dia
+        return tuple(
+            (
+                Point(cx - half_width, y0),
+                Point(cx + half_width, y0),
+                Point(cx + half_width, y1),
+                Point(cx - half_width, y1),
+            )
+            for cx in (
+                self.axle_midpoint.x - half_track,
+                self.axle_midpoint.x + half_track,
+            )
+        )
 
     @property
     def lever_arm_mm(self) -> float:
@@ -170,6 +197,9 @@ class RobotGeometry:
             nose=place(Point(self.photodiode.x, self.outline_bbox[1])),
             led=place(self.led),
             outline=tuple(place(p) for p in self.outline_path),
+            wheels=tuple(
+                tuple(place(p) for p in wheel) for wheel in self.wheel_paths
+            ),
         )
 
     def clearance_mm(self, edge: str) -> float:

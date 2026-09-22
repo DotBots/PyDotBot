@@ -132,3 +132,44 @@ def test_the_outline_is_the_camera_detector_s_outline(heading):
 def test_an_unknown_model_has_no_body():
     with pytest.raises(ValueError):
         robot_geometry("dotbot-v2").body_pose(SENSOR, 0.0, HeadingSource.TRAVEL)
+
+
+def test_a_wheel_is_the_record_s_track_width_and_diameter():
+    """The plan-view tyre rectangle is the drivetrain scalars and nothing else,
+    so the console and the detector can draw the same wheel."""
+    left, right = V3.wheel_paths
+    for wheel, sign in ((left, -1), (right, 1)):
+        xs = [p.x for p in wheel]
+        ys = [p.y for p in wheel]
+        assert max(xs) - min(xs) == pytest.approx(V3.tyre_width_mm)
+        assert max(ys) - min(ys) == pytest.approx(V3.wheel_diameter_mm)
+        assert (min(xs) + max(xs)) / 2 == pytest.approx(
+            V3.axle_midpoint.x + sign * V3.track_mm / 2
+        )
+        assert (min(ys) + max(ys)) / 2 == pytest.approx(V3.axle_midpoint.y)
+
+
+def test_the_wheels_stand_in_the_notches_beside_the_rear_tab():
+    """A tyre is outside the board's rear tab and inside its widest part, which
+    is why it shows on a map that draws the board over it."""
+    x_min, _, x_max, _ = V3.outline_bbox
+    tab = [p.x for p in V3.outline_path if p.y > V3.axle_midpoint.y]
+    for wheel in V3.wheel_paths:
+        xs = [p.x for p in wheel]
+        assert min(xs) >= x_min - V3.tyre_width_mm / 2
+        assert max(xs) <= x_max + V3.tyre_width_mm / 2
+        assert min(xs) > max(tab) or max(xs) < min(tab)
+
+
+def test_a_pose_carries_its_wheels_where_it_carries_its_board():
+    """The wheels arrive placed in the arena frame, like the outline: the
+    console is never asked to rotate a rectangle of its own."""
+    pose = V3.body_pose(SENSOR, 0.0, HeadingSource.TRAVEL)
+    assert len(pose.wheels) == len(V3.wheel_paths)
+    # Heading 0 faces +y and the robot's left is +x, so the left wheel's
+    # centre lands half a track to +x of the axle.
+    left = pose.wheels[0]
+    assert sum(p.x for p in left) / 4 == pytest.approx(
+        pose.axle.x + V3.track_mm / 2
+    )
+    assert sum(p.y for p in left) / 4 == pytest.approx(pose.axle.y)

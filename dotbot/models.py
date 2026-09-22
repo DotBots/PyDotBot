@@ -398,6 +398,7 @@ class DotBotPoseModel(BaseModel):
     nose: DotBotLH2Position
     led: DotBotLH2Position
     outline: List[DotBotLH2Position]
+    wheels: List[List[DotBotLH2Position]] = []
 
     @classmethod
     def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
@@ -412,6 +413,7 @@ class DotBotPoseModel(BaseModel):
             nose=point(pose.nose),
             led=point(pose.led),
             outline=[point(p) for p in pose.outline],
+            wheels=[[point(p) for p in wheel] for wheel in pose.wheels],
         )
 
 
