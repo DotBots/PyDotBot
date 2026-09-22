@@ -436,6 +436,13 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
     assert page[592:632] == message[0][44:84]
 
 
+def test_the_sandbox_page_has_a_slot_per_station_the_calibration_allows():
+    from dotbot.calibration.lighthouse2 import LH2_BASESTATION_COUNT_MAX
+    from dotbot.firmware.flash import LH2_MAX_HOMOGRAPHIES
+
+    assert LH2_MAX_HOMOGRAPHIES == LH2_BASESTATION_COUNT_MAX
+
+
 def test_the_gateway_page_keeps_maris_magic():
     from dotbot.firmware.flash import config_page
 

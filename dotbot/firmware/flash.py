@@ -49,9 +49,8 @@ VALID_PROGRAMMERS = ("jlink", "daplink")
 CONFIG_ADDR = 0x0103F800
 # The config page's magic is per role. The gateway's page is mari's
 # `mari_app_config_t` (MARI_APP_CONFIG_MAGIC_VALUE); the sandbox host's is
-# swarmit's `swarmit_config_t` (SWARMIT_CONFIG_MAGIC_VALUE), which moved when
-# its matrices went float32, so a netcore never reads a page of the other
-# layout as valid. Each value must match its firmware's.
+# swarmit's `swarmit_config_t` (SWARMIT_CONFIG_MAGIC_VALUE). Each value must
+# match its firmware's.
 CONFIG_MAGIC_BY_ROLE = {
     "dotbot-v3": 0x5753524E,
     "gateway": 0x5753524D,
@@ -63,10 +62,13 @@ CONFIG_MANIFEST_NAME = "config-manifest.json"
 # erase state the firmware reads as "absent".
 LH2_MATRIX_BYTES = 3 * 3 * 4
 LH2_MAX_HOMOGRAPHIES = 16
-SWARMIT_CONFIG_BYTES = 632
 SWARMIT_CONFIG_COUNT_OFFSET = 12
-SWARMIT_CONFIG_MATRICES_OFFSET = 16
-SWARMIT_CONFIG_SITE_OFFSET = 592
+SWARMIT_CONFIG_MATRICES_OFFSET = SWARMIT_CONFIG_COUNT_OFFSET + 4
+SWARMIT_CONFIG_SITE_OFFSET = (
+    SWARMIT_CONFIG_MATRICES_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_MATRIX_BYTES
+)
+SWARMIT_CONFIG_SITE_BYTES = 4 * 4 + 16 + 8
+SWARMIT_CONFIG_BYTES = SWARMIT_CONFIG_SITE_OFFSET + SWARMIT_CONFIG_SITE_BYTES
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
@@ -188,17 +190,20 @@ def swarmit_config_page(net_id_value: int, calibration=None) -> bytes:
     )
 
     page = bytearray(b"\xff" * SWARMIT_CONFIG_BYTES)
-    page[0:12] = struct.pack("<III", CONFIG_MAGIC_BY_ROLE["dotbot-v3"], 1, net_id_value)
+    page[:SWARMIT_CONFIG_COUNT_OFFSET] = struct.pack(
+        "<III", CONFIG_MAGIC_BY_ROLE["dotbot-v3"], 1, net_id_value
+    )
     if calibration is not None:
         stations = pushable_stations(calibration)
-        page[12:16] = struct.pack("<I", len(stations))
+        page[SWARMIT_CONFIG_COUNT_OFFSET:SWARMIT_CONFIG_MATRICES_OFFSET] = struct.pack(
+            "<I", len(stations)
+        )
         for station in stations:
             offset = SWARMIT_CONFIG_MATRICES_OFFSET + station.index * LH2_MATRIX_BYTES
             page[offset : offset + LH2_MATRIX_BYTES] = homography_as_float32(
                 station.homography
             )
-        site = site_fields_as_bytes(calibration)
-        page[SWARMIT_CONFIG_SITE_OFFSET : SWARMIT_CONFIG_SITE_OFFSET + len(site)] = site
+        page[SWARMIT_CONFIG_SITE_OFFSET:] = site_fields_as_bytes(calibration)
     return bytes(page)
 
 
