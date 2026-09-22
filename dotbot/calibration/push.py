@@ -121,9 +121,11 @@ def gate_push(
 ) -> PushCheck:
     """Read device info and raise `PushRefused` if the push is unsafe.
 
-    `devices` limits the check to those robots. The push must go to the
-    returned check's `send_to`.
+    `devices` limits the check to those robots, and None checks the whole
+    swarm. The push must go to the returned check's `send_to`.
     """
+    if devices is not None and not devices:
+        raise PushRefused("no robot named, so nothing would receive the calibration")
     status = _status(client, devices)
     if not status:
         raise PushRefused(

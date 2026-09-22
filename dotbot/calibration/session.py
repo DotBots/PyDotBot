@@ -145,9 +145,12 @@ class CalibrationSession:
         return self.outstanding is None
 
     @property
-    def capture_devices(self) -> list[str]:
-        """The robots whose captures the session holds."""
-        return sorted({p.device for p in self.points if p.captured and p.device})
+    def push_devices(self) -> list[str]:
+        """Every robot whose capture the session holds, and its chosen device."""
+        devices = {p.device for p in self.points if p.captured and p.device}
+        if self.device:
+            devices.add(self.device.upper())
+        return sorted(devices)
 
     # -- capturing
 

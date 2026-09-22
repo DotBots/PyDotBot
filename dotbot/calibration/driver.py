@@ -175,18 +175,17 @@ class SessionDriver:
             }
 
     async def push(self, site_changed: bool = False) -> dict:
-        """Check the fleet, send it the saved calibration, report who is still stale.
-
-        Always the whole fleet, whichever robot the session captures from.
-        """
+        """Check the robots whose captures built the session and its chosen one,
+        send them the saved calibration, report who is still stale."""
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
+            devices = session.push_devices
             client = await asyncio.to_thread(self._ensure_client, "")
             try:
                 try:
                     check = await asyncio.to_thread(
-                        gate_push, client, session.saved, site_changed
+                        gate_push, client, session.saved, site_changed, devices
                     )
                 except PushRefused as exc:
                     raise SessionError(f"push refused: {exc}") from exc

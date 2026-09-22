@@ -336,10 +336,7 @@ def _collect(
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            targets = set(session.capture_devices)
-            if device:
-                targets.add(device.upper())
-            _gated_push(client, calibration, devices=sorted(targets))
+            _gated_push(client, calibration, devices=session.push_devices)
         else:
             click.echo(
                 "To send it to the robots over the air:\n"

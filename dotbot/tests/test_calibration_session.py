@@ -448,40 +448,6 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
 
 
 @pytest.mark.asyncio
-async def test_a_console_push_goes_to_the_fleet_not_the_capture_robot(
-    monkeypatch, tmp_path
-):
-    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
-    client = _FakeClient()
-    client.infos["EFGH"] = _info()
-    built_for: list[str] = []
-
-    def factory(device):
-        built_for.append(device)
-        return client
-
-    driver = SessionDriver(
-        client_factory=factory,
-        notify=lambda state: asyncio.sleep(0),
-        site=C405,
-        stream_factory=lambda c, device, on_button: CaptureSession(
-            c, device, _TAG, on_button_capture=on_button
-        ),
-    )
-    await driver.start(["arena:corners"])
-    await _walk(driver, client)
-    assert driver.session.device == "ABCD"
-    await driver.save()
-
-    pushed = await driver.push()
-
-    assert built_for[-1] == ""
-    wanted = lighthouse2.pushed_id(driver.session.saved)
-    assert client.infos["EFGH"].lh2_calibration_id == wanted
-    assert pushed["stale"] == []
-
-
-@pytest.mark.asyncio
 async def test_a_console_push_to_a_robot_of_another_site_is_refused(
     monkeypatch, tmp_path
 ):
@@ -956,6 +922,8 @@ class _CollectClient(_FakeClient):
 
     def __init__(self, presses=(), device="ABCD"):
         super().__init__(device)
+        # Enter captures take the corners the button presses left.
+        self.first_corner = len(presses)
         self.events: queue.Queue = queue.Queue()
         for press, (addr, corner) in enumerate(presses):
             record = _record(0, *CORNER_COUNTS[corner])
@@ -966,7 +934,7 @@ class _CollectClient(_FakeClient):
 
     def request_lh2_capture(self, device: str) -> None:
         self.triggers += 1
-        record = _record(0, *CORNER_COUNTS[self.triggers - 1])
+        record = _record(0, *CORNER_COUNTS[self.first_corner + self.triggers - 1])
         self.events.put({"addr": self.device, "data_hex": _payload(record).hex()})
 
     def watch_log_events(self):
@@ -1024,6 +992,22 @@ def test_collect_with_a_device_captures_on_enter_and_pushes_to_it(
     assert client.pushed_to == ["ABCD"]
 
 
+def test_collect_with_a_device_still_takes_another_robot_s_button(
+    monkeypatch, tmp_path
+):
+    # The press is read while collect prints its header, before stdin is.
+    client = _CollectClient(presses=[("FEED", 0)])
+
+    result = _collect(
+        monkeypatch, tmp_path, client, "--device=ABCD", "--push", stdin="\n" * 3
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "received from FEED as point 0" in result.output
+    assert client.triggers == 3
+    assert client.pushed_to == ["ABCD", "FEED"]
+
+
 def test_collect_help_marks_the_enter_capture_deprecated():
     from click.testing import CliRunner
 
@@ -1040,3 +1024,34 @@ def test_a_button_only_stream_refuses_a_triggered_capture():
     with CaptureSession(_FakeClient(), None, _TAG) as stream:
         with pytest.raises(ValueError, match="only takes button captures"):
             stream.capture(timeout=0.1, retries=0)
+
+
+@pytest.mark.asyncio
+async def test_a_console_push_goes_to_the_robots_whose_captures_built_it(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await driver.start(["arena:corners"])
+    for corner in range(4):
+        await asyncio.wrap_future(
+            driver.on_button_capture(
+                ButtonCapture(
+                    device="FEED", press=corner, reads=[_reads(0, *CORNER_COUNTS[corner])]
+                )
+            )
+        )
+    await driver.save()
+
+    await driver.push()
+
+    assert client.pushed_to == ["FEED"]
+
+
+def test_a_push_to_an_empty_robot_list_is_refused():
+    from dotbot.calibration.push import PushRefused, gate_push
+
+    with pytest.raises(PushRefused, match="no robot named"):
+        gate_push(_FakeClient(), SimpleNamespace(), devices=[])
