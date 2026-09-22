@@ -174,18 +174,22 @@ class SessionDriver:
                 "session": session.as_dict(),
             }
 
-    async def push(self, site_changed: bool = False) -> dict:
-        """Check the robots whose captures built the session and its chosen one,
-        send them the saved calibration, report who is still stale."""
+    async def push(
+        self, site_changed: bool = False, devices: list[str] | None = None
+    ) -> dict:
+        """Check `devices`, send them the saved calibration, report who is still stale.
+
+        No devices, None or empty, is the whole swarm, as for flash and start.
+        """
+        targets = sorted({d.upper() for d in devices}) if devices else None
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            devices = session.push_devices
             client = await asyncio.to_thread(self._ensure_client, "")
             try:
                 try:
                     check = await asyncio.to_thread(
-                        gate_push, client, session.saved, site_changed, devices
+                        gate_push, client, session.saved, site_changed, targets
                     )
                 except PushRefused as exc:
                     raise SessionError(f"push refused: {exc}") from exc

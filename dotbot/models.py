@@ -277,6 +277,12 @@ class DotBotCalibrationSaveModel(BaseModel):
     tag: str = ""
 
 
+class DotBotCalibrationPushModel(BaseModel):
+    """The robots to push to; empty pushes to the whole swarm."""
+
+    devices: List[str] = []
+
+
 class DotBotCalibrationSavedModel(BaseModel):
     """What a save produced: the file, and the id the robots will report."""
 

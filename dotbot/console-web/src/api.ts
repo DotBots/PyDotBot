@@ -181,8 +181,9 @@ export async function saveCalibration(tag = ""): Promise<CalibrationSaved> {
   return controllerJson(`${SESSION}/save`, { method: "POST", body: { tag } });
 }
 
-export async function pushCalibration(): Promise<CalibrationPushed> {
-  return controllerJson(`${SESSION}/push`, { method: "POST" });
+// No devices pushes to the whole swarm.
+export async function pushCalibration(devices: string[] = []): Promise<CalibrationPushed> {
+  return controllerJson(`${SESSION}/push`, { method: "POST", body: { devices } });
 }
 
 export async function abandonCalibration(): Promise<void> {

@@ -32,8 +32,11 @@ export interface Calibration {
   abandon: () => Promise<void>;
 }
 
+// A push goes to the selected robots, or to the whole swarm when none is
+// selected, as flash and start/stop do.
 export function useCalibration(
   onSession: (session: CalibrationSession | null) => void,
+  selection: ReadonlySet<string>,
 ): Calibration {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -72,11 +75,13 @@ export function useCalibration(
       }),
     push: () =>
       run(async () => {
-        const result = await pushCalibration();
+        const devices = [...selection];
+        const result = await pushCalibration(devices);
+        const target = devices.length ? `${devices.length} selected bot(s)` : "the swarm";
         setPushed(
           result.stale.length
-            ? `Sent ${result.bytes} B. ${result.stale.length} bot(s) still stale.`
-            : `Sent ${result.bytes} B to the swarm.`,
+            ? `Sent ${result.bytes} B to ${target}. ${result.stale.length} bot(s) still stale.`
+            : `Sent ${result.bytes} B to ${target}.`,
         );
       }),
     abandon: () =>

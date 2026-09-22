@@ -103,7 +103,6 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
-  const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -128,6 +127,7 @@ export const App: React.FC = () => {
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
+  const calibration = useCalibration(setSession, selection);
   const preselRef = useRef(false);
   React.useEffect(() => {
     if (preselRef.current || bots.length === 0) return;

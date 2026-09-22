@@ -676,6 +676,15 @@ async def test_the_routes_walk_a_session_from_start_to_push(
     pushed = (await http.post("/controller/calibration/session/push")).json()
     assert pushed["id"] == saved["id"]
     assert pushed["stale"] == []
+    assert client.pushed_to is None
+
+    pushed = (
+        await http.post(
+            "/controller/calibration/session/push", json={"devices": ["abcd"]}
+        )
+    ).json()
+    assert pushed["stale"] == []
+    assert client.pushed_to == ["ABCD"]
 
     assert (await http.delete("/controller/calibration/session")).json() == {
         "session": None
@@ -1026,28 +1035,53 @@ def test_a_button_only_stream_refuses_a_triggered_capture():
             stream.capture(timeout=0.1, retries=0)
 
 
+async def _button_session(driver, device: str) -> None:
+    await driver.start(["arena:corners"])
+    for corner in range(4):
+        await asyncio.wrap_future(
+            driver.on_button_capture(
+                ButtonCapture(
+                    device=device,
+                    press=corner,
+                    reads=[_reads(0, *CORNER_COUNTS[corner])],
+                )
+            )
+        )
+    await driver.save()
+
+
 @pytest.mark.asyncio
-async def test_a_console_push_goes_to_the_robots_whose_captures_built_it(
+async def test_a_console_push_with_nothing_selected_goes_to_the_whole_swarm(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     client.infos["FEED"] = _info()
     client.infos["BEEF"] = _info()
-    await driver.start(["arena:corners"])
-    for corner in range(4):
-        await asyncio.wrap_future(
-            driver.on_button_capture(
-                ButtonCapture(
-                    device="FEED", press=corner, reads=[_reads(0, *CORNER_COUNTS[corner])]
-                )
-            )
-        )
-    await driver.save()
+    await _button_session(driver, "FEED")
 
-    await driver.push()
+    pushed = await driver.push(devices=[])
 
-    assert client.pushed_to == ["FEED"]
+    assert client.pushed_to is None
+    wanted = lighthouse2.pushed_id(driver.session.saved)
+    assert {i.lh2_calibration_id for i in client.infos.values()} == {wanted}
+    assert pushed["stale"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_console_push_goes_only_to_the_selected_robots(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+
+    await driver.push(devices=["beef"])
+
+    assert client.pushed_to == ["BEEF"]
+    wanted = lighthouse2.pushed_id(driver.session.saved)
+    assert client.infos["BEEF"].lh2_calibration_id == wanted
+    assert client.infos["FEED"].lh2_calibration_id != wanted
 
 
 def test_a_push_to_an_empty_robot_list_is_refused():

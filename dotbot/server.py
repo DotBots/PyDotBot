@@ -37,6 +37,7 @@ from dotbot.models import (
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
+    DotBotCalibrationPushModel,
     DotBotCalibrationSavedModel,
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
@@ -428,9 +429,12 @@ async def calibration_session_save(request: DotBotCalibrationSaveModel):
     summary="Send the saved calibration to the robots over the air",
     tags=["calibration"],
 )
-async def calibration_session_push():
+async def calibration_session_push(
+    request: Optional[DotBotCalibrationPushModel] = None,
+):
     """Calibration-push HTTP POST handler."""
-    return await _calibration(api.controller.calibration_session.push())
+    devices = request.devices if request else []
+    return await _calibration(api.controller.calibration_session.push(devices=devices))
 
 
 @api.delete(
