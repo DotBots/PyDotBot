@@ -1,53 +1,130 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Physical geometry of the robot models the host talks to.
+"""Physical geometry of the robot models the host talks to, one record per
+board revision.
 
-Anything that has to reason about where a robot's sensors sit relative to
-its body reads this: the calibration point resolver offsets a corner mark
-by the photodiode's distance to the body edges resting on that corner.
+Every point in a record is a coordinate in that revision's KiCad board frame:
+millimetres, x to the robot's right, y toward the rear, nose at low y, origin
+off the robot. The C copy of the drivetrain constants and the lever arm lives
+in DotBot-libs `drv/geometry.h` and is pinned to this one by
+`dotbot/tests/test_control_loop_geometry.py`.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import NamedTuple
 
 ROBOT_DEFAULT = "dotbot-v3"
 
 
+class Point(NamedTuple):
+    x: float
+    y: float
+
+
 @dataclass(frozen=True)
 class RobotGeometry:
-    """One robot model's board footprint and sensor offsets, in millimetres.
+    """One board revision's outline, points and drivetrain, in the board frame.
 
-    Distances are measured from the photodiode to a board edge with the
-    robot's nose toward the frame's top edge, which is the low-y one since
-    y grows down. That orientation is this class's own reference, and is
-    not the robot `direction` convention, where 0 = +y.
+    The edge distances (`diode_to_front_mm` and the rest) are measured with
+    the robot's nose toward the frame's top edge, which is the low-y one since
+    y grows down. That orientation is the board frame's own, and is not the
+    robot `direction` convention, where 0 = +y.
     """
 
     model: str
-    board_width_mm: float  # side to side
-    board_length_mm: float  # nose to tail
-    diode_to_front_mm: float
-    diode_to_rear_mm: float
-    diode_to_side_mm: float
-    led_to_front_mm: float  # RGB LED, on the centreline
+    # Outer board path; each nose fillet (r 1.0) is its chord.
+    outline_path: tuple[Point, ...]
+    photodiode: Point
+    led: Point
+    caster: Point
+    axle_midpoint: Point
+    track_mm: float
+    wheel_diameter_mm: float
+    tyre_width_mm: float
+    encoder_cpr: int
+    gear_ratio: float
+    # The plan-view square for anything that needs a size rather than a shape.
+    envelope_mm: float
+
+    def __post_init__(self):
+        if self.photodiode.x != self.axle_midpoint.x:
+            raise ValueError(
+                f"{self.model}: photodiode off the centreline; "
+                "a non-zero lever angle is not handled"
+            )
+
+    @property
+    def outline_bbox(self) -> tuple[float, float, float, float]:
+        """(x_min, y_min, x_max, y_max) of the outline."""
+        xs = [p.x for p in self.outline_path]
+        ys = [p.y for p in self.outline_path]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    @property
+    def outline_centre(self) -> Point:
+        x_min, y_min, x_max, y_max = self.outline_bbox
+        return Point((x_min + x_max) / 2, (y_min + y_max) / 2)
+
+    @property
+    def board_width_mm(self) -> float:
+        x_min, _, x_max, _ = self.outline_bbox
+        return x_max - x_min
+
+    @property
+    def board_length_mm(self) -> float:
+        _, y_min, _, y_max = self.outline_bbox
+        return y_max - y_min
+
+    @property
+    def lever_arm_mm(self) -> float:
+        """Axle midpoint to photodiode, forward: `DB_LH2_LEVER_ARM`."""
+        return self.axle_midpoint.y - self.photodiode.y
+
+    @property
+    def lever_angle_deg(self) -> float:
+        """`DB_LH2_LEVER_ANGLE`; zero, as `__post_init__` enforces."""
+        return 0.0
+
+    @property
+    def diode_to_front_mm(self) -> float:
+        return self.photodiode.y - self.outline_bbox[1]
+
+    @property
+    def diode_to_rear_mm(self) -> float:
+        return self.outline_bbox[3] - self.photodiode.y
+
+    @property
+    def diode_to_side_mm(self) -> float:
+        x_min, _, x_max, _ = self.outline_bbox
+        return min(self.photodiode.x - x_min, x_max - self.photodiode.x)
+
+    @property
+    def led_to_front_mm(self) -> float:
+        return self.led.y - self.outline_bbox[1]
 
     @property
     def led_ahead_of_diode_mm(self) -> float:
-        """How far the RGB LED sits toward the nose from the photodiode.
+        """How far the RGB LED sits toward the nose from the photodiode."""
+        return self.photodiode.y - self.led.y
 
-        A camera tracking the LED reports this offset, rotated by the
-        robot's orientation, away from the photodiode's position.
-        """
-        return self.diode_to_front_mm - self.led_to_front_mm
+    @property
+    def diode_ahead_of_centre_mm(self) -> float:
+        return self.outline_centre.y - self.photodiode.y
+
+    @property
+    def mm_per_count(self) -> float:
+        """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
+        return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
 
     def clearance_mm(self, edge: str) -> float:
         """Distance from the photodiode to the body edge facing `edge`.
 
         `edge` is one of top / bottom / left / right in frame orientation,
-        with the nose toward the top edge and the rear toward the bottom
-        one, which is this class's own reference.
+        with the nose toward the top edge and the rear toward the bottom one.
         """
         if edge == "top":
             return self.diode_to_front_mm
@@ -71,20 +148,37 @@ class RobotGeometry:
         return (dx if horizontal == "left" else -dx, dy if vertical == "top" else -dy)
 
 
-# Measured off the DotBot v3 main board bd1.3a in KiCad: the Edge.Cuts
-# outline is 94.00 x 95.00 mm, the photodiode D17 (Osram BPW34S, footprint
-# centre = active-area centre) sits on the centreline 18.5 mm from one long
-# edge, and the RGB LED D18 sits 13.0 mm from the same edge. That edge is
-# taken as the robot's front, which is the nest-sheet generator's convention.
+# DotBot v3, main board bd1.3a: board points from its KiCad file, wheel and
+# track caliper-measured, tyre width measured on a photograph.
 ROBOTS: dict[str, RobotGeometry] = {
     "dotbot-v3": RobotGeometry(
         model="dotbot-v3",
-        board_width_mm=94.0,
-        board_length_mm=95.0,
-        diode_to_front_mm=18.5,
-        diode_to_rear_mm=76.5,
-        diode_to_side_mm=47.0,
-        led_to_front_mm=13.0,
+        outline_path=(
+            Point(118.0, 60.5),
+            Point(122.0, 60.5),
+            Point(122.0, 98.5),
+            Point(103.5, 98.5),
+            Point(103.5, 147.5),
+            Point(46.5, 147.5),
+            Point(46.5, 98.5),
+            Point(28.0, 98.5),
+            Point(28.0, 60.5),
+            Point(32.0, 60.5),
+            Point(33.0, 59.5),
+            Point(33.0, 52.5),
+            Point(117.0, 52.5),
+            Point(117.0, 59.5),
+        ),
+        photodiode=Point(75.0, 71.0),  # D17
+        led=Point(75.0, 65.5),  # D18
+        caster=Point(75.0, 59.0),  # J19/J20 midpoint
+        axle_midpoint=Point(75.0, 124.5),  # M1/M2 midpoint
+        track_mm=78.0,
+        wheel_diameter_mm=44.0,
+        tyre_width_mm=17.5,
+        encoder_cpr=28,
+        gear_ratio=50.0,
+        envelope_mm=95.0,
     ),
 }
 
