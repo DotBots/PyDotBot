@@ -14,7 +14,13 @@ from structlog.testing import capture_logs
 from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
 from dotbot.area import Area
-from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
+from dotbot.controller import (
+    PLACEHOLDER_HEADING_DEG,
+    Controller,
+    ControllerSettings,
+    gps_distance,
+    lh2_distance,
+)
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -795,3 +801,67 @@ async def test_the_advertisement_debug_log_reports_y(controller):
         )
     (entry,) = [e for e in logs if e["event"] == "Advertisement Data"]
     assert (entry["X"], entry["Y"]) == (1000, 2000)
+
+
+@pytest.mark.asyncio
+async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller):
+    """The centre is 29 mm behind the photodiode, along (-sin, +cos)."""
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
+    assert dotbot.pose.heading_source == "travel"
+    assert dotbot.pose.heading_deg == 90
+    assert (dotbot.pose.centre.x, dotbot.pose.centre.y) == pytest.approx(
+        (1029.0, 1000.0)
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_heading_gives_a_placeholder_pose_that_says_so(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    pose = controller.dotbots[addr_to_hex(BOT)].pose
+    assert pose.heading_source == "none"
+    assert pose.heading_deg == PLACEHOLDER_HEADING_DEG
+
+
+@pytest.mark.asyncio
+async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
+    from httpx import ASGITransport, AsyncClient
+
+    from dotbot.server import api
+
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    previous, api.controller = getattr(api, "controller", None), controller
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api), base_url="http://testserver"
+        ) as client:
+            response = await client.get("/controller/dotbots")
+    finally:
+        api.controller = previous
+    (bot,) = [b for b in response.json() if b["address"] == addr_to_hex(BOT)]
+    assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+    assert bot["model"] == "dotbot-v3"
+    assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
+    assert bot["pose"]["heading_source"] == "travel"
+    assert len(bot["pose"]["outline"]) == 14
+
+
+@pytest.mark.asyncio
+async def test_the_csv_log_carries_the_body_centre_and_heading(controller, tmp_path):
+    from dotbot.csv_data_logger import CSVDataLogger
+
+    controller.csv_data_logger = CSVDataLogger(tmp_path / "run.csv")
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    controller.csv_data_logger.close()
+    row = _last_row(tmp_path / "run.csv")
+    assert (row["pose_centre_x"], row["pose_centre_y"]) == ("1029.0", "1000.0")
+    assert (row["heading_deg"], row["heading_source"]) == ("90.0", "travel")

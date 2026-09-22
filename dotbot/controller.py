@@ -71,6 +71,7 @@ from dotbot.models import (
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
+    DotBotPoseModel,
     DotBotQueryModel,
     DotBotStatus,
 )
@@ -81,6 +82,7 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
+from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.swarm_client import build_swarmit_client, conn_string
@@ -92,6 +94,9 @@ from dotbot.swarm_client import build_swarmit_client, conn_string
 #     DotBotRgbLedCommandModel,
 # )
 
+
+# Stands in for the body heading until the control loop advertises one.
+PLACEHOLDER_HEADING_DEG = 0
 
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
@@ -151,6 +156,25 @@ class ControllerSettings:
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     swarmit_url: str = SWARMIT_URL_DEFAULT
     mrta_url: str = MRTA_URL_DEFAULT
+
+
+def body_pose(
+    model: str, position: DotBotLH2Position, direction: int
+) -> DotBotPoseModel:
+    """The body around an LH2 photodiode fix, facing the advertised direction.
+
+    With no advertised direction the pose faces `PLACEHOLDER_HEADING_DEG`
+    and says so in its `heading_source`.
+    """
+    if direction != DIRECTION_NONE:
+        heading, source = direction, HeadingSource.TRAVEL
+    else:
+        heading, source = PLACEHOLDER_HEADING_DEG, HeadingSource.NONE
+    return DotBotPoseModel.from_body_pose(
+        robot_geometry(model).body_pose(
+            Point(position.x, position.y), heading, source
+        )
+    )
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -563,7 +587,9 @@ class Controller:
             dotbot.rudder_angle = self.dotbots[source].rudder_angle
             dotbot.sail_angle = self.dotbots[source].sail_angle
             dotbot.rgb_led = self.dotbots[source].rgb_led
+            dotbot.model = self.dotbots[source].model
             dotbot.lh2_position = self.dotbots[source].lh2_position
+            dotbot.pose = self.dotbots[source].pose
             dotbot.gps_position = self.dotbots[source].gps_position
             dotbot.waypoints = self.dotbots[source].waypoints
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
@@ -622,6 +648,9 @@ class Controller:
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
                     dotbot.lh2_position = new_position
+                    dotbot.pose = body_pose(
+                        dotbot.model, new_position, frame.packet.payload.direction
+                    )
                     if (
                         dotbot.position_history
                         and lh2_distance(dotbot.position_history[-1], new_position)
@@ -682,6 +711,7 @@ class Controller:
                             battery_level=dotbot.battery,
                             sim_battery_voltage=twin.battery_voltage / 1000.0,
                             address=dotbot.address,
+                            pose=dotbot.pose,
                         )
                 need_update = True
 
@@ -762,6 +792,7 @@ class Controller:
                     rudder_angle=dotbot.rudder_angle,
                     sail_angle=dotbot.sail_angle,
                     lh2_position=dotbot.lh2_position,
+                    pose=dotbot.pose,
                     gps_position=dotbot.gps_position,
                     battery=dotbot.battery,
                 ),
