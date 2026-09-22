@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
-  derivePosition,
+  derivePose,
   deriveState,
   isDotBot,
   merge,
@@ -231,16 +231,16 @@ describe("isDotBot (drawn as the robot)", () => {
   });
 });
 
-describe("derivePosition (whose position is live)", () => {
+describe("derivePose (whose pose is live)", () => {
   const stale = { x: 1500, y: 300 };
 
   it("takes the controller's while its link is active", () => {
-    expect(derivePosition(py({ lh2_position: stale }), sw(), "active")).toEqual(stale);
+    expect(derivePose(py({ lh2_position: stale }), sw(), "active").position).toEqual(stale);
   });
 
   it("takes swarmit's once the controller stops hearing the app", () => {
     for (const link of ["inactive", "lost"] as const) {
-      expect(derivePosition(py({ lh2_position: stale }), sw(), link)).toEqual({ x: 100, y: 200 });
+      expect(derivePose(py({ lh2_position: stale }), sw(), link).position).toEqual({ x: 100, y: 200 });
     }
   });
 
@@ -253,10 +253,17 @@ describe("derivePosition (whose position is live)", () => {
   });
 
   it("keeps the controller's stale position when swarmit has never located the bot", () => {
-    expect(derivePosition(py({ lh2_position: stale }), sw({ pos_x: 0, pos_y: 0 }), "lost")).toEqual(stale);
+    expect(derivePose(py({ lh2_position: stale }), sw({ pos_x: 0, pos_y: 0 }), "lost").position).toEqual(stale);
+  });
+
+  it("takes the controller's heading only with its position", () => {
+    const heard = py({ lh2_position: stale, direction: 90 });
+    expect(derivePose(heard, sw(), "active").heading).toBe(90);
+    expect(derivePose(heard, sw(), "lost")).toEqual({ position: { x: 100, y: 200 }, heading: null });
+    expect(derivePose(heard, sw({ pos_x: 0, pos_y: 0 }), "lost").heading).toBe(90);
   });
 
   it("does not draw swarmit's unlocated origin", () => {
-    expect(derivePosition(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown")).toBeNull();
+    expect(derivePose(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown").position).toBeNull();
   });
 });
