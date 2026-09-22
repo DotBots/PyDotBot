@@ -8,6 +8,8 @@ from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot import addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
+    DIRECTION_THRESHOLD_MM,
+    MOTOR_SPEED,
     DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
     SimulatedDotBotSettings,
@@ -16,8 +18,14 @@ from dotbot.dotbot_simulator import (
     place_dotbots,
     placement_area,
 )
-from dotbot.protocol import PayloadCommandMoveRaw
+from dotbot.protocol import (
+    DIRECTION_NONE,
+    PayloadCommandMoveRaw,
+    PayloadLH2Location,
+)
 from dotbot.site import Site
+
+ADDRESS = "BADCAFE111111111"
 
 
 def _bot(address: str) -> DotBotSimulator:
@@ -69,6 +77,53 @@ def test_the_address_rendering_round_trips():
     """The rx path and the index map must render an address the same way."""
     for address in ("B0B0F00D33333333", "00B0F00D33333333", "1234567890123456"):
         assert addr_to_hex(int(address, 16)) == address
+
+
+# --- Heading ----------------------------------------------------------------
+
+
+def test_a_fresh_bot_has_no_heading_until_it_has_travelled_past_the_threshold():
+    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+    assert bot.direction == DIRECTION_NONE
+
+    # Started at the frame origin facing north, so pos_y is the travel so far.
+    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
+    while bot.pos_y <= DIRECTION_THRESHOLD_MM:
+        assert bot.direction == DIRECTION_NONE
+        bot.diff_drive_model_update()
+    assert bot.direction == 0
+
+
+def test_the_next_heading_waits_for_another_threshold_of_travel():
+    """The recorded point advances with the heading, not with every step."""
+    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
+    while bot.direction == DIRECTION_NONE:
+        bot.diff_drive_model_update()
+
+    bot.theta = 90  # turned east, where a recomputed heading reads -90
+    bot.diff_drive_model_update()
+    assert bot.direction == 0
+    while bot.pos_x <= DIRECTION_THRESHOLD_MM:
+        bot.diff_drive_model_update()
+    assert bot.direction == -90
+
+
+def test_an_unknown_heading_drives_the_default_control_loop_straight():
+    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+    bot._control_loop_default()
+    assert bot.pwm_left == MOTOR_SPEED
+    assert bot.pwm_right == MOTOR_SPEED
+
+
+def test_a_known_heading_lets_the_default_control_loop_steer():
+    bot = DotBotSimulator(
+        SimulatedDotBotSettings(address=ADDRESS, pos_x=500, pos_y=500, direction=0),
+        queue.Queue(),
+    )
+    bot.waypoints = [PayloadLH2Location(pos_x=1500, pos_y=500)]
+    bot._control_loop_default()
+    assert bot.pwm_left != bot.pwm_right
 
 
 # --- Placement of a world file's unpositioned robots -------------------------

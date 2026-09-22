@@ -29,7 +29,12 @@ from dotbot import (
 )
 from dotbot.area import Area
 from dotbot.logger import LOGGER
-from dotbot.protocol import ControlModeType, PayloadDotBotAdvertisement, PayloadType
+from dotbot.protocol import (
+    DIRECTION_NONE,
+    ControlModeType,
+    PayloadDotBotAdvertisement,
+    PayloadType,
+)
 from dotbot.robots import robot_geometry
 from dotbot.site import Site
 
@@ -47,6 +52,10 @@ MOTOR_SPEED = 60
 ANGULAR_SPEED_GAIN = 1.5
 REDUCE_SPEED_FACTOR = 0.8
 REDUCE_SPEED_ANGLE = 25
+
+# Travel away from the last recorded point before a new heading is computed.
+# Mirrors DB_DIRECTION_THRESHOLD in the firmware control loop.
+DIRECTION_THRESHOLD_MM = 50
 
 SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
 
@@ -138,7 +147,7 @@ class SimulatedDotBotSettings(BaseModel):
     address: str = Field(default_factory=_random_address)
     pos_x: Optional[int] = None
     pos_y: Optional[int] = None
-    direction: int = -1000
+    direction: int = DIRECTION_NONE
     calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
@@ -198,7 +207,9 @@ class DotBotSimulator:
         self.address = settings.address.upper()
         self.pos_x = settings.pos_x or 0
         self.pos_y = settings.pos_y or 0
-        self.theta = settings.direction * -1 if settings.direction != -1000 else 0
+        self.theta = (
+            settings.direction * -1 if settings.direction != DIRECTION_NONE else 0
+        )
         self.motor_left_error = settings.motor_left_error
         self.motor_right_error = settings.motor_right_error
         self.custom_control_loop_library = settings.custom_control_loop_library
@@ -208,6 +219,10 @@ class DotBotSimulator:
         self.pwm_left = 0
         self.pwm_right = 0
         self.direction = settings.direction
+        # Point the next heading is measured from. The frame origin at boot, as
+        # on the real robot, so the first heading is an origin bearing.
+        self._direction_origin_x = 0.0
+        self._direction_origin_y = 0.0
 
         # Accumulated encoder deltas between control-loop calls (control runs at
         # SIMULATOR_UPDATE_INTERVAL_S, physics at SIMULATOR_STEP_DELTA_T — multiple
@@ -344,12 +359,15 @@ class DotBotSimulator:
         self.pos_y = pos_y_old + dy
         self.theta = (theta_old + w * dt * 180 / pi) % 360
 
-        if sqrt(dx**2 + dy**2):
-            self.direction = int(-1 * atan2(dx, dy) * 180 / pi) % 360
+        origin_dx = self.pos_x - self._direction_origin_x
+        origin_dy = self.pos_y - self._direction_origin_y
+        moved = dx != 0 or dy != 0
+        if moved and sqrt(origin_dx**2 + origin_dy**2) > DIRECTION_THRESHOLD_MM:
+            self.direction = int(-1 * atan2(origin_dx, origin_dy) * 180 / pi) % 360
             if self.direction > 180:
                 self.direction -= 360
-            elif self.direction < -180:
-                self.direction += 360
+            self._direction_origin_x = self.pos_x
+            self._direction_origin_y = self.pos_y
 
         # Accumulate encoder counts for this physics step
         if self.controller_mode == ControlModeType.AUTO:
@@ -513,6 +531,12 @@ class DotBotSimulator:
         self._last_encoder_right = int(self.encoder_right_acc)
         self.encoder_left_acc = 0.0
         self.encoder_right_acc = 0.0
+
+        if self.direction == DIRECTION_NONE:
+            # Heading unknown: drive straight until travel yields one.
+            self.pwm_left = MOTOR_SPEED
+            self.pwm_right = MOTOR_SPEED
+            return
 
         delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
         delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
