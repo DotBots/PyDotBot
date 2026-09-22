@@ -145,12 +145,12 @@ class ButtonAssembler:
                 return None
             # A chunk unlike the given-up press's is a new press on that number.
             del self._given_up_chunks[key]
-        started, chunks = self._pending.setdefault(key, (now, {}))
+        _, chunks = self._pending.setdefault(key, (now, {}))
         stored = chunks.get(chunk.chunk)
         if stored is not None and stored != chunk.records:
             # Every copy of a chunk is identical, so a different one is a new
             # press reusing the number.
-            started, chunks = self._pending[key] = (now, {})
+            _, chunks = self._pending[key] = (now, {})
         chunks.setdefault(chunk.chunk, chunk.records)
         records = _whole_press(chunks)
         if records is None:

@@ -887,6 +887,32 @@ def test_a_button_capture_missing_a_station_an_earlier_point_saw_is_stored():
     assert session.outstanding.index == 2
 
 
+@pytest.mark.asyncio
+async def test_a_button_press_given_up_incomplete_is_reported(monkeypatch):
+    from dotbot.calibration import driver as driver_module
+
+    monkeypatch.setattr(driver_module, "EXPIRED_PRESS_POLL_INTERVAL", 0.01)
+    expired = [[("FEED", 7)]]
+    stream = SimpleNamespace(
+        __enter__=lambda: None,
+        __exit__=lambda *exc: None,
+        expired_presses=lambda: expired.pop() if expired else [],
+    )
+    driver = SessionDriver(
+        client_factory=lambda device: _FakeClient(),
+        notify=_noop,
+        site=C405,
+        stream_factory=lambda client, device, on_button: stream,
+    )
+    await driver.start(["arena:corners"])
+    for _ in range(100):
+        if driver.session.error:
+            break
+        await asyncio.sleep(0.01)
+    assert "incomplete capture from FEED (press 7)" in driver.session.error
+    await driver.abandon()
+
+
 def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
     import queue
 

@@ -31,6 +31,9 @@ from dotbot.calibration.session import (
 from dotbot.logger import LOGGER
 from dotbot.site import Site
 
+# Seconds between two checks for a button press given up incomplete.
+EXPIRED_PRESS_POLL_INTERVAL = 1.0
+
 # The swarmit log-event tag a raw-count capture carries. Imported lazily so
 # the swarmit protocol registry stays out of PyDotBot test collection.
 _CAPTURE_TAG: int | None = None
@@ -70,6 +73,7 @@ class SessionDriver:
         self._device = ""
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._expiry_watch: asyncio.Task | None = None
 
     # -- state
 
@@ -116,6 +120,8 @@ class SessionDriver:
             # Button captures come unrequested from any robot, so the stream
             # is listening from the start rather than from the first capture.
             await asyncio.to_thread(self._listen_for_buttons, session.device)
+            if self._expiry_watch is None or self._expiry_watch.done():
+                self._expiry_watch = asyncio.create_task(self._watch_expired_presses())
             await self._emit()
             return session.as_dict()
 
@@ -224,6 +230,23 @@ class SessionDriver:
         return asyncio.run_coroutine_threadsafe(
             self._store_button_capture(capture), self._loop
         )
+
+    async def _watch_expired_presses(self) -> None:
+        """Report each button press given up incomplete, until the session ends."""
+        while self.session is not None:
+            await asyncio.sleep(EXPIRED_PRESS_POLL_INTERVAL)
+            async with self._lock:
+                if self.session is None or self._stream is None:
+                    continue
+                expired = self._stream.expired_presses()
+                if not expired:
+                    continue
+                self.session.error = "; ".join(
+                    f"incomplete capture from {addr} (press {press}): a chunk "
+                    "never arrived; press again"
+                    for addr, press in expired
+                )
+                await self._emit()
 
     async def _store_button_capture(self, capture: Any) -> None:
         """Point k, or dropped."""
