@@ -21,7 +21,13 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotStatus,
 )
-from dotbot.protocol import ApplicationType, ControlModeType, PayloadControlMode
+from dotbot.protocol import (
+    DIRECTION_NONE,
+    ApplicationType,
+    ControlModeType,
+    PayloadControlMode,
+    PayloadDotBotAdvertisement,
+)
 from dotbot.site import Site
 
 # A measured site, which the package never ships.
@@ -741,3 +747,41 @@ async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
     assert first["calibration_session"]["outstanding"] is None
     assert "outstanding" in first["calibration_session"]
     assert second == {"cmd": 5, "calibration_session": None}
+
+
+# --- DotBot advertisements, through the bytes the gateway delivers ----------
+
+
+def _advertised(source: int, **fields) -> Frame:
+    """A DotBot advertisement encoded to bytes and parsed back, as received."""
+    sent = Frame(
+        header=Header(destination=0, source=source),
+        packet=Packet().from_payload(PayloadDotBotAdvertisement(**fields)),
+    )
+    return Frame().from_bytes(sent.to_bytes())
+
+
+BOT = 0x42
+
+
+@pytest.mark.asyncio
+async def test_a_new_robot_with_no_heading_is_tracked(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.direction is None
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
+
+
+@pytest.mark.asyncio
+async def test_an_advertisement_without_a_heading_keeps_the_last_one(controller):
+    """-1000 is the no-heading sentinel, and must never be stored as a heading."""
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    assert controller.dotbots[addr_to_hex(BOT)].direction == 90
+

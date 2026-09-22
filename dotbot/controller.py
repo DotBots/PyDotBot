@@ -75,6 +75,7 @@ from dotbot.models import (
     DotBotStatus,
 )
 from dotbot.protocol import (
+    DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
     PayloadLh2CalibrationHomography,
@@ -613,7 +614,7 @@ class Controller:
                     )
                     self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:
-                if frame.packet.payload.direction != 0xFFFF:
+                if frame.packet.payload.direction != DIRECTION_NONE:
                     dotbot.direction = frame.packet.payload.direction
                 new_position = DotBotLH2Position(
                     x=frame.packet.payload.pos_x,
@@ -646,7 +647,7 @@ class Controller:
                         controller_mode=ControlModeType(frame.packet.payload.mode),
                         init_pos_x=new_position.x,
                         init_pos_y=new_position.y,
-                        init_direction=dotbot.direction,
+                        init_direction=frame.packet.payload.direction,
                         init_encoder_left=frame.packet.payload.encoder_left,
                         init_encoder_right=frame.packet.payload.encoder_right,
                     )
@@ -654,7 +655,7 @@ class Controller:
                         real_log = CSVLog(
                             pos_x=dotbot.lh2_position.x,
                             pos_y=dotbot.lh2_position.y,
-                            direction=dotbot.direction,
+                            direction=frame.packet.payload.direction,
                             pwm_left=frame.packet.payload.pwm_left,
                             pwm_right=frame.packet.payload.pwm_right,
                             encoder_left=frame.packet.payload.encoder_left,
