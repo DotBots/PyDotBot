@@ -456,7 +456,10 @@ def _parse_shift(_ctx, _param, value):
     "--shift",
     required=True,
     callback=_parse_shift,
-    help="Where the old frame's zero lands in the new one, `x,y` in mm.",
+    help=(
+        "Translation applied after the turn, `x,y` in mm. Without --rotate it "
+        "is where the old frame's zero lands in the new one."
+    ),
 )
 @click.option(
     "--rotate",
