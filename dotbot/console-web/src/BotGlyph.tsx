@@ -64,6 +64,7 @@ export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
  */
 export interface BotBody {
   outline: LH2Position[];
+  wheels: LH2Position[][];
   centre: LH2Position;
   nose: LH2Position;
   spanMm: number;
@@ -100,6 +101,7 @@ export function botBody(
   };
   return {
     outline,
+    wheels: (pose.wheels ?? []).map((wheel) => wheel.map(rel)),
     centre: rel(pose.centre),
     nose: rel(pose.nose),
     spanMm: Math.max(extent(forward), extent(across)),
@@ -116,9 +118,10 @@ export function botFootprintPx(pxPerMm: number, spanMm: number): number {
   return Math.max(BOT_MIN_PX, spanMm * pxPerMm);
 }
 
-/** How far from the fix the body reaches, in millimetres. */
+/** How far from the fix the body reaches, in millimetres, tyres included. */
 function reachMm(body: BotBody): number {
-  return Math.max(...body.outline.map((p) => Math.hypot(p.x, p.y)));
+  const points = [...body.outline, ...body.wheels.flat()];
+  return Math.max(...points.map((p) => Math.hypot(p.x, p.y)));
 }
 
 interface BotGlyphProps {
@@ -178,7 +181,20 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
       )}
       {detail && (
         <>
+          {/* the tyres, at the place and size the record gives them: the
+              board is drawn over them, so only what sticks out shows */}
+          {body!.wheels.map((wheel, i) => (
+            <polygon
+              key={i}
+              data-layer="wheel"
+              points={wheel.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
+              fill="var(--tyre)"
+              stroke="rgba(0,0,0,.45)"
+              strokeWidth={stroke}
+            />
+          ))}
           <polygon
+            data-layer="board"
             points={body!.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
             fill={color}
             stroke="rgba(0,0,0,.45)"

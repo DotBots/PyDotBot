@@ -62,6 +62,8 @@ export interface BotPose {
   nose: LH2Position;
   led: LH2Position;
   outline: LH2Position[];
+  /** Each driven wheel in plan view, as a rectangle; empty on an older host. */
+  wheels?: LH2Position[][];
 }
 
 export interface PyDotBot {

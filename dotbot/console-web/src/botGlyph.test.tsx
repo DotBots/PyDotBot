@@ -36,6 +36,23 @@ const V3_AT_ORIGIN: LH2Position[] = [
   { x: -42, y: 11.5 },
 ];
 
+// The two tyres in the same payload frame: the track between their centres,
+// one tyre's width across the robot and the wheel's diameter along it.
+const V3_WHEELS_AT_ORIGIN: LH2Position[][] = [
+  [
+    { x: 30.25, y: -31.5 },
+    { x: 47.75, y: -31.5 },
+    { x: 47.75, y: -75.5 },
+    { x: 30.25, y: -75.5 },
+  ],
+  [
+    { x: -47.75, y: -31.5 },
+    { x: -30.25, y: -31.5 },
+    { x: -30.25, y: -75.5 },
+    { x: -47.75, y: -75.5 },
+  ],
+];
+
 const SENSOR: LH2Position = { x: 1000, y: 1000 };
 
 // The pose of a bot standing on SENSOR facing `heading`. The board turns with
@@ -55,6 +72,7 @@ const pose = (heading = 0, over: Partial<BotPose> = {}): BotPose => {
     nose: place({ x: 0, y: 18.5 }),
     led: place({ x: 0, y: 5.5 }),
     outline: V3_AT_ORIGIN.map(place),
+    wheels: V3_WHEELS_AT_ORIGIN.map((wheel) => wheel.map(place)),
     ...over,
   };
 };
@@ -145,18 +163,37 @@ describe("the glyph a level draws", () => {
 
   const body = botBody(pose(), SENSOR);
 
-  it("draws the three layers of one robot at full detail", () => {
+  it("draws the layers of one robot at full detail", () => {
     const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
-    // The board, the line out to its nose, and the photodiode the fix came
-    // from - the same three the camera layer draws its own detection in.
-    expect(el.querySelectorAll("polygon")).toHaveLength(1);
+    // The tyres, the board over them, the line out to its nose, and the
+    // photodiode the fix came from.
+    expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(2);
+    expect(el.querySelectorAll('[data-layer="board"]')).toHaveLength(1);
     expect(el.querySelectorAll("line")).toHaveLength(1);
     expect(el.querySelectorAll("circle")).toHaveLength(1);
   });
 
+  it("draws each tyre where the pose puts it, at the size it was sent", () => {
+    const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
+    const wheels = [...el.querySelectorAll('[data-layer="wheel"]')].map((w) =>
+      w.getAttribute("points"),
+    );
+    expect(wheels[0]).toBe("30.25,-31.5 47.75,-31.5 47.75,-75.5 30.25,-75.5");
+    expect(wheels[1]).toBe("-47.75,-31.5 -30.25,-31.5 -30.25,-75.5 -47.75,-75.5");
+  });
+
+  it("draws the board alone from a host that sends no tyres", () => {
+    const older = botBody(pose(0, { wheels: undefined }), SENSOR)!;
+    const el = svg({ color: "red", body: older, pxPerMm: 1, footprintPx: 95 });
+    expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(0);
+    expect(el.querySelectorAll('[data-layer="board"]')).toHaveLength(1);
+  });
+
   it("puts the board where the pose puts it, not on the fix", () => {
     const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
-    const points = el.querySelector("polygon")!.getAttribute("points")!;
+    const points = el
+      .querySelector('[data-layer="board"]')!
+      .getAttribute("points")!;
     // The rear edge of a bot facing heading 0 is 76.5 mm back from its fix.
     expect(points).toContain("-76.5");
     // The photodiode is the origin, so the dot needs no placing at all.
