@@ -417,8 +417,8 @@ def _gated_push(client, calibration, site_changed=False, devices=None):
         f"to the swarm; {len(check.stale)} robot(s) hold another id..."
     )
     client.send_lh2_calibration(payload, check.addresses)
-    click.echo("Sent.")
-    stale = push_worklist(client, calibration, devices)
+    click.echo("Sent. Waiting for the robots to report the new id...")
+    stale = push_worklist(client, calibration, check.addresses)
     if stale:
         click.echo(
             f"Still not on {calibration.id8} ({len(stale)}), push again: "

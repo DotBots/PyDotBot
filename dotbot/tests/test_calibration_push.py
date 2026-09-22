@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from click.testing import CliRunner
 
-from dotbot.calibration import lighthouse2
+from dotbot.calibration import lighthouse2, push
 from dotbot.calibration.lighthouse2 import read_calibration_file
 from dotbot.calibration.push import PushRefused, check_push, gate_push
 from dotbot.cli import swarm_lh2
@@ -77,6 +77,11 @@ def calibration_file(tmp_path):
     return path
 
 
+@pytest.fixture(autouse=True)
+def _no_rejoin_wait(monkeypatch):
+    monkeypatch.setattr(push, "PUSH_REJOIN_TIMEOUT", 0.0)
+
+
 def _push(monkeypatch, fleet, *args):
     monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a, **k: fleet)
     return CliRunner().invoke(
@@ -132,6 +137,15 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
     assert fleet.pushed_to == [["FRESH", "LAGGARD"]]
     assert "2 robot(s) hold another id" in result.output
     assert "Still not on ac893d2d (1), push again: LAGGARD" in result.output
+
+
+def test_a_robot_not_heard_after_the_push_is_listed(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"GONE": _info()})
+    check = gate_push(fleet, calibration)
+    fleet.send_lh2_calibration(b"", check.addresses)
+    del fleet.nodes["GONE"]
+    assert push.push_worklist(fleet, calibration, check.addresses) == ["GONE"]
 
 
 def test_push_to_another_site_is_refused_without_site_changed(

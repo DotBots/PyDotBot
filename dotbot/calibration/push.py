@@ -16,12 +16,16 @@ address to an object with `info_gen` and `info`, `info` carrying
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from dotbot.calibration.lighthouse2 import Calibration, pushed_id
 
 DEVICE_INFO_VERSION_MIN = 2
+# Seconds a pushed robot gets to reset, rejoin and report the pushed id.
+PUSH_REJOIN_TIMEOUT = 30.0
+PUSH_POLL_INTERVAL = 1.0
 
 
 class PushRefused(Exception):
@@ -65,11 +69,6 @@ class PushCheck:
         return "\n".join(reasons)
 
 
-def reported_info(status: Mapping[str, Any]) -> dict[str, Any]:
-    """Address to device info, None for a robot that did not answer."""
-    return {addr: getattr(node, "info", None) for addr, node in status.items()}
-
-
 def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck:
     """Sort the fleet by what a push of `calibration` would do to it."""
     check = PushCheck(addresses=sorted(status))
@@ -93,16 +92,6 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
         if (getattr(info, "lh2_calibration_id", "") or "") != wanted_id:
             check.stale.append(addr)
     return check
-
-
-def worklist(status: Mapping[str, Any], calibration: Calibration) -> list[str]:
-    """Robots whose reported calibration id is not the file's."""
-    wanted_id = pushed_id(calibration)
-    return sorted(
-        addr
-        for addr, info in reported_info(status).items()
-        if info is None or (getattr(info, "lh2_calibration_id", "") or "") != wanted_id
-    )
 
 
 def _status(client: Any, devices: list[str] | None) -> dict[str, Any]:
@@ -139,7 +128,23 @@ def gate_push(
 
 
 def push_worklist(
-    client: Any, calibration: Calibration, devices: list[str] | None = None
+    client: Any, calibration: Calibration, addresses: list[str]
 ) -> list[str]:
-    """Re-read device info after a push and return the robots still stale."""
-    return worklist(_status(client, devices), calibration)
+    """The pushed robots that do not report the file's id after the push.
+
+    A push resets every robot that takes it, so each gets PUSH_REJOIN_TIMEOUT
+    to rejoin and report; one not heard by then is listed too.
+    """
+    wanted_id = pushed_id(calibration)
+    pending = {addr.upper() for addr in addresses}
+    deadline = time.monotonic() + PUSH_REJOIN_TIMEOUT
+    while pending:
+        status = _status(client, sorted(pending))
+        for addr in list(pending):
+            info = getattr(status.get(addr), "info", None)
+            if info is not None and (info.lh2_calibration_id or "") == wanted_id:
+                pending.discard(addr)
+        if not pending or time.monotonic() >= deadline:
+            break
+        time.sleep(PUSH_POLL_INTERVAL)
+    return sorted(pending)

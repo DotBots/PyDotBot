@@ -181,7 +181,7 @@ class SessionDriver:
                 client.send_lh2_calibration, payload, check.addresses
             )
             stale = await asyncio.to_thread(
-                push_worklist, client, session.saved, devices
+                push_worklist, client, session.saved, check.addresses
             )
             await self._emit()
             return {
