@@ -165,23 +165,12 @@ class CalibrationSession:
 
         This is the robot's button answering the prompt: whichever capture
         arrives while point k is outstanding is point k. Returns None when
-        nothing is outstanding, so the caller can say so and drop it. Raises
-        SessionError, storing nothing, when the capture lacks a station an
-        earlier point saw, since that station could then not be solved.
+        nothing is outstanding, so the caller can say so and drop it.
         """
         point = self.outstanding
         if point is None:
             return None
-        capture = samples_from_reads(reads, point.index)
-        seen = {s.station for p in self.points if p.captured for s in p.capture.samples}
-        missing = seen - {s.station for s in capture.samples}
-        if missing:
-            names = ", ".join(f"station {index}" for index in sorted(missing))
-            raise SessionError(
-                f"capture for point {point.index} is missing {names}, "
-                "seen at earlier points; not stored"
-            )
-        return self.store(point.index, capture)
+        return self.store(point.index, samples_from_reads(reads, point.index))
 
     def capture(self, stream, on_progress: Callable | None = None) -> SessionPoint:
         """Take the outstanding point's reads over `stream`, a `CaptureSession`."""

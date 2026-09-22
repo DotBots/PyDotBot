@@ -875,35 +875,16 @@ async def _noop(_state):
     return None
 
 
-def test_a_button_capture_missing_a_station_an_earlier_point_saw_is_not_stored():
+def test_a_button_capture_missing_a_station_an_earlier_point_saw_is_stored():
     session = CalibrationSession.resolve(["arena:corners"], site=C405)
     two = parse_capture_payload(
         _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
     )
     assert session.store_reads([two] * 3).index == 0
 
-    with pytest.raises(SessionError, match="missing station 1"):
-        session.store_reads([_reads(0, *CORNER_COUNTS[1])] * 3)
-
-    assert session.outstanding.index == 1
-    assert session.points[1].capture is None
-
-
-@pytest.mark.asyncio
-async def test_a_refused_button_capture_leaves_the_point_outstanding_with_the_error():
-    driver, client, _ = _driver()
-    await driver.start(["arena:corners"])
-    two = parse_capture_payload(
-        _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
-    )
-    await asyncio.wrap_future(
-        driver.on_button_capture(ButtonCapture(device="ABCD", press=0, reads=[two]))
-    )
-    await asyncio.wrap_future(driver.on_button_capture(_press(0, *CORNER_COUNTS[1])))
-
-    state = driver.state()
-    assert state["outstanding"] == 1
-    assert "missing station 1" in state["error"]
+    # A station occluded at one point is the solver's concern, as with Enter.
+    assert session.store_reads([_reads(0, *CORNER_COUNTS[1])] * 3).index == 1
+    assert session.outstanding.index == 2
 
 
 def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
