@@ -14,7 +14,11 @@ import pytest
 from click.testing import CliRunner
 
 from dotbot.calibration import lighthouse2, push
-from dotbot.calibration.lighthouse2 import read_calibration_file
+from dotbot.calibration.lighthouse2 import (
+    LH2_CALIBRATION_MESSAGE_BYTES,
+    message_site,
+    read_calibration_file,
+)
 from dotbot.calibration.push import PushRefused, check_push, gate_push
 from dotbot.cli import swarm_lh2
 from dotbot.config import load_config_text
@@ -67,8 +71,9 @@ class _Fleet:
                 continue
             if addr == "LAGGARD" or node.info is None:
                 continue
-            node.info.lh2_site_name = payload[60:76].rstrip(b"\x00").decode()
-            node.info.lh2_calibration_id = payload[76:84].hex()
+            node.info.lh2_site_name, node.info.lh2_calibration_id = message_site(
+                payload[:LH2_CALIBRATION_MESSAGE_BYTES]
+            )
 
 
 @pytest.fixture
@@ -155,7 +160,9 @@ def test_a_robot_not_heard_after_the_push_is_listed(calibration_file):
     calibration = read_calibration_file(calibration_file)
     fleet = _Fleet({"GONE": _info()})
     check = gate_push(fleet, calibration)
-    fleet.send_lh2_calibration(b"", check.send_to)
+    fleet.send_lh2_calibration(
+        lighthouse2.calibration_payload(calibration), check.send_to
+    )
     del fleet.nodes["GONE"]
     assert push.push_worklist(fleet, calibration, check.addresses) == ["GONE"]
 

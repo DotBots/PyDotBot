@@ -434,6 +434,19 @@ def calibration_messages(calibration: Calibration) -> list[bytes]:
     ]
 
 
+def message_site(message: bytes) -> tuple[str, str]:
+    """The site name and calibration id a calibration message carries."""
+    if len(message) != LH2_CALIBRATION_MESSAGE_BYTES:
+        raise ValueError(
+            f"a calibration message is {LH2_CALIBRATION_MESSAGE_BYTES} bytes, "
+            f"got {len(message)}"
+        )
+    id_at = LH2_CALIBRATION_MESSAGE_BYTES - LH2_CALIBRATION_ID_BYTES
+    name_at = id_at - LH2_SITE_NAME_BYTES
+    name = message[name_at:id_at].split(b"\x00", 1)[0].decode("ascii")
+    return name, message[id_at:].hex()
+
+
 def calibration_payload(calibration: Calibration) -> bytes:
     """What `send_lh2_calibration` takes: the messages, concatenated."""
     return b"".join(calibration_messages(calibration))

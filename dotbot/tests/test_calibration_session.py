@@ -20,6 +20,7 @@ import pytest
 from dotbot.area import Area
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.driver import SessionDriver
+from dotbot.calibration.lighthouse2 import LH2_CALIBRATION_MESSAGE_BYTES, message_site
 from dotbot.calibration.ota import (
     ButtonCapture,
     CaptureSession,
@@ -110,8 +111,9 @@ class _FakeClient:
             if devices is not None and addr not in devices:
                 continue
             if info is not None and info.info_version >= 2:
-                info.lh2_site_name = payload[60:76].rstrip(b"\x00").decode()
-                info.lh2_calibration_id = payload[76:84].hex()
+                info.lh2_site_name, info.lh2_calibration_id = message_site(
+                    payload[:LH2_CALIBRATION_MESSAGE_BYTES]
+                )
 
     def refresh_device_info(self, devices=None) -> None:
         pass

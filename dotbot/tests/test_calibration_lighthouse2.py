@@ -605,6 +605,7 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
     assert message[76:84] == bytes.fromhex("ac893d2d85e3068c")
+    assert lighthouse2.message_site(message) == ("c405-arena", "ac893d2d85e3068c")
 
 
 def test_a_gap_in_the_station_numbering_is_refused(tmp_path):

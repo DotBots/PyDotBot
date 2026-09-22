@@ -21,7 +21,12 @@ from typing import Any, Callable
 
 import numpy as np
 
-from dotbot.calibration.lighthouse2 import apply_homography, counts_for_camera_point
+from dotbot.calibration.lighthouse2 import (
+    LH2_CALIBRATION_MESSAGE_BYTES,
+    apply_homography,
+    counts_for_camera_point,
+    message_site,
+)
 
 # A wall-mounted station: the magnitude of perspective row real files carry.
 STATION_MATRIX = np.array(
@@ -106,9 +111,9 @@ class SimulatedCaptureClient:
         """The one simulated robot, on float32 firmware, holding the last push."""
         site, calibration_id = "", ""
         if self.pushed:
-            last = self.pushed[-1]
-            site = last[60:76].split(b"\x00", 1)[0].decode("ascii")
-            calibration_id = last[76:84].hex()
+            site, calibration_id = message_site(
+                self.pushed[-1][:LH2_CALIBRATION_MESSAGE_BYTES]
+            )
         info = SimpleNamespace(
             info_version=2, lh2_site_name=site, lh2_calibration_id=calibration_id
         )
