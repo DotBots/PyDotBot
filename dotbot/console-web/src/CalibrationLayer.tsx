@@ -1,13 +1,12 @@
 import React from "react";
 
-import { BOT_GLYPH_BOX, BotGlyph } from "./BotGlyph";
 import {
   insideFromCorner,
   noseHeading,
   outstandingIndex,
   sessionRect,
 } from "./calibration";
-import { areaToFraction } from "./frame";
+import { areaToFraction, headingToGlyphRotation } from "./frame";
 import type { Area, CalibrationSession } from "./types";
 
 // Calibration mode drawn over the map: the rectangle the session's points
@@ -24,7 +23,37 @@ const pctOf = (x: number, y: number, box: Area) => {
 
 // The numbers are chrome, not objects on the floor, so they keep their size
 // whatever the map's real-scale layer does to the robot glyphs.
-const GLYPH_SIZE = BOT_GLYPH_BOX * 0.7;
+const GLYPH_SIZE = 34;
+
+/**
+ * Where to stand the robot and which way its nose goes. A placement is an
+ * instruction rather than a measurement, so it is drawn as a direction in a
+ * box and not as the board: the board outline on the map is a pose the
+ * controller measured, and nothing here has one.
+ */
+const Placement: React.FC<{ heading: number }> = ({ heading }) => (
+  <svg
+    width={GLYPH_SIZE}
+    height={GLYPH_SIZE}
+    viewBox="-16 -16 32 32"
+    style={{
+      display: "block",
+      transform: `rotate(${headingToGlyphRotation(heading)}deg)`,
+    }}
+  >
+    <rect
+      x="-11"
+      y="-11"
+      width="22"
+      height="22"
+      rx="3"
+      fill="color-mix(in srgb, var(--accent) 18%, transparent)"
+      stroke="var(--accent)"
+      strokeWidth="1.5"
+    />
+    <path d="M0,-8.5 L5,-1 L-5,-1 Z" fill="var(--accent)" />
+  </svg>
+);
 
 const Marker: React.FC<{
   index: number;
@@ -60,7 +89,7 @@ const Marker: React.FC<{
             opacity: 0.9,
           }}
         >
-          <BotGlyph color="var(--accent)" heading={noseHeading(nose)} size={GLYPH_SIZE} />
+          <Placement heading={noseHeading(nose)} />
         </div>
       )}
       <div

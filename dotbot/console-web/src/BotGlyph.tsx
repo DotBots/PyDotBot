@@ -1,49 +1,23 @@
 import React from "react";
 
-import { headingToGlyphRotation } from "./frame";
+import type { BotPose, LH2Position } from "./types";
 
-// The map marker, traced from the DotBot v3 board outline: one PCB, wide at the
-// front and narrower between the wheels, with the tyres outboard of the narrow
-// section. Geometry is authored nose-up in a 32-unit box centred on the bot, so
-// one unit is size/32 px and every number below scales with the size prop.
-export const BOT_GLYPH_BOX = 48;
-
-// What the robot itself spans inside that box - 25 of the 32 units - for
-// callers matching the glyph to a real-world footprint.
-export const BOT_GLYPH_SPAN = (BOT_GLYPH_BOX * 25) / 32;
-
-/**
- * The robot's footprint on the floor. The v3 PCB outline is 94.00 mm across
- * by 95.00 mm deep, and the tyres fill the steps in its sides, so what the
- * robot occupies is about that square.
- */
-export const BOT_FOOTPRINT_MM = 95;
+// The map marker: one robot in three layers, the board outline, a line from
+// its centre to its nose, and a dot on the photodiode the fix came from.
+//
+// The robot's shape is not authored here. The controller expands each
+// photodiode fix into a body pose against its own geometry record and ships
+// the board path with it, already rotated into the arena frame, so this module
+// scales that path to the screen and nothing more. The camera layer draws its
+// detector's pose in the same three layers from the same record, which is why
+// the two read as the same robot.
+//
+// A pose whose heading the robot never reported is drawn as the photodiode
+// point alone. A guessed body is worse than a dot, and a dot is honest about
+// what is known.
 
 /** Screen pixels a bot is drawn at however far the map zooms out. */
 export const BOT_MIN_PX = 8;
-
-/**
- * The footprint a bot is drawn at, in screen pixels: its true size, floored
- * where true size would be a speck too small to see or to click.
- */
-export function botFootprintPx(pxPerMm: number): number {
-  return Math.max(BOT_MIN_PX, BOT_FOOTPRINT_MM * pxPerMm);
-}
-
-/** The glyph box that draws a footprint of `footprintPx`. */
-export function glyphBoxPx(footprintPx: number): number {
-  return (footprintPx * BOT_GLYPH_BOX) / BOT_GLYPH_SPAN;
-}
-
-const BOARD =
-  "M-10.7,-11.9 L10.7,-11.9 Q12,-11.9 12,-10.6 L12,-2.4 Q12,-1.1 10.7,-1.1 " +
-  "L6.9,-1.1 L6.9,10.6 Q6.9,11.9 5.6,11.9 L-5.6,11.9 Q-6.9,11.9 -6.9,10.6 " +
-  "L-6.9,-1.1 L-10.7,-1.1 Q-12,-1.1 -12,-2.4 L-12,-10.6 Q-12,-11.9 -10.7,-11.9 Z";
-
-const TREAD_Y = [2.2, 5.3, 8.4];
-
-/** How much of the robot is drawn: the board, or a mark. */
-export type GlyphLevel = "detail" | "dot";
 
 /**
  * Screen pixels of footprint the board outline needs before it reads. Judged
@@ -57,6 +31,19 @@ export const GLYPH_DETAIL_PX = 16;
 export const GLYPH_CROWD_BOTS = 200;
 
 /**
+ * How solid a body built on a travel bearing is drawn. The bearing is the
+ * robot's direction of travel, which is its heading only while it drives
+ * straight, so the body is drawn as an estimate rather than as a measurement.
+ */
+export const TRAVEL_BODY_OPACITY = 0.78;
+
+/** Radius of the photodiode dot, in millimetres, as the camera layer draws it. */
+const SENSOR_DOT_MM = 4;
+
+/** How much of the robot is drawn: the board, or a mark. */
+export type GlyphLevel = "detail" | "dot";
+
+/**
  * Which glyph a bot of this on-screen size gets. Zoom decides it; a crowded
  * map is marks at any zoom, since detail nobody can pick apart only costs
  * legibility.
@@ -66,62 +53,157 @@ export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
   return footprintPx >= GLYPH_DETAIL_PX ? "detail" : "dot";
 }
 
+/**
+ * One robot's body to draw, in millimetres from its own photodiode fix, so it
+ * can be hung off the point the map already places the bot at.
+ *
+ * `spanMm` is the body's own size, measured along its heading and across it,
+ * rather than the box it happens to occupy in the arena frame - a square board
+ * turned 45 degrees spans half again as much there, and the chrome around it
+ * would grow and shrink as the robot turned.
+ */
+export interface BotBody {
+  outline: LH2Position[];
+  centre: LH2Position;
+  nose: LH2Position;
+  spanMm: number;
+  source: BotPose["heading_source"];
+}
+
+/** Whether a pose says enough about the robot's orientation to draw a body. */
+export function hasHeading(pose: BotPose | null | undefined): boolean {
+  return !!pose && pose.heading_source !== "none";
+}
+
+/**
+ * The body to draw around a fix at `sensor`, or null when there is nothing to
+ * draw one from: no pose, no fix, no heading, or an outline too short to be a
+ * polygon.
+ */
+export function botBody(
+  pose: BotPose | null | undefined,
+  sensor: LH2Position | null,
+): BotBody | null {
+  if (!pose || !sensor || !hasHeading(pose)) return null;
+  if (pose.outline.length < 3) return null;
+  const rel = (p: LH2Position): LH2Position => ({
+    x: p.x - sensor.x,
+    y: p.y - sensor.y,
+  });
+  const outline = pose.outline.map(rel);
+  const theta = (pose.heading_deg * Math.PI) / 180;
+  const forward: LH2Position = { x: -Math.sin(theta), y: Math.cos(theta) };
+  const across: LH2Position = { x: -forward.y, y: forward.x };
+  const extent = (axis: LH2Position): number => {
+    const along = outline.map((p) => p.x * axis.x + p.y * axis.y);
+    return Math.max(...along) - Math.min(...along);
+  };
+  return {
+    outline,
+    centre: rel(pose.centre),
+    nose: rel(pose.nose),
+    spanMm: Math.max(extent(forward), extent(across)),
+    source: pose.heading_source,
+  };
+}
+
+/**
+ * The footprint a bot is drawn at, in screen pixels: its true size, floored
+ * where true size would be a speck too small to see or to click. A bot with
+ * no body is that floor, being a point rather than an area.
+ */
+export function botFootprintPx(pxPerMm: number, spanMm: number): number {
+  return Math.max(BOT_MIN_PX, spanMm * pxPerMm);
+}
+
+/** How far from the fix the body reaches, in millimetres. */
+function reachMm(body: BotBody): number {
+  return Math.max(...body.outline.map((p) => Math.hypot(p.x, p.y)));
+}
+
 interface BotGlyphProps {
   color: string;
-  heading: number | null; // degrees, 0 = +y, positive clockwise in the arena frame
-  // A DotBot: drawn as the board even when it reports no heading, nose-up.
-  dotBot?: boolean;
-  size?: number;
+  /** Null draws the photodiode point alone. */
+  body: BotBody | null;
+  pxPerMm: number;
+  footprintPx: number;
   level?: GlyphLevel;
 }
 
-const body = (color: string, board: boolean, level: GlyphLevel) => {
-  if (!board) return <circle r="8.5" fill={color} />;
-  // Too small for a front to read: position and state are all that is left.
-  if (level === "dot") return <rect x="-10" y="-10" width="20" height="20" rx="3" fill={color} />;
-  return (
-    <>
-      <g fill="var(--tyre)">
-        <rect x="-12.5" y="0.2" width="5.4" height="11.3" rx="1.7" />
-        <rect x="7.1" y="0.2" width="5.4" height="11.3" rx="1.7" />
-      </g>
-      <g fill="#000" opacity={0.52}>
-        {TREAD_Y.map((y) => (
-          <React.Fragment key={y}>
-            <rect x="-11.9" y={y} width="4.2" height="1.1" rx="0.55" />
-            <rect x="7.7" y={y} width="4.2" height="1.1" rx="0.55" />
-          </React.Fragment>
-        ))}
-      </g>
-      <path d={BOARD} fill={color} />
-    </>
-  );
-};
-
+/**
+ * The bot as one SVG whose origin is its photodiode fix, so the caller places
+ * it at the point it already has and the body falls where the pose puts it.
+ */
 export const BotGlyph: React.FC<BotGlyphProps> = ({
   color,
-  heading,
-  dotBot = false,
-  size = BOT_GLYPH_BOX,
+  body,
+  pxPerMm,
+  footprintPx,
   level = "detail",
 }) => {
-  const board = dotBot || heading !== null;
+  const px = (p: LH2Position): LH2Position => ({
+    x: p.x * pxPerMm,
+    y: p.y * pxPerMm,
+  });
+  const detail = body !== null && level === "detail";
+  // Half the box the drawing needs, measured from the fix at its origin.
+  const half = !body
+    ? footprintPx / 2
+    : detail
+      ? reachMm(body) * pxPerMm
+      : Math.hypot(body.centre.x, body.centre.y) * pxPerMm + footprintPx / 2;
+  const side = 2 * (half + 2);
+  const mark = body ? px(body.centre) : { x: 0, y: 0 };
+  const stroke = Math.max(0.6, footprintPx / 40);
   return (
     <svg
-      viewBox="-16 -16 32 32"
-      width={size}
-      height={size}
+      viewBox={`${-side / 2} ${-side / 2} ${side} ${side}`}
+      width={side}
+      height={side}
       style={{
         display: "block",
-        overflow: "visible",
         filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
-        transform:
-          heading === null || level === "dot"
-            ? undefined
-            : `rotate(${headingToGlyphRotation(heading)}deg)`,
       }}
     >
-      {body(color, board, level)}
+      {!body && <circle r={footprintPx / 2} fill={color} />}
+      {body && !detail && (
+        <rect
+          x={mark.x - footprintPx / 2}
+          y={mark.y - footprintPx / 2}
+          width={footprintPx}
+          height={footprintPx}
+          rx={Math.min(3, footprintPx / 4)}
+          fill={color}
+        />
+      )}
+      {detail && (
+        <>
+          <polygon
+            points={body!.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
+            fill={color}
+            stroke="rgba(0,0,0,.45)"
+            strokeWidth={stroke}
+          />
+          {/* which way it faces: the centre of the board out to its nose */}
+          <line
+            x1={mark.x}
+            y1={mark.y}
+            x2={px(body!.nose).x}
+            y2={px(body!.nose).y}
+            stroke="rgba(255,255,255,.95)"
+            strokeWidth={Math.max(1, footprintPx / 16)}
+            strokeLinecap="round"
+          />
+          {/* the photodiode, which is the point the lighthouse reported, at
+              the size the camera layer draws its own */}
+          <circle
+            r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
+            fill="#111"
+            stroke="rgba(255,255,255,.85)"
+            strokeWidth={stroke}
+          />
+        </>
+      )}
     </svg>
   );
 };

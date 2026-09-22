@@ -29,7 +29,14 @@ import {
   scaleBar,
   ticksInSite,
 } from "./grid";
-import { BotGlyph, botFootprintPx, glyphBoxPx, glyphLevel } from "./BotGlyph";
+import {
+  BotGlyph,
+  GlyphLevel,
+  TRAVEL_BODY_OPACITY,
+  botBody,
+  botFootprintPx,
+  glyphLevel,
+} from "./BotGlyph";
 import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
@@ -523,26 +530,38 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     geomNow.h - RULER_CONTROLS_PX,
   );
 
+  const shaped = props.robotShapes ?? true;
   // The robot is an object on the floor, so it is drawn at the floor's own
   // scale: zooming in tells the truth about how much room it takes. Zooming
-  // out floors it at a size that can still be seen and clicked.
-  const footprintPx = botFootprintPx(perMm);
-  const glyphPx = glyphBoxPx(footprintPx);
-  // How much of the robot is worth drawing at that size, with the fleet's own
-  // size as the tie-breaker.
-  const level = glyphLevel(footprintPx, props.bots.length);
-  // What sits around the robot - selection, badges, labels - is chrome, and
-  // keeps its size on screen whatever the camera does.
-  const selectionPx = footprintPx + SELECTION_PAD_PX * 2;
-  const waypointPx = Math.max(WAYPOINT_MIN_PX, footprintPx * WAYPOINT_OF_FOOTPRINT);
-  // What sits on top of the robot shrinks with it, to a floor, so a bot the
-  // size of a dot is not buried under its own indicators.
-  const drivePx = Math.max(3, Math.min(10, footprintPx * 0.32));
-  const batteryPx = Math.max(14, Math.min(28, footprintPx));
-  // A robot drawn as a mark is one nobody reads per-robot detail on, so its
-  // own indicators go with the board: the selection ring and the reset badge
-  // stay, being how a robot is found rather than what it says.
-  const indicators = level === "detail";
+  // out floors it at a size that can still be seen and clicked. The size is
+  // the body the controller shipped, so a bot it could not expand into one is
+  // that floor, a point rather than an area.
+  const botDraw = (b: UnifiedBot) => {
+    const body = shaped ? botBody(b.pose, b.position) : null;
+    const footprintPx = botFootprintPx(perMm, body?.spanMm ?? 0);
+    // How much of the robot is worth drawing at that size, with the fleet's
+    // own size as the tie-breaker.
+    const level: GlyphLevel = shaped
+      ? glyphLevel(footprintPx, props.bots.length)
+      : "dot";
+    return {
+      body,
+      footprintPx,
+      level,
+      // What sits around the robot - selection, badges, labels - is chrome,
+      // and keeps its size on screen whatever the camera does.
+      selectionPx: footprintPx + SELECTION_PAD_PX * 2,
+      waypointPx: Math.max(WAYPOINT_MIN_PX, footprintPx * WAYPOINT_OF_FOOTPRINT),
+      // What sits on top of the robot shrinks with it, to a floor, so a bot
+      // the size of a dot is not buried under its own indicators.
+      drivePx: Math.max(3, Math.min(10, footprintPx * 0.32)),
+      batteryPx: Math.max(14, Math.min(28, footprintPx)),
+      // A robot drawn as a mark is one nobody reads per-robot detail on, so
+      // its own indicators go with the board: the selection ring and the reset
+      // badge stay, being how a robot is found rather than what it says.
+      indicators: level === "detail",
+    };
+  };
 
   return (
     <div
@@ -799,6 +818,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             props.bots.flatMap((b) => {
               if (!props.selection.has(b.id) || b.waypoints.length === 0) return [];
               const led = ledCss(b);
+              const { waypointPx } = botDraw(b);
               return b.waypoints.map((w, i) => {
                 const q = pctPos(w);
                 return (
@@ -825,8 +845,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           {props.layers.waypoints &&
             props.plannedMissions
               .filter((m) => m.ids.some((id) => props.selection.has(id)))
-              .flatMap((m) =>
-                m.waypoints.map((p, i) => {
+              .flatMap((m) => {
+                const owner = props.bots.find((b) => m.ids.includes(b.id));
+                const waypointPx = owner
+                  ? botDraw(owner).waypointPx
+                  : WAYPOINT_MIN_PX;
+                return m.waypoints.map((p, i) => {
                   const q = pctPos(p);
                   const led = m.led ?? "var(--accent)";
                   return (
@@ -848,8 +872,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       }}
                     />
                   );
-                }),
-              )}
+                });
+              })}
 
           {/* bots (v1 glyph: state-colored body, LED pip, drive dot, chip label) */}
           {props.layers.dotBots &&
@@ -868,11 +892,33 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const stc = stateColor(b.state);
                 const pct = batteryPct(b);
                 const blink = b.state === "Programming" || b.state === "Resetting";
+                const {
+                  body,
+                  footprintPx,
+                  level,
+                  selectionPx,
+                  batteryPx,
+                  drivePx,
+                  indicators,
+                } = botDraw(b);
+                // The board is drawn where the pose puts it, which is not
+                // where the photodiode is: the chrome goes with the board, so
+                // the ring and the label stay around the robot rather than
+                // around its sensor.
+                const bodyDx = body ? body.centre.x * perMm : 0;
+                const bodyDy = body ? body.centre.y * perMm : 0;
+                // A body built on the travel bearing is an estimate: it is
+                // right while the robot drives straight and wrong the rest of
+                // the time, so it is drawn as one.
+                const estimate =
+                  body !== null && level === "detail" && body.source === "travel";
+                const bodySolid = solid * (estimate ? TRAVEL_BODY_OPACITY : 1);
                 // The board turns with the heading; the ring around it turns
                 // too, so it hugs the board whichever way the robot faces.
-                const shaped = props.robotShapes ?? true;
-                const turned = shaped && level === "detail" && b.heading !== null;
-                const turn = turned ? headingToGlyphRotation(b.heading!) : 0;
+                const turned = body !== null && level === "detail";
+                const turn = turned
+                  ? headingToGlyphRotation(b.pose!.heading_deg)
+                  : 0;
                 // How far below the centre a turned box reaches, as a
                 // fraction of its half side.
                 const reach = turned
@@ -917,6 +963,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       height: 0,
                     }}
                   >
+                    {/* Everything that marks the robot out rides on its body,
+                        which is not where its sensor is. */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: bodyDx,
+                        top: bodyDy,
+                        width: 0,
+                        height: 0,
+                      }}
+                    >
                     {/* last-reset warning, centred over the glyph body */}
                     <div
                       style={{
@@ -965,26 +1022,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b), borderRadius: 2 }} />
                       </div>
                     )}
-                    {/* body and heading are one glyph: it rotates as a piece */}
-                    <div
-                      data-testid={`glyph-${b.id}`}
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
-                        opacity: solid < 1 ? solid : undefined,
-                        animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
-                      }}
-                    >
-                      <BotGlyph
-                        color={stc}
-                        heading={shaped ? b.heading : null}
-                        dotBot={shaped && b.isDotBot}
-                        size={glyphPx}
-                        level={level}
-                      />
-                    </div>
                     {/* drive dot: white ring at center = drivable; its FILL is
                         the LED color (experiment: merges the v1 LED pip into the
                         drive indicator - see design-feedback) */}
@@ -1028,6 +1065,28 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         {b.id.slice(-4).toUpperCase()}
                       </div>
                     )}
+                    </div>
+                    {/* The body, hung off the photodiode fix this container
+                        sits on: the pose puts it where it belongs. */}
+                    <div
+                      data-testid={`glyph-${b.id}`}
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
+                        opacity: bodySolid < 1 ? bodySolid : undefined,
+                        animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
+                      }}
+                    >
+                      <BotGlyph
+                        color={stc}
+                        body={body}
+                        pxPerMm={perMm}
+                        footprintPx={footprintPx}
+                        level={level}
+                      />
+                    </div>
                   </div>
                 );
               })}

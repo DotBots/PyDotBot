@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
 import { MapView } from "./MapView";
-import type { Area, LH2Position, Site, UnifiedBot } from "./types";
+import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
 import { Camera, SITE_CAMERA, viewGeom } from "./zoom";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
@@ -19,17 +19,57 @@ const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
 const CANVAS = { w: 900, h: 600 };
 const GEOM = viewGeom(CANVAS.w, CANVAS.h, VIEWPORT);
 
+// A v3 body as the controller ships it: the board path around a fix, already
+// rotated, in frame millimetres. 95 mm long and 94 wide, so at heading 45 it
+// is the awkward case the chrome has to keep hugging.
+const V3_AT_ORIGIN: LH2Position[] = [
+  { x: -43, y: 10.5 },
+  { x: -47, y: 10.5 },
+  { x: -47, y: -27.5 },
+  { x: -28.5, y: -27.5 },
+  { x: -28.5, y: -76.5 },
+  { x: 28.5, y: -76.5 },
+  { x: 28.5, y: -27.5 },
+  { x: 47, y: -27.5 },
+  { x: 47, y: 10.5 },
+  { x: 43, y: 10.5 },
+  { x: 42, y: 11.5 },
+  { x: 42, y: 18.5 },
+  { x: -42, y: 18.5 },
+  { x: -42, y: 11.5 },
+];
+const V3_SPAN_MM = 95;
+
+// The body of a bot standing at `at` facing `heading`, rotated the way the
+// controller rotates it.
+const bodyPose = (at: LH2Position, heading = 45): BotPose => {
+  const theta = (heading * Math.PI) / 180;
+  const place = (p: LH2Position): LH2Position => ({
+    x: at.x + p.x * Math.cos(theta) - p.y * Math.sin(theta),
+    y: at.y + p.x * Math.sin(theta) + p.y * Math.cos(theta),
+  });
+  return {
+    heading_deg: heading,
+    heading_source: "travel",
+    axle: place({ x: 0, y: -53.5 }),
+    centre: place({ x: 0, y: -29 }),
+    nose: place({ x: 0, y: 18.5 }),
+    led: place({ x: 0, y: 5.5 }),
+    outline: V3_AT_ORIGIN.map(place),
+  };
+};
+
 const bot = (id: string, position: LH2Position, extra: Partial<UnifiedBot> = {}): UnifiedBot => ({
   id,
   state: "Running",
   link: "active",
   position,
   heading: 45,
+  pose: bodyPose(position),
   battery: 2.9,
   led: null,
   deviceType: "DotBotV3",
   application: 0,
-  isDotBot: true,
   drivable: true,
   nav: "drive",
   waypoints: [],
@@ -150,7 +190,7 @@ describe("what is drawn around a robot", () => {
   it("hugs the selected robot's footprint with the ring, at any zoom", () => {
     for (const cam of [SITE_CAMERA, near]) {
       render(<Harness bots={fleet()} selection={new Set(["a"])} from={cam} />);
-      const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, cam));
+      const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, cam), V3_SPAN_MM);
       const ring = screen.getByTestId("selection-a");
       expect(parseFloat(ring.style.width)).toBeCloseTo(footprint + 6, 3);
       expect(parseFloat(ring.style.height)).toBeCloseTo(footprint + 6, 3);
@@ -184,29 +224,50 @@ describe("what is drawn around a robot", () => {
     expect(parseFloat(screen.getByTestId("waypoint-a-0").style.width)).toBe(5);
     cleanup();
     render(<Harness bots={fleet} selection={new Set(["a"])} from={near} />);
-    const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, near));
+    const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, near), V3_SPAN_MM);
     expect(parseFloat(screen.getByTestId("waypoint-a-0").style.width)).toBeCloseTo(footprint * 0.35, 3);
   });
 });
 
-describe("the robot shapes toggle", () => {
+describe("what the map draws a robot from", () => {
   const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+  const near: Camera = { scale: 20, tx: 0, ty: 0 };
 
-  it("draws a DotBot as the robot by default, heading or not", () => {
-    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { heading: null })]} />);
-    expect(glyph("a").querySelector("circle")).toBeNull();
+  it("is the body the controller shipped, in its three layers", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={near} />);
+    const svg = glyph("a").querySelector("svg")!;
+    expect(svg.querySelectorAll("polygon")).toHaveLength(1);
+    expect(svg.querySelectorAll("line")).toHaveLength(1);
+    expect(svg.querySelectorAll("circle")).toHaveLength(1);
   });
 
-  it("draws every bot as a plain mark when turned off", () => {
+  it("is a plain sensor dot for a bot whose heading the robot never reported", () => {
+    const headingless = bot("a", { x: 500, y: 500 }, {
+      heading: null,
+      pose: { ...bodyPose({ x: 500, y: 500 }, 0), heading_source: "none" },
+    });
+    render(<Harness bots={[headingless]} from={near} />);
+    const svg = glyph("a").querySelector("svg")!;
+    expect(svg.querySelectorAll("polygon")).toHaveLength(0);
+    expect(svg.querySelectorAll("circle")).toHaveLength(1);
+  });
+
+  it("is a plain sensor dot for a bot with no body at all", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { pose: null })]} from={near} />);
+    expect(glyph("a").querySelector("polygon")).toBeNull();
+  });
+
+  it("is a plain mark for every bot when robot shapes are turned off", () => {
     render(
       <Harness
-        bots={[bot("a", { x: 500, y: 500 }), bot("b", { x: 900, y: 900 }, { heading: null })]}
+        bots={[bot("a", { x: 500, y: 500 }), bot("b", { x: 900, y: 900 })]}
         robotShapes={false}
+        from={near}
       />,
     );
     for (const id of ["a", "b"]) {
+      expect(glyph(id).querySelector("polygon")).toBeNull();
       expect(glyph(id).querySelector("circle")).not.toBeNull();
-      expect(glyph(id).querySelector("svg")!.style.transform).toBe("");
     }
   });
 });

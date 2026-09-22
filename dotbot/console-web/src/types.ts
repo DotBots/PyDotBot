@@ -44,6 +44,26 @@ export interface RgbLed {
   blue: number;
 }
 
+// How the heading a body pose was built from was made: "travel" is the
+// bearing between two fixes, "ekf" the robot's own estimate, and "none" means
+// the robot reported no heading at all, so the pose's own heading is a
+// placeholder and its body must not be drawn.
+export type HeadingSource = "none" | "travel" | "ekf";
+
+// The robot's body, as the controller expands one photodiode fix into it. Every
+// point is frame millimetres, the same frame as an LH2 position: `centre` is
+// the board outline's centre, `nose` the middle of its front edge, and
+// `outline` the board path itself, already rotated to the heading.
+export interface BotPose {
+  heading_deg: number;
+  heading_source: HeadingSource;
+  axle: LH2Position;
+  centre: LH2Position;
+  nose: LH2Position;
+  led: LH2Position;
+  outline: LH2Position[];
+}
+
 export interface PyDotBot {
   address: string;
   application: number; // ApplicationType: 0 = DotBot
@@ -51,6 +71,7 @@ export interface PyDotBot {
   mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
   direction?: number;
   lh2_position?: LH2Position;
+  pose?: BotPose;
   position_history?: LH2Position[];
   waypoints?: LH2Position[];
   waypoints_threshold?: number;
@@ -244,13 +265,16 @@ export interface UnifiedBot {
   id: string; // hex address, the join key
   state: BotState | null; // null: swarmit does not know this bot (no sandbox)
   link: LinkState;
-  position: LH2Position | null; // arena mm
+  position: LH2Position | null; // the LH2 photodiode, arena mm
   heading: number | null; // degrees
+  // The body around that photodiode fix, as the controller expanded it. Null
+  // for a bot with no fix, and for one whose position comes from swarmit,
+  // which reports a point and no heading.
+  pose: BotPose | null;
   battery: number; // volts
   led: RgbLed | null;
   deviceType: string;
   application: number;
-  isDotBot: boolean; // drawn as the robot outline
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
   waypoints: LH2Position[]; // active mission (as reported by the controller)

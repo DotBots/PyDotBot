@@ -37,7 +37,7 @@ const bot = (id: string, position: LH2Position, extra: Partial<UnifiedBot> = {})
   led: null,
   deviceType: "DotBotV3",
   application: 0,
-  isDotBot: true,
+  pose: null,
   drivable: true,
   nav: "drive",
   waypoints: [],

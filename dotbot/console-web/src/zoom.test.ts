@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  BOT_FOOTPRINT_MM,
-  GLYPH_DETAIL_PX,
-  botFootprintPx,
-  glyphLevel,
-} from "./BotGlyph";
+import { GLYPH_DETAIL_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
 import { areaToFraction } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
@@ -45,6 +40,10 @@ const C405: Site = {
 };
 // The site extent plus the 2 m margin, which is what the map draws.
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
+// The span a v3 body reports, for the questions the zoom ladder asks about how
+// big a robot lands on screen. The console never computes this; the controller
+// ships it inside each body pose.
+const V3_SPAN_MM = 95;
 const GEOM = viewGeom(900, 600, VIEWPORT);
 const MAX = zoomMax(C405, VIEWPORT, GEOM);
 
@@ -353,8 +352,8 @@ describe("the zoom ceiling", () => {
     );
     // Which is a 95 mm robot at very nearly its own size in pixels.
     expect(
-      BOT_FOOTPRINT_MM * pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 }),
-    ).toBeGreaterThanOrEqual(BOT_FOOTPRINT_MM - 1e-6);
+      V3_SPAN_MM * pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 }),
+    ).toBeGreaterThanOrEqual(V3_SPAN_MM - 1e-6);
   });
 
   it("still clears an area that asks for more than that", () => {
@@ -401,6 +400,7 @@ describe("how far in the glyph ladder reaches", () => {
           tx: 0,
           ty: 0,
         }),
+        V3_SPAN_MM,
       ),
     );
   };

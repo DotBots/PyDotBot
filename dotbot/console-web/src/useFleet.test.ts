@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
+import { BotPose, CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
   derivePose,
   deriveState,
-  isDotBot,
   merge,
   severityOf,
   withDetection,
 } from "./useFleet";
+
+const pose = (over: Partial<BotPose> = {}): BotPose => ({
+  heading_deg: 90,
+  heading_source: "travel",
+  axle: { x: 0, y: 0 },
+  centre: { x: 0, y: 0 },
+  nose: { x: 0, y: 0 },
+  led: { x: 0, y: 0 },
+  outline: [],
+  ...over,
+});
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -205,29 +215,43 @@ describe("withDetection (one camera's latest view of its own area)", () => {
   });
 });
 
-describe("isDotBot (drawn as the robot)", () => {
-  it("takes swarmit's device type alone, as in the bootloader", () => {
-    expect(isDotBot(undefined, sw({ device: "DotBotV3", status: "Bootloader" }))).toBe(true);
-    expect(isDotBot(undefined, sw({ device: "DotBotV2" }))).toBe(true);
+describe("the body the controller expanded the fix into", () => {
+  const at = { x: 1500, y: 300 };
+
+  it("rides with the controller's position", () => {
+    const p = pose();
+    expect(derivePose(py({ lh2_position: at, pose: p }), sw(), "active").pose).toBe(p);
   });
 
-  it("takes the controller's application alone, whatever image advertises it", () => {
-    expect(isDotBot(py({ application: 0 }), undefined)).toBe(true);
-    expect(isDotBot(py({ application: 0 }), sw({ device: "Unknown" }))).toBe(true);
+  it("is dropped with the position it belongs to", () => {
+    // swarmit reports a point and no heading, so a bot placed from it has no
+    // body to draw: keeping the controller's would put a board on a stale
+    // orientation at a fresh position.
+    const heard = py({ lh2_position: at, pose: pose() });
+    expect(derivePose(heard, sw(), "lost").pose).toBeNull();
+    expect(derivePose(py({ pose: pose() }), sw({ pos_x: 0, pos_y: 0 }), "active").pose).toBeNull();
   });
 
-  it("is not a DotBot when neither signal says so", () => {
-    expect(isDotBot(py({ application: 1 }), sw({ device: "nRF5340DK" }))).toBe(false);
-    expect(isDotBot(undefined, sw({ device: "Unknown" }))).toBe(false);
-  });
-
-  it("keeps a headingless DotBot a robot on the merged bot", () => {
+  it("reaches the merged bot", () => {
+    const p = pose();
     const [b] = merge(
-      { aaaa: py({ address: "aaaa", direction: -1000 }) },
+      { aaaa: py({ address: "aaaa", lh2_position: at, pose: p }) },
+      { aaaa: sw({ status: "Running" }) },
+    );
+    expect(b.pose).toBe(p);
+  });
+
+  it("is carried for a bot that reported no heading, flagged as such", () => {
+    // The controller always expands a valid fix; the flag is what says the
+    // orientation is unknown, and the console keys on that rather than on the
+    // field being absent.
+    const p = pose({ heading_source: "none", heading_deg: 0 });
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", direction: -1000, lh2_position: at, pose: p }) },
       { aaaa: sw({ status: "Running" }) },
     );
     expect(b.heading).toBeNull();
-    expect(b.isDotBot).toBe(true);
+    expect(b.pose?.heading_source).toBe("none");
   });
 });
 
@@ -259,10 +283,18 @@ describe("derivePose (whose pose is live)", () => {
   it("takes the controller's heading only with its position", () => {
     const heard = py({ lh2_position: stale, direction: 90 });
     expect(derivePose(heard, sw(), "active").heading).toBe(90);
-    expect(derivePose(heard, sw(), "lost")).toEqual({ position: { x: 100, y: 200 }, heading: null });
+    expect(derivePose(heard, sw(), "lost")).toEqual({
+      position: { x: 100, y: 200 },
+      heading: null,
+      pose: null,
+    });
     expect(derivePose(heard, sw({ pos_x: 0, pos_y: 0 }), "lost").heading).toBe(90);
     const unplaced = py({ direction: 90 });
-    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({ position: null, heading: null });
+    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({
+      position: null,
+      heading: null,
+      pose: null,
+    });
   });
 
   it("does not draw swarmit's unlocated origin", () => {

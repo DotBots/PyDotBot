@@ -125,7 +125,7 @@ const bot = (id: string, position: LH2Position): UnifiedBot => ({
   led: null,
   deviceType: "DotBot",
   application: 0,
-  isDotBot: true,
+  pose: null,
   drivable: true,
   nav: "drive",
   waypoints: [],
