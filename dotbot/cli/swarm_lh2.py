@@ -7,10 +7,11 @@ The fleet-side home for LH2 calibration: capture and send a calibration
 without a serial cable, driving DotBots through the swarmit transport. Two
 subcommands:
 
-- `collect` - walk the robots through a placement's points, trigger a
-              raw-count capture per point over the air, solve every visible
-              station by least squares, and save a schema 2 calibration
-              under ~/.dotbot/calibrations/<site>/.
+- `collect` - walk the robots through a placement's points, take a
+              raw-count capture per point over the air (the robot's button,
+              or Enter with --device), solve every visible station by least
+              squares, and save a schema 2 calibration under
+              ~/.dotbot/calibrations/<site>/.
 - `push <path|id>` - check the robots' device info, send a saved
               calibration over the air, and list the robots still on
               another id.
@@ -73,8 +74,9 @@ def cmd() -> None:
 def _await_point(session, stream, arrivals: queue.Queue):
     """Capture the outstanding point from whichever trigger comes first.
 
-    Enter runs the READY-mode capture of the named device; a capture from any
-    robot's button is stored as the point directly.
+    A capture from any robot's button is stored as the point directly. Enter
+    runs the READY-mode capture of the stream's device (DEPRECATED, in favour
+    of the button); it only arrives when collect has a --device.
     """
     from dotbot.calibration.session import SessionError
 
@@ -104,7 +106,7 @@ def _await_point(session, stream, arrivals: queue.Queue):
                 err=True,
             )
         try:
-            point = session.store_reads(capture.reads)
+            point = session.store_reads(capture.reads, capture.device)
         except SessionError as exc:
             click.echo(f"  ! {exc}", err=True)
             continue
@@ -118,15 +120,20 @@ def _await_point(session, stream, arrivals: queue.Queue):
     name="collect",
     help=(
         "Collect an LH2 calibration over the air (no serial cable). Walks "
-        "you through the points of one placement, triggers n captures per "
-        "point via swarmit, solves every visible station, and saves the "
+        "you through the points of one placement, takes each point's reads "
+        "from the robot's button (calibrate app running) or, with --device, "
+        "from Enter, solves every visible station, and saves the "
         "calibration."
     ),
 )
 @click.option(
     "--device",
-    required=True,
-    help="DotBot link-layer address in hex (e.g. BC3D3C8A2A6F8E68).",
+    default=None,
+    help=(
+        "DotBot link-layer address in hex (e.g. BC3D3C8A2A6F8E68) that Enter "
+        "captures from, with its app stopped (READY). Deprecated in favour of "
+        "the calibrate app's button, which needs no address."
+    ),
 )
 @click.option(
     "-n",
@@ -173,21 +180,22 @@ def _await_point(session, stream, arrivals: queue.Queue):
     default=None,
     type=int,
     help=(
-        "Captures averaged per point. A single read costs about 60 % of the "
-        "accuracy at every point of the field."
+        "Captures averaged per point on Enter (--device); the calibrate app "
+        "sets its own. A single read costs about 60 % of the accuracy at "
+        "every point of the field."
     ),
 )
 @click.option(
     "--timeout",
     default=None,
     type=float,
-    help="Seconds to wait for each capture before re-triggering.",
+    help="Seconds to wait for each Enter capture before re-triggering.",
 )
 @click.option(
     "--retries",
     default=None,
     type=int,
-    help="Re-trigger this many times per capture before giving up.",
+    help="Re-trigger an Enter capture this many times before giving up.",
 )
 @click.option(
     "--tag",
@@ -200,7 +208,10 @@ def _await_point(session, stream, arrivals: queue.Queue):
 @click.option(
     "--push",
     is_flag=True,
-    help="Send the computed calibration back to the robots over the air.",
+    help=(
+        "Send the computed calibration over the air to the robots whose "
+        "captures built it (and to --device, when given)."
+    ),
 )
 @click.pass_context
 def _collect(
@@ -243,7 +254,7 @@ def _collect(
         session = CalibrationSession.resolve(
             specs,
             site=site,
-            device=device,
+            device=device or "",
             reads=reads if reads is not None else CAPTURE_READS_DEFAULT,
             timeout=timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT,
             retries=retries if retries is not None else CAPTURE_RETRIES_DEFAULT,
@@ -278,10 +289,13 @@ def _collect(
             time.sleep(0.2)
             click.echo(
                 collect_header(
-                    site, site_source, len(session.points), session.reads, device
+                    site, site_source, len(session.points), session.reads, device or ""
                 )
             )
-            threading.Thread(target=read_enter, daemon=True).start()
+            trigger = "the robot's button"
+            if device:
+                trigger = "Enter"
+                threading.Thread(target=read_enter, daemon=True).start()
             while not session.complete:
                 outstanding = session.outstanding
                 click.echo(
@@ -290,6 +304,7 @@ def _collect(
                         outstanding.index,
                         len(session.points),
                         outstanding.placement,
+                        trigger,
                     )
                 )
                 point = _await_point(session, stream, arrivals)
@@ -321,7 +336,10 @@ def _collect(
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            _gated_push(client, calibration, devices=[device])
+            targets = set(session.capture_devices)
+            if device:
+                targets.add(device.upper())
+            _gated_push(client, calibration, devices=sorted(targets))
         else:
             click.echo(
                 "To send it to the robots over the air:\n"

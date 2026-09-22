@@ -58,6 +58,8 @@ class SessionPoint:
     index: int
     placement: PointPlacement
     capture: PointCapture | None = None
+    # The robot whose capture this point holds.
+    device: str = ""
     # Reads received per station while this point's capture is running.
     reads_per_station: dict[int, int] = field(default_factory=dict)
     reads_target: int = 0
@@ -142,16 +144,24 @@ class CalibrationSession:
     def complete(self) -> bool:
         return self.outstanding is None
 
+    @property
+    def capture_devices(self) -> list[str]:
+        """The robots whose captures the session holds."""
+        return sorted({p.device for p in self.points if p.captured and p.device})
+
     # -- capturing
 
-    def store(self, index: int, capture: PointCapture) -> SessionPoint:
-        """Attach one point's reads, whatever took them."""
+    def store(
+        self, index: int, capture: PointCapture, device: str = ""
+    ) -> SessionPoint:
+        """Attach one point's reads, whatever took them, from `device`."""
         if not 0 <= index < len(self.points):
             raise SessionError(
                 f"point {index} is outside this session's {len(self.points)} points"
             )
         point = self.points[index]
         point.capture = capture
+        point.device = device.upper()
         point.reads_per_station = {s.station: s.reads for s in capture.samples}
         # A new capture invalidates a solve taken over the old reads.
         self.stations = []
@@ -160,7 +170,7 @@ class CalibrationSession:
         self.saved = None
         return point
 
-    def store_reads(self, reads: list) -> SessionPoint | None:
+    def store_reads(self, reads: list, device: str = "") -> SessionPoint | None:
         """Store a capture the robot took on its own as the outstanding point.
 
         This is the robot's button answering the prompt: whichever capture
@@ -170,7 +180,7 @@ class CalibrationSession:
         point = self.outstanding
         if point is None:
             return None
-        return self.store(point.index, samples_from_reads(reads, point.index))
+        return self.store(point.index, samples_from_reads(reads, point.index), device)
 
     def capture(self, stream, on_progress: Callable | None = None) -> SessionPoint:
         """Take the outstanding point's reads over `stream`, a `CaptureSession`."""
@@ -196,7 +206,7 @@ class CalibrationSession:
             retries=self.retries,
             on_read=on_read,
         )
-        return self.store(point.index, capture)
+        return self.store(point.index, capture, stream.device)
 
     def redo(self) -> SessionPoint:
         """Discard the last captured point's reads and re-open it."""
@@ -205,6 +215,7 @@ class CalibrationSession:
             raise SessionError("nothing captured yet, so there is nothing to redo")
         point = captured[-1]
         point.capture = None
+        point.device = ""
         point.reads_per_station = {}
         point.reads_target = 0
         self.stations = []

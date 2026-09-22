@@ -3,10 +3,13 @@
 
 """Over-the-air LH2 capture collection (swarmit transport).
 
-A DotBot's secure bootloader samples its own raw LH2 counts on request
-(READY mode only) and ships them back inside a SWARMIT_EVENT_LOG. This
-module triggers the captures and decodes the records; the solve and the file
-live in `lighthouse2`.
+A capture comes either from the calibrate app, taken on the robot's own
+button, or from the secure bootloader, which samples its raw LH2 counts on
+request (READY mode only). Both arrive inside a SWARMIT_EVENT_LOG. This
+module decodes the records and triggers the bootloader captures; the solve
+and the file live in `lighthouse2`.
+
+DEPRECATED: the bootloader capture request, in favour of the calibrate app.
 
 A capture is n reads per point, not one: the per-point error is the
 placement sigma and the lighthouse's own over sqrt(n) in quadrature, so a
@@ -301,27 +304,26 @@ def samples_from_reads(
 class CaptureSession:
     """One shared log-event stream for a whole collect session.
 
-    The bot only emits raw counts in reply to a trigger, so nothing arrives
-    unsolicited - a single `watch_log_events()` stream serves every point. A
-    background reader thread decodes records addressed to `device` into a
-    queue; `capture()` triggers and waits, re-triggering on timeout because
-    the trigger send is best-effort (no transport-level ack).
-
     A capture from the calibrate app's button can come from any device and
     at any time; its chunks are assembled into one `ButtonCapture` per press
     and handed to `on_button_capture`.
+
+    With a `device`, `capture()` also triggers that device's READY-mode
+    capture (DEPRECATED, in favour of the button) and waits for the reply,
+    re-triggering on timeout because the trigger send is best-effort. The
+    bootloader only answers a trigger, so one stream serves every point.
     """
 
     def __init__(
         self,
         client,
-        device: str,
+        device: str | None,
         tag: int,
         on_button_capture: Callable[[ButtonCapture], None] | None = None,
         button_timeout: float = BUTTON_CAPTURE_TIMEOUT_DEFAULT,
     ):
         self._client = client
-        self._device = device.upper()
+        self._device = (device or "").upper()
         self._tag = tag
         self._queue: queue.Queue = queue.Queue()
         self._stop = threading.Event()
@@ -348,7 +350,7 @@ class CaptureSession:
                 if chunk is not None:
                     self._on_button_chunk(addr, chunk)
                     continue
-                if addr != self._device:
+                if not self._device or addr != self._device:
                     continue
                 decoded = parse_capture_payload(data, self._tag)
                 if decoded:
@@ -364,6 +366,11 @@ class CaptureSession:
         if capture is not None:
             self._on_button_capture(capture)
 
+    @property
+    def device(self) -> str:
+        """The device `capture()` triggers, or "" for a button-only stream."""
+        return self._device
+
     def expired_presses(self) -> list[tuple[str, int]]:
         """Button presses given up on since the last call: (device, press)."""
         with self._assembler_lock:
@@ -377,8 +384,13 @@ class CaptureSession:
     ) -> list[LH2CalibrationSample]:
         """Trigger one capture and return every station's record from the reply.
 
-        Raises TimeoutError if nothing arrives within `retries + 1` triggers.
+        Raises TimeoutError if nothing arrives within `retries + 1` triggers,
+        and ValueError on a stream opened without a device.
         """
+        if not self._device:
+            raise ValueError(
+                "no device to trigger: this stream only takes button captures"
+            )
         # Discard anything left over from the previous point.
         while not self._queue.empty():
             self._queue.get_nowait()

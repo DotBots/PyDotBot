@@ -11,6 +11,7 @@ behaviour - none of this is hardware validation.
 """
 
 import asyncio
+import queue
 import re
 import threading
 from types import SimpleNamespace
@@ -938,3 +939,104 @@ def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
     captured = capsys.readouterr()
     assert "received from FEED as point 0" in captured.out
     assert "1 capture(s) lost before press 2" in captured.err
+
+
+# --- collect, with and without --device -------------------------------------
+
+_CORNER_POINTS = [
+    "--points=47,18.5",
+    "--points=1953,18.5",
+    "--points=47,1981.5",
+    "--points=1953,1981.5",
+]
+
+
+class _CollectClient(_FakeClient):
+    """Button presses queued up front, and READY replies to each trigger."""
+
+    def __init__(self, presses=(), device="ABCD"):
+        super().__init__(device)
+        self.events: queue.Queue = queue.Queue()
+        for press, (addr, corner) in enumerate(presses):
+            record = _record(0, *CORNER_COUNTS[corner])
+            self.events.put(
+                {"addr": addr, "data_hex": (bytes([0xCB, press << 3]) + record).hex()}
+            )
+            self.infos[addr] = _info()
+
+    def request_lh2_capture(self, device: str) -> None:
+        self.triggers += 1
+        record = _record(0, *CORNER_COUNTS[self.triggers - 1])
+        self.events.put({"addr": self.device, "data_hex": _payload(record).hex()})
+
+    def watch_log_events(self):
+        while True:
+            try:
+                yield self.events.get(timeout=0.05)
+            except queue.Empty:
+                continue
+
+
+def _collect(monkeypatch, tmp_path, client, *args, stdin=""):
+    from click.testing import CliRunner
+
+    from dotbot.cli import swarm_lh2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a: client)
+    return CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["collect", *_CORNER_POINTS, "--reads=1", "--timeout=2", "--retries=0", *args],
+        input=stdin,
+    )
+
+
+def test_collect_without_a_device_takes_every_point_from_the_button(
+    monkeypatch, tmp_path
+):
+    client = _CollectClient(
+        presses=[("FEED", 0), ("FEED", 1), ("BEEF", 2), ("BEEF", 3)]
+    )
+
+    result = _collect(monkeypatch, tmp_path, client, "--push")
+
+    assert result.exit_code == 0, result.output
+    assert client.triggers == 0
+    assert "Press the robot's button when it is still." in result.output
+    assert "Press Enter" not in result.output
+    assert "received from BEEF as point 3" in result.output
+    assert client.pushed_to == ["BEEF", "FEED"]
+
+
+def test_collect_with_a_device_captures_on_enter_and_pushes_to_it(
+    monkeypatch, tmp_path
+):
+    client = _CollectClient()
+
+    result = _collect(
+        monkeypatch, tmp_path, client, "--device=abcd", "--push", stdin="\n" * 4
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.triggers == 4
+    assert "Enter captures from ABCD" in result.output
+    assert "Press Enter when it is still." in result.output
+    assert client.pushed_to == ["ABCD"]
+
+
+def test_collect_help_marks_the_enter_capture_deprecated():
+    from click.testing import CliRunner
+
+    from dotbot.cli import swarm_lh2
+
+    result = CliRunner().invoke(swarm_lh2.cmd, ["collect", "--help"])
+
+    assert "Deprecated in favour of the calibrate app's button" in " ".join(
+        result.output.split()
+    )
+
+
+def test_a_button_only_stream_refuses_a_triggered_capture():
+    with CaptureSession(_FakeClient(), None, _TAG) as stream:
+        with pytest.raises(ValueError, match="only takes button captures"):
+            stream.capture(timeout=0.1, retries=0)

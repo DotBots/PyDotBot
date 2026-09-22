@@ -263,7 +263,7 @@ class SessionDriver:
                     "LH2 button captures lost", device=capture.device, lost=capture.lost
                 )
             try:
-                point = session.store_reads(capture.reads)
+                point = session.store_reads(capture.reads, capture.device)
             except SessionError as exc:
                 session.error = str(exc)
             else:
