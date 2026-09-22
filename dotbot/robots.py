@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import NamedTuple
 
 ROBOT_DEFAULT = "dotbot-v3"
@@ -23,6 +24,31 @@ ROBOT_DEFAULT = "dotbot-v3"
 class Point(NamedTuple):
     x: float
     y: float
+
+
+class HeadingSource(IntEnum):
+    """How the heading a pose is built from was made."""
+
+    NONE = 0  # no heading; the pose's heading is a placeholder
+    TRAVEL = 1  # bearing of travel between two fixes
+    EKF = 2  # body heading from the on-bot estimator
+
+
+@dataclass(frozen=True)
+class BodyPose:
+    """A robot's body in the arena frame, in mm and degrees.
+
+    `heading_deg` follows the robot `direction` convention: 0 = +y, and the
+    body-forward unit vector is (-sin, +cos).
+    """
+
+    heading_deg: float
+    heading_source: HeadingSource
+    axle: Point
+    centre: Point
+    nose: Point
+    led: Point
+    outline: tuple[Point, ...]
 
 
 @dataclass(frozen=True)
@@ -119,6 +145,32 @@ class RobotGeometry:
     def mm_per_count(self) -> float:
         """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
         return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
+
+    def body_pose(
+        self, sensor: Point, heading_deg: float, source: HeadingSource
+    ) -> BodyPose:
+        """The body around a photodiode fix at `sensor`, facing `heading_deg`."""
+        theta = math.radians(heading_deg)
+        forward = (-math.sin(theta), math.cos(theta))
+        right = (-math.cos(theta), -math.sin(theta))
+
+        def place(point: Point) -> Point:
+            ahead = self.photodiode.y - point.y
+            aside = point.x - self.photodiode.x
+            return Point(
+                sensor[0] + ahead * forward[0] + aside * right[0],
+                sensor[1] + ahead * forward[1] + aside * right[1],
+            )
+
+        return BodyPose(
+            heading_deg=heading_deg,
+            heading_source=source,
+            axle=place(self.axle_midpoint),
+            centre=place(self.outline_centre),
+            nose=place(Point(self.photodiode.x, self.outline_bbox[1])),
+            led=place(self.led),
+            outline=tuple(place(p) for p in self.outline_path),
+        )
 
     def clearance_mm(self, edge: str) -> float:
         """Distance from the photodiode to the body edge facing `edge`.

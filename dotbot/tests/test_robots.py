@@ -1,8 +1,18 @@
 """The geometry record's derived quantities, recovered from its board points."""
 
+import math
+
+import numpy as np
 import pytest
 
-from dotbot.robots import ROBOT_DEFAULT, ROBOTS, Point, RobotGeometry, robot_geometry
+from dotbot.robots import (
+    ROBOT_DEFAULT,
+    ROBOTS,
+    HeadingSource,
+    Point,
+    RobotGeometry,
+    robot_geometry,
+)
 
 V3 = ROBOTS["dotbot-v3"]
 
@@ -64,3 +74,61 @@ def test_an_off_centre_photodiode_is_refused():
             gear_ratio=V3.gear_ratio,
             envelope_mm=V3.envelope_mm,
         )
+
+
+# --- the expansion from the photodiode to the body --------------------------
+
+SENSOR = Point(1000.0, 1000.0)
+
+
+@pytest.mark.parametrize(
+    "heading,centre,nose",
+    [
+        (0.0, (1000.0, 971.0), (1000.0, 1018.5)),
+        (90.0, (1029.0, 1000.0), (981.5, 1000.0)),
+        (180.0, (1000.0, 1029.0), (1000.0, 981.5)),
+        (270.0, (971.0, 1000.0), (1018.5, 1000.0)),
+    ],
+)
+def test_the_centre_is_29_mm_behind_the_sensor(heading, centre, nose):
+    """Body-forward at heading theta is (-sin, +cos)."""
+    pose = V3.body_pose(SENSOR, heading, HeadingSource.TRAVEL)
+    assert pose.centre == pytest.approx(centre)
+    assert pose.nose == pytest.approx(nose)
+    forward = (-math.sin(math.radians(heading)), math.cos(math.radians(heading)))
+    assert pose.axle == pytest.approx(
+        (SENSOR.x - 53.5 * forward[0], SENSOR.y - 53.5 * forward[1])
+    )
+    assert pose.led == pytest.approx(
+        (SENSOR.x + 5.5 * forward[0], SENSOR.y + 5.5 * forward[1])
+    )
+    assert pose.heading_deg == heading
+    assert pose.heading_source == HeadingSource.TRAVEL
+
+
+def test_the_robot_s_left_side_is_on_its_left():
+    """At heading 0 the robot faces +y; seen from above with y down, its left
+    is +x. The board's left edge is its low-x edge."""
+    pose = V3.body_pose(SENSOR, 0.0, HeadingSource.TRAVEL)
+    left_edge = [p for q, p in zip(V3.outline_path, pose.outline) if q.x == 28.0]
+    right_edge = [p for q, p in zip(V3.outline_path, pose.outline) if q.x == 122.0]
+    assert all(p.x == pytest.approx(SENSOR.x + 47.0) for p in left_edge)
+    assert all(p.x == pytest.approx(SENSOR.x - 47.0) for p in right_edge)
+
+
+@pytest.mark.parametrize("heading", [0.0, 37.0, 90.0, -123.0, 180.0])
+def test_the_outline_is_the_camera_detector_s_outline(heading):
+    """The detector draws the same board from its centre and its own heading
+    convention; the two must agree point for point."""
+    from dotbot.camera.detection.pose import OUTLINE_MM, axes
+
+    pose = V3.body_pose(SENSOR, heading, HeadingSource.TRAVEL)
+    right, forward = axes(heading + 90.0)
+    centre = np.asarray(pose.centre)
+    detector = [centre + p[0] * right + p[1] * forward for p in OUTLINE_MM]
+    assert np.allclose(np.asarray(pose.outline), detector, atol=1e-9)
+
+
+def test_an_unknown_model_has_no_body():
+    with pytest.raises(ValueError):
+        robot_geometry("dotbot-v2").body_pose(SENSOR, 0.0, HeadingSource.TRAVEL)
