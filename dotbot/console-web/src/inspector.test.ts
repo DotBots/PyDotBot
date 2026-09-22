@@ -13,7 +13,7 @@ const bot = (over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   led: null,
   deviceType: "DotBotV3",
   application: 0,
-  footprint: true,
+  isDotBot: true,
   drivable: true,
   nav: "drive",
   waypoints: [],

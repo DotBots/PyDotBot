@@ -102,7 +102,7 @@ export function merge(
       led: py?.rgb_led ?? null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
-      footprint: isDotBot(py, sw),
+      isDotBot: isDotBot(py, sw),
       // Drivable = a DBP-speaking image is running. The control plane must be
       // hearing the bot, and either its sandbox is Running or it has no
       // sandbox at all (a bare-mode bot swarmit does not manage).

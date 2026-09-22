@@ -87,7 +87,7 @@ interface BotGlyphProps {
   color: string;
   heading: number | null; // degrees, 0 = +y, positive clockwise in the arena frame
   // A DotBot: drawn as the board even when it reports no heading, nose-up.
-  footprint?: boolean;
+  dotBot?: boolean;
   size?: number;
   level?: GlyphLevel;
 }
@@ -118,11 +118,11 @@ const body = (color: string, board: boolean, level: GlyphLevel) => {
 export const BotGlyph: React.FC<BotGlyphProps> = ({
   color,
   heading,
-  footprint = false,
+  dotBot = false,
   size = BOT_GLYPH_BOX,
   level = "detail",
 }) => {
-  const board = footprint || heading !== null;
+  const board = dotBot || heading !== null;
   return (
     <svg
       viewBox="-16 -16 32 32"
