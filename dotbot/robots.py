@@ -104,8 +104,6 @@ class RobotGeometry:
     connector_length_mm: float
     encoder_cpr: int
     gear_ratio: float
-    # Measured, so not necessarily encoder_cpr * gear_ratio: `DB_COUNTS_PER_WHEEL_REV`.
-    counts_per_wheel_rev: float
     # The plan-view square for anything that needs a size rather than a shape.
     envelope_mm: float
 
@@ -236,7 +234,7 @@ class RobotGeometry:
     @property
     def mm_per_count(self) -> float:
         """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
-        return math.pi * self.wheel_diameter_mm / self.counts_per_wheel_rev
+        return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
 
     def body_pose(
         self, sensor: Point, heading_deg: float, source: HeadingSource
@@ -329,8 +327,7 @@ ROBOTS: dict[str, RobotGeometry] = {
         connector_width_mm=12.0,
         connector_length_mm=10.0,
         encoder_cpr=28,
-        gear_ratio=50.0,
-        counts_per_wheel_rev=1430.0,
+        gear_ratio=51.0,
         envelope_mm=95.0,
     ),
 }
