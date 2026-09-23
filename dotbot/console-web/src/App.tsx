@@ -61,9 +61,11 @@ import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
 import {
   Camera as ZoomCamera,
+  SITE_ZOOM,
   cameraForArea,
   cameraForZoom,
   padArea,
+  viewGeom,
   visibleArea,
   zoomFromSearch,
   zoomMax,
@@ -241,7 +243,10 @@ export const App: React.FC = () => {
   const zoomTo = useCallback(
     (name: string) => {
       if (!geom) return;
-      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, geom);
+      // Refitted to this viewport: the site can land in the same commit that
+      // reshapes the box, before the map has reported its new geometry.
+      const g = viewGeom(geom.w, geom.h, viewport);
+      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, g);
       if (next) setCam(next);
     },
     [geom, site, viewport],
@@ -265,8 +270,11 @@ export const App: React.FC = () => {
     }
     const rect = viewFor(openingViews, site.name, viewport);
     if (rect) {
-      setCam(cameraForArea(rect, viewport, geom, zoomMax(site, viewport, geom)));
+      const g = viewGeom(geom.w, geom.h, viewport);
+      setCam(cameraForArea(rect, viewport, g, zoomMax(site, viewport, g)));
+      return;
     }
+    zoomTo(SITE_ZOOM);
   }, [geom, site, viewport, openingViews, zoomTo]);
 
   // Remembered once the camera settles: a pan would otherwise write storage

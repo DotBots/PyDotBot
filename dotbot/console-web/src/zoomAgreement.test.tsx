@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { barLabel, pxPerMm, scaleBar } from "./grid";
 import type { Site } from "./types";
 import {
+  SITE_ZOOM,
   ZOOM_MAX_FLOOR,
   ZOOM_MIN,
   ZOOM_STEP,
+  cameraForZoom,
   fitScale,
   padArea,
   scaleForFraction,
@@ -106,6 +108,14 @@ const camera = () => screen.getByTestId("camera-layer").style.transform;
 const scaleOf = (transform: string) =>
   Number(/scale\(([-\d.]+)\)/.exec(transform)?.[1]);
 
+// The camera the map opens on and the fit button returns to: the site view.
+const siteCam = () =>
+  cameraForZoom(SITE_ZOOM, site, VIEWPORT, viewGeom(CANVAS.width, CANVAS.height, VIEWPORT))!;
+const siteTransform = () => {
+  const c = siteCam();
+  return `translate(${c.tx}px, ${c.ty}px) scale(${c.scale})`;
+};
+
 describe("zooming to an area", () => {
   it("lands on the same camera from the Layers row and from ?zoom=", () => {
     // The area's row under Layers > Areas, where its name lives.
@@ -120,17 +130,17 @@ describe("zooming to an area", () => {
     const fromSearch = camera();
 
     expect(fromSearch).toBe(fromRow);
-    expect(fromRow).not.toBe("translate(0px, 0px) scale(1)");
+    expect(fromRow).not.toBe(siteTransform());
   });
 
   it("goes back to the whole site from the fit button", () => {
     render(<App />);
     fireEvent.click(screen.getByTitle("Zoom to dock"));
-    expect(camera()).not.toBe("translate(0px, 0px) scale(1)");
+    expect(camera()).not.toBe(siteTransform());
 
     fireEvent.click(screen.getByTitle("Zoom to the whole site"));
 
-    expect(camera()).toBe("translate(0px, 0px) scale(1)");
+    expect(camera()).toBe(siteTransform());
   });
 
   it("fills the canvas with the area rather than stopping short of it", () => {
@@ -156,13 +166,14 @@ describe("zooming to an area", () => {
       scaleBar(pxPerMm("x", VIEWPORT, geom, { scale, tx: 0, ty: 0 }));
     const scaleText = () => screen.getByLabelText("Map scale").textContent ?? "";
 
-    expect(scaleText()).toBe(barLabel(barAt(1).mm));
+    const open = siteCam().scale;
+    expect(scaleText()).toBe(barLabel(barAt(open).mm));
 
     // Zoomed in, the same length of canvas stands for less floor.
     for (let i = 0; i < 3; i += 1) fireEvent.click(screen.getByTitle("Zoom in"));
-    const closer = barAt(ZOOM_STEP ** 3);
+    const closer = barAt(open * ZOOM_STEP ** 3);
     expect(scaleText()).toBe(barLabel(closer.mm));
-    expect(closer.mm).toBeLessThan(barAt(1).mm);
+    expect(closer.mm).toBeLessThan(barAt(open).mm);
   });
 
   it("shows where in the range the map is, however it got there", () => {
@@ -171,13 +182,15 @@ describe("zooming to an area", () => {
     const max = zoomMax(site, VIEWPORT, geom);
     const slider = () => screen.getByLabelText("Zoom") as HTMLInputElement;
 
-    // The whole site is the far end of the range.
-    expect(Number(slider().value)).toBeCloseTo(0, 9);
+    // The site view sits inside the range: the far end is the whole viewport.
+    const open = siteCam().scale;
+    expect(Number(slider().value)).toBeCloseTo(zoomFraction(open, max), 9);
+    expect(Number(slider().value)).toBeGreaterThan(0);
 
     // The buttons and the handle agree on where a press lands.
     fireEvent.click(screen.getByTitle("Zoom in"));
     expect(Number(slider().value)).toBeCloseTo(
-      zoomFraction(ZOOM_STEP, max),
+      zoomFraction(open * ZOOM_STEP, max),
       6,
     );
 
@@ -210,14 +223,15 @@ describe("zooming to an area", () => {
     const geom = viewGeom(CANVAS.width, CANVAS.height, VIEWPORT);
     const max = zoomMax(site, VIEWPORT, geom);
     const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+    const open = siteCam().scale;
 
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    expect(scaleOf(camera())).toBeCloseTo(ZOOM_STEP, 6);
+    expect(scaleOf(camera())).toBeCloseTo(open * ZOOM_STEP, 6);
     fireEvent.keyDown(slider, { key: "ArrowLeft" });
-    expect(scaleOf(camera())).toBeCloseTo(ZOOM_MIN, 6);
+    expect(scaleOf(camera())).toBeCloseTo(open, 6);
 
     fireEvent.keyDown(slider, { key: "PageUp" });
-    expect(scaleOf(camera())).toBeCloseTo(ZOOM_STEP ** 3, 6);
+    expect(scaleOf(camera())).toBeCloseTo(open * ZOOM_STEP ** 3, 6);
 
     fireEvent.keyDown(slider, { key: "End" });
     expect(scaleOf(camera())).toBeCloseTo(max, 6);

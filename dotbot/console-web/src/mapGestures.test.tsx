@@ -8,7 +8,7 @@ import { MAP_MODIFIER, Modifier } from "./shortcuts";
 import type { Area, LH2Position, Site, UnifiedBot } from "./types";
 import {
   Camera,
-  SITE_CAMERA,
+  FRAME_CAMERA,
   ZOOM_STEP,
   cameraForArea,
   viewGeom,
@@ -70,7 +70,7 @@ interface HarnessProps {
 const Harness: React.FC<HarnessProps> = ({
   bots = [],
   selection = new Set(),
-  from = SITE_CAMERA,
+  from = FRAME_CAMERA,
   onSelect = () => {},
 }) => {
   const [cam, setCam] = useState<Camera>(from);
@@ -186,9 +186,9 @@ describe("the wheel", () => {
   it("does nothing with no modifier, or with another one", () => {
     render(<Harness />);
     fireEvent.wheel(canvas(), { deltaY: -100, clientX: 300, clientY: 200 });
-    expectCamera(camera(), SITE_CAMERA);
+    expectCamera(camera(), FRAME_CAMERA);
     fireEvent.wheel(canvas(), { deltaY: -100, clientX: 300, clientY: 200, ...held(MAP_MODIFIER.select) });
-    expectCamera(camera(), SITE_CAMERA);
+    expectCamera(camera(), FRAME_CAMERA);
   });
 });
 
@@ -219,8 +219,8 @@ describe("a drag with the zoom modifier", () => {
   it("frames the rectangle it drew", () => {
     const onSelect = vi.fn();
     render(<Harness onSelect={onSelect} />);
-    const tl = under(300, 200, SITE_CAMERA);
-    const br = under(500, 400, SITE_CAMERA);
+    const tl = under(300, 200, FRAME_CAMERA);
+    const br = under(500, 400, FRAME_CAMERA);
 
     drag(MAP_MODIFIER.zoom, [300, 200], [500, 400]);
 
@@ -286,7 +286,7 @@ describe("a drag with the select modifier", () => {
     expect(onSelect).toHaveBeenLastCalledWith(["a", "b"], "add");
     drag(MAP_MODIFIER.select, [10, 10], [60, 60]);
     expect(onSelect).toHaveBeenLastCalledWith([], "add");
-    expectCamera(camera(), SITE_CAMERA);
+    expectCamera(camera(), FRAME_CAMERA);
   });
 
   it("leaves the selection alone when it does not move", () => {

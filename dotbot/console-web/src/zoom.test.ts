@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { GLYPH_DETAIL_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
-import { areaToFraction, siteViewport } from "./frame";
+import { PAN_MARGIN_MM, areaToFraction, siteView, siteViewport } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
   CANVAS_INSET_PX,
-  SITE_CAMERA,
+  FRAME_CAMERA,
   SITE_ZOOM,
   ZOOM_MAX_FLOOR,
   ZOOM_MAX_PX_PER_MM,
@@ -14,6 +14,7 @@ import {
   cameraForArea,
   cameraForZoom,
   clampCam,
+  visibleArea,
   clampScale,
   fitScale,
   padArea,
@@ -114,10 +115,10 @@ describe("panning", () => {
 });
 
 describe("the zoom range", () => {
-  it("starts at the whole site, which is the map's own camera", () => {
+  it("starts at the whole viewport, which is everywhere the pan reaches", () => {
     expect(ZOOM_MIN).toBe(1);
-    expect(SITE_CAMERA.scale).toBe(ZOOM_MIN);
-    expect(zoomFraction(SITE_CAMERA.scale, 11.4)).toBe(0);
+    expect(FRAME_CAMERA.scale).toBe(ZOOM_MIN);
+    expect(zoomFraction(FRAME_CAMERA.scale, 11.4)).toBe(0);
   });
 
   it("holds a scale between the site and the ceiling", () => {
@@ -259,8 +260,15 @@ describe("the named zooms", () => {
 });
 
 describe("zooming to the site", () => {
-  it("is the map's own default view", () => {
-    expect(cameraForZoom(SITE_ZOOM, C405, VIEWPORT, GEOM)).toEqual(SITE_CAMERA);
+  it("fits the site with its modest margin, not the whole viewport", () => {
+    const cam = cameraForZoom(SITE_ZOOM, C405, VIEWPORT, GEOM)!;
+    const seen = visibleArea(cam, VIEWPORT, GEOM);
+    const framed = siteView(VIEWPORT);
+    // The tight axis shows exactly the framed rectangle; the other shows more.
+    expect(seen.h).toBeCloseTo(framed.h, 6);
+    expect(seen.y).toBeCloseTo(framed.y, 6);
+    expect(seen.w).toBeGreaterThanOrEqual(framed.w - 1e-6);
+    expect(seen.x + seen.w / 2).toBeCloseTo(framed.x + framed.w / 2, 6);
   });
 });
 
@@ -453,13 +461,49 @@ describe("the whole-site view", () => {
   const arena: Site = { ...C405, extent_mm: [2000, 2000], areas: [ARENA] };
   const viewport = siteViewport(arena, ARENA);
   const geom = viewGeom(936, 740, viewport);
-  const sitePerMm = pxPerMm("x", viewport, geom, SITE_CAMERA);
+  const siteCam = cameraForZoom(SITE_ZOOM, arena, viewport, geom)!;
+  const sitePerMm = pxPerMm("x", viewport, geom, siteCam);
 
-  it("is mostly site: the arena fills most of the drawn box", () => {
-    expect((ARENA.w * sitePerMm) / geom.boxW).toBeGreaterThan(0.75);
+  it("is mostly site: the arena fills most of the canvas", () => {
+    expect((ARENA.h * sitePerMm) / geom.h).toBeGreaterThan(0.75);
   });
 
   it("shows a 2 x 2 m arena's robots as full outlines on a normal screen", () => {
     expect(glyphLevel(botFootprintPx(sitePerMm, V3_SPAN_MM), 12)).toBe("detail");
+  });
+});
+
+describe("panning past the site", () => {
+  const arena: Site = { ...C405, extent_mm: [2000, 2000], areas: [ARENA] };
+  const viewport = siteViewport(arena, ARENA);
+  const geom = viewGeom(936, 740, viewport);
+  const siteCam = cameraForZoom(SITE_ZOOM, arena, viewport, geom)!;
+  const panned = (tx: number, ty: number) =>
+    visibleArea(clampCam({ ...siteCam, tx, ty }, geom), viewport, geom);
+
+  it("reaches 2 m past the site on every side and no further", () => {
+    const tl = panned(1e9, 1e9);
+    const br = panned(-1e9, -1e9);
+    expect(tl.x).toBeCloseTo(-PAN_MARGIN_MM, 6);
+    expect(tl.y).toBeCloseTo(-PAN_MARGIN_MM, 6);
+    expect(br.x + br.w).toBeCloseTo(2000 + PAN_MARGIN_MM, 6);
+    expect(br.y + br.h).toBeCloseTo(2000 + PAN_MARGIN_MM, 6);
+  });
+
+  it("brings a robot 1.5 m off the site into view", () => {
+    const bot = { x: 2000 + 1500, y: 1000 };
+    const view = panned(-1e9, 0);
+    expect(bot.x).toBeGreaterThan(view.x);
+    expect(bot.x).toBeLessThan(view.x + view.w);
+    expect(bot.y).toBeGreaterThan(view.y);
+    expect(bot.y).toBeLessThan(view.y + view.h);
+  });
+
+  it("shows the whole pannable area fully zoomed out", () => {
+    const all = visibleArea(FRAME_CAMERA, viewport, geom);
+    expect(all.x).toBeLessThanOrEqual(-PAN_MARGIN_MM);
+    expect(all.y).toBeLessThanOrEqual(-PAN_MARGIN_MM);
+    expect(all.x + all.w).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
+    expect(all.y + all.h).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
   });
 });

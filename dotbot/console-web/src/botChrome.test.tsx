@@ -7,7 +7,7 @@ import { pxPerMm } from "./grid";
 import { MapView } from "./MapView";
 import type { RobotDrawing } from "./robotDrawing";
 import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
-import { Camera, SITE_CAMERA, viewGeom } from "./zoom";
+import { Camera, FRAME_CAMERA, viewGeom } from "./zoom";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
 const C405: Site = {
@@ -100,7 +100,7 @@ interface HarnessProps {
 const Harness: React.FC<HarnessProps> = ({
   bots,
   selection = new Set(),
-  from = SITE_CAMERA,
+  from = FRAME_CAMERA,
   planned = [],
   robotDrawing,
 }) => {
@@ -194,7 +194,7 @@ describe("what is drawn around a robot", () => {
   const fleet = () => [bot("a", { x: 500, y: 500 })];
 
   it("hugs the selected robot's footprint with the ring, at any zoom", () => {
-    for (const cam of [SITE_CAMERA, near]) {
+    for (const cam of [FRAME_CAMERA, near]) {
       render(<Harness bots={fleet()} selection={new Set(["a"])} from={cam} />);
       const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, cam), V3_SPAN_MM);
       const ring = screen.getByTestId("selection-a");
@@ -313,7 +313,7 @@ describe("the fallback for a board that cannot be drawn", () => {
     Array.from({ length: 201 }, (_, i) => bot(`c${i}`, { x: 100 + i * 5, y: 500 }));
 
   it("is the square with a heading tick where the board is too small", () => {
-    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={SITE_CAMERA} />);
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
     expect(shape("a")).toBe("mark");
     expect(glyph("a").querySelector("rect")).not.toBeNull();
     expect(glyph("a").querySelector('[data-layer="heading-tick"]')).not.toBeNull();
@@ -330,7 +330,7 @@ describe("the fallback for a board that cannot be drawn", () => {
   });
 
   it("is still the square in a crowd where the board would be too small anyway", () => {
-    render(<Harness bots={crowd()} from={SITE_CAMERA} />);
+    render(<Harness bots={crowd()} from={FRAME_CAMERA} />);
     expect(shape("c0")).toBe("mark");
   });
 });
@@ -377,7 +377,7 @@ describe("the possible footprint", () => {
 
   it("is hidden where the ring would be too small to read", () => {
     // At the whole-site zoom the ring is about 12 px across.
-    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={SITE_CAMERA} />);
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
     expect(layer("a", "reach")).toBeNull();
     expect(layer("a", "core")).toBeNull();
     expect(layer("a", "sensor")).not.toBeNull();

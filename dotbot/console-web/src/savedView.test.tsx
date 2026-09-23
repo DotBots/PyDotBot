@@ -19,8 +19,9 @@ import {
 import type { Area, Site } from "./types";
 import {
   Camera,
-  SITE_CAMERA,
+  FRAME_CAMERA,
   cameraForArea,
+  SITE_ZOOM,
   cameraForZoom,
   padArea,
   viewGeom,
@@ -120,6 +121,12 @@ afterEach(() => {
 
 const transform = () => screen.getByTestId("camera-layer").style.transform;
 
+// The camera the site view lands on in a 900 x 600 canvas.
+const siteTransform = () => {
+  const c = cameraForZoom(SITE_ZOOM, site, VIEWPORT, viewGeom(900, 600, VIEWPORT))!;
+  return `translate(${c.tx}px, ${c.ty}px) scale(${c.scale})`;
+};
+
 const camOf = (): Camera => {
   const moved = /translate\(([-\d.e+]+)px, ([-\d.e+]+)px\)/.exec(transform())!;
   const scaled = /scale\(([-\d.e+]+)\)/.exec(transform())!;
@@ -150,7 +157,7 @@ describe("a view stated as floor rather than as a camera", () => {
   });
 
   it("reaches past the drawn frame at the site camera, as the canvas does", () => {
-    const rect = visibleArea(SITE_CAMERA, VIEWPORT, geom);
+    const rect = visibleArea(FRAME_CAMERA, VIEWPORT, geom);
 
     // The box carries the viewport's aspect and the canvas has slack on one
     // axis, so the view is the whole frame and then some on both.
@@ -279,13 +286,13 @@ describe("the view the map opens on", () => {
   it("opens on the whole site when what was stored is unusable", () => {
     window.localStorage.setItem(KEY, "{ not json");
     render(<App />);
-    expect(transform()).toBe("translate(0px, 0px) scale(1)");
+    expect(transform()).toBe(siteTransform());
     cleanup();
 
     // A view of floor this site no longer has: off the map altogether.
     saveSavedViews({ [site.name]: { x: 90000, y: 90000, w: 900, h: 700 } });
     render(<App />);
-    expect(transform()).toBe("translate(0px, 0px) scale(1)");
+    expect(transform()).toBe(siteTransform());
   });
 
   it("opens on the whole site when the view belongs to another one", () => {
@@ -293,6 +300,6 @@ describe("the view the map opens on", () => {
 
     render(<App />);
 
-    expect(transform()).toBe("translate(0px, 0px) scale(1)");
+    expect(transform()).toBe(siteTransform());
   });
 });
