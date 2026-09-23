@@ -811,7 +811,6 @@ class Controller:
                     rudder_angle=dotbot.rudder_angle,
                     sail_angle=dotbot.sail_angle,
                     lh2_position=dotbot.lh2_position,
-                    pose=dotbot.pose,
                     gps_position=dotbot.gps_position,
                     battery=dotbot.battery,
                 ),

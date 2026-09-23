@@ -476,7 +476,6 @@ class DotBotNotificationUpdate(BaseModel):
     rudder_angle: Optional[int] = None
     sail_angle: Optional[int] = None
     lh2_position: Optional[DotBotLH2Position] = None
-    pose: Optional[DotBotPoseModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
     battery: Optional[float] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
