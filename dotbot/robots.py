@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from functools import cached_property
 from enum import IntEnum
+from functools import cached_property
 from typing import NamedTuple
 
 ROBOT_DEFAULT = "dotbot-v3"
@@ -219,8 +219,7 @@ class RobotGeometry:
         """Furthest outline or wheel point from the photodiode."""
         points = [*self.outline_path, *(p for w in self.wheel_paths for p in w)]
         return max(
-            math.hypot(p.x - self.photodiode.x, p.y - self.photodiode.y)
-            for p in points
+            math.hypot(p.x - self.photodiode.x, p.y - self.photodiode.y) for p in points
         )
 
     @cached_property
@@ -262,9 +261,7 @@ class RobotGeometry:
             nose=place(Point(self.photodiode.x, self.outline_bbox[1])),
             led=place(self.led),
             outline=tuple(place(p) for p in self.outline_path),
-            wheels=tuple(
-                tuple(place(p) for p in wheel) for wheel in self.wheel_paths
-            ),
+            wheels=tuple(tuple(place(p) for p in wheel) for wheel in self.wheel_paths),
             reach_mm=self.reach_mm,
             core_mm=self.core_mm,
             envelope_mm=self.envelope_mm,

@@ -803,7 +803,7 @@ async def test_the_advertisement_debug_log_reports_y(controller):
         controller.handle_received_frame(
             _advertised(BOT, direction=90, pos_x=1000, pos_y=2000)
         )
-    (entry,) = [e for e in logs if e["event"] == "Advertisement Data"]
+    (entry,) = (e for e in logs if e["event"] == "Advertisement Data")
     assert (entry["X"], entry["Y"]) == (1000, 2000)
 
 
@@ -851,7 +851,7 @@ async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
             response = await client.get("/controller/dotbots")
     finally:
         api.controller = previous
-    (bot,) = [b for b in response.json() if b["address"] == addr_to_hex(BOT)]
+    (bot,) = (b for b in response.json() if b["address"] == addr_to_hex(BOT))
     assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
     assert bot["model"] == "dotbot-v3"
     assert bot["pose"]["photodiode"] == {"x": 1000.0, "y": 1000.0}

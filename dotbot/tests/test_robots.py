@@ -207,9 +207,7 @@ def test_a_pose_carries_its_wheels_where_it_carries_its_board():
     # Heading 0 faces +y and the robot's left is +x, so the left wheel's
     # centre lands half a track to +x of the axle.
     left = pose.wheels[0]
-    assert sum(p.x for p in left) / 4 == pytest.approx(
-        pose.axle.x + V3.track_mm / 2
-    )
+    assert sum(p.x for p in left) / 4 == pytest.approx(pose.axle.x + V3.track_mm / 2)
     assert sum(p.y for p in left) / 4 == pytest.approx(pose.axle.y)
 
 

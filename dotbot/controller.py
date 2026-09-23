@@ -176,15 +176,11 @@ def body_pose(
     else:
         heading, source = PLACEHOLDER_HEADING_DEG, HeadingSource.NONE
     return DotBotPoseModel.from_body_pose(
-        robot_geometry(model).body_pose(
-            Point(position.x, position.y), heading, source
-        )
+        robot_geometry(model).body_pose(Point(position.x, position.y), heading, source)
     )
 
 
-def device_pose(
-    device: str, position: DotBotLH2Position
-) -> Optional[DotBotPoseModel]:
+def device_pose(device: str, position: DotBotLH2Position) -> Optional[DotBotPoseModel]:
     """The headingless pose of a robot swarmit reports as `device` at
     `position`, or None when the host has no geometry record for that type."""
     model = SWARMIT_DEVICE_MODELS.get(device)

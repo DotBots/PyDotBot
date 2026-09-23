@@ -985,7 +985,9 @@ async def test_the_area_routes_are_gone(method):
 async def test_get_device_poses():
     """The console sizes a robot placed from swarmit's STATUS from these."""
     origin = DotBotLH2Position(x=0, y=0)
-    api.controller.device_poses.return_value = {"DotBotV3": device_pose("DotBotV3", origin)}
+    api.controller.device_poses.return_value = {
+        "DotBotV3": device_pose("DotBotV3", origin)
+    }
     response = await client.get("/controller/device_poses")
     assert response.status_code == 200
     body = response.json()
