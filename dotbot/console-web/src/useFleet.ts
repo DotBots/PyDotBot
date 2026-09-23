@@ -65,7 +65,7 @@ function poseAt(pose: BotPose, at: LH2Position): BotPose {
     nose: move(pose.nose),
     led: move(pose.led),
     outline: pose.outline.map(move),
-    wheels: pose.wheels?.map((wheel) => wheel.map(move)),
+    wheels: pose.wheels.map((wheel) => wheel.map(move)),
   };
 }
 

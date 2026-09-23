@@ -84,6 +84,8 @@ export interface BotBody {
   centre: LH2Position;
   nose: LH2Position;
   spanMm: number;
+  /** The robot's plan-view size, from the pose. */
+  envelopeMm: number;
   source: BotPose["heading_source"];
 }
 
@@ -115,10 +117,11 @@ export function botBody(pose: BotPose | null | undefined): BotBody | null {
   };
   return {
     outline,
-    wheels: (pose.wheels ?? []).map((wheel) => wheel.map(rel)),
+    wheels: pose.wheels.map((wheel) => wheel.map(rel)),
     centre: rel(pose.centre),
     nose: rel(pose.nose),
     spanMm: Math.max(extent(forward), extent(across)),
+    envelopeMm: pose.envelope_mm,
     source: pose.heading_source,
   };
 }
@@ -196,7 +199,7 @@ export function robotDraw(
     if (footprintPx < GLYPH_DETAIL_PX) {
       return { ...flat, shape: { kind: "mark", body }, footprintPx, battery: false };
     }
-    const discPx = botFootprintPx(pxPerMm, pose?.envelope_mm ?? body.spanMm);
+    const discPx = botFootprintPx(pxPerMm, body.envelopeMm);
     return {
       ...flat,
       shape: { kind: "disc", body, radiusPx: discPx / 2 },
@@ -205,11 +208,11 @@ export function robotDraw(
     };
   }
 
-  const reachPx = (pose?.reach_mm ?? 0) * pxPerMm;
-  const corePx = (pose?.core_mm ?? 0) * pxPerMm;
+  const reachPx = pose ? pose.reach_mm * pxPerMm : 0;
+  const corePx = pose ? pose.core_mm * pxPerMm : 0;
   const ring = drawing.footprint && 2 * reachPx >= FOOTPRINT_MIN_PX;
   const core = drawing.footprint && 2 * corePx >= SENSOR_POINT_PX + 4;
-  const envelopePx = botFootprintPx(pxPerMm, pose?.envelope_mm ?? 0);
+  const envelopePx = botFootprintPx(pxPerMm, pose ? pose.envelope_mm : 0);
   return {
     shape: {
       kind: "sensor",

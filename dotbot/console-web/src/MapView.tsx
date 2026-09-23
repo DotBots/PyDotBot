@@ -560,7 +560,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         Math.max(
           WAYPOINT_MIN_PX,
           (draw.shape.kind === "sensor"
-            ? botFootprintPx(perMm, b.pose?.envelope_mm ?? 0)
+            ? botFootprintPx(perMm, b.pose ? b.pose.envelope_mm : 0)
             : footprintPx) * WAYPOINT_OF_BODY,
         ),
       ),

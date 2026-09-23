@@ -58,6 +58,7 @@ const bodyPose = (at: LH2Position, heading = 45): BotPose => {
     nose: place({ x: 0, y: 18.5 }),
     led: place({ x: 0, y: 5.5 }),
     outline: V3_AT_ORIGIN.map(place),
+    wheels: [],
     // The radii the controller ships with every pose, whatever its heading.
     reach_mm: 89.33,
     core_mm: 18.5,
@@ -419,21 +420,6 @@ describe("the possible footprint", () => {
     render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
     expect(layer("a", "reach")).toBeNull();
     expect(layer("a", "core")).toBeNull();
-    expect(layer("a", "sensor")).not.toBeNull();
-  });
-
-  it("is not drawn when the host sent no radii", () => {
-    const older = bot("a", { x: 500, y: 500 }, {
-      heading: null,
-      pose: {
-        ...bodyPose({ x: 500, y: 500 }, 0),
-        heading_source: "none",
-        reach_mm: undefined,
-        core_mm: undefined,
-      },
-    });
-    render(<Harness bots={[older]} from={near} />);
-    expect(layer("a", "reach")).toBeNull();
     expect(layer("a", "sensor")).not.toBeNull();
   });
 

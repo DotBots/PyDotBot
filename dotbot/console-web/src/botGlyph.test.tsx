@@ -318,13 +318,6 @@ describe("the glyph a shape draws", () => {
     expect(wheels[1]).toBe("-47.75,-31.5 -30.25,-31.5 -30.25,-75.5 -47.75,-75.5");
   });
 
-  it("draws the board alone from a host that sends no tyres", () => {
-    const older = botBody(pose(0, { wheels: undefined }))!;
-    const el = svg({ state: "red", led: null, shape: { kind: "board", body: older }, pxPerMm: 1, footprintPx: 95 });
-    expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(0);
-    expect(el.querySelectorAll('[data-layer="board"]')).toHaveLength(1);
-  });
-
   it("puts the board where the pose puts it, not on the fix", () => {
     const el = svg({ state: "red", led: null, shape: board, pxPerMm: 1, footprintPx: 95 });
     const points = el

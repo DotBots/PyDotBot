@@ -19,6 +19,10 @@ const pose = (over: Partial<BotPose> = {}): BotPose => ({
   nose: { x: 0, y: 0 },
   led: { x: 0, y: 0 },
   outline: [],
+  wheels: [],
+  reach_mm: 0,
+  core_mm: 0,
+  envelope_mm: 0,
   ...over,
 });
 

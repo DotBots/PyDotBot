@@ -64,14 +64,14 @@ export interface BotPose {
   nose: LH2Position;
   led: LH2Position;
   outline: LH2Position[];
-  /** Each driven wheel in plan view, as a rectangle; empty on an older host. */
-  wheels?: LH2Position[][];
+  /** Each driven wheel in plan view, as a rectangle. */
+  wheels: LH2Position[][];
   /** Radius about the photodiode holding the whole body, tyres included, in any heading. */
-  reach_mm?: number;
+  reach_mm: number;
   /** Radius about the photodiode the board covers in any heading. */
-  core_mm?: number;
+  core_mm: number;
   /** The robot's plan-view size. */
-  envelope_mm?: number;
+  envelope_mm: number;
 }
 
 export interface PyDotBot {
