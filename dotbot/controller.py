@@ -814,24 +814,25 @@ class Controller:
         return None if point is None else point.mm
 
     async def _notify_calibration_session(self, state):
-        """One notification per calibration-session state change."""
-        await self.notify_clients(
-            DotBotNotificationModel(
-                cmd=DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE,
-                calibration_session=(
-                    DotBotCalibrationSessionModel(**state) if state else None
-                ),
-            )
-        )
+        """One notification per calibration-session state change.
+
+        The session keeps its nulls, unlike `notify_clients`: `outstanding`
+        null is how a client learns every point is captured.
+        """
+        cmd = DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE
+        self.logger.debug("notify", cmd=cmd.name)
+        session = DotBotCalibrationSessionModel(**state).model_dump() if state else None
+        await self._broadcast({"cmd": cmd.value, "calibration_session": session})
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
         self.logger.debug("notify", cmd=notification.cmd.name)
+        await self._broadcast(notification.model_dump(exclude_none=True))
+
+    async def _broadcast(self, message: dict):
         await asyncio.gather(
             *[
-                self._ws_send_safe(
-                    websocket, json.dumps(notification.model_dump(exclude_none=True))
-                )
+                self._ws_send_safe(websocket, json.dumps(message))
                 for websocket in self.websockets
             ]
         )
