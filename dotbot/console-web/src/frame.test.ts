@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  VIEWPORT_MARGIN_MM,
+  VIEWPORT_MARGIN_MIN_MM,
   areaToFraction,
   fractionToArea,
   headingToGlyphRotation,
@@ -58,37 +58,48 @@ describe("the default viewport", () => {
     areas: [ARENA, ANNEX],
   });
 
-  it("surrounds the site extent by the margin on every side", () => {
-    expect(VIEWPORT_MARGIN_MM).toBe(2000);
+  it("surrounds the site extent by a tenth of its longer side on every side", () => {
     expect(siteViewport(site([2000, 4000]), ARENA)).toMatchObject({
-      x: -2000,
-      y: -2000,
-      w: 6000,
-      h: 8000,
+      x: -400,
+      y: -400,
+      w: 2800,
+      h: 4800,
     });
   });
 
-  it("keeps the site's zero at the same fraction of the box on both axes", () => {
+  it("keeps a small site's margin at the floor", () => {
+    expect(siteViewport(site([1000, 1000]), ARENA)).toMatchObject({
+      x: -VIEWPORT_MARGIN_MIN_MM,
+      y: -VIEWPORT_MARGIN_MIN_MM,
+      w: 1000 + 2 * VIEWPORT_MARGIN_MIN_MM,
+    });
+  });
+
+  it("puts the site at the same place in the box on both axes", () => {
     const vp = siteViewport(site([2000, 4000]), ARENA);
-    expect(areaToFraction({ x: 0, y: 0 }, vp)).toEqual({ fx: 1 / 3, fy: 0.25 });
-    expect(areaToFraction({ x: 2000, y: 4000 }, vp)).toEqual({ fx: 2 / 3, fy: 0.75 });
+    const zero = areaToFraction({ x: 0, y: 0 }, vp);
+    const far = areaToFraction({ x: 2000, y: 4000 }, vp);
+    expect(zero.fx).toBeCloseTo(1 / 7, 12);
+    expect(zero.fy).toBeCloseTo(1 / 12, 12);
+    expect(far.fx).toBeCloseTo(6 / 7, 12);
+    expect(far.fy).toBeCloseTo(11 / 12, 12);
   });
 
   it("falls back when the site has no measured extent", () => {
     expect(siteViewport(site(null), ARENA)).toMatchObject({
-      x: -2000,
-      y: -2000,
-      w: 5000,
-      h: 4800,
+      x: -250,
+      y: -250,
+      w: 1500,
+      h: 1300,
     });
   });
 
   it("falls back again when the controller has not answered yet", () => {
     expect(siteViewport(null, ARENA)).toMatchObject({
-      x: -2000,
-      y: -2000,
-      w: 5000,
-      h: 4800,
+      x: -250,
+      y: -250,
+      w: 1500,
+      h: 1300,
     });
   });
 });

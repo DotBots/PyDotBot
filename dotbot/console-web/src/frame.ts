@@ -6,8 +6,19 @@ import type { Area, LH2Position, Site } from "./types";
 // console receives is in frame millimetres; the viewport says which part of
 // the frame is drawn, so the box origin is subtracted before scaling.
 
-/** How much frame lies outside the site on every side of the default view. */
-export const VIEWPORT_MARGIN_MM = 2000;
+/**
+ * How much frame lies outside the site on every side of the default view, as a
+ * fraction of the site's longer side, floored at a minimum in millimetres. It
+ * is kept modest so the whole-site view is mostly site: a margin as wide as
+ * the site shrinks every robot on it to a mark.
+ */
+export const VIEWPORT_MARGIN_FRAC = 0.1;
+export const VIEWPORT_MARGIN_MIN_MM = 250;
+
+/** The margin the default view leaves around `a`. */
+export function viewportMarginMm(a: Area): number {
+  return Math.max(VIEWPORT_MARGIN_MIN_MM, VIEWPORT_MARGIN_FRAC * Math.max(a.w, a.h));
+}
 
 /** What a renderer draws when the site has no measured extent. */
 export const AREA_FALLBACK: Area = { x: 0, y: 0, w: 2000, h: 2000 };
@@ -30,7 +41,7 @@ export function fractionToArea(fx: number, fy: number, a: Area): LH2Position {
 }
 
 /** A rectangle grown by the same margin on every side. */
-export function withMargin(a: Area, m = VIEWPORT_MARGIN_MM): Area {
+export function withMargin(a: Area, m = viewportMarginMm(a)): Area {
   return { x: a.x - m, y: a.y - m, w: a.w + 2 * m, h: a.h + 2 * m, name: a.name };
 }
 

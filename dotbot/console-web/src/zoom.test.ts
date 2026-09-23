@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { GLYPH_DETAIL_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
-import { areaToFraction } from "./frame";
+import { areaToFraction, siteViewport } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
   CANVAS_INSET_PX,
@@ -445,5 +445,21 @@ describe("the ?zoom= preset", () => {
 
   it("is absent when nothing asked", () => {
     expect(zoomFromSearch("?view=map", C405)).toBeNull();
+  });
+});
+
+describe("the whole-site view", () => {
+  // The map canvas a 1600 x 950 window leaves once both panes are open.
+  const arena: Site = { ...C405, extent_mm: [2000, 2000], areas: [ARENA] };
+  const viewport = siteViewport(arena, ARENA);
+  const geom = viewGeom(936, 740, viewport);
+  const sitePerMm = pxPerMm("x", viewport, geom, SITE_CAMERA);
+
+  it("is mostly site: the arena fills most of the drawn box", () => {
+    expect((ARENA.w * sitePerMm) / geom.boxW).toBeGreaterThan(0.75);
+  });
+
+  it("shows a 2 x 2 m arena's robots as full outlines on a normal screen", () => {
+    expect(glyphLevel(botFootprintPx(sitePerMm, V3_SPAN_MM), 12)).toBe("detail");
   });
 });
