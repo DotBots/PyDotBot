@@ -90,6 +90,19 @@ describe("the action keys", () => {
     expect(pressed(press("h"), ACTION_KEY.go)).toBe(false);
   });
 
+  it("take a symbol typed with Option or AltGr, but not under Ctrl or Cmd", () => {
+    const altGraph = { getModifierState: (k: string) => k === "AltGraph" };
+    expect(pressed(press("["), ACTION_KEY.leftPanel)).toBe(true);
+    expect(pressed(press("]"), ACTION_KEY.rightPanel)).toBe(true);
+    expect(pressed(press("[", { altKey: true }), ACTION_KEY.leftPanel)).toBe(true);
+    expect(
+      pressed(press("[", { ctrlKey: true, altKey: true, ...altGraph }), ACTION_KEY.leftPanel),
+    ).toBe(true);
+    expect(pressed(press("[", { ctrlKey: true }), ACTION_KEY.leftPanel)).toBe(false);
+    expect(pressed(press("[", { metaKey: true }), ACTION_KEY.leftPanel)).toBe(false);
+    expect(pressed(press("]"), ACTION_KEY.leftPanel)).toBe(false);
+  });
+
   it("are keys to the panel, not gestures or modifiers, and every one has a row", () => {
     const named = new Set(
       SHORTCUT_GROUPS.flatMap((g) => g.rows.flatMap((r) => r.keys.filter(isKey))),

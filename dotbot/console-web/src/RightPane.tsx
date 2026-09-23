@@ -13,6 +13,7 @@ import {
 } from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
 import { DETECTION_TEXT } from "./localization";
+import { PanelToggle } from "./PanelToggle";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
@@ -370,13 +371,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
           zIndex: 11,
         }}
       >
-        <div
-          onClick={() => props.setCollapsed(false)}
-          title="Open the right pane"
-          style={{ ...ico, background: "transparent", border: "none", fontSize: 15, color: "var(--muted)" }}
-        >
-          &#8249;
-        </div>
+        <PanelToggle side="right" collapsed onToggle={() => props.setCollapsed(false)} />
         <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
         {tabs.map((tab) => (
           <div
@@ -426,13 +421,9 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
           ))}
         </div>
         <div style={{ flex: 1 }} />
-        <span
-          onClick={() => props.setCollapsed(true)}
-          title="Collapse the right pane"
-          style={{ cursor: "pointer", color: "var(--muted)", fontSize: 15, lineHeight: 1 }}
-        >
-          &#8250;
-        </span>
+        <div style={{ margin: "-4px -6px -4px 0" }}>
+          <PanelToggle side="right" collapsed={false} onToggle={() => props.setCollapsed(true)} />
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>

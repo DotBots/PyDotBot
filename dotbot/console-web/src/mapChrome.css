@@ -195,3 +195,34 @@
   background: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+
+/* A side panel's collapse / expand button: a 32 px target round a small
+   chevron. */
+.db-panel-toggle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: 18px/1 var(--font-ui);
+  cursor: pointer;
+}
+.db-panel-toggle:hover {
+  background: var(--elevated);
+  border-color: var(--hairline);
+  color: var(--text);
+}
+.db-panel-toggle:active {
+  background: var(--grid);
+}
+.db-panel-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}

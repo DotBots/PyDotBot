@@ -155,6 +155,10 @@ export const App: React.FC = () => {
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  // ?rail=collapsed starts the left panel as its icon strip.
+  const [railCollapsed, setRailCollapsed] = useState(
+    () => new URLSearchParams(window.location.search).get("rail") === "collapsed",
+  );
   const [conn, setConn] = useState<ControllerConnection | null>(null);
   const [build, setBuild] = useState<ControllerBuild | null>(null);
 
@@ -345,6 +349,19 @@ export const App: React.FC = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts, nothingSelected]);
+
+  // Each side panel's key collapses it or expands it again.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.leftPanel)) setRailCollapsed((c) => !c);
+      else if (pressed(e, ACTION_KEY.rightPanel)) setRightCollapsed((c) => !c);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -675,6 +692,8 @@ export const App: React.FC = () => {
       {/* Body row: testbed rail + view area */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
         <TestbedRail
+          collapsed={railCollapsed}
+          setCollapsed={setRailCollapsed}
           bots={bots}
           selection={selection}
           planned={planned}
