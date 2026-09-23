@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { areaColor } from "./areaColor";
-import { areaToFraction, siteExtentArea } from "./frame";
+import { areaToFraction, fractionToArea, siteExtentArea } from "./frame";
 import { MINIMAP_TARGET_PX, gridStepMm } from "./grid";
 import { minimapLabel } from "./localization";
 import { stateColor } from "./viewChrome";
@@ -53,6 +53,9 @@ export const Minimap: React.FC<MinimapProps> = ({
     return () => ro.disconnect();
   }, []);
 
+  // The whole site, never the viewport: the box below is what moves.
+  const box: Area = siteExtentArea(site) ?? viewport;
+
   const viewportRect = () => {
     if (!geom) return null;
     const { w, h, boxW, boxH } = geom;
@@ -72,12 +75,14 @@ export const Minimap: React.FC<MinimapProps> = ({
     const r = el.getBoundingClientRect();
     const fx = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
     const fy = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
+    // A point of the minimap's site, as a fraction of the drawn viewport.
+    const at = areaToFraction(fractionToArea(fx, fy, box), viewport);
     setCam((c) =>
       clampCam(
         {
           ...c,
-          tx: -(fx - 0.5) * geom.boxW * c.scale,
-          ty: -(fy - 0.5) * geom.boxH * c.scale,
+          tx: -(at.fx - 0.5) * geom.boxW * c.scale,
+          ty: -(at.fy - 0.5) * geom.boxH * c.scale,
         },
         geom,
       ),
@@ -85,8 +90,6 @@ export const Minimap: React.FC<MinimapProps> = ({
   };
 
   const rect = viewportRect();
-  // The whole site, never the viewport: the box below is what moves.
-  const box: Area = siteExtentArea(site) ?? viewport;
   // viewportRect speaks fractions of the drawn viewport; the minimap draws
   // the site, so the box has to be re-expressed against it.
   const onBox = (fraction: number, axis: "x" | "y") => {
