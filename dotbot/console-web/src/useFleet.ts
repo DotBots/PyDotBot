@@ -122,7 +122,9 @@ export function merge(
       heading,
       pose,
       battery: py?.battery ?? (sw ? sw.battery / 1000 : 0),
-      led: py?.rgb_led ?? null,
+      // The colour the controller last commanded, which the LED shows only
+      // while the app runs: out of it, the bootloader drives the LED itself.
+      led: state === null || state === "Running" ? py?.rgb_led ?? null : null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
       // Drivable = a DBP-speaking image is running. The control plane must be

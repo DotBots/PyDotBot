@@ -147,6 +147,20 @@ describe("merge", () => {
     expect(c.drivable).toBe(false);
   });
 
+  it("knows the LED colour only while the app runs", () => {
+    const red = { red: 255, green: 0, blue: 0 };
+    const led = (status: string | null) =>
+      merge(
+        { aaaa: py({ address: "aaaa", rgb_led: red }) },
+        status === null ? {} : { aaaa: sw({ status }) },
+      )[0].led;
+    expect(led("Running")).toEqual(red);
+    expect(led(null)).toEqual(red);
+    for (const status of ["Bootloader", "Stopping", "Programming", "Resetting"]) {
+      expect(led(status)).toBeNull();
+    }
+  });
+
   it("maps firmware AUTO mode to nav=auto", () => {
     const [a] = merge({ a: py({ address: "a", mode: 1 }) }, {});
     expect(a.nav).toBe("auto");
