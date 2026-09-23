@@ -18,6 +18,7 @@ import {
   clampScale,
   fitScale,
   padArea,
+  refitCam,
   scaleForFraction,
   steppedScale,
   viewCentre,
@@ -505,5 +506,58 @@ describe("panning past the site", () => {
     expect(all.y).toBeLessThanOrEqual(-PAN_MARGIN_MM);
     expect(all.x + all.w).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
     expect(all.y + all.h).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
+  });
+});
+
+describe("a panel toggle, which only changes the canvas width", () => {
+  const viewport = siteViewport(C405, ARENA);
+  // A map squeezed between both panes, narrower than it is tall, and the same
+  // map with one pane collapsed: the drawn box goes from width-limited to
+  // height-limited across the toggle, so it changes size.
+  const narrow = viewGeom(420, 860, viewport);
+  const wide = viewGeom(760, 860, viewport);
+  const centreOf = (cam: Camera, geom: ReturnType<typeof viewGeom>) => {
+    const v = visibleArea(cam, viewport, geom);
+    return { x: v.x + v.w / 2, y: v.y + v.h / 2 };
+  };
+
+  it("crosses the frame's aspect ratio in this fixture", () => {
+    expect((narrow.w - CANVAS_INSET_PX) / narrow.boxW).toBeCloseTo(1, 6);
+    expect(wide.boxH).toBeCloseTo(wide.h - CANVAS_INSET_PX, 6);
+    expect(wide.boxW).toBeGreaterThan(narrow.boxW);
+  });
+
+  for (const [name, zoom] of [
+    ["the site", SITE_ZOOM],
+    ["an area", "arena"],
+  ] as const) {
+    for (const [dir, from, to] of [
+      ["opened", narrow, wide],
+      ["closed", wide, narrow],
+    ] as const) {
+      it(`keeps the scale, the height and the centre of ${name} when a pane is ${dir}`, () => {
+        const cam = cameraForZoom(zoom, C405, viewport, from)!;
+        const next = refitCam(cam, from, to);
+        expect(pxPerMm("x", viewport, to, next)).toBeCloseTo(pxPerMm("x", viewport, from, cam), 9);
+        expect(next.ty).toBeCloseTo(cam.ty, 9);
+        const c0 = centreOf(cam, from);
+        const c1 = centreOf(next, to);
+        expect(c1.x).toBeCloseTo(c0.x, 6);
+        expect(c1.y).toBeCloseTo(c0.y, 6);
+      });
+    }
+  }
+
+  it("keeps a panned view inside the new canvas's pan clamp", () => {
+    const cam = clampCam({ scale: 6, tx: 99999, ty: -99999 }, wide);
+    const next = refitCam(cam, wide, narrow);
+    expect(next).toEqual(clampCam(next, narrow));
+  });
+
+  it("does not pull a view left past the far end back in on a step outward", () => {
+    const out = refitCam(FRAME_CAMERA, narrow, wide);
+    expect(out.scale).toBeLessThan(ZOOM_MIN);
+    expect(steppedScale(out.scale, -1, 10)).toBe(out.scale);
+    expect(steppedScale(out.scale, 1, 10)).toBeGreaterThan(out.scale);
   });
 });

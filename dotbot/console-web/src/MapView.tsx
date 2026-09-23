@@ -51,6 +51,7 @@ import {
   ZOOM_MIN,
   cameraForArea,
   clampCam,
+  refitCam,
   scaleForFraction,
   steppedScale,
   viewCentre,
@@ -195,6 +196,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const [box, setBox] = useState(() => viewGeom(1000, 600, props.viewport));
   const onGeomRef = useRef(props.onGeom);
   onGeomRef.current = props.onGeom;
+  const setCamRef = useRef(setCam);
+  setCamRef.current = setCam;
   const viewportRef = useRef(props.viewport);
   viewportRef.current = props.viewport;
   // Track the canvas size live (rail open/close, window resize): the arena
@@ -205,11 +208,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
+    // The first measure replaces a placeholder; a later one is a resize, and
+    // the camera is carried across it so the floor does not jump.
+    let measured = false;
     const update = () => {
       const r = el.getBoundingClientRect();
       const g = viewGeom(r.width, r.height, viewportRef.current);
+      const prev = geomRef.current;
       setBox(g);
       geomRef.current = g;
+      if (measured && (g.w !== prev.w || g.h !== prev.h)) {
+        setCamRef.current((c) => refitCam(c, prev, g));
+      }
+      measured = true;
       onGeomRef.current(g);
     };
     update();

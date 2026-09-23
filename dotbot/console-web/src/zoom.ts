@@ -112,12 +112,17 @@ export function clampScale(scale: number, max: number): number {
   return Math.min(top, Math.max(ZOOM_MIN, scale));
 }
 
-/** The scale `delta` presses away, held inside the range at both ends. */
+/**
+ * The scale `delta` presses away, held inside the range at both ends. A scale
+ * already past the far end, which only a canvas resize leaves, is not pulled
+ * back in by a step outward.
+ */
 export function steppedScale(
   scale: number,
   delta: number,
   max: number,
 ): number {
+  if (scale < ZOOM_MIN && delta <= 0) return scale;
   return clampScale(scale * ZOOM_STEP ** delta, max);
 }
 
@@ -160,6 +165,18 @@ export function clampCam(cam: Camera, geom: ViewGeom): Camera {
     tx: Math.max(-mx, Math.min(mx, cam.tx)),
     ty: Math.max(-my, Math.min(my, cam.ty)),
   };
+}
+
+/**
+ * The camera carried across a canvas resize from `from` to `to`, in the same
+ * viewport: the floor keeps its pixels per millimetre and the point under the
+ * canvas centre stays there. The camera is relative to the drawn box, which
+ * refits to the canvas, so the scale is what compensates. Only the pan clamp
+ * of the new canvas is applied.
+ */
+export function refitCam(cam: Camera, from: ViewGeom, to: ViewGeom): Camera {
+  if (!(from.boxW > 0) || !(to.boxW > 0)) return clampCam(cam, to);
+  return clampCam({ ...cam, scale: (cam.scale * from.boxW) / to.boxW }, to);
 }
 
 /**

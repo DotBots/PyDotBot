@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { frameMm } from "./grid";
+import { frameMm, pxPerMm } from "./grid";
 import { MapView } from "./MapView";
 import { MAP_MODIFIER, Modifier } from "./shortcuts";
 import type { Area, LH2Position, Site, UnifiedBot } from "./types";
@@ -314,5 +314,60 @@ describe("a plain press", () => {
     expect(onSelect).not.toHaveBeenCalled();
     drag(null, [400, 300], [400, 300]);
     expect(onSelect).toHaveBeenCalledWith([], "replace");
+  });
+});
+
+describe("a panel toggle", () => {
+  // The map between both panes, narrower than it is tall, then with one pane
+  // collapsed: the drawn box refits to the new width.
+  const NARROW = { w: 420, h: 860 };
+  const WIDE = { w: 760, h: 860 };
+  const size = (c: { w: number; h: number }) =>
+    ({ width: c.w, height: c.h, top: 0, left: 0, right: c.w, bottom: c.h, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+
+  let fire: (() => void) | null = null;
+  const Real = globalThis.ResizeObserver;
+  beforeEach(() => {
+    globalThis.ResizeObserver = class {
+      constructor(cb: () => void) {
+        fire = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  });
+  afterEach(() => {
+    globalThis.ResizeObserver = Real;
+    fire = null;
+  });
+
+  it("leaves the floor where it was: scale, height and the centre point", () => {
+    rectSpy.mockReturnValue(size(NARROW));
+    const narrow = viewGeom(NARROW.w, NARROW.h, VIEWPORT);
+    const from = cameraForArea(ARENA, VIEWPORT, narrow, zoomMax(C405, VIEWPORT, narrow));
+    render(<Harness from={from} />);
+    const before = camera();
+    const centre = (g: ReturnType<typeof viewGeom>, c: Camera) => ({
+      x: frameMm("x", g.w / 2, VIEWPORT, g, c),
+      y: frameMm("y", g.h / 2, VIEWPORT, g, c),
+    });
+
+    for (const [was, now] of [
+      [NARROW, WIDE],
+      [WIDE, NARROW],
+    ]) {
+      const g0 = viewGeom(was.w, was.h, VIEWPORT);
+      const g1 = viewGeom(now.w, now.h, VIEWPORT);
+      const c0 = camera();
+      rectSpy.mockReturnValue(size(now));
+      act(() => fire!());
+      const c1 = camera();
+      expect(pxPerMm("x", VIEWPORT, g1, c1)).toBeCloseTo(pxPerMm("x", VIEWPORT, g0, c0), 6);
+      expect(c1.ty).toBeCloseTo(c0.ty, 4);
+      expect(centre(g1, c1).x).toBeCloseTo(centre(g0, c0).x, 2);
+      expect(centre(g1, c1).y).toBeCloseTo(centre(g0, c0).y, 2);
+    }
+    expectCamera(camera(), before);
   });
 });
