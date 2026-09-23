@@ -10,6 +10,8 @@ from dotbot.area import Area
 from dotbot.dotbot_simulator import (
     DIRECTION_THRESHOLD_MM,
     MOTOR_SPEED,
+    SIMULATOR_STEP_DELTA_T,
+    SIMULATOR_UPDATE_INTERVAL_S,
     DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
     SimulatedDotBotSettings,
@@ -20,8 +22,10 @@ from dotbot.dotbot_simulator import (
 )
 from dotbot.protocol import (
     DIRECTION_NONE,
+    ControlModeType,
     PayloadCommandMoveRaw,
     PayloadLH2Location,
+    PayloadLH2Waypoints,
 )
 from dotbot.site import Site
 
@@ -109,21 +113,51 @@ def test_the_next_heading_waits_for_another_threshold_of_travel():
     assert bot.direction == -90
 
 
-def test_an_unknown_heading_drives_the_default_control_loop_straight():
-    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
-    bot._control_loop_default()
-    assert bot.pwm_left == MOTOR_SPEED
-    assert bot.pwm_right == MOTOR_SPEED
-
-
-def test_a_known_heading_lets_the_default_control_loop_steer():
+def test_the_default_control_loop_steers_without_an_advertised_heading():
     bot = DotBotSimulator(
-        SimulatedDotBotSettings(address=ADDRESS, pos_x=500, pos_y=500, direction=0),
+        SimulatedDotBotSettings(address=ADDRESS, pos_x=500, pos_y=500),
         queue.Queue(),
     )
     bot.waypoints = [PayloadLH2Location(pos_x=1500, pos_y=500)]
     bot._control_loop_default()
     assert bot.pwm_left != bot.pwm_right
+
+
+def _drive_to(bot: DotBotSimulator, x: int, y: int, timeout_s: float) -> None:
+    """Run control and physics at their real rates until the waypoint run ends."""
+    waypoints = [PayloadLH2Location(pos_x=x, pos_y=y)]
+    _deliver(
+        bot,
+        Frame(
+            header=Header(destination=int(bot.address, 16), source=0),
+            packet=Packet().from_payload(
+                PayloadLH2Waypoints(threshold=50, count=1, waypoints=waypoints)
+            ),
+        ),
+    )
+    physics_per_control = round(SIMULATOR_UPDATE_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
+    elapsed = 0.0
+    while bot.controller_mode == ControlModeType.AUTO and elapsed < timeout_s:
+        bot._control_loop_default()
+        for _ in range(physics_per_control):
+            bot.diff_drive_model_update()
+        elapsed += SIMULATOR_UPDATE_INTERVAL_S
+
+
+@pytest.mark.parametrize("direction", [90, DIRECTION_NONE], ids=["heading", "none"])
+def test_the_default_control_loop_reaches_a_waypoint_it_must_turn_toward(direction):
+    """Guards against steering on the advertised heading, which a bot turning
+    in place never updates, so it spins without arriving."""
+    bot = DotBotSimulator(
+        SimulatedDotBotSettings(
+            address=ADDRESS, pos_x=1000, pos_y=1000, direction=direction
+        ),
+        queue.Queue(),
+    )
+    _drive_to(bot, 1000, 300, timeout_s=10)
+    assert bot.controller_mode == ControlModeType.MANUAL
+    assert (bot.pos_x - 1000) ** 2 + (bot.pos_y - 300) ** 2 < 50**2
+    assert bot.direction != DIRECTION_NONE
 
 
 # --- Placement of a world file's unpositioned robots -------------------------

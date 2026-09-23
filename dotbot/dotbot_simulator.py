@@ -532,12 +532,6 @@ class DotBotSimulator:
         self.encoder_left_acc = 0.0
         self.encoder_right_acc = 0.0
 
-        if self.direction == DIRECTION_NONE:
-            # Heading unknown: drive straight until travel yields one.
-            self.pwm_left = MOTOR_SPEED
-            self.pwm_right = MOTOR_SPEED
-            return
-
         delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
         delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
         distance_to_target = sqrt(delta_x**2 + delta_y**2)
@@ -565,7 +559,9 @@ class DotBotSimulator:
         self.waypoint_y = int(self.waypoints[self.waypoint_index].pos_y)
 
         angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
-        robot_angle = self.direction
+        # Steer on the true pose: the advertised direction lags travel, so a
+        # bot turning in place would never see its own heading change.
+        robot_angle = -self.theta
         if robot_angle >= 180:
             robot_angle -= 360
         elif robot_angle < -180:
@@ -590,6 +586,7 @@ class DotBotSimulator:
         self.logger.info(
             "Loop update",
             robot_angle=int(robot_angle),
+            direction=int(self.direction),
             angle_to_target=int(angle_to_target),
             error_angle=int(error_angle),
             angular_speed=int(angular_speed),
