@@ -335,6 +335,11 @@ ROBOTS: dict[str, RobotGeometry] = {
 }
 
 
+# The geometry record for each device type swarmit's STATUS reports; a type
+# missing here has none.
+SWARMIT_DEVICE_MODELS: dict[str, str] = {"DotBotV3": "dotbot-v3"}
+
+
 def robot_geometry(model: str = ROBOT_DEFAULT) -> RobotGeometry:
     """The geometry record for `model`."""
     try:

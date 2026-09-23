@@ -18,6 +18,7 @@ from dotbot.controller import (
     PLACEHOLDER_HEADING_DEG,
     Controller,
     ControllerSettings,
+    device_pose,
     gps_distance,
     lh2_distance,
 )
@@ -35,6 +36,7 @@ from dotbot.protocol import (
     PayloadControlMode,
     PayloadDotBotAdvertisement,
 )
+from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
 
 # A measured site, which the package never ships.
@@ -871,3 +873,26 @@ async def test_the_csv_log_carries_the_body_centre_and_heading(controller, tmp_p
     row = _last_row(tmp_path / "run.csv")
     assert (row["pose_centre_x"], row["pose_centre_y"]) == ("1029.0", "1000.0")
     assert (row["heading_deg"], row["heading_source"]) == ("90.0", "travel")
+
+
+def test_a_status_only_dotbot_v3_is_sized_from_the_v3_record():
+    at = DotBotLH2Position(x=1864, y=738)
+    pose = device_pose("DotBotV3", at)
+    v3 = robot_geometry("dotbot-v3").body_pose(Point(1864, 738), 0, HeadingSource.NONE)
+    assert pose.heading_source == "none"
+    assert (pose.photodiode.x, pose.photodiode.y) == (1864, 738)
+    assert pose.reach_mm == v3.reach_mm
+    assert pose.core_mm == v3.core_mm
+    assert pose.envelope_mm == 95.0
+
+
+def test_a_device_type_without_a_record_has_no_pose():
+    at = DotBotLH2Position(x=1864, y=738)
+    for device in ("DotBotV2", "SailBot", "LH2_mini_mote", ""):
+        assert device_pose(device, at) is None
+
+
+def test_the_device_poses_sit_on_the_origin(controller):
+    poses = controller.device_poses()
+    assert set(poses) == {"DotBotV3"}
+    assert (poses["DotBotV3"].photodiode.x, poses["DotBotV3"].photodiode.y) == (0, 0)

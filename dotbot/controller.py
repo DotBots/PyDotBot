@@ -82,7 +82,12 @@ from dotbot.protocol import (
     PayloadLh2CalibrationHomography,
     PayloadType,
 )
-from dotbot.robots import HeadingSource, Point, robot_geometry
+from dotbot.robots import (
+    SWARMIT_DEVICE_MODELS,
+    HeadingSource,
+    Point,
+    robot_geometry,
+)
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.swarm_client import build_swarmit_client, conn_string
@@ -175,6 +180,17 @@ def body_pose(
             Point(position.x, position.y), heading, source
         )
     )
+
+
+def device_pose(
+    device: str, position: DotBotLH2Position
+) -> Optional[DotBotPoseModel]:
+    """The headingless pose of a robot swarmit reports as `device` at
+    `position`, or None when the host has no geometry record for that type."""
+    model = SWARMIT_DEVICE_MODELS.get(device)
+    if model is None:
+        return None
+    return body_pose(model, position, DIRECTION_NONE)
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -884,6 +900,12 @@ class Controller:
             destination=dest_str,
             payload=payload,
         )
+
+    def device_poses(self) -> Dict[str, DotBotPoseModel]:
+        """The headingless pose of each swarmit device type the host has a
+        geometry record for, with its photodiode at the origin."""
+        origin = DotBotLH2Position(x=0, y=0)
+        return {device: device_pose(device, origin) for device in SWARMIT_DEVICE_MODELS}
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
         """Returns the list of dotbots matching the query."""

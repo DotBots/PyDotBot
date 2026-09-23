@@ -7,7 +7,7 @@
 
 import base64
 import os
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 import httpx
 from fastapi import (
@@ -49,6 +49,7 @@ from dotbot.models import (
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
+    DotBotPoseModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotSiteModel,
@@ -294,6 +295,17 @@ async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
 async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
     """Dotbots HTTP GET handler."""
     return api.controller.get_dotbots(query)
+
+
+@api.get(
+    path="/controller/device_poses",
+    response_model=Dict[str, DotBotPoseModel],
+    summary="Return the headingless pose of each swarmit device type, at the origin",
+    tags=["controller"],
+)
+async def device_poses():
+    """Device poses HTTP GET handler."""
+    return api.controller.device_poses()
 
 
 @api.get(
