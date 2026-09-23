@@ -182,6 +182,16 @@ def test_reads_are_averaged_before_the_solve():
     assert sample.mean_counts().count1 == pytest.approx(102.0)
 
 
+def test_reads_with_swapped_sweeps_are_ordered_before_averaging():
+    sample = _sample(0, 0, 40661, 80988, reads=1)
+    sample.count1 = [40661, 80992]
+    sample.count2 = [80988, 40664]
+    counts = sample.mean_counts()
+    assert counts.count1 == pytest.approx(40662.5)
+    assert counts.count2 == pytest.approx(80990.0)
+    assert sample.spread_mm() == (pytest.approx(1.5), pytest.approx(2.0))
+
+
 # --- the file ---------------------------------------------------------------
 
 
@@ -204,7 +214,7 @@ def test_save_writes_schema_2_into_the_site_directory(monkeypatch, tmp_path):
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
     assert "false_origin_mm" not in parsed["site"]
-    assert parsed["validity"]["valid_mm"] == [0, 0, 4000, 4500]
+    assert parsed["validity"]["valid_mm"] == [0, 0, 10000, 10000]
     assert parsed["metadata"]["robot"] == "dotbot-v3"
     assert len(parsed["metadata"]["id"]) == 16
     assert path.name.endswith(f"-{parsed['metadata']['id'][:8]}.toml")
@@ -557,52 +567,188 @@ homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 
 """
 
 
-def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
-    """The receiver keys matrices by position, so station 2 in slot 1 is a 1.2 m error."""
-    import pytest
-
-    from dotbot.calibration.lighthouse2 import calibration_payload_int32
+def _wire_fixture(tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML as WIRE_TOML
 
     path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
-    only = read_calibration_file(path).stations[0]
-    gapped = replace(only, index=2)
-
-    with pytest.raises(ValueError, match="numbered from zero without gaps"):
-        calibration_payload_int32([gapped])
-
-    assert calibration_payload_int32([replace(only, index=0)])[0] == 1
+    path.write_text(WIRE_TOML, encoding="utf-8")
+    return read_calibration_file(path)
 
 
-def test_the_cli_push_payload_goes_through_the_shim(tmp_path):
-    """`push` and `collect --push` send int32 x 1e3, never float32, until the firmware wave."""
-    from dotbot.calibration.lighthouse2 import (
-        calibration_payload_int32,
-        homography_as_bytes,
+def test_the_calibration_messages_are_pinned(tmp_path):
+    """The 84-byte messages, byte for byte; swarmit's packer pins the same."""
+    from dotbot.calibration.lighthouse2 import calibration_messages
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_ID, MESSAGE_HEX
+
+    calibration = _wire_fixture(tmp_path)
+    assert calibration.id == FIXTURE_ID
+
+    messages = calibration_messages(calibration)
+    assert [m.hex() for m in messages] == MESSAGE_HEX
+    assert all(len(m) == 84 for m in messages)
+
+
+def test_a_file_without_site_or_validity_takes_the_defaults_swarmit_takes(tmp_path):
+    from dotbot.calibration.lighthouse2 import calibration_messages
+    from dotbot.tests.lh2_wire_fixture import (
+        DEFAULTS_FIXTURE_ID,
+        DEFAULTS_FIXTURE_TOML,
+        DEFAULTS_MESSAGE_HEX,
     )
 
     path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    path.write_text(DEFAULTS_FIXTURE_TOML, encoding="utf-8")
     calibration = read_calibration_file(path)
-
-    payload = calibration_payload_int32(calibration.stations)
-    assert payload == bytes([1]) + homography_as_bytes(calibration.stations[0].matrix)
-    assert len(payload) == 37
+    assert calibration.id == DEFAULTS_FIXTURE_ID
+    assert [m.hex() for m in calibration_messages(calibration)] == DEFAULTS_MESSAGE_HEX
 
 
-def test_the_int32_shim_is_the_only_quantised_path(tmp_path):
-    """The shim carries a schema 2 file to firmware that still reads int32."""
-    from dotbot.calibration.lighthouse2 import homography_as_bytes
+def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
+    import struct
 
-    path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML, encoding="utf-8")
-    calibration = read_calibration_file(path)
+    from dotbot.calibration.lighthouse2 import calibration_messages
 
-    packed = homography_as_bytes(calibration.stations[0].matrix)
-    assert len(packed) == 36
-    elements = [
-        int.from_bytes(packed[i : i + 4], "little", signed=True)
-        for i in range(0, 36, 4)
+    calibration = _wire_fixture(tmp_path)
+    message = calibration_messages(calibration)[1]
+    count, index = struct.unpack_from("<II", message, 0)
+    assert (count, index) == (2, 1)
+    assert np.allclose(
+        np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3),
+        calibration.station(1).homography,
+        rtol=1e-7,
+    )
+    assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
+    assert message[60:76] == b"c405-arena" + bytes(6)
+    assert message[76:84] == bytes.fromhex("ac893d2d85e3068c")
+    assert lighthouse2.message_site(message) == ("c405-arena", "ac893d2d85e3068c")
+
+
+def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
+    """The receiver trusts slots 0 to count - 1, so station 2 alone leaves slot 0 empty."""
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _wire_fixture(tmp_path)
+    calibration.stations = [replace(calibration.stations[1], index=2)]
+    calibration.stored_id = ""
+
+    with pytest.raises(ValueError, match="numbered from zero without gaps"):
+        calibration_messages(calibration)
+
+
+def test_a_hand_edited_file_is_not_pushed_under_its_old_id(tmp_path):
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _wire_fixture(tmp_path)
+    calibration.stations[0].homography[0][0] = 1600.0
+
+    with pytest.raises(ValueError, match="does not match its content"):
+        calibration_messages(calibration)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", "a-site-name-longer-than-16", "caf\u00e9"],
+    ids=["empty", "long", "ascii"],
+)
+def test_a_site_name_a_robot_cannot_store_is_refused(name):
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
+
+    with pytest.raises(ValueError):
+        site_name_as_bytes(name)
+
+
+def test_a_sixteen_character_site_name_fills_the_field_without_a_nul():
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
+
+    assert site_name_as_bytes("demo-dcoss-2026x") == b"demo-dcoss-2026x"
+
+
+def test_reframe_shifts_the_points_resolves_and_keeps_the_residual(tmp_path):
+    """A shift moves no point relative to another, so the fit is as good as before."""
+    from dotbot.calibration.lighthouse2 import (
+        LighthouseManager,
+        Placement,
+        Sample,
+        apply_homography,
+        reframe_calibration,
+    )
+
+    pytest.importorskip("cv2")
+    placement = _five_point_placement()
+    manager = LighthouseManager(placements=[placement], site=Site(name="c405-arena"))
+    manager.solve()
+    source = manager.calibration()
+    floor = Site(name="inria-aio-c", anchor="floor top-left", extent_mm=(12000, 20000))
+
+    reframed = reframe_calibration(source, floor, (5000.0, 7000.0))
+
+    assert reframed.site.name == "inria-aio-c"
+    assert reframed.valid_mm == (0, 0, 12000, 20000)
+    assert reframed.id != source.id
+    for (x0, y0), (x1, y1) in zip(
+        source.placements[0].points_mm, reframed.placements[0].points_mm
+    ):
+        assert (x1, y1) == pytest.approx((x0 + 5000.0, y0 + 7000.0))
+    old, new = source.stations[0], reframed.stations[0]
+    assert new.residual_mm == pytest.approx(old.residual_mm, abs=1e-6)
+    # A camera point lands where it did, plus the shift, to the solver's
+    # own numerical noise.
+    camera = np.array([[0.1, -0.2]])
+    assert apply_homography(new.matrix, camera)[0] == pytest.approx(
+        apply_homography(old.matrix, camera)[0] + [5000.0, 7000.0], abs=1e-3
+    )
+    assert isinstance(reframed.placements[0], Placement)
+    assert isinstance(reframed.placements[0].samples[0], Sample)
+    # The source is left as it was.
+    assert source.placements[0].points_mm[0] == placement.points_mm[0]
+
+
+def test_reframe_with_a_rotation_turns_about_the_first_point(tmp_path):
+    from dotbot.calibration.lighthouse2 import LighthouseManager, reframe_calibration
+
+    pytest.importorskip("cv2")
+    manager = LighthouseManager(
+        placements=[_five_point_placement()], site=Site(name="c405-arena")
+    )
+    manager.solve()
+    source = manager.calibration()
+
+    reframed = reframe_calibration(
+        source, Site(name="tilted", extent_mm=(9000, 9000)), (100.0, 200.0), 90.0
+    )
+
+    (px, py), (qx, qy) = source.placements[0].points_mm[:2]
+    (rx, ry), (sx, sy) = reframed.placements[0].points_mm[:2]
+    assert (rx, ry) == pytest.approx((px + 100.0, py + 200.0))
+    # +90 degrees turns +x into +y.
+    assert (sx - rx, sy - ry) == pytest.approx((-(qy - py), qx - px), abs=1e-9)
+    assert reframed.stations[0].residual_mm == pytest.approx(
+        source.stations[0].residual_mm, abs=1e-6
+    )
+
+
+def _five_point_placement():
+    """Five points of one station, so the residual is not trivially zero."""
+    from dotbot.calibration.lighthouse2 import (
+        Placement,
+        Sample,
+        counts_for_camera_point,
+    )
+
+    matrix = np.array(
+        [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
+    )
+    points = [
+        (47.0, 18.5),
+        (1953.0, 18.5),
+        (47.0, 1981.5),
+        (1953.0, 1981.5),
+        (1000, 1000),
     ]
-    assert elements[0] == 1523400
-    assert elements[8] == 1000
+    samples = []
+    for index, (x, y) in enumerate(points):
+        camera = np.linalg.inv(matrix) @ np.array([x, y, 1.0])
+        camera /= camera[2]
+        counts = counts_for_camera_point(camera[0] + 0.002 * index, camera[1], 0)
+        samples.append(Sample(0, index, [round(counts.count1)], [round(counts.count2)]))
+    return Placement(index=0, points_mm=points, samples=samples)

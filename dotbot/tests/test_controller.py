@@ -364,26 +364,16 @@ def test_controller_loads_the_calibration_named_by_id(
     with pytest.raises(ValueError, match="no calibration matches"):
         load_calibration(written.id8, site="site-b")
 
-    from dotbot.calibration.lighthouse2 import homography_as_bytes
+    from dotbot.calibration.lighthouse2 import homography_as_float32
+    from dotbot.protocol import PayloadLh2CalibrationHomography
 
-    pushed = bytes([len(controller.lh2_calibration)]) + b"".join(
-        homography_as_bytes(s.matrix) for s in controller.lh2_calibration
+    station = controller.lh2_calibration[0]
+    payload = PayloadLh2CalibrationHomography(
+        index=station.index,
+        homography_matrix=homography_as_float32(station.homography),
     )
-    # The int32 shim quantises each element to a thousandth.
-    assert np.allclose(
-        [
-            [v / 1e3 for v in row]
-            for row in [
-                [
-                    int.from_bytes(pushed[1 + i * 4 : 5 + i * 4], "little", signed=True)
-                    for i in range(9)
-                ][j : j + 3]
-                for j in (0, 3, 6)
-            ]
-        ],
-        written.stations[0].homography,
-        atol=1e-3,
-    )
+    # float32 on the bare-metal wire: no thousandth truncation.
+    assert np.allclose(payload.matrix, written.stations[0].homography, rtol=1e-7)
 
 
 def test_controller_with_no_calibration_loads_nothing(serial_mock):
@@ -731,3 +721,23 @@ def test_a_log_an_old_sidecar_misdescribes_is_an_error_not_a_stop(
     finally:
         for camera_service in controller.cameras:
             camera_service.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
+    """A complete session reaches the client with `outstanding` null, not absent."""
+    import json
+    from unittest.mock import AsyncMock
+
+    websocket = MagicMock()
+    websocket.send_text = AsyncMock()
+    controller.websockets = [websocket]
+
+    await controller._notify_calibration_session({"outstanding": None, "total": 4})
+    await controller._notify_calibration_session(None)
+
+    first, second = (json.loads(c.args[0]) for c in websocket.send_text.await_args_list)
+    assert first["cmd"] == 5
+    assert first["calibration_session"]["outstanding"] is None
+    assert "outstanding" in first["calibration_session"]
+    assert second == {"cmd": 5, "calibration_session": None}

@@ -8,6 +8,7 @@
 """Module for the Dotbot protocol API."""
 
 import dataclasses
+import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -186,7 +187,11 @@ class PayloadLH2Location(Payload):
 
 @dataclass
 class PayloadLh2CalibrationHomography(Payload):
-    """Dataclass that holds computed LH2 homography for a basestation indicated by index."""
+    """One basestation's homography, for the station at `index`.
+
+    `homography_matrix` is nine little-endian float32, row-major: the
+    `protocol_lh2_homography_t` of DotBot-libs.
+    """
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
@@ -199,6 +204,12 @@ class PayloadLh2CalibrationHomography(Payload):
 
     index: int = 0
     homography_matrix: bytes = dataclasses.field(default_factory=lambda: bytearray)
+
+    @property
+    def matrix(self) -> list[list[float]]:
+        """The matrix decoded, three rows of three."""
+        values = struct.unpack("<9f", bytes(self.homography_matrix))
+        return [list(values[row * 3 : row * 3 + 3]) for row in range(3)]
 
 
 @dataclass

@@ -3,10 +3,13 @@
 
 """Over-the-air LH2 capture collection (swarmit transport).
 
-A DotBot's secure bootloader samples its own raw LH2 counts on request
-(READY mode only) and ships them back inside a SWARMIT_EVENT_LOG. This
-module triggers the captures and decodes the records; the solve and the file
-live in `lighthouse2`.
+A capture comes either from the calibrate app, taken on the robot's own
+button, or from the secure bootloader, which samples its raw LH2 counts on
+request (READY mode only). Both arrive inside a SWARMIT_EVENT_LOG. This
+module decodes the records and triggers the bootloader captures; the solve
+and the file live in `lighthouse2`.
+
+DEPRECATED: the bootloader capture request, in favour of the calibrate app.
 
 A capture is n reads per point, not one: the per-point error is the
 placement sigma and the lighthouse's own over sqrt(n) in quadrature, so a
@@ -34,6 +37,19 @@ CAPTURE_READS_DEFAULT = 25
 # Each raw sample inside the LOG payload is [lh_index:1][count1:4 LE][count2:4 LE].
 _SAMPLE_SIZE = 9
 
+# A capture from the calibrate app's button: [tag][header][records], the header
+# packing the press counter (high five bits) and the chunk index (low three).
+# The last chunk of a press carries fewer than BUTTON_CHUNK_RECORDS records.
+# tests/lh2_button_fixture.py pins the layout against that app.
+BUTTON_CAPTURE_TAG = 0xCB
+BUTTON_LOG_SIZE_MAX = 127
+BUTTON_CHUNK_RECORDS = (BUTTON_LOG_SIZE_MAX - 2) // _SAMPLE_SIZE
+BUTTON_PRESS_MODULUS = 32
+# Seconds from a press's first chunk to its last before the press is given up.
+# Must stay above the copies' spread: the app sends at half the uplink budget,
+# so four stations' 24 events take 12.7 s on huge (3.77 packets/s).
+BUTTON_CAPTURE_TIMEOUT_DEFAULT = 20.0
+
 # A station really in view is decoded on nearly every read, so a station under
 # this share of a point's reads is a decode artefact rather than a station.
 STATION_PRESENCE_RATIO_MIN = 0.5
@@ -48,7 +64,10 @@ def parse_capture_payload(data: bytes, tag: int) -> list[LH2CalibrationSample]:
     """
     if len(data) < 1 or data[0] != tag:
         return []
-    body = data[1:]
+    return _parse_records(data[1:])
+
+
+def _parse_records(body: bytes) -> list[LH2CalibrationSample]:
     samples: list[LH2CalibrationSample] = []
     for off in range(0, len(body) - _SAMPLE_SIZE + 1, _SAMPLE_SIZE):
         lh_index = body[off]
@@ -56,6 +75,147 @@ def parse_capture_payload(data: bytes, tag: int) -> list[LH2CalibrationSample]:
         count2 = int.from_bytes(body[off + 5 : off + 9], "little")
         samples.append(LH2CalibrationSample(lh_index, count1, count2))
     return samples
+
+
+@dataclass(frozen=True)
+class ButtonChunk:
+    """One log event of a button capture: part of one press's records."""
+
+    press: int
+    chunk: int
+    records: list[LH2CalibrationSample]
+
+
+def parse_button_payload(data: bytes) -> ButtonChunk | None:
+    """Decode one log event of the calibrate app, or None if it is not one."""
+    if len(data) < 2 or data[0] != BUTTON_CAPTURE_TAG:
+        return None
+    body = data[2:]
+    if len(body) % _SAMPLE_SIZE or len(body) // _SAMPLE_SIZE > BUTTON_CHUNK_RECORDS:
+        return None
+    return ButtonChunk(
+        press=data[1] >> 3, chunk=data[1] & 0x07, records=_parse_records(body)
+    )
+
+
+@dataclass
+class ButtonCapture:
+    """One press, assembled: its reads, and how many presses were lost before it."""
+
+    device: str
+    press: int
+    reads: list[list[LH2CalibrationSample]]
+    lost: int = 0
+
+
+class ButtonAssembler:
+    """Keeps one copy of each chunk and hands back a press once it is whole.
+
+    The app sends every press three times, so the same (device, press, chunk)
+    arrives up to three times and any copy of a chunk will do. A press still
+    incomplete after `timeout` is given up on the next `add` or `expired`.
+    """
+
+    def __init__(
+        self,
+        timeout: float = BUTTON_CAPTURE_TIMEOUT_DEFAULT,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self._timeout = timeout
+        self._clock = clock
+        self._pending: dict[tuple[str, int], tuple[float, dict[int, list]]] = {}
+        self._given_up: list[tuple[str, int]] = []
+        # Each given-up press's chunks and when, so its late copies stay quiet.
+        self._given_up_chunks: dict[tuple[str, int], tuple[float, dict[int, list]]] = {}
+        # Per device: the last completed press and its chunks.
+        self._completed: dict[str, tuple[int, dict[int, list]]] = {}
+
+    def add(self, device: str, chunk: ButtonChunk) -> ButtonCapture | None:
+        device = device.upper()
+        now = self._clock()
+        self._give_up_stale(now)
+        last = self._completed.get(device)
+        # A copy is identical to the chunk it repeats; two captures never are.
+        if (
+            last is not None
+            and last[0] == chunk.press
+            and last[1].get(chunk.chunk) == chunk.records
+        ):
+            return None
+        key = (device, chunk.press)
+        given_up = self._given_up_chunks.get(key)
+        if given_up is not None:
+            stored = given_up[1].get(chunk.chunk)
+            if stored is None or stored == chunk.records:
+                return None
+            # A chunk unlike the given-up press's is a new press on that number.
+            del self._given_up_chunks[key]
+        _, chunks = self._pending.setdefault(key, (now, {}))
+        stored = chunks.get(chunk.chunk)
+        if stored is not None and stored != chunk.records:
+            # Every copy of a chunk is identical, so a different one is a new
+            # press reusing the number.
+            _, chunks = self._pending[key] = (now, {})
+        chunks.setdefault(chunk.chunk, chunk.records)
+        records = _whole_press(chunks)
+        if records is None:
+            return None
+        del self._pending[key]
+        # A counter back at 0 is an app restart as often as a wrap, so it
+        # reports nothing lost.
+        lost = (
+            (chunk.press - last[0] - 1) % BUTTON_PRESS_MODULUS
+            if last is not None and chunk.press != 0
+            else 0
+        )
+        self._completed[device] = (chunk.press, chunks)
+        return ButtonCapture(
+            device=device,
+            press=chunk.press,
+            reads=_reads_by_station(records),
+            lost=lost,
+        )
+
+    def expired(self) -> list[tuple[str, int]]:
+        """The presses given up on since the last call, as (device, press)."""
+        self._give_up_stale(self._clock())
+        given_up, self._given_up = self._given_up, []
+        return given_up
+
+    def _give_up_stale(self, now: float) -> None:
+        for key, (started, chunks) in list(self._pending.items()):
+            if now - started > self._timeout:
+                del self._pending[key]
+                self._given_up.append(key)
+                self._given_up_chunks[key] = (now, chunks)
+        for key, (at, _) in list(self._given_up_chunks.items()):
+            if now - at > self._timeout:
+                del self._given_up_chunks[key]
+
+
+def _whole_press(chunks: dict[int, list]) -> list[LH2CalibrationSample] | None:
+    """The press's records in order, or None while a chunk is still missing."""
+    records: list[LH2CalibrationSample] = []
+    for index in range(len(chunks)):
+        if index not in chunks:
+            return None
+        records.extend(chunks[index])
+        if len(chunks[index]) < BUTTON_CHUNK_RECORDS:
+            return records
+    return None
+
+
+def _reads_by_station(
+    records: list[LH2CalibrationSample],
+) -> list[list[LH2CalibrationSample]]:
+    """Regroup a press's records into reads, read i holding each station's i-th."""
+    per_station: dict[int, list[LH2CalibrationSample]] = {}
+    for record in records:
+        per_station.setdefault(record.lh_index, []).append(record)
+    if not per_station:
+        return []
+    count = min(len(column) for column in per_station.values())
+    return [[column[i] for column in per_station.values()] for i in range(count)]
 
 
 @dataclass
@@ -144,31 +304,32 @@ def samples_from_reads(
 class CaptureSession:
     """One shared log-event stream for a whole collect session.
 
-    The bot only emits raw counts in reply to a trigger, so nothing arrives
-    unsolicited - a single `watch_log_events()` stream serves every point. A
-    background reader thread decodes records addressed to `device` into a
-    queue; `capture()` triggers and waits, re-triggering on timeout because
-    the trigger send is best-effort (no transport-level ack).
+    A capture from the calibrate app's button can come from any device and
+    at any time; its chunks are assembled into one `ButtonCapture` per press
+    and handed to `on_button_capture`.
 
-    Records arriving outside a capture window came from the robot's own
-    trigger rather than a request; `on_idle_records` receives them instead of
-    the queue, so a press is stored rather than drained.
+    With a `device`, `capture()` also triggers that device's READY-mode
+    capture (DEPRECATED, in favour of the button) and waits for the reply,
+    re-triggering on timeout because the trigger send is best-effort. The
+    bootloader only answers a trigger, so one stream serves every point.
     """
 
     def __init__(
         self,
         client,
-        device: str,
+        device: str | None,
         tag: int,
-        on_idle_records: Callable[[list[LH2CalibrationSample]], None] | None = None,
+        on_button_capture: Callable[[ButtonCapture], None] | None = None,
+        button_timeout: float = BUTTON_CAPTURE_TIMEOUT_DEFAULT,
     ):
         self._client = client
-        self._device = device.upper()
+        self._device = (device or "").upper()
         self._tag = tag
         self._queue: queue.Queue = queue.Queue()
         self._stop = threading.Event()
-        self._capturing = threading.Event()
-        self._on_idle_records = on_idle_records
+        self._on_button_capture = on_button_capture
+        self._assembler = ButtonAssembler(timeout=button_timeout)
+        self._assembler_lock = threading.Lock()
         self._thread = threading.Thread(target=self._reader, daemon=True)
 
     def __enter__(self) -> CaptureSession:
@@ -183,18 +344,37 @@ class CaptureSession:
             for event in self._client.watch_log_events():
                 if self._stop.is_set():
                     break
-                if str(event.get("addr", "")).upper() != self._device:
-                    continue
+                addr = str(event.get("addr", "")).upper()
                 data = bytes.fromhex(event.get("data_hex", ""))
-                decoded = parse_capture_payload(data, self._tag)
-                if not decoded:
+                chunk = parse_button_payload(data)
+                if chunk is not None:
+                    self._on_button_chunk(addr, chunk)
                     continue
-                if self._capturing.is_set() or self._on_idle_records is None:
+                if not self._device or addr != self._device:
+                    continue
+                decoded = parse_capture_payload(data, self._tag)
+                if decoded:
                     self._queue.put(decoded)
-                else:
-                    self._on_idle_records(decoded)
         except Exception as exc:  # surfaced on the next capture() get()
             self._queue.put(exc)
+
+    def _on_button_chunk(self, addr: str, chunk: ButtonChunk) -> None:
+        if self._on_button_capture is None:
+            return
+        with self._assembler_lock:
+            capture = self._assembler.add(addr, chunk)
+        if capture is not None:
+            self._on_button_capture(capture)
+
+    @property
+    def device(self) -> str:
+        """The device `capture()` triggers, or "" for a button-only stream."""
+        return self._device
+
+    def expired_presses(self) -> list[tuple[str, int]]:
+        """Button presses given up on since the last call: (device, press)."""
+        with self._assembler_lock:
+            return self._assembler.expired()
 
     def capture(
         self,
@@ -204,8 +384,13 @@ class CaptureSession:
     ) -> list[LH2CalibrationSample]:
         """Trigger one capture and return every station's record from the reply.
 
-        Raises TimeoutError if nothing arrives within `retries + 1` triggers.
+        Raises TimeoutError if nothing arrives within `retries + 1` triggers,
+        and ValueError on a stream opened without a device.
         """
+        if not self._device:
+            raise ValueError(
+                "no device to trigger: this stream only takes button captures"
+            )
         # Discard anything left over from the previous point.
         while not self._queue.empty():
             self._queue.get_nowait()
@@ -244,16 +429,10 @@ class CaptureSession:
     ) -> PointCapture:
         """Take `reads` captures at one point and group them per station."""
         collected: list[list[LH2CalibrationSample]] = []
-        self._capturing.set()
-        try:
-            for index in range(reads):
-                collected.append(
-                    self.capture(
-                        timeout=timeout, retries=retries, on_attempt=on_attempt
-                    )
-                )
-                if on_read is not None:
-                    on_read(index + 1, reads, collected)
-        finally:
-            self._capturing.clear()
+        for index in range(reads):
+            collected.append(
+                self.capture(timeout=timeout, retries=retries, on_attempt=on_attempt)
+            )
+            if on_read is not None:
+                on_read(index + 1, reads, collected)
         return samples_from_reads(collected, point)

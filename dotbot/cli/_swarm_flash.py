@@ -27,6 +27,7 @@ APP_CATALOG = {
     "rc-car": "dotbot",  # drive the DotBot from the UI / keyboard / joystick
     "spin": "spin",  # the DotBots spin in place
     "lights": "rgbled",  # the on-board RGB LED
+    "calibrate": "calibrate",  # LH2 capture on the robot's own button
 }
 
 _DEFAULT_BOARD = "dotbot-v3"

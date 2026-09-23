@@ -16,11 +16,17 @@ from the declared point, so they agree with it by construction.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Callable
 
 import numpy as np
 
-from dotbot.calibration.lighthouse2 import apply_homography, counts_for_camera_point
+from dotbot.calibration.lighthouse2 import (
+    LH2_CALIBRATION_MESSAGE_BYTES,
+    apply_homography,
+    counts_for_camera_point,
+    message_site,
+)
 
 # A wall-mounted station: the magnitude of perspective row real files carry.
 STATION_MATRIX = np.array(
@@ -93,8 +99,25 @@ class SimulatedCaptureClient:
             body += count2.to_bytes(4, "little")
         self._pending.append({"addr": self.device, "data_hex": bytes(body).hex()})
 
-    def send_lh2_calibration(self, payload: bytes) -> None:
+    def send_lh2_calibration(
+        self, payload: bytes, devices: list[str] | None = None
+    ) -> None:
         self.pushed.append(payload)
+
+    def refresh_device_info(self, devices: list[str] | None = None) -> None:
+        pass
+
+    def status(self) -> dict[str, Any]:
+        """The one simulated robot, on current firmware, holding the last push."""
+        site, calibration_id = "", ""
+        if self.pushed:
+            site, calibration_id = message_site(
+                self.pushed[-1][:LH2_CALIBRATION_MESSAGE_BYTES]
+            )
+        info = SimpleNamespace(
+            info_version=2, lh2_site_name=site, lh2_calibration_id=calibration_id
+        )
+        return {self.device: SimpleNamespace(info_gen=1, info=info)}
 
     def watch_log_events(self):
         import time

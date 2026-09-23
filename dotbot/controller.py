@@ -50,7 +50,7 @@ from dotbot.adapter import (
     SerialAdapter,
 )
 from dotbot.calibration.driver import SessionDriver
-from dotbot.calibration.lighthouse2 import homography_as_bytes
+from dotbot.calibration.lighthouse2 import homography_as_float32
 from dotbot.camera.raster import WARP_FPS_MAX
 from dotbot.camera.service import CameraService
 from dotbot.csv_data_logger import (
@@ -243,7 +243,6 @@ class Controller:
             client_factory=self._swarmit_client,
             notify=self._notify_calibration_session,
             site=self.site,
-            stale_devices=self.stale_devices,
         )
         self.api = api
         if settings.csv_data_output is not None:
@@ -602,7 +601,7 @@ class Controller:
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 self.dotbots.update({dotbot.address: dotbot})
                 for station in self.lh2_calibration:
-                    matrix_bytes = homography_as_bytes(station.matrix)
+                    matrix_bytes = homography_as_float32(station.homography)
                     self.logger.info(
                         "Sending calibration homography",
                         index=station.index,
@@ -793,24 +792,6 @@ class Controller:
             if websocket in self.websockets:
                 self.websockets.remove(websocket)
 
-    def stale_devices(self) -> List[str]:
-        """Robots that do not hold every station of the calibration in use.
-
-        Today's firmware advertises a per-station bitmask and not the
-        calibration's id, so this answers "which robots are missing a
-        matrix", which is the worklist a push can act on.
-        """
-        if not self.lh2_calibration:
-            return []
-        stale = []
-        for address, dotbot in self.dotbots.items():
-            if not all(
-                dotbot.calibrated >> station.index & 0x01
-                for station in self.lh2_calibration
-            ):
-                stale.append(address)
-        return sorted(stale)
-
     def _swarmit_client(self, device: str = ""):
         """A swarmit client on the same connection the controller runs on.
 
@@ -823,7 +804,7 @@ class Controller:
 
             return SimulatedCaptureClient(device, self._outstanding_point)
         return build_swarmit_client(
-            conn_string(self.settings), self.settings.network_id, device or None
+            conn_string(self.settings), self.settings.network_id
         )
 
     def _outstanding_point(self):
@@ -833,24 +814,25 @@ class Controller:
         return None if point is None else point.mm
 
     async def _notify_calibration_session(self, state):
-        """One notification per calibration-session state change."""
-        await self.notify_clients(
-            DotBotNotificationModel(
-                cmd=DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE,
-                calibration_session=(
-                    DotBotCalibrationSessionModel(**state) if state else None
-                ),
-            )
-        )
+        """One notification per calibration-session state change.
+
+        The session keeps its nulls, unlike `notify_clients`: `outstanding`
+        null is how a client learns every point is captured.
+        """
+        cmd = DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE
+        self.logger.debug("notify", cmd=cmd.name)
+        session = DotBotCalibrationSessionModel(**state).model_dump() if state else None
+        await self._broadcast({"cmd": cmd.value, "calibration_session": session})
 
     async def notify_clients(self, notification):
         """Send a message to all clients connected."""
         self.logger.debug("notify", cmd=notification.cmd.name)
+        await self._broadcast(notification.model_dump(exclude_none=True))
+
+    async def _broadcast(self, message: dict):
         await asyncio.gather(
             *[
-                self._ws_send_safe(
-                    websocket, json.dumps(notification.model_dump(exclude_none=True))
-                )
+                self._ws_send_safe(websocket, json.dumps(message))
                 for websocket in self.websockets
             ]
         )

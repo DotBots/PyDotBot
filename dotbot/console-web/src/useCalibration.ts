@@ -28,12 +28,15 @@ export interface Calibration {
   capture: (device: string) => Promise<void>;
   redo: () => Promise<void>;
   save: (tag?: string) => Promise<void>;
-  push: () => Promise<void>;
+  push: (stale?: string[]) => Promise<void>;
   abandon: () => Promise<void>;
 }
 
+// A push goes to the selected robots, or to the whole swarm when none is
+// selected, as flash and start/stop do; or to an explicit stale list.
 export function useCalibration(
   onSession: (session: CalibrationSession | null) => void,
+  selection: ReadonlySet<string>,
 ): Calibration {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -70,13 +73,21 @@ export function useCalibration(
         const saved = await saveCalibration(tag);
         onSession(saved.session);
       }),
-    push: () =>
+    push: (stale) =>
       run(async () => {
-        const result = await pushCalibration();
+        // The route reads an empty list as the whole swarm.
+        if (stale && !stale.length) throw new Error("No stale bot to push to.");
+        const devices = stale ?? [...selection];
+        const result = await pushCalibration(devices);
+        const target = stale
+          ? `${devices.length} stale bot(s)`
+          : devices.length
+            ? `${devices.length} selected bot(s)`
+            : "the swarm";
         setPushed(
           result.stale.length
-            ? `Sent ${result.bytes} B. ${result.stale.length} bot(s) still stale.`
-            : `Sent ${result.bytes} B to the swarm.`,
+            ? `Sent ${result.bytes} B to ${target}. ${result.stale.length} bot(s) still stale.`
+            : `Sent ${result.bytes} B to ${target}.`,
         );
       }),
     abandon: () =>
@@ -86,4 +97,19 @@ export function useCalibration(
         onSession(null);
       }),
   };
+}
+
+/**
+ * The robot the card captures with: the one clicked or typed since the
+ * session last changed hands, else the session's own, which each capture
+ * sets, a button press included. A pick is tied to the capture count and
+ * device it was made at, so the next capture from any robot replaces it.
+ */
+export function useCapturer(
+  session: CalibrationSession | null,
+): [string, (device: string) => void] {
+  const [pick, setPick] = useState({ device: "", at: "" });
+  const at = session ? `${session.captured} ${session.device}` : "";
+  const device = pick.at === at && pick.device ? pick.device : (session?.device ?? "");
+  return [device, (next) => setPick({ device: next, at })];
 }

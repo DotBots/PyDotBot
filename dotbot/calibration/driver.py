@@ -4,11 +4,11 @@
 """The controller's side of a calibration session: one at a time, with events.
 
 The capture loop itself is `CalibrationSession`; this drives it from async
-routes. It owns the swarmit client, built on first capture rather than at
-start so a controller with no fleet in reach still serves the routes; it
+routes. It owns the swarmit client, built when a session starts and rebuilt
+when the robot changes, and a start with no fleet in reach still opens; it
 turns every state change into exactly one WebSocket notification, in the
 order the changes happened; and it routes a capture that arrives from the
-robot's own trigger to the outstanding point.
+robot's own button to the outstanding point.
 
 The blocking capture runs in a worker thread. Progress is published from
 there by handing the coroutine back to the loop and waiting for it, so the
@@ -22,6 +22,7 @@ from typing import Any, Callable, Sequence
 
 from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
 from dotbot.calibration.points import resolve_placement_points
+from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
     CalibrationSession,
     SessionError,
@@ -29,6 +30,9 @@ from dotbot.calibration.session import (
 )
 from dotbot.logger import LOGGER
 from dotbot.site import Site
+
+# Seconds between two checks for a button press given up incomplete.
+EXPIRED_PRESS_POLL_INTERVAL = 1.0
 
 # The swarmit log-event tag a raw-count capture carries. Imported lazily so
 # the swarmit protocol registry stays out of PyDotBot test collection.
@@ -47,9 +51,8 @@ def capture_tag() -> int:
 class SessionDriver:
     """One calibration session at a time, with its transport and its events.
 
-    `client_factory` takes the device address and returns a swarmit client;
-    `stale_devices` reports which robots do not hold the calibration in use.
-    Both are injected so a test drives the whole loop without a fleet.
+    `client_factory` takes the device address and returns a swarmit client,
+    injected so a test drives the whole loop without a fleet.
     """
 
     def __init__(
@@ -57,12 +60,10 @@ class SessionDriver:
         client_factory: Callable[[str], Any],
         notify: Callable[[dict | None], Any],
         site: Site | None = None,
-        stale_devices: Callable[[], list[str]] | None = None,
         stream_factory: Callable[[Any, str, Callable], Any] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
-        self._stale_devices = stale_devices or (lambda: [])
         self._stream_factory = stream_factory or _default_stream
         self.site = site or Site()
         self.session: CalibrationSession | None = None
@@ -72,6 +73,7 @@ class SessionDriver:
         self._device = ""
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._expiry_watch: asyncio.Task | None = None
 
     # -- state
 
@@ -114,6 +116,12 @@ class SessionDriver:
             session.device = device.upper()
             session.area = area
             self.session = session
+            self._loop = asyncio.get_running_loop()
+            # Button captures come unrequested from any robot, so the stream
+            # is listening from the start rather than from the first capture.
+            await asyncio.to_thread(self._listen_for_buttons, session.device)
+            if self._expiry_watch is None or self._expiry_watch.done():
+                self._expiry_watch = asyncio.create_task(self._watch_expired_presses())
             await self._emit()
             return session.as_dict()
 
@@ -166,18 +174,38 @@ class SessionDriver:
                 "session": session.as_dict(),
             }
 
-    async def push(self) -> dict:
-        """Send the saved calibration and report which robots are still stale."""
+    async def push(
+        self, site_changed: bool = False, devices: list[str] | None = None
+    ) -> dict:
+        """Check `devices`, send them the saved calibration, report who is still stale.
+
+        No devices, None or empty, is the whole swarm, as for flash and start.
+        """
+        targets = sorted({d.upper() for d in devices}) if devices else None
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            client = await asyncio.to_thread(self._ensure_client, session.device)
-            await asyncio.to_thread(client.send_lh2_calibration, payload)
+            client = await asyncio.to_thread(self._ensure_client, "")
+            try:
+                try:
+                    check = await asyncio.to_thread(
+                        gate_push, client, session.saved, site_changed, targets
+                    )
+                except PushRefused as exc:
+                    raise SessionError(f"push refused: {exc}") from exc
+                await asyncio.to_thread(
+                    client.send_lh2_calibration, payload, check.send_to
+                )
+                stale = await asyncio.to_thread(
+                    push_worklist, client, session.saved, check.addresses
+                )
+            finally:
+                await asyncio.to_thread(self._listen_for_buttons, "")
             await self._emit()
             return {
                 "id": session.saved_id,
                 "bytes": len(payload),
-                "stale": self._stale_devices(),
+                "stale": stale,
             }
 
     async def abandon(self) -> dict:
@@ -190,27 +218,73 @@ class SessionDriver:
 
     # -- the robot's own trigger
 
-    def on_idle_records(self, records: list) -> None:
-        """A capture that arrived without a request: point k, or dropped."""
-        session = self.session
-        if session is None:
+    def on_button_capture(self, capture: Any) -> Any:
+        """A capture from the robot's own button, from the stream's reader thread.
+
+        Stored on the event loop under the session lock; returns the
+        concurrent future of that, or None when no session ever started.
+        """
+        if self._loop is None:
             self.logger.info(
-                "LH2 capture arrived with no calibration session open; dropped",
-                records=len(records),
+                "LH2 button capture arrived with no calibration session open; dropped",
+                device=capture.device,
             )
-            return
-        point = session.store_records(records)
-        if point is None:
-            self.logger.info(
-                "LH2 capture arrived with every point captured; dropped",
-                records=len(records),
-            )
-            return
-        self.logger.info(
-            "LH2 capture stored from the robot's own trigger", point=point.index
+            return None
+        return asyncio.run_coroutine_threadsafe(
+            self._store_button_capture(capture), self._loop
         )
-        if self._loop is not None:
-            asyncio.run_coroutine_threadsafe(self._emit(), self._loop)
+
+    async def _watch_expired_presses(self) -> None:
+        """Report each button press given up incomplete, until the session ends."""
+        while self.session is not None:
+            await asyncio.sleep(EXPIRED_PRESS_POLL_INTERVAL)
+            async with self._lock:
+                if self.session is None or self._stream is None:
+                    continue
+                expired = self._stream.expired_presses()
+                if not expired:
+                    continue
+                self.session.error = "; ".join(
+                    f"incomplete capture from {addr} (press {press}): a chunk "
+                    "never arrived; press again"
+                    for addr, press in expired
+                )
+                await self._emit()
+
+    async def _store_button_capture(self, capture: Any) -> None:
+        """Point k, or dropped."""
+        async with self._lock:
+            session = self.session
+            if session is None:
+                self.logger.info(
+                    "LH2 button capture arrived with no calibration session open; dropped",
+                    device=capture.device,
+                )
+                return
+            if capture.lost:
+                self.logger.warning(
+                    "LH2 button captures lost", device=capture.device, lost=capture.lost
+                )
+            try:
+                point = session.store_reads(capture.reads, capture.device)
+            except SessionError as exc:
+                session.error = str(exc)
+            else:
+                if point is None:
+                    self.logger.info(
+                        "LH2 button capture arrived with every point captured; dropped",
+                        device=capture.device,
+                    )
+                    return
+                session.error = ""
+                # The robot that pressed is the one capturing, as if chosen.
+                session.device = point.device
+                self.logger.info(
+                    "LH2 capture stored from the robot's own button",
+                    device=capture.device,
+                    point=point.index,
+                )
+            await self._emit()
 
     # -- transport
 
@@ -225,6 +299,9 @@ class SessionDriver:
     def _ensure_client(self, device: str) -> Any:
         if self._client is None or device != self._device:
             self._close_stream()
+            if self._client is not None:
+                self._client.__exit__(None, None, None)
+                self._client = None
             self._client = self._client_factory(device)
             self._client.__enter__()
             self._device = device
@@ -233,9 +310,18 @@ class SessionDriver:
     def _ensure_stream(self, device: str) -> Any:
         client = self._ensure_client(device)
         if self._stream is None:
-            self._stream = self._stream_factory(client, device, self.on_idle_records)
+            self._stream = self._stream_factory(client, device, self.on_button_capture)
             self._stream.__enter__()
         return self._stream
+
+    def _listen_for_buttons(self, device: str) -> None:
+        try:
+            self._ensure_stream(device)
+        except Exception as exc:  # a fleet out of reach is not a failure
+            self.logger.warning(
+                "Not listening for button captures until a capture reaches the fleet",
+                error=str(exc),
+            )
 
     def _close_stream(self) -> None:
         if self._stream is not None:
@@ -247,9 +333,9 @@ class SessionDriver:
         self._loop = loop
 
 
-def _default_stream(client: Any, device: str, on_idle_records: Callable) -> Any:
+def _default_stream(client: Any, device: str, on_button_capture: Callable) -> Any:
     from dotbot.calibration.ota import CaptureSession
 
     return CaptureSession(
-        client, device, capture_tag(), on_idle_records=on_idle_records
+        client, device, capture_tag(), on_button_capture=on_button_capture
     )

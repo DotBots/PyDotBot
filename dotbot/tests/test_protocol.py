@@ -868,3 +868,20 @@ def test_parse_non_registered_payload():
     with pytest.raises(ValueError) as excinfo:
         Frame(header=Header(), packet=Packet.from_payload(PayloadNotRegisteredTest()))
     assert str(excinfo.value).startswith("Unsupported payload class")
+
+
+def test_lh2_calibration_homography_is_float32_on_the_wire():
+    """protocol_lh2_homography_t: the index, then nine float32 row-major."""
+    import struct
+
+    from dotbot.protocol import PayloadLh2CalibrationHomography
+
+    matrix = [[1523.5, -38.25, 1012.75], [41.875, 1531.5, 988.25], [0.25, -0.125, 1.0]]
+    raw = bytes([3]) + struct.pack("<9f", *[v for row in matrix for v in row])
+
+    payload = PayloadLh2CalibrationHomography().from_bytes(raw)
+
+    assert payload.index == 3
+    assert payload.matrix == matrix
+    assert bytes(payload.to_bytes()) == raw
+    assert payload.size == 37

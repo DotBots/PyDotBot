@@ -7,9 +7,11 @@ import {
   currentPoint,
   expectedErrorLine,
   insideFromCorner,
+  isComplete,
   isPhoneWidth,
   noseHeading,
   noseRotation,
+  outstandingIndex,
   placementInstruction,
   readFraction,
   residualLines,
@@ -41,6 +43,10 @@ const POINTS: CalibrationPoint[] = [
   reads: [],
   dropped: 0,
 }));
+
+// The first `n` points captured, as the controller reports them.
+const upTo = (n: number): CalibrationPoint[] =>
+  POINTS.map((p) => ({ ...p, captured: p.index < n }));
 
 const session = (over: Partial<CalibrationSession> = {}): CalibrationSession => ({
   at: "arena:corners",
@@ -118,12 +124,20 @@ describe("the robot glyph at each corner", () => {
 
 describe("the step card's wording", () => {
   it("counts the outstanding point from one", () => {
-    expect(stepLabel(session({ outstanding: 0 }))).toBe("Step 1 of 4");
-    expect(stepLabel(session({ outstanding: 2, captured: 2 }))).toBe("Step 3 of 4");
+    expect(stepLabel(session())).toBe("Step 1 of 4");
+    expect(stepLabel(session({ points: upTo(2) }))).toBe("Step 3 of 4");
   });
 
-  it("stays on the last step once every point is captured", () => {
-    expect(stepLabel(session({ outstanding: null, captured: 4 }))).toBe("Step 4 of 4");
+  it("says every point is captured once none is outstanding", () => {
+    expect(stepLabel(session({ points: upTo(4) }))).toBe("All 4 points captured");
+    expect(isComplete(session({ points: upTo(4) }))).toBe(true);
+  });
+
+  it("reads the outstanding point off the points, not a field that can be absent", () => {
+    const sparse: Partial<CalibrationSession> = session({ points: upTo(4) });
+    delete sparse.outstanding;
+    expect(stepLabel(sparse as CalibrationSession)).toBe("All 4 points captured");
+    expect(outstandingIndex(session({ points: upTo(1) }))).toBe(1);
   });
 
   it("names the corner in words, not as a coordinate", () => {
@@ -146,9 +160,9 @@ describe("the step card's wording", () => {
     expect(placementInstruction(typed)).toBe("Photodiode on (47, 18.5) mm.");
   });
 
-  it("shows the outstanding point, and the last one once there is none", () => {
-    expect(currentPoint(session({ outstanding: 2 }))?.index).toBe(2);
-    expect(currentPoint(session({ outstanding: null }))?.index).toBe(3);
+  it("shows the outstanding point, and none once every one is captured", () => {
+    expect(currentPoint(session({ points: upTo(2) }))?.index).toBe(2);
+    expect(currentPoint(session({ points: upTo(4) }))).toBeNull();
   });
 });
 

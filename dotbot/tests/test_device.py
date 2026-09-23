@@ -47,21 +47,30 @@ def test_device_help_lists_commands(runner):
 
 
 def test_flash_swarmit_sandbox_accepts_calibration(runner):
-    """flash-swarmit-sandbox has --calibration (LH2 lives on dotbot-v3)."""
+    """flash-swarmit-sandbox has --lh2-calibration (LH2 lives on dotbot-v3)."""
     result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "--help"])
     assert result.exit_code == 0
-    assert "--calibration" in result.output
+    assert "--lh2-calibration" in result.output
+    assert " -l," not in result.output
 
 
 def test_flash_mari_gateway_rejects_calibration(runner):
-    """flash-mari-gateway has no --calibration option (gateway has no LH2)."""
+    """flash-mari-gateway has no --lh2-calibration option (gateway has no LH2)."""
     result = runner.invoke(device_cmd, ["flash-mari-gateway", "--help"])
     assert result.exit_code == 0
-    assert "--calibration" not in result.output
+    assert "--lh2-calibration" not in result.output
     # Passing it is an unknown-option error.
     bad = runner.invoke(
         device_cmd,
-        ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.8.0rc1", "-l", "x.out"],
+        [
+            "flash-mari-gateway",
+            "--swarm-id",
+            "1234",
+            "-f",
+            "0.8.0rc1",
+            "--lh2-calibration",
+            "x.toml",
+        ],
     )
     assert bad.exit_code != 0
 
@@ -376,34 +385,95 @@ def _read_word_le(ih, addr):
     return ih[addr] | (ih[addr + 1] << 8) | (ih[addr + 2] << 16) | (ih[addr + 3] << 24)
 
 
-def test_create_config_hex_writes_magic_and_net_id(tmp_path):
-    from dotbot.firmware.flash import CONFIG_ADDR, CONFIG_MAGIC, create_config_hex
-
-    pytest.importorskip("intelhex")
-    from intelhex import IntelHex
-
-    dest = tmp_path / "config.hex"
-    create_config_hex(dest, 0x1234)
-    ih = IntelHex(str(dest))
-    assert _read_word_le(ih, CONFIG_ADDR + 0) == CONFIG_MAGIC
-    assert _read_word_le(ih, CONFIG_ADDR + 4) == 1  # has_net_id
-    assert _read_word_le(ih, CONFIG_ADDR + 8) == 0x1234
-
-
-def test_create_config_hex_appends_calibration(tmp_path):
+def test_create_config_hex_writes_the_page_at_the_config_address(tmp_path):
     from dotbot.firmware.flash import CONFIG_ADDR, create_config_hex
 
     pytest.importorskip("intelhex")
     from intelhex import IntelHex
 
-    # 2 matrices, 36 bytes each, as the page writer emits them.
-    matrices = bytes(range(72))
-    dest = tmp_path / "config-cal.hex"
-    create_config_hex(dest, 0x00AA, calibration=(2, matrices))
+    page = bytes(range(40))
+    dest = tmp_path / "config.hex"
+    create_config_hex(dest, page)
     ih = IntelHex(str(dest))
-    assert _read_word_le(ih, CONFIG_ADDR + 12) == 2  # homography_count
-    got = bytes(ih[CONFIG_ADDR + 16 + i] for i in range(72))
-    assert got == matrices
+    assert bytes(ih[CONFIG_ADDR + i] for i in range(len(page))) == page
+
+
+def test_the_sandbox_page_without_a_calibration_is_erased_past_the_net_id():
+    from dotbot.firmware.flash import swarmit_config_page
+
+    page = swarmit_config_page(0x1234)
+    assert len(page) == 632
+    assert page[:12] == bytes.fromhex("4e525357" "01000000" "34120000")
+    assert page[12:] == b"\xff" * 620
+
+
+def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
+    """swarmit_config_t, 632 bytes, for the fixture file shared with swarmit."""
+    import hashlib
+
+    from dotbot.firmware.flash import load_calibration_file, swarmit_config_page
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML, MESSAGE_HEX
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    page = swarmit_config_page(0x1234, load_calibration_file(path))
+
+    assert len(page) == 632
+    assert page[:64].hex() == (
+        "4e525357010000003412000002000000"
+        "cd6cbe44cdcc18c2cd2c7d449a992742"
+        "9a79bf443313774488855a3e7c61b2bd"
+        "0000803f0008b9c40000484100603845"
+    )
+    assert hashlib.sha256(page).hexdigest() == (
+        "9bc1bdf31f0d72879e8024f0d99f0635e39cca0517be36f2c59f4343e403e45f"
+    )
+    # Station 1 in slot 1, the fourteen unused slots erased, then the site
+    # fields exactly as the calibration message carries them.
+    message = [bytes.fromhex(h) for h in MESSAGE_HEX]
+    assert page[16 + 36 : 16 + 72] == message[1][8:44]
+    assert page[88:592] == b"\xff" * 504
+    assert page[592:632] == message[0][44:84]
+
+
+def test_the_sandbox_page_has_a_slot_per_station_the_calibration_allows():
+    from dotbot.calibration.lighthouse2 import LH2_BASESTATION_COUNT_MAX
+    from dotbot.firmware.flash import LH2_MAX_HOMOGRAPHIES
+
+    assert LH2_MAX_HOMOGRAPHIES == LH2_BASESTATION_COUNT_MAX
+
+
+def test_the_gateway_page_keeps_maris_magic():
+    from dotbot.firmware.flash import config_page
+
+    assert config_page("gateway", 0x1234) == bytes.fromhex(
+        "4d525357" "01000000" "34120000"
+    )
+
+
+def test_a_calibration_that_cannot_reach_a_robot_is_refused_at_flash(tmp_path):
+    from dotbot.firmware.flash import load_calibration_file
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(
+        FIXTURE_TOML.replace('name = "c405-arena"', 'name = "a-name-too-long-for-16"'),
+        encoding="utf-8",
+    )
+    with pytest.raises(click.ClickException, match="1 to 16 characters"):
+        load_calibration_file(path)
+
+
+def test_the_manifest_cache_misses_on_the_old_magic(tmp_path):
+    from dotbot.firmware.flash import build_manifest_payload, manifest_matches
+
+    payload = build_manifest_payload(tmp_path / "c.hex", "dotbot-v3", "local", "1234")
+    assert payload["magic"] == "0x5753524E"
+    assert manifest_matches(payload, "dotbot-v3", "local", "1234")
+    payload["magic"] = "0x5753524D"
+    assert not manifest_matches(payload, "dotbot-v3", "local", "1234")
+    gateway = build_manifest_payload(tmp_path / "g.hex", "gateway", "local", "1234")
+    assert gateway["magic"] == "0x5753524D"
 
 
 def test_intelhex_is_a_core_dependency():
@@ -727,7 +797,7 @@ def test_flash_role_programs_the_selected_schedule_image(tmp_path, monkeypatch):
     monkeypatch.setattr(
         flash,
         "create_config_hex",
-        lambda dest, net_id_value, calibration=None: dest.write_text(""),
+        lambda dest, page: dest.write_text(""),
     )
     flash.flash_role(
         "gateway",

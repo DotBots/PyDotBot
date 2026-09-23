@@ -7,11 +7,16 @@ The fleet-side home for LH2 calibration: capture and send a calibration
 without a serial cable, driving DotBots through the swarmit transport. Two
 subcommands:
 
-- `collect` - walk the robots through a placement's points, trigger a
-              raw-count capture per point over the air, solve every visible
-              station by least squares, and save a schema 2 calibration
-              under ~/.dotbot/calibrations/<site>/.
-- `push <path|id>` - send a saved calibration to the robots over the air.
+- `collect` - walk the robots through a placement's points, take a
+              raw-count capture per point over the air (the robot's button,
+              or Enter with --device), solve every visible station by least
+              squares, and save a schema 2 calibration under
+              ~/.dotbot/calibrations/<site>/.
+- `push <path|id>` - check the robots' device info, send a saved
+              calibration over the air, and list the robots still on
+              another id.
+- `reframe <path|id>` - re-express a saved calibration in another site's
+              frame and re-solve it from its stored samples.
 
 The homography solve lives in PyDotBot (`dotbot.calibration.lighthouse2`);
 the transport lives in swarmit.
@@ -24,7 +29,9 @@ extra; ImportError at invocation prints an install hint instead of a
 traceback.
 """
 
+import queue
 import sys
+import threading
 import time
 
 import click
@@ -32,7 +39,7 @@ import click
 from dotbot.cli._site import site_from_context
 
 
-def _swarmit_client(ctx, conn, swarm_id, device=None):
+def _swarmit_client(ctx, conn, swarm_id):
     """A swarmit client for this CLI invocation.
 
     Falls back to the unified dotbot config's `conn` / `swarm_id` (like
@@ -53,30 +60,80 @@ def _swarmit_client(ctx, conn, swarm_id, device=None):
 
     from dotbot.swarm_client import build_swarmit_client
 
-    return build_swarmit_client(conn, swarm_id, device)
+    return build_swarmit_client(conn, swarm_id)
 
 
 @click.group(
     name="calibrate-lh2",
-    help="Over-the-air LH2 calibration: collect, push.",
+    help="Over-the-air LH2 calibration: collect, push, reframe.",
 )
 def cmd() -> None:
     pass
+
+
+def _await_point(session, stream, arrivals: queue.Queue):
+    """Capture the outstanding point from whichever trigger comes first.
+
+    A capture from any robot's button is stored as the point directly. Enter
+    runs the READY-mode capture of the stream's device (DEPRECATED, in favour
+    of the button); it only arrives when collect has a --device.
+    """
+    from dotbot.calibration.session import SessionError
+
+    while True:
+        try:
+            kind, capture = arrivals.get(timeout=0.5)
+        except queue.Empty:
+            for addr, press in stream.expired_presses():
+                click.echo(
+                    f"  ! incomplete capture from {addr} (press {press}): a "
+                    "chunk never arrived; press again",
+                    err=True,
+                )
+            continue
+        if kind == "eof":
+            raise click.Abort()
+        if kind == "enter":
+            try:
+                return session.capture(stream)
+            except TimeoutError as exc:
+                click.echo(f"  ! {exc}", err=True)
+                raise click.Abort()
+        if capture.lost:
+            click.echo(
+                f"  ! {capture.device}: {capture.lost} capture(s) lost before "
+                f"press {capture.press}",
+                err=True,
+            )
+        try:
+            point = session.store_reads(capture.reads, capture.device)
+        except SessionError as exc:
+            click.echo(f"  ! {exc}", err=True)
+            continue
+        if point is None:
+            continue
+        click.echo(f"  received from {capture.device} as point {point.index}")
+        return point
 
 
 @cmd.command(
     name="collect",
     help=(
         "Collect an LH2 calibration over the air (no serial cable). Walks "
-        "you through the points of one placement, triggers n captures per "
-        "point via swarmit, solves every visible station, and saves the "
+        "you through the points of one placement, takes each point's reads "
+        "from the robot's button (calibrate app running) or, with --device, "
+        "from Enter, solves every visible station, and saves the "
         "calibration."
     ),
 )
 @click.option(
     "--device",
-    required=True,
-    help="DotBot link-layer address in hex (e.g. BC3D3C8A2A6F8E68).",
+    default=None,
+    help=(
+        "DotBot link-layer address in hex (e.g. BC3D3C8A2A6F8E68) that Enter "
+        "captures from, with its app stopped (READY). Deprecated in favour of "
+        "the calibrate app's button, which needs no address."
+    ),
 )
 @click.option(
     "-n",
@@ -123,21 +180,22 @@ def cmd() -> None:
     default=None,
     type=int,
     help=(
-        "Captures averaged per point. A single read costs about 60 % of the "
-        "accuracy at every point of the field."
+        "Captures averaged per point on Enter (--device); the calibrate app "
+        "sets its own. A single read costs about 60 % of the accuracy at "
+        "every point of the field."
     ),
 )
 @click.option(
     "--timeout",
     default=None,
     type=float,
-    help="Seconds to wait for each capture before re-triggering.",
+    help="Seconds to wait for each Enter capture before re-triggering.",
 )
 @click.option(
     "--retries",
     default=None,
     type=int,
-    help="Re-trigger this many times per capture before giving up.",
+    help="Re-trigger an Enter capture this many times before giving up.",
 )
 @click.option(
     "--tag",
@@ -150,7 +208,10 @@ def cmd() -> None:
 @click.option(
     "--push",
     is_flag=True,
-    help="Send the computed calibration back to the robots over the air.",
+    help=(
+        "Send the computed calibration over the air to the robots whose "
+        "captures built it (and to --device, when given)."
+    ),
 )
 @click.pass_context
 def _collect(
@@ -193,7 +254,7 @@ def _collect(
         session = CalibrationSession.resolve(
             specs,
             site=site,
-            device=device,
+            device=device or "",
             reads=reads if reads is not None else CAPTURE_READS_DEFAULT,
             timeout=timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT,
             retries=retries if retries is not None else CAPTURE_RETRIES_DEFAULT,
@@ -202,41 +263,51 @@ def _collect(
         raise click.ClickException(str(exc)) from exc
 
     try:
-        client = _swarmit_client(ctx, conn, swarm_id, device)
+        client = _swarmit_client(ctx, conn, swarm_id)
     except click.ClickException:
         raise
     except Exception as exc:
         click.echo(f"Could not reach the swarm: {exc}", err=True)
         sys.exit(1)
 
+    arrivals: queue.Queue = queue.Queue()
+
+    def on_button_capture(capture) -> None:
+        arrivals.put(("button", capture))
+
+    def read_enter() -> None:
+        for _ in iter(sys.stdin.readline, ""):
+            arrivals.put(("enter", None))
+        arrivals.put(("eof", None))
+
     with client:
-        with CaptureSession(client, device, LH2_CALIB_TAG) as stream:
+        with CaptureSession(
+            client, device, LH2_CALIB_TAG, on_button_capture=on_button_capture
+        ) as stream:
             # Give the transport's own connect/subscribe log lines a beat to
             # print before our prompts, so the two don't interleave on screen.
             time.sleep(0.2)
             click.echo(
                 collect_header(
-                    site, site_source, len(session.points), session.reads, device
+                    site, site_source, len(session.points), session.reads, device or ""
                 )
             )
+            trigger = "the robot's button"
+            if device:
+                trigger = "Enter"
+                threading.Thread(target=read_enter, daemon=True).start()
             while not session.complete:
                 outstanding = session.outstanding
-                click.prompt(
+                click.echo(
                     "  "
                     + point_prompt(
                         outstanding.index,
                         len(session.points),
                         outstanding.placement,
-                    ),
-                    default="",
-                    show_default=False,
-                    prompt_suffix="",
+                        trigger,
+                    )
                 )
-                try:
-                    point = session.capture(stream)
-                except TimeoutError as exc:
-                    click.echo(f"  ! {exc}", err=True)
-                    raise click.Abort()
+                point = _await_point(session, stream, arrivals)
                 for sample in point.capture.samples:
                     counts = sample.mean_counts()
                     click.echo(
@@ -265,8 +336,7 @@ def _collect(
         click.echo(f"Calibration id {calibration.id}, site {site.name}")
 
         if push:
-            client.send_lh2_calibration(session.push_payload())
-            click.echo("Sent the calibration to the robots over the air.")
+            _gated_push(client, calibration, devices=session.push_devices)
         else:
             click.echo(
                 "To send it to the robots over the air:\n"
@@ -279,7 +349,10 @@ def _collect(
     help=(
         "Send a saved LH2 calibration to the robots over the air. Takes a "
         "file path or the id prefix of a file under "
-        "~/.dotbot/calibrations/<site>/."
+        "~/.dotbot/calibrations/<site>/. Reads device info first: refuses "
+        "robots on firmware older than this host, which need a reflash, and "
+        "robots that report another site, then lists the robots still on "
+        "another id."
     ),
 )
 @click.argument("calibration")
@@ -309,10 +382,17 @@ def _collect(
         "The site to look the id up under. Defaults to `site` in the dotbot " "config."
     ),
 )
+@click.option(
+    "--site-changed",
+    is_flag=True,
+    help=(
+        "The robots really moved to the file's site: push even where they "
+        "report another one."
+    ),
+)
 @click.pass_context
-def _push(ctx, calibration, conn, swarm_id, site_name):
+def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
     from dotbot.calibration.lighthouse2 import (
-        calibration_payload_int32,
         read_calibration_file,
         resolve_calibration_path,
     )
@@ -320,15 +400,139 @@ def _push(ctx, calibration, conn, swarm_id, site_name):
     site, _ = site_from_context(ctx, site_name)
     try:
         path = resolve_calibration_path(calibration, site=site.name)
+        loaded = read_calibration_file(path)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    loaded = read_calibration_file(path)
-    payload = calibration_payload_int32(loaded.stations)
-    click.echo(
-        f"Sending {len(loaded.stations)} calibration matrix/matrices "
-        f"({len(payload)} B, id {loaded.id8}, site {site.name}) to the swarm..."
-    )
     client = _swarmit_client(ctx, conn, swarm_id)
     with client:
-        client.send_lh2_calibration(payload)
-    click.echo("Sent.")
+        _gated_push(client, loaded, site_changed=site_changed)
+
+
+def _gated_push(client, calibration, site_changed=False, devices=None):
+    """Check the robots' device info, push, and print the stale-id worklist."""
+    from dotbot.calibration.lighthouse2 import calibration_payload
+    from dotbot.calibration.push import PushRefused, gate_push, push_worklist
+
+    try:
+        payload = calibration_payload(calibration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo("Reading device info...")
+    try:
+        check = gate_push(client, calibration, site_changed, devices)
+    except PushRefused as exc:
+        raise click.ClickException(f"push refused:\n{exc}") from exc
+    if check.other_site:
+        click.echo(
+            f"{len(check.other_site)} robot(s) move to site "
+            f"{calibration.site.name} (--site-changed)."
+        )
+    click.echo(
+        f"Sending {len(calibration.stations)} calibration matrix/matrices "
+        f"({len(payload)} B, id {calibration.id8}, site {calibration.site.name}) "
+        f"to the swarm; {len(check.stale)} robot(s) hold another id..."
+    )
+    client.send_lh2_calibration(payload, check.send_to)
+    click.echo("Sent. Waiting for the robots to report the new id...")
+    stale = push_worklist(client, calibration, check.addresses)
+    if stale:
+        click.echo(
+            f"Still not on {calibration.id8} ({len(stale)}), push again: "
+            + ", ".join(stale)
+        )
+    else:
+        click.echo(f"Every robot reports {calibration.id8}.")
+
+
+def _parse_shift(_ctx, _param, value):
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError as exc:
+        raise click.BadParameter("takes two numbers in mm, `x,y`") from exc
+    return (x, y)
+
+
+@cmd.command(
+    name="reframe",
+    help=(
+        "Re-express a saved calibration in another site's frame, without a "
+        "capture: shift (and turn) every placement's points, re-solve every "
+        "station from the stored samples, and save a new file with a new id "
+        "under ~/.dotbot/calibrations/<site>/."
+    ),
+)
+@click.argument("calibration")
+@click.option(
+    "--site",
+    "site_name",
+    required=True,
+    help="The site to re-express it in, as declared in the dotbot config.",
+)
+@click.option(
+    "--shift",
+    required=True,
+    callback=_parse_shift,
+    help=(
+        "Translation applied after the turn, `x,y` in mm. Without --rotate it "
+        "is where the old frame's zero lands in the new one."
+    ),
+)
+@click.option(
+    "--rotate",
+    type=float,
+    default=0.0,
+    show_default=True,
+    help=(
+        "Degrees to turn the points about the first placement's first point "
+        "before shifting; positive turns x toward y."
+    ),
+)
+@click.pass_context
+def _reframe(ctx, calibration, site_name, shift, rotate):
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        reframe_calibration,
+        resolve_calibration_path,
+        write_calibration,
+    )
+
+    site, _ = site_from_context(ctx, site_name)
+    if site.extent_mm is None and not site.anchor:
+        raise click.ClickException(
+            f"site {site_name!r} is not declared in the dotbot config; add a "
+            f"[sites.{site_name}] table with its anchor and extent first"
+        )
+    try:
+        source = read_calibration_file(resolve_calibration_path(calibration))
+        reframed = reframe_calibration(source, site, shift, rotate)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    path = write_calibration(reframed)
+    click.echo(
+        f"Reframed {source.id8} (site {source.site.name}) into site {site.name}: "
+        f"shift {shift[0]:g},{shift[1]:g} mm, rotate {rotate:g} deg"
+    )
+    before = {s.index: s.residual_mm for s in source.stations}
+    for station in reframed.stations:
+        was = before.get(station.index)
+        was_text = "" if was is None else f" (was {was:.6f})"
+        click.echo(
+            f"station {station.index}: {station.points} points, "
+            f"residual {station.residual_mm:.6f} mm{was_text}"
+        )
+    x0, y0, x1, y1 = reframed.valid_mm
+    outside = [
+        (x, y)
+        for placement in reframed.placements
+        for x, y in placement.points_mm
+        if not (x0 <= x <= x1 and y0 <= y <= y1)
+    ]
+    if outside:
+        click.echo(
+            f"warning: {len(outside)} point(s) fall outside the site's "
+            f"valid_mm {list(reframed.valid_mm)}; robots there would drop "
+            "their positions",
+            err=True,
+        )
+    click.echo(f"\nCalibration saved to {path}")
+    click.echo(f"Calibration id {reframed.id}, site {site.name}")

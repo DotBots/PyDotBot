@@ -55,7 +55,7 @@ import {
   LH2Position,
   PlannedMission,
 } from "./types";
-import { useCalibration } from "./useCalibration";
+import { useCalibration, useCapturer } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
@@ -103,7 +103,6 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
-  const calibration = useCalibration(setSession);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -128,6 +127,10 @@ export const App: React.FC = () => {
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
+  const calibration = useCalibration(setSession, selection);
+  // The robot chosen to capture: clicked on the map, typed in the card, or
+  // the one whose button took the last point.
+  const [capturer, setCapturer] = useCapturer(session);
   const preselRef = useRef(false);
   React.useEffect(() => {
     if (preselRef.current || bots.length === 0) return;
@@ -150,8 +153,6 @@ export const App: React.FC = () => {
     trails: false,
     crashedOnly: false,
   });
-  // The robot chosen to capture: clicked on the map, or typed in the card.
-  const [capturer, setCapturer] = useState("");
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [conn, setConn] = useState<ControllerConnection | null>(null);
@@ -542,7 +543,7 @@ export const App: React.FC = () => {
             session={session}
             calibration={calibration}
             areaNames={session.area ? [session.area] : []}
-            device={capturer || session.device || ""}
+            device={capturer}
             onDeviceChange={setCapturer}
             phone
             onDone={() => calibration.abandon()}
@@ -704,7 +705,7 @@ export const App: React.FC = () => {
           calibrationBusy={calibration.busy}
           calibrationError={calibration.error}
           onCalibrate={onCalibrate}
-          onPushStale={() => calibration.push()}
+          onPushCalibration={(stale) => calibration.push(stale)}
         />
 
         {/* view area */}
@@ -831,7 +832,7 @@ export const App: React.FC = () => {
           onRobotOpacity={onRobotOpacity}
           session={session}
           calibration={calibration}
-          device={capturer || session?.device || ""}
+          device={capturer}
           onDeviceChange={setCapturer}
           onCalibrationDone={() => calibration.abandon()}
         />

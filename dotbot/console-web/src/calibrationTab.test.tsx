@@ -184,3 +184,76 @@ describe("the Calibrate tab", () => {
     expect(abandonCalibration).toHaveBeenCalled();
   });
 });
+
+// A capture from a robot's own button reaches the console only as a session
+// update: point k captured, the pressing robot as the session's device.
+const afterCaptures = (
+  n: number,
+  device: string,
+  over: Partial<CalibrationSession> = {},
+): CalibrationSession => ({
+  ...SESSION,
+  device,
+  captured: n,
+  outstanding: n < 4 ? n : null,
+  points: SESSION.points.map((p) => ({ ...p, captured: p.index < n })),
+  ...over,
+});
+
+const capturing = () =>
+  screen.getByPlaceholderText(/click a robot on the map/) as HTMLInputElement;
+
+describe("the step card following the robot's button", () => {
+  it("advances the step and adopts the robot that pressed", () => {
+    const { rerender } = render(<App />);
+    session = SESSION;
+    act(() => rerender(<App />));
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
+    expect(capturing().value).toBe("");
+
+    session = afterCaptures(1, "ABCD");
+    act(() => rerender(<App />));
+
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
+    expect(capturing().value).toBe("ABCD");
+  });
+
+  it("replaces a robot typed in the card with the one that pressed", () => {
+    const { rerender } = render(<App />);
+    session = SESSION;
+    act(() => rerender(<App />));
+    fireEvent.change(capturing(), { target: { value: "1234" } });
+    expect(capturing().value).toBe("1234");
+
+    session = afterCaptures(1, "ABCD");
+    act(() => rerender(<App />));
+    expect(capturing().value).toBe("ABCD");
+
+    // A pick made after that capture stands until the next one.
+    fireEvent.change(capturing(), { target: { value: "5678" } });
+    session = afterCaptures(1, "ABCD");
+    act(() => rerender(<App />));
+    expect(capturing().value).toBe("5678");
+  });
+
+  it("moves to save and push after the last point, never a NaN step", () => {
+    const { rerender } = render(<App />);
+    session = afterCaptures(3, "ABCD");
+    act(() => rerender(<App />));
+    expect(screen.getByText("Step 4 of 4")).toBeInTheDocument();
+
+    // The notification of a complete session, with `outstanding` absent as
+    // a sparse serialisation drops a null: the card reads the points.
+    const complete: Partial<CalibrationSession> = afterCaptures(4, "ABCD");
+    delete complete.outstanding;
+    session = complete as CalibrationSession;
+    act(() => rerender(<App />));
+
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.getByText("All 4 points captured")).toBeInTheDocument();
+    expect(screen.getByText("After the last point")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
+    expect(screen.getByText("Push")).toBeInTheDocument();
+    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+  });
+});

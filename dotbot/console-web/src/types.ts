@@ -204,6 +204,9 @@ export interface SwarmitDeviceInfo {
   image_digest: string;
   lh2_homography_count?: number;
   lh2_flags?: number;
+  // Device info v2: the site and calibration id the bot holds, "" for none.
+  lh2_site_name?: string;
+  lh2_calibration_id?: string;
   // Display strings swarmit computes; the console renders them verbatim.
   lh2_summary?: string;
   image_state_name?: string;

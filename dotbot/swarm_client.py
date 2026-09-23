@@ -19,8 +19,8 @@ from typing import Any
 from dotbot.mqtt_tls import allow_unverified_broker
 
 
-def build_swarmit_client(conn: str, swarm_id: str, device: str | None = None) -> Any:
-    """A swarmit client targeting one `device`, or the whole swarm when None.
+def build_swarmit_client(conn: str, swarm_id: str) -> Any:
+    """A swarmit client over the whole swarm.
 
     Transport selection is swarmit's call: `build_client` probes for a
     running swarmit server and falls back to an in-process controller on its
@@ -46,7 +46,7 @@ def build_swarmit_client(conn: str, swarm_id: str, device: str | None = None) ->
         mqtt_password=final.get("mqtt_password"),
         network_id=int(final["swarmit_network_id"], 16),
         adapter=final["adapter"],
-        devices=[device.upper()] if device else [],
+        devices=[],
         verbose=False,
     )
     return build_client(settings)
