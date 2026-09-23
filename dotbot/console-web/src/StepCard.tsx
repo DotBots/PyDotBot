@@ -4,6 +4,7 @@ import {
   cornerTitle,
   currentPoint,
   expectedErrorLine,
+  isComplete,
   placementInstruction,
   readFraction,
   residualLines,
@@ -103,7 +104,7 @@ export const StepCard: React.FC<StepCardProps> = ({
   onDone,
 }) => {
   const point = currentPoint(session);
-  const done = session.outstanding === null;
+  const done = isComplete(session);
   const expected = expectedErrorLine(session, areaNames);
   const message = calibration.error || session.error;
 

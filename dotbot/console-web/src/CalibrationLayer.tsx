@@ -1,7 +1,12 @@
 import React from "react";
 
 import { BOT_GLYPH_BOX, BotGlyph } from "./BotGlyph";
-import { insideFromCorner, noseHeading, sessionRect } from "./calibration";
+import {
+  insideFromCorner,
+  noseHeading,
+  outstandingIndex,
+  sessionRect,
+} from "./calibration";
 import { areaToFraction } from "./frame";
 import type { Area, CalibrationSession } from "./types";
 
@@ -90,6 +95,7 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
 }) => {
   const rect = sessionRect(session);
   if (!rect) return null;
+  const outstanding = outstandingIndex(session);
   const topLeft = areaToFraction({ x: rect.x, y: rect.y }, viewport);
   const bottomRight = areaToFraction(
     { x: rect.x + rect.w, y: rect.y + rect.h },
@@ -148,7 +154,7 @@ export const CalibrationLayer: React.FC<CalibrationLayerProps> = ({
           <Marker
             index={p.index}
             captured={p.captured}
-            current={session.outstanding === p.index}
+            current={outstanding === p.index}
             corner={p.corner}
             nose={p.nose}
             chrome={chrome}
@@ -169,6 +175,7 @@ export const RectThumb: React.FC<{ session: CalibrationSession; size?: number }>
 }) => {
   const rect = sessionRect(session);
   if (!rect || rect.w === 0 || rect.h === 0) return null;
+  const outstanding = outstandingIndex(session);
   const pad = 0.12;
   const box: Area = {
     x: rect.x - rect.w * pad,
@@ -216,12 +223,12 @@ export const RectThumb: React.FC<{ session: CalibrationSession; size?: number }>
             justifyContent: "center",
             font: "700 10px/1 var(--font-mono)",
             border: `1px solid ${
-              session.outstanding === p.index ? "var(--accent)" : "var(--hairline)"
+              outstanding === p.index ? "var(--accent)" : "var(--hairline)"
             }`,
             background:
-              session.outstanding === p.index ? "var(--accent)" : "var(--surface)",
+              outstanding === p.index ? "var(--accent)" : "var(--surface)",
             color:
-              session.outstanding === p.index
+              outstanding === p.index
                 ? "#fff"
                 : p.captured
                   ? "var(--s-Running)"

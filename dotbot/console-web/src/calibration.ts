@@ -61,10 +61,27 @@ export function insideFromCorner(corner: string | null): { dx: number; dy: numbe
   };
 }
 
+/**
+ * The index of the point waiting to be captured, or null once every one is.
+ * Read off the points, as the map's ticks are, so the card and the map
+ * cannot disagree.
+ */
+export function outstandingIndex(session: CalibrationSession): number | null {
+  const index = session.points.findIndex((p) => !p.captured);
+  return index < 0 ? null : index;
+}
+
+/** Every point captured: the card moves on to solve, save and push. */
+export function isComplete(session: CalibrationSession): boolean {
+  return outstandingIndex(session) === null;
+}
+
 /** "Step 3 of 4", one-based, for the point still outstanding. */
 export function stepLabel(session: CalibrationSession): string {
-  const step = session.outstanding === null ? session.total : session.outstanding + 1;
-  return `Step ${step} of ${session.total}`;
+  const index = outstandingIndex(session);
+  const total = session.points.length;
+  if (index === null) return `All ${total} points captured`;
+  return `Step ${index + 1} of ${total}`;
 }
 
 /** The corner named in words, as a sentence opener: "Bottom-left corner". */
@@ -79,11 +96,10 @@ export function placementInstruction(point: CalibrationPoint): string {
   return `Photodiode on (${point.x}, ${point.y}) mm.`;
 }
 
-/** The point the card is about: the outstanding one, else the last. */
+/** The point still to capture, or null once there is none. */
 export function currentPoint(session: CalibrationSession): CalibrationPoint | null {
-  if (session.points.length === 0) return null;
-  const index = session.outstanding ?? session.points.length - 1;
-  return session.points[index] ?? null;
+  const index = outstandingIndex(session);
+  return index === null ? null : session.points[index];
 }
 
 /** How far one station's reads have got, as a fraction of the target. */

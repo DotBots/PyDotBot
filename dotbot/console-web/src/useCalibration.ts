@@ -98,3 +98,18 @@ export function useCalibration(
       }),
   };
 }
+
+/**
+ * The robot the card captures with: the one clicked or typed since the
+ * session last changed hands, else the session's own, which each capture
+ * sets, a button press included. A pick is tied to the capture count and
+ * device it was made at, so the next capture from any robot replaces it.
+ */
+export function useCapturer(
+  session: CalibrationSession | null,
+): [string, (device: string) => void] {
+  const [pick, setPick] = useState({ device: "", at: "" });
+  const at = session ? `${session.captured} ${session.device}` : "";
+  const device = pick.at === at && pick.device ? pick.device : (session?.device ?? "");
+  return [device, (next) => setPick({ device: next, at })];
+}
