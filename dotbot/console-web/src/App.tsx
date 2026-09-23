@@ -410,10 +410,10 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts, nothingSelected]);
 
-  // Each side panel's key collapses it or expands it again.
+  // Each side panel's key collapses it or expands it again, once per press.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (shortcuts || typingIn(e.target)) return;
+      if (shortcuts || e.repeat || typingIn(e.target)) return;
       if (pressed(e, ACTION_KEY.leftPanel)) setRailCollapsed((c) => !c);
       else if (pressed(e, ACTION_KEY.rightPanel)) setRightCollapsed((c) => !c);
       else return;

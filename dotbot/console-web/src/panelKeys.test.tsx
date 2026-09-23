@@ -129,6 +129,13 @@ describe("the side panel keys", () => {
     expect(toggle("Collapse", "right")).toBeInTheDocument();
   });
 
+  it("toggle once for a key held down, not once per auto-repeat", () => {
+    render(<App />);
+    press(ACTION_KEY.leftPanel);
+    fireEvent.keyDown(document.body, { key: ACTION_KEY.leftPanel, repeat: true });
+    expect(toggle("Expand", "left")).toBeInTheDocument();
+  });
+
   it("are left alone while a field has focus", () => {
     render(<App />);
     const slider = screen.getByLabelText("Zoom");
