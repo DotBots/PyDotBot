@@ -13,6 +13,7 @@ import {
 const pose = (over: Partial<BotPose> = {}): BotPose => ({
   heading_deg: 90,
   heading_source: "travel",
+  photodiode: { x: 0, y: 0 },
   axle: { x: 0, y: 0 },
   centre: { x: 0, y: 0 },
   nose: { x: 0, y: 0 },

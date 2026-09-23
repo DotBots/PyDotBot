@@ -537,7 +537,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // the body the controller shipped, so a bot it could not expand into one is
   // that floor, a point rather than an area.
   const botDraw = (b: UnifiedBot) => {
-    const body = shaped ? botBody(b.pose, b.position) : null;
+    const body = shaped ? botBody(b.pose) : null;
     const footprintPx = botFootprintPx(perMm, body?.spanMm ?? 0);
     // How much of the robot is worth drawing at that size, with the fleet's
     // own size as the tie-breaker.

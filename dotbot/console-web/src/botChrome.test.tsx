@@ -51,6 +51,7 @@ const bodyPose = (at: LH2Position, heading = 45): BotPose => {
   return {
     heading_deg: heading,
     heading_source: "travel",
+    photodiode: at,
     axle: place({ x: 0, y: -53.5 }),
     centre: place({ x: 0, y: -29 }),
     nose: place({ x: 0, y: 18.5 }),

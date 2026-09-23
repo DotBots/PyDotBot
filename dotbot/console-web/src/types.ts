@@ -57,6 +57,8 @@ export type HeadingSource = "none" | "travel" | "ekf";
 export interface BotPose {
   heading_deg: number;
   heading_source: HeadingSource;
+  /** Where the pose places the LH2 photodiode. */
+  photodiode: LH2Position;
   axle: LH2Position;
   centre: LH2Position;
   nose: LH2Position;

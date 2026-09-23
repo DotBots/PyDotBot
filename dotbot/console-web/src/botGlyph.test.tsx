@@ -67,6 +67,7 @@ const pose = (heading = 0, over: Partial<BotPose> = {}): BotPose => {
   return {
     heading_deg: heading,
     heading_source: "travel",
+    photodiode: SENSOR,
     axle: place({ x: 0, y: -53.5 }),
     centre: place({ x: 0, y: -29 }),
     nose: place({ x: 0, y: 18.5 }),
@@ -79,7 +80,7 @@ const pose = (heading = 0, over: Partial<BotPose> = {}): BotPose => {
 
 describe("the body a pose describes", () => {
   it("is the payload's own path, put back on the fix it belongs to", () => {
-    const body = botBody(pose(), SENSOR)!;
+    const body = botBody(pose())!;
     expect(body.outline).toEqual(V3_AT_ORIGIN);
     expect(body.centre).toEqual({ x: 0, y: -29 });
     expect(body.nose).toEqual({ x: 0, y: 18.5 });
@@ -90,20 +91,36 @@ describe("the body a pose describes", () => {
     // frame instead, a body turned 45 degrees spans 134 mm and the chrome
     // around it would breathe as the robot turned.
     for (const heading of [0, 37, 90, 180, -135]) {
-      const turned = botBody(pose(heading), SENSOR)!;
+      const turned = botBody(pose(heading))!;
       expect(turned.spanMm).toBeCloseTo(95, 6);
     }
   });
 
   it("is nothing at all without a heading, which is the whole rule", () => {
-    expect(botBody(pose(0, { heading_source: "none" }), SENSOR)).toBeNull();
+    expect(botBody(pose(0, { heading_source: "none" }))).toBeNull();
   });
 
-  it("is nothing without a pose or without a fix to hang it on", () => {
-    expect(botBody(undefined, SENSOR)).toBeNull();
-    expect(botBody(null, SENSOR)).toBeNull();
-    expect(botBody(pose(), null)).toBeNull();
-    expect(botBody(pose(0, { outline: [] }), SENSOR)).toBeNull();
+  it("is hung off the pose's photodiode, not the LH2 fix", () => {
+    // A pose placed 10 mm off SENSOR, the bot's lh2_position: read against
+    // the fix the board would come out 10 mm askew.
+    const shift = (p: LH2Position): LH2Position => ({ x: p.x + 10, y: p.y });
+    const p = pose();
+    const body = botBody({
+      ...p,
+      photodiode: shift(p.photodiode),
+      centre: shift(p.centre),
+      nose: shift(p.nose),
+      outline: p.outline.map(shift),
+    })!;
+    expect(body.outline).toEqual(V3_AT_ORIGIN);
+    expect(body.centre).toEqual({ x: 0, y: -29 });
+    expect(body.nose).toEqual({ x: 0, y: 18.5 });
+  });
+
+  it("is nothing without a pose or an outline", () => {
+    expect(botBody(undefined)).toBeNull();
+    expect(botBody(null)).toBeNull();
+    expect(botBody(pose(0, { outline: [] }))).toBeNull();
   });
 });
 
@@ -161,7 +178,7 @@ describe("the glyph a level draws", () => {
   const svg = (props: Parameters<typeof BotGlyph>[0]) =>
     render(<BotGlyph {...props} />).container.querySelector("svg")!;
 
-  const body = botBody(pose(), SENSOR);
+  const body = botBody(pose());
 
   it("draws the layers of one robot at full detail", () => {
     const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
@@ -183,7 +200,7 @@ describe("the glyph a level draws", () => {
   });
 
   it("draws the board alone from a host that sends no tyres", () => {
-    const older = botBody(pose(0, { wheels: undefined }), SENSOR)!;
+    const older = botBody(pose(0, { wheels: undefined }))!;
     const el = svg({ color: "red", body: older, pxPerMm: 1, footprintPx: 95 });
     expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(0);
     expect(el.querySelectorAll('[data-layer="board"]')).toHaveLength(1);

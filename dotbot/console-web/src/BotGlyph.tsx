@@ -54,7 +54,7 @@ export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
 }
 
 /**
- * One robot's body to draw, in millimetres from its own photodiode fix, so it
+ * One robot's body to draw, in millimetres from the pose's photodiode, so it
  * can be hung off the point the map already places the bot at.
  *
  * `spanMm` is the body's own size, measured along its heading and across it,
@@ -77,16 +77,14 @@ export function hasHeading(pose: BotPose | null | undefined): boolean {
 }
 
 /**
- * The body to draw around a fix at `sensor`, or null when there is nothing to
- * draw one from: no pose, no fix, no heading, or an outline too short to be a
- * polygon.
+ * The body to draw around the pose's photodiode, or null when there is
+ * nothing to draw one from: no pose, no heading, or an outline too short to
+ * be a polygon.
  */
-export function botBody(
-  pose: BotPose | null | undefined,
-  sensor: LH2Position | null,
-): BotBody | null {
-  if (!pose || !sensor || !hasHeading(pose)) return null;
+export function botBody(pose: BotPose | null | undefined): BotBody | null {
+  if (!pose || !hasHeading(pose)) return null;
   if (pose.outline.length < 3) return null;
+  const sensor = pose.photodiode;
   const rel = (p: LH2Position): LH2Position => ({
     x: p.x - sensor.x,
     y: p.y - sensor.y,
@@ -118,7 +116,7 @@ export function botFootprintPx(pxPerMm: number, spanMm: number): number {
   return Math.max(BOT_MIN_PX, spanMm * pxPerMm);
 }
 
-/** How far from the fix the body reaches, in millimetres, tyres included. */
+/** How far from the photodiode the body reaches, in millimetres, tyres included. */
 function reachMm(body: BotBody): number {
   const points = [...body.outline, ...body.wheels.flat()];
   return Math.max(...points.map((p) => Math.hypot(p.x, p.y)));
@@ -134,7 +132,7 @@ interface BotGlyphProps {
 }
 
 /**
- * The bot as one SVG whose origin is its photodiode fix, so the caller places
+ * The bot as one SVG whose origin is the pose's photodiode, so the caller places
  * it at the point it already has and the body falls where the pose puts it.
  */
 export const BotGlyph: React.FC<BotGlyphProps> = ({
@@ -149,7 +147,7 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
     y: p.y * pxPerMm,
   });
   const detail = body !== null && level === "detail";
-  // Half the box the drawing needs, measured from the fix at its origin.
+  // Half the box the drawing needs, measured from the photodiode at its origin.
   const half = !body
     ? footprintPx / 2
     : detail
