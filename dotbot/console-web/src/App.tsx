@@ -260,9 +260,10 @@ export const App: React.FC = () => {
   // What the map opens on, once the canvas has a size and the site is known.
   // `?zoom=<site|area-name>` is an instruction and wins; failing that the map
   // returns to the floor this browser was last looking at, which is stored as
-  // a rectangle and fitted here, so a window of another size lands on the
-  // same floor rather than on the same pixels. Neither, and it opens on the
-  // whole site, as a map with nothing remembered always has.
+  // its centre point and pixels per millimetre, so a window of another size
+  // shows the same floor at the same size rather than the same pixels.
+  // Neither, and it opens on the whole site, as a map with nothing remembered
+  // always has.
   const [openingViews] = useState(loadSavedViews);
   const openedRef = useRef(false);
   useEffect(() => {
