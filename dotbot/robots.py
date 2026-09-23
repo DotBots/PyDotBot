@@ -97,7 +97,7 @@ class RobotGeometry:
     wheel_diameter_mm: float
     tyre_width_mm: float
     # The motor connector pin block, whose red housing is the axle the camera
-    # detector fits: M1 to M2 centre to centre, then one housing's footprint.
+    # detector fits: J5 to J6 centre to centre, then one housing's footprint.
     connector_spacing_mm: float
     connector_width_mm: float
     connector_length_mm: float
@@ -325,7 +325,7 @@ ROBOTS: dict[str, RobotGeometry] = {
         track_mm=78.0,
         wheel_diameter_mm=44.0,
         tyre_width_mm=17.5,
-        connector_spacing_mm=27.0,  # M1 to M2
+        connector_spacing_mm=27.0,  # J5 to J6
         connector_width_mm=12.0,
         connector_length_mm=10.0,
         encoder_cpr=28,
