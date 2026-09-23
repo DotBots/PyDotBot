@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import cached_property
 from enum import IntEnum
 from typing import NamedTuple
 
@@ -113,14 +114,14 @@ class RobotGeometry:
                 "a non-zero lever angle is not handled"
             )
 
-    @property
+    @cached_property
     def outline_bbox(self) -> tuple[float, float, float, float]:
         """(x_min, y_min, x_max, y_max) of the outline."""
         xs = [p.x for p in self.outline_path]
         ys = [p.y for p in self.outline_path]
         return (min(xs), min(ys), max(xs), max(ys))
 
-    @property
+    @cached_property
     def outline_centre(self) -> Point:
         x_min, y_min, x_max, y_max = self.outline_bbox
         return Point((x_min + x_max) / 2, (y_min + y_max) / 2)
@@ -152,7 +153,7 @@ class RobotGeometry:
             )
         )
 
-    @property
+    @cached_property
     def wheel_paths(self) -> tuple[tuple[Point, ...], ...]:
         """Each driven wheel in plan view, as a rectangle in the board frame.
 
@@ -213,7 +214,7 @@ class RobotGeometry:
     def diode_ahead_of_centre_mm(self) -> float:
         return self.outline_centre.y - self.photodiode.y
 
-    @property
+    @cached_property
     def reach_mm(self) -> float:
         """Furthest outline or wheel point from the photodiode."""
         points = [*self.outline_path, *(p for w in self.wheel_paths for p in w)]
@@ -222,7 +223,7 @@ class RobotGeometry:
             for p in points
         )
 
-    @property
+    @cached_property
     def core_mm(self) -> float:
         """Nearest board edge to the photodiode."""
         path = self.outline_path
