@@ -357,4 +357,25 @@ describe("the glyph a shape draws", () => {
     expect(el.querySelector('[data-layer="core"]')!.getAttribute("stroke-dasharray")).toBeNull();
     expect(el.querySelector('[data-layer="sensor"]')).not.toBeNull();
   });
+
+  it("lays the dashed ring over a solid casing of the same radius", () => {
+    const el = svg({
+      color: "red",
+      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false },
+      pxPerMm: 1,
+      footprintPx: 120,
+    });
+    const circles = [...el.querySelectorAll("circle")];
+    const casing = el.querySelector('[data-layer="reach-casing"]')!;
+    const ring = el.querySelector('[data-layer="reach"]')!;
+    expect(circles.indexOf(casing as SVGCircleElement)).toBeLessThan(
+      circles.indexOf(ring as SVGCircleElement),
+    );
+    expect(casing.getAttribute("r")).toBe(ring.getAttribute("r"));
+    expect(casing.getAttribute("stroke")).toBe("var(--footprint-casing)");
+    expect(casing.getAttribute("stroke-dasharray")).toBeNull();
+    expect(parseFloat(casing.getAttribute("stroke-width")!)).toBeGreaterThan(
+      parseFloat(ring.getAttribute("stroke-width")!),
+    );
+  });
 });

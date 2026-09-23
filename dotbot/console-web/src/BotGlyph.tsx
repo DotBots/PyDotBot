@@ -280,16 +280,27 @@ const SensorPoint: React.FC<{ color: string; ringPx: number | null; corePx: numb
   return (
     <Frame half={Math.max(pointR + 2, ringPx ?? 0)} filter={false}>
       {ringPx !== null && (
-        <circle
-          data-layer="reach"
-          r={ringPx}
-          fill={crowded ? "none" : color}
-          fillOpacity={crowded ? undefined : 0.1}
-          stroke={color}
-          strokeOpacity={crowded ? 0.75 : 0.9}
-          strokeWidth={crowded ? 1 : 1.5}
-          strokeDasharray={`${Math.max(3, ringPx / 7)} ${Math.max(2.5, ringPx / 11)}`}
-        />
+        <>
+          {/* a solid casing under the dashes, so the ring stands off a
+              camera picture or a floor of its own colour */}
+          <circle
+            data-layer="reach-casing"
+            r={ringPx}
+            fill="none"
+            stroke="var(--footprint-casing)"
+            strokeWidth={crowded ? 2.5 : 3.5}
+          />
+          <circle
+            data-layer="reach"
+            r={ringPx}
+            fill={crowded ? "none" : color}
+            fillOpacity={crowded ? undefined : 0.1}
+            stroke={color}
+            strokeOpacity={crowded ? 0.8 : 1}
+            strokeWidth={crowded ? 1.25 : 2}
+            strokeDasharray={`${Math.max(4, ringPx / 6)} ${Math.max(3, ringPx / 10)}`}
+          />
+        </>
       )}
       {corePx !== null && (
         <circle
