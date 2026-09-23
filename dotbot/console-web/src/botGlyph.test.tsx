@@ -233,7 +233,7 @@ describe("what a robot is drawn as", () => {
 
   it("rings the sensor point with the host's reach and core", () => {
     const { shape, footprintPx } = robotDraw(pose(), SENSOR_MODE, NEAR, 1);
-    expect(shape).toEqual({ kind: "sensor", ringPx: 89.33, corePx: 18.5, crowded: false });
+    expect(shape).toMatchObject({ kind: "sensor", ringPx: 89.33, corePx: 18.5, crowded: false });
     expect(footprintPx).toBeCloseTo(2 * 89.33, 6);
   });
 
@@ -254,6 +254,35 @@ describe("what a robot is drawn as", () => {
   it("draws no footprint with the checkbox off", () => {
     const { shape } = robotDraw(pose(), { mode: "sensor", footprint: false }, NEAR, 1);
     expect(shape).toMatchObject({ ringPx: null, corePx: null });
+  });
+
+  it("gives a known heading a bar out to the ring, at the heading's angle", () => {
+    for (const [heading, dx, dy] of [
+      [0, 0, 1],
+      [90, -1, 0],
+      [-135, Math.SQRT1_2, -Math.SQRT1_2],
+    ]) {
+      const { shape } = robotDraw(pose(heading), SENSOR_MODE, NEAR, 1);
+      const bar = shape.kind === "sensor" ? shape.bar : null;
+      expect(bar).not.toBeNull();
+      expect(bar!.dir.x).toBeCloseTo(dx, 6);
+      expect(bar!.dir.y).toBeCloseTo(dy, 6);
+      expect(bar!.lengthPx).toBeCloseTo(89.33, 6);
+    }
+  });
+
+  it("gives no bar to a robot whose heading is unknown, in either mode", () => {
+    for (const mode of [BODY, SENSOR_MODE]) {
+      const { shape } = robotDraw(pose(0, { heading_source: "none" }), mode, NEAR, 1);
+      expect(shape).toMatchObject({ kind: "sensor", bar: null });
+    }
+    expect(robotDraw(null, SENSOR_MODE, NEAR, 1).shape).toMatchObject({ bar: null });
+  });
+
+  it("keeps the bar past the point when the ring is too small to draw", () => {
+    const { shape } = robotDraw(pose(), SENSOR_MODE, 0.01, 1);
+    expect(shape).toMatchObject({ ringPx: null });
+    expect(shape.kind === "sensor" && shape.bar!.lengthPx).toBe(SENSOR_POINT_PX);
   });
 
   it("marks the ring as crowded past the crowd size", () => {
@@ -355,7 +384,7 @@ describe("the glyph a shape draws", () => {
     for (const pxPerMm of [0.05, 2]) {
       const el = svg({
         color: "red",
-        shape: { kind: "sensor", ringPx: null, corePx: null, crowded: false },
+        shape: { kind: "sensor", ringPx: null, corePx: null, crowded: false, bar: null },
         pxPerMm,
         footprintPx: BOT_MIN_PX,
       });
@@ -372,7 +401,7 @@ describe("the glyph a shape draws", () => {
   it("draws the ring dashed and the core solid around the point", () => {
     const el = svg({
       color: "red",
-      shape: { kind: "sensor", ringPx: 60, corePx: 12, crowded: false },
+      shape: { kind: "sensor", ringPx: 60, corePx: 12, crowded: false, bar: null },
       pxPerMm: 1,
       footprintPx: 120,
     });
@@ -381,10 +410,41 @@ describe("the glyph a shape draws", () => {
     expect(el.querySelector('[data-layer="sensor"]')).not.toBeNull();
   });
 
+  it("draws a known heading as a white bar from the point, under it", () => {
+    const el = svg({
+      color: "red",
+      shape: {
+        kind: "sensor",
+        ringPx: 60,
+        corePx: null,
+        crowded: false,
+        bar: { dir: { x: -1, y: 0 }, lengthPx: 60 },
+      },
+      pxPerMm: 1,
+      footprintPx: 120,
+    });
+    const bar = el.querySelector('[data-layer="sensor-heading"]')!;
+    expect(bar.getAttribute("x1")).toBe("0");
+    expect(parseFloat(bar.getAttribute("x2")!)).toBeCloseTo(-60, 6);
+    expect(parseFloat(bar.getAttribute("y2")!)).toBeCloseTo(0, 6);
+    const all = [...el.querySelectorAll("[data-layer]")].map((n) => n.getAttribute("data-layer"));
+    expect(all.indexOf("sensor-heading")).toBeLessThan(all.indexOf("sensor"));
+  });
+
+  it("draws no bar on a point whose heading is unknown", () => {
+    const el = svg({
+      color: "red",
+      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false, bar: null },
+      pxPerMm: 1,
+      footprintPx: 120,
+    });
+    expect(el.querySelectorAll("line")).toHaveLength(0);
+  });
+
   it("lays the dashed ring over a solid casing of the same radius", () => {
     const el = svg({
       color: "red",
-      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false },
+      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false, bar: null },
       pxPerMm: 1,
       footprintPx: 120,
     });

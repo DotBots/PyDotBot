@@ -46,6 +46,9 @@ const SENSOR_DOT_MM = 4;
 /** On-screen diameter of a robot drawn as its sensor point, whatever the zoom. */
 export const SENSOR_POINT_PX = 11;
 
+/** Width of the heading bar a sensor point carries when its heading is known. */
+const SENSOR_BAR_PX = 2.5;
+
 /** On-screen diameter below which the possible footprint's ring is not drawn. */
 export const FOOTPRINT_MIN_PX = 26;
 
@@ -140,7 +143,20 @@ export type RobotShape =
   | { kind: "board"; body: BotBody }
   | { kind: "mark"; body: BotBody }
   | { kind: "disc"; body: BotBody; radiusPx: number }
-  | { kind: "sensor"; ringPx: number | null; corePx: number | null; crowded: boolean };
+  | {
+      kind: "sensor";
+      ringPx: number | null;
+      corePx: number | null;
+      crowded: boolean;
+      /** The heading as a bar out from the point, when the pose has one. */
+      bar: HeadingBar | null;
+    };
+
+/** A unit vector in screen axes, and how far out from the point it is drawn. */
+export interface HeadingBar {
+  dir: LH2Position;
+  lengthPx: number;
+}
 
 export interface RobotDraw {
   shape: RobotShape;
@@ -203,6 +219,7 @@ export function robotDraw(
       ringPx: ring ? reachPx : null,
       corePx: core ? corePx : null,
       crowded: botCount > GLYPH_CROWD_BOTS,
+      bar: headingBar(pose, Math.max(SENSOR_POINT_PX, reachPx)),
     },
     centre: { x: 0, y: 0 },
     footprintPx: ring ? 2 * reachPx : SENSOR_POINT_PX,
@@ -211,6 +228,16 @@ export function robotDraw(
     battery: glyphLevel(envelopePx, botCount) === "detail",
     drive: false,
   };
+}
+
+/** The pose's heading as a bar `lengthPx` long, or null when it has none. */
+function headingBar(pose: BotPose | null | undefined, lengthPx: number): HeadingBar | null {
+  if (!pose || !hasHeading(pose)) return null;
+  const dx = pose.nose.x - pose.centre.x;
+  const dy = pose.nose.y - pose.centre.y;
+  const n = Math.hypot(dx, dy);
+  if (n === 0) return null;
+  return { dir: { x: dx / n, y: dy / n }, lengthPx };
 }
 
 /** How far from the photodiode the body reaches, in millimetres, tyres included. */
@@ -270,15 +297,16 @@ const HeadingLine: React.FC<{
   );
 };
 
-const SensorPoint: React.FC<{ color: string; ringPx: number | null; corePx: number | null; crowded: boolean }> = ({
-  color,
-  ringPx,
-  corePx,
-  crowded,
-}) => {
+const SensorPoint: React.FC<{
+  color: string;
+  ringPx: number | null;
+  corePx: number | null;
+  crowded: boolean;
+  bar: HeadingBar | null;
+}> = ({ color, ringPx, corePx, crowded, bar }) => {
   const pointR = SENSOR_POINT_PX / 2;
   return (
-    <Frame half={Math.max(pointR + 2, ringPx ?? 0)} filter={false}>
+    <Frame half={Math.max(pointR + 2, ringPx ?? 0, bar?.lengthPx ?? 0)} filter={false}>
       {ringPx !== null && (
         <>
           {/* a solid casing under the dashes, so the ring stands off a
@@ -312,6 +340,28 @@ const SensorPoint: React.FC<{ color: string; ringPx: number | null; corePx: numb
           strokeOpacity={0.9}
           strokeWidth={1}
         />
+      )}
+      {bar && (
+        <g>
+          {/* a dark edge, so the white bar reads off a light floor too */}
+          <line
+            data-layer="sensor-heading-casing"
+            x1={0}
+            y1={0}
+            x2={bar.dir.x * bar.lengthPx}
+            y2={bar.dir.y * bar.lengthPx}
+            stroke="rgba(0,0,0,.5)"
+            strokeWidth={SENSOR_BAR_PX + 1.5}
+            strokeLinecap="round"
+          />
+          <HeadingLine
+            layer="sensor-heading"
+            from={{ x: 0, y: 0 }}
+            to={bar.dir}
+            length={bar.lengthPx}
+            width={SENSOR_BAR_PX}
+          />
+        </g>
       )}
       {/* the point the lighthouse reported: a fixed size, rimmed in white so
           it reads on either theme and apart from the ring around it */}
