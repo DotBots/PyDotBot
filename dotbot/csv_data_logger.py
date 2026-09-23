@@ -4,9 +4,12 @@ import csv
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Optional, Union
+from typing import IO, TYPE_CHECKING, Optional, Union
 
 from dotbot.logger import LOGGER
+
+if TYPE_CHECKING:
+    from dotbot.models import DotBotPoseModel
 
 
 @dataclass
@@ -34,6 +37,10 @@ class CSVDataLogger:
             "real_pos_x",
             "real_pos_y",
             "real_direction",
+            "pose_centre_x",
+            "pose_centre_y",
+            "heading_deg",
+            "heading_source",
             "sim_pos_x",
             "sim_pos_y",
             "sim_direction",
@@ -71,6 +78,7 @@ class CSVDataLogger:
         battery_level: float,
         sim_battery_voltage: float,
         address: str,
+        pose: Optional["DotBotPoseModel"] = None,
     ) -> None:
         """Log a data entry to the CSV file."""
         row = {
@@ -78,6 +86,10 @@ class CSVDataLogger:
             "real_pos_x": real_log.pos_x,
             "real_pos_y": real_log.pos_y,
             "real_direction": real_log.direction,
+            "pose_centre_x": pose.centre.x if pose else None,
+            "pose_centre_y": pose.centre.y if pose else None,
+            "heading_deg": pose.heading_deg if pose else None,
+            "heading_source": pose.heading_source if pose else None,
             "sim_pos_x": sim_log.pos_x,
             "sim_pos_y": sim_log.pos_y,
             "sim_direction": sim_log.direction,

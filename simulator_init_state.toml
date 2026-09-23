@@ -31,3 +31,8 @@ direction = 180
 [[dotbots]]
 address = "BADC0DE444444444"
 direction = 360
+
+# No `direction`: this robot advertises no heading until it has travelled far
+# enough for one, as a real robot does from boot until its first fix.
+[[dotbots]]
+address = "F00DFACE55555555"

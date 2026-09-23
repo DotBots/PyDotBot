@@ -9,11 +9,19 @@ import pytest
 from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot_utils.serial_interface import SerialInterface
+from structlog.testing import capture_logs
 
 from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
 from dotbot.area import Area
-from dotbot.controller import Controller, ControllerSettings, gps_distance, lh2_distance
+from dotbot.controller import (
+    PLACEHOLDER_HEADING_DEG,
+    Controller,
+    ControllerSettings,
+    device_pose,
+    gps_distance,
+    lh2_distance,
+)
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -21,7 +29,14 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotStatus,
 )
-from dotbot.protocol import ApplicationType, ControlModeType, PayloadControlMode
+from dotbot.protocol import (
+    DIRECTION_NONE,
+    ApplicationType,
+    ControlModeType,
+    PayloadControlMode,
+    PayloadDotBotAdvertisement,
+)
+from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
 
 # A measured site, which the package never ships.
@@ -741,3 +756,160 @@ async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
     assert first["calibration_session"]["outstanding"] is None
     assert "outstanding" in first["calibration_session"]
     assert second == {"cmd": 5, "calibration_session": None}
+
+
+# --- DotBot advertisements, through the bytes the gateway delivers ----------
+
+
+def _advertised(source: int, **fields) -> Frame:
+    """A DotBot advertisement encoded to bytes and parsed back, as received."""
+    sent = Frame(
+        header=Header(destination=0, source=source),
+        packet=Packet().from_payload(PayloadDotBotAdvertisement(**fields)),
+    )
+    return Frame().from_bytes(sent.to_bytes())
+
+
+BOT = 0x42
+
+
+@pytest.mark.asyncio
+async def test_a_new_robot_with_no_heading_is_tracked(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.direction is None
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
+
+
+@pytest.mark.asyncio
+async def test_an_advertisement_without_a_heading_clears_the_last_one(controller):
+    """-1000 is the no-heading sentinel: a restarted robot has no heading."""
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.direction is None
+    assert dotbot.pose.heading_source == "none"
+
+
+@pytest.mark.asyncio
+async def test_the_advertisement_debug_log_reports_y(controller):
+    with capture_logs() as logs:
+        controller.handle_received_frame(
+            _advertised(BOT, direction=90, pos_x=1000, pos_y=2000)
+        )
+    (entry,) = (e for e in logs if e["event"] == "Advertisement Data")
+    assert (entry["X"], entry["Y"]) == (1000, 2000)
+
+
+@pytest.mark.asyncio
+async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller):
+    """The centre is 29 mm behind the photodiode, along (-sin, +cos)."""
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
+    assert dotbot.pose.heading_source == "travel"
+    assert dotbot.pose.heading_deg == 90
+    assert (dotbot.pose.centre.x, dotbot.pose.centre.y) == pytest.approx(
+        (1029.0, 1000.0)
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_heading_gives_a_placeholder_pose_that_says_so(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    pose = controller.dotbots[addr_to_hex(BOT)].pose
+    assert pose.heading_source == "none"
+    assert pose.heading_deg == PLACEHOLDER_HEADING_DEG
+    assert pose.reach_mm == pytest.approx(89.33, abs=0.01)
+    assert pose.core_mm == pytest.approx(18.5)
+
+
+@pytest.mark.asyncio
+async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
+    from httpx import ASGITransport, AsyncClient
+
+    from dotbot.server import api
+
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    previous, api.controller = getattr(api, "controller", None), controller
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api), base_url="http://testserver"
+        ) as client:
+            response = await client.get("/controller/dotbots")
+    finally:
+        api.controller = previous
+    (bot,) = (b for b in response.json() if b["address"] == addr_to_hex(BOT))
+    assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+    assert bot["model"] == "dotbot-v3"
+    assert bot["pose"]["photodiode"] == {"x": 1000.0, "y": 1000.0}
+    assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
+    assert bot["pose"]["heading_source"] == "travel"
+    assert len(bot["pose"]["outline"]) == 14
+    assert bot["pose"]["reach_mm"] == pytest.approx(89.33, abs=0.01)
+    assert bot["pose"]["core_mm"] == pytest.approx(18.5)
+    assert bot["pose"]["envelope_mm"] == 95.0
+
+
+@pytest.mark.asyncio
+async def test_the_csv_log_carries_the_body_centre_and_heading(controller, tmp_path):
+    from dotbot.csv_data_logger import CSVDataLogger
+
+    controller.csv_data_logger = CSVDataLogger(tmp_path / "run.csv")
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
+    )
+    controller.csv_data_logger.close()
+    row = _last_row(tmp_path / "run.csv")
+    assert (row["pose_centre_x"], row["pose_centre_y"]) == ("1029.0", "1000.0")
+    assert (row["heading_deg"], row["heading_source"]) == ("90.0", "travel")
+
+
+def test_a_status_only_dotbot_v3_is_sized_from_the_v3_record():
+    at = DotBotLH2Position(x=1864, y=738)
+    pose = device_pose("DotBotV3", at)
+    v3 = robot_geometry("dotbot-v3").body_pose(Point(1864, 738), 0, HeadingSource.NONE)
+    assert pose.heading_source == "none"
+    assert (pose.photodiode.x, pose.photodiode.y) == (1864, 738)
+    assert pose.reach_mm == v3.reach_mm
+    assert pose.core_mm == v3.core_mm
+    assert pose.envelope_mm == 95.0
+
+
+def test_a_device_type_without_a_record_has_no_pose():
+    at = DotBotLH2Position(x=1864, y=738)
+    for device in ("DotBotV2", "SailBot", "LH2_mini_mote", ""):
+        assert device_pose(device, at) is None
+
+
+def test_the_device_poses_sit_on_the_origin(controller):
+    poses = controller.device_poses()
+    assert set(poses) == {"DotBotV3"}
+    assert (poses["DotBotV3"].photodiode.x, poses["DotBotV3"].photodiode.y) == (0, 0)
+
+
+def test_the_twin_measures_its_first_heading_from_where_it_was_created(
+    controller, monkeypatch
+):
+    now = [1000.0]
+    monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
+    for _ in range(3):
+        twin = controller._update_dotbot_twin(
+            "AA", 60, 60, init_pos_x=1500, init_pos_y=1500, init_direction=90
+        )
+        now[0] += 0.5
+    assert twin.pos_x < 1500 - 50
+    assert twin.pos_y == pytest.approx(1500)
+    assert twin.direction == 90

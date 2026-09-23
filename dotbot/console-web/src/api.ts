@@ -1,4 +1,5 @@
 import {
+  BotPose,
   CalibrationPreview,
   CalibrationPushed,
   CalibrationSaved,
@@ -27,6 +28,18 @@ export async function fetchDotBots(): Promise<PyDotBot[]> {
 export async function fetchSite(): Promise<Site> {
   const res = await fetch(`${CONTROLLER}/site`);
   return res.json();
+}
+
+// The headingless pose of each swarmit device type, photodiode at the origin.
+// A controller too old to know the route has none to give.
+export async function fetchDevicePoses(): Promise<Record<string, BotPose>> {
+  try {
+    const res = await fetch(`${CONTROLLER}/device_poses`);
+    if (!res.ok) return {};
+    return await res.json();
+  } catch {
+    return {};
+  }
 }
 
 // A controller with no registered camera answers with an empty list, and one

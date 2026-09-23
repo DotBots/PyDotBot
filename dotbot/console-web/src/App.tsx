@@ -25,7 +25,8 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
-import { loadRobotShapes, saveRobotShapes } from "./robotShapes";
+import { usePanel } from "./panels";
+import { RobotDrawing, loadRobotDrawing, saveRobotDrawing } from "./robotDrawing";
 import {
   VIEW_SETTLE_MS,
   loadSavedViews,
@@ -61,10 +62,14 @@ import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
 import {
   Camera as ZoomCamera,
+  SITE_ZOOM,
+  ViewCentre,
+  cameraAtCentre,
   cameraForArea,
   cameraForZoom,
+  centreOfView,
   padArea,
-  visibleArea,
+  viewGeom,
   zoomFromSearch,
   zoomMax,
 } from "./zoom";
@@ -154,7 +159,13 @@ export const App: React.FC = () => {
     crashedOnly: false,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
+  // ?rail=collapsed starts the left panel as its icon strip, whatever this
+  // browser stored.
+  const [railCollapsed, setRailCollapsed] = usePanel(
+    "left",
+    new URLSearchParams(window.location.search).get("rail") === "collapsed" ? true : undefined,
+  );
   const [conn, setConn] = useState<ControllerConnection | null>(null);
   const [build, setBuild] = useState<ControllerBuild | null>(null);
 
@@ -216,14 +227,14 @@ export const App: React.FC = () => {
     [updateRobotOpacity],
   );
 
-  // Whether DotBots are drawn as the robot or as a plain mark, per browser.
-  const [robotShapes, updateRobotShapes] = usePersisted<boolean>(
-    loadRobotShapes,
-    saveRobotShapes,
+  // Whether DotBots are drawn as their bodies or their sensor points, per browser.
+  const [robotDrawing, updateRobotDrawing] = usePersisted<RobotDrawing>(
+    loadRobotDrawing,
+    saveRobotDrawing,
   );
-  const onRobotShapesToggle = useCallback(
-    () => updateRobotShapes((prev) => !prev),
-    [updateRobotShapes],
+  const onRobotDrawing = useCallback(
+    (next: RobotDrawing) => updateRobotDrawing(() => next),
+    [updateRobotDrawing],
   );
 
   // The rail's action opens the tab that sets a session up; the session
@@ -237,7 +248,10 @@ export const App: React.FC = () => {
   const zoomTo = useCallback(
     (name: string) => {
       if (!geom) return;
-      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, geom);
+      // Refitted to this viewport: the site can land in the same commit that
+      // reshapes the box, before the map has reported its new geometry.
+      const g = viewGeom(geom.w, geom.h, viewport);
+      const next: ZoomCamera | null = cameraForZoom(name, site, viewport, g);
       if (next) setCam(next);
     },
     [geom, site, viewport],
@@ -246,9 +260,10 @@ export const App: React.FC = () => {
   // What the map opens on, once the canvas has a size and the site is known.
   // `?zoom=<site|area-name>` is an instruction and wins; failing that the map
   // returns to the floor this browser was last looking at, which is stored as
-  // a rectangle and fitted here, so a window of another size lands on the
-  // same floor rather than on the same pixels. Neither, and it opens on the
-  // whole site, as a map with nothing remembered always has.
+  // its centre point and pixels per millimetre, so a window of another size
+  // shows the same floor at the same size rather than the same pixels.
+  // Neither, and it opens on the whole site, as a map with nothing remembered
+  // always has.
   const [openingViews] = useState(loadSavedViews);
   const openedRef = useRef(false);
   useEffect(() => {
@@ -259,10 +274,13 @@ export const App: React.FC = () => {
       zoomTo(asked);
       return;
     }
-    const rect = viewFor(openingViews, site.name, viewport);
-    if (rect) {
-      setCam(cameraForArea(rect, viewport, geom, zoomMax(site, viewport, geom)));
+    const view = viewFor(openingViews, site.name, viewport);
+    if (view) {
+      const g = viewGeom(geom.w, geom.h, viewport);
+      setCam(cameraAtCentre(view, viewport, g, zoomMax(site, viewport, g)));
+      return;
     }
+    zoomTo(SITE_ZOOM);
   }, [geom, site, viewport, openingViews, zoomTo]);
 
   // Remembered once the camera settles: a pan would otherwise write storage
@@ -272,16 +290,20 @@ export const App: React.FC = () => {
     if (!openedRef.current || !geom || !site) return;
     const timer = window.setTimeout(() => {
       saveSavedViews(
-        withView(loadSavedViews(), site.name, visibleArea(cam, viewport, geom)),
+        withView(loadSavedViews(), site.name, centreOfView(cam, viewport, geom)),
       );
     }, VIEW_SETTLE_MS);
     return () => window.clearTimeout(timer);
   }, [cam, geom, site, viewport]);
 
   // Calibration mode takes over the right pane and the viewport, and gives
-  // both back on Done: the tab that was open before, and the camera that was
-  // on it.
-  const beforeCalibration = useRef<{ tab: RightTab; cam: Camera } | null>(null);
+  // both back on Done: the tab that was open before, the pane collapsed again
+  // if it was, and the view that was on it.
+  const beforeCalibration = useRef<{
+    tab: RightTab;
+    view: ViewCentre | null;
+    forcedOpen: boolean;
+  } | null>(null);
   const geomRef = useRef<ViewGeom | null>(geom);
   geomRef.current = geom;
   const viewportRef = useRef(viewport);
@@ -292,32 +314,75 @@ export const App: React.FC = () => {
   rightTabRef.current = rightTab;
   const camRef = useRef(cam);
   camRef.current = cam;
+  const rightCollapsedRef = useRef(rightCollapsed);
+  rightCollapsedRef.current = rightCollapsed;
+
+  // A camera waiting for the canvas a pane toggle is about to give the map,
+  // placed once the map reports its new geometry.
+  const pendingCam = useRef<((g: ViewGeom) => Camera) | null>(null);
+  const placeCam = useCallback(
+    (place: ((g: ViewGeom) => Camera) | null, afterResize: boolean) => {
+      pendingCam.current = afterResize ? place : null;
+      const g = geomRef.current;
+      if (!afterResize && place && g) {
+        setCam(place(viewGeom(g.w, g.h, viewportRef.current)));
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    const place = pendingCam.current;
+    if (!place || !geom) return;
+    pendingCam.current = null;
+    setCam(place(viewGeom(geom.w, geom.h, viewportRef.current)));
+  }, [geom]);
 
   useEffect(() => {
     if (session && !beforeCalibration.current) {
-      beforeCalibration.current = { tab: rightTabRef.current, cam: camRef.current };
+      const g = geomRef.current;
+      const collapsed = rightCollapsedRef.current;
+      beforeCalibration.current = {
+        tab: rightTabRef.current,
+        view: g ? centreOfView(camRef.current, viewportRef.current, g) : null,
+        forcedOpen: collapsed,
+      };
       setRightTab("calibrate");
-      setRightCollapsed(false);
+      // Opened for the session, not by the operator: not remembered.
+      if (collapsed) setRightCollapsedUnsaved(false);
       const rect = sessionRect(session);
-      if (rect && rect.w > 0 && rect.h > 0 && geomRef.current) {
-        setCam(
-          cameraForArea(
-            padArea(rect),
-            viewportRef.current,
-            geomRef.current,
-            zoomMax(siteRef.current, viewportRef.current, geomRef.current),
-          ),
-        );
-      }
+      const fit =
+        rect && rect.w > 0 && rect.h > 0
+          ? (to: ViewGeom) =>
+              cameraForArea(
+                padArea(rect),
+                viewportRef.current,
+                to,
+                zoomMax(siteRef.current, viewportRef.current, to),
+              )
+          : null;
+      placeCam(fit, collapsed);
       return;
     }
     if (!session && beforeCalibration.current) {
-      const { tab, cam: previous } = beforeCalibration.current;
+      const { tab, view, forcedOpen } = beforeCalibration.current;
       beforeCalibration.current = null;
       setRightTab(tab);
-      setCam(previous);
+      const collapse = forcedOpen && !rightCollapsedRef.current;
+      if (collapse) setRightCollapsed(true);
+      placeCam(
+        view
+          ? (to: ViewGeom) =>
+              cameraAtCentre(
+                view,
+                viewportRef.current,
+                to,
+                zoomMax(siteRef.current, viewportRef.current, to),
+              )
+          : null,
+        collapse,
+      );
     }
-  }, [session]);
+  }, [session, placeCam, setRightCollapsed, setRightCollapsedUnsaved]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
@@ -345,6 +410,19 @@ export const App: React.FC = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts, nothingSelected]);
+
+  // Each side panel's key collapses it or expands it again, once per press.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || e.repeat || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.leftPanel)) setRailCollapsed((c) => !c);
+      else if (pressed(e, ACTION_KEY.rightPanel)) setRightCollapsed((c) => !c);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -675,6 +753,8 @@ export const App: React.FC = () => {
       {/* Body row: testbed rail + view area */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
         <TestbedRail
+          collapsed={railCollapsed}
+          setCollapsed={setRailCollapsed}
           bots={bots}
           selection={selection}
           planned={planned}
@@ -724,7 +804,7 @@ export const App: React.FC = () => {
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
-              robotShapes={robotShapes}
+              robotDrawing={robotDrawing}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
@@ -820,8 +900,8 @@ export const App: React.FC = () => {
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
-          robotShapes={robotShapes}
-          onRobotShapesToggle={onRobotShapesToggle}
+          robotDrawing={robotDrawing}
+          onRobotDrawing={onRobotDrawing}
           cameras={cameras}
           cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}

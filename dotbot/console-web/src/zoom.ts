@@ -1,4 +1,4 @@
-import { areaToFraction, fractionToArea } from "./frame";
+import { areaToFraction, fractionToArea, siteView } from "./frame";
 import type { Area, Site } from "./types";
 
 // The viewport: which part of the drawn frame fills the canvas.
@@ -66,14 +66,16 @@ export const ZOOM_MAX_PX_PER_MM = 1;
 
 /** The zoom that shows the whole site: the map's own default. */
 export const SITE_ZOOM = "site";
-export const SITE_CAMERA: Camera = { scale: 1, tx: 0, ty: 0 };
+
+/** The identity camera: the whole drawn viewport in the box. */
+export const FRAME_CAMERA: Camera = { scale: 1, tx: 0, ty: 0 };
 
 /** How much of a rectangle's own size is left around it when zoomed to. */
 export const ZOOM_PAD = 0.15;
 
 /**
- * The far end of the range: the whole site in view, which is also the map's
- * own opening camera. Zooming out past it would only add margin.
+ * The far end of the range: the whole viewport in view, which is everywhere
+ * the pan can reach. Zooming out past it would only add empty canvas.
  */
 export const ZOOM_MIN = 1;
 
@@ -110,17 +112,25 @@ export function clampScale(scale: number, max: number): number {
   return Math.min(top, Math.max(ZOOM_MIN, scale));
 }
 
-/** The scale `delta` presses away, held inside the range at both ends. */
+/**
+ * The scale `delta` presses away, held inside the range at both ends. A scale
+ * already past either end, which only a canvas resize leaves, is not pulled
+ * back in by a step further out of the range: a step in never zooms out, and
+ * a step out never zooms in.
+ */
 export function steppedScale(
   scale: number,
   delta: number,
   max: number,
 ): number {
+  if (scale < ZOOM_MIN && delta <= 0) return scale;
+  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  if (scale > top && delta >= 0) return scale;
   return clampScale(scale * ZOOM_STEP ** delta, max);
 }
 
 /**
- * Where a scale sits in the range: 0 at the whole site, 1 at the ceiling.
+ * Where a scale sits in the range: 0 fully zoomed out, 1 at the ceiling.
  * Measured in ratios rather than differences, so the same travel along a
  * slider is the same magnification wherever the handle already is.
  */
@@ -141,17 +151,42 @@ export function scaleForFraction(fraction: number, max: number): number {
   return ZOOM_MIN * (top / ZOOM_MIN) ** f;
 }
 
-// v1 clampPan: keep the arena reachable, never fling it off-screen.
+/**
+ * The camera held to the viewport: the pan reaches as far past the site as
+ * the viewport runs, and no further.
+ */
 export function clampCam(cam: Camera, geom: ViewGeom): Camera {
+  // A box much wider than the canvas pans until its edge meets the canvas
+  // edge. Up to that point it keeps the slack the letterbox gave it at the
+  // far end of the range, so zooming about an edge never snaps it inward.
   const padX = Math.max(0, (geom.w - geom.boxW) / 2);
   const padY = Math.max(0, (geom.h - geom.boxH) / 2);
-  const mx = Math.max(0, (geom.boxW * cam.scale - geom.w) / 2) + padX;
-  const my = Math.max(0, (geom.boxH * cam.scale - geom.h) / 2) + padY;
+  const mx = Math.max(padX, (geom.boxW * cam.scale - geom.w) / 2);
+  const my = Math.max(padY, (geom.boxH * cam.scale - geom.h) / 2);
   return {
     ...cam,
     tx: Math.max(-mx, Math.min(mx, cam.tx)),
     ty: Math.max(-my, Math.min(my, cam.ty)),
   };
+}
+
+/**
+ * The camera carried across a canvas resize from `from` to `to`, in the same
+ * viewport, with the canvas centre moved by `shift` client pixels: the floor
+ * keeps its pixels per millimetre and every floor point keeps its place on
+ * screen. The camera is relative to the drawn box, which refits to the
+ * canvas, so the scale is what compensates. Only the pan clamp of the new
+ * canvas is applied.
+ */
+export function refitCam(
+  cam: Camera,
+  from: ViewGeom,
+  to: ViewGeom,
+  shift: { x: number; y: number } = { x: 0, y: 0 },
+): Camera {
+  const moved = { ...cam, tx: cam.tx - shift.x, ty: cam.ty - shift.y };
+  if (!(from.boxW > 0) || !(to.boxW > 0)) return clampCam(moved, to);
+  return clampCam({ ...moved, scale: (cam.scale * from.boxW) / to.boxW }, to);
 }
 
 /**
@@ -247,7 +282,7 @@ export function cameraForArea(
   );
   const wPx = (br.fx - tl.fx) * geom.boxW;
   const hPx = (br.fy - tl.fy) * geom.boxH;
-  if (!(wPx > 0) || !(hPx > 0)) return SITE_CAMERA;
+  if (!(wPx > 0) || !(hPx > 0)) return FRAME_CAMERA;
   const scale = clampScale(Math.min(geom.w / wPx, geom.h / hPx), max);
   // Where the target's centre sits in canvas pixels before the camera runs.
   const cx = (geom.w - geom.boxW) / 2 + ((tl.fx + br.fx) / 2) * geom.boxW;
@@ -266,11 +301,6 @@ export function cameraForArea(
  * The floor the canvas is showing, in frame millimetres: the rectangle
  * `cameraForArea` takes back to this camera, since a view that fills the
  * canvas is fitted to the canvas exactly.
- *
- * This is what a camera means, and the portable half of it. The same
- * `{scale, tx, ty}` frames a different patch of floor in a canvas of another
- * size, so a view that has to survive a resize - or a move to another screen
- * - travels as the rectangle and is fitted again on arrival.
  */
 export function visibleArea(cam: Camera, viewport: Area, geom: ViewGeom): Area {
   const scale = cam.scale > 0 ? cam.scale : ZOOM_MIN;
@@ -290,10 +320,52 @@ export function visibleArea(cam: Camera, viewport: Area, geom: ViewGeom): Area {
   return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
 }
 
+/** The floor point at the canvas centre, and the floor's pixels per millimetre. */
+export interface ViewCentre {
+  x: number;
+  y: number;
+  pxPerMm: number;
+}
+
+/** What a camera shows, stated without the canvas: `cameraAtCentre` back. */
+export function centreOfView(cam: Camera, viewport: Area, geom: ViewGeom): ViewCentre {
+  const v = visibleArea(cam, viewport, geom);
+  const scale = cam.scale > 0 ? cam.scale : ZOOM_MIN;
+  return {
+    x: v.x + v.w / 2,
+    y: v.y + v.h / 2,
+    pxPerMm: viewport.w > 0 ? (geom.boxW * scale) / viewport.w : 0,
+  };
+}
+
 /**
- * The camera one named zoom asks for. The site is the map's default view, so
- * it is the identity camera rather than a fit; a name no area answers to
- * leaves the camera alone, which is what an unknown `?zoom=` should do.
+ * The camera that puts `view`'s floor point at this canvas's centre at its
+ * pixels per millimetre, held by the pan clamp and by the ceiling `max`.
+ * Under the ceiling the scale is left as asked, so a canvas of another size
+ * shows the same floor at the same size.
+ */
+export function cameraAtCentre(
+  view: ViewCentre,
+  viewport: Area,
+  geom: ViewGeom,
+  max: number,
+): Camera {
+  if (!(geom.boxW > 0) || !(view.pxPerMm > 0)) return FRAME_CAMERA;
+  const asked = (view.pxPerMm * viewport.w) / geom.boxW;
+  const scale = Math.min(asked, Math.max(ZOOM_MIN, max));
+  const { fx, fy } = areaToFraction({ x: view.x, y: view.y }, viewport);
+  const cx = (geom.w - geom.boxW) / 2 + fx * geom.boxW;
+  const cy = (geom.h - geom.boxH) / 2 + fy * geom.boxH;
+  return clampCam(
+    { scale, tx: -(cx - geom.w / 2) * scale, ty: -(cy - geom.h / 2) * scale },
+    geom,
+  );
+}
+
+/**
+ * The camera one named zoom asks for: the site with its modest margin, or an
+ * area with its pad. A name no area answers to leaves the camera alone, which
+ * is what an unknown `?zoom=` should do.
  */
 export function cameraForZoom(
   name: string,
@@ -301,15 +373,11 @@ export function cameraForZoom(
   viewport: Area,
   geom: ViewGeom,
 ): Camera | null {
-  if (name === SITE_ZOOM) return SITE_CAMERA;
+  const max = zoomMax(site, viewport, geom);
+  if (name === SITE_ZOOM) return cameraForArea(siteView(viewport), viewport, geom, max);
   const area = (site?.areas ?? []).find((a) => a.name === name);
   if (!area) return null;
-  return cameraForArea(
-    padArea(area),
-    viewport,
-    geom,
-    zoomMax(site, viewport, geom),
-  );
+  return cameraForArea(padArea(area), viewport, geom, max);
 }
 
 /** The zoom `?zoom=` asks for, or null when it names nothing this site has. */

@@ -14,6 +14,9 @@ from enum import IntEnum
 
 from dotbot_utils.protocol import Payload, PayloadFieldMetadata, register_parser
 
+# The advertised `direction` when the robot has no heading.
+DIRECTION_NONE = -1000
+
 
 class PayloadType(IntEnum):
     """Types of DotBot payload types."""

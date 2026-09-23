@@ -7,7 +7,7 @@ import { MapView } from "./MapView";
 import type { Area, Site } from "./types";
 import {
   Camera,
-  SITE_CAMERA,
+  FRAME_CAMERA,
   cameraForZoom,
   viewGeom,
   zoomFromSearch,
@@ -27,7 +27,7 @@ const GEOM = viewGeom(900, 600, VIEWPORT);
 // The map with a camera over it, zoomed the way App zooms it.
 const Harness: React.FC<{ onCam?: (c: Camera) => void; from?: Camera }> = ({
   onCam,
-  from = SITE_CAMERA,
+  from = FRAME_CAMERA,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -71,7 +71,7 @@ describe("the fit button", () => {
 
     fireEvent.click(screen.getByTitle("Zoom to the whole site"));
 
-    expect(seen).toEqual([SITE_CAMERA]);
+    expect(seen).toEqual([cameraForZoom("site", C405, VIEWPORT, GEOM)]);
   });
 
   it("offers no menu: an area is zoomed from its Layers row", () => {
@@ -121,7 +121,7 @@ describe("the zoom buttons", () => {
   it("keeps what is in the middle of the map in the middle", () => {
     // Panned away from the frame's own centre: the case a zoom that only
     // rewrites the scale throws somewhere else.
-    render(<Harness from={{ scale: 1, tx: 100, ty: 20 }} />);
+    render(<Harness from={{ scale: 1, tx: 40, ty: 10 }} />);
     const was = centreOfFrame(camera());
     // One frame millimetre is well under a pixel here, so a millimetre of
     // tolerance is stricter than the pixel the assertion is about.
@@ -140,13 +140,13 @@ describe("the zoom buttons", () => {
   });
 
   it("comes back to the camera it left, in and out again", () => {
-    render(<Harness from={{ scale: 1, tx: 100, ty: 20 }} />);
+    render(<Harness from={{ scale: 1, tx: 40, ty: 10 }} />);
     press("Zoom in", 3);
     press("Zoom out", 3);
     const back = camera();
     expect(back.scale).toBeCloseTo(1, 6);
-    expect(back.tx).toBeCloseTo(100, 4);
-    expect(back.ty).toBeCloseTo(20, 4);
+    expect(back.tx).toBeCloseTo(40, 4);
+    expect(back.ty).toBeCloseTo(10, 4);
     cleanup();
   });
 });

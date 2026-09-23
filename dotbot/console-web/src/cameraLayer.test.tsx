@@ -125,7 +125,7 @@ const bot = (id: string, position: LH2Position): UnifiedBot => ({
   led: null,
   deviceType: "DotBot",
   application: 0,
-  isDotBot: true,
+  pose: null,
   drivable: true,
   nav: "drive",
   waypoints: [],
@@ -780,6 +780,22 @@ const OUTLINE: number[][] = [
   [1471.2, 507.3],
 ];
 
+// The two tyres of the same robot, as the detector publishes them.
+const WHEELS: number[][][] = [
+  [
+    [1478.9, 559.7],
+    [1496.4, 559.7],
+    [1496.4, 603.7],
+    [1478.9, 603.7],
+  ],
+  [
+    [1531.0, 559.7],
+    [1548.5, 559.7],
+    [1548.5, 603.7],
+    [1531.0, 603.7],
+  ],
+];
+
 const detection = (
   status: CameraDetection["status"],
   withPose = status !== "none",
@@ -797,6 +813,7 @@ const detection = (
         photodiode_mm: [1540.2, 511.7],
         nose_mm: [1551.0, 526.2],
         outline_mm: OUTLINE,
+        wheels_mm: WHEELS,
         heading_deg: -37.5,
         heading_atan2_deg: 52.5,
         green_flare: 0.83,
@@ -840,6 +857,21 @@ describe("the detection on the map", () => {
     expect(outline.getAttribute("stroke")).toBe("var(--accent)");
     expect(outline.getAttribute("stroke-dasharray")).toBeNull();
 
+    // The tyres, under the board line, so the camera robot reads like the
+    // glyph the lighthouse draws beside it.
+    WHEELS.forEach((wheel, i) => {
+      const tyre = within(map).getByTestId(
+        `camera-detection-wheel-dev-corner-${i}`,
+      );
+      expect(tyre.getAttribute("points")).toBe(
+        polygonPoints(wheel, DEV_CORNER),
+      );
+      expect(tyre.getAttribute("stroke")).toBe("var(--accent)");
+      expect(tyre.compareDocumentPosition(outline)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+
     const nose = within(map).getByTestId("camera-detection-nose-dev-corner");
     expect(nose.getAttribute("x1")).toBe(String(1523.4 - DEV_CORNER.x));
     expect(nose.getAttribute("y1")).toBe(String(488.1 - DEV_CORNER.y));
@@ -853,6 +885,19 @@ describe("the detection on the map", () => {
     // Inside the camera's own box, so the offset moves it with the image.
     const layer = within(map).getByTestId("camera-layer-dev-corner");
     expect(layer.contains(group)).toBe(true);
+  });
+
+  it("draws the board alone for a pose that carries no tyres", () => {
+    const found = detection("found");
+    const older = { ...found, pose: { ...found.pose!, wheels_mm: undefined } };
+    render(<Harness cameraDetections={{ "dev-corner": older }} />);
+    const map = screen.getByTestId("map");
+    expect(
+      within(map).queryByTestId("camera-detection-wheel-dev-corner-0"),
+    ).toBeNull();
+    expect(
+      within(map).getByTestId("camera-detection-outline-dev-corner"),
+    ).toBeTruthy();
   });
 
   it("dashes a pose the estimator would not vouch for", () => {

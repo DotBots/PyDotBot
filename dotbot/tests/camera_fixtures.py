@@ -18,12 +18,9 @@ import pytest
 
 from dotbot.area import Area
 from dotbot.camera.detection.pose import (
-    AXLE_BEHIND_CENTRE_MM,
     CONN_MM,
     OUTLINE_MM,
-    TRACK_MM,
-    TYRE_D_MM,
-    TYRE_W_MM,
+    WHEELS_MM,
     axes,
 )
 from dotbot.camera.sheets import MARKER_DICTIONARY, MARKER_SIDE_MM
@@ -175,27 +172,6 @@ def draw_marker(
 # --- The robot, drawn from the estimator's own outline -----------------------
 
 
-def tyre_polygons_mm():
-    """The two tyres in the robot frame, as the template places them."""
-    out = []
-    axle = -AXLE_BEHIND_CENTRE_MM
-    for side in (-1, 1):
-        x0 = side * TRACK_MM / 2 - TYRE_W_MM / 2
-        x1 = side * TRACK_MM / 2 + TYRE_W_MM / 2
-        out.append(
-            np.array(
-                [
-                    (x0, axle - TYRE_D_MM / 2),
-                    (x1, axle - TYRE_D_MM / 2),
-                    (x1, axle + TYRE_D_MM / 2),
-                    (x0, axle + TYRE_D_MM / 2),
-                ],
-                float,
-            )
-        )
-    return out
-
-
 def carpet(width_px=250, height_px=250, seed=7):
     """Grey floor with the speckle a proposer has to average away."""
     rng = np.random.default_rng(seed)
@@ -247,7 +223,7 @@ def draw_robot(
         cv2.fillPoly(big, [np.round(points).astype(np.int32)], colour)
 
     fill(OUTLINE_MM, board, board_offset_mm)
-    for polygon in tyre_polygons_mm():
+    for polygon in WHEELS_MM:
         fill(polygon, tyre)
     for polygon in CONN_MM:
         fill(polygon, connector)
@@ -295,7 +271,7 @@ def synthetic_colour_frame(area=DEV_CORNER, robots=(), seed=11):
             cv2.fillPoly(big, [np.round(q).astype(np.int32)], colour)
 
         fill(OUTLINE_MM, BOARD_BGR)
-        for tyre in tyre_polygons_mm():
+        for tyre in WHEELS_MM:
             fill(tyre, TYRE_BGR)
         for connector in CONN_MM:
             fill(connector, CONNECTOR_BGR)

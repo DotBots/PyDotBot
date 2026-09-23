@@ -3,8 +3,9 @@
 The robot these tests draw is built from the estimator's own outline, so it
 is model-consistent by construction: what they guard is the plumbing, the
 unit and frame conventions and the two confidence thresholds. Accuracy
-against a real photograph is not something a synthetic raster can show, and
-is left to the bench.
+against a real photograph is not something a synthetic raster can show: one
+bench raster pins the detector's answer on a real frame, and the rest is left
+to the bench.
 
 Everything is drawn at 2.0 mm/px, which is the raster the controller warps a
 camera into, and the polygons are filled at four times that and box-filtered
@@ -13,6 +14,7 @@ down so the edges carry the anti-aliasing a lens would give them.
 
 import subprocess
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -87,6 +89,17 @@ def test_finds_a_robot_and_reports_its_pose(heading):
     assert ahead.min() == pytest.approx(-NOSE_AHEAD_MM, abs=0.2)
     assert across.max() == pytest.approx(47.0, abs=0.2)
     assert across.min() == pytest.approx(-47.0, abs=0.2)
+
+
+# A 2.0 mm/px raster warped from the bench camera, two robots on the floor.
+BENCH_RASTER = Path(__file__).with_name("camera_bench_raster.jpg")
+
+
+def test_finds_the_robot_in_a_bench_raster():
+    detection = RobotDetector(MM_PER_PX).detect(cv2.imread(str(BENCH_RASTER)))
+    assert detection.status == "found"
+    assert detection.pose.centre_px == pytest.approx((418.7, 374.6), abs=3.0)
+    assert abs(wrap180(detection.pose.heading_atan2_deg - 3.0)) < 3.0
 
 
 def test_direction_convention():

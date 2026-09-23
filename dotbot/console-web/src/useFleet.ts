@@ -4,6 +4,7 @@ import {
   controllerWsUrl,
   fetchCalibrationSession,
   fetchCameras,
+  fetchDevicePoses,
   fetchDotBots,
   fetchSite,
   fetchSwarmitStatus,
@@ -11,6 +12,7 @@ import {
 import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
   Area,
+  BotPose,
   BotState,
   CalibrationSession,
   LH2Position,
@@ -50,38 +52,65 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
-// The controller's pose while the link is active, else swarmit's position if
-// it has located the bot, else the controller's last pose. swarmit reports
-// (0, 0) for a bot it has never located, and no heading at all.
+// A device type's pose moved onto `at`, which is where its photodiode goes.
+function poseAt(pose: BotPose, at: LH2Position): BotPose {
+  const dx = at.x - pose.photodiode.x;
+  const dy = at.y - pose.photodiode.y;
+  const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
+  return {
+    ...pose,
+    photodiode: move(pose.photodiode),
+    axle: move(pose.axle),
+    centre: move(pose.centre),
+    nose: move(pose.nose),
+    led: move(pose.led),
+    outline: pose.outline.map(move),
+    wheels: pose.wheels.map((wheel) => wheel.map(move)),
+  };
+}
+
+// The controller's pose while it hears the app running, else swarmit's
+// position if it has located the bot, else the controller's last pose. Out of
+// its app a robot computes no heading, so it is placed headingless: from
+// swarmit, sized by the pose the host gave its device type, or a bare point
+// for a type the host has no record of. swarmit reports (0, 0) for a bot it
+// has never located.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
-): { position: LH2Position | null; heading: number | null } {
+  devicePoses: Record<string, BotPose> = {},
+): {
+  position: LH2Position | null;
+  heading: number | null;
+  pose: BotPose | null;
+} {
+  const inApp = !sw || sw.status === "Running";
   const pyHeading =
     py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
-  if (link === "active" && py?.lh2_position) {
-    return { position: py.lh2_position, heading: pyHeading };
+  const pyPose = py?.pose ?? null;
+  if (inApp && link === "active" && py?.lh2_position) {
+    return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
   if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
-    return { position: { x: sw.pos_x, y: sw.pos_y }, heading: null };
+    const at = { x: sw.pos_x, y: sw.pos_y };
+    const devicePose = devicePoses[sw.device];
+    return { position: at, heading: null, pose: devicePose ? poseAt(devicePose, at) : null };
   }
   const position = py?.lh2_position ?? null;
-  return { position, heading: position ? pyHeading : null };
-}
-
-// Either signal is enough: swarmit knows the board even in its bootloader,
-// and the controller knows the firmware even on a board swarmit cannot name.
-export function isDotBot(
-  py: PyDotBot | undefined,
-  sw: SwarmitNode | undefined,
-): boolean {
-  return (sw?.device.startsWith("DotBot") ?? false) || py?.application === 0;
+  if (!position) return { position: null, heading: null, pose: null };
+  if (inApp) return { position, heading: pyHeading, pose: pyPose };
+  return {
+    position,
+    heading: null,
+    pose: pyPose ? { ...pyPose, heading_source: "none" } : null,
+  };
 }
 
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
+  devicePoses: Record<string, BotPose> = {},
 ): UnifiedBot[] {
   const ids = new Set([...Object.keys(pyBots), ...Object.keys(swNodes)]);
   const out: UnifiedBot[] = [];
@@ -90,18 +119,20 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
-    const { position, heading } = derivePose(py, sw, link);
+    const { position, heading, pose } = derivePose(py, sw, link, devicePoses);
     out.push({
       id,
       state,
       link,
       position,
       heading,
+      pose,
       battery: py?.battery ?? (sw ? sw.battery / 1000 : 0),
-      led: py?.rgb_led ?? null,
+      // The colour the controller last commanded, which the LED shows only
+      // while the app runs: out of it, the bootloader drives the LED itself.
+      led: state === null || state === "Running" ? py?.rgb_led ?? null : null,
       deviceType: sw?.device ?? "DotBot",
       application: py?.application ?? 0,
-      isDotBot: isDotBot(py, sw),
       // Drivable = a DBP-speaking image is running. The control plane must be
       // hearing the bot, and either its sandbox is Running or it has no
       // sandbox at all (a bare-mode bot swarmit does not manage).
@@ -140,6 +171,7 @@ export function useFleet(): {
 } {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
+  const devicePosesRef = useRef<Record<string, BotPose>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
@@ -150,7 +182,7 @@ export function useFleet(): {
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
-    setBots(merge(pyRef.current, swRef.current));
+    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current));
   }, []);
 
   const reloadDotBots = useCallback(async () => {
@@ -166,6 +198,10 @@ export function useFleet(): {
   // Initial data, and the site the map is drawn over.
   useEffect(() => {
     reloadDotBots();
+    fetchDevicePoses().then((poses) => {
+      devicePosesRef.current = poses;
+      rebuild();
+    });
     fetchSite()
       .then(setSite)
       .catch(() => {});
@@ -178,7 +214,7 @@ export function useFleet(): {
     fetchCalibrationSession()
       .then(setSession)
       .catch(() => {});
-  }, [reloadDotBots]);
+  }, [reloadDotBots, rebuild]);
 
   // Live updates over the controller WebSocket.
   useEffect(() => {
@@ -219,6 +255,7 @@ export function useFleet(): {
           }
           const d = msg.data;
           if (d.direction !== undefined) bot.direction = d.direction;
+          if (d.pose !== undefined) bot.pose = d.pose;
           if (d.battery !== undefined) bot.battery = d.battery;
           if (d.rgb_led !== undefined) bot.rgb_led = d.rgb_led;
           if (d.lh2_position !== undefined) {

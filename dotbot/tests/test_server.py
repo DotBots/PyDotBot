@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import ControllerSettings
+from dotbot.controller import ControllerSettings, device_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -979,6 +979,21 @@ async def test_the_area_routes_are_gone(method):
         "/controller/area", **({} if method == "get" else {"json": {"area": []}})
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_device_poses():
+    """The console sizes a robot placed from swarmit's STATUS from these."""
+    origin = DotBotLH2Position(x=0, y=0)
+    api.controller.device_poses.return_value = {
+        "DotBotV3": device_pose("DotBotV3", origin)
+    }
+    response = await client.get("/controller/device_poses")
+    assert response.status_code == 200
+    body = response.json()
+    assert list(body) == ["DotBotV3"]
+    assert body["DotBotV3"]["heading_source"] == "none"
+    assert body["DotBotV3"]["photodiode"] == {"x": 0, "y": 0}
 
 
 @pytest.mark.asyncio

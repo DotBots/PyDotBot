@@ -12,6 +12,8 @@
   --accent: #e4032e;
   --hairline: rgba(255, 255, 255, 0.07);
   --tyre: #4a5160;
+  /* Under a robot's dashed footprint ring, whatever the floor or picture. */
+  --footprint-casing: rgba(0, 0, 0, 0.55);
 
   /* State colors are shared across themes: a color always means the same thing. */
   --s-Running: #22c55e;
@@ -45,6 +47,7 @@
   --muted: #5b6577;
   --hairline: rgba(0, 0, 0, 0.07);
   --tyre: #5a6270;
+  --footprint-casing: rgba(255, 255, 255, 0.9);
 }
 
 * {

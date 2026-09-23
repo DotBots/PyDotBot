@@ -36,37 +36,30 @@ from dotbot.camera.detection.propose import floor_ab, floor_selector
 from dotbot.robots import robot_geometry
 
 _GEOMETRY = robot_geometry()
+_CENTRE = _GEOMETRY.outline_centre
+
+
+def _robot_frame(point):
+    """A board-frame point in this module's robot frame (y flipped to forward)."""
+    return (point.x - _CENTRE.x, _CENTRE.y - point.y)
+
+
+def _robot_frame_path(path):
+    """One board-frame path as an array in this module's robot frame."""
+    return np.array([_robot_frame(p) for p in path], float)
+
 
 # Outline centre to the axle, backwards.
-AXLE_BEHIND_CENTRE_MM = 24.5
+AXLE_BEHIND_CENTRE_MM = -_robot_frame(_GEOMETRY.axle_midpoint)[1]
 
 # Outline centre to the LH2 photodiode, forwards. The lighthouse reports the
 # photodiode's position, so this is the offset that makes the camera's point
 # and the lighthouse's point the same point.
-PHOTODIODE_AHEAD_MM = _GEOMETRY.board_length_mm / 2 - _GEOMETRY.diode_to_front_mm
+PHOTODIODE_AHEAD_MM = _GEOMETRY.diode_ahead_of_centre_mm
 
-# Board outline in the robot frame, transcribed from the Edge.Cuts layer of
-# the v3 main board: an 84 mm nose and the step down to the 57 mm tail at
-# y = +1.5.
-OUTLINE_MM = np.array(
-    [
-        (-42.0, 47.5),
-        (42.0, 47.5),
-        (42.0, 40.5),
-        (43.0, 39.5),
-        (47.0, 39.5),
-        (47.0, 1.5),
-        (28.5, 1.5),
-        (28.5, -47.5),
-        (-28.5, -47.5),
-        (-28.5, 1.5),
-        (-47.0, 1.5),
-        (-47.0, 39.5),
-        (-43.0, 39.5),
-        (-42.0, 40.5),
-    ],
-    float,
-)
+# Board outline in the robot frame: an 84 mm nose and the step down to the
+# 57 mm tail at y = +1.5.
+OUTLINE_MM = _robot_frame_path(_GEOMETRY.outline_path)
 
 # Outline centre to the tip of the nose, forwards: the outline's own extent.
 NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
@@ -78,17 +71,9 @@ NOSE_AHEAD_MM = float(OUTLINE_MM[:, 1].max())
 TAIL_HALF_MM = float(np.abs(OUTLINE_MM[OUTLINE_MM[:, 1] < 1.5][:, 0]).max())
 NOSE_BAND_MM = TAIL_HALF_MM + 4.5
 
-# The two motor connectors, in the same robot frame.
-CONN_MM = [
-    np.array([(-19.5, -29.5), (-7.5, -29.5), (-7.5, -19.5), (-19.5, -19.5)], float),
-    np.array([(7.5, -29.5), (19.5, -29.5), (19.5, -19.5), (7.5, -19.5)], float),
-]
-
-# The tyres, as the template draws them: the track between their centres,
-# and one tyre's width and depth.
-TRACK_MM = 85.0
-TYRE_W_MM = 18.0
-TYRE_D_MM = 40.0
+# The two motor connectors and the two tyres, in the same robot frame.
+CONN_MM = [_robot_frame_path(c) for c in _GEOMETRY.connector_paths]
+WHEELS_MM = [_robot_frame_path(w) for w in _GEOMETRY.wheel_paths]
 
 # The template's canvas, as a half-width in millimetres: the robot at any
 # heading, with room for the search to slide it.
@@ -385,29 +370,10 @@ class Template:
         wheel = np.zeros_like(board)
         conn = np.zeros_like(board)
         poly(board, OUTLINE_MM)
-        axle = -AXLE_BEHIND_CENTRE_MM
-        for side in (-1, 1):
-            x0 = side * TRACK_MM / 2 - TYRE_W_MM / 2
-            x1 = side * TRACK_MM / 2 + TYRE_W_MM / 2
-            poly(
-                wheel,
-                [
-                    (x0, axle - TYRE_D_MM / 2),
-                    (x1, axle - TYRE_D_MM / 2),
-                    (x1, axle + TYRE_D_MM / 2),
-                    (x0, axle + TYRE_D_MM / 2),
-                ],
-            )
-        for side in (-13.5, 13.5):
-            poly(
-                conn,
-                [
-                    (side - 6, axle - 5),
-                    (side + 6, axle - 5),
-                    (side + 6, axle + 5),
-                    (side - 6, axle + 5),
-                ],
-            )
+        for tyre in WHEELS_MM:
+            poly(wheel, tyre)
+        for connector in CONN_MM:
+            poly(conn, connector)
         self.maps = dict(
             green=np.clip(board - wheel - conn, 0, 1), dark=wheel, red=conn
         )

@@ -28,6 +28,7 @@ from dotbot.camera.detection.pose import (
     NOSE_AHEAD_MM,
     OUTLINE_MM,
     PHOTODIODE_AHEAD_MM,
+    WHEELS_MM,
     OutlineFit,
     Template,
     axes,
@@ -197,7 +198,8 @@ def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
     """One pose in frame millimetres and both heading conventions.
 
     Every `*_mm` is frame millimetres, x right and y down, the same frame as
-    the area and as an LH2 position.
+    the area and as an LH2 position. `outline_mm` is the board path and
+    `wheels_mm` the two tyre rectangles, both already turned to the heading.
 
     `heading_atan2_deg` is the detector's own convention: `atan2(dy, dx)` in
     the y-down frame, so 0 = +x and +90 = +y. `heading_deg` is the robot
@@ -208,14 +210,18 @@ def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
     origin = np.array([float(area.x), float(area.y)])
     centre = origin + np.asarray(pose.centre_px, float) * mm_per_px
     right, forward = axes(pose.heading_atan2_deg)
-    outline = [
-        centre + p[0] * right + p[1] * forward for p in np.asarray(OUTLINE_MM, float)
-    ]
+
+    def place(path):
+        return [
+            _mm(centre + p[0] * right + p[1] * forward) for p in np.asarray(path, float)
+        ]
+
     return {
         "centre_mm": _mm(centre),
         "photodiode_mm": _mm(centre + forward * PHOTODIODE_AHEAD_MM),
         "nose_mm": _mm(centre + forward * NOSE_AHEAD_MM),
-        "outline_mm": [_mm(p) for p in outline],
+        "outline_mm": place(OUTLINE_MM),
+        "wheels_mm": [place(wheel) for wheel in WHEELS_MM],
         "heading_deg": round(wrap180(pose.heading_atan2_deg - 90.0), 1),
         "heading_atan2_deg": round(wrap180(pose.heading_atan2_deg), 1),
         "green_flare": round(pose.green_flare, 3),

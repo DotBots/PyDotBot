@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  BOT_FOOTPRINT_MM,
-  GLYPH_DETAIL_PX,
-  botFootprintPx,
-  glyphLevel,
-} from "./BotGlyph";
-import { areaToFraction } from "./frame";
+import { GLYPH_DETAIL_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
+import { PAN_MARGIN_MM, areaToFraction, siteView, siteViewport } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
   CANVAS_INSET_PX,
-  SITE_CAMERA,
+  FRAME_CAMERA,
   SITE_ZOOM,
   ZOOM_MAX_FLOOR,
   ZOOM_MAX_PX_PER_MM,
@@ -19,9 +14,13 @@ import {
   cameraForArea,
   cameraForZoom,
   clampCam,
+  visibleArea,
   clampScale,
   fitScale,
   padArea,
+  refitCam,
+  cameraAtCentre,
+  centreOfView,
   scaleForFraction,
   steppedScale,
   viewCentre,
@@ -45,6 +44,10 @@ const C405: Site = {
 };
 // The site extent plus the 2 m margin, which is what the map draws.
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
+// The span a v3 body reports, for the questions the zoom ladder asks about how
+// big a robot lands on screen. The console never computes this; the controller
+// ships it inside each body pose.
+const V3_SPAN_MM = 95;
 const GEOM = viewGeom(900, 600, VIEWPORT);
 const MAX = zoomMax(C405, VIEWPORT, GEOM);
 
@@ -115,10 +118,10 @@ describe("panning", () => {
 });
 
 describe("the zoom range", () => {
-  it("starts at the whole site, which is the map's own camera", () => {
+  it("starts at the whole viewport, which is everywhere the pan reaches", () => {
     expect(ZOOM_MIN).toBe(1);
-    expect(SITE_CAMERA.scale).toBe(ZOOM_MIN);
-    expect(zoomFraction(SITE_CAMERA.scale, 11.4)).toBe(0);
+    expect(FRAME_CAMERA.scale).toBe(ZOOM_MIN);
+    expect(zoomFraction(FRAME_CAMERA.scale, 11.4)).toBe(0);
   });
 
   it("holds a scale between the site and the ceiling", () => {
@@ -142,6 +145,12 @@ describe("the zoom range", () => {
   it("stops a press at both ends rather than running past them", () => {
     expect(steppedScale(ZOOM_MIN, -1, 11.4)).toBe(ZOOM_MIN);
     expect(steppedScale(11.4, 1, 11.4)).toBe(11.4);
+  });
+
+  it("never zooms out on a press in from above the ceiling", () => {
+    expect(steppedScale(20, 1, 11.4)).toBe(20);
+    expect(steppedScale(20, 0, 11.4)).toBe(20);
+    expect(steppedScale(20, -1, 11.4)).toBeLessThan(20);
   });
 
   it("comes back to the scale it left, in and out again", () => {
@@ -260,8 +269,15 @@ describe("the named zooms", () => {
 });
 
 describe("zooming to the site", () => {
-  it("is the map's own default view", () => {
-    expect(cameraForZoom(SITE_ZOOM, C405, VIEWPORT, GEOM)).toEqual(SITE_CAMERA);
+  it("fits the site with its modest margin, not the whole viewport", () => {
+    const cam = cameraForZoom(SITE_ZOOM, C405, VIEWPORT, GEOM)!;
+    const seen = visibleArea(cam, VIEWPORT, GEOM);
+    const framed = siteView(VIEWPORT);
+    // The tight axis shows exactly the framed rectangle; the other shows more.
+    expect(seen.h).toBeCloseTo(framed.h, 6);
+    expect(seen.y).toBeCloseTo(framed.y, 6);
+    expect(seen.w).toBeGreaterThanOrEqual(framed.w - 1e-6);
+    expect(seen.x + seen.w / 2).toBeCloseTo(framed.x + framed.w / 2, 6);
   });
 });
 
@@ -353,8 +369,8 @@ describe("the zoom ceiling", () => {
     );
     // Which is a 95 mm robot at very nearly its own size in pixels.
     expect(
-      BOT_FOOTPRINT_MM * pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 }),
-    ).toBeGreaterThanOrEqual(BOT_FOOTPRINT_MM - 1e-6);
+      V3_SPAN_MM * pxPerMm("x", VIEWPORT, GEOM, { scale: max, tx: 0, ty: 0 }),
+    ).toBeGreaterThanOrEqual(V3_SPAN_MM - 1e-6);
   });
 
   it("still clears an area that asks for more than that", () => {
@@ -401,6 +417,7 @@ describe("how far in the glyph ladder reaches", () => {
           tx: 0,
           ty: 0,
         }),
+        V3_SPAN_MM,
       ),
     );
   };
@@ -445,5 +462,161 @@ describe("the ?zoom= preset", () => {
 
   it("is absent when nothing asked", () => {
     expect(zoomFromSearch("?view=map", C405)).toBeNull();
+  });
+});
+
+describe("the whole-site view", () => {
+  // The map canvas a 1600 x 950 window leaves once both panes are open.
+  const arena: Site = { ...C405, extent_mm: [2000, 2000], areas: [ARENA] };
+  const viewport = siteViewport(arena, ARENA);
+  const geom = viewGeom(936, 740, viewport);
+  const siteCam = cameraForZoom(SITE_ZOOM, arena, viewport, geom)!;
+  const sitePerMm = pxPerMm("x", viewport, geom, siteCam);
+
+  it("is mostly site: the arena fills most of the canvas", () => {
+    expect((ARENA.h * sitePerMm) / geom.h).toBeGreaterThan(0.75);
+  });
+
+  it("shows a 2 x 2 m arena's robots as full outlines on a normal screen", () => {
+    expect(glyphLevel(botFootprintPx(sitePerMm, V3_SPAN_MM), 12)).toBe("detail");
+  });
+});
+
+describe("panning past the site", () => {
+  const arena: Site = { ...C405, extent_mm: [2000, 2000], areas: [ARENA] };
+  const viewport = siteViewport(arena, ARENA);
+  const geom = viewGeom(936, 740, viewport);
+  const siteCam = cameraForZoom(SITE_ZOOM, arena, viewport, geom)!;
+  const panned = (tx: number, ty: number) =>
+    visibleArea(clampCam({ ...siteCam, tx, ty }, geom), viewport, geom);
+
+  it("reaches 2 m past the site on every side and no further", () => {
+    const tl = panned(1e9, 1e9);
+    const br = panned(-1e9, -1e9);
+    expect(tl.x).toBeCloseTo(-PAN_MARGIN_MM, 6);
+    expect(tl.y).toBeCloseTo(-PAN_MARGIN_MM, 6);
+    expect(br.x + br.w).toBeCloseTo(2000 + PAN_MARGIN_MM, 6);
+    expect(br.y + br.h).toBeCloseTo(2000 + PAN_MARGIN_MM, 6);
+  });
+
+  it("brings a robot 1.5 m off the site into view", () => {
+    const bot = { x: 2000 + 1500, y: 1000 };
+    const view = panned(-1e9, 0);
+    expect(bot.x).toBeGreaterThan(view.x);
+    expect(bot.x).toBeLessThan(view.x + view.w);
+    expect(bot.y).toBeGreaterThan(view.y);
+    expect(bot.y).toBeLessThan(view.y + view.h);
+  });
+
+  it("shows the whole pannable area fully zoomed out", () => {
+    const all = visibleArea(FRAME_CAMERA, viewport, geom);
+    expect(all.x).toBeLessThanOrEqual(-PAN_MARGIN_MM);
+    expect(all.y).toBeLessThanOrEqual(-PAN_MARGIN_MM);
+    expect(all.x + all.w).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
+    expect(all.y + all.h).toBeGreaterThanOrEqual(2000 + PAN_MARGIN_MM);
+  });
+});
+
+describe("a panel toggle, which only changes the canvas width", () => {
+  const viewport = siteViewport(C405, ARENA);
+  // A map squeezed between both panes, narrower than it is tall, and the same
+  // map with one pane collapsed: the drawn box goes from width-limited to
+  // height-limited across the toggle, so it changes size.
+  const narrow = viewGeom(420, 860, viewport);
+  const wide = viewGeom(760, 860, viewport);
+  const centreOf = (cam: Camera, geom: ReturnType<typeof viewGeom>) => {
+    const v = visibleArea(cam, viewport, geom);
+    return { x: v.x + v.w / 2, y: v.y + v.h / 2 };
+  };
+
+  it("crosses the frame's aspect ratio in this fixture", () => {
+    expect((narrow.w - CANVAS_INSET_PX) / narrow.boxW).toBeCloseTo(1, 6);
+    expect(wide.boxH).toBeCloseTo(wide.h - CANVAS_INSET_PX, 6);
+    expect(wide.boxW).toBeGreaterThan(narrow.boxW);
+  });
+
+  for (const [name, zoom] of [
+    ["the site", SITE_ZOOM],
+    ["an area", "arena"],
+  ] as const) {
+    for (const [dir, from, to] of [
+      ["opened", narrow, wide],
+      ["closed", wide, narrow],
+    ] as const) {
+      it(`keeps the scale, the height and the centre of ${name} when a pane is ${dir}`, () => {
+        const cam = cameraForZoom(zoom, C405, viewport, from)!;
+        const next = refitCam(cam, from, to);
+        expect(pxPerMm("x", viewport, to, next)).toBeCloseTo(pxPerMm("x", viewport, from, cam), 9);
+        expect(next.ty).toBeCloseTo(cam.ty, 9);
+        const c0 = centreOf(cam, from);
+        const c1 = centreOf(next, to);
+        expect(c1.x).toBeCloseTo(c0.x, 6);
+        expect(c1.y).toBeCloseTo(c0.y, 6);
+      });
+    }
+  }
+
+  it("keeps a panned view inside the new canvas's pan clamp", () => {
+    const cam = clampCam({ scale: 6, tx: 99999, ty: -99999 }, wide);
+    const next = refitCam(cam, wide, narrow);
+    expect(next).toEqual(clampCam(next, narrow));
+  });
+
+  it("does not pull a view left past the far end back in on a step outward", () => {
+    const out = refitCam(FRAME_CAMERA, narrow, wide);
+    expect(out.scale).toBeLessThan(ZOOM_MIN);
+    expect(steppedScale(out.scale, -1, 10)).toBe(out.scale);
+    expect(steppedScale(out.scale, 1, 10)).toBeGreaterThan(out.scale);
+  });
+});
+
+describe("a view stated as its centre and scale", () => {
+  const viewport = siteViewport(C405, ARENA);
+  const geoms = [viewGeom(900, 600, viewport), viewGeom(600, 900, viewport), viewGeom(420, 860, viewport)];
+  const maxOf = (geom: ReturnType<typeof viewGeom>) => zoomMax(C405, viewport, geom);
+
+  it("takes a camera to its centre and scale and back again in the same canvas", () => {
+    for (const geom of geoms) {
+      const cam = cameraForZoom("arena", C405, viewport, geom)!;
+      const back = cameraAtCentre(centreOfView(cam, viewport, geom), viewport, geom, maxOf(geom));
+      expect(back.scale).toBeCloseTo(cam.scale, 9);
+      expect(back.tx).toBeCloseTo(cam.tx, 6);
+      expect(back.ty).toBeCloseTo(cam.ty, 6);
+    }
+  });
+
+  it("shows the same centre at the same scale in a canvas of any shape", () => {
+    const from = geoms[0];
+    const view = centreOfView(cameraForZoom("arena", C405, viewport, from)!, viewport, from);
+    for (const to of geoms) {
+      const got = centreOfView(cameraAtCentre(view, viewport, to, maxOf(to)), viewport, to);
+      expect(got.pxPerMm).toBeCloseTo(view.pxPerMm, 9);
+      expect(got.x).toBeCloseTo(view.x, 6);
+      expect(got.y).toBeCloseTo(view.y, 6);
+    }
+  });
+
+  it("agrees with a panel toggle's refit", () => {
+    const [wide, , narrow] = geoms;
+    const cam = cameraForZoom("arena", C405, viewport, wide)!;
+    const refit = refitCam(cam, wide, narrow);
+    const placed = cameraAtCentre(centreOfView(cam, viewport, wide), viewport, narrow, maxOf(narrow));
+    expect(placed.scale).toBeCloseTo(refit.scale, 9);
+    expect(placed.tx).toBeCloseTo(refit.tx, 6);
+    expect(placed.ty).toBeCloseTo(refit.ty, 6);
+  });
+
+  it("holds a view saved in a larger window under this canvas's ceiling", () => {
+    const small = viewGeom(240, 200, viewport);
+    const top = maxOf(small);
+    const pxPerMm = (top * 4 * small.boxW) / viewport.w;
+    const cam = cameraAtCentre({ x: 1000, y: 1000, pxPerMm }, viewport, small, top);
+    expect(cam.scale).toBeCloseTo(top, 9);
+  });
+
+  it("holds a centre near the edge inside the pan clamp", () => {
+    const geom = geoms[2];
+    const cam = cameraAtCentre({ x: viewport.x, y: viewport.y, pxPerMm: 1 }, viewport, geom, maxOf(geom));
+    expect(cam).toEqual(clampCam(cam, geom));
   });
 });

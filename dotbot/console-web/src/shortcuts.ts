@@ -48,16 +48,31 @@ export function roleOf(e: ModifierKeys): MapRole | null {
 /** The keys that fire an action on their own: one key, one action. */
 export const ACTION_KEY = {
   go: "G",
+  leftPanel: "[",
+  rightPanel: "]",
 } as const;
 
 export type ActionKey = (typeof ACTION_KEY)[keyof typeof ACTION_KEY];
 
-/** Whether a key press is `key` on its own: either case, no modifier held. */
+/**
+ * Whether a key press is `key` on its own: a letter in either case with no
+ * modifier held. A symbol may need Option or AltGr to type on some layouts
+ * (`[` on AZERTY), so for a symbol only Ctrl or Cmd without AltGr rule it out.
+ */
 export function pressed(
-  e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+  e: {
+    key: string;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    altKey: boolean;
+    getModifierState?: (key: string) => boolean;
+  },
   key: ActionKey,
 ): boolean {
-  return !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toUpperCase() === key;
+  if (e.key.toUpperCase() !== key) return false;
+  if (/^[A-Z]$/.test(key)) return !e.ctrlKey && !e.metaKey && !e.altKey;
+  const altGraph = e.getModifierState?.("AltGraph") ?? false;
+  return !e.metaKey && (!e.ctrlKey || altGraph);
 }
 
 /** The key that opens and closes the shortcuts panel. */
@@ -117,6 +132,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
         keys: [ACTION_KEY.go],
         does: "Send the selected robots to their queued waypoints, or stop them on their way",
       },
+    ],
+  },
+  {
+    surface: "Panels",
+    rows: [
+      { keys: [ACTION_KEY.leftPanel], does: "Collapse or expand the left panel" },
+      { keys: [ACTION_KEY.rightPanel], does: "Collapse or expand the right panel" },
     ],
   },
 ];

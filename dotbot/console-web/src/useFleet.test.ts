@@ -1,15 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { CameraDetection, PyDotBot, SwarmitNode } from "./types";
+import { BotPose, CameraDetection, PyDotBot, SwarmitNode } from "./types";
 import {
   deriveLink,
   derivePose,
   deriveState,
-  isDotBot,
   merge,
   severityOf,
   withDetection,
 } from "./useFleet";
+
+const pose = (over: Partial<BotPose> = {}): BotPose => ({
+  heading_deg: 90,
+  heading_source: "travel",
+  photodiode: { x: 0, y: 0 },
+  axle: { x: 0, y: 0 },
+  centre: { x: 0, y: 0 },
+  nose: { x: 0, y: 0 },
+  led: { x: 0, y: 0 },
+  outline: [],
+  wheels: [],
+  reach_mm: 0,
+  core_mm: 0,
+  envelope_mm: 0,
+  ...over,
+});
 
 const py = (over: Partial<PyDotBot> = {}): PyDotBot => ({
   address: "badcafe111111111",
@@ -136,6 +151,20 @@ describe("merge", () => {
     expect(c.drivable).toBe(false);
   });
 
+  it("knows the LED colour only while the app runs", () => {
+    const red = { red: 255, green: 0, blue: 0 };
+    const led = (status: string | null) =>
+      merge(
+        { aaaa: py({ address: "aaaa", rgb_led: red }) },
+        status === null ? {} : { aaaa: sw({ status }) },
+      )[0].led;
+    expect(led("Running")).toEqual(red);
+    expect(led(null)).toEqual(red);
+    for (const status of ["Bootloader", "Stopping", "Programming", "Resetting"]) {
+      expect(led(status)).toBeNull();
+    }
+  });
+
   it("maps firmware AUTO mode to nav=auto", () => {
     const [a] = merge({ a: py({ address: "a", mode: 1 }) }, {});
     expect(a.nav).toBe("auto");
@@ -205,29 +234,86 @@ describe("withDetection (one camera's latest view of its own area)", () => {
   });
 });
 
-describe("isDotBot (drawn as the robot)", () => {
-  it("takes swarmit's device type alone, as in the bootloader", () => {
-    expect(isDotBot(undefined, sw({ device: "DotBotV3", status: "Bootloader" }))).toBe(true);
-    expect(isDotBot(undefined, sw({ device: "DotBotV2" }))).toBe(true);
+describe("the body the controller expanded the fix into", () => {
+  const at = { x: 1500, y: 300 };
+
+  it("rides with the controller's position", () => {
+    const p = pose();
+    expect(derivePose(py({ lh2_position: at, pose: p }), sw(), "active").pose).toBe(p);
   });
 
-  it("takes the controller's application alone, whatever image advertises it", () => {
-    expect(isDotBot(py({ application: 0 }), undefined)).toBe(true);
-    expect(isDotBot(py({ application: 0 }), sw({ device: "Unknown" }))).toBe(true);
+  // The host's pose for a device type, photodiode at the origin.
+  const V3_AT_ORIGIN = pose({
+    heading_source: "none",
+    heading_deg: 0,
+    centre: { x: 0, y: -29 },
+    reach_mm: 89,
+    core_mm: 18,
+    envelope_mm: 95,
   });
 
-  it("is not a DotBot when neither signal says so", () => {
-    expect(isDotBot(py({ application: 1 }), sw({ device: "nRF5340DK" }))).toBe(false);
-    expect(isDotBot(undefined, sw({ device: "Unknown" }))).toBe(false);
+  it("is the device type's pose, moved onto swarmit's position", () => {
+    const heard = py({ lh2_position: at, pose: pose({ photodiode: at }) });
+    const placed = derivePose(heard, sw(), "lost", { DotBotV3: V3_AT_ORIGIN }).pose!;
+    expect(placed.heading_source).toBe("none");
+    expect(placed.photodiode).toEqual({ x: 100, y: 200 });
+    expect(placed.centre).toEqual({ x: 100, y: 171 });
+    expect(placed).toMatchObject({ reach_mm: 89, core_mm: 18, envelope_mm: 95 });
   });
 
-  it("keeps a headingless DotBot a robot on the merged bot", () => {
+  it("is sized even for a bot the controller has never heard", () => {
+    const placed = derivePose(undefined, sw({ status: "Bootloader" }), "unknown", {
+      DotBotV3: V3_AT_ORIGIN,
+    }).pose;
+    expect(placed).toMatchObject({ heading_source: "none", photodiode: { x: 100, y: 200 } });
+  });
+
+  it("is a bare point for a device type the host has no record of", () => {
+    const poses = { DotBotV3: V3_AT_ORIGIN };
+    expect(derivePose(py({ pose: pose() }), sw({ device: "SailBot" }), "lost", poses).pose).toBeNull();
+    expect(derivePose(py({ pose: pose() }), sw(), "lost").pose).toBeNull();
+  });
+
+  it("never keeps the controller's heading for a bot out of its app", () => {
+    // The link lingers for up to a minute after the app stops; the heading
+    // it last reported is stale by then.
+    const heard = py({ lh2_position: at, direction: 90, pose: pose() });
+    for (const status of ["Bootloader", "Stopping", "Programming"]) {
+      const got = derivePose(heard, sw({ status }), "active", { DotBotV3: V3_AT_ORIGIN });
+      expect(got.heading).toBeNull();
+      expect(got.pose?.heading_source).toBe("none");
+      expect(got.position).toEqual({ x: 100, y: 200 });
+      const unplaced = derivePose(heard, sw({ status, pos_x: 0, pos_y: 0 }), "active");
+      expect(unplaced.position).toEqual(at);
+      expect(unplaced.heading).toBeNull();
+      expect(unplaced.pose?.heading_source).toBe("none");
+    }
+  });
+
+  it("is dropped with the position it belongs to", () => {
+    expect(derivePose(py({ pose: pose() }), sw({ pos_x: 0, pos_y: 0 }), "active").pose).toBeNull();
+  });
+
+  it("reaches the merged bot", () => {
+    const p = pose();
     const [b] = merge(
-      { aaaa: py({ address: "aaaa", direction: -1000 }) },
+      { aaaa: py({ address: "aaaa", lh2_position: at, pose: p }) },
+      { aaaa: sw({ status: "Running" }) },
+    );
+    expect(b.pose).toBe(p);
+  });
+
+  it("is carried for a bot that reported no heading, flagged as such", () => {
+    // The controller always expands a valid fix; the flag is what says the
+    // orientation is unknown, and the console keys on that rather than on the
+    // field being absent.
+    const p = pose({ heading_source: "none", heading_deg: 0 });
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", direction: -1000, lh2_position: at, pose: p }) },
       { aaaa: sw({ status: "Running" }) },
     );
     expect(b.heading).toBeNull();
-    expect(b.isDotBot).toBe(true);
+    expect(b.pose?.heading_source).toBe("none");
   });
 });
 
@@ -250,6 +336,16 @@ describe("derivePose (whose pose is live)", () => {
       { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
     );
     expect(b.position).toEqual({ x: 700, y: 800 });
+    expect(b.pose).toBeNull();
+  });
+
+  it("sizes a bootloader bot from its device type", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", status: 1, lh2_position: stale, pose: pose({ photodiode: stale }) }) },
+      { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
+      { DotBotV3: pose({ heading_source: "none", reach_mm: 89 }) },
+    );
+    expect(b.pose).toMatchObject({ heading_source: "none", photodiode: { x: 700, y: 800 }, reach_mm: 89 });
   });
 
   it("keeps the controller's stale position when swarmit has never located the bot", () => {
@@ -259,10 +355,18 @@ describe("derivePose (whose pose is live)", () => {
   it("takes the controller's heading only with its position", () => {
     const heard = py({ lh2_position: stale, direction: 90 });
     expect(derivePose(heard, sw(), "active").heading).toBe(90);
-    expect(derivePose(heard, sw(), "lost")).toEqual({ position: { x: 100, y: 200 }, heading: null });
+    expect(derivePose(heard, sw(), "lost")).toEqual({
+      position: { x: 100, y: 200 },
+      heading: null,
+      pose: null,
+    });
     expect(derivePose(heard, sw({ pos_x: 0, pos_y: 0 }), "lost").heading).toBe(90);
     const unplaced = py({ direction: 90 });
-    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({ position: null, heading: null });
+    expect(derivePose(unplaced, sw({ pos_x: 0, pos_y: 0 }), "active")).toEqual({
+      position: null,
+      heading: null,
+      pose: null,
+    });
   });
 
   it("does not draw swarmit's unlocated origin", () => {

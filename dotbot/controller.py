@@ -71,14 +71,22 @@ from dotbot.models import (
     DotBotNotificationCommand,
     DotBotNotificationModel,
     DotBotNotificationUpdate,
+    DotBotPoseModel,
     DotBotQueryModel,
     DotBotStatus,
 )
 from dotbot.protocol import (
+    DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
     PayloadLh2CalibrationHomography,
     PayloadType,
+)
+from dotbot.robots import (
+    SWARMIT_DEVICE_MODELS,
+    HeadingSource,
+    Point,
+    robot_geometry,
 )
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
@@ -91,6 +99,9 @@ from dotbot.swarm_client import build_swarmit_client, conn_string
 #     DotBotRgbLedCommandModel,
 # )
 
+
+# Stands in for the body heading until the control loop advertises one.
+PLACEHOLDER_HEADING_DEG = 0
 
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
@@ -150,6 +161,32 @@ class ControllerSettings:
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     swarmit_url: str = SWARMIT_URL_DEFAULT
     mrta_url: str = MRTA_URL_DEFAULT
+
+
+def body_pose(
+    model: str, position: DotBotLH2Position, direction: int
+) -> DotBotPoseModel:
+    """The body around an LH2 photodiode fix, facing the advertised direction.
+
+    With no advertised direction the pose faces `PLACEHOLDER_HEADING_DEG`
+    and says so in its `heading_source`.
+    """
+    if direction != DIRECTION_NONE:
+        heading, source = direction, HeadingSource.TRAVEL
+    else:
+        heading, source = PLACEHOLDER_HEADING_DEG, HeadingSource.NONE
+    return DotBotPoseModel.from_body_pose(
+        robot_geometry(model).body_pose(Point(position.x, position.y), heading, source)
+    )
+
+
+def device_pose(device: str, position: DotBotLH2Position) -> Optional[DotBotPoseModel]:
+    """The headingless pose of a robot swarmit reports as `device` at
+    `position`, or None when the host has no geometry record for that type."""
+    model = SWARMIT_DEVICE_MODELS.get(device)
+    if model is None:
+        return None
+    return body_pose(model, position, DIRECTION_NONE)
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -449,11 +486,15 @@ class Controller:
         if twin is None:
             twin = DotBotSimulator(
                 SimulatedDotBotSettings(
-                    address=address, pos_x=init_pos_x, pos_y=init_pos_y
+                    address=address,
+                    pos_x=init_pos_x,
+                    pos_y=init_pos_y,
+                    direction=init_direction,
                 ),
                 queue.Queue(),
             )
-            twin.direction = init_direction
+            twin._direction_origin_x = init_pos_x
+            twin._direction_origin_y = init_pos_y
             twin.encoder_left_acc = init_encoder_left
             twin.encoder_right_acc = init_encoder_right
             self._dotbot_twins[address] = twin
@@ -562,7 +603,9 @@ class Controller:
             dotbot.rudder_angle = self.dotbots[source].rudder_angle
             dotbot.sail_angle = self.dotbots[source].sail_angle
             dotbot.rgb_led = self.dotbots[source].rgb_led
+            dotbot.model = self.dotbots[source].model
             dotbot.lh2_position = self.dotbots[source].lh2_position
+            dotbot.pose = self.dotbots[source].pose
             dotbot.gps_position = self.dotbots[source].gps_position
             dotbot.waypoints = self.dotbots[source].waypoints
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
@@ -613,14 +656,20 @@ class Controller:
                     )
                     self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:
-                if frame.packet.payload.direction != 0xFFFF:
-                    dotbot.direction = frame.packet.payload.direction
+                dotbot.direction = (
+                    None
+                    if frame.packet.payload.direction == DIRECTION_NONE
+                    else frame.packet.payload.direction
+                )
                 new_position = DotBotLH2Position(
                     x=frame.packet.payload.pos_x,
                     y=frame.packet.payload.pos_y,
                 )
                 if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
                     dotbot.lh2_position = new_position
+                    dotbot.pose = body_pose(
+                        dotbot.model, new_position, frame.packet.payload.direction
+                    )
                     if (
                         dotbot.position_history
                         and lh2_distance(dotbot.position_history[-1], new_position)
@@ -646,7 +695,7 @@ class Controller:
                         controller_mode=ControlModeType(frame.packet.payload.mode),
                         init_pos_x=new_position.x,
                         init_pos_y=new_position.y,
-                        init_direction=dotbot.direction,
+                        init_direction=frame.packet.payload.direction,
                         init_encoder_left=frame.packet.payload.encoder_left,
                         init_encoder_right=frame.packet.payload.encoder_right,
                     )
@@ -654,7 +703,7 @@ class Controller:
                         real_log = CSVLog(
                             pos_x=dotbot.lh2_position.x,
                             pos_y=dotbot.lh2_position.y,
-                            direction=dotbot.direction,
+                            direction=frame.packet.payload.direction,
                             pwm_left=frame.packet.payload.pwm_left,
                             pwm_right=frame.packet.payload.pwm_right,
                             encoder_left=frame.packet.payload.encoder_left,
@@ -681,6 +730,7 @@ class Controller:
                             battery_level=dotbot.battery,
                             sim_battery_voltage=twin.battery_voltage / 1000.0,
                             address=dotbot.address,
+                            pose=dotbot.pose,
                         )
                 need_update = True
 
@@ -696,7 +746,7 @@ class Controller:
                 "Advertisement Data",
                 direction=frame.packet.payload.direction,
                 X=frame.packet.payload.pos_x,
-                Y=frame.packet.payload.pos_x,
+                Y=frame.packet.payload.pos_y,
                 battery=frame.packet.payload.battery,
             )
             if (
@@ -852,6 +902,12 @@ class Controller:
             destination=dest_str,
             payload=payload,
         )
+
+    def device_poses(self) -> Dict[str, DotBotPoseModel]:
+        """The headingless pose of each swarmit device type the host has a
+        geometry record for, with its photodiode at the origin."""
+        origin = DotBotLH2Position(x=0, y=0)
+        return {device: device_pose(device, origin) for device in SWARMIT_DEVICE_MODELS}
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
         """Returns the list of dotbots matching the query."""

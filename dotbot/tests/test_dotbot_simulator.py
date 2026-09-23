@@ -8,6 +8,10 @@ from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot import addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
+    DIRECTION_THRESHOLD_MM,
+    MOTOR_SPEED,
+    SIMULATOR_STEP_DELTA_T,
+    SIMULATOR_UPDATE_INTERVAL_S,
     DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
     SimulatedDotBotSettings,
@@ -16,8 +20,16 @@ from dotbot.dotbot_simulator import (
     place_dotbots,
     placement_area,
 )
-from dotbot.protocol import PayloadCommandMoveRaw
+from dotbot.protocol import (
+    DIRECTION_NONE,
+    ControlModeType,
+    PayloadCommandMoveRaw,
+    PayloadLH2Location,
+    PayloadLH2Waypoints,
+)
 from dotbot.site import Site
+
+ADDRESS = "BADCAFE111111111"
 
 
 def _bot(address: str) -> DotBotSimulator:
@@ -69,6 +81,73 @@ def test_the_address_rendering_round_trips():
     """The rx path and the index map must render an address the same way."""
     for address in ("B0B0F00D33333333", "00B0F00D33333333", "1234567890123456"):
         assert addr_to_hex(int(address, 16)) == address
+
+
+# --- Heading ----------------------------------------------------------------
+
+
+def test_a_fresh_bot_has_no_heading_until_it_has_travelled_past_the_threshold():
+    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+    assert bot.direction == DIRECTION_NONE
+
+    # Started at the frame origin facing north, so pos_y is the travel so far.
+    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
+    while bot.pos_y <= DIRECTION_THRESHOLD_MM:
+        assert bot.direction == DIRECTION_NONE
+        bot.diff_drive_model_update()
+    assert bot.direction == 0
+
+
+def test_the_next_heading_waits_for_another_threshold_of_travel():
+    """The recorded point advances with the heading, not with every step."""
+    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
+    while bot.direction == DIRECTION_NONE:
+        bot.diff_drive_model_update()
+
+    bot.theta = 90  # turned east, where a recomputed heading reads -90
+    bot.diff_drive_model_update()
+    assert bot.direction == 0
+    while bot.pos_x <= DIRECTION_THRESHOLD_MM:
+        bot.diff_drive_model_update()
+    assert bot.direction == -90
+
+
+def _drive_to(bot: DotBotSimulator, x: int, y: int, timeout_s: float) -> None:
+    """Run control and physics at their real rates until the waypoint run ends."""
+    waypoints = [PayloadLH2Location(pos_x=x, pos_y=y)]
+    _deliver(
+        bot,
+        Frame(
+            header=Header(destination=int(bot.address, 16), source=0),
+            packet=Packet().from_payload(
+                PayloadLH2Waypoints(threshold=50, count=1, waypoints=waypoints)
+            ),
+        ),
+    )
+    physics_per_control = round(SIMULATOR_UPDATE_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
+    elapsed = 0.0
+    while bot.controller_mode == ControlModeType.AUTO and elapsed < timeout_s:
+        bot._control_loop_default()
+        for _ in range(physics_per_control):
+            bot.diff_drive_model_update()
+        elapsed += SIMULATOR_UPDATE_INTERVAL_S
+
+
+@pytest.mark.parametrize("direction", [90, DIRECTION_NONE], ids=["heading", "none"])
+def test_the_default_control_loop_reaches_a_waypoint_it_must_turn_toward(direction):
+    """Guards against steering on the advertised heading, which a bot turning
+    in place never updates, so it spins without arriving."""
+    bot = DotBotSimulator(
+        SimulatedDotBotSettings(
+            address=ADDRESS, pos_x=1000, pos_y=1000, direction=direction
+        ),
+        queue.Queue(),
+    )
+    _drive_to(bot, 1000, 300, timeout_s=10)
+    assert bot.controller_mode == ControlModeType.MANUAL
+    assert (bot.pos_x - 1000) ** 2 + (bot.pos_y - 300) ** 2 < 50**2
+    assert bot.direction != DIRECTION_NONE
 
 
 # --- Placement of a world file's unpositioned robots -------------------------
@@ -162,16 +241,16 @@ def test_a_fully_positioned_fleet_is_returned_unchanged():
 
 
 def test_the_packaged_world_spreads_its_fleet_over_the_active_arena():
-    """End to end from the shipped world file: the default four robots must
-    start inside the site's arena, not in a corner of the floor."""
+    """End to end from the shipped world file: every declared robot must start
+    inside the site's arena, not in a corner of the floor."""
     interface = DotBotSimulatorCommunicationInterface(
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
         site=HALL,
     )
     arena = HALL.areas["arena"]
-    assert len(interface.dotbots) == 4
-    assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 4
+    assert len(interface.dotbots) == 5
+    assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 5
     assert all(
         arena.x < bot.pos_x < arena.x_max and arena.y < bot.pos_y < arena.y_max
         for bot in interface.dotbots
@@ -183,7 +262,17 @@ def test_the_packaged_world_still_runs_with_no_site_at_all():
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
     )
-    assert len(interface.dotbots) == 4
+    assert len(interface.dotbots) == 5
     assert all(
         0 < bot.pos_x < 2000 and 0 < bot.pos_y < 2000 for bot in interface.dotbots
     )
+
+
+def test_the_packaged_world_ships_a_robot_with_no_heading():
+    """`dotbot run simulator` must be able to show the no-heading case."""
+    interface = DotBotSimulatorCommunicationInterface(
+        on_frame_received=lambda *_: None,
+        simulator_init_state=str(packaged_init_state_path()),
+        site=HALL,
+    )
+    assert [bot.direction for bot in interface.dotbots].count(DIRECTION_NONE) == 1

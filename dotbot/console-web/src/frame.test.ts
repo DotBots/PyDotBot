@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  VIEWPORT_MARGIN_MM,
+  PAN_MARGIN_MM,
+  SITE_VIEW_MARGIN_MIN_MM,
   areaToFraction,
   fractionToArea,
   headingToGlyphRotation,
+  siteView,
   siteViewport,
 } from "./frame";
 import type { Area, Site } from "./types";
@@ -50,16 +52,16 @@ describe("the site frame", () => {
   });
 });
 
-describe("the default viewport", () => {
-  const site = (extent: [number, number] | null): Site => ({
-    name: "c405-arena",
-    anchor: "the arena top-left corner",
-    extent_mm: extent,
-    areas: [ARENA, ANNEX],
-  });
+const site = (extent: [number, number] | null): Site => ({
+  name: "c405-arena",
+  anchor: "the arena top-left corner",
+  extent_mm: extent,
+  areas: [ARENA, ANNEX],
+});
 
-  it("surrounds the site extent by the margin on every side", () => {
-    expect(VIEWPORT_MARGIN_MM).toBe(2000);
+describe("the drawn viewport", () => {
+  it("runs 2 m past the site extent on every side", () => {
+    expect(PAN_MARGIN_MM).toBe(2000);
     expect(siteViewport(site([2000, 4000]), ARENA)).toMatchObject({
       x: -2000,
       y: -2000,
@@ -68,10 +70,14 @@ describe("the default viewport", () => {
     });
   });
 
-  it("keeps the site's zero at the same fraction of the box on both axes", () => {
+  it("puts the site at the same place in the box on both axes", () => {
     const vp = siteViewport(site([2000, 4000]), ARENA);
-    expect(areaToFraction({ x: 0, y: 0 }, vp)).toEqual({ fx: 1 / 3, fy: 0.25 });
-    expect(areaToFraction({ x: 2000, y: 4000 }, vp)).toEqual({ fx: 2 / 3, fy: 0.75 });
+    const zero = areaToFraction({ x: 0, y: 0 }, vp);
+    const far = areaToFraction({ x: 2000, y: 4000 }, vp);
+    expect(zero.fx).toBeCloseTo(2 / 6, 12);
+    expect(zero.fy).toBeCloseTo(2 / 8, 12);
+    expect(far.fx).toBeCloseTo(4 / 6, 12);
+    expect(far.fy).toBeCloseTo(6 / 8, 12);
   });
 
   it("falls back when the site has no measured extent", () => {
@@ -89,6 +95,34 @@ describe("the default viewport", () => {
       y: -2000,
       w: 5000,
       h: 4800,
+    });
+  });
+});
+
+describe("the site view", () => {
+  it("surrounds the site extent by a tenth of its longer side on every side", () => {
+    expect(siteView(siteViewport(site([2000, 4000]), ARENA))).toMatchObject({
+      x: -400,
+      y: -400,
+      w: 2800,
+      h: 4800,
+    });
+  });
+
+  it("keeps a small site's margin at the floor", () => {
+    expect(siteView(siteViewport(site([1000, 1000]), ARENA))).toMatchObject({
+      x: -SITE_VIEW_MARGIN_MIN_MM,
+      y: -SITE_VIEW_MARGIN_MIN_MM,
+      w: 1000 + 2 * SITE_VIEW_MARGIN_MIN_MM,
+    });
+  });
+
+  it("frames the fallback when the site has no measured extent", () => {
+    expect(siteView(siteViewport(null, ARENA))).toMatchObject({
+      x: -250,
+      y: -250,
+      w: 1500,
+      h: 1300,
     });
   });
 });

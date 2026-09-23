@@ -10,6 +10,7 @@ import {
   UnifiedBot,
 } from "./types";
 import { FirmwareSection } from "./FirmwareSection";
+import { PanelToggle } from "./PanelToggle";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
 
@@ -36,6 +37,8 @@ interface Mission {
 }
 
 interface TestbedRailProps {
+  collapsed: boolean;
+  setCollapsed: (collapsed: boolean) => void;
   bots: UnifiedBot[];
   selection: Set<string>;
   planned: PlannedMission[];
@@ -157,12 +160,10 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
 }
 
 export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
-  // The panel is open by default; ?rail=collapsed starts it as the icon strip,
-  // and ?rail=testbed|missions picks which tab is on top.
+  // ?rail=testbed|missions|localization picks which tab is on top.
   const railParam = new URLSearchParams(window.location.search).get("rail");
-  const [mode, setMode] = useState<"collapsed" | "panel">(
-    railParam === "collapsed" ? "collapsed" : "panel",
-  );
+  const mode = props.collapsed ? "collapsed" : "panel";
+  const expand = () => props.setCollapsed(false);
   const [top, setTop] = useState<"testbed" | "missions" | "localization">(
     railParam === "missions"
       ? "missions"
@@ -204,9 +205,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
       {/* collapsed icon strip */}
       {mode === "collapsed" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "10px 0", flex: 1 }}>
-          <div onClick={() => setMode("panel")} title="Open testbed" style={{ ...ico, cursor: "pointer" }}>
-            &#9636;
-          </div>
+          <PanelToggle side="left" collapsed onToggle={expand} />
           <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
           {[
             { g: "▶", t: "Start", fn: props.onStart },
@@ -219,7 +218,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
           <div
             onClick={() => {
-              setMode("panel");
+              expand();
               setTop("testbed");
               setTab("console");
             }}
@@ -230,7 +229,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           </div>
           <div
             onClick={() => {
-              setMode("panel");
+              expand();
               setTop("missions");
             }}
             title={`Missions (${missions.length})`}
@@ -262,7 +261,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
           </div>
           <div
             onClick={() => {
-              setMode("panel");
+              expand();
               setTop("localization");
             }}
             title="Localization"
@@ -314,13 +313,9 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               </div>
             </div>
             <div style={{ flex: 1 }} />
-            <span
-              onClick={() => setMode("collapsed")}
-              title="Collapse"
-              style={{ cursor: "pointer", color: "var(--muted)", fontSize: 15, lineHeight: 1 }}
-            >
-              &#8249;
-            </span>
+            <div style={{ margin: "-4px -6px -4px 0" }}>
+              <PanelToggle side="left" collapsed={false} onToggle={() => props.setCollapsed(true)} />
+            </div>
           </div>
 
           {/* TESTBED tab */}

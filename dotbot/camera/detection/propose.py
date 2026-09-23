@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import numpy as np
 
-ROBOT_MM = 95.0  # DotBot footprint, a physical fact
+from dotbot.robots import robot_geometry
+
+ROBOT_MM = robot_geometry().envelope_mm  # the footprint a robot occupies
 
 # Design constants, all in units of the robot or of the floor's own noise.
 SAMPLES_PER_ROBOT = 12.0  # working grid: a robot spans this many px

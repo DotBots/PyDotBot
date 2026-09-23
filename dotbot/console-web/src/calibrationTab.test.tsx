@@ -7,6 +7,7 @@ import type { CalibrationSession, Site } from "./types";
 // The fleet hook is the one seam calibration mode turns on: the controller
 // owns the session, so App only ever sees it appear and disappear.
 let session: CalibrationSession | null = null;
+const VIEWPORT = { x: -2000, y: -2000, w: 6000, h: 8000 };
 const site: Site = {
   name: "c405-arena",
   anchor: "the arena's top-left corner",
@@ -25,7 +26,7 @@ vi.mock("./useFleet", () => ({
     setSession: (next: CalibrationSession | null) => {
       session = next;
     },
-    viewport: { x: -2000, y: -2000, w: 6000, h: 8000 },
+    viewport: VIEWPORT,
     wsUp: true,
   }),
 }));
@@ -62,6 +63,17 @@ vi.mock("./api", () => ({
 
 import { abandonCalibration, startCalibration } from "./api";
 import { App } from "./App";
+import { sessionRect } from "./calibration";
+import { loadPanels } from "./panels";
+import { saveSavedViews, withView } from "./savedView";
+import {
+  Camera,
+  cameraForArea,
+  centreOfView,
+  padArea,
+  viewGeom,
+  zoomMax,
+} from "./zoom";
 
 const SESSION: CalibrationSession = {
   at: "arena:corners",
@@ -255,5 +267,83 @@ describe("the step card following the robot's button", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
     expect(screen.getByText("Push")).toBeInTheDocument();
     expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+  });
+});
+
+describe("the camera across a session started with the right pane collapsed", () => {
+  // The map with the right pane collapsed, then with it open.
+  const WIDE = { w: 760, h: 860 };
+  const NARROW = { w: 488, h: 860 };
+  const rect = (c: { w: number; h: number }) =>
+    ({ width: c.w, height: c.h, top: 0, left: 0, right: c.w, bottom: c.h, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+
+  let rectSpy: ReturnType<typeof vi.spyOn>;
+  const observers: (() => void)[] = [];
+  const Real = globalThis.ResizeObserver;
+  beforeEach(() => {
+    rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rect(WIDE));
+    globalThis.ResizeObserver = class {
+      constructor(cb: () => void) {
+        observers.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  });
+  afterEach(() => {
+    rectSpy.mockRestore();
+    globalThis.ResizeObserver = Real;
+    observers.length = 0;
+  });
+
+  const resize = (c: { w: number; h: number }) => {
+    rectSpy.mockReturnValue(rect(c));
+    act(() => observers.forEach((cb) => cb()));
+  };
+  const camOf = (): Camera => {
+    const t = screen.getByTestId("camera-layer").style.transform;
+    const [, tx, ty, scale] =
+      /translate\(([-\d.e+]+)px, ([-\d.e+]+)px\) scale\(([-\d.e+]+)\)/.exec(t) ?? [];
+    return { scale: Number(scale), tx: Number(tx), ty: Number(ty) };
+  };
+  const paneOpen = () => screen.queryByLabelText("Collapse the right panel") !== null;
+
+  it("fits the session to the opened canvas and gives the view and the pane back on Done", () => {
+    window.localStorage.setItem("dotbot.console.panels", JSON.stringify({ left: false, right: true }));
+    saveSavedViews(withView({}, site.name, { x: 1200, y: 3100, pxPerMm: 0.4 }));
+    const { rerender } = render(<App />);
+    const wide = viewGeom(WIDE.w, WIDE.h, VIEWPORT);
+    const before = centreOfView(camOf(), VIEWPORT, wide);
+
+    session = SESSION;
+    act(() => {
+      rerender(<App />);
+    });
+    expect(paneOpen()).toBe(true);
+    expect(loadPanels().right).toBe(true);
+    resize(NARROW);
+    const narrow = viewGeom(NARROW.w, NARROW.h, VIEWPORT);
+    const fit = cameraForArea(
+      padArea(sessionRect(SESSION)!),
+      VIEWPORT,
+      narrow,
+      zoomMax(site, VIEWPORT, narrow),
+    );
+    expect(camOf().scale).toBeCloseTo(fit.scale, 6);
+    expect(camOf().tx).toBeCloseTo(fit.tx, 4);
+    expect(camOf().ty).toBeCloseTo(fit.ty, 4);
+
+    session = null;
+    act(() => {
+      rerender(<App />);
+    });
+    expect(paneOpen()).toBe(false);
+    expect(loadPanels().right).toBe(true);
+    resize(WIDE);
+    const after = centreOfView(camOf(), VIEWPORT, wide);
+    expect(after.pxPerMm).toBeCloseTo(before.pxPerMm, 9);
+    expect(after.x).toBeCloseTo(before.x, 4);
+    expect(after.y).toBeCloseTo(before.y, 4);
   });
 });

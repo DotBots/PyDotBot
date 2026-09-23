@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { putMoveRaw } from "./api";
+import { hasHeading } from "./BotGlyph";
 import { UnifiedBot } from "./types";
 
 // v1 drive pad: 64px rounded square, crosshair guides, LED-colored knob with
@@ -67,6 +68,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
   const knobPx = { x: (knob.x / CONTROL_R) * R, y: (knob.y / CONTROL_R) * R };
 
   const single = targets.length === 1 ? targets[0] : null;
+  const heading = single?.pose && hasHeading(single.pose) ? single.pose.heading_deg : null;
   const led = single
     ? single.led
       ? `rgb(${single.led.red},${single.led.green},${single.led.blue})`
@@ -150,7 +152,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
             transition: active ? "none" : "transform .15s ease",
           }}
         >
-          {single.heading !== null && (
+          {heading !== null && (
             <div
               style={{
                 position: "absolute",
@@ -161,7 +163,7 @@ export const Pad: React.FC<PadProps> = ({ targets, disabled }) => {
                 borderLeft: "5px solid transparent",
                 borderRight: "5px solid transparent",
                 borderBottom: "9px solid rgba(255,255,255,.92)",
-                transform: `translate(-50%, -50%) rotate(${-single.heading}deg) translateY(-13px)`,
+                transform: `translate(-50%, -50%) rotate(${-heading}deg) translateY(-13px)`,
               }}
             />
           )}
