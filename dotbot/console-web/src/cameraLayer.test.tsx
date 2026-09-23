@@ -36,6 +36,8 @@ import { RightPane, RightTab } from "./RightPane";
 import type {
   Area,
   CameraDetection,
+  CameraPose,
+  CameraRobot,
   LH2Position,
   RegisteredCamera,
   Site,
@@ -796,49 +798,69 @@ const WHEELS: number[][][] = [
   ],
 ];
 
+const POSE: CameraPose = {
+  centre_mm: [1523.4, 488.1],
+  photodiode_mm: [1540.2, 511.7],
+  nose_mm: [1551.0, 526.2],
+  outline_mm: OUTLINE,
+  wheels_mm: WHEELS,
+  heading_deg: -37.5,
+  heading_atan2_deg: 52.5,
+  green_flare: 0.83,
+  tmpl_margin: 0.91,
+  refined: true,
+};
+
+const robot = (
+  status: CameraRobot["status"] = "found",
+  address: string | null = "217B829760EBA3E0",
+  pose: CameraPose = POSE,
+): CameraRobot => ({ address, status, timestamp: 1758100000.123, pose });
+
 const detection = (
   status: CameraDetection["status"],
-  withPose = status !== "none",
+  robots: CameraRobot[] = status === "none" ? [] : [robot(status)],
 ): CameraDetection => ({
   area: "dev-corner",
   camera_id: "7b21c0d9f3a1",
   sequence: 412,
   timestamp: 1758100000.123,
   status,
-  candidates: status === "none" ? 0 : 1,
+  candidates: robots.length,
   elapsed_ms: 48.2,
-  pose: withPose
-    ? {
-        centre_mm: [1523.4, 488.1],
-        photodiode_mm: [1540.2, 511.7],
-        nose_mm: [1551.0, 526.2],
-        outline_mm: OUTLINE,
-        wheels_mm: WHEELS,
-        heading_deg: -37.5,
-        heading_atan2_deg: 52.5,
-        green_flare: 0.83,
-        tmpl_margin: 0.91,
-        refined: true,
-      }
-    : undefined,
+  rate_hz: 3.4,
+  robots,
 });
+
+// A second robot 200 mm to the right of the first.
+const shifted = (dx: number): CameraPose => {
+  const move = ([x, y]: number[]) => [x + dx, y];
+  return {
+    ...POSE,
+    centre_mm: move(POSE.centre_mm) as [number, number],
+    photodiode_mm: move(POSE.photodiode_mm) as [number, number],
+    nose_mm: move(POSE.nose_mm) as [number, number],
+    outline_mm: POSE.outline_mm.map(move),
+    wheels_mm: POSE.wheels_mm!.map((w) => w.map(move)),
+  };
+};
 
 describe("detectionStroke", () => {
   it("draws a pose it stands behind solid, and one it does not dashed", () => {
-    expect(detectionStroke(detection("found"))).toEqual({
+    expect(detectionStroke(robot("found"))).toEqual({
       stroke: "var(--accent)",
     });
-    expect(detectionStroke(detection("refused"))).toEqual({
+    expect(detectionStroke(robot("refused"))).toEqual({
       stroke: "var(--muted)",
       dasharray: "6 4",
     });
   });
 
   it("draws nothing when there is no pose to draw", () => {
-    expect(detectionStroke(detection("none"))).toBeNull();
     expect(detectionStroke(undefined)).toBeNull();
-    // A status that claims a pose it does not carry draws nothing either.
-    expect(detectionStroke(detection("found", false))).toBeNull();
+    // A robot that claims a pose it does not carry draws nothing either.
+    const bare = { ...robot("found"), pose: undefined } as unknown as CameraRobot;
+    expect(detectionStroke(bare)).toBeNull();
   });
 });
 
@@ -848,9 +870,9 @@ describe("the detection on the map", () => {
       <Harness cameraDetections={{ "dev-corner": detection("found") }} />,
     );
     const map = screen.getByTestId("map");
-    const group = within(map).getByTestId("camera-detection-dev-corner");
+    const group = within(map).getByTestId("camera-detection-dev-corner-0");
 
-    const outline = within(map).getByTestId("camera-detection-outline-dev-corner");
+    const outline = within(map).getByTestId("camera-detection-outline-dev-corner-0");
     expect(outline.getAttribute("points")).toBe(
       polygonPoints(OUTLINE, DEV_CORNER),
     );
@@ -861,7 +883,7 @@ describe("the detection on the map", () => {
     // glyph the lighthouse draws beside it.
     WHEELS.forEach((wheel, i) => {
       const tyre = within(map).getByTestId(
-        `camera-detection-wheel-dev-corner-${i}`,
+        `camera-detection-wheel-dev-corner-0-${i}`,
       );
       expect(tyre.getAttribute("points")).toBe(
         polygonPoints(wheel, DEV_CORNER),
@@ -872,13 +894,13 @@ describe("the detection on the map", () => {
       );
     });
 
-    const nose = within(map).getByTestId("camera-detection-nose-dev-corner");
+    const nose = within(map).getByTestId("camera-detection-nose-dev-corner-0");
     expect(nose.getAttribute("x1")).toBe(String(1523.4 - DEV_CORNER.x));
     expect(nose.getAttribute("y1")).toBe(String(488.1 - DEV_CORNER.y));
     expect(nose.getAttribute("x2")).toBe(String(1551.0 - DEV_CORNER.x));
     expect(nose.getAttribute("y2")).toBe(String(526.2 - DEV_CORNER.y));
 
-    const diode = within(map).getByTestId("camera-detection-diode-dev-corner");
+    const diode = within(map).getByTestId("camera-detection-diode-dev-corner-0");
     expect(diode.getAttribute("cx")).toBe(String(1540.2 - DEV_CORNER.x));
     expect(diode.getAttribute("cy")).toBe(String(511.7 - DEV_CORNER.y));
 
@@ -888,15 +910,16 @@ describe("the detection on the map", () => {
   });
 
   it("draws the board alone for a pose that carries no tyres", () => {
-    const found = detection("found");
-    const older = { ...found, pose: { ...found.pose!, wheels_mm: undefined } };
+    const older = detection("found", [
+      robot("found", null, { ...POSE, wheels_mm: undefined }),
+    ]);
     render(<Harness cameraDetections={{ "dev-corner": older }} />);
     const map = screen.getByTestId("map");
     expect(
-      within(map).queryByTestId("camera-detection-wheel-dev-corner-0"),
+      within(map).queryByTestId("camera-detection-wheel-dev-corner-0-0"),
     ).toBeNull();
     expect(
-      within(map).getByTestId("camera-detection-outline-dev-corner"),
+      within(map).getByTestId("camera-detection-outline-dev-corner-0"),
     ).toBeTruthy();
   });
 
@@ -905,7 +928,7 @@ describe("the detection on the map", () => {
       <Harness cameraDetections={{ "dev-corner": detection("refused") }} />,
     );
     const map = screen.getByTestId("map");
-    const outline = within(map).getByTestId("camera-detection-outline-dev-corner");
+    const outline = within(map).getByTestId("camera-detection-outline-dev-corner-0");
     expect(outline.getAttribute("stroke")).toBe("var(--muted)");
     expect(outline.getAttribute("stroke-dasharray")).toBe("6 4");
   });
@@ -914,7 +937,7 @@ describe("the detection on the map", () => {
     render(<Harness cameraDetections={{ "dev-corner": detection("none") }} />);
     const map = screen.getByTestId("map");
     expect(
-      within(map).queryByTestId("camera-detection-dev-corner"),
+      within(map).queryByTestId("camera-detection-dev-corner-0"),
     ).toBeNull();
   });
 
@@ -929,7 +952,7 @@ describe("the detection on the map", () => {
     );
     const map = screen.getByTestId("map");
     expect(
-      within(map).getByTestId("camera-detection-dev-corner"),
+      within(map).getByTestId("camera-detection-dev-corner-0"),
     ).toBeInTheDocument();
     expect(within(map).queryByTestId("camera-coverage-dev-corner")).toBeNull();
   });
@@ -940,6 +963,34 @@ describe("the detection on the map", () => {
     expect(
       within(pane).getByTestId("camera-detection-status-dev-corner").textContent,
     ).toBe("robot seen");
+  });
+
+  it("draws every robot the camera found, each tagged with its address", () => {
+    render(
+      <Harness
+        cameraDetections={{
+          "dev-corner": detection("found", [
+            robot("found", "217B829760EBA3E0"),
+            robot("refused", null, shifted(200)),
+          ]),
+        }}
+      />,
+    );
+    const map = screen.getByTestId("map");
+    const first = within(map).getByTestId("camera-detection-dev-corner-0");
+    const second = within(map).getByTestId("camera-detection-dev-corner-1");
+    expect(first.getAttribute("data-address")).toBe("217B829760EBA3E0");
+    expect(second.getAttribute("data-address")).toBeNull();
+    expect(
+      within(map).getByTestId("camera-detection-outline-dev-corner-1").getAttribute("points"),
+    ).toBe(polygonPoints(shifted(200).outline_mm, DEV_CORNER));
+    expect(
+      within(map).getByTestId("camera-detection-outline-dev-corner-1").getAttribute("stroke-dasharray"),
+    ).toBe("6 4");
+    expect(
+      within(screen.getByTestId("pane")).getByTestId("camera-detection-status-dev-corner")
+        .textContent,
+    ).toBe("2 robots seen");
   });
 
   it("says nothing before the first message arrives", () => {

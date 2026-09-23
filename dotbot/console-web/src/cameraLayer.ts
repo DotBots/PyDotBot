@@ -24,7 +24,7 @@
 // comparison the layer exists to make.
 
 import { loadRecord, store } from "./persisted";
-import type { Area, CameraDetection, LH2Position } from "./types";
+import type { Area, CameraRobot, LH2Position } from "./types";
 
 const OPACITY_KEY = "dotbot.console.cameraOpacity";
 const OFFSET_KEY = "dotbot.console.cameraOffset";
@@ -241,7 +241,7 @@ export function polygonPoints(polygon: number[][], area: Area): string {
   return polygon.map(([x, y]) => `${x - area.x},${y - area.y}`).join(" ");
 }
 
-/** How one detection's outline is stroked, or null when there is nothing to draw. */
+/** How one robot's outline is stroked, or null when there is nothing to draw. */
 export interface DetectionStroke {
   stroke: string;
   dasharray?: string;
@@ -255,11 +255,11 @@ export interface DetectionStroke {
  * estimator hesitating instead of seeing an empty floor.
  */
 export function detectionStroke(
-  detection: CameraDetection | undefined,
+  robot: CameraRobot | undefined,
 ): DetectionStroke | null {
-  if (!detection || !detection.pose) return null;
-  if (detection.status === "found") return { stroke: "var(--accent)" };
-  if (detection.status === "refused")
+  if (!robot || !robot.pose) return null;
+  if (robot.status === "found") return { stroke: "var(--accent)" };
+  if (robot.status === "refused")
     return { stroke: "var(--muted)", dasharray: "6 4" };
   return null;
 }

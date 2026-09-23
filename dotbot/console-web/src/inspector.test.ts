@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatLh2, formatUptime, infoText } from "./Inspector";
-import { SwarmitNode, UnifiedBot } from "./types";
+import {
+  cameraRobotFor,
+  formatCameraHeading,
+  formatLh2,
+  formatUptime,
+  infoText,
+} from "./Inspector";
+import { CameraDetection, SwarmitNode, UnifiedBot } from "./types";
 
 const bot = (over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   id: "217B829760EBA3E0",
@@ -109,5 +115,34 @@ describe("infoText", () => {
     expect(hung).toContain("pc              0x00010230");
     expect(hung).toContain("lr              0x0001022b");
     expect(hung).toContain("fault           WatchdogTimeout");
+  });
+});
+
+describe("the camera's heading for the selected robot", () => {
+  const detection = (address: string | null, status: "found" | "refused") =>
+    ({
+      area: "dev-corner",
+      status,
+      robots: [{ address, status, timestamp: 1, pose: { heading_deg: -37.4 } }],
+    }) as unknown as CameraDetection;
+
+  it("reads the robot the camera named with this bot's address", () => {
+    const robot = cameraRobotFor(bot(), {
+      "dev-corner": detection("217B829760EBA3E0", "found"),
+    });
+    expect(formatCameraHeading(robot)).toBe("-37 deg");
+  });
+
+  it("says when the camera saw it without standing behind the pose", () => {
+    const robot = cameraRobotFor(bot(), {
+      "dev-corner": detection("217B829760EBA3E0", "refused"),
+    });
+    expect(formatCameraHeading(robot)).toBe("-37 deg, low confidence");
+  });
+
+  it("never takes an unnamed robot for this one", () => {
+    const robot = cameraRobotFor(bot(), { "dev-corner": detection(null, "found") });
+    expect(robot).toBeNull();
+    expect(formatCameraHeading(robot)).toBe("not seen");
   });
 });

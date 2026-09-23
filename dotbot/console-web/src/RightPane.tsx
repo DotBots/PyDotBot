@@ -12,7 +12,7 @@ import {
   robotOpacityFor,
 } from "./cameraLayer";
 import { InspectorBody } from "./Inspector";
-import { DETECTION_TEXT } from "./localization";
+import { detectionText } from "./localization";
 import { PanelToggle } from "./PanelToggle";
 import type { DrawMode, RobotDrawing } from "./robotDrawing";
 import { SetupCard } from "./SetupCard";
@@ -293,9 +293,10 @@ const CameraRow: React.FC<{
         detection && (
           <div
             data-testid={`camera-detection-status-${camera.area}`}
+            title={`Detecting at ${detection.rate_hz.toFixed(1)} Hz, ${detection.elapsed_ms.toFixed(0)} ms a frame`}
             style={{ color: "var(--muted)", fontSize: 11 }}
           >
-            {DETECTION_TEXT[detection.status]}
+            {detectionText(detection)}
           </div>
         )
       )}
@@ -523,7 +524,9 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
             />
           ))}
 
-        {props.tab === "robot" && <InspectorBody bots={props.bots} />}
+        {props.tab === "robot" && (
+          <InspectorBody bots={props.bots} cameraDetections={props.cameraDetections} />
+        )}
 
         {props.tab === "layers" && (
           <div style={{ padding: 12 }}>

@@ -637,8 +637,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               area,
             );
             const detection = (props.cameraDetections ?? {})[camera.area];
-            const found = detectionStroke(detection);
-            const pose = detection?.pose;
+            const drawn = (detection?.robots ?? []).flatMap((robot) => {
+              const stroke = detectionStroke(robot);
+              return stroke ? [{ robot, stroke }] : [];
+            });
             return (
               <div
                 key={`camera-${camera.area}`}
@@ -675,7 +677,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     the falloff, which dims the image as the extrapolation
                     past the span grows, and by the markers in the photograph
                     underneath. */}
-                {(hasSpan(camera.coverage_mm) || pose) && (
+                {(hasSpan(camera.coverage_mm) || drawn.length > 0) && (
                   <svg
                     viewBox={`0 0 ${area.w} ${area.h}`}
                     preserveAspectRatio="none"
@@ -691,59 +693,65 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         vectorEffect="non-scaling-stroke"
                       />
                     )}
-                    {/* What the camera makes of the robot standing on this
-                        floor: its board outline and its two tyres, the same
-                        parts the map glyph draws, a line from the centre to
-                        the nose so the heading is readable, and a dot on the
-                        photodiode, which is the point the lighthouse
+                    {/* What the camera makes of each robot standing on
+                        this floor: its board outline and its two tyres, the
+                        same parts the map glyph draws, a line from the centre
+                        to the nose so the heading is readable, and a dot on
+                        the photodiode, which is the point the lighthouse
                         reports and so the one the two can be compared at. */}
-                    {found && pose && (
-                      <g
-                        data-testid={`camera-detection-${camera.area}`}
-                        style={{ pointerEvents: "none" }}
-                      >
-                        {(pose.wheels_mm ?? []).map((wheel, i) => (
+                    {drawn.map(({ robot, stroke }, k) => {
+                      const pose = robot.pose;
+                      const id = `${camera.area}-${k}`;
+                      return (
+                        <g
+                          key={robot.address ?? `unnamed-${k}`}
+                          data-testid={`camera-detection-${id}`}
+                          data-address={robot.address ?? undefined}
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {(pose.wheels_mm ?? []).map((wheel, i) => (
+                            <polygon
+                              key={i}
+                              data-layer="wheel"
+                              data-testid={`camera-detection-wheel-${id}-${i}`}
+                              points={polygonPoints(wheel, area)}
+                              fill="none"
+                              stroke={stroke.stroke}
+                              strokeDasharray={stroke.dasharray}
+                              strokeWidth={chrome}
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          ))}
                           <polygon
-                            key={i}
-                            data-layer="wheel"
-                            data-testid={`camera-detection-wheel-${camera.area}-${i}`}
-                            points={polygonPoints(wheel, area)}
+                            data-testid={`camera-detection-outline-${id}`}
+                            points={polygonPoints(pose.outline_mm, area)}
                             fill="none"
-                            stroke={found.stroke}
-                            strokeDasharray={found.dasharray}
-                            strokeWidth={chrome}
+                            stroke={stroke.stroke}
+                            strokeDasharray={stroke.dasharray}
+                            strokeWidth={chrome * 1.5}
                             vectorEffect="non-scaling-stroke"
                           />
-                        ))}
-                        <polygon
-                          data-testid={`camera-detection-outline-${camera.area}`}
-                          points={polygonPoints(pose.outline_mm, area)}
-                          fill="none"
-                          stroke={found.stroke}
-                          strokeDasharray={found.dasharray}
-                          strokeWidth={chrome * 1.5}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                        <line
-                          data-testid={`camera-detection-nose-${camera.area}`}
-                          x1={pose.centre_mm[0] - area.x}
-                          y1={pose.centre_mm[1] - area.y}
-                          x2={pose.nose_mm[0] - area.x}
-                          y2={pose.nose_mm[1] - area.y}
-                          stroke={found.stroke}
-                          strokeDasharray={found.dasharray}
-                          strokeWidth={chrome * 1.5}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                        <circle
-                          data-testid={`camera-detection-diode-${camera.area}`}
-                          cx={pose.photodiode_mm[0] - area.x}
-                          cy={pose.photodiode_mm[1] - area.y}
-                          r={4}
-                          fill={found.stroke}
-                        />
-                      </g>
-                    )}
+                          <line
+                            data-testid={`camera-detection-nose-${id}`}
+                            x1={pose.centre_mm[0] - area.x}
+                            y1={pose.centre_mm[1] - area.y}
+                            x2={pose.nose_mm[0] - area.x}
+                            y2={pose.nose_mm[1] - area.y}
+                            stroke={stroke.stroke}
+                            strokeDasharray={stroke.dasharray}
+                            strokeWidth={chrome * 1.5}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <circle
+                            data-testid={`camera-detection-diode-${id}`}
+                            cx={pose.photodiode_mm[0] - area.x}
+                            cy={pose.photodiode_mm[1] - area.y}
+                            r={4}
+                            fill={stroke.stroke}
+                          />
+                        </g>
+                      );
+                    })}
                   </svg>
                 )}
               </div>
