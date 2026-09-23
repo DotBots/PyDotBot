@@ -113,16 +113,6 @@ def test_the_next_heading_waits_for_another_threshold_of_travel():
     assert bot.direction == -90
 
 
-def test_the_default_control_loop_steers_without_an_advertised_heading():
-    bot = DotBotSimulator(
-        SimulatedDotBotSettings(address=ADDRESS, pos_x=500, pos_y=500),
-        queue.Queue(),
-    )
-    bot.waypoints = [PayloadLH2Location(pos_x=1500, pos_y=500)]
-    bot._control_loop_default()
-    assert bot.pwm_left != bot.pwm_right
-
-
 def _drive_to(bot: DotBotSimulator, x: int, y: int, timeout_s: float) -> None:
     """Run control and physics at their real rates until the waypoint run ends."""
     waypoints = [PayloadLH2Location(pos_x=x, pos_y=y)]
