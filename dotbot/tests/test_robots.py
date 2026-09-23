@@ -56,8 +56,8 @@ def test_v3_outline():
 
 
 def test_v3_drivetrain_matches_the_c_constants():
-    """`DB_MM_PER_COUNT` is about 0.0945 mm per count on a v3."""
-    assert V3.mm_per_count == pytest.approx(0.094467, rel=1e-4)
+    """`DB_MM_PER_COUNT` is about 0.0946 mm per count on a v3."""
+    assert V3.mm_per_count == pytest.approx(0.094599, rel=1e-4)
 
 
 def test_default_is_v3():
@@ -88,7 +88,6 @@ def test_an_off_centre_photodiode_is_refused():
             connector_length_mm=V3.connector_length_mm,
             encoder_cpr=V3.encoder_cpr,
             gear_ratio=V3.gear_ratio,
-            counts_per_wheel_rev=V3.counts_per_wheel_rev,
             envelope_mm=V3.envelope_mm,
         )
 
