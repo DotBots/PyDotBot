@@ -109,6 +109,12 @@ def test_the_centre_is_29_mm_behind_the_sensor(heading, centre, nose):
     assert pose.heading_source == HeadingSource.TRAVEL
 
 
+@pytest.mark.parametrize("heading", [0.0, 37.0, 90.0])
+def test_the_pose_places_the_photodiode_on_the_sensor(heading):
+    pose = V3.body_pose(SENSOR, heading, HeadingSource.TRAVEL)
+    assert pose.photodiode == SENSOR
+
+
 def test_the_robot_s_left_side_is_on_its_left():
     """At heading 0 the robot faces +y; seen from above with y down, its left
     is +x. The board's left edge is its low-x edge."""

@@ -394,6 +394,7 @@ class DotBotPoseModel(BaseModel):
 
     heading_deg: float
     heading_source: Literal["none", "travel", "ekf"]
+    photodiode: DotBotLH2Position  # where the pose places the LH2 photodiode
     axle: DotBotLH2Position
     centre: DotBotLH2Position
     nose: DotBotLH2Position
@@ -409,6 +410,7 @@ class DotBotPoseModel(BaseModel):
         return cls(
             heading_deg=pose.heading_deg,
             heading_source=pose.heading_source.name.lower(),
+            photodiode=point(pose.photodiode),
             axle=point(pose.axle),
             centre=point(pose.centre),
             nose=point(pose.nose),

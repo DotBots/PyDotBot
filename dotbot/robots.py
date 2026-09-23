@@ -44,6 +44,7 @@ class BodyPose:
 
     heading_deg: float
     heading_source: HeadingSource
+    photodiode: Point  # where the pose places the LH2 photodiode
     axle: Point
     centre: Point
     nose: Point
@@ -221,6 +222,7 @@ class RobotGeometry:
         return BodyPose(
             heading_deg=heading_deg,
             heading_source=source,
+            photodiode=Point(sensor[0], sensor[1]),
             axle=place(self.axle_midpoint),
             centre=place(self.outline_centre),
             nose=place(Point(self.photodiode.x, self.outline_bbox[1])),

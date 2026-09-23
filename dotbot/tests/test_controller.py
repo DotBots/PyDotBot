@@ -848,6 +848,7 @@ async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
     (bot,) = [b for b in response.json() if b["address"] == addr_to_hex(BOT)]
     assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
     assert bot["model"] == "dotbot-v3"
+    assert bot["pose"]["photodiode"] == {"x": 1000.0, "y": 1000.0}
     assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
     assert bot["pose"]["heading_source"] == "travel"
     assert len(bot["pose"]["outline"]) == 14
