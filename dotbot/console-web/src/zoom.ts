@@ -114,8 +114,9 @@ export function clampScale(scale: number, max: number): number {
 
 /**
  * The scale `delta` presses away, held inside the range at both ends. A scale
- * already past the far end, which only a canvas resize leaves, is not pulled
- * back in by a step outward.
+ * already past either end, which only a canvas resize leaves, is not pulled
+ * back in by a step further out of the range: a step in never zooms out, and
+ * a step out never zooms in.
  */
 export function steppedScale(
   scale: number,
@@ -123,6 +124,8 @@ export function steppedScale(
   max: number,
 ): number {
   if (scale < ZOOM_MIN && delta <= 0) return scale;
+  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  if (scale > top && delta >= 0) return scale;
   return clampScale(scale * ZOOM_STEP ** delta, max);
 }
 
@@ -342,12 +345,19 @@ export function centreOfView(cam: Camera, viewport: Area, geom: ViewGeom): ViewC
 
 /**
  * The camera that puts `view`'s floor point at this canvas's centre at its
- * pixels per millimetre, held by the pan clamp. The scale is left as asked,
- * so a canvas of another size shows the same floor at the same size.
+ * pixels per millimetre, held by the pan clamp and by the ceiling `max`.
+ * Under the ceiling the scale is left as asked, so a canvas of another size
+ * shows the same floor at the same size.
  */
-export function cameraAtCentre(view: ViewCentre, viewport: Area, geom: ViewGeom): Camera {
+export function cameraAtCentre(
+  view: ViewCentre,
+  viewport: Area,
+  geom: ViewGeom,
+  max: number,
+): Camera {
   if (!(geom.boxW > 0) || !(view.pxPerMm > 0)) return FRAME_CAMERA;
-  const scale = (view.pxPerMm * viewport.w) / geom.boxW;
+  const asked = (view.pxPerMm * viewport.w) / geom.boxW;
+  const scale = Math.min(asked, Math.max(ZOOM_MIN, max));
   const { fx, fy } = areaToFraction({ x: view.x, y: view.y }, viewport);
   const cx = (geom.w - geom.boxW) / 2 + fx * geom.boxW;
   const cy = (geom.h - geom.boxH) / 2 + fy * geom.boxH;

@@ -147,6 +147,12 @@ describe("the zoom range", () => {
     expect(steppedScale(11.4, 1, 11.4)).toBe(11.4);
   });
 
+  it("never zooms out on a press in from above the ceiling", () => {
+    expect(steppedScale(20, 1, 11.4)).toBe(20);
+    expect(steppedScale(20, 0, 11.4)).toBe(20);
+    expect(steppedScale(20, -1, 11.4)).toBeLessThan(20);
+  });
+
   it("comes back to the scale it left, in and out again", () => {
     let scale = 2;
     for (let i = 0; i < 3; i += 1) scale = steppedScale(scale, 1, 40);
@@ -567,11 +573,12 @@ describe("a panel toggle, which only changes the canvas width", () => {
 describe("a view stated as its centre and scale", () => {
   const viewport = siteViewport(C405, ARENA);
   const geoms = [viewGeom(900, 600, viewport), viewGeom(600, 900, viewport), viewGeom(420, 860, viewport)];
+  const maxOf = (geom: ReturnType<typeof viewGeom>) => zoomMax(C405, viewport, geom);
 
   it("takes a camera to its centre and scale and back again in the same canvas", () => {
     for (const geom of geoms) {
       const cam = cameraForZoom("arena", C405, viewport, geom)!;
-      const back = cameraAtCentre(centreOfView(cam, viewport, geom), viewport, geom);
+      const back = cameraAtCentre(centreOfView(cam, viewport, geom), viewport, geom, maxOf(geom));
       expect(back.scale).toBeCloseTo(cam.scale, 9);
       expect(back.tx).toBeCloseTo(cam.tx, 6);
       expect(back.ty).toBeCloseTo(cam.ty, 6);
@@ -582,7 +589,7 @@ describe("a view stated as its centre and scale", () => {
     const from = geoms[0];
     const view = centreOfView(cameraForZoom("arena", C405, viewport, from)!, viewport, from);
     for (const to of geoms) {
-      const got = centreOfView(cameraAtCentre(view, viewport, to), viewport, to);
+      const got = centreOfView(cameraAtCentre(view, viewport, to, maxOf(to)), viewport, to);
       expect(got.pxPerMm).toBeCloseTo(view.pxPerMm, 9);
       expect(got.x).toBeCloseTo(view.x, 6);
       expect(got.y).toBeCloseTo(view.y, 6);
@@ -593,15 +600,23 @@ describe("a view stated as its centre and scale", () => {
     const [wide, , narrow] = geoms;
     const cam = cameraForZoom("arena", C405, viewport, wide)!;
     const refit = refitCam(cam, wide, narrow);
-    const placed = cameraAtCentre(centreOfView(cam, viewport, wide), viewport, narrow);
+    const placed = cameraAtCentre(centreOfView(cam, viewport, wide), viewport, narrow, maxOf(narrow));
     expect(placed.scale).toBeCloseTo(refit.scale, 9);
     expect(placed.tx).toBeCloseTo(refit.tx, 6);
     expect(placed.ty).toBeCloseTo(refit.ty, 6);
   });
 
+  it("holds a view saved in a larger window under this canvas's ceiling", () => {
+    const small = viewGeom(240, 200, viewport);
+    const top = maxOf(small);
+    const pxPerMm = (top * 4 * small.boxW) / viewport.w;
+    const cam = cameraAtCentre({ x: 1000, y: 1000, pxPerMm }, viewport, small, top);
+    expect(cam.scale).toBeCloseTo(top, 9);
+  });
+
   it("holds a centre near the edge inside the pan clamp", () => {
     const geom = geoms[2];
-    const cam = cameraAtCentre({ x: viewport.x, y: viewport.y, pxPerMm: 1 }, viewport, geom);
+    const cam = cameraAtCentre({ x: viewport.x, y: viewport.y, pxPerMm: 1 }, viewport, geom, maxOf(geom));
     expect(cam).toEqual(clampCam(cam, geom));
   });
 });

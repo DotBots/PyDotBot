@@ -275,7 +275,8 @@ export const App: React.FC = () => {
     }
     const view = viewFor(openingViews, site.name, viewport);
     if (view) {
-      setCam(cameraAtCentre(view, viewport, viewGeom(geom.w, geom.h, viewport)));
+      const g = viewGeom(geom.w, geom.h, viewport);
+      setCam(cameraAtCentre(view, viewport, g, zoomMax(site, viewport, g)));
       return;
     }
     zoomTo(SITE_ZOOM);
@@ -368,7 +369,15 @@ export const App: React.FC = () => {
       const collapse = forcedOpen && !rightCollapsedRef.current;
       if (collapse) setRightCollapsed(true);
       placeCam(
-        view ? (to: ViewGeom) => cameraAtCentre(view, viewportRef.current, to) : null,
+        view
+          ? (to: ViewGeom) =>
+              cameraAtCentre(
+                view,
+                viewportRef.current,
+                to,
+                zoomMax(siteRef.current, viewportRef.current, to),
+              )
+          : null,
         collapse,
       );
     }
