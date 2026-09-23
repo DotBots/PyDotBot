@@ -29,7 +29,7 @@ import {
   scaleBar,
   ticksInSite,
 } from "./grid";
-import { BotGlyph, TRAVEL_BODY_OPACITY, robotDraw } from "./BotGlyph";
+import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
 import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
@@ -154,10 +154,12 @@ const BOTTOM_LINE_PX =
 const DRAG_MIN_PX = 5;
 // The selection ring hugs the robot: its footprint plus this on every side.
 const SELECTION_PAD_PX = 3;
-// A waypoint diamond is a fraction of the robot it belongs to, floored where
-// the robot is a dot.
-const WAYPOINT_OF_FOOTPRINT = 0.35;
-const WAYPOINT_MIN_PX = 5;
+// A waypoint diamond is a fraction of the body of the robot it belongs to,
+// held between a floor it can still be seen at and a cap that keeps it a
+// marker rather than an object: a waypoint is a point on the floor.
+export const WAYPOINT_OF_BODY = 0.3;
+export const WAYPOINT_MIN_PX = 7;
+export const WAYPOINT_MAX_PX = 14;
 // How much of an area's colour washes its floor.
 const AREA_TINT = 0.05;
 
@@ -537,7 +539,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       // What sits around the robot - selection, badges, labels - is chrome,
       // and keeps its size on screen whatever the camera does.
       selectionPx: footprintPx + SELECTION_PAD_PX * 2,
-      waypointPx: Math.max(WAYPOINT_MIN_PX, footprintPx * WAYPOINT_OF_FOOTPRINT),
+      // Sized from the body, never from the possible footprint's ring.
+      waypointPx: Math.min(
+        WAYPOINT_MAX_PX,
+        Math.max(
+          WAYPOINT_MIN_PX,
+          (draw.shape.kind === "sensor"
+            ? botFootprintPx(perMm, b.pose?.envelope_mm ?? 0)
+            : footprintPx) * WAYPOINT_OF_BODY,
+        ),
+      ),
       // What sits on top of the robot shrinks with it, to a floor, so a bot
       // the size of a dot is not buried under its own indicators.
       drivePx: Math.max(3, Math.min(10, footprintPx * 0.32)),
@@ -831,7 +842,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
                       background: led,
                       border: `1.5px solid ${led}`,
-                      boxShadow: `0 0 7px ${led}`,
+                      boxShadow: `0 0 4px ${led}`,
                       pointerEvents: "none",
                     }}
                   />
@@ -863,7 +874,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
                         background: "transparent",
                         border: `1.5px dashed ${led}`,
-                        boxShadow: `0 0 7px ${led}`,
+                        boxShadow: `0 0 4px ${led}`,
                         pointerEvents: "none",
                       }}
                     />

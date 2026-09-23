@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
-import { MapView } from "./MapView";
+import { MapView, WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./MapView";
 import type { RobotDrawing } from "./robotDrawing";
 import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
 import { Camera, FRAME_CAMERA, viewGeom } from "./zoom";
@@ -224,14 +224,39 @@ describe("what is drawn around a robot", () => {
     expect(screen.getByTitle("Last reset: hard fault")).toBeInTheDocument();
   });
 
-  it("sizes a waypoint diamond to the robot it belongs to", () => {
+  it("sizes a waypoint diamond to the robot's body, between a floor and a cap", () => {
     const fleet = [bot("a", { x: 500, y: 500 }, { waypoints: [{ x: 600, y: 600 }] })];
+    const width = () => parseFloat(screen.getByTestId("waypoint-a-0").style.width);
     render(<Harness bots={fleet} selection={new Set(["a"])} />);
-    expect(parseFloat(screen.getByTestId("waypoint-a-0").style.width)).toBe(5);
+    expect(width()).toBe(WAYPOINT_MIN_PX);
+    cleanup();
+    // A scale where the body is between the two bounds.
+    const mid: Camera = { scale: 5, tx: 0, ty: 0 };
+    render(<Harness bots={fleet} selection={new Set(["a"])} from={mid} />);
+    const body = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, mid), V3_SPAN_MM);
+    expect(width()).toBeCloseTo(body * WAYPOINT_OF_BODY, 3);
     cleanup();
     render(<Harness bots={fleet} selection={new Set(["a"])} from={near} />);
-    const footprint = botFootprintPx(pxPerMm("x", VIEWPORT, GEOM, near), V3_SPAN_MM);
-    expect(parseFloat(screen.getByTestId("waypoint-a-0").style.width)).toBeCloseTo(footprint * 0.35, 3);
+    expect(width()).toBe(WAYPOINT_MAX_PX);
+  });
+
+  it("sizes a waypoint from the body, not the ring, for a robot drawn as its sensor", () => {
+    const fleet = [bot("a", { x: 500, y: 500 }, { waypoints: [{ x: 600, y: 600 }] })];
+    const width = () => parseFloat(screen.getByTestId("waypoint-a-0").style.width);
+    const mid: Camera = { scale: 5, tx: 0, ty: 0 };
+    render(<Harness bots={fleet} selection={new Set(["a"])} from={mid} />);
+    const asBody = width();
+    cleanup();
+    render(
+      <Harness
+        bots={fleet}
+        selection={new Set(["a"])}
+        from={mid}
+        robotDrawing={{ mode: "sensor", footprint: true }}
+      />,
+    );
+    expect(width()).toBeCloseTo(asBody, 3);
+    expect(width()).toBeLessThan(WAYPOINT_MAX_PX);
   });
 });
 
