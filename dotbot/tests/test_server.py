@@ -1402,22 +1402,18 @@ class CannedDetector:
         self.status = status
 
     def detect(self, bgr):
-        from dotbot.camera.detection import Detection, Pose
+        from dotbot.camera.detection import Detection, Pose, RobotFix
 
         if self.status == "none":
-            return Detection("none", 0, None, 1.0)
-        return Detection(
-            self.status,
-            1,
-            Pose(
-                centre_px=(250.0, 250.0),
-                heading_atan2_deg=52.5,
-                green_flare=0.82,
-                tmpl_margin=0.91,
-                refined=True,
-            ),
-            12.5,
+            return Detection("none", 0, (), 1.0)
+        pose = Pose(
+            centre_px=(250.0, 250.0),
+            heading_atan2_deg=52.5,
+            green_flare=0.82,
+            tmpl_margin=0.91,
+            refined=True,
         )
+        return Detection(self.status, 1, (RobotFix(self.status, pose),), 12.5)
 
 
 @contextlib.contextmanager

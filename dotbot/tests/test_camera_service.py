@@ -166,7 +166,7 @@ class RecordingDetector:
         from dotbot.camera.detection import Detection
 
         self.frames.append(bgr)
-        return Detection("none", 0, None, 0.0)
+        return Detection("none", 0, (), 0.0)
 
 
 def test_the_detector_sees_the_uncompressed_warp(synthetic_camera):
@@ -388,12 +388,12 @@ def test_a_pose_that_will_not_convert_costs_one_record_not_the_detector(
             self.calls = 0
 
         def detect(self, bgr):
-            from dotbot.camera.detection import Detection
+            from dotbot.camera.detection import Detection, RobotFix
 
             self.calls += 1
             if self.calls == 1:
-                return Detection("found", 1, object(), 0.0)
-            return Detection("none", 0, None, 0.0)
+                return Detection("found", 1, (RobotFix("found", object()),), 0.0)
+            return Detection("none", 0, (), 0.0)
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -444,7 +444,7 @@ class BlockingDetector:
 
         self.entered.set()
         self.release.wait(timeout=5.0)
-        return Detection("none", 0, None, 0.0)
+        return Detection("none", 0, (), 0.0)
 
 
 def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):

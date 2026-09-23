@@ -481,20 +481,14 @@ def pose_one(features_map, reg, mm_per_px, tmpl, fit):
     return out
 
 
-def pose_at(
-    seed_px,
-    mm_per_px,
-    features_map,
-    mask,
-    tmpl,
-    fit,
-    win_mm=110.0,
-    snap_mm=45.0,
-):
-    """Pose of the robot near `seed_px`.
+def component_at(seed_px, mm_per_px, mask, win_mm=110.0, snap_mm=45.0):
+    """The robot-sized mask component nearest `seed_px`, as a boolean region.
 
-    Tolerates a seed tens of millimetres off: the region is the mask
-    component whose centroid is nearest the seed, within `snap_mm`.
+    The component the seed stands on, when it stands on one big enough;
+    otherwise, to tolerate a seed tens of millimetres off, the one whose
+    centroid is nearest the seed, within `snap_mm`. Either is cut to a
+    window `win_mm` either side of the seed. None when no component
+    qualifies.
     """
     import cv2  # lazy: opencv-python is only required to run the detector
 
@@ -502,15 +496,27 @@ def pose_at(
     r = int(round(win_mm / mm_per_px))
     x0, y0 = max(0, int(seed_px[0]) - r), max(0, int(seed_px[1]) - r)
     x1, y1 = min(w, int(seed_px[0]) + r), min(h, int(seed_px[1]) + r)
-    sub = np.zeros_like(mask)
-    sub[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+    if x1 <= x0 or y1 <= y0:
+        return None
+    sub = np.ascontiguousarray(mask[y0:y1, x0:x1])
     n, labels, stats, centroids = cv2.connectedComponentsWithStats(sub, 8)
+    under = labels[
+        min(max(int(seed_px[1]) - y0, 0), y1 - y0 - 1),
+        min(max(int(seed_px[0]) - x0, 0), x1 - x0 - 1),
+    ]
     best, best_dist = None, None
     for k in range(1, n):
         if stats[k, cv2.CC_STAT_AREA] * mm_per_px**2 < MIN_COMPONENT_MM2:
             continue
+        if k == under:
+            best = k
+            break
         dd = (
-            float(np.hypot(centroids[k][0] - seed_px[0], centroids[k][1] - seed_px[1]))
+            float(
+                np.hypot(
+                    centroids[k][0] + x0 - seed_px[0], centroids[k][1] + y0 - seed_px[1]
+                )
+            )
             * mm_per_px
         )
         if dd > snap_mm:
@@ -519,4 +525,36 @@ def pose_at(
             best, best_dist = k, dd
     if best is None:
         return None
-    return pose_one(features_map, labels == best, mm_per_px, tmpl, fit)
+    region = np.zeros(mask.shape, bool)
+    region[y0:y1, x0:x1] = labels == best
+    return region
+
+
+def split_region(region, seeds_px, iterations=10):
+    """`region` cut into one part per seed, by k-means on its pixel positions.
+
+    For robots standing close enough that the mask joins them into one
+    component. Each part is the cluster started at its own seed, so the
+    order of the parts is the order of `seeds_px`.
+    """
+    ys, xs = np.nonzero(region)
+    points = np.stack([xs, ys], 1).astype(float)
+    centres = np.asarray(seeds_px, float).copy()
+    for _ in range(iterations):
+        nearest = np.argmin(
+            ((points[:, None, :] - centres[None, :, :]) ** 2).sum(axis=2), axis=1
+        )
+        moved = centres.copy()
+        for k in range(len(centres)):
+            members = points[nearest == k]
+            if len(members):
+                moved[k] = members.mean(axis=0)
+        if np.allclose(moved, centres, atol=0.05):
+            break
+        centres = moved
+    parts = []
+    for k in range(len(centres)):
+        part = np.zeros(region.shape, bool)
+        part[ys[nearest == k], xs[nearest == k]] = True
+        parts.append(part)
+    return parts
