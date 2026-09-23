@@ -40,8 +40,8 @@ def test_v3_derived_distances(prop, expected):
 
 def test_v3_reach_is_the_far_tyre_corner():
     """The rear outer corner of a tyre, not of the board, is the furthest point."""
-    assert V3.reach_mm == pytest.approx(math.hypot(47.75, 75.5))
-    assert V3.reach_mm == pytest.approx(89.33, abs=0.01)
+    assert V3.reach_mm == pytest.approx(math.hypot(47.75, 75.0))
+    assert V3.reach_mm == pytest.approx(88.91, abs=0.01)
 
 
 def test_v3_core_is_the_front_edge():
@@ -56,8 +56,8 @@ def test_v3_outline():
 
 
 def test_v3_drivetrain_matches_the_c_constants():
-    """`DB_MM_PER_COUNT` is about 0.0987 mm per count on a v3."""
-    assert V3.mm_per_count == pytest.approx(0.098736, rel=1e-4)
+    """`DB_MM_PER_COUNT` is about 0.0945 mm per count on a v3."""
+    assert V3.mm_per_count == pytest.approx(0.094467, rel=1e-4)
 
 
 def test_default_is_v3():
@@ -88,6 +88,7 @@ def test_an_off_centre_photodiode_is_refused():
             connector_length_mm=V3.connector_length_mm,
             encoder_cpr=V3.encoder_cpr,
             gear_ratio=V3.gear_ratio,
+            counts_per_wheel_rev=V3.counts_per_wheel_rev,
             envelope_mm=V3.envelope_mm,
         )
 

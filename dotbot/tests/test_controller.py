@@ -895,7 +895,7 @@ async def test_no_heading_gives_a_placeholder_pose_that_says_so(controller):
     pose = controller.dotbots[addr_to_hex(BOT)].pose
     assert pose.heading_source == "none"
     assert pose.heading_deg == PLACEHOLDER_HEADING_DEG
-    assert pose.reach_mm == pytest.approx(89.33, abs=0.01)
+    assert pose.reach_mm == pytest.approx(88.91, abs=0.01)
     assert pose.core_mm == pytest.approx(18.5)
 
 
@@ -923,7 +923,7 @@ async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
     assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
     assert bot["pose"]["heading_source"] == "travel"
     assert len(bot["pose"]["outline"]) == 14
-    assert bot["pose"]["reach_mm"] == pytest.approx(89.33, abs=0.01)
+    assert bot["pose"]["reach_mm"] == pytest.approx(88.91, abs=0.01)
     assert bot["pose"]["core_mm"] == pytest.approx(18.5)
     assert bot["pose"]["envelope_mm"] == 95.0
 
