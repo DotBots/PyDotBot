@@ -209,14 +209,12 @@ describe("what is drawn around a robot", () => {
     expect(screen.getByTestId("selection-a").style.transform).toContain("rotate(225deg)");
   });
 
-  it("draws the battery bar and drive dot on a board, not on a dot", () => {
+  it("draws the battery bar on a board, not on a dot", () => {
     render(<Harness bots={fleet()} from={near} />);
     expect(screen.getByTestId("battery-a")).toBeInTheDocument();
-    expect(screen.getByTestId("drive-a")).toBeInTheDocument();
     cleanup();
     render(<Harness bots={fleet()} />);
     expect(screen.queryByTestId("battery-a")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("drive-a")).not.toBeInTheDocument();
   });
 
   it("keeps the reset badge on a dot, where a crash still has to be found", () => {
@@ -264,12 +262,12 @@ describe("what the map draws a robot from", () => {
   const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
   const near: Camera = { scale: 20, tx: 0, ty: 0 };
 
-  it("is the body the controller shipped, in its three layers", () => {
+  it("is the body the controller shipped, with its sensor mark", () => {
     render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={near} />);
     const svg = glyph("a").querySelector("svg")!;
-    expect(svg.querySelectorAll("polygon")).toHaveLength(1);
-    expect(svg.querySelectorAll("line")).toHaveLength(1);
-    expect(svg.querySelectorAll("circle")).toHaveLength(1);
+    expect(svg.querySelectorAll('[data-layer="board"]')).toHaveLength(1);
+    expect(svg.querySelectorAll("line")).toHaveLength(0);
+    expect(svg.querySelectorAll('[data-layer="sensor-mark"]')).toHaveLength(1);
   });
 
   const headingless = (id: string, at: LH2Position) =>
@@ -288,14 +286,30 @@ describe("what the map draws a robot from", () => {
     );
     const svg = glyph("a").querySelector("svg")!;
     expect(svg.querySelectorAll("polygon")).toHaveLength(0);
-    expect(svg.querySelectorAll("circle")).toHaveLength(1);
+    expect(svg.querySelectorAll("line")).toHaveLength(0);
     expect(layer("a", "sensor")).not.toBeNull();
+    expect(layer("a", "reach")).toBeNull();
   });
 
   it("is the sensor point for a bot with no body at all", () => {
     render(<Harness bots={[bot("a", { x: 500, y: 500 }, { pose: null })]} from={near} />);
     expect(glyph("a").querySelector("polygon")).toBeNull();
     expect(shape("a")).toBe("sensor");
+  });
+
+  it("marks the LED colour the controller holds, hollow when it holds none", () => {
+    render(
+      <Harness
+        bots={[
+          bot("a", { x: 500, y: 500 }, { led: { red: 255, green: 0, blue: 200 } }),
+          bot("b", { x: 900, y: 900 }, { led: null }),
+        ]}
+        from={near}
+      />,
+    );
+    expect(layer("a", "sensor-mark")!.getAttribute("data-led")).toBe("rgb(255,0,200)");
+    expect(layer("b", "sensor-mark")!.getAttribute("data-led")).toBe("unknown");
+    expect(screen.queryByTestId("drive-a")).not.toBeInTheDocument();
   });
 
   it("falls back to the sensor point per robot, not per fleet", () => {
@@ -323,10 +337,9 @@ describe("what the map draws a robot from", () => {
     }
   });
 
-  it("keeps the battery bar on a sensor point but not the drive dot", () => {
+  it("keeps the battery bar on a sensor point", () => {
     render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={near} />);
     expect(screen.getByTestId("battery-a")).toBeInTheDocument();
-    expect(screen.queryByTestId("drive-a")).not.toBeInTheDocument();
   });
 });
 
@@ -342,7 +355,7 @@ describe("the fallback for a board that cannot be drawn", () => {
     expect(shape("a")).toBe("mark");
     expect(glyph("a").querySelector("rect")).toBeNull();
     expect(glyph("a").querySelector('circle[data-layer="mark"]')).not.toBeNull();
-    expect(glyph("a").querySelector('[data-layer="heading-tick"]')).not.toBeNull();
+    expect(glyph("a").querySelector('[data-layer="heading"]')).not.toBeNull();
   });
 
   it("is the real-size disc with its heading where a crowd hides a readable board", () => {
@@ -352,7 +365,7 @@ describe("the fallback for a board that cannot be drawn", () => {
     const perMm = pxPerMm("x", VIEWPORT, GEOM, near);
     expect(parseFloat(disc.getAttribute("r")!)).toBeCloseTo((95 * perMm) / 2, 3);
     expect(glyph("c0").querySelector('[data-layer="heading"]')).not.toBeNull();
-    expect(glyph("c0").querySelector('[data-layer="photodiode"]')).not.toBeNull();
+    expect(glyph("c0").querySelector('[data-layer="sensor-mark"]')).not.toBeNull();
   });
 
   it("is still the mark in a crowd where the board would be too small anyway", () => {

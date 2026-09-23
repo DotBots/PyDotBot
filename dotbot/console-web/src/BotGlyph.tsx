@@ -1,23 +1,22 @@
 import React from "react";
 
 import type { RobotDrawing } from "./robotDrawing";
-import type { BotPose, LH2Position } from "./types";
+import type { BotPose, LH2Position, RgbLed } from "./types";
 
-// The map marker: one robot in three layers, the board outline, a line from
-// its centre to its nose, and a dot on the photodiode the fix came from.
+// The map marker. One colour rule holds at every level: the robot's fill is
+// its swarmit state, a known heading is a white bar, and the LED colour is one
+// sensor mark on the photodiode - hollow when the colour is unknown.
 //
 // The robot's shape is not authored here. The controller expands each
 // photodiode fix into a body pose against its own geometry record and ships
 // the board path with it, already rotated into the arena frame, so this module
-// scales that path to the screen and nothing more. The camera layer draws its
-// detector's pose in the same three layers from the same record, which is why
-// the two read as the same robot.
+// scales that path to the screen and nothing more.
 //
-// A pose whose heading the robot never reported is drawn as the photodiode
-// point alone. A guessed body is worse than a dot, and a dot is honest about
-// what is known. Around that point the possible footprint shows the room the
-// body can take: the reach and the core radii the controller ships with the
-// pose, which hold whichever way the robot faces.
+// A pose whose heading the robot never reported is drawn as the sensor point
+// alone. A guessed body is worse than a point, and a point is honest about
+// what is known. Around it the possible footprint shows the room the body can
+// take: the reach and the core radii the controller ships with the pose,
+// which hold whichever way the robot faces.
 
 /** Screen pixels a bot is drawn at however far the map zooms out. */
 export const BOT_MIN_PX = 8;
@@ -40,11 +39,8 @@ export const GLYPH_CROWD_BOTS = 200;
  */
 export const TRAVEL_BODY_OPACITY = 0.78;
 
-/** Radius of the photodiode dot, in millimetres, as the camera layer draws it. */
-const SENSOR_DOT_MM = 4;
-
 /** On-screen diameter of a robot drawn as its sensor point, whatever the zoom. */
-export const SENSOR_POINT_PX = 11;
+export const SENSOR_POINT_PX = 14;
 
 /** Width of the heading bar a sensor point carries when its heading is known. */
 const SENSOR_BAR_PX = 2.5;
@@ -53,6 +49,10 @@ const SENSOR_BAR_PX = 2.5;
 export const FOOTPRINT_MIN_PX = 26;
 
 const WHITE = "rgba(255,255,255,.95)";
+const DARK = "rgba(0,0,0,.7)";
+
+/** A sensor mark's fill for an LED commanded off. */
+export const LED_OFF = "#161616";
 const SHADOW =
   "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))";
 
@@ -149,11 +149,11 @@ export type RobotShape =
       corePx: number | null;
       crowded: boolean;
       /** The heading as a bar out from the point, when the pose has one. */
-      bar: HeadingBar | null;
+      bar: HeadingBarShape | null;
     };
 
 /** A unit vector in screen axes, and how far out from the point it is drawn. */
-export interface HeadingBar {
+export interface HeadingBarShape {
   dir: LH2Position;
   lengthPx: number;
 }
@@ -169,7 +169,6 @@ export interface RobotDraw {
   /** A board built on the travel bearing, drawn fainter as an estimate. */
   estimate: boolean;
   battery: boolean;
-  drive: boolean;
 }
 
 /** How a robot with this pose is drawn at this zoom, in a fleet of `botCount`. */
@@ -191,12 +190,11 @@ export function robotDraw(
         turned: true,
         estimate: body.source === "travel",
         battery: true,
-        drive: true,
       };
     }
     // Too small to read is a mark; readable but crowded out is the envelope.
     if (footprintPx < GLYPH_DETAIL_PX) {
-      return { ...flat, shape: { kind: "mark", body }, footprintPx, battery: false, drive: false };
+      return { ...flat, shape: { kind: "mark", body }, footprintPx, battery: false };
     }
     const discPx = botFootprintPx(pxPerMm, pose?.envelope_mm ?? body.spanMm);
     return {
@@ -204,7 +202,6 @@ export function robotDraw(
       shape: { kind: "disc", body, radiusPx: discPx / 2 },
       footprintPx: discPx,
       battery: false,
-      drive: false,
     };
   }
 
@@ -226,12 +223,11 @@ export function robotDraw(
     turned: false,
     estimate: false,
     battery: glyphLevel(envelopePx, botCount) === "detail",
-    drive: false,
   };
 }
 
 /** The pose's heading as a bar `lengthPx` long, or null when it has none. */
-function headingBar(pose: BotPose | null | undefined, lengthPx: number): HeadingBar | null {
+function headingBar(pose: BotPose | null | undefined, lengthPx: number): HeadingBarShape | null {
   if (!pose || !hasHeading(pose)) return null;
   const dx = pose.nose.x - pose.centre.x;
   const dy = pose.nose.y - pose.centre.y;
@@ -247,10 +243,13 @@ function reachMm(body: BotBody): number {
 }
 
 interface BotGlyphProps {
-  color: string;
+  /** The swarmit state colour: the robot's fill at every level. */
+  state: string;
+  /** The LED colour the controller commanded, or null when it is unknown. */
+  led: RgbLed | null;
   shape: RobotShape;
   pxPerMm: number;
-  /** The mark's side, for `mark`. */
+  /** The circle's diameter, for `mark`. */
   footprintPx: number;
 }
 
@@ -259,51 +258,85 @@ const Frame: React.FC<{ half: number; children: React.ReactNode; filter?: boolea
   children,
   filter = true,
 }) => {
-  const side = 2 * (half + 2);
+  const side = 2 * (half + 3);
   return (
     <svg
       viewBox={`${-side / 2} ${-side / 2} ${side} ${side}`}
       width={side}
       height={side}
-      style={{ display: "block", filter: filter ? SHADOW : undefined }}
+      style={{ display: "block", overflow: "visible", filter: filter ? SHADOW : undefined }}
     >
       {children}
     </svg>
   );
 };
 
-/** A white line from `from` toward `to`, `length` px long. */
-const HeadingLine: React.FC<{
-  from: LH2Position;
-  to: LH2Position;
-  length: number;
-  width: number;
-  layer: string;
-}> = ({ from, to, length, width, layer }) => {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const n = Math.hypot(dx, dy) || 1;
+/** The CSS colour a sensor mark is filled with, or null for a hollow one. */
+export function ledFill(led: RgbLed | null): string | null {
+  if (!led) return null;
+  if (led.red === 0 && led.green === 0 && led.blue === 0) return LED_OFF;
+  return `rgb(${led.red},${led.green},${led.blue})`;
+}
+
+/**
+ * The one mark in the LED colour, at the origin: a white rim inside a dark
+ * one, so it reads on a fill of its own colour and on either theme.
+ */
+const SensorMark: React.FC<{ r: number; led: RgbLed | null }> = ({ r, led }) => {
+  const rim = Math.max(0.6, r / 3);
+  const halo = Math.max(0.5, rim * 0.8);
+  const fill = ledFill(led);
+  if (fill === null) {
+    return (
+      <g data-layer="sensor-mark" data-led="unknown">
+        <circle r={r} fill="none" stroke={DARK} strokeWidth={rim + 2 * halo} />
+        <circle r={r} fill="none" stroke={WHITE} strokeWidth={rim} />
+      </g>
+    );
+  }
   return (
-    <line
-      data-layer={layer}
-      x1={from.x}
-      y1={from.y}
-      x2={from.x + (dx / n) * length}
-      y2={from.y + (dy / n) * length}
-      stroke={WHITE}
-      strokeWidth={width}
-      strokeLinecap="round"
-    />
+    <g data-layer="sensor-mark" data-led={fill}>
+      <circle r={r + rim / 2 + halo} fill={DARK} />
+      <circle r={r} fill={fill} stroke={WHITE} strokeWidth={rim} />
+    </g>
   );
 };
 
+/** A white bar from `from` along `dir`, `length` px long. */
+const HeadingBar: React.FC<{
+  from: LH2Position;
+  dir: LH2Position;
+  length: number;
+  width: number;
+  layer: string;
+}> = ({ from, dir, length, width, layer }) => (
+  <line
+    data-layer={layer}
+    x1={from.x}
+    y1={from.y}
+    x2={from.x + dir.x * length}
+    y2={from.y + dir.y * length}
+    stroke={WHITE}
+    strokeWidth={width}
+    strokeLinecap="round"
+  />
+);
+
+const unit = (from: LH2Position, to: LH2Position): LH2Position => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const n = Math.hypot(dx, dy) || 1;
+  return { x: dx / n, y: dy / n };
+};
+
 const SensorPoint: React.FC<{
-  color: string;
+  state: string;
+  led: RgbLed | null;
   ringPx: number | null;
   corePx: number | null;
   crowded: boolean;
-  bar: HeadingBar | null;
-}> = ({ color, ringPx, corePx, crowded, bar }) => {
+  bar: HeadingBarShape | null;
+}> = ({ state, led, ringPx, corePx, crowded, bar }) => {
   const pointR = SENSOR_POINT_PX / 2;
   return (
     <Frame half={Math.max(pointR + 2, ringPx ?? 0, bar?.lengthPx ?? 0)} filter={false}>
@@ -321,9 +354,9 @@ const SensorPoint: React.FC<{
           <circle
             data-layer="reach"
             r={ringPx}
-            fill={crowded ? "none" : color}
+            fill={crowded ? "none" : state}
             fillOpacity={crowded ? undefined : 0.1}
-            stroke={color}
+            stroke={state}
             strokeOpacity={crowded ? 0.8 : 1}
             strokeWidth={crowded ? 1.25 : 2}
             strokeDasharray={`${Math.max(4, ringPx / 6)} ${Math.max(3, ringPx / 10)}`}
@@ -334,9 +367,9 @@ const SensorPoint: React.FC<{
         <circle
           data-layer="core"
           r={corePx}
-          fill={color}
+          fill={state}
           fillOpacity={0.6}
-          stroke={color}
+          stroke={state}
           strokeOpacity={0.9}
           strokeWidth={1}
         />
@@ -350,29 +383,25 @@ const SensorPoint: React.FC<{
             y1={0}
             x2={bar.dir.x * bar.lengthPx}
             y2={bar.dir.y * bar.lengthPx}
-            stroke="rgba(0,0,0,.5)"
+            stroke={DARK}
             strokeWidth={SENSOR_BAR_PX + 1.5}
             strokeLinecap="round"
           />
-          <HeadingLine
+          <HeadingBar
             layer="sensor-heading"
             from={{ x: 0, y: 0 }}
-            to={bar.dir}
+            dir={bar.dir}
             length={bar.lengthPx}
             width={SENSOR_BAR_PX}
           />
         </g>
       )}
-      {/* the point the lighthouse reported: a fixed size, rimmed in white so
-          it reads on either theme and apart from the ring around it */}
-      <circle
-        data-layer="sensor"
-        r={pointR - 1}
-        fill={color}
-        stroke={WHITE}
-        strokeWidth={2}
-        style={{ filter: SHADOW }}
-      />
+      {/* the point the lighthouse reported: the sensor mark, rimmed in the
+          state colour */}
+      <g style={{ filter: SHADOW }}>
+        <circle data-layer="sensor" r={pointR} fill={state} />
+        <SensorMark r={pointR / 2} led={led} />
+      </g>
     </Frame>
   );
 };
@@ -381,51 +410,27 @@ const SensorPoint: React.FC<{
  * The bot as one SVG whose origin is the pose's photodiode, so the caller places
  * it at the point it already has and the body falls where the pose puts it.
  */
-export const BotGlyph: React.FC<BotGlyphProps> = ({ color, shape, pxPerMm, footprintPx }) => {
-  if (shape.kind === "sensor") return <SensorPoint color={color} {...shape} />;
+export const BotGlyph: React.FC<BotGlyphProps> = ({ state, led, shape, pxPerMm, footprintPx }) => {
+  if (shape.kind === "sensor") return <SensorPoint state={state} led={led} {...shape} />;
   const body = shape.body;
   const px = (p: LH2Position): LH2Position => ({
     x: p.x * pxPerMm,
     y: p.y * pxPerMm,
   });
   const centre = px(body.centre);
-  const nose = px(body.nose);
+  const dir = unit(centre, px(body.nose));
   const offset = Math.hypot(centre.x, centre.y);
 
-  if (shape.kind === "mark") {
-    return (
-      <Frame half={offset + footprintPx / 2}>
-        <circle data-layer="mark" cx={centre.x} cy={centre.y} r={footprintPx / 2} fill={color} />
-        <HeadingLine
-          layer="heading-tick"
-          from={centre}
-          to={nose}
-          length={footprintPx / 2 - 0.5}
-          width={Math.min(3, Math.max(1.6, footprintPx / 6))}
-        />
-      </Frame>
-    );
-  }
-
-  if (shape.kind === "disc") {
-    const r = shape.radiusPx;
+  if (shape.kind === "mark" || shape.kind === "disc") {
+    const r = shape.kind === "disc" ? shape.radiusPx : footprintPx / 2;
+    // Floors keep the bar and the mark legible on the smallest circle.
+    const barW = shape.kind === "disc" ? Math.max(1.2, r / 5) : Math.min(3, Math.max(1.2, r / 3.2));
+    const markR = shape.kind === "disc" ? Math.max(2, Math.min(7, r * 0.2)) : Math.max(1.1, r * 0.16);
     return (
       <Frame half={offset + r}>
-        <circle data-layer="disc" cx={centre.x} cy={centre.y} r={r} fill={color} />
-        <HeadingLine
-          layer="heading"
-          from={centre}
-          to={nose}
-          length={r}
-          width={Math.max(1.2, r / 4)}
-        />
-        <circle
-          data-layer="photodiode"
-          r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
-          fill="#111"
-          stroke="rgba(255,255,255,.85)"
-          strokeWidth={0.6}
-        />
+        <circle data-layer={shape.kind} cx={centre.x} cy={centre.y} r={r} fill={state} />
+        <HeadingBar layer="heading" from={centre} dir={dir} length={r - 0.5} width={barW} />
+        <SensorMark r={markR} led={led} />
       </Frame>
     );
   }
@@ -448,30 +453,11 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ color, shape, pxPerMm, footp
       <polygon
         data-layer="board"
         points={body.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
-        fill={color}
+        fill={state}
         stroke="rgba(0,0,0,.45)"
         strokeWidth={stroke}
       />
-      {/* which way it faces: the centre of the board out to its nose */}
-      <line
-        data-layer="heading"
-        x1={centre.x}
-        y1={centre.y}
-        x2={nose.x}
-        y2={nose.y}
-        stroke={WHITE}
-        strokeWidth={Math.max(1, footprintPx / 16)}
-        strokeLinecap="round"
-      />
-      {/* the photodiode, which is the point the lighthouse reported, at the
-          size the camera layer draws its own */}
-      <circle
-        data-layer="photodiode"
-        r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
-        fill="#111"
-        stroke="rgba(255,255,255,.85)"
-        strokeWidth={stroke}
-      />
+      <SensorMark r={Math.max(2.6, Math.min(12, footprintPx * 0.085))} led={led} />
     </Frame>
   );
 };

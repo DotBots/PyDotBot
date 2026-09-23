@@ -560,9 +560,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             : footprintPx) * WAYPOINT_OF_BODY,
         ),
       ),
-      // What sits on top of the robot shrinks with it, to a floor, so a bot
-      // the size of a dot is not buried under its own indicators.
-      drivePx: Math.max(3, Math.min(10, footprintPx * 0.32)),
       batteryPx: Math.max(14, Math.min(28, footprintPx)),
     };
   };
@@ -893,7 +890,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 });
               })}
 
-          {/* bots (v1 glyph: state-colored body, LED pip, drive dot, chip label) */}
+          {/* bots: the glyph, its chrome and the chip label */}
           {props.layers.dotBots &&
             props.bots
               .filter((b) => b.position)
@@ -906,7 +903,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const solid = robotOpacityAt(robotFades, at);
                 const selected = props.selection.has(b.id);
                 const hovered = hoverId === b.id;
-                const led = ledCss(b);
                 const stc = stateColor(b.state);
                 const pct = batteryPct(b);
                 const blink = b.state === "Programming" || b.state === "Resetting";
@@ -914,8 +910,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 // on, so its own indicators go with the board: the selection
                 // ring and the reset badge stay, being how a robot is found
                 // rather than what it says.
-                const { draw, footprintPx, selectionPx, batteryPx, drivePx } =
-                  botDraw(b);
+                const { draw, footprintPx, selectionPx, batteryPx } = botDraw(b);
                 // The board is drawn where the pose puts it, which is not
                 // where the photodiode is: the chrome goes with the board, so
                 // the ring and the label stay around the robot rather than
@@ -1036,27 +1031,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b), borderRadius: 2 }} />
                       </div>
                     )}
-                    {/* drive dot: white ring at center = drivable; its FILL is
-                        the LED color (experiment: merges the v1 LED pip into the
-                        drive indicator - see design-feedback) */}
-                    {b.drivable && draw.drive && (
-                      <div
-                        data-testid={`drive-${b.id}`}
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: "50%",
-                          width: drivePx,
-                          height: drivePx,
-                          margin: `${-drivePx / 2}px 0 0 ${-drivePx / 2}px`,
-                          borderRadius: "50%",
-                          background: led,
-                          border: `${Math.max(1, drivePx / 7)}px solid rgba(255,255,255,.95)`,
-                          boxShadow: `0 0 3px rgba(0,0,0,.5), 0 0 5px ${led}`,
-                          zIndex: 7,
-                        }}
-                      />
-                    )}
                     {/* chip label: selected or hovered only */}
                     {(selected || hovered) && (
                       <div
@@ -1095,7 +1069,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       }}
                     >
                       <BotGlyph
-                        color={stc}
+                        state={stc}
+                        led={b.led}
                         shape={draw.shape}
                         pxPerMm={perMm}
                         footprintPx={footprintPx}
