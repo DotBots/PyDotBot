@@ -63,11 +63,12 @@ import { useOrchestration } from "./useOrchestration";
 import {
   Camera as ZoomCamera,
   SITE_ZOOM,
+  cameraAtCentre,
   cameraForArea,
   cameraForZoom,
+  centreOfView,
   padArea,
   viewGeom,
-  visibleArea,
   zoomFromSearch,
   zoomMax,
 } from "./zoom";
@@ -271,10 +272,9 @@ export const App: React.FC = () => {
       zoomTo(asked);
       return;
     }
-    const rect = viewFor(openingViews, site.name, viewport);
-    if (rect) {
-      const g = viewGeom(geom.w, geom.h, viewport);
-      setCam(cameraForArea(rect, viewport, g, zoomMax(site, viewport, g)));
+    const view = viewFor(openingViews, site.name, viewport);
+    if (view) {
+      setCam(cameraAtCentre(view, viewport, viewGeom(geom.w, geom.h, viewport)));
       return;
     }
     zoomTo(SITE_ZOOM);
@@ -287,7 +287,7 @@ export const App: React.FC = () => {
     if (!openedRef.current || !geom || !site) return;
     const timer = window.setTimeout(() => {
       saveSavedViews(
-        withView(loadSavedViews(), site.name, visibleArea(cam, viewport, geom)),
+        withView(loadSavedViews(), site.name, centreOfView(cam, viewport, geom)),
       );
     }, VIEW_SETTLE_MS);
     return () => window.clearTimeout(timer);

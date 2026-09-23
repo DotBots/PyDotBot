@@ -23,6 +23,7 @@ import {
   cameraForArea,
   SITE_ZOOM,
   cameraForZoom,
+  centreOfView,
   padArea,
   viewGeom,
   visibleArea,
@@ -137,10 +138,6 @@ const camOf = (): Camera => {
   };
 };
 
-/** The floor the rendered map is showing, in a canvas of this size. */
-const shown = (width: number, height: number) =>
-  visibleArea(camOf(), VIEWPORT, viewGeom(width, height, VIEWPORT));
-
 const centre = (a: Area) => ({ x: a.x + a.w / 2, y: a.y + a.h / 2 });
 
 describe("a view stated as floor rather than as a camera", () => {
@@ -169,16 +166,16 @@ describe("a view stated as floor rather than as a camera", () => {
 });
 
 describe("the view this browser remembers", () => {
-  const dock: Area = { x: 2400, y: 3200, w: 900, h: 700 };
+  const dock = { x: 2850, y: 3550, pxPerMm: 0.4 };
 
   it("round-trips one view per site through storage", () => {
     let views: SavedViews = withView({}, "c405-arena", dock);
-    views = withView(views, "limerick", { x: 0, y: 0, w: 100, h: 100 });
+    views = withView(views, "limerick", { x: 50, y: 50, pxPerMm: 2 });
     saveSavedViews(views);
 
     const back = loadSavedViews();
-    expect(back["c405-arena"]).toEqual({ x: 2400, y: 3200, w: 900, h: 700 });
-    expect(back.limerick).toEqual({ x: 0, y: 0, w: 100, h: 100 });
+    expect(back["c405-arena"]).toEqual(dock);
+    expect(back.limerick).toEqual({ x: 50, y: 50, pxPerMm: 2 });
     expect(viewFor(back, "c405-arena", VIEWPORT)).toEqual(dock);
   });
 
@@ -194,85 +191,77 @@ describe("the view this browser remembers", () => {
     window.localStorage.setItem(KEY, '["a list"]');
     expect(loadSavedViews()).toEqual({});
 
-    // A rectangle with no area, or one carrying nothing measurable, is not a
-    // view: it would fit to a scale of nothing.
+    // No scale, a scale of nothing, or a rectangle stored by an older console.
     window.localStorage.setItem(
       KEY,
-      '{"c405-arena":{"x":0,"y":0,"w":0,"h":10},"other":{"x":null,"y":1,"w":1,"h":1}}',
+      '{"a":{"x":0,"y":0,"pxPerMm":0},"b":{"x":null,"y":1,"pxPerMm":1},"c":{"x":0,"y":0,"w":10,"h":10}}',
     );
     expect(loadSavedViews()).toEqual({});
   });
 
-  it("drops a view the floor no longer meets", () => {
-    const away = withView({}, "c405-arena", { x: 90000, y: 90000, w: 900, h: 700 });
+  it("drops a view whose centre is off the floor", () => {
+    const away = withView({}, "c405-arena", { x: 90000, y: 90000, pxPerMm: 0.4 });
     expect(viewFor(away, "c405-arena", VIEWPORT)).toBeNull();
-
-    // Touching the frame is meeting it: the clamps take it from there.
-    const edge = withView({}, "c405-arena", { x: -2500, y: 0, w: 900, h: 700 });
+    const edge = withView({}, "c405-arena", { x: VIEWPORT.x, y: 0, pxPerMm: 0.4 });
     expect(viewFor(edge, "c405-arena", VIEWPORT)).not.toBeNull();
   });
 });
 
 describe("the view the map opens on", () => {
-  it("writes the floor it is looking at once the camera settles", async () => {
+  // The floor point at the canvas centre and the floor's px per mm, as drawn.
+  const viewShown = (width: number, height: number) =>
+    centreOfView(camOf(), VIEWPORT, viewGeom(width, height, VIEWPORT));
+  const expectSameView = (got: { x: number; y: number; pxPerMm: number }, want: typeof got) => {
+    expect(got.pxPerMm).toBeCloseTo(want.pxPerMm, 9);
+    expect(got.x).toBeCloseTo(want.x, 4);
+    expect(got.y).toBeCloseTo(want.y, 4);
+  };
+  const leaveOnDock = async (width: number, height: number) => {
+    sizeCanvas(width, height);
     render(<App />);
     fireEvent.click(screen.getByTitle("Zoom to dock"));
-    const floor = shown(900, 600);
-
+    const view = viewShown(width, height);
     await waitFor(
       () => expect(loadSavedViews()[site.name]).toBeDefined(),
       { timeout: VIEW_SETTLE_MS * 8 },
     );
+    return view;
+  };
 
-    const stored = loadSavedViews()[site.name];
-    expect(stored.x).toBeCloseTo(floor.x, 6);
-    expect(stored.y).toBeCloseTo(floor.y, 6);
-    expect(stored.w).toBeCloseTo(floor.w, 6);
-    expect(stored.h).toBeCloseTo(floor.h, 6);
+  it("writes the centre and the scale it is looking at once the camera settles", async () => {
+    const view = await leaveOnDock(900, 600);
+    expectSameView(loadSavedViews()[site.name], view);
   });
 
-  it("comes back to the same floor in a canvas of another shape", async () => {
-    render(<App />);
-    fireEvent.click(screen.getByTitle("Zoom to dock"));
-    const left = camOf();
-    const floor = shown(900, 600);
-    await waitFor(
-      () => expect(loadSavedViews()[site.name]).toBeDefined(),
-      { timeout: VIEW_SETTLE_MS * 8 },
-    );
+  // Landscape, portrait, and a map squeezed between both panes that is
+  // narrower than it is tall: every pair crosses the frame's aspect ratio
+  // one way or the other.
+  for (const [from, to] of [
+    [[900, 600], [600, 900]],
+    [[900, 600], [420, 860]],
+    [[420, 860], [900, 600]],
+  ] as const) {
+    it(`comes back to the same centre and scale from ${from.join("x")} to ${to.join("x")}`, async () => {
+      const left = await leaveOnDock(from[0], from[1]);
+      cleanup();
+      sizeCanvas(to[0], to[1]);
+      render(<App />);
+      expectSameView(viewShown(to[0], to[1]), left);
+    });
+  }
+
+  it("comes back to the same centre and scale with a panel collapsed", async () => {
+    const left = await leaveOnDock(420, 860);
     cleanup();
-
-    // The same console opened on a portrait window.
-    sizeCanvas(600, 900);
+    // Reloaded with the right pane remembered collapsed: a wider canvas.
+    window.localStorage.setItem("dotbot.console.panels", JSON.stringify({ left: false, right: true }));
+    sizeCanvas(760, 860);
     render(<App />);
-    const back = shown(600, 900);
-
-    // The floor that was in the middle is in the middle again ...
-    expect(centre(back).x).toBeCloseTo(centre(floor).x, 6);
-    expect(centre(back).y).toBeCloseTo(centre(floor).y, 6);
-    // ... all of it is on screen, the new canvas letterboxing whichever axis
-    // it has to spare ...
-    expect(back.x).toBeLessThanOrEqual(floor.x + 1e-6);
-    expect(back.y).toBeLessThanOrEqual(floor.y + 1e-6);
-    expect(back.x + back.w).toBeGreaterThanOrEqual(floor.x + floor.w - 1e-6);
-    expect(back.y + back.h).toBeGreaterThanOrEqual(floor.y + floor.h - 1e-6);
-    // ... and one axis fits it exactly, so the view is the rectangle fitted
-    // rather than the rectangle plus a margin.
-    expect(
-      Math.abs(back.w - floor.w) < 1e-6 || Math.abs(back.h - floor.h) < 1e-6,
-    ).toBe(true);
-
-    // Which is the whole reason the rectangle travels rather than the camera:
-    // the camera that framed this floor frames somewhere else here.
-    const raw = visibleArea(left, VIEWPORT, viewGeom(600, 900, VIEWPORT));
-    expect(Math.hypot(
-      centre(raw).x - centre(floor).x,
-      centre(raw).y - centre(floor).y,
-    )).toBeGreaterThan(100);
+    expectSameView(viewShown(760, 860), left);
   });
 
   it("lets ?zoom= outrank what was stored", () => {
-    saveSavedViews(withView({}, site.name, { x: 0, y: 2000, w: 3330, h: 2000 }));
+    saveSavedViews(withView({}, site.name, { x: 1665, y: 3000, pxPerMm: 0.1 }));
     window.history.replaceState({}, "", "/?zoom=dock");
 
     render(<App />);
@@ -290,13 +279,13 @@ describe("the view the map opens on", () => {
     cleanup();
 
     // A view of floor this site no longer has: off the map altogether.
-    saveSavedViews({ [site.name]: { x: 90000, y: 90000, w: 900, h: 700 } });
+    saveSavedViews({ [site.name]: { x: 90000, y: 90000, pxPerMm: 0.4 } });
     render(<App />);
     expect(transform()).toBe(siteTransform());
   });
 
   it("opens on the whole site when the view belongs to another one", () => {
-    saveSavedViews(withView({}, "limerick", { x: 2400, y: 3200, w: 900, h: 700 }));
+    saveSavedViews(withView({}, "limerick", { x: 2850, y: 3550, pxPerMm: 0.4 }));
 
     render(<App />);
 

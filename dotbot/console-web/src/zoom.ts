@@ -315,6 +315,41 @@ export function visibleArea(cam: Camera, viewport: Area, geom: ViewGeom): Area {
   return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
 }
 
+/** The floor point at the canvas centre, and the floor's pixels per millimetre. */
+export interface ViewCentre {
+  x: number;
+  y: number;
+  pxPerMm: number;
+}
+
+/** What a camera shows, stated without the canvas: `cameraAtCentre` back. */
+export function centreOfView(cam: Camera, viewport: Area, geom: ViewGeom): ViewCentre {
+  const v = visibleArea(cam, viewport, geom);
+  const scale = cam.scale > 0 ? cam.scale : ZOOM_MIN;
+  return {
+    x: v.x + v.w / 2,
+    y: v.y + v.h / 2,
+    pxPerMm: viewport.w > 0 ? (geom.boxW * scale) / viewport.w : 0,
+  };
+}
+
+/**
+ * The camera that puts `view`'s floor point at this canvas's centre at its
+ * pixels per millimetre, held by the pan clamp. The scale is left as asked,
+ * so a canvas of another size shows the same floor at the same size.
+ */
+export function cameraAtCentre(view: ViewCentre, viewport: Area, geom: ViewGeom): Camera {
+  if (!(geom.boxW > 0) || !(view.pxPerMm > 0)) return FRAME_CAMERA;
+  const scale = (view.pxPerMm * viewport.w) / geom.boxW;
+  const { fx, fy } = areaToFraction({ x: view.x, y: view.y }, viewport);
+  const cx = (geom.w - geom.boxW) / 2 + fx * geom.boxW;
+  const cy = (geom.h - geom.boxH) / 2 + fy * geom.boxH;
+  return clampCam(
+    { scale, tx: -(cx - geom.w / 2) * scale, ty: -(cy - geom.h / 2) * scale },
+    geom,
+  );
+}
+
 /**
  * The camera one named zoom asks for: the site with its modest margin, or an
  * area with its pad. A name no area answers to leaves the camera alone, which

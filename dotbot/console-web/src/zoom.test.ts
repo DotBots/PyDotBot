@@ -19,6 +19,8 @@ import {
   fitScale,
   padArea,
   refitCam,
+  cameraAtCentre,
+  centreOfView,
   scaleForFraction,
   steppedScale,
   viewCentre,
@@ -559,5 +561,47 @@ describe("a panel toggle, which only changes the canvas width", () => {
     expect(out.scale).toBeLessThan(ZOOM_MIN);
     expect(steppedScale(out.scale, -1, 10)).toBe(out.scale);
     expect(steppedScale(out.scale, 1, 10)).toBeGreaterThan(out.scale);
+  });
+});
+
+describe("a view stated as its centre and scale", () => {
+  const viewport = siteViewport(C405, ARENA);
+  const geoms = [viewGeom(900, 600, viewport), viewGeom(600, 900, viewport), viewGeom(420, 860, viewport)];
+
+  it("takes a camera to its centre and scale and back again in the same canvas", () => {
+    for (const geom of geoms) {
+      const cam = cameraForZoom("arena", C405, viewport, geom)!;
+      const back = cameraAtCentre(centreOfView(cam, viewport, geom), viewport, geom);
+      expect(back.scale).toBeCloseTo(cam.scale, 9);
+      expect(back.tx).toBeCloseTo(cam.tx, 6);
+      expect(back.ty).toBeCloseTo(cam.ty, 6);
+    }
+  });
+
+  it("shows the same centre at the same scale in a canvas of any shape", () => {
+    const from = geoms[0];
+    const view = centreOfView(cameraForZoom("arena", C405, viewport, from)!, viewport, from);
+    for (const to of geoms) {
+      const got = centreOfView(cameraAtCentre(view, viewport, to), viewport, to);
+      expect(got.pxPerMm).toBeCloseTo(view.pxPerMm, 9);
+      expect(got.x).toBeCloseTo(view.x, 6);
+      expect(got.y).toBeCloseTo(view.y, 6);
+    }
+  });
+
+  it("agrees with a panel toggle's refit", () => {
+    const [wide, , narrow] = geoms;
+    const cam = cameraForZoom("arena", C405, viewport, wide)!;
+    const refit = refitCam(cam, wide, narrow);
+    const placed = cameraAtCentre(centreOfView(cam, viewport, wide), viewport, narrow);
+    expect(placed.scale).toBeCloseTo(refit.scale, 9);
+    expect(placed.tx).toBeCloseTo(refit.tx, 6);
+    expect(placed.ty).toBeCloseTo(refit.ty, 6);
+  });
+
+  it("holds a centre near the edge inside the pan clamp", () => {
+    const geom = geoms[2];
+    const cam = cameraAtCentre({ x: viewport.x, y: viewport.y, pxPerMm: 1 }, viewport, geom);
+    expect(cam).toEqual(clampCam(cam, geom));
   });
 });
