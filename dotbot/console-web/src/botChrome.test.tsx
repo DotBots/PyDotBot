@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
 import { MapView } from "./MapView";
+import type { RobotDrawing } from "./robotDrawing";
 import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
 import { Camera, SITE_CAMERA, viewGeom } from "./zoom";
 
@@ -57,6 +58,10 @@ const bodyPose = (at: LH2Position, heading = 45): BotPose => {
     nose: place({ x: 0, y: 18.5 }),
     led: place({ x: 0, y: 5.5 }),
     outline: V3_AT_ORIGIN.map(place),
+    // The radii the controller ships with every pose, whatever its heading.
+    reach_mm: 89.33,
+    core_mm: 18.5,
+    envelope_mm: 95,
   };
 };
 
@@ -89,7 +94,7 @@ interface HarnessProps {
   selection?: Set<string>;
   from?: Camera;
   planned?: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
-  robotShapes?: boolean;
+  robotDrawing?: RobotDrawing;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -97,7 +102,7 @@ const Harness: React.FC<HarnessProps> = ({
   selection = new Set(),
   from = SITE_CAMERA,
   planned = [],
-  robotShapes,
+  robotDrawing,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -116,7 +121,7 @@ const Harness: React.FC<HarnessProps> = ({
         trails: false,
         crashedOnly: false,
       }}
-      robotShapes={robotShapes}
+      robotDrawing={robotDrawing}
       plannedMissions={planned}
       cam={cam}
       setCam={setCam}
@@ -242,33 +247,165 @@ describe("what the map draws a robot from", () => {
     expect(svg.querySelectorAll("circle")).toHaveLength(1);
   });
 
-  it("is a plain sensor dot for a bot whose heading the robot never reported", () => {
-    const headingless = bot("a", { x: 500, y: 500 }, {
+  const headingless = (id: string, at: LH2Position) =>
+    bot(id, at, {
       heading: null,
-      pose: { ...bodyPose({ x: 500, y: 500 }, 0), heading_source: "none" },
+      pose: { ...bodyPose(at, 0), heading_source: "none" },
     });
-    render(<Harness bots={[headingless]} from={near} />);
+  const shape = (id: string) => glyph(id).getAttribute("data-shape");
+  const layer = (id: string, name: string) =>
+    glyph(id).querySelector(`[data-layer="${name}"]`);
+  const noFootprint: RobotDrawing = { mode: "body", footprint: false };
+
+  it("is the sensor point alone for a bot whose heading the robot never reported", () => {
+    render(
+      <Harness bots={[headingless("a", { x: 500, y: 500 })]} robotDrawing={noFootprint} from={near} />,
+    );
     const svg = glyph("a").querySelector("svg")!;
     expect(svg.querySelectorAll("polygon")).toHaveLength(0);
     expect(svg.querySelectorAll("circle")).toHaveLength(1);
+    expect(layer("a", "sensor")).not.toBeNull();
   });
 
-  it("is a plain sensor dot for a bot with no body at all", () => {
+  it("is the sensor point for a bot with no body at all", () => {
     render(<Harness bots={[bot("a", { x: 500, y: 500 }, { pose: null })]} from={near} />);
     expect(glyph("a").querySelector("polygon")).toBeNull();
+    expect(shape("a")).toBe("sensor");
   });
 
-  it("is a plain mark for every bot when robot shapes are turned off", () => {
+  it("falls back to the sensor point per robot, not per fleet", () => {
+    render(
+      <Harness
+        bots={[bot("a", { x: 500, y: 500 }), headingless("b", { x: 900, y: 900 })]}
+        from={near}
+      />,
+    );
+    expect(shape("a")).toBe("board");
+    expect(shape("b")).toBe("sensor");
+  });
+
+  it("is the sensor point for every bot in Sensor mode", () => {
     render(
       <Harness
         bots={[bot("a", { x: 500, y: 500 }), bot("b", { x: 900, y: 900 })]}
-        robotShapes={false}
+        robotDrawing={{ mode: "sensor", footprint: false }}
         from={near}
       />,
     );
     for (const id of ["a", "b"]) {
       expect(glyph(id).querySelector("polygon")).toBeNull();
-      expect(glyph(id).querySelector("circle")).not.toBeNull();
+      expect(shape(id)).toBe("sensor");
     }
+  });
+
+  it("keeps the battery bar on a sensor point but not the drive dot", () => {
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={near} />);
+    expect(screen.getByTestId("battery-a")).toBeInTheDocument();
+    expect(screen.queryByTestId("drive-a")).not.toBeInTheDocument();
+  });
+});
+
+describe("the fallback for a board that cannot be drawn", () => {
+  const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+  const shape = (id: string) => glyph(id).getAttribute("data-shape");
+  const near: Camera = { scale: 20, tx: 0, ty: 0 };
+  const crowd = () =>
+    Array.from({ length: 201 }, (_, i) => bot(`c${i}`, { x: 100 + i * 5, y: 500 }));
+
+  it("is the square with a heading tick where the board is too small", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={SITE_CAMERA} />);
+    expect(shape("a")).toBe("mark");
+    expect(glyph("a").querySelector("rect")).not.toBeNull();
+    expect(glyph("a").querySelector('[data-layer="heading-tick"]')).not.toBeNull();
+  });
+
+  it("is the real-size disc with its heading where a crowd hides a readable board", () => {
+    render(<Harness bots={crowd()} from={near} />);
+    expect(shape("c0")).toBe("disc");
+    const disc = glyph("c0").querySelector('[data-layer="disc"]')!;
+    const perMm = pxPerMm("x", VIEWPORT, GEOM, near);
+    expect(parseFloat(disc.getAttribute("r")!)).toBeCloseTo((95 * perMm) / 2, 3);
+    expect(glyph("c0").querySelector('[data-layer="heading"]')).not.toBeNull();
+    expect(glyph("c0").querySelector('[data-layer="photodiode"]')).not.toBeNull();
+  });
+
+  it("is still the square in a crowd where the board would be too small anyway", () => {
+    render(<Harness bots={crowd()} from={SITE_CAMERA} />);
+    expect(shape("c0")).toBe("mark");
+  });
+});
+
+describe("the possible footprint", () => {
+  const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+  const layer = (id: string, name: string) =>
+    glyph(id).querySelector(`[data-layer="${name}"]`);
+  const near: Camera = { scale: 20, tx: 0, ty: 0 };
+  const headingless = (id: string, at: LH2Position) =>
+    bot(id, at, {
+      heading: null,
+      pose: { ...bodyPose(at, 0), heading_source: "none" },
+    });
+
+  it("rings a robot drawn as its sensor with the reach and the core the host sent", () => {
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={near} />);
+    const perMm = pxPerMm("x", VIEWPORT, GEOM, near);
+    expect(parseFloat(layer("a", "reach")!.getAttribute("r")!)).toBeCloseTo(89.33 * perMm, 3);
+    expect(parseFloat(layer("a", "core")!.getAttribute("r")!)).toBeCloseTo(18.5 * perMm, 3);
+  });
+
+  it("is not drawn around a robot drawn as its body", () => {
+    render(
+      <Harness
+        bots={[bot("a", { x: 500, y: 500 }), headingless("b", { x: 900, y: 900 })]}
+        from={near}
+      />,
+    );
+    expect(layer("a", "reach")).toBeNull();
+    expect(layer("b", "reach")).not.toBeNull();
+  });
+
+  it("is drawn around every robot in Sensor mode", () => {
+    render(
+      <Harness
+        bots={[bot("a", { x: 500, y: 500 })]}
+        robotDrawing={{ mode: "sensor", footprint: true }}
+        from={near}
+      />,
+    );
+    expect(layer("a", "reach")).not.toBeNull();
+  });
+
+  it("is hidden where the ring would be too small to read", () => {
+    // At the whole-site zoom the ring is about 12 px across.
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={SITE_CAMERA} />);
+    expect(layer("a", "reach")).toBeNull();
+    expect(layer("a", "core")).toBeNull();
+    expect(layer("a", "sensor")).not.toBeNull();
+  });
+
+  it("is not drawn when the host sent no radii", () => {
+    const older = bot("a", { x: 500, y: 500 }, {
+      heading: null,
+      pose: {
+        ...bodyPose({ x: 500, y: 500 }, 0),
+        heading_source: "none",
+        reach_mm: undefined,
+        core_mm: undefined,
+      },
+    });
+    render(<Harness bots={[older]} from={near} />);
+    expect(layer("a", "reach")).toBeNull();
+    expect(layer("a", "sensor")).not.toBeNull();
+  });
+
+  it("loses its fill in a crowd", () => {
+    const crowd = Array.from({ length: 201 }, (_, i) =>
+      headingless(`c${i}`, { x: 100 + i * 5, y: 500 }),
+    );
+    render(<Harness bots={crowd} from={near} />);
+    expect(layer("c0", "reach")!.getAttribute("fill")).toBe("none");
+    cleanup();
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={near} />);
+    expect(layer("a", "reach")!.getAttribute("fill")).not.toBe("none");
   });
 });

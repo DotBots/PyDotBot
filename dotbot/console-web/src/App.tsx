@@ -25,7 +25,7 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
-import { loadRobotShapes, saveRobotShapes } from "./robotShapes";
+import { RobotDrawing, loadRobotDrawing, saveRobotDrawing } from "./robotDrawing";
 import {
   VIEW_SETTLE_MS,
   loadSavedViews,
@@ -220,14 +220,14 @@ export const App: React.FC = () => {
     [updateRobotOpacity],
   );
 
-  // Whether DotBots are drawn as the robot or as a plain mark, per browser.
-  const [robotShapes, updateRobotShapes] = usePersisted<boolean>(
-    loadRobotShapes,
-    saveRobotShapes,
+  // Whether DotBots are drawn as their bodies or their sensor points, per browser.
+  const [robotDrawing, updateRobotDrawing] = usePersisted<RobotDrawing>(
+    loadRobotDrawing,
+    saveRobotDrawing,
   );
-  const onRobotShapesToggle = useCallback(
-    () => updateRobotShapes((prev) => !prev),
-    [updateRobotShapes],
+  const onRobotDrawing = useCallback(
+    (next: RobotDrawing) => updateRobotDrawing(() => next),
+    [updateRobotDrawing],
   );
 
   // The rail's action opens the tab that sets a session up; the session
@@ -743,7 +743,7 @@ export const App: React.FC = () => {
               siteExtent={siteExtentArea(site)}
               selection={selection}
               layers={layers}
-              robotShapes={robotShapes}
+              robotDrawing={robotDrawing}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
@@ -839,8 +839,8 @@ export const App: React.FC = () => {
           layers={layers}
           layerRows={layerRows}
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
-          robotShapes={robotShapes}
-          onRobotShapesToggle={onRobotShapesToggle}
+          robotDrawing={robotDrawing}
+          onRobotDrawing={onRobotDrawing}
           cameras={cameras}
           cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}

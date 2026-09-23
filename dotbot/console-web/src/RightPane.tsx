@@ -14,6 +14,7 @@ import {
 import { InspectorBody } from "./Inspector";
 import { DETECTION_TEXT } from "./localization";
 import { PanelToggle } from "./PanelToggle";
+import type { DrawMode, RobotDrawing } from "./robotDrawing";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
@@ -116,6 +117,83 @@ export const CheckRow: React.FC<{
     >
       {on ? "✓" : ""}
     </span>
+  </div>
+);
+
+const DRAW_MODES: { value: DrawMode; text: string }[] = [
+  { value: "body", text: "Body" },
+  { value: "sensor", text: "Sensor" },
+];
+
+const DRAWING_HINT: Record<DrawMode, [string, string]> = {
+  body: [
+    "A robot with no heading is drawn as its sensor point.",
+    "No heading: its sensor, ringed by where its body could be.",
+  ],
+  sensor: [
+    "Every robot is drawn as the point its sensor reports.",
+    "Every robot is its sensor, ringed by where its body could be.",
+  ],
+};
+
+// Body or Sensor, and whether a sensor point carries its possible footprint.
+const RobotDrawingControl: React.FC<{
+  value: RobotDrawing;
+  onChange: (next: RobotDrawing) => void;
+}> = ({ value, onChange }) => (
+  <div style={{ margin: "8px 0 2px" }}>
+    <div
+      role="radiogroup"
+      aria-label="Draw robots as"
+      style={{
+        display: "flex",
+        background: "var(--elevated)",
+        borderRadius: 7,
+        padding: 2,
+        gap: 2,
+        border: "1px solid var(--hairline)",
+      }}
+    >
+      {DRAW_MODES.map((m) => (
+        <div
+          key={m.value}
+          role="radio"
+          aria-checked={value.mode === m.value}
+          tabIndex={0}
+          onClick={() => onChange({ ...value, mode: m.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onChange({ ...value, mode: m.value });
+            }
+          }}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "4px 0",
+            borderRadius: 5,
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: "pointer",
+            background: value.mode === m.value ? "var(--accent)" : "transparent",
+            color: value.mode === m.value ? "#fff" : "var(--muted)",
+          }}
+        >
+          {m.text}
+        </div>
+      ))}
+    </div>
+    <CheckRow
+      label="Possible footprint"
+      on={value.footprint}
+      onToggle={() => onChange({ ...value, footprint: !value.footprint })}
+    />
+    <div
+      data-testid="robot-drawing-hint"
+      style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4, padding: "0 4px" }}
+    >
+      {DRAWING_HINT[value.mode][value.footprint ? 1 : 0]}
+    </div>
   </div>
 );
 
@@ -326,8 +404,8 @@ interface RightPaneProps {
   layers: Layers;
   layerRows: { key: keyof Layers; label: string }[];
   onLayerToggle: (key: keyof Layers) => void;
-  robotShapes?: boolean;
-  onRobotShapesToggle?: () => void;
+  robotDrawing?: RobotDrawing;
+  onRobotDrawing?: (next: RobotDrawing) => void;
   // The cameras the controller warps. None registered, no Camera heading.
   cameras?: RegisteredCamera[];
   // What each camera's detector last made of its own area, keyed by area.
@@ -458,12 +536,10 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                 onToggle={() => props.onLayerToggle(row.key)}
               />
             ))}
-            {props.onRobotShapesToggle && (
-              <CheckRow
-                label="Robot shapes"
-                hint="Draw DotBots as the robot rather than a dot"
-                on={props.robotShapes ?? true}
-                onToggle={props.onRobotShapesToggle}
+            {props.robotDrawing && props.onRobotDrawing && (
+              <RobotDrawingControl
+                value={props.robotDrawing}
+                onChange={props.onRobotDrawing}
               />
             )}
 

@@ -5,12 +5,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BOT_MIN_PX,
   BotGlyph,
+  FOOTPRINT_MIN_PX,
   GLYPH_CROWD_BOTS,
   GLYPH_DETAIL_PX,
+  SENSOR_POINT_PX,
   botBody,
   botFootprintPx,
   glyphLevel,
+  robotDraw,
 } from "./BotGlyph";
+import type { RobotDrawing } from "./robotDrawing";
 import type { BotPose, LH2Position } from "./types";
 
 afterEach(cleanup);
@@ -74,6 +78,9 @@ const pose = (heading = 0, over: Partial<BotPose> = {}): BotPose => {
     led: place({ x: 0, y: 5.5 }),
     outline: V3_AT_ORIGIN.map(place),
     wheels: V3_WHEELS_AT_ORIGIN.map((wheel) => wheel.map(place)),
+    reach_mm: 89.33,
+    core_mm: 18.5,
+    envelope_mm: 95,
     ...over,
   };
 };
@@ -174,14 +181,96 @@ describe("how much of a bot is drawn", () => {
   });
 });
 
-describe("the glyph a level draws", () => {
+describe("what a robot is drawn as", () => {
+  const BODY: RobotDrawing = { mode: "body", footprint: true };
+  const SENSOR_MODE: RobotDrawing = { mode: "sensor", footprint: true };
+  // Scales at which the 95 mm board is 95 px, and 9.5 px.
+  const NEAR = 1;
+  const FAR = 0.1;
+
+  it("is the board for a robot with a heading, big enough and not crowded", () => {
+    const d = robotDraw(pose(), BODY, NEAR, 1);
+    expect(d.shape.kind).toBe("board");
+    expect(d.turned).toBe(true);
+    expect(d.battery && d.drive).toBe(true);
+  });
+
+  it("is drawn fainter as an estimate only when built on the travel bearing", () => {
+    expect(robotDraw(pose(), BODY, NEAR, 1).estimate).toBe(true);
+    expect(robotDraw(pose(0, { heading_source: "ekf" }), BODY, NEAR, 1).estimate).toBe(false);
+  });
+
+  it("is the square below the size the board reads at", () => {
+    const d = robotDraw(pose(), BODY, FAR, 1);
+    expect(d.shape.kind).toBe("mark");
+    expect(d.footprintPx).toBeLessThan(GLYPH_DETAIL_PX);
+    expect(d.battery || d.drive).toBe(false);
+  });
+
+  it("is the envelope disc where a crowd hides a board big enough to read", () => {
+    const d = robotDraw(pose(), BODY, NEAR, GLYPH_CROWD_BOTS + 1);
+    expect(d.shape.kind).toBe("disc");
+    expect(d.shape.kind === "disc" && d.shape.radiusPx).toBeCloseTo(47.5, 6);
+    expect(d.centre).toEqual({ x: 0, y: -29 });
+  });
+
+  it("is the square in a crowd too, once the board is too small anyway", () => {
+    expect(robotDraw(pose(), BODY, FAR, GLYPH_CROWD_BOTS + 1).shape.kind).toBe("mark");
+  });
+
+  it("is the sensor point for a robot with no heading, whatever the zoom", () => {
+    for (const scale of [NEAR, FAR]) {
+      const d = robotDraw(pose(0, { heading_source: "none" }), BODY, scale, 1);
+      expect(d.shape.kind).toBe("sensor");
+      expect(d.centre).toEqual({ x: 0, y: 0 });
+      expect(d.drive).toBe(false);
+    }
+  });
+
+  it("is the sensor point for every robot in Sensor mode", () => {
+    expect(robotDraw(pose(), SENSOR_MODE, NEAR, 1).shape.kind).toBe("sensor");
+  });
+
+  it("rings the sensor point with the host's reach and core", () => {
+    const { shape, footprintPx } = robotDraw(pose(), SENSOR_MODE, NEAR, 1);
+    expect(shape).toEqual({ kind: "sensor", ringPx: 89.33, corePx: 18.5, crowded: false });
+    expect(footprintPx).toBeCloseTo(2 * 89.33, 6);
+  });
+
+  it("hides the ring below the size it reads at, and the core with it", () => {
+    const scale = (FOOTPRINT_MIN_PX - 1) / (2 * 89.33);
+    const { shape, footprintPx } = robotDraw(pose(), SENSOR_MODE, scale, 1);
+    expect(shape).toMatchObject({ ringPx: null, corePx: null });
+    expect(footprintPx).toBe(SENSOR_POINT_PX);
+  });
+
+  it("draws the core only when it is visibly larger than the point", () => {
+    const scale = SENSOR_POINT_PX / (2 * 18.5);
+    const { shape } = robotDraw(pose(), SENSOR_MODE, scale, 1);
+    expect(shape).toMatchObject({ corePx: null });
+    expect(shape.kind === "sensor" && shape.ringPx).toBeGreaterThan(0);
+  });
+
+  it("draws no footprint with the checkbox off", () => {
+    const { shape } = robotDraw(pose(), { mode: "sensor", footprint: false }, NEAR, 1);
+    expect(shape).toMatchObject({ ringPx: null, corePx: null });
+  });
+
+  it("marks the ring as crowded past the crowd size", () => {
+    const { shape } = robotDraw(pose(), SENSOR_MODE, NEAR, GLYPH_CROWD_BOTS + 1);
+    expect(shape).toMatchObject({ crowded: true });
+  });
+});
+
+describe("the glyph a shape draws", () => {
   const svg = (props: Parameters<typeof BotGlyph>[0]) =>
     render(<BotGlyph {...props} />).container.querySelector("svg")!;
 
-  const body = botBody(pose());
+  const body = botBody(pose())!;
+  const board = { kind: "board", body } as const;
 
   it("draws the layers of one robot at full detail", () => {
-    const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
+    const el = svg({ color: "red", shape: board, pxPerMm: 1, footprintPx: 95 });
     // The tyres, the board over them, the line out to its nose, and the
     // photodiode the fix came from.
     expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(2);
@@ -191,7 +280,7 @@ describe("the glyph a level draws", () => {
   });
 
   it("draws each tyre where the pose puts it, at the size it was sent", () => {
-    const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
+    const el = svg({ color: "red", shape: board, pxPerMm: 1, footprintPx: 95 });
     const wheels = [...el.querySelectorAll('[data-layer="wheel"]')].map((w) =>
       w.getAttribute("points"),
     );
@@ -201,13 +290,13 @@ describe("the glyph a level draws", () => {
 
   it("draws the board alone from a host that sends no tyres", () => {
     const older = botBody(pose(0, { wheels: undefined }))!;
-    const el = svg({ color: "red", body: older, pxPerMm: 1, footprintPx: 95 });
+    const el = svg({ color: "red", shape: { kind: "board", body: older }, pxPerMm: 1, footprintPx: 95 });
     expect(el.querySelectorAll('[data-layer="wheel"]')).toHaveLength(0);
     expect(el.querySelectorAll('[data-layer="board"]')).toHaveLength(1);
   });
 
   it("puts the board where the pose puts it, not on the fix", () => {
-    const el = svg({ color: "red", body, pxPerMm: 1, footprintPx: 95 });
+    const el = svg({ color: "red", shape: board, pxPerMm: 1, footprintPx: 95 });
     const points = el
       .querySelector('[data-layer="board"]')!
       .getAttribute("points")!;
@@ -219,33 +308,53 @@ describe("the glyph a level draws", () => {
     expect(dot.getAttribute("cy")).toBeNull();
   });
 
-  it("draws a mark at the board's centre where the outline would not read", () => {
-    const el = svg({
-      color: "red",
-      body,
-      pxPerMm: 0.1,
-      footprintPx: 9.5,
-      level: "dot",
-    });
+  it("draws a mark at the board's centre, ticked toward its nose", () => {
+    const el = svg({ color: "red", shape: { kind: "mark", body }, pxPerMm: 0.1, footprintPx: 9.5 });
     expect(el.querySelectorAll("polygon")).toHaveLength(0);
     const rect = el.querySelector("rect")!;
     // Centred 29 mm behind the fix, so a mark stands where the robot does.
     expect(parseFloat(rect.getAttribute("y")!)).toBeCloseTo(-2.9 - 9.5 / 2, 6);
+    const tick = el.querySelector('[data-layer="heading-tick"]')!;
+    expect(parseFloat(tick.getAttribute("y1")!)).toBeCloseTo(-2.9, 6);
+    // Heading 0 puts the nose toward +y.
+    expect(parseFloat(tick.getAttribute("y2")!)).toBeGreaterThan(-2.9);
   });
 
-  it("draws a bot with no body as the photodiode point and nothing else", () => {
-    for (const level of ["detail", "dot"] as const) {
+  it("draws the disc about the board's centre, with its heading and photodiode", () => {
+    const el = svg({ color: "red", shape: { kind: "disc", body, radiusPx: 20 }, pxPerMm: 0.4, footprintPx: 40 });
+    const disc = el.querySelector('[data-layer="disc"]')!;
+    expect(parseFloat(disc.getAttribute("cy")!)).toBeCloseTo(-29 * 0.4, 6);
+    expect(el.querySelector('[data-layer="heading"]')).not.toBeNull();
+    expect(el.querySelector('[data-layer="photodiode"]')).not.toBeNull();
+  });
+
+  it("draws the sensor point at a fixed size, rimmed in white", () => {
+    for (const pxPerMm of [0.05, 2]) {
       const el = svg({
         color: "red",
-        body: null,
-        pxPerMm: 1,
+        shape: { kind: "sensor", ringPx: null, corePx: null, crowded: false },
+        pxPerMm,
         footprintPx: BOT_MIN_PX,
-        level,
       });
       expect(el.querySelectorAll("polygon")).toHaveLength(0);
-      expect(el.querySelectorAll("rect")).toHaveLength(0);
       expect(el.querySelectorAll("circle")).toHaveLength(1);
+      const point = el.querySelector('[data-layer="sensor"]')!;
+      const r = parseFloat(point.getAttribute("r")!);
+      const rim = parseFloat(point.getAttribute("stroke-width")!);
+      expect(2 * r + rim).toBe(SENSOR_POINT_PX);
       cleanup();
     }
+  });
+
+  it("draws the ring dashed and the core solid around the point", () => {
+    const el = svg({
+      color: "red",
+      shape: { kind: "sensor", ringPx: 60, corePx: 12, crowded: false },
+      pxPerMm: 1,
+      footprintPx: 120,
+    });
+    expect(el.querySelector('[data-layer="reach"]')!.getAttribute("stroke-dasharray")).toBeTruthy();
+    expect(el.querySelector('[data-layer="core"]')!.getAttribute("stroke-dasharray")).toBeNull();
+    expect(el.querySelector('[data-layer="sensor"]')).not.toBeNull();
   });
 });

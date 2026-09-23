@@ -1,5 +1,6 @@
 import React from "react";
 
+import type { RobotDrawing } from "./robotDrawing";
 import type { BotPose, LH2Position } from "./types";
 
 // The map marker: one robot in three layers, the board outline, a line from
@@ -14,7 +15,9 @@ import type { BotPose, LH2Position } from "./types";
 //
 // A pose whose heading the robot never reported is drawn as the photodiode
 // point alone. A guessed body is worse than a dot, and a dot is honest about
-// what is known.
+// what is known. Around that point the possible footprint shows the room the
+// body can take: the reach and the core radii the controller ships with the
+// pose, which hold whichever way the robot faces.
 
 /** Screen pixels a bot is drawn at however far the map zooms out. */
 export const BOT_MIN_PX = 8;
@@ -39,6 +42,16 @@ export const TRAVEL_BODY_OPACITY = 0.78;
 
 /** Radius of the photodiode dot, in millimetres, as the camera layer draws it. */
 const SENSOR_DOT_MM = 4;
+
+/** On-screen diameter of a robot drawn as its sensor point, whatever the zoom. */
+export const SENSOR_POINT_PX = 11;
+
+/** On-screen diameter below which the possible footprint's ring is not drawn. */
+export const FOOTPRINT_MIN_PX = 26;
+
+const WHITE = "rgba(255,255,255,.95)";
+const SHADOW =
+  "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))";
 
 /** How much of the robot is drawn: the board, or a mark. */
 export type GlyphLevel = "detail" | "dot";
@@ -116,6 +129,90 @@ export function botFootprintPx(pxPerMm: number, spanMm: number): number {
   return Math.max(BOT_MIN_PX, spanMm * pxPerMm);
 }
 
+/**
+ * What one robot is drawn as. `board` is the full glyph; `mark` the square
+ * with a heading tick, for a board too small to read; `disc` the real-size
+ * envelope with its heading, for a board big enough but lost in a crowd;
+ * `sensor` the photodiode point with the possible footprint around it, whose
+ * radii are in screen pixels and null where they are not drawn.
+ */
+export type RobotShape =
+  | { kind: "board"; body: BotBody }
+  | { kind: "mark"; body: BotBody }
+  | { kind: "disc"; body: BotBody; radiusPx: number }
+  | { kind: "sensor"; ringPx: number | null; corePx: number | null; crowded: boolean };
+
+export interface RobotDraw {
+  shape: RobotShape;
+  /** Where the chrome around the robot sits, in mm from the photodiode. */
+  centre: LH2Position;
+  /** The size on screen the chrome is laid out around. */
+  footprintPx: number;
+  /** Whether the chrome turns with the heading, hugging a drawn board. */
+  turned: boolean;
+  /** A board built on the travel bearing, drawn fainter as an estimate. */
+  estimate: boolean;
+  battery: boolean;
+  drive: boolean;
+}
+
+/** How a robot with this pose is drawn at this zoom, in a fleet of `botCount`. */
+export function robotDraw(
+  pose: BotPose | null | undefined,
+  drawing: RobotDrawing,
+  pxPerMm: number,
+  botCount: number,
+): RobotDraw {
+  const body = drawing.mode === "body" ? botBody(pose) : null;
+  if (body) {
+    const footprintPx = botFootprintPx(pxPerMm, body.spanMm);
+    const flat = { centre: body.centre, turned: false, estimate: false };
+    if (glyphLevel(footprintPx, botCount) === "detail") {
+      return {
+        shape: { kind: "board", body },
+        centre: body.centre,
+        footprintPx,
+        turned: true,
+        estimate: body.source === "travel",
+        battery: true,
+        drive: true,
+      };
+    }
+    // Too small to read is a mark; readable but crowded out is the envelope.
+    if (footprintPx < GLYPH_DETAIL_PX) {
+      return { ...flat, shape: { kind: "mark", body }, footprintPx, battery: false, drive: false };
+    }
+    const discPx = botFootprintPx(pxPerMm, pose?.envelope_mm ?? body.spanMm);
+    return {
+      ...flat,
+      shape: { kind: "disc", body, radiusPx: discPx / 2 },
+      footprintPx: discPx,
+      battery: false,
+      drive: false,
+    };
+  }
+
+  const reachPx = (pose?.reach_mm ?? 0) * pxPerMm;
+  const corePx = (pose?.core_mm ?? 0) * pxPerMm;
+  const ring = drawing.footprint && 2 * reachPx >= FOOTPRINT_MIN_PX;
+  const core = drawing.footprint && 2 * corePx >= SENSOR_POINT_PX + 4;
+  const envelopePx = botFootprintPx(pxPerMm, pose?.envelope_mm ?? 0);
+  return {
+    shape: {
+      kind: "sensor",
+      ringPx: ring ? reachPx : null,
+      corePx: core ? corePx : null,
+      crowded: botCount > GLYPH_CROWD_BOTS,
+    },
+    centre: { x: 0, y: 0 },
+    footprintPx: ring ? 2 * reachPx : SENSOR_POINT_PX,
+    turned: false,
+    estimate: false,
+    battery: glyphLevel(envelopePx, botCount) === "detail",
+    drive: false,
+  };
+}
+
 /** How far from the photodiode the body reaches, in millimetres, tyres included. */
 function reachMm(body: BotBody): number {
   const points = [...body.outline, ...body.wheels.flat()];
@@ -124,100 +221,203 @@ function reachMm(body: BotBody): number {
 
 interface BotGlyphProps {
   color: string;
-  /** Null draws the photodiode point alone. */
-  body: BotBody | null;
+  shape: RobotShape;
   pxPerMm: number;
+  /** The mark's side, for `mark`. */
   footprintPx: number;
-  level?: GlyphLevel;
 }
 
-/**
- * The bot as one SVG whose origin is the pose's photodiode, so the caller places
- * it at the point it already has and the body falls where the pose puts it.
- */
-export const BotGlyph: React.FC<BotGlyphProps> = ({
-  color,
-  body,
-  pxPerMm,
-  footprintPx,
-  level = "detail",
+const Frame: React.FC<{ half: number; children: React.ReactNode; filter?: boolean }> = ({
+  half,
+  children,
+  filter = true,
 }) => {
-  const px = (p: LH2Position): LH2Position => ({
-    x: p.x * pxPerMm,
-    y: p.y * pxPerMm,
-  });
-  const detail = body !== null && level === "detail";
-  // Half the box the drawing needs, measured from the photodiode at its origin.
-  const half = !body
-    ? footprintPx / 2
-    : detail
-      ? reachMm(body) * pxPerMm
-      : Math.hypot(body.centre.x, body.centre.y) * pxPerMm + footprintPx / 2;
   const side = 2 * (half + 2);
-  const mark = body ? px(body.centre) : { x: 0, y: 0 };
-  const stroke = Math.max(0.6, footprintPx / 40);
   return (
     <svg
       viewBox={`${-side / 2} ${-side / 2} ${side} ${side}`}
       width={side}
       height={side}
-      style={{
-        display: "block",
-        filter: "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))",
-      }}
+      style={{ display: "block", filter: filter ? SHADOW : undefined }}
     >
-      {!body && <circle r={footprintPx / 2} fill={color} />}
-      {body && !detail && (
+      {children}
+    </svg>
+  );
+};
+
+/** A white line from `from` toward `to`, `length` px long. */
+const HeadingLine: React.FC<{
+  from: LH2Position;
+  to: LH2Position;
+  length: number;
+  width: number;
+  layer: string;
+}> = ({ from, to, length, width, layer }) => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const n = Math.hypot(dx, dy) || 1;
+  return (
+    <line
+      data-layer={layer}
+      x1={from.x}
+      y1={from.y}
+      x2={from.x + (dx / n) * length}
+      y2={from.y + (dy / n) * length}
+      stroke={WHITE}
+      strokeWidth={width}
+      strokeLinecap="round"
+    />
+  );
+};
+
+const SensorPoint: React.FC<{ color: string; ringPx: number | null; corePx: number | null; crowded: boolean }> = ({
+  color,
+  ringPx,
+  corePx,
+  crowded,
+}) => {
+  const pointR = SENSOR_POINT_PX / 2;
+  return (
+    <Frame half={Math.max(pointR + 2, ringPx ?? 0)} filter={false}>
+      {ringPx !== null && (
+        <circle
+          data-layer="reach"
+          r={ringPx}
+          fill={crowded ? "none" : color}
+          fillOpacity={crowded ? undefined : 0.1}
+          stroke={color}
+          strokeOpacity={crowded ? 0.75 : 0.9}
+          strokeWidth={crowded ? 1 : 1.5}
+          strokeDasharray={`${Math.max(3, ringPx / 7)} ${Math.max(2.5, ringPx / 11)}`}
+        />
+      )}
+      {corePx !== null && (
+        <circle
+          data-layer="core"
+          r={corePx}
+          fill={color}
+          fillOpacity={0.6}
+          stroke={color}
+          strokeOpacity={0.9}
+          strokeWidth={1}
+        />
+      )}
+      {/* the point the lighthouse reported: a fixed size, rimmed in white so
+          it reads on either theme and apart from the ring around it */}
+      <circle
+        data-layer="sensor"
+        r={pointR - 1}
+        fill={color}
+        stroke={WHITE}
+        strokeWidth={2}
+        style={{ filter: SHADOW }}
+      />
+    </Frame>
+  );
+};
+
+/**
+ * The bot as one SVG whose origin is the pose's photodiode, so the caller places
+ * it at the point it already has and the body falls where the pose puts it.
+ */
+export const BotGlyph: React.FC<BotGlyphProps> = ({ color, shape, pxPerMm, footprintPx }) => {
+  if (shape.kind === "sensor") return <SensorPoint color={color} {...shape} />;
+  const body = shape.body;
+  const px = (p: LH2Position): LH2Position => ({
+    x: p.x * pxPerMm,
+    y: p.y * pxPerMm,
+  });
+  const centre = px(body.centre);
+  const nose = px(body.nose);
+  const offset = Math.hypot(centre.x, centre.y);
+
+  if (shape.kind === "mark") {
+    return (
+      <Frame half={offset + footprintPx / 2}>
         <rect
-          x={mark.x - footprintPx / 2}
-          y={mark.y - footprintPx / 2}
+          x={centre.x - footprintPx / 2}
+          y={centre.y - footprintPx / 2}
           width={footprintPx}
           height={footprintPx}
           rx={Math.min(3, footprintPx / 4)}
           fill={color}
         />
-      )}
-      {detail && (
-        <>
-          {/* the tyres, at the place and size the record gives them: the
-              board is drawn over them, so only what sticks out shows */}
-          {body!.wheels.map((wheel, i) => (
-            <polygon
-              key={i}
-              data-layer="wheel"
-              points={wheel.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
-              fill="var(--tyre)"
-              stroke="rgba(0,0,0,.45)"
-              strokeWidth={stroke}
-            />
-          ))}
-          <polygon
-            data-layer="board"
-            points={body!.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
-            fill={color}
-            stroke="rgba(0,0,0,.45)"
-            strokeWidth={stroke}
-          />
-          {/* which way it faces: the centre of the board out to its nose */}
-          <line
-            x1={mark.x}
-            y1={mark.y}
-            x2={px(body!.nose).x}
-            y2={px(body!.nose).y}
-            stroke="rgba(255,255,255,.95)"
-            strokeWidth={Math.max(1, footprintPx / 16)}
-            strokeLinecap="round"
-          />
-          {/* the photodiode, which is the point the lighthouse reported, at
-              the size the camera layer draws its own */}
-          <circle
-            r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
-            fill="#111"
-            stroke="rgba(255,255,255,.85)"
-            strokeWidth={stroke}
-          />
-        </>
-      )}
-    </svg>
+        <HeadingLine
+          layer="heading-tick"
+          from={centre}
+          to={nose}
+          length={footprintPx / 2 - 1}
+          width={Math.min(3.5, Math.max(1.2, footprintPx / 7))}
+        />
+      </Frame>
+    );
+  }
+
+  if (shape.kind === "disc") {
+    const r = shape.radiusPx;
+    return (
+      <Frame half={offset + r}>
+        <circle data-layer="disc" cx={centre.x} cy={centre.y} r={r} fill={color} />
+        <HeadingLine
+          layer="heading"
+          from={centre}
+          to={nose}
+          length={r}
+          width={Math.max(1.2, r / 4)}
+        />
+        <circle
+          data-layer="photodiode"
+          r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
+          fill="#111"
+          stroke="rgba(255,255,255,.85)"
+          strokeWidth={0.6}
+        />
+      </Frame>
+    );
+  }
+
+  const stroke = Math.max(0.6, footprintPx / 40);
+  return (
+    <Frame half={reachMm(body) * pxPerMm}>
+      {/* the tyres, at the place and size the record gives them: the board is
+          drawn over them, so only what sticks out shows */}
+      {body.wheels.map((wheel, i) => (
+        <polygon
+          key={i}
+          data-layer="wheel"
+          points={wheel.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
+          fill="var(--tyre)"
+          stroke="rgba(0,0,0,.45)"
+          strokeWidth={stroke}
+        />
+      ))}
+      <polygon
+        data-layer="board"
+        points={body.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
+        fill={color}
+        stroke="rgba(0,0,0,.45)"
+        strokeWidth={stroke}
+      />
+      {/* which way it faces: the centre of the board out to its nose */}
+      <line
+        data-layer="heading"
+        x1={centre.x}
+        y1={centre.y}
+        x2={nose.x}
+        y2={nose.y}
+        stroke={WHITE}
+        strokeWidth={Math.max(1, footprintPx / 16)}
+        strokeLinecap="round"
+      />
+      {/* the photodiode, which is the point the lighthouse reported, at the
+          size the camera layer draws its own */}
+      <circle
+        data-layer="photodiode"
+        r={Math.max(1.1, SENSOR_DOT_MM * pxPerMm)}
+        fill="#111"
+        stroke="rgba(255,255,255,.85)"
+        strokeWidth={stroke}
+      />
+    </Frame>
   );
 };
