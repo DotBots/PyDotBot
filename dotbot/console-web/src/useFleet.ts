@@ -51,10 +51,30 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
+// The controller's last pose moved onto `at` and stripped of its heading, so
+// a bot placed from a bare position keeps the radii the host shipped for it.
+function headinglessAt(pose: BotPose, at: LH2Position): BotPose {
+  const dx = at.x - pose.photodiode.x;
+  const dy = at.y - pose.photodiode.y;
+  const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
+  return {
+    ...pose,
+    heading_source: "none",
+    photodiode: move(pose.photodiode),
+    axle: move(pose.axle),
+    centre: move(pose.centre),
+    nose: move(pose.nose),
+    led: move(pose.led),
+    outline: pose.outline.map(move),
+    wheels: pose.wheels?.map((wheel) => wheel.map(move)),
+  };
+}
+
 // The controller's pose while the link is active, else swarmit's position if
 // it has located the bot, else the controller's last pose. swarmit reports
-// (0, 0) for a bot it has never located, and no heading and no body at all,
-// so a bot placed from swarmit is a point.
+// (0, 0) for a bot it has never located, and no heading, so a bot placed from
+// swarmit is its sensor point: sized from the controller's last pose when
+// there is one, and a bare point when the host never sized it.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
@@ -71,7 +91,8 @@ export function derivePose(
     return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
   if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
-    return { position: { x: sw.pos_x, y: sw.pos_y }, heading: null, pose: null };
+    const at = { x: sw.pos_x, y: sw.pos_y };
+    return { position: at, heading: null, pose: pyPose ? headinglessAt(pyPose, at) : null };
   }
   const position = py?.lh2_position ?? null;
   return {

@@ -224,12 +224,26 @@ describe("the body the controller expanded the fix into", () => {
     expect(derivePose(py({ lh2_position: at, pose: p }), sw(), "active").pose).toBe(p);
   });
 
+  it("loses its heading when the bot is placed from swarmit", () => {
+    // swarmit reports a point and no heading: keeping the controller's would
+    // put a board on a stale orientation at a fresh position.
+    const heard = py({
+      lh2_position: at,
+      pose: pose({ photodiode: at, centre: { x: 1500, y: 271 }, reach_mm: 89, core_mm: 18 }),
+    });
+    const placed = derivePose(heard, sw(), "lost").pose!;
+    expect(placed.heading_source).toBe("none");
+    expect(placed.photodiode).toEqual({ x: 100, y: 200 });
+    expect(placed.centre).toEqual({ x: 100, y: 171 });
+    expect(placed).toMatchObject({ reach_mm: 89, core_mm: 18 });
+  });
+
+  it("is a bare point from swarmit when the controller never sized the bot", () => {
+    expect(derivePose(py({ status: 2 }), sw(), "lost").pose).toBeNull();
+    expect(derivePose(undefined, sw({ status: "Bootloader" }), "unknown").pose).toBeNull();
+  });
+
   it("is dropped with the position it belongs to", () => {
-    // swarmit reports a point and no heading, so a bot placed from it has no
-    // body to draw: keeping the controller's would put a board on a stale
-    // orientation at a fresh position.
-    const heard = py({ lh2_position: at, pose: pose() });
-    expect(derivePose(heard, sw(), "lost").pose).toBeNull();
     expect(derivePose(py({ pose: pose() }), sw({ pos_x: 0, pos_y: 0 }), "active").pose).toBeNull();
   });
 
@@ -275,6 +289,15 @@ describe("derivePose (whose pose is live)", () => {
       { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
     );
     expect(b.position).toEqual({ x: 700, y: 800 });
+    expect(b.pose).toBeNull();
+  });
+
+  it("keeps a bootloader bot's size from the controller's last pose", () => {
+    const [b] = merge(
+      { aaaa: py({ address: "aaaa", status: 1, lh2_position: stale, pose: pose({ photodiode: stale, reach_mm: 89 }) }) },
+      { aaaa: sw({ status: "Bootloader", pos_x: 700, pos_y: 800 }) },
+    );
+    expect(b.pose).toMatchObject({ heading_source: "none", photodiode: { x: 700, y: 800 }, reach_mm: 89 });
   });
 
   it("keeps the controller's stale position when swarmit has never located the bot", () => {
