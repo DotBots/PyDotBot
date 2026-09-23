@@ -4,10 +4,12 @@ import math
 
 import numpy as np
 import pytest
+from swarmit.testbed.protocol import DeviceType
 
 from dotbot.robots import (
     ROBOT_DEFAULT,
     ROBOTS,
+    SWARMIT_DEVICE_MODELS,
     HeadingSource,
     Point,
     RobotGeometry,
@@ -209,3 +211,7 @@ def test_a_pose_carries_its_wheels_where_it_carries_its_board():
         pose.axle.x + V3.track_mm / 2
     )
     assert sum(p.y for p in left) / 4 == pytest.approx(pose.axle.y)
+
+
+def test_each_swarmit_device_model_is_keyed_by_a_swarmit_device_type():
+    assert set(SWARMIT_DEVICE_MODELS) <= {d.name for d in DeviceType}
