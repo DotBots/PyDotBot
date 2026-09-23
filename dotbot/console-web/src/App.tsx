@@ -25,6 +25,7 @@ import { ListView } from "./ListView";
 import { Camera, Layers, MapView, ViewGeom } from "./MapView";
 import { MrtaToggle } from "./MrtaToggle";
 import { RightPane, RightTab } from "./RightPane";
+import { usePanel } from "./panels";
 import { RobotDrawing, loadRobotDrawing, saveRobotDrawing } from "./robotDrawing";
 import {
   VIEW_SETTLE_MS,
@@ -156,10 +157,12 @@ export const App: React.FC = () => {
     crashedOnly: false,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
-  const [rightCollapsed, setRightCollapsed] = useState(false);
-  // ?rail=collapsed starts the left panel as its icon strip.
-  const [railCollapsed, setRailCollapsed] = useState(
-    () => new URLSearchParams(window.location.search).get("rail") === "collapsed",
+  const [rightCollapsed, setRightCollapsed] = usePanel("right");
+  // ?rail=collapsed starts the left panel as its icon strip, whatever this
+  // browser stored.
+  const [railCollapsed, setRailCollapsed] = usePanel(
+    "left",
+    new URLSearchParams(window.location.search).get("rail") === "collapsed" ? true : undefined,
   );
   const [conn, setConn] = useState<ControllerConnection | null>(null);
   const [build, setBuild] = useState<ControllerBuild | null>(null);

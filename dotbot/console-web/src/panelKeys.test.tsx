@@ -162,3 +162,54 @@ describe("the side panel keys", () => {
     expect(toggle("Expand", "left")).toBeInTheDocument();
   });
 });
+
+describe("the side panels, remembered by this browser", () => {
+  const KEY = "dotbot.console.panels";
+
+  it("keep a toggle across a reload", () => {
+    const { unmount } = render(<App />);
+    press(ACTION_KEY.leftPanel);
+    fireEvent.click(toggle("Collapse", "right")!);
+    expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual({ left: true, right: true });
+    unmount();
+    render(<App />);
+    expect(toggle("Expand", "left")).toBeInTheDocument();
+    expect(toggle("Expand", "right")).toBeInTheDocument();
+  });
+
+  it("open both panels from a corrupt record", () => {
+    window.localStorage.setItem(KEY, "{not json");
+    render(<App />);
+    expect(toggle("Collapse", "left")).toBeInTheDocument();
+    expect(toggle("Collapse", "right")).toBeInTheDocument();
+  });
+
+  it("open both panels when storage refuses them, and still toggle", () => {
+    const getItem = Storage.prototype.getItem;
+    const setItem = Storage.prototype.setItem;
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, k: string) {
+      if (k === KEY) throw new Error("blocked");
+      return getItem.call(this, k);
+    });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, k: string, v: string) {
+      if (k === KEY) throw new Error("blocked");
+      return setItem.call(this, k, v);
+    });
+    render(<App />);
+    expect(toggle("Collapse", "left")).toBeInTheDocument();
+    press(ACTION_KEY.rightPanel);
+    expect(toggle("Expand", "right")).toBeInTheDocument();
+    get.mockRestore();
+    set.mockRestore();
+  });
+
+  it("let ?rail=collapsed win without overwriting what is stored", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ left: false, right: true }));
+    window.history.replaceState({}, "", "/?rail=collapsed");
+    render(<App />);
+    expect(toggle("Expand", "left")).toBeInTheDocument();
+    expect(toggle("Expand", "right")).toBeInTheDocument();
+    press(ACTION_KEY.rightPanel);
+    expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual({ left: false, right: false });
+  });
+});
