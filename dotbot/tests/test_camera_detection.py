@@ -499,3 +499,20 @@ def test_the_nose_signal_holds_when_the_board_is_displaced():
     # The lever this replaced swings 25 mm under the same displacement and
     # dips under its own 8 mm floor; the flare keeps several times its margin.
     assert min(flares) > 3 * GREEN_FLARE_MIN
+
+
+def test_the_outline_is_drawn_in_its_own_box_exactly_as_on_the_whole_grid():
+    """Drawing only the box is a saving, never a change in the fit's score."""
+    from dotbot.camera.detection.pose import OUTLINE_MM, SS, poly_px, render
+
+    n = 85
+    for cx, cy, heading in [(42.0, 42.0, 0.0), (40.3, 47.8, 37.0), (2.0, 80.0, -123.0)]:
+        whole = np.zeros((n * SS, n * SS), np.uint8)
+        corners = poly_px(OUTLINE_MM, cx, cy, heading, MM_PER_PX)
+        cv2.fillPoly(whole, [np.round((corners + 0.5) * SS).astype(np.int32)], 255)
+        expected = cv2.resize(whole, (n, n), interpolation=cv2.INTER_AREA) / 255.0
+
+        box, x0, y0 = render(OUTLINE_MM, n, cx, cy, heading, MM_PER_PX)
+        drawn = np.zeros((n, n))
+        drawn[y0 : y0 + box.shape[0], x0 : x0 + box.shape[1]] = box
+        assert np.array_equal(drawn.astype(np.float32), expected.astype(np.float32))

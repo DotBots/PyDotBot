@@ -158,15 +158,29 @@ def poly_px(pts_mm, cx, cy, heading_deg, mm_per_px):
 
 
 def render(polys, n, cx, cy, heading_deg, mm_per_px):
-    """Anti-aliased coverage of one or more polygons on an n x n grid."""
+    """Anti-aliased coverage of polygons on an n x n grid, cut to their box.
+
+    Returns `(coverage, x0, y0)`, the box and its top-left in the grid, or
+    None when nothing lands on the grid. Everything outside the box is zero,
+    so only the box is drawn.
+    """
     import cv2  # lazy: opencv-python is only required to run the detector
 
-    buf = np.zeros((n * SS, n * SS), np.uint8)
-    for p in polys if isinstance(polys, (list, tuple)) else [polys]:
-        q = poly_px(p, cx, cy, heading_deg, mm_per_px)
-        cv2.fillPoly(buf, [np.round((q + 0.5) * SS).astype(np.int32)], 255)
-    resized = cv2.resize(buf, (n, n), interpolation=cv2.INTER_AREA)
-    return resized.astype(np.float32) / 255.0
+    polys = polys if isinstance(polys, (list, tuple)) else [polys]
+    qs = [poly_px(p, cx, cy, heading_deg, mm_per_px) for p in polys]
+    points = np.vstack(qs)
+    x0 = max(int(np.floor(points[:, 0].min())) - 1, 0)
+    y0 = max(int(np.floor(points[:, 1].min())) - 1, 0)
+    x1 = min(int(np.ceil(points[:, 0].max())) + 2, n)
+    y1 = min(int(np.ceil(points[:, 1].max())) + 2, n)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    buf = np.zeros(((y1 - y0) * SS, (x1 - x0) * SS), np.uint8)
+    for q in qs:
+        scaled = np.round((q + 0.5) * SS).astype(np.int32) - [x0 * SS, y0 * SS]
+        cv2.fillPoly(buf, [scaled.astype(np.int32)], 255)
+    resized = cv2.resize(buf, (x1 - x0, y1 - y0), interpolation=cv2.INTER_AREA)
+    return resized.astype(np.float32) / 255.0, x0, y0
 
 
 def features(bgr, keep_mask=None):
@@ -317,12 +331,17 @@ class OutlineFit:
         if win is None:
             return -1e9
         board, x0, y0 = win
-        n = self.roi
-        template = render(OUTLINE_MM, n, c[0] - x0, c[1] - y0, heading, self.mmpp)
+        rendered = render(
+            OUTLINE_MM, self.roi, c[0] - x0, c[1] - y0, heading, self.mmpp
+        )
+        if rendered is None:
+            return -1e9
+        template, bx, by = rendered
         s = float(template.sum())
         if s < 1:
             return -1e9
-        return float((board * template).sum()) / np.sqrt(s)
+        h, w = template.shape
+        return float((board[by : by + h, bx : bx + w] * template).sum()) / np.sqrt(s)
 
     def refine(self, c0, heading0):
         """The best pose near `(c0, heading0)` as (centre, heading), or None."""
