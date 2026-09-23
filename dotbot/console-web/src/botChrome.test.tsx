@@ -337,10 +337,11 @@ describe("the fallback for a board that cannot be drawn", () => {
   const crowd = () =>
     Array.from({ length: 201 }, (_, i) => bot(`c${i}`, { x: 100 + i * 5, y: 500 }));
 
-  it("is the square with a heading tick where the board is too small", () => {
+  it("is the disc with a heading bar where the board is too small", () => {
     render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
     expect(shape("a")).toBe("mark");
-    expect(glyph("a").querySelector("rect")).not.toBeNull();
+    expect(glyph("a").querySelector("rect")).toBeNull();
+    expect(glyph("a").querySelector('circle[data-layer="mark"]')).not.toBeNull();
     expect(glyph("a").querySelector('[data-layer="heading-tick"]')).not.toBeNull();
   });
 
@@ -354,7 +355,7 @@ describe("the fallback for a board that cannot be drawn", () => {
     expect(glyph("c0").querySelector('[data-layer="photodiode"]')).not.toBeNull();
   });
 
-  it("is still the square in a crowd where the board would be too small anyway", () => {
+  it("is still the mark in a crowd where the board would be too small anyway", () => {
     render(<Harness bots={crowd()} from={FRAME_CAMERA} />);
     expect(shape("c0")).toBe("mark");
   });

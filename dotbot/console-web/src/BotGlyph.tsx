@@ -130,8 +130,8 @@ export function botFootprintPx(pxPerMm: number, spanMm: number): number {
 }
 
 /**
- * What one robot is drawn as. `board` is the full glyph; `mark` the square
- * with a heading tick, for a board too small to read; `disc` the real-size
+ * What one robot is drawn as. `board` is the full glyph; `mark` a disc with
+ * a heading bar and no rim, for a board too small to read; `disc` the real-size
  * envelope with its heading, for a board big enough but lost in a crowd;
  * `sensor` the photodiode point with the possible footprint around it, whose
  * radii are in screen pixels and null where they are not drawn.
@@ -345,20 +345,13 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ color, shape, pxPerMm, footp
   if (shape.kind === "mark") {
     return (
       <Frame half={offset + footprintPx / 2}>
-        <rect
-          x={centre.x - footprintPx / 2}
-          y={centre.y - footprintPx / 2}
-          width={footprintPx}
-          height={footprintPx}
-          rx={Math.min(3, footprintPx / 4)}
-          fill={color}
-        />
+        <circle data-layer="mark" cx={centre.x} cy={centre.y} r={footprintPx / 2} fill={color} />
         <HeadingLine
           layer="heading-tick"
           from={centre}
           to={nose}
-          length={footprintPx / 2 - 1}
-          width={Math.min(3.5, Math.max(1.2, footprintPx / 7))}
+          length={footprintPx / 2 - 0.5}
+          width={Math.min(3, Math.max(1.6, footprintPx / 6))}
         />
       </Frame>
     );

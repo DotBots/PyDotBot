@@ -166,7 +166,7 @@ describe("how much of a bot is drawn", () => {
     expect(glyphLevel(11, 1)).toBe("dot");
   });
 
-  it("drops the board to a square in a crowd, where detail is lost anyway", () => {
+  it("drops the board to a mark in a crowd, where detail is lost anyway", () => {
     const many = GLYPH_CROWD_BOTS + 1;
     expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("dot");
     expect(glyphLevel(200, many)).toBe("dot");
@@ -200,7 +200,7 @@ describe("what a robot is drawn as", () => {
     expect(robotDraw(pose(0, { heading_source: "ekf" }), BODY, NEAR, 1).estimate).toBe(false);
   });
 
-  it("is the square below the size the board reads at", () => {
+  it("is the mark below the size the board reads at", () => {
     const d = robotDraw(pose(), BODY, FAR, 1);
     expect(d.shape.kind).toBe("mark");
     expect(d.footprintPx).toBeLessThan(GLYPH_DETAIL_PX);
@@ -214,7 +214,7 @@ describe("what a robot is drawn as", () => {
     expect(d.centre).toEqual({ x: 0, y: -29 });
   });
 
-  it("is the square in a crowd too, once the board is too small anyway", () => {
+  it("is the mark in a crowd too, once the board is too small anyway", () => {
     expect(robotDraw(pose(), BODY, FAR, GLYPH_CROWD_BOTS + 1).shape.kind).toBe("mark");
   });
 
@@ -308,16 +308,39 @@ describe("the glyph a shape draws", () => {
     expect(dot.getAttribute("cy")).toBeNull();
   });
 
-  it("draws a mark at the board's centre, ticked toward its nose", () => {
+  it("draws the small fallback as a rimless disc at the board's centre", () => {
     const el = svg({ color: "red", shape: { kind: "mark", body }, pxPerMm: 0.1, footprintPx: 9.5 });
     expect(el.querySelectorAll("polygon")).toHaveLength(0);
-    const rect = el.querySelector("rect")!;
+    expect(el.querySelector("rect")).toBeNull();
+    const mark = el.querySelector('[data-layer="mark"]')!;
+    expect(mark.tagName).toBe("circle");
+    expect(parseFloat(mark.getAttribute("r")!)).toBeCloseTo(9.5 / 2, 6);
     // Centred 29 mm behind the fix, so a mark stands where the robot does.
-    expect(parseFloat(rect.getAttribute("y")!)).toBeCloseTo(-2.9 - 9.5 / 2, 6);
-    const tick = el.querySelector('[data-layer="heading-tick"]')!;
-    expect(parseFloat(tick.getAttribute("y1")!)).toBeCloseTo(-2.9, 6);
-    // Heading 0 puts the nose toward +y.
-    expect(parseFloat(tick.getAttribute("y2")!)).toBeGreaterThan(-2.9);
+    expect(parseFloat(mark.getAttribute("cy")!)).toBeCloseTo(-2.9, 6);
+    // No rim: the white rim is what marks out a sensor point.
+    expect(mark.getAttribute("stroke")).toBeNull();
+  });
+
+  it("turns the small fallback's heading bar with the robot", () => {
+    for (const [heading, dx, dy] of [
+      [0, 0, 1],
+      [90, -1, 0],
+      [-90, 1, 0],
+      [180, 0, -1],
+    ]) {
+      const turned = botBody(pose(heading))!;
+      const el = svg({ color: "red", shape: { kind: "mark", body: turned }, pxPerMm: 0.1, footprintPx: 12 });
+      const bar = el.querySelector('[data-layer="heading-tick"]')!;
+      const vx = parseFloat(bar.getAttribute("x2")!) - parseFloat(bar.getAttribute("x1")!);
+      const vy = parseFloat(bar.getAttribute("y2")!) - parseFloat(bar.getAttribute("y1")!);
+      const n = Math.hypot(vx, vy);
+      expect(vx / n).toBeCloseTo(dx, 6);
+      expect(vy / n).toBeCloseTo(dy, 6);
+      // From the disc's centre to its edge.
+      expect(n).toBeGreaterThan(4);
+      expect(n).toBeLessThanOrEqual(6);
+      cleanup();
+    }
   });
 
   it("draws the disc about the board's centre, with its heading and photodiode", () => {

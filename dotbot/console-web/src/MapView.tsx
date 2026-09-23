@@ -1000,7 +1000,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           height: selectionPx,
                           transform: `translate(-50%, -50%) rotate(${turn}deg)`,
                           border: "1.5px solid var(--accent)",
-                          borderRadius: 3,
+                          // Square around a board, round around anything round.
+                          borderRadius: turned ? 3 : "50%",
                           boxShadow:
                             "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)",
                         }}
