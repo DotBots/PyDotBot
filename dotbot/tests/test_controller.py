@@ -784,15 +784,17 @@ async def test_a_new_robot_with_no_heading_is_tracked(controller):
 
 
 @pytest.mark.asyncio
-async def test_an_advertisement_without_a_heading_keeps_the_last_one(controller):
-    """-1000 is the no-heading sentinel, and must never be stored as a heading."""
+async def test_an_advertisement_without_a_heading_clears_the_last_one(controller):
+    """-1000 is the no-heading sentinel: a restarted robot has no heading."""
     controller.handle_received_frame(
         _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
     )
     controller.handle_received_frame(
         _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
     )
-    assert controller.dotbots[addr_to_hex(BOT)].direction == 90
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.direction is None
+    assert dotbot.pose.heading_source == "none"
 
 
 @pytest.mark.asyncio

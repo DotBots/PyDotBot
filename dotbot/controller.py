@@ -656,8 +656,11 @@ class Controller:
                     )
                     self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:
-                if frame.packet.payload.direction != DIRECTION_NONE:
-                    dotbot.direction = frame.packet.payload.direction
+                dotbot.direction = (
+                    None
+                    if frame.packet.payload.direction == DIRECTION_NONE
+                    else frame.packet.payload.direction
+                )
                 new_position = DotBotLH2Position(
                     x=frame.packet.payload.pos_x,
                     y=frame.packet.payload.pos_y,
