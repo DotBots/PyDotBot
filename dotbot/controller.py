@@ -490,11 +490,15 @@ class Controller:
         if twin is None:
             twin = DotBotSimulator(
                 SimulatedDotBotSettings(
-                    address=address, pos_x=init_pos_x, pos_y=init_pos_y
+                    address=address,
+                    pos_x=init_pos_x,
+                    pos_y=init_pos_y,
+                    direction=init_direction,
                 ),
                 queue.Queue(),
             )
-            twin.direction = init_direction
+            twin._direction_origin_x = init_pos_x
+            twin._direction_origin_y = init_pos_y
             twin.encoder_left_acc = init_encoder_left
             twin.encoder_right_acc = init_encoder_right
             self._dotbot_twins[address] = twin

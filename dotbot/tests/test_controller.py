@@ -898,3 +898,18 @@ def test_the_device_poses_sit_on_the_origin(controller):
     poses = controller.device_poses()
     assert set(poses) == {"DotBotV3"}
     assert (poses["DotBotV3"].photodiode.x, poses["DotBotV3"].photodiode.y) == (0, 0)
+
+
+def test_the_twin_measures_its_first_heading_from_where_it_was_created(
+    controller, monkeypatch
+):
+    now = [1000.0]
+    monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
+    for _ in range(3):
+        twin = controller._update_dotbot_twin(
+            "AA", 60, 60, init_pos_x=1500, init_pos_y=1500, init_direction=90
+        )
+        now[0] += 0.5
+    assert twin.pos_x < 1500 - 50
+    assert twin.pos_y == pytest.approx(1500)
+    assert twin.direction == 90
