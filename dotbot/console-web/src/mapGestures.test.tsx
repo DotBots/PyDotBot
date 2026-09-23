@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { frameMm, pxPerMm } from "./grid";
+import { areaToFraction } from "./frame";
+import { frameMm } from "./grid";
 import { MapView } from "./MapView";
 import { MAP_MODIFIER, Modifier } from "./shortcuts";
 import type { Area, LH2Position, Site, UnifiedBot } from "./types";
@@ -318,12 +319,45 @@ describe("a plain press", () => {
 });
 
 describe("a panel toggle", () => {
-  // The map between both panes, narrower than it is tall, then with one pane
-  // collapsed: the drawn box refits to the new width.
-  const NARROW = { w: 420, h: 860 };
-  const WIDE = { w: 760, h: 860 };
-  const size = (c: { w: number; h: number }) =>
-    ({ width: c.w, height: c.h, top: 0, left: 0, right: c.w, bottom: c.h, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  // The map between both panes, then with the rail or the right pane
+  // collapsed: the canvas grows into the space the pane gave up, and its left
+  // edge moves with the rail.
+  const RAIL_PX = 288;
+  const PANE_PX = 272;
+  interface Rect {
+    left: number;
+    w: number;
+    h: number;
+  }
+  const BOTH: Rect = { left: RAIL_PX, w: 420, h: 860 };
+  const NO_RAIL: Rect = { left: 0, w: BOTH.w + RAIL_PX, h: BOTH.h };
+  const NO_PANE: Rect = { left: RAIL_PX, w: BOTH.w + PANE_PX, h: BOTH.h };
+  const size = (c: Rect) =>
+    ({
+      width: c.w,
+      height: c.h,
+      top: 0,
+      left: c.left,
+      right: c.left + c.w,
+      bottom: c.h,
+      x: c.left,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  // Where a floor point lands in client pixels, for this canvas and camera.
+  const onScreen = (p: LH2Position, c: Rect, cam: Camera) => {
+    const g = viewGeom(c.w, c.h, VIEWPORT);
+    const { fx, fy } = areaToFraction(p, VIEWPORT);
+    return {
+      x: c.left + c.w / 2 + cam.tx + cam.scale * g.boxW * (fx - 0.5),
+      y: c.h / 2 + cam.ty + cam.scale * g.boxH * (fy - 0.5),
+    };
+  };
+  const FLOOR: LH2Position[] = [
+    { x: 1000, y: 1000 },
+    { x: 200, y: 1700 },
+    { x: 1900, y: 150 },
+  ];
 
   let fire: (() => void) | null = null;
   const Real = globalThis.ResizeObserver;
@@ -342,32 +376,33 @@ describe("a panel toggle", () => {
     fire = null;
   });
 
-  it("leaves the floor where it was: scale, height and the centre point", () => {
-    rectSpy.mockReturnValue(size(NARROW));
-    const narrow = viewGeom(NARROW.w, NARROW.h, VIEWPORT);
-    const from = cameraForArea(ARENA, VIEWPORT, narrow, zoomMax(C405, VIEWPORT, narrow));
-    render(<Harness from={from} />);
-    const before = camera();
-    const centre = (g: ReturnType<typeof viewGeom>, c: Camera) => ({
-      x: frameMm("x", g.w / 2, VIEWPORT, g, c),
-      y: frameMm("y", g.h / 2, VIEWPORT, g, c),
-    });
+  for (const [name, open] of [
+    ["rail", NO_RAIL],
+    ["right pane", NO_PANE],
+  ] as const) {
+    it(`leaves every floor point where it was on screen when the ${name} toggles`, () => {
+      rectSpy.mockReturnValue(size(BOTH));
+      const g = viewGeom(BOTH.w, BOTH.h, VIEWPORT);
+      const from = cameraForArea(ARENA, VIEWPORT, g, zoomMax(C405, VIEWPORT, g));
+      render(<Harness from={from} />);
+      const before = camera();
 
-    for (const [was, now] of [
-      [NARROW, WIDE],
-      [WIDE, NARROW],
-    ]) {
-      const g0 = viewGeom(was.w, was.h, VIEWPORT);
-      const g1 = viewGeom(now.w, now.h, VIEWPORT);
-      const c0 = camera();
-      rectSpy.mockReturnValue(size(now));
-      act(() => fire!());
-      const c1 = camera();
-      expect(pxPerMm("x", VIEWPORT, g1, c1)).toBeCloseTo(pxPerMm("x", VIEWPORT, g0, c0), 6);
-      expect(c1.ty).toBeCloseTo(c0.ty, 4);
-      expect(centre(g1, c1).x).toBeCloseTo(centre(g0, c0).x, 2);
-      expect(centre(g1, c1).y).toBeCloseTo(centre(g0, c0).y, 2);
-    }
-    expectCamera(camera(), before);
-  });
+      for (const [was, now] of [
+        [BOTH, open],
+        [open, BOTH],
+      ]) {
+        const c0 = camera();
+        rectSpy.mockReturnValue(size(now));
+        act(() => fire!());
+        const c1 = camera();
+        for (const p of FLOOR) {
+          const a = onScreen(p, was, c0);
+          const b = onScreen(p, now, c1);
+          expect(b.x - a.x).toBeCloseTo(0, 2);
+          expect(b.y - a.y).toBeCloseTo(0, 2);
+        }
+      }
+      expectCamera(camera(), before);
+    });
+  }
 });

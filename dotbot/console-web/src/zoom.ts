@@ -169,14 +169,21 @@ export function clampCam(cam: Camera, geom: ViewGeom): Camera {
 
 /**
  * The camera carried across a canvas resize from `from` to `to`, in the same
- * viewport: the floor keeps its pixels per millimetre and the point under the
- * canvas centre stays there. The camera is relative to the drawn box, which
- * refits to the canvas, so the scale is what compensates. Only the pan clamp
- * of the new canvas is applied.
+ * viewport, with the canvas centre moved by `shift` client pixels: the floor
+ * keeps its pixels per millimetre and every floor point keeps its place on
+ * screen. The camera is relative to the drawn box, which refits to the
+ * canvas, so the scale is what compensates. Only the pan clamp of the new
+ * canvas is applied.
  */
-export function refitCam(cam: Camera, from: ViewGeom, to: ViewGeom): Camera {
-  if (!(from.boxW > 0) || !(to.boxW > 0)) return clampCam(cam, to);
-  return clampCam({ ...cam, scale: (cam.scale * from.boxW) / to.boxW }, to);
+export function refitCam(
+  cam: Camera,
+  from: ViewGeom,
+  to: ViewGeom,
+  shift: { x: number; y: number } = { x: 0, y: 0 },
+): Camera {
+  const moved = { ...cam, tx: cam.tx - shift.x, ty: cam.ty - shift.y };
+  if (!(from.boxW > 0) || !(to.boxW > 0)) return clampCam(moved, to);
+  return clampCam({ ...moved, scale: (cam.scale * from.boxW) / to.boxW }, to);
 }
 
 /**

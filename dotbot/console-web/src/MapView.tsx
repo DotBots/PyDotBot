@@ -211,14 +211,18 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     // The first measure replaces a placeholder; a later one is a resize, and
     // the camera is carried across it so the floor does not jump.
     let measured = false;
+    let centre = { x: 0, y: 0 };
     const update = () => {
       const r = el.getBoundingClientRect();
       const g = viewGeom(r.width, r.height, viewportRef.current);
       const prev = geomRef.current;
+      const prevCentre = centre;
+      centre = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       setBox(g);
       geomRef.current = g;
       if (measured && (g.w !== prev.w || g.h !== prev.h)) {
-        setCamRef.current((c) => refitCam(c, prev, g));
+        const shift = { x: centre.x - prevCentre.x, y: centre.y - prevCentre.y };
+        setCamRef.current((c) => refitCam(c, prev, g, shift));
       }
       measured = true;
       onGeomRef.current(g);
