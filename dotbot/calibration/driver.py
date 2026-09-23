@@ -277,6 +277,8 @@ class SessionDriver:
                     )
                     return
                 session.error = ""
+                # The robot that pressed is the one capturing, as if chosen.
+                session.device = point.device
                 self.logger.info(
                     "LH2 capture stored from the robot's own button",
                     device=capture.device,

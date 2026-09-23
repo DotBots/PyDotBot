@@ -340,6 +340,16 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
 
 
 @pytest.mark.asyncio
+async def test_a_button_capture_makes_the_pressing_robot_the_capturing_one():
+    driver, _, _ = _driver()
+    await driver.start(["arena:corners"], device="1234")
+
+    await asyncio.wrap_future(driver.on_button_capture(_press(0, *CORNER_COUNTS[0])))
+
+    assert driver.state()["device"] == "ABCD"
+
+
+@pytest.mark.asyncio
 async def test_a_button_capture_waits_for_a_save_in_progress():
     driver, _, _ = _driver()
     await driver.start(["arena:corners"])
