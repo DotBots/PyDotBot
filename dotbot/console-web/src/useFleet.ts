@@ -4,6 +4,7 @@ import {
   controllerWsUrl,
   fetchCalibrationSession,
   fetchCameras,
+  fetchDevicePoses,
   fetchDotBots,
   fetchSite,
   fetchSwarmitStatus,
@@ -51,15 +52,13 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
   return py.status === 2 ? "lost" : "inactive";
 }
 
-// The controller's last pose moved onto `at` and stripped of its heading, so
-// a bot placed from a bare position keeps the radii the host shipped for it.
-function headinglessAt(pose: BotPose, at: LH2Position): BotPose {
+// A device type's pose moved onto `at`, which is where its photodiode goes.
+function poseAt(pose: BotPose, at: LH2Position): BotPose {
   const dx = at.x - pose.photodiode.x;
   const dy = at.y - pose.photodiode.y;
   const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
   return {
     ...pose,
-    heading_source: "none",
     photodiode: move(pose.photodiode),
     axle: move(pose.axle),
     centre: move(pose.centre),
@@ -70,41 +69,48 @@ function headinglessAt(pose: BotPose, at: LH2Position): BotPose {
   };
 }
 
-// The controller's pose while the link is active, else swarmit's position if
-// it has located the bot, else the controller's last pose. swarmit reports
-// (0, 0) for a bot it has never located, and no heading, so a bot placed from
-// swarmit is its sensor point: sized from the controller's last pose when
-// there is one, and a bare point when the host never sized it.
+// The controller's pose while it hears the app running, else swarmit's
+// position if it has located the bot, else the controller's last pose. Out of
+// its app a robot computes no heading, so it is placed headingless: from
+// swarmit, sized by the pose the host gave its device type, or a bare point
+// for a type the host has no record of. swarmit reports (0, 0) for a bot it
+// has never located.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
+  devicePoses: Record<string, BotPose> = {},
 ): {
   position: LH2Position | null;
   heading: number | null;
   pose: BotPose | null;
 } {
+  const inApp = !sw || sw.status === "Running";
   const pyHeading =
     py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
   const pyPose = py?.pose ?? null;
-  if (link === "active" && py?.lh2_position) {
+  if (inApp && link === "active" && py?.lh2_position) {
     return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
   if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
     const at = { x: sw.pos_x, y: sw.pos_y };
-    return { position: at, heading: null, pose: pyPose ? headinglessAt(pyPose, at) : null };
+    const devicePose = devicePoses[sw.device];
+    return { position: at, heading: null, pose: devicePose ? poseAt(devicePose, at) : null };
   }
   const position = py?.lh2_position ?? null;
+  if (!position) return { position: null, heading: null, pose: null };
+  if (inApp) return { position, heading: pyHeading, pose: pyPose };
   return {
     position,
-    heading: position ? pyHeading : null,
-    pose: position ? pyPose : null,
+    heading: null,
+    pose: pyPose ? { ...pyPose, heading_source: "none" } : null,
   };
 }
 
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
+  devicePoses: Record<string, BotPose> = {},
 ): UnifiedBot[] {
   const ids = new Set([...Object.keys(pyBots), ...Object.keys(swNodes)]);
   const out: UnifiedBot[] = [];
@@ -113,7 +119,7 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
-    const { position, heading, pose } = derivePose(py, sw, link);
+    const { position, heading, pose } = derivePose(py, sw, link, devicePoses);
     out.push({
       id,
       state,
@@ -165,6 +171,7 @@ export function useFleet(): {
 } {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
+  const devicePosesRef = useRef<Record<string, BotPose>>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
@@ -175,7 +182,7 @@ export function useFleet(): {
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
-    setBots(merge(pyRef.current, swRef.current));
+    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current));
   }, []);
 
   const reloadDotBots = useCallback(async () => {
@@ -191,6 +198,10 @@ export function useFleet(): {
   // Initial data, and the site the map is drawn over.
   useEffect(() => {
     reloadDotBots();
+    fetchDevicePoses().then((poses) => {
+      devicePosesRef.current = poses;
+      rebuild();
+    });
     fetchSite()
       .then(setSite)
       .catch(() => {});
@@ -203,7 +214,7 @@ export function useFleet(): {
     fetchCalibrationSession()
       .then(setSession)
       .catch(() => {});
-  }, [reloadDotBots]);
+  }, [reloadDotBots, rebuild]);
 
   // Live updates over the controller WebSocket.
   useEffect(() => {
