@@ -36,6 +36,17 @@ def test_v3_derived_distances(prop, expected):
     assert getattr(V3, prop) == pytest.approx(expected)
 
 
+def test_v3_reach_is_the_far_tyre_corner():
+    """The rear outer corner of a tyre, not of the board, is the furthest point."""
+    assert V3.reach_mm == pytest.approx(math.hypot(47.75, 75.5))
+    assert V3.reach_mm == pytest.approx(89.33, abs=0.01)
+
+
+def test_v3_core_is_the_front_edge():
+    assert V3.core_mm == pytest.approx(V3.diode_to_front_mm)
+    assert V3.core_mm == pytest.approx(18.5)
+
+
 def test_v3_outline():
     assert V3.outline_bbox == (28.0, 52.5, 122.0, 147.5)
     assert V3.outline_centre == Point(75.0, 100.0)
@@ -107,6 +118,16 @@ def test_the_centre_is_29_mm_behind_the_sensor(heading, centre, nose):
     )
     assert pose.heading_deg == heading
     assert pose.heading_source == HeadingSource.TRAVEL
+
+
+@pytest.mark.parametrize("heading", [0.0, 37.0, 90.0, 213.0])
+def test_a_pose_s_radii_hold_whatever_the_heading(heading):
+    pose = V3.body_pose(SENSOR, heading, HeadingSource.TRAVEL)
+    points = [*pose.outline, *(p for w in pose.wheels for p in w)]
+    far = max(math.hypot(p.x - SENSOR.x, p.y - SENSOR.y) for p in points)
+    assert pose.reach_mm == pytest.approx(far)
+    assert pose.core_mm == pytest.approx(18.5)
+    assert pose.envelope_mm == V3.envelope_mm
 
 
 @pytest.mark.parametrize("heading", [0.0, 37.0, 90.0])

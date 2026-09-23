@@ -401,6 +401,11 @@ class DotBotPoseModel(BaseModel):
     led: DotBotLH2Position
     outline: List[DotBotLH2Position]
     wheels: List[List[DotBotLH2Position]] = []
+    # Radii about the photodiode, whatever the heading: `reach_mm` holds the
+    # whole body, tyres included, and `core_mm` is covered by the board.
+    reach_mm: float
+    core_mm: float
+    envelope_mm: float
 
     @classmethod
     def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
@@ -417,6 +422,9 @@ class DotBotPoseModel(BaseModel):
             led=point(pose.led),
             outline=[point(p) for p in pose.outline],
             wheels=[[point(p) for p in wheel] for wheel in pose.wheels],
+            reach_mm=pose.reach_mm,
+            core_mm=pose.core_mm,
+            envelope_mm=pose.envelope_mm,
         )
 
 

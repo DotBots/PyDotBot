@@ -51,6 +51,21 @@ class BodyPose:
     led: Point
     outline: tuple[Point, ...]
     wheels: tuple[tuple[Point, ...], ...]
+    # Radii about the photodiode, which hold under any heading: `reach_mm`
+    # encloses the whole body, tyres included; `core_mm` is covered by the
+    # board. `envelope_mm` is the record's plan-view square.
+    reach_mm: float
+    core_mm: float
+    envelope_mm: float
+
+
+def _segment_distance(p: Point, a: Point, b: Point) -> float:
+    """Distance from `p` to the segment `a`-`b`."""
+    dx, dy = b.x - a.x, b.y - a.y
+    length2 = dx * dx + dy * dy
+    t = 0.0 if length2 == 0 else ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2
+    t = max(0.0, min(1.0, t))
+    return math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y)
 
 
 def _rect(centre: Point, width_mm: float, length_mm: float) -> tuple[Point, ...]:
@@ -199,6 +214,24 @@ class RobotGeometry:
         return self.outline_centre.y - self.photodiode.y
 
     @property
+    def reach_mm(self) -> float:
+        """Furthest outline or wheel point from the photodiode."""
+        points = [*self.outline_path, *(p for w in self.wheel_paths for p in w)]
+        return max(
+            math.hypot(p.x - self.photodiode.x, p.y - self.photodiode.y)
+            for p in points
+        )
+
+    @property
+    def core_mm(self) -> float:
+        """Nearest board edge to the photodiode."""
+        path = self.outline_path
+        return min(
+            _segment_distance(self.photodiode, a, b)
+            for a, b in zip(path, path[1:] + path[:1])
+        )
+
+    @property
     def mm_per_count(self) -> float:
         """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
         return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
@@ -231,6 +264,9 @@ class RobotGeometry:
             wheels=tuple(
                 tuple(place(p) for p in wheel) for wheel in self.wheel_paths
             ),
+            reach_mm=self.reach_mm,
+            core_mm=self.core_mm,
+            envelope_mm=self.envelope_mm,
         )
 
     def clearance_mm(self, edge: str) -> float:
