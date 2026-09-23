@@ -559,17 +559,24 @@ CAMERA_RECORD = {
     "status": "found",
     "candidates": 1,
     "elapsed_ms": 48.2,
-    "pose": {
-        "centre_mm": [1523.4, 488.1],
-        "photodiode_mm": [1540.2, 511.7],
-        "nose_mm": [1551.0, 526.2],
-        "outline_mm": [[1481.2, 500.3]],
-        "heading_deg": -37.5,
-        "heading_atan2_deg": 52.5,
-        "green_flare": 0.82,
-        "tmpl_margin": 0.91,
-        "refined": True,
-    },
+    "robots": [
+        {
+            "address": None,
+            "status": "found",
+            "timestamp": 1758100000.123,
+            "pose": {
+                "centre_mm": [1523.4, 488.1],
+                "photodiode_mm": [1540.2, 511.7],
+                "nose_mm": [1551.0, 526.2],
+                "outline_mm": [[1481.2, 500.3]],
+                "heading_deg": -37.5,
+                "heading_atan2_deg": 52.5,
+                "green_flare": 0.82,
+                "tmpl_margin": 0.91,
+                "refined": True,
+            },
+        }
+    ],
 }
 
 
@@ -692,6 +699,63 @@ def test_two_robots_in_the_area_log_the_nearer_one_and_say_so(
     row = _last_row(camera_log_path(csv_output))
     assert row["lh2_address"] == "0000000000000002"
     assert row["lh2_in_area"] == "2"
+
+
+def test_a_named_robot_is_logged_against_its_own_fix(
+    tmp_path, monkeypatch, serial_mock
+):
+    """The detector's address wins over the nearest robot in the area."""
+    from dotbot.csv_data_logger import camera_log_path
+
+    csv_output = tmp_path / "run.csv"
+    controller, _ = _camera_controller(tmp_path, monkeypatch, csv_output)
+    _settled_camera_log(controller)
+    controller.dotbots = {
+        "0000000000000001": _bot("0000000000000001", 1900, 900),
+        "0000000000000002": _bot("0000000000000002", 1530, 495),
+    }
+    named = dict(CAMERA_RECORD["robots"][0], address="0000000000000001")
+    second = dict(CAMERA_RECORD["robots"][0], address="0000000000000002")
+    controller._on_camera_detection(dict(CAMERA_RECORD, robots=[named, second]))
+    for logger in controller.camera_csv_loggers.values():
+        logger.close()
+
+    with open(camera_log_path(csv_output), newline="") as handle:
+        import csv
+
+        rows = list(csv.DictReader(handle))[-2:]
+    assert [r["cam_address"] for r in rows] == [
+        "0000000000000001",
+        "0000000000000002",
+    ]
+    assert [r["lh2_address"] for r in rows] == [
+        "0000000000000001",
+        "0000000000000002",
+    ]
+    assert rows[0]["sequence"] == rows[1]["sequence"]
+
+
+def test_a_camera_hands_its_detector_the_fixes_in_and_near_its_area(
+    tmp_path, monkeypatch, serial_mock
+):
+    """A fix one robot outside the area still names a body standing inside."""
+    from dotbot.models import DotBotStatus
+
+    controller, _ = _camera_controller(tmp_path, monkeypatch, None)
+    _settled_camera_log(controller)
+    lost = _bot("0000000000000004", 1500, 500)
+    lost.status = DotBotStatus.LOST
+    controller.dotbots = {
+        "0000000000000001": _bot("0000000000000001", 1500, 500),
+        "0000000000000002": _bot("0000000000000002", 950, 500),
+        "0000000000000003": _bot("0000000000000003", 100, 100),
+        "0000000000000004": lost,
+    }
+    area = controller.cameras[0].area
+    assert sorted(a for a, _, _ in controller._lh2_priors(area)) == [
+        "0000000000000001",
+        "0000000000000002",
+    ]
 
 
 def test_no_csv_output_means_no_camera_log(tmp_path, monkeypatch, serial_mock):

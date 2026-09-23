@@ -1305,6 +1305,23 @@ async def test_the_camera_stream_404s_for_an_area_no_camera_covers(synthetic_cam
 
 
 @pytest.mark.asyncio
+async def test_the_latest_detection_is_served_over_rest(synthetic_camera):
+    """The same record the WebSocket carries, for a script that polls."""
+    with registered(synthetic_camera) as (service, started):
+        assert started
+        assert wait_for_detection(service) is not None
+        response = await client.get("/controller/cameras/dev-corner/detection")
+        missing = await client.get("/controller/cameras/annex/detection")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["area"] == "dev-corner"
+    assert body["status"] == "none"
+    assert body["robots"] == []
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_a_camera_registered_on_the_bench_describes_itself(real_camera):
     """The bench's own file: an integer source, and a real residual."""
     import numpy as np
@@ -1401,7 +1418,7 @@ class CannedDetector:
     def __init__(self, status="found"):
         self.status = status
 
-    def detect(self, bgr):
+    def detect(self, bgr, priors=(), stamp=None):
         from dotbot.camera.detection import Detection, Pose, RobotFix
 
         if self.status == "none":
@@ -1413,7 +1430,12 @@ class CannedDetector:
             tmpl_margin=0.91,
             refined=True,
         )
-        return Detection(self.status, 1, (RobotFix(self.status, pose),), 12.5)
+        return Detection(
+            self.status,
+            1,
+            (RobotFix(self.status, pose, "0000000000000001", stamp or 0.0),),
+            12.5,
+        )
 
 
 @contextlib.contextmanager
@@ -1464,8 +1486,13 @@ async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
         assert message["elapsed_ms"] == 12.5
         assert message["sequence"] >= 1
         assert message["timestamp"] > 0
+        assert message["rate_hz"] > 0
 
-        pose = message["pose"]
+        (robot,) = message["robots"]
+        assert robot["address"] == "0000000000000001"
+        assert robot["status"] == "found"
+        assert robot["timestamp"] == message["timestamp"]
+        pose = robot["pose"]
         assert pose["heading_atan2_deg"] == 52.5
         assert pose["heading_deg"] == -37.5
         assert len(pose["outline_mm"]) == 14
@@ -1478,13 +1505,12 @@ async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
 
 @pytest.mark.asyncio
 async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
-    """`model_dump(exclude_none=True)` drops a null pose, so status is the key."""
     with detecting(synthetic_camera, status="none") as controller:
         await controller._push_camera_detections()
         notification = controller.notify_clients.await_args[0][0]
         message = notification.model_dump(exclude_none=True)["camera_detection"]
         assert message["status"] == "none"
-        assert "pose" not in message
+        assert message["robots"] == []
 
 
 @pytest.mark.asyncio

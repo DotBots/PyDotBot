@@ -28,6 +28,8 @@ from dotbot import (
 )
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
+from dotbot.camera.detection.robot import MAX_ROBOTS
+from dotbot.camera.rate import DETECT_SHARE
 from dotbot.cli._site import site_from_context
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging
@@ -267,6 +269,25 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     ),
 )
 @click.option(
+    "--camera-max-robots",
+    type=click.IntRange(min=1),
+    default=None,
+    help=(
+        f"The most robots one camera frame reports, {MAX_ROBOTS} by default. "
+        "Robots whose lighthouse fix stands on a candidate are kept first."
+    ),
+)
+@click.option(
+    "--camera-detect-share",
+    type=click.FloatRange(min=0.0, min_open=True, max=1.0),
+    default=None,
+    help=(
+        "The share of one CPU core the camera detector may hold on average, "
+        f"{DETECT_SHARE} by default. The detection rate falls as robots are "
+        "added or the machine gets busy, and recovers when either goes away."
+    ),
+)
+@click.option(
     "-M",
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
@@ -322,6 +343,8 @@ def main(
     lh2_calibration,
     camera_calibration,
     camera_detect,
+    camera_max_robots,
+    camera_detect_share,
     background_map,
     simulator_init_state,
     swarmit_url,
@@ -375,10 +398,24 @@ def main(
     camera_detect, detect_source = _resolve_controller_key(
         "camera_detect", camera_detect, unified, True
     )
+    camera_max_robots, _ = _resolve_controller_key(
+        "camera_max_robots", camera_max_robots, unified, MAX_ROBOTS
+    )
+    camera_detect_share, _ = _resolve_controller_key(
+        "camera_detect_share", camera_detect_share, unified, DETECT_SHARE
+    )
+    camera_max_robots = int(camera_max_robots)
+    camera_detect_share = float(camera_detect_share)
     if camera_calibration:
         print(
             f"Camera detection: {'on' if camera_detect else 'off'} "
             f"(from {detect_source})"
+            + (
+                f", up to {camera_max_robots} robots, at most "
+                f"{camera_detect_share:.0%} of a core"
+                if camera_detect
+                else ""
+            )
         )
 
     conn = conn if conn is not None else file_data.get("conn")
@@ -417,6 +454,8 @@ def main(
         "lh2_calibration": lh2_calibration,
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
+        "camera_max_robots": camera_max_robots,
+        "camera_detect_share": camera_detect_share,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "swarmit_url": swarmit_url,

@@ -17,7 +17,8 @@ every frame as an alpha channel.
 A detector runs on a second thread, fed the warped array and never the
 JPEG. The slot between the two threads holds one frame, so a detector
 slower than the warp processes every Nth frame and neither the warp nor
-the stream ever waits on it.
+the stream ever waits on it. How often it runs is `DetectRate`'s choice,
+which holds it to a share of one core however many robots are in view.
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ from dotbot.camera.capture import (
     release_capture,
     settle,
 )
-from dotbot.camera.detection import RobotDetector, frame_pose
+from dotbot.camera.detection import Prior, RobotDetector, frame_pose
+from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.raster import (
     MM_PER_PX,
     WARP_FPS_MAX,
@@ -50,6 +52,7 @@ from dotbot.camera.raster import (
     raster_size,
     raster_transform,
 )
+from dotbot.camera.rate import DETECT_SHARE, DetectRate
 from dotbot.camera.registration import CameraCalibration
 from dotbot.logger import LOGGER
 
@@ -70,6 +73,12 @@ class CameraService:
     exercisable without a device. `detector` is the same seam for the robot
     detector, and `on_detection` is called with every record it produces,
     on the detector's own thread.
+
+    `priors` returns the lighthouse fixes a detection may name robots
+    from, as `(address, x_mm, y_mm)` in frame millimetres; it is called on
+    the detector's thread once per detection. `max_robots` caps the robots
+    one detection reports and `detect_share` the share of one core the
+    detector holds on average.
     """
 
     def __init__(
@@ -81,6 +90,9 @@ class CameraService:
         detector: RobotDetector | None = None,
         on_detection: Callable[[dict], None] | None = None,
         detect: bool = True,
+        priors: Callable[[], list] | None = None,
+        max_robots: int = MAX_ROBOTS,
+        detect_share: float = DETECT_SHARE,
     ):
         self.calibration = calibration
         self.area = area
@@ -104,6 +116,9 @@ class CameraService:
         self._pending: tuple[np.ndarray, int, float] | None = None
         self._pending_event = threading.Event()
         self._detection: dict | None = None
+        self._priors = priors
+        self.max_robots = max_robots
+        self.rate = DetectRate(detect_share, max_hz=WARP_FPS_MAX)
 
     @property
     def raster(self) -> tuple[int, int]:
@@ -206,7 +221,9 @@ class CameraService:
         if self.detect:
             # Built here rather than in __init__, because it holds the mask.
             if self._detector is None:
-                self._detector = RobotDetector(MM_PER_PX, self.keep_mask)
+                self._detector = RobotDetector(
+                    MM_PER_PX, self.keep_mask, max_robots=self.max_robots
+                )
             self._detect_thread = threading.Thread(
                 target=self._detect_loop,
                 name=f"Camera {self.area.name} detect",
@@ -359,13 +376,28 @@ class CameraService:
         """
         try:
             while self._reading:
+                # Sleep out the rate's interval first, then take whatever
+                # warp is newest, so the frame detected on is the latest one.
+                wait = self.rate.wait_s(time.monotonic())
+                if wait > 0:
+                    time.sleep(min(wait, 0.1))
+                    continue
                 self._pending_event.wait(timeout=0.5)
                 self._pending_event.clear()
                 with self._lock:
                     pending, self._pending = self._pending, None
                 if pending is None:
                     continue
+                started = time.monotonic()
                 record = self._detected(*pending)
+                if self.rate.ran(started, time.monotonic() - started):
+                    self.logger.info(
+                        "Camera detection rate changed",
+                        area=self.area.name,
+                        rate_hz=round(self.rate.hz, 2),
+                        cost_ms=round(self.rate.cost_s * 1000.0, 1),
+                        robots=len(record["robots"]) if record else None,
+                    )
                 if record is None or self._on_detection is None:
                     continue
                 try:
@@ -387,7 +419,7 @@ class CameraService:
     def _detected(self, warped, sequence: int, stamp: float) -> dict | None:
         """One warp's record, held for a late console, or None if it failed."""
         try:
-            detection = self._detector.detect(warped)
+            detection = self._detector.detect(warped, self._raster_priors(), stamp)
             record = {
                 "area": self.area.name,
                 "camera_id": self.calibration.id,
@@ -396,9 +428,17 @@ class CameraService:
                 "status": detection.status,
                 "candidates": detection.candidates,
                 "elapsed_ms": detection.elapsed_ms,
+                "rate_hz": round(self.rate.hz, 2),
+                "robots": [
+                    {
+                        "address": fix.address,
+                        "status": fix.status,
+                        "timestamp": fix.stamp,
+                        "pose": frame_pose(fix.pose, self.area, MM_PER_PX),
+                    }
+                    for fix in detection.robots
+                ],
             }
-            if detection.pose is not None:
-                record["pose"] = frame_pose(detection.pose, self.area, MM_PER_PX)
         except Exception as exc:  # pylint:disable=broad-except
             self.logger.warning(
                 "Camera robot detection failed on a frame",
@@ -409,6 +449,19 @@ class CameraService:
         with self._lock:
             self._detection = record
         return record
+
+
+    def _raster_priors(self) -> list[Prior]:
+        """The lighthouse fixes the controller holds, in raster pixels."""
+        if self._priors is None:
+            return []
+        return [
+            Prior(
+                address,
+                ((x - self.area.x) / MM_PER_PX, (y - self.area.y) / MM_PER_PX),
+            )
+            for address, x, y in self._priors()
+        ]
 
 
 def _part(jpeg: bytes) -> bytes:
