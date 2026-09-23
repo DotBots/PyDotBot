@@ -36,7 +36,8 @@ export function savePanel(side: PanelSide, collapsed: boolean): void {
 
 /**
  * One panel's collapsed state, starting from `initial` when given and from
- * storage otherwise, and written back on every change.
+ * storage otherwise. The second setter writes it back to storage; the third
+ * changes it for this page only.
  */
 export function usePanel(side: PanelSide, initial?: boolean) {
   const [collapsed, setCollapsed] = useState<boolean>(() => initial ?? loadPanels()[side]);
@@ -49,5 +50,5 @@ export function usePanel(side: PanelSide, initial?: boolean) {
       }),
     [side],
   );
-  return [collapsed, update] as const;
+  return [collapsed, update, setCollapsed] as const;
 }

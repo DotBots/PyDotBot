@@ -63,6 +63,7 @@ import { useOrchestration } from "./useOrchestration";
 import {
   Camera as ZoomCamera,
   SITE_ZOOM,
+  ViewCentre,
   cameraAtCentre,
   cameraForArea,
   cameraForZoom,
@@ -158,7 +159,7 @@ export const App: React.FC = () => {
     crashedOnly: false,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
-  const [rightCollapsed, setRightCollapsed] = usePanel("right");
+  const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
   // ?rail=collapsed starts the left panel as its icon strip, whatever this
   // browser stored.
   const [railCollapsed, setRailCollapsed] = usePanel(
@@ -294,9 +295,13 @@ export const App: React.FC = () => {
   }, [cam, geom, site, viewport]);
 
   // Calibration mode takes over the right pane and the viewport, and gives
-  // both back on Done: the tab that was open before, and the camera that was
-  // on it.
-  const beforeCalibration = useRef<{ tab: RightTab; cam: Camera } | null>(null);
+  // both back on Done: the tab that was open before, the pane collapsed again
+  // if it was, and the view that was on it.
+  const beforeCalibration = useRef<{
+    tab: RightTab;
+    view: ViewCentre | null;
+    forcedOpen: boolean;
+  } | null>(null);
   const geomRef = useRef<ViewGeom | null>(geom);
   geomRef.current = geom;
   const viewportRef = useRef(viewport);
@@ -307,32 +312,67 @@ export const App: React.FC = () => {
   rightTabRef.current = rightTab;
   const camRef = useRef(cam);
   camRef.current = cam;
+  const rightCollapsedRef = useRef(rightCollapsed);
+  rightCollapsedRef.current = rightCollapsed;
+
+  // A camera waiting for the canvas a pane toggle is about to give the map,
+  // placed once the map reports its new geometry.
+  const pendingCam = useRef<((g: ViewGeom) => Camera) | null>(null);
+  const placeCam = useCallback(
+    (place: ((g: ViewGeom) => Camera) | null, afterResize: boolean) => {
+      pendingCam.current = afterResize ? place : null;
+      const g = geomRef.current;
+      if (!afterResize && place && g) {
+        setCam(place(viewGeom(g.w, g.h, viewportRef.current)));
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    const place = pendingCam.current;
+    if (!place || !geom) return;
+    pendingCam.current = null;
+    setCam(place(viewGeom(geom.w, geom.h, viewportRef.current)));
+  }, [geom]);
 
   useEffect(() => {
     if (session && !beforeCalibration.current) {
-      beforeCalibration.current = { tab: rightTabRef.current, cam: camRef.current };
+      const g = geomRef.current;
+      const collapsed = rightCollapsedRef.current;
+      beforeCalibration.current = {
+        tab: rightTabRef.current,
+        view: g ? centreOfView(camRef.current, viewportRef.current, g) : null,
+        forcedOpen: collapsed,
+      };
       setRightTab("calibrate");
-      setRightCollapsed(false);
+      // Opened for the session, not by the operator: not remembered.
+      if (collapsed) setRightCollapsedUnsaved(false);
       const rect = sessionRect(session);
-      if (rect && rect.w > 0 && rect.h > 0 && geomRef.current) {
-        setCam(
-          cameraForArea(
-            padArea(rect),
-            viewportRef.current,
-            geomRef.current,
-            zoomMax(siteRef.current, viewportRef.current, geomRef.current),
-          ),
-        );
-      }
+      const fit =
+        rect && rect.w > 0 && rect.h > 0
+          ? (to: ViewGeom) =>
+              cameraForArea(
+                padArea(rect),
+                viewportRef.current,
+                to,
+                zoomMax(siteRef.current, viewportRef.current, to),
+              )
+          : null;
+      placeCam(fit, collapsed);
       return;
     }
     if (!session && beforeCalibration.current) {
-      const { tab, cam: previous } = beforeCalibration.current;
+      const { tab, view, forcedOpen } = beforeCalibration.current;
       beforeCalibration.current = null;
       setRightTab(tab);
-      setCam(previous);
+      const collapse = forcedOpen && !rightCollapsedRef.current;
+      if (collapse) setRightCollapsed(true);
+      placeCam(
+        view ? (to: ViewGeom) => cameraAtCentre(view, viewportRef.current, to) : null,
+        collapse,
+      );
     }
-  }, [session]);
+  }, [session, placeCam, setRightCollapsed, setRightCollapsedUnsaved]);
 
   // Fetched once: the controller cannot change transport without restarting.
   useEffect(() => {
