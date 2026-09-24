@@ -579,6 +579,22 @@ describe("pose mode", () => {
     expect(onAdd.mock.calls[1][0].heading_deg).toBeCloseTo(180);
   });
 
+  it("pans with two fingers, dropping the pose the first one started", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} poseMode from={{ scale: 2, tx: 0, ty: 0 }} />);
+    const t = (id: number, x: number, y: number) => ({ pointerId: id, pointerType: "touch", button: 0, clientX: x, clientY: y });
+    fireEvent.pointerDown(canvas(), t(1, 400, 300));
+    fireEvent.pointerDown(canvas(), t(2, 500, 300));
+    expect(placing()).toBeNull();
+    fireEvent.pointerMove(canvas(), t(1, 440, 320));
+    fireEvent.pointerMove(canvas(), t(2, 540, 320));
+    expect(camera().tx).toBeCloseTo(40, 6);
+    expect(camera().ty).toBeCloseTo(20, 6);
+    fireEvent.pointerUp(canvas(), t(1, 440, 320));
+    fireEvent.pointerUp(canvas(), t(2, 540, 320));
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
   it("pans with Space held, and places nothing", () => {
     const onAdd = vi.fn();
     render(<Harness onAddWaypoint={onAdd} poseMode from={{ scale: 2, tx: 0, ty: 0 }} />);

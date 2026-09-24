@@ -230,6 +230,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const [hoverPose, setHoverPose] = useState<{ key: string; index: number } | null>(null);
   const knobRef = useRef<{ key: string; index: number; pivot: { x: number; y: number } } | null>(null);
   const wheelCarry = useRef(0);
+  // Touch points down on the canvas; two of them pan, in pose mode too.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const twoFinger = useRef(false);
+  const midpoint = () => {
+    const [a, b] = [...touches.current.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
@@ -481,6 +488,20 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // not move clears the selection; the rest are `MAP_MODIFIER`'s roles. In
   // pose mode a plain press places a waypoint instead, and Space + drag pans.
   const onCanvasDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size === 2) {
+        // A second finger turns whatever the first started into a pan.
+        endGesture();
+        dragRef.current = null;
+        setDrag(null);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        twoFinger.current = true;
+        const m = midpoint();
+        panRef.current = { x0: m.x, y0: m.y, tx0: cam.tx, ty0: cam.ty, moved: true };
+        return;
+      }
+    }
     if (gestureRef.current) {
       if (e.button !== 0) endGesture();
       return;
@@ -501,6 +522,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   };
 
   const onCanvasMove = (e: React.PointerEvent) => {
+    if (touches.current.has(e.pointerId)) {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (twoFinger.current && panRef.current && touches.current.size >= 2) {
+        const p = panRef.current;
+        const m = midpoint();
+        setCam((c) => clampCam({ ...c, tx: p.tx0 + m.x - p.x0, ty: p.ty0 + m.y - p.y0 }, geomRef.current));
+        return;
+      }
+    }
     if (gestureRef.current) {
       // A second button pressed mid-gesture arrives as a move.
       if (e.buttons & 2) endGesture();
@@ -529,7 +559,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   };
 
   // Shared by pointerup's siblings: drop every gesture without acting on it.
-  const onCanvasCancel = () => {
+  const onCanvasCancel = (e?: React.PointerEvent) => {
+    if (e) touches.current.delete(e.pointerId);
+    if (touches.current.size === 0) twoFinger.current = false;
     endGesture();
     knobRef.current = null;
     panRef.current = null;
@@ -538,6 +570,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   };
 
   const onCanvasUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId);
+    if (twoFinger.current) {
+      // Lifting the fingers ends the pan and nothing else.
+      if (touches.current.size === 0) {
+        twoFinger.current = false;
+        panRef.current = null;
+      }
+      return;
+    }
     const g = gestureRef.current;
     if (g) {
       const w = releaseGesture(g, e.clientX, e.clientY, Date.now(), e.shiftKey);
