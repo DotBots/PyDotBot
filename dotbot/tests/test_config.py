@@ -87,8 +87,7 @@ def test_load_none_is_empty():
 
 def test_load_valid(tmp_path):
     path = tmp_path / "dotbot.toml"
-    path.write_text(
-        """
+    path.write_text("""
 default_deployment = "inria"
 conn = "mqtts://broker.local:8883"
 swarm_id = "0001"
@@ -104,8 +103,7 @@ board = "dotbot-v3"
 
 [run.controller]
 http_port = 8000
-"""
-    )
+""")
     config = cfg.load_config(path)
     assert config.default_deployment == "inria"
     assert config.fw.board == "dotbot-v3"
@@ -148,6 +146,17 @@ def test_load_accepts_valid_conn_forms(tmp_path):
 def test_load_bad_type_rejected(tmp_path):
     path = tmp_path / "dotbot.toml"
     path.write_text('[run.controller]\nhttp_port = "not-an-int"\n')
+    with pytest.raises(cfg.ConfigError):
+        cfg.load_config(path)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["camera_max_robots = 0", "camera_detect_share = 0.0", "camera_detect_share = 1.5"],
+)
+def test_load_camera_limit_out_of_range_rejected(tmp_path, line):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(f"[run.controller]\n{line}\n")
     with pytest.raises(cfg.ConfigError):
         cfg.load_config(path)
 

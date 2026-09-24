@@ -178,8 +178,8 @@ class ControllerSection(_Strict):
     lh2_calibration: str | None = None
     camera_calibration: str | None = None
     camera_detect: bool | None = None
-    camera_max_robots: int | None = None
-    camera_detect_share: float | None = None
+    camera_max_robots: int | None = Field(None, ge=1)
+    camera_detect_share: float | None = Field(None, gt=0.0, le=1.0)
     background_map: str | None = None
     log_output: str | None = None
     csv_data_output: str | None = None
