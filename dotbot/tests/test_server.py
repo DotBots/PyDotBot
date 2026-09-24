@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -1209,6 +1210,9 @@ async def test_the_camera_stream_carries_the_area_warped_into_its_raster(
     )
     parts = stream_parts(response.content)
     assert parts
+    # Stamped when the frame was read off the device, so a reader can age it.
+    stamp = float(parts[0][0].split(b"X-Timestamp: ")[1].split(b"\r\n")[0])
+    assert time.time() - 60.0 < stamp <= time.time()
 
     raster = cv2.imdecode(np.frombuffer(parts[0][1], np.uint8), cv2.IMREAD_COLOR)
     assert raster.shape == (500, 500, 3)

@@ -104,6 +104,7 @@ class CameraService:
         self._lock = threading.Lock()
         self._jpeg: bytes | None = None
         self._sequence = 0
+        self._stamp = 0.0
         self.transform = raster_transform(calibration.matrix, area)
         self.coverage_mm = coverage_mm(
             calibration.matrix, calibration.width, calibration.height
@@ -278,12 +279,13 @@ class CameraService:
         interval = 1.0 / WARP_FPS_MAX
         sent = -1
         while True:
-            jpeg, sequence = self.held()
+            with self._lock:
+                jpeg, sequence, stamp = self._jpeg, self._sequence, self._stamp
             if jpeg is None:
                 return
             if sequence != sent:
                 sent = sequence
-                yield _part(jpeg)
+                yield _part(jpeg, stamp)
             if not self._reading:
                 return
             await asyncio.sleep(interval)
@@ -364,6 +366,7 @@ class CameraService:
         with self._lock:
             self._jpeg = buffer.tobytes()
             self._sequence += 1
+            self._stamp = stamp
             self._pending = (warped, self._sequence, stamp)
         self._pending_event.set()
 
@@ -450,7 +453,6 @@ class CameraService:
             self._detection = record
         return record
 
-
     def _raster_priors(self) -> list[Prior]:
         """The lighthouse fixes the controller holds, in raster pixels."""
         if self._priors is None:
@@ -464,11 +466,15 @@ class CameraService:
         ]
 
 
-def _part(jpeg: bytes) -> bytes:
-    """One JPEG as a part of the multipart stream."""
+def _part(jpeg: bytes, stamp: float) -> bytes:
+    """One JPEG as a part of the multipart stream.
+
+    `X-Timestamp` is `time.time()` when the frame was read off the device.
+    """
     head = (
         f"--{STREAM_BOUNDARY}\r\n"
         "Content-Type: image/jpeg\r\n"
-        f"Content-Length: {len(jpeg)}\r\n\r\n"
+        f"Content-Length: {len(jpeg)}\r\n"
+        f"X-Timestamp: {stamp:.3f}\r\n\r\n"
     )
     return head.encode("ascii") + jpeg + b"\r\n"
