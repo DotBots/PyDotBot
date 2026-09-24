@@ -46,6 +46,8 @@ nitpick_ignore_regex = [
     ("py:class", r"dotbot.models.Annotated"),
     ("py:class", r"Query"),
     ("py:class", r"PydanticUndefined"),
+    ("py:class", r"_PydanticGeneralMetadata"),
+    ("py:class", r"allow_inf_nan=.*"),
     ("py:class", r"queue.Queue"),
     ("py:class", r"_ctypes.Structure"),
     ("py:class", r"pathlib._local.Path"),
