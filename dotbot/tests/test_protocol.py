@@ -345,6 +345,21 @@ def test_frame_parser(bytes_, header, payload_type, payload):
                     destination=0x1122334455667788,
                     source=0x1222122212221221,
                 ),
+                Packet.from_payload(
+                    PayloadCommandWheelVelocity(left_mm_s=-150, right_mm_s=200)
+                ),
+            ),
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x0f\x6a\xff\xc8\x00",
+            id="PayloadWheelVelocity",
+        ),
+        pytest.param(
+            Frame(
+                Header(
+                    version=4,
+                    type_=2,
+                    destination=0x1122334455667788,
+                    source=0x1222122212221221,
+                ),
                 Packet.from_payload(PayloadCommandRgbLed(red=0, green=0, blue=0)),
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x01\x00\x00\x00",

@@ -11,6 +11,7 @@ from dotbot.models import (
     DotBotRgbLedCommandModel,
     DotBotStatus,
     DotBotWaypoints,
+    DotBotWheelVelocityCommandModel,
 )
 from dotbot.protocol import ApplicationType
 from dotbot.rest import rest_client
@@ -115,6 +116,31 @@ async def test_send_move_raw_command(put, response, application, command):
     async with rest_client("localhost", 1234, False) as client:
         await client.send_move_raw_command("test", application, command)
         put.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param(httpx.Response(200), id="ok"),
+        pytest.param(httpx.ConnectError, id="http error"),
+        pytest.param(httpx.Response(403), id="invalid http code"),
+    ],
+)
+@mock.patch("httpx.AsyncClient.put")
+async def test_send_wheel_velocity_command(put, response):
+    if response == httpx.ConnectError:
+        put.side_effect = response("error")
+    else:
+        put.return_value = response
+    command = DotBotWheelVelocityCommandModel(left_mm_s=-150, right_mm_s=200)
+    async with rest_client("localhost", 1234, False) as client:
+        await client.send_wheel_velocity_command(
+            "test", ApplicationType.DotBot, command
+        )
+        put.assert_called_once()
+        assert put.call_args.args[0].endswith("/dotbots/test/0/wheel_velocity")
+        assert put.call_args.kwargs["content"] == command.model_dump_json()
 
 
 @pytest.mark.asyncio
