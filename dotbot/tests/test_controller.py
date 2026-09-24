@@ -738,18 +738,19 @@ def test_a_named_robot_is_logged_against_its_own_fix(
 def test_a_camera_hands_its_detector_the_fixes_in_and_near_its_area(
     tmp_path, monkeypatch, serial_mock
 ):
-    """A fix one robot outside the area still names a body standing inside."""
-    from dotbot.models import DotBotStatus
+    """A fix one robot outside the area still names a body standing inside,
+    and a robot gone silent names nothing."""
+    from dotbot.controller import CAMERA_PRIOR_MAX_AGE_S
 
     controller, _ = _camera_controller(tmp_path, monkeypatch, None)
     _settled_camera_log(controller)
-    lost = _bot("0000000000000004", 1500, 500)
-    lost.status = DotBotStatus.LOST
+    silent = _bot("0000000000000004", 1500, 500)
+    silent.last_seen = time.time() - CAMERA_PRIOR_MAX_AGE_S - 1.0
     controller.dotbots = {
         "0000000000000001": _bot("0000000000000001", 1500, 500),
         "0000000000000002": _bot("0000000000000002", 950, 500),
         "0000000000000003": _bot("0000000000000003", 100, 100),
-        "0000000000000004": lost,
+        "0000000000000004": silent,
     }
     area = controller.cameras[0].area
     assert sorted(a for a, _, _ in controller._lh2_priors(area)) == [
