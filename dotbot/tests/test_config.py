@@ -87,7 +87,8 @@ def test_load_none_is_empty():
 
 def test_load_valid(tmp_path):
     path = tmp_path / "dotbot.toml"
-    path.write_text("""
+    path.write_text(
+        """
 default_deployment = "inria"
 conn = "mqtts://broker.local:8883"
 swarm_id = "0001"
@@ -103,7 +104,8 @@ board = "dotbot-v3"
 
 [run.controller]
 http_port = 8000
-""")
+"""
+    )
     config = cfg.load_config(path)
     assert config.default_deployment == "inria"
     assert config.fw.board == "dotbot-v3"

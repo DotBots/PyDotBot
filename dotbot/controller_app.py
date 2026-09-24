@@ -26,10 +26,10 @@ from dotbot import (
     SWARMIT_URL_DEFAULT,
     pydotbot_version,
 )
-from dotbot.cli._cfg import from_config
-from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.rate import DETECT_SHARE
+from dotbot.cli._cfg import from_config
+from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.cli._site import site_from_context
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.logger import setup_logging

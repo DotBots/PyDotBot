@@ -584,7 +584,7 @@ def test_a_robot_with_no_fix_is_still_found_unnamed():
     unnamed = [r for r in detection.robots if r.address is None]
     assert len(unnamed) == 2
     for centre, heading in robots[1:]:
-        (fix,) = [r for r in unnamed if np.allclose(r.pose.centre_px, centre, atol=2.0)]
+        (fix,) = (r for r in unnamed if np.allclose(r.pose.centre_px, centre, atol=2.0))
         assert_at(fix, centre, heading)
 
 
@@ -626,11 +626,11 @@ def test_two_robots_a_few_centimetres_apart_are_two_robots(gap_mm, headings):
     detection = unhurried().detect(raster)
     assert len(detection.robots) == 2
     for centre, heading in ((a, headings[0]), (b, headings[1])):
-        (fix,) = [
+        (fix,) = (
             r
             for r in detection.robots
             if np.allclose(r.pose.centre_px, centre, atol=2.0)
-        ]
+        )
         assert_at(fix, centre, heading)
 
 
