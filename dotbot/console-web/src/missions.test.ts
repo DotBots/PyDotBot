@@ -127,10 +127,24 @@ describe("missionReport", () => {
       state: "arrived",
       index: 3,
       reason: null,
+      code: null,
     });
     expect(missionReport({ waypoints_status: 3, waypoints_reason: "timeout" })?.reason).toBe("timeout");
     expect(missionReport({ waypoints_status: 0 })).toBeNull();
     expect(missionReport({})).toBeNull();
     expect(missionReport(undefined)).toBeNull();
+  });
+
+  it("names every reason the controller reports in words", () => {
+    const reasons = ["NO_HEADING", "TURN", "PROGRESS", "HEADING_LOST", "HOLD", "SETTLE", "STOP", "DIRECT", "CONTROL_MODE"];
+    for (const code of reasons) {
+      const r = missionReport({ waypoints_status: 3, waypoints_reason: code });
+      expect(r?.code).toBe(code);
+      expect(r?.reason).not.toBe(code);
+    }
+    expect(missionReport({ waypoints_status: 4, waypoints_reason: "DIRECT" })).toMatchObject({
+      state: "aborted",
+      reason: "driven by hand",
+    });
   });
 });

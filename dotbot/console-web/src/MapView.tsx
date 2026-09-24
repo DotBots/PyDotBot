@@ -811,8 +811,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // out floors it at a size that can still be seen and clicked.
   const botDraw = (b: UnifiedBot) => {
     let draw = robotDraw(b.pose, drawing, perMm, props.bots.length);
-    // The robot's own axle estimate places the body: its lever arm is the
-    // firmware's, which is not quite the geometry record's.
+    // The robot's own axle estimate places the body.
     if (b.axle && b.pose && draw.shape.kind === "board") {
       const dx = b.axle.x - b.pose.axle.x;
       const dy = b.axle.y - b.pose.axle.y;
@@ -1208,6 +1207,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               if (!props.selection.has(b.id) || b.waypoints.length === 0) return [];
               const led = ledCss(b);
               const { waypointPx } = botDraw(b);
+              const template = silhouetteTemplate(props.bots, [b.id]);
               return b.waypoints.map((w, i) => {
                 const q = pctPos(w);
                 if (isPose(w)) {
@@ -1225,7 +1225,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     >
                       <PoseMarker
                         testId={`waypoint-${b.id}-${i}`}
-                        template={b.pose && hasHeading(b.pose) ? b.pose : null}
+                        template={template}
                         anchor={w}
                         heading={w.heading_deg}
                         pxPerMm={perMm}
@@ -1238,7 +1238,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 }
                 return (
                   <React.Fragment key={`${b.id}-wp-${i}`}>
-                  {centreMarks(q, b.pose && hasHeading(b.pose) ? b.pose : null, led)}
+                  {centreMarks(q, template, led)}
                   <div
                     data-testid={`waypoint-${b.id}-${i}`}
                     title={describeWaypoint(w, i, b.waypoints.length)}
@@ -1737,8 +1737,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         );
       })()}
 
-      {/* pose mode says it is on, since a mode nobody can see is an error
-          waiting to happen; pressing the chip turns it off */}
+      {/* pose mode shows a chip, which turns it off when pressed */}
       {props.poseMode && (
         <button
           type="button"

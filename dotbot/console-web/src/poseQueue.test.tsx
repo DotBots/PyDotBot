@@ -48,12 +48,12 @@ const underWay = bot("DEADBEEF22222222", {
 const ghost = bot("B0B0F00D33333333", { drivable: false, link: "unknown" });
 const failed = bot("FA11ED0044444444", {
   waypoints: [{ x: 500, y: 500 }, { x: 900, y: 900, heading_deg: 90 }],
-  mission: { state: "failed", index: 1, reason: "blocked" },
+  mission: { state: "failed", index: 1, reason: "blocked", code: "PROGRESS" },
 });
 const leading = bot("1EAD000055555555", {
   nav: "auto",
   waypoints: [{ x: 500, y: 500 }, { x: 900, y: 900 }, { x: 900, y: 500 }, { x: 500, y: 900 }],
-  mission: { state: "in_progress", index: 1, reason: null },
+  mission: { state: "in_progress", index: 1, reason: null, code: null },
 });
 
 vi.mock("./useFleet", () => ({
@@ -149,13 +149,22 @@ const queueWaypoint = () => {
 const queuePose = () => {
   const mod = held(MAP_MODIFIER.waypoint);
   fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...mod });
-  fireEvent.pointerMove(canvas(), { clientX: 550, clientY: 300 });
+  fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 550, clientY: 300 });
   fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
 };
 const openQueue = () => fireEvent.click(screen.getByText(/^◎ Waypoints/));
 const field = (i: number) => screen.getByTestId(`heading-${i}`) as HTMLInputElement;
 
 describe("a queued pose in the waypoint queue", () => {
+  it("holds at most the firmware's 16 points", () => {
+    select("1111");
+    render(<App />);
+    for (let i = 0; i < 17; i++) queueWaypoint();
+    expect(screen.getByText(/at most 16 waypoints/)).toBeInTheDocument();
+    press(ACTION_KEY.go);
+    expect((putWaypoints as ReturnType<typeof vi.fn>).mock.calls[0][3]).toHaveLength(16);
+  });
+
   it("is sent with its heading", () => {
     select("1111");
     render(<App />);
@@ -181,6 +190,9 @@ describe("a queued pose in the waypoint queue", () => {
     fireEvent.change(field(1), { target: { value: "90" } });
     fireEvent.keyDown(field(1), { key: "Enter" });
     expect(field(1).value).toBe("90");
+    fireEvent.change(field(0), { target: { value: "100" } });
+    fireEvent.keyDown(field(0), { key: "ArrowUp" });
+    expect(field(0).value).toBe("101");
     fireEvent.keyDown(field(0), { key: "Delete" });
     expect(field(0).value).toBe("");
     press(ACTION_KEY.go);

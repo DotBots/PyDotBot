@@ -1,8 +1,8 @@
 import { store } from "./persisted";
 
 // How a waypoint mission ends and passes its points, as this browser sends
-// it: the terminal radius the robot's centre stops within (below 5 mm the
-// firmware settles slowly), the radius it passes an intermediate point
+// it: the terminal radius the robot's centre stops within, the radius it
+// passes an intermediate point
 // within, and how close a pose's heading has to come. No tolerance leaves
 // the firmware's own.
 

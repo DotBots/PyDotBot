@@ -339,8 +339,23 @@ export interface MissionReport {
   state: MissionState;
   /** The point being driven to, from 0; the count once arrived. */
   index: number | null;
+  /** Why it failed or was aborted, in words. */
   reason: string | null;
+  /** The controller's name for that reason. */
+  code: string | null;
 }
+
+const MISSION_REASONS: Record<string, string> = {
+  NO_HEADING: "no heading",
+  TURN: "could not turn",
+  PROGRESS: "stopped making progress",
+  HEADING_LOST: "heading lost",
+  HOLD: "position lost",
+  SETTLE: "could not settle",
+  STOP: "stopped",
+  DIRECT: "driven by hand",
+  CONTROL_MODE: "mode changed",
+};
 
 const MISSION_STATES: Record<number, MissionState> = {
   1: "in_progress",
@@ -353,7 +368,9 @@ const MISSION_STATES: Record<number, MissionState> = {
 export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport | null {
   const state = MISSION_STATES[py?.waypoints_status ?? 0];
   if (!state) return null;
-  return { state, index: py?.waypoint_index ?? null, reason: py?.waypoints_reason ?? null };
+  const code = py?.waypoints_reason ?? null;
+  const reason = code === null ? null : (MISSION_REASONS[code] ?? code);
+  return { state, index: py?.waypoint_index ?? null, reason, code };
 }
 
 // The targets of the last mission sent to this bot. The controller stores

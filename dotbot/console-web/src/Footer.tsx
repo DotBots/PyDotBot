@@ -126,7 +126,8 @@ export const HeadingField: React.FC<{
     const n = Number(t);
     if (Number.isFinite(n)) onChange(normDeg(n));
   };
-  const step = (by: number) => onChange(normDeg((heading ?? 0) + by));
+  const typed = draft === null || draft.trim() === "" ? NaN : Number(draft);
+  const step = (by: number) => onChange(normDeg((Number.isFinite(typed) ? typed : (heading ?? 0)) + by));
   return (
     <input
       aria-label={`Heading of waypoint ${index + 1}, degrees`}
@@ -135,7 +136,9 @@ export const HeadingField: React.FC<{
       placeholder="—"
       value={draft ?? shown}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={(e) => commit(e.target.value)}
+      onBlur={(e) => {
+        if (draft !== null) commit(e.target.value);
+      }}
       onKeyDown={(e) => {
         const big = e.shiftKey ? 15 : 1;
         if (e.key === "ArrowUp" || e.key === "ArrowRight") step(big);
@@ -230,7 +233,8 @@ export const WaypointSettingsSection: React.FC<{
       style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}
     >
       {ARRIVAL_PRESETS.map((p) => (
-        <span
+        <button
+          type="button"
           key={p.mm}
           role="radio"
           aria-checked={value.arrivalMm === p.mm}
@@ -238,6 +242,8 @@ export const WaypointSettingsSection: React.FC<{
           title={ARRIVAL_NOTE[p.mm]}
           onClick={() => onChange({ ...value, arrivalMm: p.mm })}
           style={{
+            font: "inherit",
+            background: "transparent",
             padding: "2px 6px",
             borderRadius: 4,
             cursor: "pointer",
@@ -247,7 +253,7 @@ export const WaypointSettingsSection: React.FC<{
           }}
         >
           {p.label}
-        </span>
+        </button>
       ))}
     </div>
     <NumberSetting
@@ -419,13 +425,16 @@ const ControlDock: React.FC<{
             >
               &#9678; Waypoints{wpCount ? ` · ${wpCount}` : ""}
             </div>
-            <div
+            <button
+              type="button"
               data-testid="pose-mode-toggle"
               role="switch"
               aria-checked={poseMode}
               title={`Pose mode (${ACTION_KEY.poseMode}): a click queues a waypoint, a drag a pose`}
               onClick={() => onPoseMode?.(!poseMode)}
               style={{
+                font: "inherit",
+                border: "none",
                 display: "flex",
                 alignItems: "center",
                 padding: "6px 9px",
@@ -438,7 +447,7 @@ const ControlDock: React.FC<{
               }}
             >
               &#9672; Pose
-            </div>
+            </button>
             {(pending.length > 0 || anyAuto) && (
               <div
                 onClick={() => (anyAuto ? onStopNav() : onGo())}
@@ -505,7 +514,7 @@ const ControlDock: React.FC<{
           <span
             data-testid="mission-report"
             data-state={report.state}
-            title={report.reason ?? undefined}
+            title={report.code ?? undefined}
             style={{
               marginRight: 8,
               padding: "1px 6px",

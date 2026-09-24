@@ -76,6 +76,8 @@ import {
   zoomMax,
 } from "./zoom";
 
+// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch.
+const MAX_WAYPOINTS = 16;
 
 // Build provenance, quiet enough to ignore until it is the question:
 // `v0.30.0`, `v0.30.0 6573d53`, or `v0.30.0 6573d53*` for a dirty checkout.
@@ -456,16 +458,23 @@ export const App: React.FC = () => {
 
   const onAddWaypoint = useCallback(
     (p: Waypoint) => {
-      if (drivableSelected.length === 0) return;
+      if (drivableSelected.length === 0) {
+        showToast(selection.size === 0 ? "Nothing selected" : "Not drivable");
+        return;
+      }
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
+      if ((planned.find((m) => m.key === key)?.waypoints.length ?? 0) >= MAX_WAYPOINTS) {
+        showToast(`A robot takes at most ${MAX_WAYPOINTS} waypoints at once`);
+        return;
+      }
       setPlanned((prev) => {
         const hit = prev.find((m) => m.key === key);
         if (hit) return prev.map((m) => (m.key === key ? { ...m, waypoints: [...m.waypoints, p] } : m));
         return [...prev, { key, ids, waypoints: [p] }];
       });
     },
-    [drivableSelected],
+    [drivableSelected, planned, selection, showToast],
   );
 
   const sendMission = useCallback(

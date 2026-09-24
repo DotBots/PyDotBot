@@ -155,6 +155,18 @@ export function merge(
 }
 
 /** The detections keyed by area, with `detection`'s area replaced. */
+/**
+ * The waypoint report from an update, into `bot`. It arrives whole with its
+ * null fields left out, so a field missing beside the status is now null.
+ */
+export function applyReport(bot: Partial<PyDotBot>, d: Partial<PyDotBot>): void {
+  if (d.waypoints_status === undefined) return;
+  bot.waypoints_status = d.waypoints_status;
+  bot.waypoints_reason = d.waypoints_reason ?? null;
+  bot.waypoint_index = d.waypoint_index ?? null;
+  bot.axle_position = d.axle_position ?? null;
+}
+
 export function withDetection(
   previous: Record<string, CameraDetection>,
   detection: CameraDetection,
@@ -273,10 +285,7 @@ export function useFleet(): {
           if (d.lh2_waypoints !== undefined) bot.waypoints = d.lh2_waypoints;
           if (d.waypoints_threshold !== undefined)
             bot.waypoints_threshold = d.waypoints_threshold;
-          if (d.waypoints_status !== undefined) bot.waypoints_status = d.waypoints_status;
-          if (d.waypoints_reason !== undefined) bot.waypoints_reason = d.waypoints_reason;
-          if (d.waypoint_index !== undefined) bot.waypoint_index = d.waypoint_index;
-          if (d.axle_position !== undefined) bot.axle_position = d.axle_position;
+          applyReport(bot, d);
           rebuild();
         } else {
           // RELOAD / NEW_DOTBOT / unknown -> refetch everything.
