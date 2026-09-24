@@ -46,10 +46,19 @@ const underWay = bot("DEADBEEF22222222", {
   ],
 });
 const ghost = bot("B0B0F00D33333333", { drivable: false, link: "unknown" });
+const failed = bot("FA11ED0044444444", {
+  waypoints: [{ x: 500, y: 500 }, { x: 900, y: 900, heading_deg: 90 }],
+  mission: { state: "failed", index: 1, reason: "blocked" },
+});
+const leading = bot("1EAD000055555555", {
+  nav: "auto",
+  waypoints: [{ x: 500, y: 500 }, { x: 900, y: 900 }, { x: 900, y: 500 }, { x: 500, y: 900 }],
+  mission: { state: "in_progress", index: 1, reason: null },
+});
 
 vi.mock("./useFleet", () => ({
   useFleet: () => ({
-    bots: [idle, underWay, ghost],
+    bots: [idle, underWay, ghost, failed, leading],
     site,
     session: null,
     setSession: () => {},
@@ -210,5 +219,22 @@ describe("the pose mode key", () => {
     expect(screen.queryByTestId("pose-mode-chip")).toBeNull();
     fireEvent.click(screen.getByTestId("pose-mode-toggle"));
     expect(screen.getByTestId("pose-mode-chip")).toBeInTheDocument();
+  });
+});
+
+describe("the robot's own report on its batch", () => {
+  it("shows how the last batch ended", () => {
+    select("4444");
+    render(<App />);
+    const badge = screen.getByTestId("mission-report");
+    expect(badge).toHaveAttribute("data-state", "failed");
+    expect(badge).toHaveTextContent("Failed: blocked");
+  });
+
+  it("names the waypoint being driven to", () => {
+    select("5555");
+    render(<App />);
+    expect(screen.getByText(/waypoint 2 of 3/)).toBeInTheDocument();
+    expect(screen.queryByTestId("mission-report")).toBeNull();
   });
 });

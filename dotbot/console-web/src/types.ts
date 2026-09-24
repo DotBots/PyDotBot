@@ -93,6 +93,11 @@ export interface PyDotBot {
   position_history?: LH2Position[];
   waypoints?: Waypoint[];
   waypoints_threshold?: number;
+  // The robot's own report on its last waypoint batch, from apps that send
+  // one: 0 NONE, 1 IN_PROGRESS, 2 ARRIVED, 3 FAILED, 4 ABORTED.
+  waypoints_status?: number | null;
+  waypoints_reason?: string | null;
+  waypoint_index?: number | null;
   rgb_led?: RgbLed;
   battery?: number; // volts
   calibrated?: number;
@@ -309,6 +314,8 @@ export interface UnifiedBot {
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
   waypoints: Waypoint[]; // active mission (as reported by the controller)
+  // How the robot says its last batch stands; absent from apps that do not report.
+  mission?: MissionReport | null;
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
@@ -319,6 +326,29 @@ export interface UnifiedBot {
   batteryPct: number | null; // served by swarmit; null for a bot it does not know
   batteryLevel: string | null; // full | ok | low
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
+}
+
+export type MissionState = "in_progress" | "arrived" | "failed" | "aborted";
+
+export interface MissionReport {
+  state: MissionState;
+  /** The point being driven to, from 0; the count once arrived. */
+  index: number | null;
+  reason: string | null;
+}
+
+const MISSION_STATES: Record<number, MissionState> = {
+  1: "in_progress",
+  2: "arrived",
+  3: "failed",
+  4: "aborted",
+};
+
+/** The robot's report on its batch, or null when it sends none. */
+export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport | null {
+  const state = MISSION_STATES[py?.waypoints_status ?? 0];
+  if (!state) return null;
+  return { state, index: py?.waypoint_index ?? null, reason: py?.waypoints_reason ?? null };
 }
 
 // The targets of the last mission sent to this bot. The controller stores

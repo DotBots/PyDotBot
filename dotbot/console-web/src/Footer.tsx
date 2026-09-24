@@ -198,10 +198,17 @@ const ControlDock: React.FC<{
       ? "⚠  Not drivable - no DBP in selection"
       : `⚠  Not drivable - ${notDrivableReason(single)}`
     : anyAuto
-      ? `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
+      ? single?.mission?.state === "in_progress" && single.mission.index !== null
+        ? `▶  Navigating · waypoint ${Math.min(single.mission.index + 1, activeCount)} of ${activeCount}`
+        : `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
       : poseMode
         ? `◈  Pose mode · click for a waypoint, drag for a pose · Space-drag pans${pending.length ? ` · ${pending.length} queued` : ""}`
         : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map for a waypoint, drag for a pose${pending.length ? ` · ${pending.length} queued` : ""}`;
+  // How the robot says its last batch ended, while nothing newer is under way.
+  const report =
+    single?.mission && single.mission.state !== "in_progress" && !anyAuto && pending.length === 0
+      ? single.mission
+      : null;
   const sharedPoses = isGroup && drivable.length > 1 && pending.some(isPose);
 
   const popBase: React.CSSProperties = {
@@ -360,7 +367,30 @@ const ControlDock: React.FC<{
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{hint}</div>
+      <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+        {report && (
+          <span
+            data-testid="mission-report"
+            data-state={report.state}
+            title={report.reason ?? undefined}
+            style={{
+              marginRight: 8,
+              padding: "1px 6px",
+              borderRadius: 4,
+              fontWeight: 600,
+              color: report.state === "arrived" ? "var(--s-Running)" : "var(--s-Programming)",
+              border: "1px solid currentColor",
+            }}
+          >
+            {report.state === "arrived"
+              ? "✓ Arrived"
+              : report.state === "failed"
+                ? `⚠ Failed${report.reason ? `: ${report.reason}` : ""}`
+                : `■ Aborted${report.reason ? `: ${report.reason}` : ""}`}
+          </span>
+        )}
+        {hint}
+      </div>
 
       {/* click-away overlay */}
       {(ledOpen || wpOpen) && (

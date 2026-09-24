@@ -17,6 +17,7 @@ import {
   CalibrationSession,
   LH2Position,
   LinkState,
+  missionReport,
   PyDotBot,
   RegisteredCamera,
   STATE_ORDER,
@@ -139,6 +140,7 @@ export function merge(
       drivable: link === "active" && (state === null || state === "Running"),
       nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
+      mission: missionReport(py),
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
@@ -270,6 +272,9 @@ export function useFleet(): {
           if (d.lh2_waypoints !== undefined) bot.waypoints = d.lh2_waypoints;
           if (d.waypoints_threshold !== undefined)
             bot.waypoints_threshold = d.waypoints_threshold;
+          if (d.waypoints_status !== undefined) bot.waypoints_status = d.waypoints_status;
+          if (d.waypoints_reason !== undefined) bot.waypoints_reason = d.waypoints_reason;
+          if (d.waypoint_index !== undefined) bot.waypoint_index = d.waypoint_index;
           rebuild();
         } else {
           // RELOAD / NEW_DOTBOT / unknown -> refetch everything.

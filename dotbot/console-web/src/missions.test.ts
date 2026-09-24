@@ -4,6 +4,7 @@ import { deriveMissions } from "./TestbedRail";
 import {
   canRedoMission,
   lastMissionTargets,
+  missionReport,
   PlannedMission,
   UnifiedBot,
 } from "./types";
@@ -117,5 +118,19 @@ describe("the last mission a bot can repeat", () => {
   it("is refused for a bot that cannot be driven", () => {
     const a = bot("aaaa", { drivable: false, waypoints: [{ x: 1, y: 1 }, ...targets] });
     expect(canRedoMission(a)).toBe(false);
+  });
+});
+
+describe("missionReport", () => {
+  it("reads the robot's status, and nothing from an app that sends none", () => {
+    expect(missionReport({ waypoints_status: 2, waypoint_index: 3 })).toEqual({
+      state: "arrived",
+      index: 3,
+      reason: null,
+    });
+    expect(missionReport({ waypoints_status: 3, waypoints_reason: "timeout" })?.reason).toBe("timeout");
+    expect(missionReport({ waypoints_status: 0 })).toBeNull();
+    expect(missionReport({})).toBeNull();
+    expect(missionReport(undefined)).toBeNull();
   });
 });
