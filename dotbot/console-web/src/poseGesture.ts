@@ -146,18 +146,22 @@ export function poseAt(template: BotPose, axle: LH2Position, heading: number): B
   };
 }
 
-/** The first selected robot with a body to borrow for a silhouette. */
+/**
+ * A body to borrow for a silhouette: the first of `ids` with one, else any
+ * robot's, since a fleet shares one geometry. A pose expanded on a placeholder
+ * heading still has the right shape about its own axle, so it serves too.
+ */
 export function silhouetteTemplate(
   bots: { id: string; pose: BotPose | null }[],
   ids: Iterable<string>,
 ): BotPose | null {
   const wanted = new Set(ids);
-  for (const b of bots) {
-    if (wanted.has(b.id) && b.pose && b.pose.heading_source !== "none" && b.pose.outline.length >= 3) {
-      return b.pose;
-    }
-  }
-  return null;
+  const usable = (p: BotPose | null): p is BotPose => !!p && p.outline.length >= 3;
+  return (
+    bots.find((b) => wanted.has(b.id) && usable(b.pose))?.pose ??
+    bots.find((b) => usable(b.pose))?.pose ??
+    null
+  );
 }
 
 /** Whether a waypoint carries a heading, which makes it a pose. */

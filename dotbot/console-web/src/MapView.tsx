@@ -48,6 +48,7 @@ import {
   tickGesture,
   wheelSteps,
 } from "./poseGesture";
+import { DEFAULT_WAYPOINT_SETTINGS, WaypointSettings } from "./arrival";
 import { KNOB_R_PX, PoseMarker, axleReachMm, knobOffset, poseShape } from "./PoseMarker";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
 import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf, typingIn } from "./shortcuts";
@@ -139,6 +140,8 @@ interface MapViewProps {
   // Pose mode: a plain press places waypoints and poses, and Space + drag pans.
   poseMode?: boolean;
   onPoseMode?: (on: boolean) => void;
+  // The radii a mission is sent with, for the waypoints' tooltips.
+  waypointSettings?: WaypointSettings;
   // Calibration mode: the rectangle being calibrated, drawn over the map.
   // While it is open, clicking a robot chooses it as the capturer.
   session?: CalibrationSession | null;
@@ -420,8 +423,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const start = selectedBots().find((b) => b.axle ?? b.position);
     const from = last ?? start?.axle ?? start?.position ?? null;
     const approach = from ? bearing(from, poseAtMm) : null;
-    const template = silhouetteTemplate(props.bots, props.selection);
-    const heading = on?.pose ? on.pose.heading_deg : (approach ?? template?.heading_deg ?? 0);
+    const heading = on?.pose && hasHeading(on.pose) ? on.pose.heading_deg : (approach ?? 0);
     setGesture(startGesture({ x, y }, at, Date.now(), heading, pivot, poseAtMm));
     cursorRef.current = { x, y, shift: false };
     setCursor({ x, y });
@@ -835,6 +837,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
+  // What a waypoint asks of the robot, for its tooltip. `i` counts from the
+  // robot's own start, which is entry 0 of an active mission's list.
+  const settings = props.waypointSettings ?? DEFAULT_WAYPOINT_SETTINGS;
+  const describeWaypoint = (w: Waypoint, i: number, count: number) => {
+    const stop = `stop within ${settings.arrivalMm} mm`;
+    if (isPose(w)) return `Pose ${i}: face ${Math.round(w.heading_deg)}°, ${stop}`;
+    return i === count - 1 ? `Waypoint ${i}: ${stop}` : `Waypoint ${i}: pass within ${settings.passMm} mm`;
+  };
+
   // A plain waypoint is where the robot's axle comes to rest: a dot on that
   // centre, and, with a body to size it from and room to read it, a faint
   // ring holding the whole robot whichever way it ends up facing.
@@ -1181,7 +1192,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   return (
                     <div
                       key={`${b.id}-wp-${i}`}
-                      title={`waypoint ${i + 1} · facing ${Math.round(w.heading_deg)}°`}
+                      title={describeWaypoint(w, i, b.waypoints.length)}
                       style={{
                         position: "absolute",
                         left: `${q.left}%`,
@@ -1208,7 +1219,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   {centreMarks(q, b.pose && hasHeading(b.pose) ? b.pose : null, led)}
                   <div
                     data-testid={`waypoint-${b.id}-${i}`}
-                    title={`waypoint ${i + 1}`}
+                    title={describeWaypoint(w, i, b.waypoints.length)}
                     style={{
                       position: "absolute",
                       left: `${q.left}%`,
@@ -1249,7 +1260,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     return (
                       <div
                         key={`pend-${m.key}-${i}`}
-                        title={`waypoint ${i + 1} · facing ${Math.round(p.heading_deg)}°`}
                         style={{
                           position: "absolute",
                           left: `${q.left}%`,
@@ -1260,6 +1270,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       >
                         <div
                           data-testid={`planned-hit-${m.key}-${i}`}
+                          title={describeWaypoint(p, i + 1, m.waypoints.length + 1)}
                           onPointerEnter={() => setHoverPose(pivot)}
                           onPointerLeave={() =>
                             setHoverPose((h) =>
@@ -1303,7 +1314,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     {centreMarks(q, template, led)}
                     <div
                       data-testid={`planned-${m.key}-${i}`}
-                      title={`waypoint ${i + 1}`}
+                      title={describeWaypoint(p, i + 1, m.waypoints.length + 1)}
                       style={{
                         position: "absolute",
                         left: `${q.left}%`,
@@ -1314,7 +1325,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         background: "transparent",
                         border: `1.5px dashed ${led}`,
                         boxShadow: `0 0 4px ${led}`,
-                        pointerEvents: "none",
                       }}
                     />
                     </React.Fragment>

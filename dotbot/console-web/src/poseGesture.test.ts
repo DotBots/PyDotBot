@@ -140,20 +140,24 @@ describe("the silhouette", () => {
     expect(p.outline).toHaveLength(template.outline.length);
   });
 
-  it("borrows the first selected robot with a heading", () => {
+  it("borrows the target's body even when the robot reports no heading, else any robot's", () => {
+    const still = { ...template, heading_source: "none" as const, heading_deg: 180 };
     const bots = [
-      { id: "a", pose: { ...template, heading_source: "none" as const } },
+      { id: "a", pose: still },
       { id: "b", pose: template },
       { id: "c", pose: null },
     ];
-    expect(silhouetteTemplate(bots, ["a", "b"])).toBe(template);
-    expect(silhouetteTemplate(bots, ["a", "c"])).toBeNull();
+    expect(silhouetteTemplate(bots, ["a"])).toBe(still);
+    expect(silhouetteTemplate(bots, ["c"])).toBe(still);
+    expect(silhouetteTemplate([{ id: "c", pose: null }], ["c"])).toBeNull();
   });
 
-  it("is the board when it reads, and the diamond with a tick otherwise", () => {
-    expect(poseShape(template, at, 90, 1).kind).toBe("board");
-    expect(poseShape(template, at, 90, 0.02).kind).toBe("tick");
-    expect(poseShape(null, at, 90, 1).kind).toBe("tick");
+  it("is the board from a body with no heading, at the true size, once 12 px on screen", () => {
+    const still = { ...template, heading_source: "none" as const };
+    // ~110 mm of body: 0.12 px/mm is about 13 px, 0.1 is 11
+    expect(poseShape(still, at, 90, 0.12).kind).toBe("board");
+    expect(poseShape(still, at, 90, 0.1).kind).toBe("arrow");
+    expect(poseShape(null, at, 90, 1).kind).toBe("arrow");
   });
 });
 

@@ -548,7 +548,7 @@ describe("placing a waypoint with the waypoint modifier", () => {
     render(<Harness />);
     fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
     fireEvent.pointerMove(canvas(), { clientX: 450, clientY: 400 });
-    expect(screen.getByTestId("placing-pose")).toHaveAttribute("data-pose-shape", "tick");
+    expect(screen.getByTestId("placing-pose")).toHaveAttribute("data-pose-shape", "arrow");
   });
 
   it("turns a robot in place when started on it: the pose is its own axle", () => {
@@ -686,5 +686,28 @@ describe("a robot reporting its own axle", () => {
     const own = at({ x: 500, y: 502 });
     expect(own.cy).toBeGreaterThan(record.cy);
     expect(own.board).not.toBe(record.board);
+  });
+});
+
+describe("a queued pose on a robot with no heading", () => {
+  // What the controller sends for a robot whose direction reads -1000: the
+  // body expanded on a placeholder heading, marked "none".
+  const STILL: BotPose = { ...POSE, heading_source: "none", heading_deg: 0 };
+  const planned = [{ key: "a", ids: ["a"], waypoints: [{ x: 800, y: 800, heading_deg: 120 }], led: null }];
+
+  it("is still the robot's silhouette, at the pose's own heading", () => {
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: STILL, heading: null });
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} from={{ scale: 8, tx: 0, ty: 0 }} />);
+    const pose = screen.getByTestId("planned-a-0");
+    expect(pose).toHaveAttribute("data-pose-shape", "board");
+    expect(pose).toHaveAttribute("data-heading", "120");
+    expect(pose.querySelector('[data-layer="board"]')).not.toBeNull();
+    expect(pose.querySelector('[data-layer="pose-arrow"] polygon')).not.toBeNull();
+  });
+
+  it("says what it asks of the robot on hover", () => {
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: STILL });
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} />);
+    expect(screen.getByTestId("planned-hit-a-0")).toHaveAttribute("title", "Pose 1: face 120°, stop within 10 mm");
   });
 });

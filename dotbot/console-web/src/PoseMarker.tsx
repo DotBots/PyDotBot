@@ -1,6 +1,6 @@
 import React from "react";
 
-import { BotGlyph, robotDraw } from "./BotGlyph";
+import { BotBody, BotGlyph, botBody } from "./BotGlyph";
 import { poseAt } from "./poseGesture";
 import type { BotPose, LH2Position } from "./types";
 
@@ -16,12 +16,16 @@ export const KNOB_R_PX = 5;
 export type PoseLook = "unarmed" | "aiming" | "queued" | "active";
 
 export type PoseShape =
-  | { kind: "board"; pose: BotPose }
-  | { kind: "tick" };
+  | { kind: "board"; pose: BotPose; body: BotBody; footprintPx: number }
+  | { kind: "arrow" };
+
+/** Screen pixels of footprint a pose needs before it is drawn as the robot. */
+export const POSE_BOARD_MIN_PX = 12;
 
 /**
  * What a pose at `anchor` facing `heading` is drawn as: the borrowed body
- * when there is one and it reads at this zoom, the tick otherwise.
+ * when there is one and it is big enough to read, a circle with an arrow
+ * otherwise.
  */
 export function poseShape(
   template: BotPose | null,
@@ -29,10 +33,12 @@ export function poseShape(
   heading: number,
   pxPerMm: number,
 ): PoseShape {
-  if (!template) return { kind: "tick" };
+  if (!template) return { kind: "arrow" };
   const pose = poseAt(template, anchor, heading);
-  const draw = robotDraw(pose, { mode: "body", footprint: false }, pxPerMm, 1);
-  return draw.shape.kind === "board" ? { kind: "board", pose } : { kind: "tick" };
+  const body = botBody(pose);
+  if (!body) return { kind: "arrow" };
+  const footprintPx = body.spanMm * pxPerMm;
+  return footprintPx >= POSE_BOARD_MIN_PX ? { kind: "board", pose, body, footprintPx } : { kind: "arrow" };
 }
 
 /** How far from its axle the robot reaches, board and tyres, in mm. */
@@ -50,7 +56,7 @@ export const facing = (heading: number): LH2Position => {
 /** Where the knob sits, in screen pixels from the anchor. */
 export function knobOffset(shape: PoseShape, heading: number, pxPerMm: number, tickPx: number): LH2Position {
   const f = facing(heading);
-  if (shape.kind === "tick") {
+  if (shape.kind === "arrow") {
     return { x: f.x * (tickPx + KNOB_GAP_PX), y: f.y * (tickPx + KNOB_GAP_PX) };
   }
   const { nose, axle } = shape.pose;
@@ -97,10 +103,28 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
   const ghost = look === "unarmed" || look === "aiming";
   const faint = look === "unarmed";
   const k = knobOffset(shape, heading, pxPerMm, tickPx);
+  // The arrow says "the robot will face this way": from the nose, or from
+  // the circle's rim, out along the heading, with a head.
+  const ringR = Math.max(5, diamondPx * 0.6);
+  const noseOut =
+    shape.kind === "board"
+      ? ((shape.pose.nose.x - anchor.x) * f.x + (shape.pose.nose.y - anchor.y) * f.y) * pxPerMm
+      : ringR;
+  const arrowFrom = noseOut + 1;
+  const arrowTo = noseOut + (shape.kind === "board" ? Math.max(9, shape.footprintPx * 0.35) : tickPx);
+  const head = 5;
+  const side = { x: -f.y, y: f.x };
+  const tip = { x: f.x * arrowTo, y: f.y * arrowTo };
+  const headPoints = [
+    tip,
+    { x: tip.x - f.x * head * 1.6 + side.x * head, y: tip.y - f.y * head * 1.6 + side.y * head },
+    { x: tip.x - f.x * head * 1.6 - side.x * head, y: tip.y - f.y * head * 1.6 - side.y * head },
+  ]
+    .map((q) => `${q.x},${q.y}`)
+    .join(" ");
 
-  let glyph: React.ReactNode;
+  let glyph: React.ReactNode = null;
   if (shape.kind === "board") {
-    const draw = robotDraw(shape.pose, { mode: "body", footprint: false }, pxPerMm, 1);
     const dx = (shape.pose.photodiode.x - anchor.x) * pxPerMm;
     const dy = (shape.pose.photodiode.y - anchor.y) * pxPerMm;
     glyph = (
@@ -116,9 +140,9 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
         <BotGlyph
           state={color}
           led={null}
-          shape={draw.shape}
+          shape={{ kind: "board", body: shape.body }}
           pxPerMm={pxPerMm}
-          footprintPx={draw.footprintPx}
+          footprintPx={Math.max(shape.footprintPx, 16)}
           ghost={ghost || look === "queued"}
           outlineColor={ghost ? "var(--text)" : color}
         />
@@ -126,7 +150,8 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
     );
   }
 
-  const half = Math.max(tickPx, Math.hypot(k.x, k.y)) + KNOB_R_PX + 4;
+  const half = Math.max(arrowTo + head, Math.hypot(k.x, k.y)) + KNOB_R_PX + 4;
+  const labelAt = shape.kind === "board" ? Math.max(12, shape.footprintPx * 0.55) : ringR + 7;
   return (
     <div
       data-testid={testId}
@@ -142,35 +167,34 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
         viewBox={`${-half} ${-half} ${2 * half} ${2 * half}`}
         style={{ position: "absolute", left: -half, top: -half, overflow: "visible" }}
       >
-        {shape.kind === "tick" && (
-          <g opacity={faint ? 0.6 : 1}>
-            <line
-              data-layer="pose-tick"
-              x1={0}
-              y1={0}
-              x2={f.x * tickPx}
-              y2={f.y * tickPx}
-              stroke={color}
-              strokeWidth={2.5}
-              strokeLinecap="round"
-            />
-            <rect
-              x={-diamondPx / 2}
-              y={-diamondPx / 2}
-              width={diamondPx}
-              height={diamondPx}
-              transform="rotate(45)"
-              fill={look === "active" ? color : "var(--canvas)"}
-              stroke={color}
-              strokeWidth={1.5}
-              strokeDasharray={ghost ? "3 2" : undefined}
-            />
-          </g>
+        {shape.kind === "arrow" && (
+          <circle
+            data-layer="pose-ring"
+            r={ringR}
+            fill={look === "active" ? color : "var(--canvas)"}
+            fillOpacity={look === "active" ? 1 : 0.85}
+            stroke={color}
+            strokeWidth={2}
+            strokeDasharray={ghost ? "3 2" : undefined}
+            opacity={faint ? 0.6 : 1}
+          />
         )}
+        <g data-layer="pose-arrow" opacity={faint ? 0.6 : 1}>
+          <line
+            x1={f.x * arrowFrom}
+            y1={f.y * arrowFrom}
+            x2={tip.x - f.x * head}
+            y2={tip.y - f.y * head}
+            stroke={color}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+          <polygon points={headPoints} fill={color} stroke="var(--canvas)" strokeWidth={0.75} />
+        </g>
         {index !== undefined && (
           <text
-            x={-f.x * 12}
-            y={-f.y * 12 + 3.5}
+            x={-f.x * labelAt}
+            y={-f.y * labelAt + 3.5}
             textAnchor="middle"
             style={{ font: "700 10px/1 var(--font-mono)", paintOrder: "stroke" }}
             fill="var(--text)"
@@ -194,20 +218,17 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
           </text>
         )}
         {knob && (
-          <g>
-            <line x1={k.x - f.x * KNOB_GAP_PX} y1={k.y - f.y * KNOB_GAP_PX} x2={k.x} y2={k.y} stroke={color} strokeWidth={1.25} />
-            <circle
-              data-testid={testId ? `${testId}-knob` : undefined}
-              cx={k.x}
-              cy={k.y}
-              r={KNOB_R_PX}
-              fill="var(--surface)"
-              stroke={color}
-              strokeWidth={2}
-              style={{ pointerEvents: "auto", cursor: "grab" }}
-              onPointerDown={onKnobDown}
-            />
-          </g>
+          <circle
+            data-testid={testId ? `${testId}-knob` : undefined}
+            cx={k.x}
+            cy={k.y}
+            r={KNOB_R_PX}
+            fill="var(--surface)"
+            stroke={color}
+            strokeWidth={2}
+            style={{ pointerEvents: "auto", cursor: "grab" }}
+            onPointerDown={onKnobDown}
+          />
         )}
       </svg>
     </div>

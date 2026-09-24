@@ -865,6 +865,7 @@ export const App: React.FC = () => {
               onSetHeading={onSetHeading}
               poseMode={poseMode}
               onPoseMode={setPoseMode}
+              waypointSettings={wpSettings}
               session={session}
               onPickCapturer={(id) => setCapturer(id.toUpperCase())}
               site={site}
