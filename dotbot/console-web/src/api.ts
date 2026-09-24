@@ -117,12 +117,12 @@ export async function putWaypoints(
   application: number,
   threshold: number,
   waypoints: Waypoint[],
-  intermediateThreshold?: number,
+  batch: { intermediate_threshold?: number; heading_tolerance?: number } = {},
 ): Promise<void> {
   await fetch(`${CONTROLLER}/dotbots/${address}/${application}/waypoints`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threshold, waypoints, intermediate_threshold: intermediateThreshold }),
+    body: JSON.stringify({ threshold, waypoints, ...batch }),
   });
 }
 

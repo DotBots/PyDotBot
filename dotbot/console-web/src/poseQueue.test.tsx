@@ -163,7 +163,7 @@ describe("a queued pose in the waypoint queue", () => {
     press(ACTION_KEY.go);
     expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 270 },
-    ], 20);
+    ], { intermediate_threshold: 20 });
   });
 
   it("shows its heading as a number the keys step and clear", () => {
@@ -187,7 +187,7 @@ describe("a queued pose in the waypoint queue", () => {
     expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
       { x: expect.any(Number), y: expect.any(Number) },
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 90 },
-    ], 20);
+    ], { intermediate_threshold: 20 });
   });
 });
 
@@ -239,32 +239,55 @@ describe("the robot's own report on its batch", () => {
   });
 });
 
-describe("the arrival radius", () => {
-  it("sends 10 mm and a 20 mm pass radius by default, and the preset chosen after", () => {
-    window.localStorage.clear();
+describe("the waypoint settings", () => {
+  const KEY = "dotbot.console.waypointSettings";
+  const typeInto = (id: string, text: string) => {
+    fireEvent.change(screen.getByTestId(id), { target: { value: text } });
+    fireEvent.keyDown(screen.getByTestId(id), { key: "Enter" });
+  };
+
+  it("sends 10 mm, a 20 mm pass radius and the firmware's tolerance by default", () => {
     select("1111");
     render(<App />);
     queuePose();
     openQueue();
     expect(screen.getByTestId("arrival-10")).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByTestId("arrival-2"));
-    expect(window.localStorage.getItem("dotbot.console.arrivalMm")).toBe("2");
+    expect((screen.getByTestId("heading-tol") as HTMLInputElement).placeholder).toBe("3");
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 2, expect.any(Array), 20);
+    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 10, expect.any(Array), {
+      intermediate_threshold: 20,
+    });
   });
 
-  it("reads the stored preset back, and ignores one that is not a preset", () => {
-    window.localStorage.setItem("dotbot.console.arrivalMm", "5");
+  it("sends a preset, then exact numbers held to their range, and remembers them", () => {
     select("1111");
-    const { unmount } = render(<App />);
-    queueWaypoint();
+    render(<App />);
+    queuePose();
+    openQueue();
+    fireEvent.click(screen.getByTestId("arrival-2"));
+    expect((screen.getByTestId("arrival-mm") as HTMLInputElement).value).toBe("2");
+    typeInto("arrival-mm", "7");
+    expect(screen.getByTestId("arrival-2")).toHaveAttribute("aria-checked", "false");
+    typeInto("pass-mm", "9000");
+    typeInto("heading-tol", "0");
+    expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual({ arrivalMm: 7, passMm: 500, headingTolDeg: 1 });
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 5, expect.any(Array), 20);
-    unmount();
-    window.localStorage.setItem("dotbot.console.arrivalMm", "60");
+    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 7, expect.any(Array), {
+      intermediate_threshold: 500,
+      heading_tolerance: 1,
+    });
+  });
+
+  it("drops the tolerance back to the firmware's when cleared", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ arrivalMm: 5, passMm: 30, headingTolDeg: 4 }));
+    select("1111");
     render(<App />);
     queueWaypoint();
+    openQueue();
+    typeInto("heading-tol", "");
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 10, expect.any(Array), 20);
+    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 5, expect.any(Array), {
+      intermediate_threshold: 30,
+    });
   });
 });

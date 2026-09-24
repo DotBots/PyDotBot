@@ -6,7 +6,15 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { ARRIVAL_PRESETS } from "./arrival";
+import {
+  ARRIVAL_NOTE,
+  ARRIVAL_PRESETS,
+  FIRMWARE_HEADING_TOL_DEG,
+  HEADING_TOL_DEG,
+  RADIUS_MM,
+  WaypointSettings,
+  clampTo,
+} from "./arrival";
 import { isPose, normDeg } from "./poseGesture";
 import { ACTION_KEY } from "./shortcuts";
 import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint } from "./types";
@@ -56,8 +64,8 @@ interface FooterProps {
   onSetPendingHeading?: (index: number, heading: number | null) => void;
   poseMode?: boolean;
   onPoseMode?: (on: boolean) => void;
-  arrivalMm?: number;
-  onArrivalMm?: (mm: number) => void;
+  waypointSettings?: WaypointSettings;
+  onWaypointSettings?: (s: WaypointSettings) => void;
   onToast: (msg: string) => void;
 }
 
@@ -153,6 +161,124 @@ export const HeadingField: React.FC<{
   );
 };
 
+/**
+ * A number field that commits on Enter or blur, held to `range`; an empty
+ * field is null when `optional`, and reverts otherwise.
+ */
+const NumberSetting: React.FC<{
+  label: string;
+  unit: string;
+  value: number | null;
+  range: { min: number; max: number };
+  placeholder?: string;
+  optional?: boolean;
+  testId: string;
+  onChange: (v: number | null) => void;
+}> = ({ label, unit, value, range, placeholder, optional = false, testId, onChange }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (text: string) => {
+    setDraft(null);
+    const v = clampTo(text, range);
+    if (v !== null) onChange(v);
+    else if (optional && text.trim() === "") onChange(null);
+  };
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <span style={{ color: "var(--muted)", flex: 1 }}>{label}</span>
+      <input
+        data-testid={testId}
+        inputMode="numeric"
+        aria-label={`${label}, ${unit}`}
+        placeholder={placeholder}
+        value={draft ?? (value === null ? "" : String(value))}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        }}
+        style={{
+          width: 42,
+          ...mono,
+          fontSize: 11,
+          padding: "1px 4px",
+          background: "var(--canvas)",
+          color: "var(--text)",
+          border: "1px solid var(--hairline)",
+          borderRadius: 4,
+          textAlign: "right",
+        }}
+      />
+      <span style={{ color: "var(--muted)", width: 18 }}>{unit}</span>
+    </label>
+  );
+};
+
+/** How missions end and pass their points: presets, then exact numbers. */
+export const WaypointSettingsSection: React.FC<{
+  value: WaypointSettings;
+  onChange: (s: WaypointSettings) => void;
+}> = ({ value, onChange }) => (
+  <div
+    data-testid="waypoint-settings"
+    style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--hairline)", fontSize: 11, display: "grid", gap: 5 }}
+  >
+    <span style={label}>Waypoint settings</span>
+    <div
+      role="radiogroup"
+      aria-label="Stop within"
+      title="How close the robot's centre comes to the last waypoint before it stops and turns; under 5 mm it settles slowly"
+      style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}
+    >
+      {ARRIVAL_PRESETS.map((p) => (
+        <span
+          key={p.mm}
+          role="radio"
+          aria-checked={value.arrivalMm === p.mm}
+          data-testid={`arrival-${p.mm}`}
+          title={ARRIVAL_NOTE[p.mm]}
+          onClick={() => onChange({ ...value, arrivalMm: p.mm })}
+          style={{
+            padding: "2px 6px",
+            borderRadius: 4,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            border: `1px solid ${value.arrivalMm === p.mm ? "var(--accent)" : "var(--hairline)"}`,
+            color: value.arrivalMm === p.mm ? "var(--accent)" : "var(--text)",
+          }}
+        >
+          {p.label}
+        </span>
+      ))}
+    </div>
+    <NumberSetting
+      label="Stop within"
+      unit="mm"
+      testId="arrival-mm"
+      value={value.arrivalMm}
+      range={RADIUS_MM}
+      onChange={(v) => v !== null && onChange({ ...value, arrivalMm: v })}
+    />
+    <NumberSetting
+      label="Pass points within"
+      unit="mm"
+      testId="pass-mm"
+      value={value.passMm}
+      range={RADIUS_MM}
+      onChange={(v) => v !== null && onChange({ ...value, passMm: v })}
+    />
+    <NumberSetting
+      label="Heading within"
+      unit="°"
+      testId="heading-tol"
+      value={value.headingTolDeg}
+      range={HEADING_TOL_DEG}
+      placeholder={String(FIRMWARE_HEADING_TOL_DEG)}
+      optional
+      onChange={(v) => onChange({ ...value, headingTolDeg: v })}
+    />
+  </div>
+);
+
 const ControlDock: React.FC<{
   targets: UnifiedBot[];
   pending: Waypoint[];
@@ -166,8 +292,8 @@ const ControlDock: React.FC<{
   onSetPendingHeading?: (i: number, heading: number | null) => void;
   poseMode?: boolean;
   onPoseMode?: (on: boolean) => void;
-  arrivalMm?: number;
-  onArrivalMm?: (mm: number) => void;
+  waypointSettings?: WaypointSettings;
+  onWaypointSettings?: (s: WaypointSettings) => void;
   onToast: (msg: string) => void;
 }> = ({
   targets,
@@ -182,8 +308,8 @@ const ControlDock: React.FC<{
   onSetPendingHeading,
   poseMode = false,
   onPoseMode,
-  arrivalMm,
-  onArrivalMm,
+  waypointSettings,
+  onWaypointSettings,
   onToast,
 }) => {
   const [ledOpen, setLedOpen] = useState(false);
@@ -441,7 +567,7 @@ const ControlDock: React.FC<{
 
       {/* waypoint queue popover */}
       {wpOpen && (
-        <div style={{ ...popBase, width: 262 }}>
+        <div style={{ ...popBase, width: 280 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
             <span style={label}>Waypoint queue</span>
             {pending.length > 0 && (
@@ -499,34 +625,8 @@ const ControlDock: React.FC<{
               or hold for a pose.
             </div>
           )}
-          {arrivalMm !== undefined && onArrivalMm && (
-            <div
-              role="radiogroup"
-              aria-label="Stop within"
-              title="How close the robot's centre comes to the last waypoint before it stops and turns; under 5 mm it settles slowly"
-              style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 11 }}
-            >
-              <span style={{ color: "var(--muted)", marginRight: 2 }}>Stop within</span>
-              {ARRIVAL_PRESETS.map((p) => (
-                <span
-                  key={p.mm}
-                  role="radio"
-                  aria-checked={arrivalMm === p.mm}
-                  data-testid={`arrival-${p.mm}`}
-                  onClick={() => onArrivalMm(p.mm)}
-                  style={{
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    border: `1px solid ${arrivalMm === p.mm ? "var(--accent)" : "var(--hairline)"}`,
-                    color: arrivalMm === p.mm ? "var(--accent)" : "var(--text)",
-                  }}
-                >
-                  {p.label}
-                </span>
-              ))}
-            </div>
+          {waypointSettings && onWaypointSettings && (
+            <WaypointSettingsSection value={waypointSettings} onChange={onWaypointSettings} />
           )}
         </div>
       )}
@@ -716,8 +816,8 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onSetPendingHeading={props.onSetPendingHeading}
               poseMode={props.poseMode}
               onPoseMode={props.onPoseMode}
-              arrivalMm={props.arrivalMm}
-              onArrivalMm={props.onArrivalMm}
+              waypointSettings={props.waypointSettings}
+              onWaypointSettings={props.onWaypointSettings}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
@@ -782,8 +882,8 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onSetPendingHeading={props.onSetPendingHeading}
               poseMode={props.poseMode}
               onPoseMode={props.onPoseMode}
-              arrivalMm={props.arrivalMm}
-              onArrivalMm={props.onArrivalMm}
+              waypointSettings={props.waypointSettings}
+              onWaypointSettings={props.onWaypointSettings}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />

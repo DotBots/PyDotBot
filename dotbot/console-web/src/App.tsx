@@ -35,7 +35,7 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
-import { INTERMEDIATE_MM, loadArrivalMm, saveArrivalMm } from "./arrival";
+import { WaypointSettings, batchFields, loadWaypointSettings, saveWaypointSettings } from "./arrival";
 import {
   ACTION_KEY,
   CLOSE_KEY,
@@ -151,12 +151,13 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
-  // The last waypoint's arrival radius, in mm, this browser's choice.
-  const [arrivalMm, setArrivalMmState] = useState(loadArrivalMm);
-  const setArrivalMm = useCallback((mm: number) => {
-    setArrivalMmState(mm);
-    saveArrivalMm(mm);
+  // How missions end and pass their points, this browser's choice.
+  const [wpSettings, setWpSettingsState] = useState(loadWaypointSettings);
+  const setWpSettings = useCallback((s: WaypointSettings) => {
+    setWpSettingsState(s);
+    saveWaypointSettings(s);
   }, []);
+  const arrivalMm = wpSettings.arrivalMm;
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
     waypoints: true,
@@ -471,7 +472,7 @@ export const App: React.FC = () => {
     (m: PlannedMission) => {
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
       targets.forEach((b) => {
-        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, INTERMEDIATE_MM).catch(() => {});
+        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, batchFields(wpSettings)).catch(() => {});
       });
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
@@ -480,7 +481,7 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast, arrivalMm],
+    [bots, showToast, arrivalMm, wpSettings],
   );
 
   const onGo = useCallback(() => {
@@ -509,10 +510,10 @@ export const App: React.FC = () => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
     again.forEach((b) => {
-      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), INTERMEDIATE_MM).catch(() => {});
+      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), batchFields(wpSettings)).catch(() => {});
     });
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast, arrivalMm]);
+  }, [selectedBots, showToast, arrivalMm, wpSettings]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -982,8 +983,8 @@ export const App: React.FC = () => {
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
         onSetPendingHeading={onSetPendingHeading}
-        arrivalMm={arrivalMm}
-        onArrivalMm={setArrivalMm}
+        waypointSettings={wpSettings}
+        onWaypointSettings={setWpSettings}
         poseMode={poseMode}
         onPoseMode={setPoseMode}
         onToast={showToast}
