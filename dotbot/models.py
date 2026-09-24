@@ -12,9 +12,9 @@
 from enum import IntEnum
 from typing import Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from dotbot.protocol import ApplicationType, ControlModeType
+from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
 
 MAX_POSITION_HISTORY_SIZE = 1000
@@ -46,6 +46,12 @@ class DotBotWheelVelocityCommandModel(BaseModel):
 
     left_mm_s: int = Field(ge=-700, le=700)
     right_mm_s: int = Field(ge=-700, le=700)
+
+
+class DotBotMaxSpeedCommandModel(BaseModel):
+    """Cruise speed limit for waypoint moves, in mm/s; 0 restores the default."""
+
+    max_speed_mm_s: int = Field(ge=0, le=700)
 
 
 class DotBotRgbLedCommandModel(BaseModel):
@@ -82,16 +88,38 @@ class DotBotGPSPosition(BaseModel):
     longitude: float
 
 
+class DotBotLH2Waypoint(DotBotLH2Position):
+    """An LH2 waypoint, optionally a pose.
+
+    Without a heading, (x, y) is a target for the robot's LH2 photodiode. With
+    one, (x, y) is the axle midpoint and the robot turns in place to face
+    `heading_deg` there: degrees clockwise from +y, as the advertised
+    `direction`, normalised to [0, 360).
+    """
+
+    heading_deg: Optional[float] = None
+
+    @field_validator("heading_deg")
+    @classmethod
+    def _normalise(cls, value: Optional[float]) -> Optional[float]:
+        return None if value is None else value % 360.0
+
+
 class DotBotWaypoints(BaseModel):
     """Waypoints model.
 
-    An LH2 waypoint is a target for the robot's LH2 photodiode, not for its
-    body: the robot has arrived when its photodiode is within `threshold` mm
-    of it.
+    The robot drives through the points in order. It passes an intermediate
+    point once its photodiode is within `intermediate_threshold` mm of it, or
+    past it along the leg, without stopping, and stops at the last one within
+    `threshold` mm. A point with a heading is a pose: the robot stops there
+    within `threshold`, turns to the heading within `heading_tolerance`
+    degrees, then goes on. None leaves the firmware's default.
     """
 
     threshold: int
-    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]]
+    waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]]
+    intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
+    heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
 
 
 class DotBotAreaModel(BaseModel):
@@ -469,8 +497,15 @@ class DotBotModel(BaseModel):
     lh2_position: Optional[DotBotLH2Position] = None
     pose: Optional[DotBotPoseModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
-    waypoints: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 100  # in mm
+    # The waypoint report, from apps that send one (dotbot-next)
+    waypoints_status: Optional[WaypointsStatus] = None
+    waypoints_reason: Optional[str] = None  # why FAILED or ABORTED
+    waypoint_index: Optional[int] = (
+        None  # the point being driven to; the count once arrived
+    )
+    max_speed: Optional[int] = None  # cruise speed limit in force, mm/s
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
@@ -500,9 +535,13 @@ class DotBotNotificationUpdate(BaseModel):
     gps_position: Optional[DotBotGPSPosition] = None
     battery: Optional[float] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
-    lh2_waypoints: Optional[List[DotBotLH2Position]] = None
+    lh2_waypoints: Optional[List[Union[DotBotLH2Waypoint, DotBotLH2Position]]] = None
     gps_waypoints: Optional[List[DotBotGPSPosition]] = None
     waypoints_threshold: Optional[int] = None
+    waypoints_status: Optional[WaypointsStatus] = None
+    waypoints_reason: Optional[str] = None
+    waypoint_index: Optional[int] = None
+    max_speed: Optional[int] = None
     position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
 
 

@@ -33,8 +33,12 @@ from dotbot.protocol import (
     DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
+    PayloadCommandMaxSpeed,
     PayloadControlMode,
     PayloadDotBotAdvertisement,
+    PayloadLH2Location,
+    PayloadLH2Waypoints,
+    WaypointsStatus,
 )
 from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
@@ -978,3 +982,162 @@ def test_the_twin_measures_its_first_heading_from_where_it_was_created(
     assert twin.pos_x < 1500 - 50
     assert twin.pos_y == pytest.approx(1500)
     assert twin.direction == 90
+
+
+# --- The waypoint report and the commands it confirms ------------------------
+
+
+def _report(source: int = BOT, **fields) -> Frame:
+    fields.setdefault("direction", 90)
+    fields.setdefault("pos_x", 1000)
+    fields.setdefault("pos_y", 1000)
+    return _advertised(source, report=True, **fields)
+
+
+def _batch(count: int = 2) -> PayloadLH2Waypoints:
+    return PayloadLH2Waypoints(
+        threshold=5,
+        count=count,
+        waypoints=[PayloadLH2Location(pos_x=1000 + i, pos_y=500) for i in range(count)],
+    )
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    clock = _Clock()
+    monkeypatch.setattr("dotbot.controller.time.monotonic", clock)
+    return clock
+
+
+@pytest.mark.asyncio
+async def test_the_waypoint_report_reaches_the_model(controller):
+    controller.handle_received_frame(
+        _report(
+            waypoint_idx=2,
+            waypoints_status=WaypointsStatus.FAILED,
+            waypoints_reason=3,
+            batch_id=17,
+            max_speed_10mm=30,
+        )
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.waypoints_status == WaypointsStatus.FAILED
+    assert dotbot.waypoints_reason == "PROGRESS"
+    assert dotbot.waypoint_index == 2
+    assert dotbot.max_speed == 300
+
+    controller.handle_received_frame(
+        _report(waypoints_status=WaypointsStatus.ABORTED, waypoints_reason=2)
+    )
+    assert controller.dotbots[addr_to_hex(BOT)].waypoints_reason == "DIRECT"
+
+
+@pytest.mark.asyncio
+async def test_an_advertisement_without_a_report_leaves_it_unknown(controller):
+    controller.handle_received_frame(_advertised(BOT, direction=90, pos_x=1, pos_y=1))
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert dotbot.waypoints_status is None and dotbot.waypoint_index is None
+
+
+@pytest.mark.asyncio
+async def test_a_batch_takes_the_next_id_after_the_advertised_one(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=254))
+    address = addr_to_hex(BOT)
+    first, second = _batch(), _batch()
+    controller.send_waypoints(address, first)
+    controller.send_waypoints(address, second)
+    assert (first.batch_id, second.batch_id) == (255, 1)  # 0 is never used
+    assert controller.send_payload.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_batch_is_not_resent(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=batch.batch_id))
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=batch.batch_id))
+    assert controller.send_payload.call_count == 1
+    assert not controller.pending_commands
+
+
+@pytest.mark.asyncio
+async def test_a_lost_batch_is_resent_until_confirmed(controller, clock):
+    """An advert that still shows the old id triggers a resend, but only once
+    an advert has had time to carry the new one."""
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    clock.now += 0.5
+    controller.handle_received_frame(_report(batch_id=3))
+    assert controller.send_payload.call_count == 1
+    clock.now += 1.0
+    controller.handle_received_frame(_report(batch_id=3))
+    assert controller.send_payload.call_count == 2
+    assert controller.send_payload.call_args.args == (BOT, batch)
+    clock.now += 0.5
+    controller.handle_received_frame(_report(batch_id=batch.batch_id))
+    clock.now += 5.0
+    controller.handle_received_frame(_report(batch_id=batch.batch_id))
+    assert controller.send_payload.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_resending_gives_up(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    for _ in range(10):
+        clock.now += 1.5
+        controller.handle_received_frame(_report(batch_id=3))
+    assert controller.send_payload.call_count == 5
+    assert not controller.pending_commands
+
+
+@pytest.mark.asyncio
+async def test_a_robot_without_a_report_gets_the_batch_once(controller, clock):
+    """Apps that do not confirm must not have their path restarted by resends."""
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_advertised(BOT, direction=90, pos_x=1, pos_y=1))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    for _ in range(3):
+        clock.now += 2.0
+        controller.handle_received_frame(
+            _advertised(BOT, direction=90, pos_x=1, pos_y=1)
+        )
+    assert controller.send_payload.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_max_speed_is_resent_until_advertised(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(max_speed_10mm=30))
+    address = addr_to_hex(BOT)
+    controller.send_max_speed(address, 455)
+    clock.now += 1.5
+    controller.handle_received_frame(_report(max_speed_10mm=30))
+    assert controller.send_payload.call_count == 2
+    assert controller.send_payload.call_args.args == (
+        BOT,
+        PayloadCommandMaxSpeed(max_speed_mm_s=455),
+    )
+    controller.handle_received_frame(_report(max_speed_10mm=46))
+    clock.now += 1.5
+    controller.handle_received_frame(_report(max_speed_10mm=46))
+    assert controller.send_payload.call_count == 2
+    assert controller.dotbots[address].max_speed == 460

@@ -13,6 +13,7 @@ from dotbot.controller import ControllerSettings, device_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
+    DotBotLH2Waypoint,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
@@ -23,6 +24,7 @@ from dotbot.models import (
     WSWaypoints,
 )
 from dotbot.protocol import (
+    WAYPOINT_NO_HEADING,
     ApplicationType,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
@@ -392,10 +394,10 @@ async def test_set_dotbots_waypoints(
         if has_position is True:
             expected_waypoints = [
                 DotBotLH2Position(x=100, y=500),
-                DotBotLH2Position(x=500, y=100),
+                DotBotLH2Waypoint(x=500, y=100),
             ]
         else:
-            expected_waypoints = [DotBotLH2Position(x=500, y=100)]
+            expected_waypoints = [DotBotLH2Waypoint(x=500, y=100)]
 
     response = await client.put(
         f"/controller/dotbots/{address}/{application.value}/waypoints",
@@ -403,7 +405,12 @@ async def test_set_dotbots_waypoints(
     )
     assert response.status_code == code
 
-    if found:
+    if found and application == ApplicationType.DotBot:
+        api.controller.send_waypoints.assert_called_with(address, payload)
+        api.controller.send_payload.assert_not_called()
+        assert api.controller.dotbots[address].waypoints == expected_waypoints
+        assert api.controller.dotbots[address].waypoints_threshold == expected_threshold
+    elif found:
         api.controller.send_payload.assert_called_with(int(address, 16), payload)
         assert api.controller.dotbots[address].waypoints == expected_waypoints
         assert api.controller.dotbots[address].waypoints_threshold == expected_threshold
@@ -942,7 +949,12 @@ def test_ws_dotbots_commands(
     with TestClient(api).websocket_connect("/controller/ws/dotbots") as ws:
         ws.send_json(ws_message.model_dump())
 
-    if should_call:
+    if should_call and isinstance(expected_payload, PayloadLH2Waypoints):
+        # sent under a batch id, and resent until the robot confirms it
+        api.controller.send_waypoints.assert_called_with(
+            ws_message.address, expected_payload
+        )
+    elif should_call:
         api.controller.send_payload.assert_called()
         if expected_payload is not None:
             api.controller.send_payload.assert_called_with(
@@ -1636,3 +1648,77 @@ async def test_a_console_that_connects_late_is_told_the_last_frame(
         await controller._push_camera_detections()
         assert controller.notify_clients.await_count == 1
         assert controller._camera_pushed["dev-corner"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_set_dotbots_waypoints_poses():
+    """Headings, the intermediate radius and the heading tolerance reach the
+    wire: a heading in [0, 360) goes out as centidegrees in [-18000, 18000),
+    a point without one as no heading."""
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242", application=ApplicationType.DotBot, last_seen=123.4
+        )
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints",
+        json={
+            "threshold": 5,
+            "intermediate_threshold": 30,
+            "heading_tolerance": 4,
+            "waypoints": [
+                {"x": 500, "y": 100},
+                {"x": 600, "y": 100, "heading_deg": 270},
+                {"x": 700, "y": 100, "heading_deg": -45.5},
+                {"x": 800, "y": 100, "heading_deg": 180},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    address, payload = api.controller.send_waypoints.call_args.args
+    assert address == "4242"
+    assert (payload.threshold, payload.pass_mm, payload.heading_tol_deg) == (5, 30, 4)
+    assert [h.heading_cdeg for h in payload.headings] == [
+        WAYPOINT_NO_HEADING,
+        -9000,
+        -4550,
+        -18000,
+    ]
+    stored = api.controller.dotbots["4242"].waypoints
+    assert [w.heading_deg for w in stored] == [None, 270.0, 314.5, 180.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "speed,code,called",
+    [
+        pytest.param(400, 200, True, id="valid"),
+        pytest.param(0, 200, True, id="default"),
+        pytest.param(701, 422, False, id="too_fast"),
+        pytest.param(-1, 422, False, id="negative"),
+    ],
+)
+async def test_set_dotbots_max_speed(speed, code, called):
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242", application=ApplicationType.DotBot, last_seen=123.4
+        )
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/max_speed", json={"max_speed_mm_s": speed}
+    )
+    assert response.status_code == code
+    if called:
+        api.controller.send_max_speed.assert_called_with("4242", speed)
+    else:
+        api.controller.send_max_speed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_dotbots_max_speed_unknown_dotbot():
+    api.controller.dotbots = {}
+    response = await client.put(
+        "/controller/dotbots/4242/0/max_speed", json={"max_speed_mm_s": 300}
+    )
+    assert response.status_code == 404
+    api.controller.send_max_speed.assert_not_called()

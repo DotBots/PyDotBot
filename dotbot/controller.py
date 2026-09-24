@@ -13,10 +13,11 @@ import json
 import math
 import os
 import queue
+import random
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import serial
 import starlette
@@ -81,8 +82,14 @@ from dotbot.protocol import (
     DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
+    PayloadCommandMaxSpeed,
+    PayloadDotBotAdvertisement,
     PayloadLh2CalibrationHomography,
+    PayloadLH2Waypoints,
     PayloadType,
+    WaypointsAbortReason,
+    WaypointsFailReason,
+    WaypointsStatus,
 )
 from dotbot.robots import (
     SWARMIT_DEVICE_MODELS,
@@ -110,6 +117,11 @@ LOST_DELAY = 60  # seconds
 # A robot silent this long no longer names what a camera sees.
 CAMERA_PRIOR_MAX_AGE_S = 2.0
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
+# A command the robot confirms in its advertisement is resent when an
+# advertisement this long after sending still does not show it; adverts come
+# every 0.1 to 1 s, twice that on a bench-telemetry build
+CONFIRM_RESEND_AFTER_S = 1.2
+CONFIRM_TRIES = 5
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
 
@@ -130,6 +142,16 @@ def load_camera_calibration(spec: str, site: Optional[str] = None):
     from dotbot.camera.registration import load_camera_calibration as _load
 
     return _load(spec, site=site)
+
+
+@dataclass
+class PendingCommand:
+    """A command sent and not yet seen confirmed in an advertisement."""
+
+    payload: Payload
+    confirmed: Callable[[PayloadDotBotAdvertisement], bool]
+    sent: float
+    tries: int = 1
 
 
 class ControllerException(Exception):
@@ -254,6 +276,8 @@ class Controller:
         self.logger = LOGGER.bind(context=__name__)
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
+        self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
+        self.batch_ids: Dict[str, int] = {}
         self.websockets = []
         self.site = settings.site or Site()
         self.calibration = None
@@ -650,6 +674,10 @@ class Controller:
             dotbot.gps_position = self.dotbots[source].gps_position
             dotbot.waypoints = self.dotbots[source].waypoints
             dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
+            dotbot.waypoints_status = self.dotbots[source].waypoints_status
+            dotbot.waypoints_reason = self.dotbots[source].waypoints_reason
+            dotbot.waypoint_index = self.dotbots[source].waypoint_index
+            dotbot.max_speed = self.dotbots[source].max_speed
             dotbot.position_history = self.dotbots[source].position_history
             dotbot.battery = self.dotbots[source].battery
             dotbot.calibrated = self.dotbots[source].calibrated
@@ -675,7 +703,7 @@ class Controller:
                 "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
             )
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
-            need_update = False
+            need_update = self._waypoints_report(dotbot, frame.packet.payload)
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
@@ -927,6 +955,107 @@ class Controller:
                 for websocket in self.websockets
             ]
         )
+
+    def send_confirmed(
+        self,
+        address: str,
+        payload: Payload,
+        confirmed: Callable[[PayloadDotBotAdvertisement], bool],
+    ):
+        """Send a command, and resend it until an advertisement confirms it.
+
+        Robots whose advertisement carries no waypoint report cannot confirm,
+        so for them the command is sent once.
+        """
+        key = (address, type(payload).__name__)
+        self.pending_commands[key] = PendingCommand(
+            payload=payload, confirmed=confirmed, sent=time.monotonic()
+        )
+        self.send_payload(int(address, 16), payload)
+
+    def send_waypoints(self, address: str, payload: PayloadLH2Waypoints):
+        """Send a waypoint batch under a new batch id, resent until the
+        robot advertises that id."""
+        last = self.batch_ids.get(address, random.randrange(255))
+        payload.batch_id = last % 255 + 1
+        self.batch_ids[address] = payload.batch_id
+        batch_id = payload.batch_id
+        self.send_confirmed(address, payload, lambda adv: adv.batch_id == batch_id)
+
+    def send_max_speed(self, address: str, max_speed_mm_s: int):
+        """Send the cruise speed limit, resent until the robot advertises it;
+        0, the firmware default, is sent once."""
+        payload = PayloadCommandMaxSpeed(max_speed_mm_s=max_speed_mm_s)
+        if max_speed_mm_s == 0:
+            self.send_payload(int(address, 16), payload)
+            return
+        expected = round(min(max(max_speed_mm_s, 20), 700) / 10)
+        self.send_confirmed(
+            address, payload, lambda adv: adv.max_speed_10mm == expected
+        )
+
+    def _resend_pending(self, address: str, advert: PayloadDotBotAdvertisement):
+        now = time.monotonic()
+        for key in [key for key in self.pending_commands if key[0] == address]:
+            pending = self.pending_commands[key]
+            if not advert.has_report or pending.confirmed(advert):
+                del self.pending_commands[key]
+            elif now - pending.sent < CONFIRM_RESEND_AFTER_S:
+                continue
+            elif pending.tries >= CONFIRM_TRIES:
+                self.logger.warning(
+                    "Command not confirmed, giving up",
+                    address=address,
+                    payload=key[1],
+                    tries=pending.tries,
+                )
+                del self.pending_commands[key]
+            else:
+                pending.tries += 1
+                pending.sent = now
+                self.logger.info(
+                    "Command not confirmed, resending",
+                    address=address,
+                    payload=key[1],
+                    tries=pending.tries,
+                )
+                self.send_payload(int(address, 16), pending.payload)
+
+    def _waypoints_report(
+        self, dotbot: DotBotModel, advert: PayloadDotBotAdvertisement
+    ) -> bool:
+        """Take the waypoint report from an advertisement, resend what it
+        does not confirm, and return whether the robot's state changed."""
+        self._resend_pending(dotbot.address, advert)
+        if not advert.has_report:
+            return False
+        self.batch_ids.setdefault(dotbot.address, advert.batch_id)
+        try:
+            status = WaypointsStatus(advert.waypoints_status)
+        except ValueError:
+            status = None
+        reason = None
+        try:
+            if status == WaypointsStatus.FAILED:
+                reason = WaypointsFailReason(advert.waypoints_reason).name
+            elif status == WaypointsStatus.ABORTED:
+                reason = WaypointsAbortReason(advert.waypoints_reason).name
+        except ValueError:
+            reason = str(advert.waypoints_reason)
+        report = (status, reason, advert.waypoint_idx, advert.max_speed_10mm * 10)
+        changed = report != (
+            dotbot.waypoints_status,
+            dotbot.waypoints_reason,
+            dotbot.waypoint_index,
+            dotbot.max_speed,
+        )
+        (
+            dotbot.waypoints_status,
+            dotbot.waypoints_reason,
+            dotbot.waypoint_index,
+            dotbot.max_speed,
+        ) = report
+        return changed
 
     def send_payload(self, destination: int, payload: Payload):
         """Sends a command in an HDLC frame over serial."""

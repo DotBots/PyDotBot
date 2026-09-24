@@ -45,6 +45,7 @@ from dotbot.models import (
     DotBotCameraDetectionModel,
     DotBotCameraModel,
     DotBotConnectionModel,
+    DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotNotificationCommand,
@@ -62,6 +63,7 @@ from dotbot.models import (
     WSWaypoints,
 )
 from dotbot.protocol import (
+    WAYPOINT_NO_HEADING,
     ApplicationType,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
@@ -70,6 +72,7 @@ from dotbot.protocol import (
     PayloadGPSWaypoints,
     PayloadLH2Location,
     PayloadLH2Waypoints,
+    PayloadWaypointHeading,
 )
 from dotbot.swarm_client import conn_string
 
@@ -176,6 +179,25 @@ async def dotbots_wheel_velocity(
 
 
 @api.put(
+    path="/controller/dotbots/{address}/{application}/max_speed",
+    summary="Set the cruise speed limit of waypoint moves, in mm/s",
+    tags=["dotbots"],
+)
+async def dotbots_max_speed(
+    address: str, application: int, command: DotBotMaxSpeedCommandModel
+):
+    """Set the fastest a DotBot drives between waypoints, until the next
+    change or a reset; 0 restores the firmware's default.
+
+    Only the dotbot-next firmware app acts on this command, and clamps the
+    value to 20 to 700 mm/s.
+    """
+    if address not in api.controller.dotbots:
+        raise HTTPException(status_code=404, detail="No matching dotbot found")
+    api.controller.send_max_speed(address, command.max_speed_mm_s)
+
+
+@api.put(
     path="/controller/dotbots/{address}/{application}/rgb_led",
     summary="Set the dotbot RGB LED color",
     tags=["dotbots"],
@@ -221,6 +243,15 @@ async def dotbots_waypoints(
     )
 
 
+def _heading_cdeg(waypoint) -> int:
+    """A waypoint's heading on the wire: centidegrees in [-18000, 18000)."""
+    heading = getattr(waypoint, "heading_deg", None)
+    if heading is None:
+        return WAYPOINT_NO_HEADING
+    cdeg = round(heading * 100) % 36000
+    return cdeg - 36000 if cdeg >= 18000 else cdeg
+
+
 async def _dotbots_waypoints(
     address: str,
     application: int,
@@ -263,6 +294,12 @@ async def _dotbots_waypoints(
                 )
                 for waypoint in waypoints.waypoints
             ],
+            heading_tol_deg=waypoints.heading_tolerance or 0,
+            pass_mm=waypoints.intermediate_threshold or 0,
+            headings=[
+                PayloadWaypointHeading(heading_cdeg=_heading_cdeg(waypoint))
+                for waypoint in waypoints.waypoints
+            ],
         )
         update_data = DotBotNotificationUpdate(
             address=address,
@@ -271,7 +308,10 @@ async def _dotbots_waypoints(
         )
     api.controller.dotbots[address].waypoints = waypoints_list
     api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
-    api.controller.send_payload(int(address, 16), payload)
+    if isinstance(payload, PayloadLH2Waypoints):
+        api.controller.send_waypoints(address, payload)
+    else:
+        api.controller.send_payload(int(address, 16), payload)
     notification = DotBotNotificationModel(
         cmd=DotBotNotificationCommand.UPDATE, data=update_data
     )
