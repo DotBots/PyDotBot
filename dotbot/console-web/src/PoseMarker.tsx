@@ -35,6 +35,12 @@ export function poseShape(
   return draw.shape.kind === "board" ? { kind: "board", pose } : { kind: "tick" };
 }
 
+/** How far from its axle the robot reaches, board and tyres, in mm. */
+export function axleReachMm(pose: BotPose): number {
+  const points = [...pose.outline, ...pose.wheels.flat()];
+  return Math.max(0, ...points.map((p) => Math.hypot(p.x - pose.axle.x, p.y - pose.axle.y)));
+}
+
 /** The unit vector a heading faces, in screen axes. */
 export const facing = (heading: number): LH2Position => {
   const r = (heading * Math.PI) / 180;
@@ -160,10 +166,6 @@ export const PoseMarker: React.FC<PoseMarkerProps> = ({
               strokeDasharray={ghost ? "3 2" : undefined}
             />
           </g>
-        )}
-        {/* the axle: the point the pose pins down */}
-        {shape.kind === "board" && (
-          <circle data-layer="pose-axle" r={2.5} fill="var(--text)" stroke="var(--canvas)" strokeWidth={1} />
         )}
         {index !== undefined && (
           <text

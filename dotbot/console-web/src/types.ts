@@ -38,10 +38,9 @@ export interface LH2Position {
   y: number;
 }
 
-// A waypoint is a position, or a pose when it carries a heading: then (x, y)
-// is where the robot's axle comes to rest and `heading_deg` is the way it
-// faces there, in the robot `direction` convention (0 = +y, clockwise as
-// drawn). Without one, (x, y) is a target for the LH2 photodiode.
+// A waypoint is where the robot's axle midpoint comes to rest, and a pose
+// when it also carries `heading_deg`, the way the robot faces there, in the
+// robot `direction` convention (0 = +y, clockwise as drawn).
 export interface Waypoint extends LH2Position {
   heading_deg?: number;
 }

@@ -48,13 +48,14 @@ import {
   tickGesture,
   wheelSteps,
 } from "./poseGesture";
-import { KNOB_R_PX, PoseMarker, knobOffset, poseShape } from "./PoseMarker";
+import { KNOB_R_PX, PoseMarker, axleReachMm, knobOffset, poseShape } from "./PoseMarker";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
 import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf, typingIn } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import {
   Area,
+  BotPose,
   CalibrationSession,
   CameraDetection,
   LH2Position,
@@ -187,6 +188,8 @@ const SELECTION_PAD_PX = 3;
 export const WAYPOINT_OF_BODY = 0.3;
 export const WAYPOINT_MIN_PX = 7;
 export const WAYPOINT_MAX_PX = 14;
+// Below this radius on screen a waypoint's footprint ring is not drawn.
+const WAYPOINT_RING_MIN_PX = 14;
 // How much of an area's colour washes its floor.
 const AREA_TINT = 0.05;
 
@@ -766,6 +769,62 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
+  // A plain waypoint is where the robot's axle comes to rest: a dot on that
+  // centre, and, with a body to size it from and room to read it, a faint
+  // ring holding the whole robot whichever way it ends up facing.
+  const centreMarks = (
+    q: { left: number; top: number },
+    template: BotPose | null,
+    color: string,
+    here = false,
+  ) => {
+    const ringPx = template ? axleReachMm(template) * perMm : 0;
+    return (
+      <div
+        data-layer="waypoint-centre"
+        style={{
+          position: "absolute",
+          left: here ? 0 : `${q.left}%`,
+          top: here ? 0 : `${q.top}%`,
+          width: 0,
+          height: 0,
+          transform: `scale(${chrome})`,
+          pointerEvents: "none",
+        }}
+      >
+        {ringPx >= WAYPOINT_RING_MIN_PX && (
+          <div
+            data-layer="waypoint-footprint"
+            style={{
+              position: "absolute",
+              left: -ringPx,
+              top: -ringPx,
+              width: 2 * ringPx,
+              height: 2 * ringPx,
+              borderRadius: "50%",
+              border: `1px dashed ${color}`,
+              background: `color-mix(in srgb, ${color} 7%, transparent)`,
+              opacity: 0.6,
+            }}
+          />
+        )}
+        <div
+          style={{
+            position: "absolute",
+            left: -2,
+            top: -2,
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            background: "var(--text)",
+            boxShadow: "0 0 0 1px var(--canvas)",
+            zIndex: 1,
+          }}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
       ref={measure}
@@ -1079,8 +1138,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   );
                 }
                 return (
+                  <React.Fragment key={`${b.id}-wp-${i}`}>
+                  {centreMarks(q, b.pose && hasHeading(b.pose) ? b.pose : null, led)}
                   <div
-                    key={`${b.id}-wp-${i}`}
                     data-testid={`waypoint-${b.id}-${i}`}
                     title={`waypoint ${i + 1}`}
                     style={{
@@ -1096,6 +1156,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       pointerEvents: "none",
                     }}
                   />
+                  </React.Fragment>
                 );
               });
             })}
@@ -1172,8 +1233,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     );
                   }
                   return (
+                    <React.Fragment key={`pend-${m.key}-${i}`}>
+                    {centreMarks(q, template, led)}
                     <div
-                      key={`pend-${m.key}-${i}`}
                       data-testid={`planned-${m.key}-${i}`}
                       title={`waypoint ${i + 1}`}
                       style={{
@@ -1189,6 +1251,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         pointerEvents: "none",
                       }}
                     />
+                    </React.Fragment>
                   );
                 });
               })}
@@ -1216,6 +1279,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 }}
               >
                 {g.phase === "pressing" ? (
+                  <>
+                  {centreMarks({ left: 0, top: 0 }, template, led, true)}
                   <div
                     style={{
                       position: "absolute",
@@ -1226,6 +1291,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       boxShadow: `0 0 4px ${led}`,
                     }}
                   />
+                  </>
                 ) : (
                   <PoseMarker
                     testId="placing-pose"

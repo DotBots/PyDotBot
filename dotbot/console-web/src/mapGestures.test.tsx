@@ -541,7 +541,7 @@ describe("placing a waypoint with the waypoint modifier", () => {
     const pose = screen.getByTestId("placing-pose");
     expect(pose).toHaveAttribute("data-pose-shape", "board");
     expect(pose.querySelector('[data-layer="board"]')).not.toBeNull();
-    expect(pose.querySelector('[data-layer="pose-axle"]')).not.toBeNull();
+    expect(pose.querySelector('[data-layer="axle"]')).not.toBeNull();
   });
 
   it("falls back to a diamond and a tick with no body to borrow", () => {
@@ -624,5 +624,21 @@ describe("a queued pose", () => {
     const shared = [{ ...planned[0], key: "a-b", ids: ["a", "b"] }];
     render(<Harness planned={shared} selection={new Set(["a"])} />);
     expect(screen.getByTestId("planned-a-b-0").querySelector('[data-layer="pose-shared"]')).toHaveTextContent("×2");
+  });
+});
+
+describe("a plain waypoint", () => {
+  it("marks where the robot's centre stops, ringed by the robot's reach once it reads", () => {
+    const planned = [{ key: "a", ids: ["a"], waypoints: [{ x: 800, y: 800 }], led: null }];
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE });
+    const { unmount } = render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} from={{ scale: 8, tx: 0, ty: 0 }} />);
+    expect(document.querySelectorAll('[data-layer="waypoint-centre"]')).toHaveLength(1);
+    expect(document.querySelector('[data-layer="waypoint-footprint"]')).not.toBeNull();
+    // and the robot marks its own centre, so the two line up
+    expect(screen.getByTestId("glyph-a").querySelector('[data-layer="axle"]')).not.toBeNull();
+    unmount();
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} />);
+    expect(document.querySelector('[data-layer="waypoint-centre"]')).not.toBeNull();
+    expect(document.querySelector('[data-layer="waypoint-footprint"]')).toBeNull();
   });
 });
