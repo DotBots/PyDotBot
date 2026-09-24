@@ -95,7 +95,7 @@ class DotBotLH2Waypoint(DotBotLH2Position):
     clockwise from +y, as the advertised `direction`, normalised to [0, 360).
     """
 
-    heading_deg: Optional[float] = None
+    heading_deg: Optional[float] = Field(default=None, allow_inf_nan=False)
 
     @field_validator("heading_deg")
     @classmethod
@@ -117,10 +117,27 @@ class DotBotWaypoints(BaseModel):
     firmware's default.
     """
 
-    threshold: int
-    waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]]
+    threshold: int = Field(ge=0, le=65535)
+    # DB_MAX_WAYPOINTS: the firmware drops the points beyond it
+    waypoints: List[Union[DotBotLH2Waypoint, DotBotGPSPosition]] = Field(max_length=16)
     intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
     heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+
+    @field_validator("waypoints", mode="before")
+    @classmethod
+    def _positions_as_waypoints(cls, value):
+        # DotBotLH2Position is left out of the union so that a point whose
+        # heading is invalid is refused, not parsed as a point without one
+        if not isinstance(value, list):
+            return value
+        return [
+            (
+                DotBotLH2Waypoint(x=point.x, y=point.y)
+                if type(point) is DotBotLH2Position
+                else point
+            )
+            for point in value
+        ]
 
 
 class DotBotAreaModel(BaseModel):

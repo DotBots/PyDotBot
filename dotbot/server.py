@@ -249,7 +249,7 @@ def _axle_position(dotbot: DotBotModel) -> Optional[DotBotLH2Position]:
     expanded from its fix."""
     if dotbot.axle_position is not None:
         return dotbot.axle_position
-    if dotbot.pose is not None:
+    if dotbot.pose is not None and dotbot.pose.heading_source != "none":
         return dotbot.pose.axle
     return dotbot.lh2_position
 

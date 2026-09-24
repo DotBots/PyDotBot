@@ -24,6 +24,7 @@ from dotbot.models import (
     WSWaypoints,
 )
 from dotbot.protocol import (
+    DIRECTION_NONE,
     WAYPOINT_NO_HEADING,
     ApplicationType,
     PayloadCommandMoveRaw,
@@ -1745,3 +1746,56 @@ async def test_waypoints_start_from_the_axle():
     robot.axle_position = DotBotLH2Position(x=1001, y=949)
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
     assert robot.waypoints[0] == DotBotLH2Position(x=1001, y=949)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({"threshold": -1, "waypoints": []}, id="negative_threshold"),
+        pytest.param({"threshold": 65536, "waypoints": []}, id="threshold_over_u16"),
+        pytest.param(
+            {"threshold": 10, "waypoints": [{"x": 1, "y": 1}] * 17}, id="17_points"
+        ),
+        pytest.param(
+            {"threshold": 10, "waypoints": [{"x": 1, "y": 1, "heading_deg": "NaN"}]},
+            id="nan_heading",
+        ),
+        pytest.param(
+            {"threshold": 10, "intermediate_threshold": -1, "waypoints": []},
+            id="negative_pass_radius",
+        ),
+        pytest.param(
+            {"threshold": 10, "heading_tolerance": 256, "waypoints": []},
+            id="tolerance_over_u8",
+        ),
+    ],
+)
+async def test_set_dotbots_waypoints_rejects_what_the_wire_cannot_carry(body):
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242", application=ApplicationType.DotBot, last_seen=123.4
+        )
+    }
+    response = await client.put("/controller/dotbots/4242/0/waypoints", json=body)
+    assert response.status_code == 422
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_waypoints_start_from_the_fix_without_a_heading():
+    """A pose without a heading places its axle arbitrarily, so the echo
+    starts at the photodiode fix instead."""
+    photodiode = DotBotLH2Position(x=1000, y=1000)
+    robot = DotBotModel(
+        address="4242",
+        application=ApplicationType.DotBot,
+        last_seen=123.4,
+        lh2_position=photodiode,
+        pose=body_pose(ROBOT_DEFAULT, photodiode, DIRECTION_NONE),
+    )
+    assert robot.pose.heading_source == "none"
+    api.controller.dotbots = {"4242": robot}
+    body = {"threshold": 10, "waypoints": [{"x": 500, "y": 100}]}
+    await client.put("/controller/dotbots/4242/0/waypoints", json=body)
+    assert robot.waypoints[0] == photodiode
