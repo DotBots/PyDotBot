@@ -1147,3 +1147,18 @@ async def test_max_speed_is_resent_until_advertised(controller, clock):
     controller.handle_received_frame(_report(max_speed_10mm=46))
     assert controller.send_payload.call_count == 2
     assert controller.dotbots[address].max_speed == 460
+
+
+@pytest.mark.asyncio
+async def test_a_batch_never_repeats_an_id_another_controller_set(controller, clock):
+    controller.send_payload = MagicMock()
+    address = addr_to_hex(BOT)
+    controller.handle_received_frame(_report(batch_id=10))
+    first = _batch()
+    controller.send_waypoints(address, first)
+    controller.handle_received_frame(_report(batch_id=first.batch_id))
+    # another controller sends batch 12 to the same robot
+    controller.handle_received_frame(_report(batch_id=12))
+    second = _batch()
+    controller.send_waypoints(address, second)
+    assert (first.batch_id, second.batch_id) == (11, 13)

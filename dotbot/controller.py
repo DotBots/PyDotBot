@@ -1031,7 +1031,10 @@ class Controller:
         self._resend_pending(dotbot.address, advert)
         if not advert.has_report:
             return False
-        self.batch_ids.setdefault(dotbot.address, advert.batch_id)
+        if (dotbot.address, PayloadLH2Waypoints.__name__) not in self.pending_commands:
+            # Follow the robot's id, which another controller may have set, so
+            # the next batch never repeats it
+            self.batch_ids[dotbot.address] = advert.batch_id
         try:
             status = WaypointsStatus(advert.waypoints_status)
         except ValueError:
