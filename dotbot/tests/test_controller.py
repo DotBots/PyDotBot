@@ -34,6 +34,8 @@ from dotbot.protocol import (
     ApplicationType,
     ControlModeType,
     PayloadCommandMaxSpeed,
+    PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
     PayloadControlMode,
     PayloadDotBotAdvertisement,
     PayloadLH2Location,
@@ -1162,3 +1164,80 @@ async def test_a_batch_never_repeats_an_id_another_controller_set(controller, cl
     second = _batch()
     controller.send_waypoints(address, second)
     assert (first.batch_id, second.batch_id) == (11, 13)
+
+
+@pytest.mark.asyncio
+async def test_max_speed_confirms_a_half_way_value_rounded_up(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(max_speed_10mm=30))
+    controller.send_max_speed(addr_to_hex(BOT), 445)
+    controller.handle_received_frame(_report(max_speed_10mm=45))
+    assert not controller.pending_commands
+
+
+@pytest.mark.asyncio
+async def test_restoring_the_default_speed_cancels_a_pending_one(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(max_speed_10mm=30))
+    address = addr_to_hex(BOT)
+    controller.send_max_speed(address, 150)
+    controller.send_max_speed(address, 0)
+    clock.now += 1.5
+    controller.handle_received_frame(_report(max_speed_10mm=30))
+    assert controller.send_payload.call_args_list[-1].args == (
+        BOT,
+        PayloadCommandMaxSpeed(max_speed_mm_s=0),
+    )
+    assert controller.send_payload.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_batch_another_controller_replaced_is_not_resent(controller, clock):
+    """A resend must not bring back a batch over another controller's newer one."""
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    clock.now += 1.5
+    controller.handle_received_frame(_report(batch_id=9))
+    clock.now += 1.5
+    controller.handle_received_frame(_report(batch_id=9))
+    assert controller.send_payload.call_count == 1
+    assert not controller.pending_commands
+
+
+@pytest.mark.asyncio
+async def test_a_batch_replacing_a_lost_one_is_resent(controller, clock):
+    """Two batches in a row, both lost: the robot still shows the id before
+    the first, which is not another controller's."""
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    address = addr_to_hex(BOT)
+    controller.send_waypoints(address, _batch())
+    second = _batch()
+    controller.send_waypoints(address, second)
+    clock.now += 1.5
+    controller.handle_received_frame(_report(batch_id=3))
+    assert controller.send_payload.call_count == 3
+    assert controller.send_payload.call_args.args == (BOT, second)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "command",
+    [
+        PayloadCommandMoveRaw(left_y=50, right_y=50),
+        PayloadCommandWheelVelocity(left_mm_s=100, right_mm_s=100),
+        PayloadControlMode(mode=ControlModeType.MANUAL),
+    ],
+)
+async def test_a_direct_command_cancels_a_pending_batch(controller, clock, command):
+    """The robot drops its batch on a direct command, so resending the batch
+    would restart a path the operator just took over from."""
+    controller.adapter = MagicMock()
+    controller.handle_received_frame(_report(batch_id=3))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    controller.send_payload(BOT, command)
+    clock.now += 1.5
+    controller.handle_received_frame(_report(batch_id=3))
+    assert controller.adapter.send_payload.call_count == 2
+    assert not controller.pending_commands

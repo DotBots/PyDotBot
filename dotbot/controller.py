@@ -84,6 +84,9 @@ from dotbot.protocol import (
     ApplicationType,
     ControlModeType,
     PayloadCommandMaxSpeed,
+    PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
+    PayloadControlMode,
     PayloadDotBotAdvertisement,
     PayloadLh2CalibrationHomography,
     PayloadLH2Waypoints,
@@ -123,6 +126,11 @@ LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
 # every 0.1 to 1 s, twice that on a bench-telemetry build
 CONFIRM_RESEND_AFTER_S = 1.2
 CONFIRM_TRIES = 5
+DIRECT_COMMANDS = (
+    PayloadCommandMoveRaw,
+    PayloadCommandWheelVelocity,
+    PayloadControlMode,
+)
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
 
@@ -153,6 +161,10 @@ class PendingCommand:
     confirmed: Callable[[PayloadDotBotAdvertisement], bool]
     sent: float
     tries: int = 1
+    # True once the advertisement shows another controller's newer command
+    superseded: Callable[[PayloadDotBotAdvertisement], bool] = lambda _: False
+    # Batch ids the robot may still show before this command reaches it
+    batch_ids: frozenset = frozenset()
 
 
 class ControllerException(Exception):
@@ -279,6 +291,7 @@ class Controller:
         self.adapter: GatewayAdapterBase = None
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
+        self.advertised_batch_ids: Dict[str, int] = {}
         self.websockets = []
         self.site = settings.site or Site()
         self.calibration = None
@@ -963,6 +976,7 @@ class Controller:
         address: str,
         payload: Payload,
         confirmed: Callable[[PayloadDotBotAdvertisement], bool],
+        **pending,
     ):
         """Send a command, and resend it until an advertisement confirms it.
 
@@ -971,27 +985,40 @@ class Controller:
         """
         key = (address, type(payload).__name__)
         self.pending_commands[key] = PendingCommand(
-            payload=payload, confirmed=confirmed, sent=time.monotonic()
+            payload=payload, confirmed=confirmed, sent=time.monotonic(), **pending
         )
         self.send_payload(int(address, 16), payload)
 
     def send_waypoints(self, address: str, payload: PayloadLH2Waypoints):
         """Send a waypoint batch under a new batch id, resent until the
-        robot advertises that id."""
+        robot advertises that id or another controller's newer batch."""
+        advertised = self.advertised_batch_ids.get(address)
         last = self.batch_ids.get(address, random.randrange(255))
         payload.batch_id = last % 255 + 1
         self.batch_ids[address] = payload.batch_id
         batch_id = payload.batch_id
-        self.send_confirmed(address, payload, lambda adv: adv.batch_id == batch_id)
+        previous = self.pending_commands.get((address, PayloadLH2Waypoints.__name__))
+        earlier = previous.batch_ids if previous is not None else frozenset({last})
+        expected = earlier | {advertised, batch_id}
+        self.send_confirmed(
+            address,
+            payload,
+            lambda adv: adv.batch_id == batch_id,
+            superseded=lambda adv: advertised is not None
+            and adv.batch_id not in expected,
+            batch_ids=expected,
+        )
 
     def send_max_speed(self, address: str, max_speed_mm_s: int):
         """Send the cruise speed limit, resent until the robot advertises it;
         0, the firmware default, is sent once."""
         payload = PayloadCommandMaxSpeed(max_speed_mm_s=max_speed_mm_s)
         if max_speed_mm_s == 0:
+            self.pending_commands.pop((address, type(payload).__name__), None)
             self.send_payload(int(address, 16), payload)
             return
-        expected = round(min(max(max_speed_mm_s, 20), 700) / 10)
+        # Rounds half up, as the firmware's lroundf
+        expected = (min(max(max_speed_mm_s, 20), 700) + 5) // 10
         self.send_confirmed(
             address, payload, lambda adv: adv.max_speed_10mm == expected
         )
@@ -1001,6 +1028,13 @@ class Controller:
         for key in [key for key in self.pending_commands if key[0] == address]:
             pending = self.pending_commands[key]
             if not advert.has_report or pending.confirmed(advert):
+                del self.pending_commands[key]
+            elif pending.superseded(advert):
+                self.logger.info(
+                    "Command superseded by another controller's",
+                    address=address,
+                    payload=key[1],
+                )
                 del self.pending_commands[key]
             elif now - pending.sent < CONFIRM_RESEND_AFTER_S:
                 continue
@@ -1031,6 +1065,7 @@ class Controller:
         self._resend_pending(dotbot.address, advert)
         if not advert.has_report:
             return False
+        self.advertised_batch_ids[dotbot.address] = advert.batch_id
         if (dotbot.address, PayloadLH2Waypoints.__name__) not in self.pending_commands:
             # Follow the robot's id, which another controller may have set, so
             # the next batch never repeats it
@@ -1077,6 +1112,9 @@ class Controller:
         dest_str = addr_to_hex(destination)
         if dest_str not in self.dotbots:
             return
+        if isinstance(payload, DIRECT_COMMANDS):
+            # The robot drops its batch on these, so a resend would restart it
+            self.pending_commands.pop((dest_str, PayloadLH2Waypoints.__name__), None)
         self.adapter.send_payload(destination, payload=payload)
         self.logger.debug(
             "Payload sent",
