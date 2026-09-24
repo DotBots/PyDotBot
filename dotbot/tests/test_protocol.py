@@ -16,11 +16,13 @@ from dotbot.protocol import (
     ApplicationType,
     ControlModeType,
     PayloadAdvertisement,
+    PayloadCommandMaxSpeed,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadCommandWheelVelocity,
     PayloadCommandXgoAction,
     PayloadControlMode,
+    PayloadDotBotAdvertisement,
     PayloadDotBotSimulatorData,
     PayloadFieldMetadata,
     PayloadGPSPosition,
@@ -30,6 +32,9 @@ from dotbot.protocol import (
     PayloadRawData,
     PayloadSailBotData,
     PayloadType,
+    PayloadWaypointHeading,
+    WaypointsFailReason,
+    WaypointsStatus,
 )
 
 
@@ -226,7 +231,51 @@ def test_parse_header(bytes_, expected):
                     PayloadLH2Location(pos_x=1000, pos_y=1000),
                 ],
             ),
+            id="PayloadLH2WaypointsNoTrailer",
+        ),
+        pytest.param(
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x08"
+            b"\x0a\x00\x02"
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00"
+            b"\xd0\x07\x00\x00\xe8\x03\x00\x00"
+            b"\x2a\x05\x1e\x00"
+            b"\xff\x7f\xd8\xdc",
+            Header(
+                version=4,
+                type_=2,
+                destination=0x1122334455667788,
+                source=0x1222122212221221,
+            ),
+            PayloadType.LH2_WAYPOINTS,
+            PayloadLH2Waypoints(
+                threshold=10,
+                count=2,
+                waypoints=[
+                    PayloadLH2Location(pos_x=1000, pos_y=1000),
+                    PayloadLH2Location(pos_x=2000, pos_y=1000),
+                ],
+                batch_id=42,
+                heading_tol_deg=5,
+                pass_mm=30,
+                headings=[
+                    PayloadWaypointHeading(),
+                    PayloadWaypointHeading(heading_cdeg=-9000),
+                ],
+            ),
             id="PayloadLH2Waypoints",
+        ),
+        pytest.param(
+            b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x11"
+            b"\x90\x01",
+            Header(
+                version=4,
+                type_=2,
+                destination=0x1122334455667788,
+                source=0x1222122212221221,
+            ),
+            PayloadType.CMD_MAX_SPEED,
+            PayloadCommandMaxSpeed(max_speed_mm_s=400),
+            id="PayloadCommandMaxSpeed",
         ),
         pytest.param(
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x09"
@@ -443,7 +492,9 @@ def test_frame_parser(bytes_, header, payload_type, payload):
             ),
             b"\x04\x02\x88\x77\x66\x55\x44\x33\x22\x11\x21\x12\x22\x12\x22\x12\x22\x12\x08\x0a\x00\x02"
             b"\xe8\x03\x00\x00\xe8\x03\x00\x00"
-            b"\xe8\x03\x00\x00\xe8\x03\x00\x00",
+            b"\xe8\x03\x00\x00\xe8\x03\x00\x00"
+            b"\x00\x00\x00\x00"
+            b"\xff\x7f\xff\x7f",
             id="PayloadLH2Waypoints",
         ),
         pytest.param(
@@ -687,12 +738,12 @@ def test_payload_to_bytes(frame, expected):
             (
                 "                 +------+------+--------------------+--------------------+------+\n"
                 " LH2_WAYPOINTS   | ver. | type | dst                | src                | type |\n"
-                " (38 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x08 |\n"
+                " (46 Bytes)      | 0x04 | 0x02 | 0x1122334455667788 | 0x1222122212221221 | 0x08 |\n"
                 "                 +------+------+--------------------+--------------------+------+\n"
-                "                 +--------+------+------------+------------+------------+------------+\n"
-                "                 | thr.   | len. | x          | y          | x          | y          |\n"
-                "                 | 0x000a | 0x02 | 0x000003e8 | 0x000003e8 | 0x000003e8 | 0x000003e8 |\n"
-                "                 +--------+------+------------+------------+------------+------------+\n"
+                "                 +--------+------+------+------+--------+------------+------------+------------+------------+--------+--------+\n"
+                "                 | thr.   | len. | batch| tol  | pass   | x          | y          | x          | y          | hdg    | hdg    |\n"
+                "                 | 0x000a | 0x02 | 0x00 | 0x00 | 0x0000 | 0x000003e8 | 0x000003e8 | 0x000003e8 | 0x000003e8 | 0x7fff | 0x7fff |\n"
+                "                 +--------+------+------+------+--------+------------+------------+------------+------------+--------+--------+\n"
                 "\n"
             ),
             id="LH2Waypoints",
@@ -913,3 +964,49 @@ def test_lh2_calibration_homography_is_float32_on_the_wire():
     assert payload.matrix == matrix
     assert bytes(payload.to_bytes()) == raw
     assert payload.size == 37
+
+
+def test_advertisement_waypoint_report():
+    """The report after the waypoint index round-trips, and an advertisement
+    without it still parses."""
+    advert = PayloadDotBotAdvertisement(
+        direction=-90,
+        waypoint_idx=3,
+        waypoints_status=WaypointsStatus.FAILED,
+        waypoints_reason=WaypointsFailReason.PROGRESS,
+        batch_id=200,
+        max_speed_10mm=30,
+        report=True,
+    )
+    data = advert.to_bytes()
+    assert len(data) == 37
+    parsed = PayloadDotBotAdvertisement().from_bytes(data)
+    assert parsed.has_report
+    assert (parsed.waypoint_idx, parsed.waypoints_status, parsed.waypoints_reason) == (
+        3,
+        WaypointsStatus.FAILED,
+        WaypointsFailReason.PROGRESS,
+    )
+    assert (parsed.batch_id, parsed.max_speed_10mm) == (200, 30)
+
+    legacy = PayloadDotBotAdvertisement(direction=-90, waypoint_idx=1).to_bytes()
+    assert len(legacy) == 33
+    parsed = PayloadDotBotAdvertisement().from_bytes(legacy)
+    assert not parsed.has_report
+    assert parsed.waypoint_idx == 1 and parsed.batch_id == 0
+    with pytest.raises(ValueError):
+        PayloadDotBotAdvertisement().from_bytes(legacy[:-1])
+
+
+def test_waypoints_full_batch_size():
+    """Sixteen points with a heading each fit mari's payload: 7 + 10 per point."""
+    payload = PayloadLH2Waypoints(
+        threshold=5,
+        count=16,
+        waypoints=[PayloadLH2Location(pos_x=i, pos_y=i) for i in range(16)],
+        headings=[PayloadWaypointHeading(heading_cdeg=100 * i) for i in range(16)],
+    )
+    data = payload.to_bytes()
+    assert len(data) == 167
+    parsed = PayloadLH2Waypoints().from_bytes(data)
+    assert [h.heading_cdeg for h in parsed.headings] == [100 * i for i in range(16)]
