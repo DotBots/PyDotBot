@@ -5,9 +5,9 @@
 
 `RobotDetector.detect` runs the two stages - propose, then fit a pose to
 each candidate - and classifies each result. Lighthouse fixes, when the
-caller has them, name the candidates they stand on. `frame_pose` is the only place raster pixels and the
-detector's own heading become the frame millimetres and the robot
-`direction` degrees every other surface speaks.
+caller has them, name the candidates they stand on. `frame_pose` is the
+only place raster pixels and the detector's own heading become the frame
+millimetres and the robot `direction` degrees every other surface speaks.
 
 Two heading conventions meet here; `frame_pose` names both and converts.
 
@@ -153,6 +153,9 @@ class _Target:
     # The seeds of every robot sharing this candidate's mask component, this
     # one's first, when lighthouse fixes say more than one robot stands there.
     split_seeds: list = field(default_factory=list)
+    # A robot fitted on another candidate's mask component, which it gives
+    # up when that component is too small to hold two robots.
+    guest: bool = False
 
 
 def wrap180(deg: float) -> float:
@@ -336,14 +339,8 @@ class RobotDetector:
             for ti, t in enumerate(targets)
             for pi, q in enumerate(points)
         )
-        taken, used = {}, set()
-        for dist, ti, pi in pairs:
-            if dist > gate:
-                break
-            if ti in taken or pi in used:
-                continue
-            taken[ti] = pi
-            used.add(pi)
+        taken = match_within(pairs, gate)
+        used = set(taken.values())
         for ti, pi in taken.items():
             targets[ti].address = priors[pi].address
         shared = {}
@@ -364,7 +361,13 @@ class RobotDetector:
                     host.split_seeds = seeds
                 else:
                     targets.append(
-                        _Target(host.seed_px, host.z, priors[pi].address, None, seeds)
+                        _Target(
+                            host.seed_px,
+                            host.z,
+                            priors[pi].address,
+                            split_seeds=seeds,
+                            guest=True,
+                        )
                     )
         targets.sort(key=lambda t: (t.address is None, -t.z))
         targets = targets[: self.max_robots]
@@ -419,6 +422,8 @@ class RobotDetector:
             if region is None:
                 return None
             if region.sum() * self.mm_per_px**2 < SPLIT_MIN_MM2:
+                if target.guest and _label_at(labels, target.seed_px) in labels[region]:
+                    return None
                 return region
             return split_region(region, target.split_seeds)[0]
         region = component_at(target.seed_px, self.mm_per_px, mask)
@@ -446,9 +451,7 @@ class RobotDetector:
         fitted = (
             None
             if region is None
-            else pose_one(
-                features_map, region, self.mm_per_px, self._template, fit
-            )
+            else pose_one(features_map, region, self.mm_per_px, self._template, fit)
         )
         if fitted is None:
             return RobotFix(NONE, None, target.address, stamp)
@@ -501,6 +504,71 @@ def frame_pose(pose: Pose, area: Area, mm_per_px: float) -> dict:
 def _mm(point) -> list[float]:
     """One point as plain floats at a tenth of a millimetre."""
     return [round(float(point[0]), 1), round(float(point[1]), 1)]
+
+
+def match_within(pairs, gate: float, exact_max: int = 6) -> dict:
+    """Candidate to fix, as the most pairs within `gate`, then the least distance.
+
+    `pairs` are `(distance, candidate, fix)` sorted by distance. Candidates
+    and fixes linked by pairs within the gate are solved group by group,
+    exactly while a group holds at most `exact_max` candidates and nearest
+    first above that.
+    """
+    near = [p for p in pairs if p[0] <= gate]
+    parent: dict = {}
+
+    def root(node):
+        while parent.setdefault(node, node) != node:
+            node = parent[node]
+        return node
+
+    for _, ti, pi in near:
+        parent[root(("t", ti))] = root(("p", pi))
+    groups: dict = {}
+    for pair in near:
+        groups.setdefault(root(("t", pair[1])), []).append(pair)
+
+    taken: dict = {}
+    for group in groups.values():
+        candidates = sorted({ti for _, ti, _ in group})
+        if len(candidates) > exact_max:
+            for _, ti, pi in group:
+                if ti not in taken and pi not in taken.values():
+                    taken[ti] = pi
+            continue
+        options = {ti: [(d, pi) for d, t, pi in group if t == ti] for ti in candidates}
+        best = (0, 0.0, {})
+
+        def search(k, used, cost, chosen):
+            nonlocal best
+            if k == len(candidates):
+                if (len(chosen), -cost) > (best[0], -best[1]):
+                    best = (len(chosen), cost, dict(chosen))
+                return
+            if len(chosen) + len(candidates) - k < best[0]:
+                return
+            ti = candidates[k]
+            for d, pi in options[ti]:
+                if pi not in used:
+                    chosen[ti] = pi
+                    search(k + 1, used | {pi}, cost + d, chosen)
+                    del chosen[ti]
+            search(k + 1, used, cost, chosen)
+
+        search(0, frozenset(), 0.0, {})
+        taken.update(best[2])
+    return taken
+
+
+def _label_at(labels, point_px) -> int:
+    """The component label under `point_px`, clamped onto the raster."""
+    h, w = labels.shape
+    return int(
+        labels[
+            min(max(int(point_px[1]), 0), h - 1),
+            min(max(int(point_px[0]), 0), w - 1),
+        ]
+    )
 
 
 def _ms_since(started: float) -> float:

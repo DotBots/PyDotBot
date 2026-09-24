@@ -36,11 +36,7 @@ from dotbot.camera.detection.pose import (
 from dotbot.camera.detection.robot import GREEN_FLARE_MIN, TMPL_MARGIN_MIN, classify
 from dotbot.camera.sheets import MARKER_DICTIONARY
 from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
-from dotbot.tests.camera_fixtures import (
-    MM_PER_PX,
-    carpet,
-    draw_robot,
-)
+from dotbot.tests.camera_fixtures import MM_PER_PX, carpet, draw_robot
 
 # The middle of the default raster, in raster pixels.
 CENTRE_PX = (125.0, 125.0)
@@ -587,9 +583,7 @@ def test_a_robot_with_no_fix_is_still_found_unnamed():
     unnamed = [r for r in detection.robots if r.address is None]
     assert len(unnamed) == 2
     for centre, heading in robots[1:]:
-        (fix,) = [
-            r for r in unnamed if np.allclose(r.pose.centre_px, centre, atol=2.0)
-        ]
+        (fix,) = [r for r in unnamed if np.allclose(r.pose.centre_px, centre, atol=2.0)]
         assert_at(fix, centre, heading)
 
 
@@ -605,9 +599,7 @@ def test_a_fix_on_empty_floor_names_nothing():
 
 def test_the_cap_keeps_named_robots_first():
     priors = [prior_for("bot4", *FLEET[4]), prior_for("bot2", *FLEET[2])]
-    detection = unhurried(max_robots=3).detect(
-        fleet_raster(FLEET), priors
-    )
+    detection = unhurried(max_robots=3).detect(fleet_raster(FLEET), priors)
     assert detection.candidates == 5
     assert len(detection.robots) == 3
     assert {r.address for r in detection.robots[:2]} == {"bot4", "bot2"}
@@ -709,3 +701,35 @@ def test_the_outline_is_drawn_in_its_own_box_exactly_as_on_the_whole_grid():
         drawn = np.zeros((n, n))
         drawn[y0 : y0 + box.shape[0], x0 : x0 + box.shape[1]] = box
         assert np.array_equal(drawn.astype(np.float32), expected.astype(np.float32))
+
+
+def test_two_robots_are_named_as_a_whole_not_nearest_pair_first():
+    """A's stale fix nearer B than A must not hand B A's name."""
+    from dotbot.camera.detection import Prior
+
+    a, b = (200.0, 250.0), (267.0, 250.0)
+    raster = fleet_raster([(a, 0.0), (b, 0.0)])
+    priors = [Prior("a", (240.0, 250.0)), Prior("b", (300.0, 250.0))]
+    named = by_address(unhurried().detect(raster, priors))
+    assert set(named) == {"a", "b"}
+    assert_at(named["a"], a, 0.0)
+    assert_at(named["b"], b, 0.0)
+
+
+def test_a_second_fix_on_one_robot_is_not_a_second_robot():
+    """A stale fix within reach of a lone robot adds no copy of its pose."""
+    from dotbot.camera.detection import Prior
+
+    a = (200.0, 250.0)
+    priors = [Prior("a", (210.0, 250.0)), Prior("stale", (160.0, 250.0))]
+    detection = unhurried().detect(fleet_raster([(a, 0.0)]), priors)
+    assert [r.address for r in detection.robots] == ["a"]
+    assert_at(detection.robots[0], a, 0.0)
+
+
+def test_matching_takes_the_most_pairs_then_the_least_distance():
+    from dotbot.camera.detection.robot import match_within
+
+    pairs = sorted([(27.0, 1, 0), (40.0, 0, 0), (50.0, 1, 1), (117.0, 0, 1)])
+    assert match_within(pairs, gate=54.5) == {0: 0, 1: 1}
+    assert match_within(pairs, gate=54.5, exact_max=0) == {1: 0}
