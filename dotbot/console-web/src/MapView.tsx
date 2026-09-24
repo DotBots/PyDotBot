@@ -51,7 +51,7 @@ import {
 import { DEFAULT_WAYPOINT_SETTINGS, WaypointSettings } from "./arrival";
 import { KNOB_R_PX, PoseMarker, axleReachMm, knobOffset, poseShape } from "./PoseMarker";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
-import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf, typingIn } from "./shortcuts";
+import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, activatable, holds, roleOf, typingIn } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import {
@@ -412,7 +412,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (!at) return;
     let poseAtMm = at;
     let pivot = { x, y };
-    const onAxle = on?.axle ?? (on?.pose && hasHeading(on.pose) ? on.pose.axle : null);
+    // A robot outside the selection is only a place on the floor
+    const own = on && props.selection.has(on.id) ? on : null;
+    const onAxle = own?.axle ?? (own?.pose && hasHeading(own.pose) ? own.pose.axle : null);
     if (onAxle) {
       poseAtMm = { x: Math.round(onAxle.x), y: Math.round(onAxle.y) };
       pivot = frameToClient(onAxle) ?? pivot;
@@ -423,7 +425,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const start = selectedBots().find((b) => b.axle ?? b.position);
     const from = last ?? start?.axle ?? start?.position ?? null;
     const approach = from ? bearing(from, poseAtMm) : null;
-    const heading = on?.pose && hasHeading(on.pose) ? on.pose.heading_deg : (approach ?? 0);
+    const heading = own?.pose && hasHeading(own.pose) ? own.pose.heading_deg : (approach ?? 0);
     setGesture(startGesture({ x, y }, at, Date.now(), heading, pivot, poseAtMm));
     cursorRef.current = { x, y, shift: false };
     setCursor({ x, y });
@@ -447,6 +449,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     const onKey = (e: KeyboardEvent) => {
       if (typingIn(e.target)) return;
       if (e.key === "Escape") {
+        if (e.type !== "keydown") return;
         if (gestureRef.current) {
           endGesture();
           e.preventDefault();
@@ -464,13 +467,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         moveTo(c.x, c.y, e.type === "keydown");
         return;
       }
-      if (e.key === " " && props.poseMode) {
-        spaceRef.current = e.type === "keydown";
+      if (e.key === " ") {
+        if (e.type === "keyup") spaceRef.current = false;
+        if (!props.poseMode || activatable(e.target)) return;
+        if (e.type === "keydown") spaceRef.current = true;
         e.preventDefault();
       }
     };
     const onBlur = () => {
       spaceRef.current = false;
+      endGesture();
+      knobRef.current = null;
     };
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("keyup", onKey, true);
@@ -494,6 +501,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const onCanvasDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") {
       touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (twoFinger.current) return;
       if (touches.current.size === 2) {
         // A second finger turns whatever the first started into a pan.
         endGesture();
@@ -535,9 +543,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         return;
       }
     }
+    if (e.pointerType === "mouse" && (e.buttons & 1) === 0 && (gestureRef.current || knobRef.current)) {
+      onCanvasCancel(e);
+      return;
+    }
     if (gestureRef.current) {
       // A second button pressed mid-gesture arrives as a move.
-      if (e.buttons & 2) endGesture();
+      if (e.buttons & 6) endGesture();
       else moveTo(e.clientX, e.clientY, e.shiftKey);
       return;
     }
@@ -562,12 +574,20 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (dragRef.current) setDrag((d) => (d ? { ...d, x1: e.clientX, y1: e.clientY } : d));
   };
 
+  // The capture kept the pose hovered; the next move over it hovers it again.
+  const releaseKnob = () => {
+    if (!knobRef.current) return;
+    knobRef.current = null;
+    setHoverPose(null);
+    wheelCarry.current = 0;
+  };
+
   // Shared by pointerup's siblings: drop every gesture without acting on it.
   const onCanvasCancel = (e?: React.PointerEvent) => {
     if (e) touches.current.delete(e.pointerId);
     if (touches.current.size === 0) twoFinger.current = false;
     endGesture();
-    knobRef.current = null;
+    releaseKnob();
     panRef.current = null;
     dragRef.current = null;
     setDrag(null);
@@ -576,11 +596,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const onCanvasUp = (e: React.PointerEvent) => {
     touches.current.delete(e.pointerId);
     if (twoFinger.current) {
-      // Lifting the fingers ends the pan and nothing else.
-      if (touches.current.size === 0) {
-        twoFinger.current = false;
-        panRef.current = null;
-      }
+      // Lifting a finger ends the pan and nothing else.
+      panRef.current = null;
+      if (touches.current.size === 0) twoFinger.current = false;
       return;
     }
     const g = gestureRef.current;
@@ -591,7 +609,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       return;
     }
     if (knobRef.current) {
-      knobRef.current = null;
+      releaseKnob();
       return;
     }
     if (panRef.current) {
@@ -911,13 +929,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       // A cancelled pointer sends no pointerup, so without this the pan and
       // the marquee keep following a cursor with no button held.
       onPointerCancel={onCanvasCancel}
-      // A cancelled pointer sends no pointerup, so without this the pan and
-      // the marquee keep following a cursor with no button held.
+      onLostPointerCapture={(e) => {
+        // A child's implicit touch capture moving here is not a loss
+        if (e.target === e.currentTarget && (gestureRef.current || knobRef.current)) onCanvasCancel(e);
+      }}
       // Ctrl and a press is the secondary click on a Mac: a drag held on it
-      // would otherwise open the menu under itself.
+      // would otherwise open the menu under itself. A touch long-press opens
+      // it too, mid-hold, and must not end the pose.
       onContextMenu={(e) => {
         if (gestureRef.current) {
-          endGesture();
+          const touch = (e.nativeEvent as PointerEvent).pointerType;
+          if (touch !== "touch" && touch !== "pen") endGesture();
           e.preventDefault();
         }
         if (dragRef.current) e.preventDefault();
@@ -1265,18 +1287,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           left: `${q.left}%`,
                           top: `${q.top}%`,
                           transform: `scale(${chrome})`,
-                          zIndex: hovered ? 7 : 3,
+                          // Beneath the robots, so a pose over one never takes its clicks
+                          zIndex: 1,
                         }}
+                        onPointerEnter={() => setHoverPose(pivot)}
+                        onPointerLeave={() =>
+                          setHoverPose((h) =>
+                            h && h.key === m.key && h.index === i && !knobRef.current ? null : h,
+                          )
+                        }
                       >
                         <div
                           data-testid={`planned-hit-${m.key}-${i}`}
                           title={describeWaypoint(p, i + 1, m.waypoints.length + 1)}
-                          onPointerEnter={() => setHoverPose(pivot)}
-                          onPointerLeave={() =>
-                            setHoverPose((h) =>
-                              h && h.key === m.key && h.index === i && !knobRef.current ? null : h,
-                            )
-                          }
                           style={{
                             position: "absolute",
                             left: -hitPx,

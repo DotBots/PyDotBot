@@ -94,7 +94,8 @@ export function moveGesture(
 
 /**
  * What releasing at (x, y) queues. A heading is only ever set by pointing:
- * a release inside the arming radius is a position, whatever was on screen.
+ * a release inside the arming radius is a position, and so is a press held
+ * where it landed without the silhouette having turned.
  */
 export function releaseGesture(
   g: PoseGesture,
@@ -104,7 +105,8 @@ export function releaseGesture(
   snap: boolean,
 ): Waypoint {
   const last = moveGesture(g, x, y, t, snap);
-  if (last.phase !== "rotating") return { ...g.at };
+  const still = g.phase !== "rotating" && Math.hypot(x - g.press.x, y - g.press.y) < DRAG_PX;
+  if (last.phase !== "rotating" || still) return { ...g.at };
   return { ...g.poseAt, heading_deg: last.heading };
 }
 

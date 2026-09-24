@@ -127,6 +127,14 @@ describe("the placing gesture", () => {
     const w = releaseGesture(g, 410, 410, 20, false);
     expect(w).toEqual({ ...axle, heading_deg: 0 });
   });
+
+  it("queues a position for a hold in place on a robot, away from its axle", () => {
+    const axle = { x: 1000, y: 1000 };
+    const pivot = { x: press.x, y: press.y - 2 * ARM_PX };
+    const held = tickGesture(startGesture(press, at, 0, 0, pivot, axle), HOLD_MS + 50);
+    expect(held.phase).toBe("silhouette");
+    expect(releaseGesture(held, press.x + 1, press.y, HOLD_MS + 60, false)).toEqual(at);
+  });
 });
 
 describe("the silhouette", () => {

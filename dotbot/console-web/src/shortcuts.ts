@@ -103,6 +103,14 @@ export function typingIn(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+/** Whether Space on `target` activates it, as on a focused button. */
+export function activatable(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    !!target.closest("button, a[href], [role=button], [role=switch], [role=radio], [role=checkbox]")
+  );
+}
+
 /**
  * One row of the panel: the keys, held in order, and what the map does. A
  * key is a modifier, an action key, or the name of a gesture.
