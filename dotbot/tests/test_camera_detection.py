@@ -524,6 +524,7 @@ FLEET = [
 
 def unhurried(**kwargs):
     """A detector with no frame budget, so what it finds is not machine speed."""
+    kwargs.setdefault("max_robots", len(FLEET))
     return RobotDetector(MM_PER_PX, budget_ms=float("inf"), **kwargs)
 
 
@@ -655,7 +656,7 @@ def test_a_frame_out_of_time_fits_the_rest_on_the_next():
     robots = FLEET[:3]
     raster = fleet_raster(robots)
     priors = [prior_for(f"bot{i}", c, h) for i, (c, h) in enumerate(robots)]
-    detector = RobotDetector(MM_PER_PX, budget_ms=0.0)
+    detector = RobotDetector(MM_PER_PX, budget_ms=0.0, max_robots=len(FLEET))
 
     first = detector.detect(raster, priors, stamp=1.0)
     assert [r.stamp for r in first.robots] == [1.0]
@@ -678,7 +679,7 @@ def test_a_carried_pose_goes_with_its_robot():
     """A robot no longer proposed is not reported from an older frame."""
     robots = FLEET[:2]
     priors = [prior_for(f"bot{i}", c, h) for i, (c, h) in enumerate(robots)]
-    detector = RobotDetector(MM_PER_PX, budget_ms=0.0)
+    detector = RobotDetector(MM_PER_PX, budget_ms=0.0, max_robots=len(FLEET))
     detector.detect(fleet_raster(robots), priors, stamp=1.0)
     detector.detect(fleet_raster(robots), priors, stamp=2.0)
 
@@ -733,3 +734,11 @@ def test_matching_takes_the_most_pairs_then_the_least_distance():
     pairs = sorted([(27.0, 1, 0), (40.0, 0, 0), (50.0, 1, 1), (117.0, 0, 1)])
     assert match_within(pairs, gate=54.5) == {0: 0, 1: 1}
     assert match_within(pairs, gate=54.5, exact_max=0) == {1: 0}
+
+
+def test_the_default_cap_is_two_robots():
+    detection = RobotDetector(MM_PER_PX, budget_ms=float("inf")).detect(
+        fleet_raster(FLEET)
+    )
+    assert detection.candidates == len(FLEET)
+    assert len(detection.robots) == 2

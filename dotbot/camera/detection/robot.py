@@ -68,7 +68,7 @@ REFUSED = "refused"
 NONE = "none"
 
 # Robots fitted per frame at most, unless the caller sets its own cap.
-MAX_ROBOTS = 5
+MAX_ROBOTS = 2
 
 # Wall time one frame may spend fitting poses before the rest wait for the
 # next frame. At least one candidate is fitted on every frame, so a slow

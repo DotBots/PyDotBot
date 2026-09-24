@@ -261,7 +261,11 @@ def test_robots_are_named_from_the_fixes_the_controller_holds():
     """
     from dotbot.camera.detection.pose import PHOTODIODE_AHEAD_MM, axes
 
-    robots = [((1250.0, 250.0), 0.0), ((1700.0, 400.0), 120.0), ((1400.0, 700.0), -60.0)]
+    robots = [
+        ((1250.0, 250.0), 0.0),
+        ((1700.0, 400.0), 120.0),
+        ((1400.0, 700.0), -60.0),
+    ]
     frame = synthetic_colour_frame(DEV_CORNER, robots)
     calibration = registration_for(frame)
 
@@ -274,6 +278,7 @@ def test_robots_are_named_from_the_fixes_the_controller_holds():
         DEV_CORNER,
         open_source=looping(frame),
         priors=lambda: [("aa", *fix(*robots[0])), ("bb", *fix(*robots[1]))],
+        max_robots=3,
     )
     assert service.start()
     try:
@@ -289,7 +294,11 @@ def test_robots_are_named_from_the_fixes_the_controller_holds():
 
 
 def test_the_robot_cap_reaches_the_detector():
-    robots = [((1250.0, 250.0), 0.0), ((1700.0, 400.0), 120.0), ((1400.0, 700.0), -60.0)]
+    robots = [
+        ((1250.0, 250.0), 0.0),
+        ((1700.0, 400.0), 120.0),
+        ((1400.0, 700.0), -60.0),
+    ]
     frame = synthetic_colour_frame(DEV_CORNER, robots)
     service = CameraService(
         registration_for(frame),
