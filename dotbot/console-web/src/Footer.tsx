@@ -6,6 +6,7 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
+import { ARRIVAL_PRESETS } from "./arrival";
 import { isPose, normDeg } from "./poseGesture";
 import { ACTION_KEY } from "./shortcuts";
 import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint } from "./types";
@@ -55,6 +56,8 @@ interface FooterProps {
   onSetPendingHeading?: (index: number, heading: number | null) => void;
   poseMode?: boolean;
   onPoseMode?: (on: boolean) => void;
+  arrivalMm?: number;
+  onArrivalMm?: (mm: number) => void;
   onToast: (msg: string) => void;
 }
 
@@ -163,6 +166,8 @@ const ControlDock: React.FC<{
   onSetPendingHeading?: (i: number, heading: number | null) => void;
   poseMode?: boolean;
   onPoseMode?: (on: boolean) => void;
+  arrivalMm?: number;
+  onArrivalMm?: (mm: number) => void;
   onToast: (msg: string) => void;
 }> = ({
   targets,
@@ -177,6 +182,8 @@ const ControlDock: React.FC<{
   onSetPendingHeading,
   poseMode = false,
   onPoseMode,
+  arrivalMm,
+  onArrivalMm,
   onToast,
 }) => {
   const [ledOpen, setLedOpen] = useState(false);
@@ -434,7 +441,7 @@ const ControlDock: React.FC<{
 
       {/* waypoint queue popover */}
       {wpOpen && (
-        <div style={{ ...popBase, width: 240 }}>
+        <div style={{ ...popBase, width: 262 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
             <span style={label}>Waypoint queue</span>
             {pending.length > 0 && (
@@ -490,6 +497,35 @@ const ControlDock: React.FC<{
             <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
               &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}; Alt-drag
               or hold for a pose.
+            </div>
+          )}
+          {arrivalMm !== undefined && onArrivalMm && (
+            <div
+              role="radiogroup"
+              aria-label="Stop within"
+              title="How close the robot's centre comes to the last waypoint before it stops and turns; under 5 mm it settles slowly"
+              style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 11 }}
+            >
+              <span style={{ color: "var(--muted)", marginRight: 2 }}>Stop within</span>
+              {ARRIVAL_PRESETS.map((p) => (
+                <span
+                  key={p.mm}
+                  role="radio"
+                  aria-checked={arrivalMm === p.mm}
+                  data-testid={`arrival-${p.mm}`}
+                  onClick={() => onArrivalMm(p.mm)}
+                  style={{
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    border: `1px solid ${arrivalMm === p.mm ? "var(--accent)" : "var(--hairline)"}`,
+                    color: arrivalMm === p.mm ? "var(--accent)" : "var(--text)",
+                  }}
+                >
+                  {p.label}
+                </span>
+              ))}
             </div>
           )}
         </div>
@@ -680,6 +716,8 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onSetPendingHeading={props.onSetPendingHeading}
               poseMode={props.poseMode}
               onPoseMode={props.onPoseMode}
+              arrivalMm={props.arrivalMm}
+              onArrivalMm={props.onArrivalMm}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
@@ -744,6 +782,8 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onSetPendingHeading={props.onSetPendingHeading}
               poseMode={props.poseMode}
               onPoseMode={props.onPoseMode}
+              arrivalMm={props.arrivalMm}
+              onArrivalMm={props.onArrivalMm}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />

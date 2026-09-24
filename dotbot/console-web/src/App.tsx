@@ -35,6 +35,7 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
+import { INTERMEDIATE_MM, loadArrivalMm, saveArrivalMm } from "./arrival";
 import {
   ACTION_KEY,
   CLOSE_KEY,
@@ -75,7 +76,6 @@ import {
   zoomMax,
 } from "./zoom";
 
-const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
 
 // Build provenance, quiet enough to ignore until it is the question:
 // `v0.30.0`, `v0.30.0 6573d53`, or `v0.30.0 6573d53*` for a dirty checkout.
@@ -151,6 +151,12 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
+  // The last waypoint's arrival radius, in mm, this browser's choice.
+  const [arrivalMm, setArrivalMmState] = useState(loadArrivalMm);
+  const setArrivalMm = useCallback((mm: number) => {
+    setArrivalMmState(mm);
+    saveArrivalMm(mm);
+  }, []);
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
     waypoints: true,
@@ -465,7 +471,7 @@ export const App: React.FC = () => {
     (m: PlannedMission) => {
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
       targets.forEach((b) => {
-        putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, m.waypoints).catch(() => {});
+        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, INTERMEDIATE_MM).catch(() => {});
       });
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
@@ -474,7 +480,7 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast],
+    [bots, showToast, arrivalMm],
   );
 
   const onGo = useCallback(() => {
@@ -491,10 +497,10 @@ export const App: React.FC = () => {
 
   const onStopNav = useCallback(() => {
     drivableSelected.forEach((b) => {
-      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {});
+      putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {});
     });
     if (drivableSelected.length > 0) showToast("Navigation stopped");
-  }, [drivableSelected, showToast]);
+  }, [drivableSelected, showToast, arrivalMm]);
 
   // Redo sends each bot the mission it last ran, which the controller still
   // holds after the bot arrived. Each bot gets its own list, so a selection
@@ -503,10 +509,10 @@ export const App: React.FC = () => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
     again.forEach((b) => {
-      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, lastMissionTargets(b)).catch(() => {});
+      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), INTERMEDIATE_MM).catch(() => {});
     });
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast]);
+  }, [selectedBots, showToast, arrivalMm]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -602,10 +608,10 @@ export const App: React.FC = () => {
     (ids: string[]) => {
       bots
         .filter((b) => ids.includes(b.id) && b.drivable)
-        .forEach((b) => putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {}));
+        .forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
       showToast("Mission interrupted");
     },
-    [bots, showToast],
+    [bots, showToast, arrivalMm],
   );
 
   const layerRows: { key: keyof Layers; label: string }[] = [
@@ -976,6 +982,8 @@ export const App: React.FC = () => {
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
         onSetPendingHeading={onSetPendingHeading}
+        arrivalMm={arrivalMm}
+        onArrivalMm={setArrivalMm}
         poseMode={poseMode}
         onPoseMode={setPoseMode}
         onToast={showToast}

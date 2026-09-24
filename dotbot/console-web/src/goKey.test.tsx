@@ -146,7 +146,7 @@ describe("the go key", () => {
     expect(putWaypoints).toHaveBeenCalledTimes(1);
     expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
       { x: expect.any(Number), y: expect.any(Number) },
-    ]);
+    ], 20);
     expect(screen.getByText("1 waypoint sent to 1 bot")).toBeInTheDocument();
     expect(screen.queryByTestId(/^planned-/)).not.toBeInTheDocument();
   });

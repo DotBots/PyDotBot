@@ -163,7 +163,7 @@ describe("a queued pose in the waypoint queue", () => {
     press(ACTION_KEY.go);
     expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 270 },
-    ]);
+    ], 20);
   });
 
   it("shows its heading as a number the keys step and clear", () => {
@@ -187,7 +187,7 @@ describe("a queued pose in the waypoint queue", () => {
     expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
       { x: expect.any(Number), y: expect.any(Number) },
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 90 },
-    ]);
+    ], 20);
   });
 });
 
@@ -236,5 +236,35 @@ describe("the robot's own report on its batch", () => {
     render(<App />);
     expect(screen.getByText(/waypoint 2 of 3/)).toBeInTheDocument();
     expect(screen.queryByTestId("mission-report")).toBeNull();
+  });
+});
+
+describe("the arrival radius", () => {
+  it("sends 10 mm and a 20 mm pass radius by default, and the preset chosen after", () => {
+    window.localStorage.clear();
+    select("1111");
+    render(<App />);
+    queuePose();
+    openQueue();
+    expect(screen.getByTestId("arrival-10")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByTestId("arrival-2"));
+    expect(window.localStorage.getItem("dotbot.console.arrivalMm")).toBe("2");
+    press(ACTION_KEY.go);
+    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 2, expect.any(Array), 20);
+  });
+
+  it("reads the stored preset back, and ignores one that is not a preset", () => {
+    window.localStorage.setItem("dotbot.console.arrivalMm", "5");
+    select("1111");
+    const { unmount } = render(<App />);
+    queueWaypoint();
+    press(ACTION_KEY.go);
+    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 5, expect.any(Array), 20);
+    unmount();
+    window.localStorage.setItem("dotbot.console.arrivalMm", "60");
+    render(<App />);
+    queueWaypoint();
+    press(ACTION_KEY.go);
+    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 10, expect.any(Array), 20);
   });
 });

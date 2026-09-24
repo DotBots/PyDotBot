@@ -141,6 +141,7 @@ describe("redo mission", () => {
       arrived.application,
       expect.any(Number),
       TARGETS,
+      20,
     );
     expect(screen.getByText("Mission re-sent to 1 bot")).toBeInTheDocument();
   });
@@ -175,12 +176,14 @@ describe("redo mission", () => {
       arrived.application,
       expect.any(Number),
       TARGETS,
+      20,
     );
     expect(putWaypoints).toHaveBeenCalledWith(
       arrivedElsewhere.id,
       arrivedElsewhere.application,
       expect.any(Number),
       OTHER_TARGETS,
+      20,
     );
     expect(screen.getByText("Mission re-sent to 2 bots")).toBeInTheDocument();
   });
