@@ -670,3 +670,21 @@ describe("a plain waypoint", () => {
     expect(document.querySelector('[data-layer="waypoint-footprint"]')).toBeNull();
   });
 });
+
+describe("a robot reporting its own axle", () => {
+  it("has its body drawn about that axle rather than the geometry record's", () => {
+    const at = (axle?: LH2Position) => {
+      const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE, axle });
+      const { unmount } = render(<Harness bots={[b]} from={{ scale: 8, tx: 0, ty: 0 }} />);
+      const glyph = screen.getByTestId("glyph-a");
+      const cy = Number(glyph.querySelector('[data-layer="axle"]')!.getAttribute("cy"));
+      const board = glyph.querySelector('[data-layer="board"]')!.getAttribute("points");
+      unmount();
+      return { cy, board };
+    };
+    const record = at();
+    const own = at({ x: 500, y: 502 });
+    expect(own.cy).toBeGreaterThan(record.cy);
+    expect(own.board).not.toBe(record.board);
+  });
+});

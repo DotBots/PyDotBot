@@ -791,9 +791,28 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // out floors it at a size that can still be seen and clicked.
   const botDraw = (b: UnifiedBot) => {
     let draw = robotDraw(b.pose, drawing, perMm, props.bots.length);
+    // The robot's own axle estimate places the body: its lever arm is the
+    // firmware's, which is not quite the geometry record's.
     if (b.axle && b.pose && draw.shape.kind === "board") {
-      const axle = { x: b.axle.x - b.pose.photodiode.x, y: b.axle.y - b.pose.photodiode.y };
-      draw = { ...draw, shape: { ...draw.shape, body: { ...draw.shape.body, axle } } };
+      const dx = b.axle.x - b.pose.axle.x;
+      const dy = b.axle.y - b.pose.axle.y;
+      const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
+      const body = draw.shape.body;
+      draw = {
+        ...draw,
+        centre: move(draw.centre),
+        shape: {
+          ...draw.shape,
+          body: {
+            ...body,
+            outline: body.outline.map(move),
+            wheels: body.wheels.map((w) => w.map(move)),
+            centre: move(body.centre),
+            nose: move(body.nose),
+            axle: move(body.axle),
+          },
+        },
+      };
     }
     const { footprintPx } = draw;
     return {
