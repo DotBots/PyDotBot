@@ -59,6 +59,10 @@ DIRECTION_THRESHOLD_MM = 50
 
 SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
 
+# The dotbot-next firmware stops the wheels this long after the last wheel
+# velocity command.
+WHEEL_VELOCITY_TIMEOUT_S = 0.5
+
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
@@ -102,6 +106,12 @@ def wheel_speed_from_pwm(pwm: float) -> float:
     if pwm < -100:
         pwm = -100
     return pwm * D * Kv / (R * 127)
+
+
+def pwm_from_wheel_speed(speed_mm_s: float) -> int:
+    """Convert a wheel speed in mm/s to the PWM that would produce it."""
+    pwm = round(speed_mm_s * R * 127 / (D * Kv))
+    return max(-100, min(100, pwm))
 
 
 @dataclass
@@ -218,6 +228,10 @@ class DotBotSimulator:
 
         self.pwm_left = 0
         self.pwm_right = 0
+        # Wheel speeds in mm/s set by a wheel velocity command; None while the
+        # wheels are driven by PWM.
+        self.wheel_velocity: Optional[Tuple[int, int]] = None
+        self._wheel_velocity_deadline = 0.0
         self.direction = settings.direction
         # Point the next heading is measured from. The frame origin at boot, as
         # on the real robot, so the first heading is an origin bearing.
@@ -342,11 +356,24 @@ class DotBotSimulator:
         pos_y_old = self.pos_y
         theta_old = self.theta
 
-        # Compute each wheel's real speed considering the motor error and the minimum PWM to move
-        v_left_real = wheel_speed_from_pwm(self.pwm_left) * (1 - self.motor_left_error)
-        v_right_real = wheel_speed_from_pwm(self.pwm_right) * (
-            1 - self.motor_right_error
-        )
+        if (
+            self.wheel_velocity is not None
+            and time.monotonic() > self._wheel_velocity_deadline
+        ):
+            self._stop_wheel_velocity()
+
+        if self.wheel_velocity is not None:
+            # The onboard wheel loop closes on the encoders, so the motor error
+            # does not show in the wheel speeds.
+            v_left_real, v_right_real = self.wheel_velocity
+        else:
+            # Compute each wheel's real speed considering the motor error and the minimum PWM to move
+            v_left_real = wheel_speed_from_pwm(self.pwm_left) * (
+                1 - self.motor_left_error
+            )
+            v_right_real = wheel_speed_from_pwm(self.pwm_right) * (
+                1 - self.motor_right_error
+            )
 
         V = (v_right_real + v_left_real) / 2
         w = (v_right_real - v_left_real) / L
@@ -438,6 +465,11 @@ class DotBotSimulator:
             pwm_left=int(self.pwm_left),
             pwm_right=int(self.pwm_right),
         )
+
+    def _stop_wheel_velocity(self):
+        self.wheel_velocity = None
+        self.pwm_left = 0
+        self.pwm_right = 0
 
     def update_state(self):
         """Update the state of the dotbot simulator."""
@@ -645,6 +677,7 @@ class DotBotSimulator:
                 if self.address == addr_to_hex(int(frame.header.destination)):
                     if frame.payload_type == PayloadType.CMD_MOVE_RAW:
                         self.controller_mode = ControlModeType.MANUAL
+                        self.wheel_velocity = None
                         self.waypoint_index = 0
                         self.waypoint_x = 0
                         self.waypoint_y = 0
@@ -659,7 +692,26 @@ class DotBotSimulator:
                             pwm_left=self.pwm_left,
                             pwm_right=self.pwm_right,
                         )
+                    elif frame.payload_type == PayloadType.CMD_WHEEL_VELOCITY:
+                        self.controller_mode = ControlModeType.MANUAL
+                        self.waypoint_index = 0
+                        self.waypoint_x = 0
+                        self.waypoint_y = 0
+                        left = frame.packet.payload.left_mm_s
+                        right = frame.packet.payload.right_mm_s
+                        self.wheel_velocity = (left, right)
+                        self._wheel_velocity_deadline = (
+                            time.monotonic() + WHEEL_VELOCITY_TIMEOUT_S
+                        )
+                        self.pwm_left = pwm_from_wheel_speed(left)
+                        self.pwm_right = pwm_from_wheel_speed(right)
+                        self.logger.info(
+                            "Wheel velocity command received",
+                            left_mm_s=left,
+                            right_mm_s=right,
+                        )
                     elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
+                        self.wheel_velocity = None
                         self.waypoint_threshold = frame.packet.payload.threshold
                         self.waypoints = frame.packet.payload.waypoints
                         self.waypoint_index = 0
@@ -691,6 +743,11 @@ class DotBotSimulator:
                             self.pwm_left = 0
                             self.pwm_right = 0
                             self.controller_mode = ControlModeType.MANUAL
+                    else:
+                        self.logger.warning(
+                            "Unhandled payload type",
+                            payload_type=f"0x{int(frame.payload_type):02X}",
+                        )
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")

@@ -1,6 +1,8 @@
 """Tests for the simulated DotBot's receive path."""
 
 import queue
+import time
+from unittest.mock import MagicMock
 
 import pytest
 from dotbot_utils.protocol import Frame, Header, Packet
@@ -24,6 +26,8 @@ from dotbot.protocol import (
     DIRECTION_NONE,
     ControlModeType,
     PayloadCommandMoveRaw,
+    PayloadCommandRgbLed,
+    PayloadCommandWheelVelocity,
     PayloadLH2Location,
     PayloadLH2Waypoints,
 )
@@ -75,6 +79,59 @@ def test_a_command_for_another_bot_is_ignored():
     _deliver(bot, _move_raw(0xDEADBEEF22222222))
     assert bot.pwm_left == 0
     assert bot.pwm_right == 0
+
+
+def _wheel_velocity(bot: DotBotSimulator, left: int, right: int) -> Frame:
+    return Frame(
+        header=Header(destination=int(bot.address, 16), source=0),
+        packet=Packet().from_payload(
+            PayloadCommandWheelVelocity(left_mm_s=left, right_mm_s=right)
+        ),
+    )
+
+
+def test_a_wheel_velocity_command_drives_the_wheels_at_that_speed():
+    bot = DotBotSimulator(
+        SimulatedDotBotSettings(address=ADDRESS, motor_left_error=0.3),
+        queue.Queue(),
+    )
+    _deliver(bot, _wheel_velocity(bot, 300, 300))
+    bot.diff_drive_model_update()
+    assert bot.pos_x == pytest.approx(0)
+    assert bot.pos_y == pytest.approx(300 * SIMULATOR_STEP_DELTA_T)
+    assert bot.controller_mode == ControlModeType.MANUAL
+
+
+def test_the_wheels_stop_when_wheel_velocity_commands_stop_arriving():
+    bot = _bot(ADDRESS)
+    _deliver(bot, _wheel_velocity(bot, 300, -300))
+    bot._wheel_velocity_deadline = time.monotonic() - 0.01
+    bot.diff_drive_model_update()
+    assert (bot.pos_x, bot.pos_y, bot.theta) == (100, 100, 0)
+    assert (bot.pwm_left, bot.pwm_right) == (0, 0)
+
+
+def test_a_move_raw_command_takes_over_from_wheel_velocity():
+    bot = _bot(ADDRESS)
+    _deliver(bot, _wheel_velocity(bot, 300, 300))
+    _deliver(bot, _move_raw(int(ADDRESS, 16)))
+    assert bot.wheel_velocity is None
+    assert bot.pwm_left == 80
+
+
+def test_an_unhandled_payload_type_is_logged():
+    bot = _bot(ADDRESS)
+    bot.logger = MagicMock()
+    _deliver(
+        bot,
+        Frame(
+            header=Header(destination=int(ADDRESS, 16), source=0),
+            packet=Packet().from_payload(PayloadCommandRgbLed(red=1, green=2, blue=3)),
+        ),
+    )
+    bot.logger.warning.assert_called_once_with(
+        "Unhandled payload type", payload_type="0x01"
+    )
 
 
 def test_the_address_rendering_round_trips():
