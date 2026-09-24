@@ -89,6 +89,9 @@ export interface PyDotBot {
   direction?: number;
   lh2_position?: LH2Position;
   pose?: BotPose;
+  // The axle midpoint as the robot itself estimates it; null from apps that
+  // do not report it, or with no heading yet.
+  axle_position?: LH2Position | null;
   position_history?: LH2Position[];
   waypoints?: Waypoint[];
   waypoints_threshold?: number;
@@ -315,6 +318,9 @@ export interface UnifiedBot {
   waypoints: Waypoint[]; // active mission (as reported by the controller)
   // How the robot says its last batch stands; absent from apps that do not report.
   mission?: MissionReport | null;
+  // The robot's centre, where a waypoint puts it: its own estimate when it
+  // reports one, else the axle of the body the controller expanded.
+  axle?: LH2Position | null;
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary

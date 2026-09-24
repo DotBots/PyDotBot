@@ -409,14 +409,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     if (!at) return;
     let poseAtMm = at;
     let pivot = { x, y };
-    if (on?.pose && hasHeading(on.pose)) {
-      poseAtMm = { x: Math.round(on.pose.axle.x), y: Math.round(on.pose.axle.y) };
-      pivot = frameToClient(on.pose.axle) ?? pivot;
+    const onAxle = on?.axle ?? (on?.pose && hasHeading(on.pose) ? on.pose.axle : null);
+    if (onAxle) {
+      poseAtMm = { x: Math.round(onAxle.x), y: Math.round(onAxle.y) };
+      pivot = frameToClient(onAxle) ?? pivot;
     }
     // The silhouette first faces the way the robot would arrive: from the
     // last queued waypoint, or from where the robot is.
     const last = selectionMission()?.waypoints.slice(-1)[0];
-    const from = last ?? selectedBots().find((b) => b.position)?.position ?? null;
+    const start = selectedBots().find((b) => b.axle ?? b.position);
+    const from = last ?? start?.axle ?? start?.position ?? null;
     const approach = from ? bearing(from, poseAtMm) : null;
     const template = silhouetteTemplate(props.bots, props.selection);
     const heading = on?.pose ? on.pose.heading_deg : (approach ?? template?.heading_deg ?? 0);
@@ -788,7 +790,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // scale: zooming in tells the truth about how much room it takes. Zooming
   // out floors it at a size that can still be seen and clicked.
   const botDraw = (b: UnifiedBot) => {
-    const draw = robotDraw(b.pose, drawing, perMm, props.bots.length);
+    let draw = robotDraw(b.pose, drawing, perMm, props.bots.length);
+    if (b.axle && b.pose && draw.shape.kind === "board") {
+      const axle = { x: b.axle.x - b.pose.photodiode.x, y: b.axle.y - b.pose.photodiode.y };
+      draw = { ...draw, shape: { ...draw.shape, body: { ...draw.shape.body, axle } } };
+    }
     const { footprintPx } = draw;
     return {
       draw,

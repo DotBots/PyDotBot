@@ -141,6 +141,7 @@ export function merge(
       nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
       mission: missionReport(py),
+      axle: py?.axle_position ?? (pose && pose.heading_source !== "none" ? pose.axle : null),
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
@@ -275,6 +276,7 @@ export function useFleet(): {
           if (d.waypoints_status !== undefined) bot.waypoints_status = d.waypoints_status;
           if (d.waypoints_reason !== undefined) bot.waypoints_reason = d.waypoints_reason;
           if (d.waypoint_index !== undefined) bot.waypoint_index = d.waypoint_index;
+          if (d.axle_position !== undefined) bot.axle_position = d.axle_position;
           rebuild();
         } else {
           // RELOAD / NEW_DOTBOT / unknown -> refetch everything.

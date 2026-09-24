@@ -565,6 +565,18 @@ describe("placing a waypoint with the waypoint modifier", () => {
   });
 });
 
+describe("turning a robot in place", () => {
+  it("pivots on the robot's own axle estimate when it reports one", () => {
+    const onAdd = vi.fn();
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE, axle: { x: 510, y: 505 } });
+    render(<Harness bots={[b]} selection={new Set(["a"])} onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(document.getElementById("bot-a")!, { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { clientX: 900, clientY: 0 });
+    fireEvent.pointerUp(canvas(), { clientX: 900, clientY: 0 });
+    expect(onAdd.mock.calls[0][0]).toMatchObject({ x: 510, y: 505 });
+  });
+});
+
 describe("pose mode", () => {
   it("places with a plain press: a click is a position, a drag a pose", () => {
     const onAdd = vi.fn();
