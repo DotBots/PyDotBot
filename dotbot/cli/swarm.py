@@ -22,7 +22,7 @@ inherits a saved deployment like every other command. An explicit swarmit
 import click
 
 from dotbot.cli._lazy import lazy_subcommand
-from dotbot.cli._swarm_inject import inject_config
+from dotbot.cli._swarm_inject import inject_config, subcommand_index
 
 _HELP = (
     "Fleet ops over the air: status, start/stop, OTA-flash, monitor, "
@@ -92,17 +92,18 @@ def _with_config_injection(swarmit_group):
         # `flash <name>` is PyDotBot sugar: resolve a bundled app name to its
         # fetched .bin path before handing off (an explicit path passes
         # through), and service `--list` without touching the transport.
-        if args and args[0] == "flash":
+        sub = subcommand_index(args, swarmit_group)
+        if sub is not None and args[sub] == "flash":
             from dotbot.cli._swarm_flash import flash_help_epilog, resolve_flash_args
 
             flash_cmd = swarmit_group.commands.get("flash")
             if flash_cmd is not None and not flash_cmd.epilog:
                 flash_cmd.epilog = flash_help_epilog()
-            rest, handled = resolve_flash_args(args[1:])
+            rest, handled = resolve_flash_args(args[sub + 1 :])
             if handled:
                 return
-            args = ["flash", *rest]
-        final = inject_config(args, ctx.obj) if args else args
+            args = [*args[: sub + 1], *rest]
+        final = inject_config(args, ctx.obj, swarmit_group) if args else args
         _run_swarmit(swarmit_group, final)
 
     return cmd
