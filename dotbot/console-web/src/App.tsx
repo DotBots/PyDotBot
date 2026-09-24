@@ -44,6 +44,7 @@ import {
   onMac,
   pressed,
   typingIn,
+  undoPressed,
 } from "./shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
@@ -547,6 +548,41 @@ export const App: React.FC = () => {
     [selKey],
   );
 
+  // A queued waypoint's heading: a number makes it a pose, null a position.
+  const onSetHeading = useCallback((key: string, i: number, heading: number | null) => {
+    setPlanned((prev) =>
+      prev.map((m) => {
+        if (m.key !== key || !m.waypoints[i]) return m;
+        const { x, y } = m.waypoints[i];
+        const w: Waypoint = heading === null ? { x, y } : { x, y, heading_deg: heading };
+        return { ...m, waypoints: m.waypoints.map((o, j) => (j === i ? w : o)) };
+      }),
+    );
+  }, []);
+  const onSetPendingHeading = useCallback(
+    (i: number, heading: number | null) => onSetHeading(selKey, i, heading),
+    [onSetHeading, selKey],
+  );
+
+  // Pose mode: a plain press on the map places waypoints and poses.
+  const [poseMode, setPoseMode] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || e.repeat || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.poseMode)) {
+        setPoseMode((on) => !on);
+        e.preventDefault();
+      } else if (undoPressed(e)) {
+        // Takes back what is queued, never a mission already sent.
+        if (queued > 0) onRemovePending(queued - 1);
+        else showToast("Nothing queued to take back");
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, queued, onRemovePending, showToast]);
+
   // Recently-completed missions: a bot flipping AUTO -> MANUAL just arrived.
   const [doneMissions, setDoneMissions] = useState<DoneMission[]>([]);
   const prevNavRef = useRef<Record<string, "drive" | "auto">>({});
@@ -819,6 +855,9 @@ export const App: React.FC = () => {
               onGeom={setGeom}
               onSelect={onSelect}
               onAddWaypoint={onAddWaypoint}
+              onSetHeading={onSetHeading}
+              poseMode={poseMode}
+              onPoseMode={setPoseMode}
               session={session}
               onPickCapturer={(id) => setCapturer(id.toUpperCase())}
               site={site}
@@ -936,6 +975,9 @@ export const App: React.FC = () => {
         onRedo={onRedo}
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
+        onSetPendingHeading={onSetPendingHeading}
+        poseMode={poseMode}
+        onPoseMode={setPoseMode}
         onToast={showToast}
       />
     </div>

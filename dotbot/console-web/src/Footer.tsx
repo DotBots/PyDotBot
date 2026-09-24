@@ -6,7 +6,9 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { Area, BotState, canRedoMission, LH2Position, LINK_LABEL, STATE_ORDER, Site, UnifiedBot } from "./types";
+import { isPose, normDeg } from "./poseGesture";
+import { ACTION_KEY } from "./shortcuts";
+import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -40,7 +42,7 @@ interface FooterProps {
   /** The area names this browser hides, ticked under Layers > Areas. */
   hiddenAreas: Set<string>;
   selection: Set<string>;
-  pendingWaypoints: LH2Position[];
+  pendingWaypoints: Waypoint[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
@@ -50,6 +52,9 @@ interface FooterProps {
   onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (index: number) => void;
+  onSetPendingHeading?: (index: number, heading: number | null) => void;
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
   onToast: (msg: string) => void;
 }
 
@@ -91,9 +96,63 @@ const BatteryBar: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
 
 // The control dock, per v1: pad + LED button + segmented waypoint group,
 // with popovers anchored above and everything gated when nothing is drivable.
+/**
+ * A queued waypoint's heading as a number to type or step: arrows turn it a
+ * degree, Shift + arrows 15, and clearing it (or Delete) makes the waypoint a
+ * position again. The number is the one the REST call carries.
+ */
+export const HeadingField: React.FC<{
+  index: number;
+  heading: number | undefined;
+  onChange: (heading: number | null) => void;
+}> = ({ index, heading, onChange }) => {
+  const shown = heading === undefined ? "" : String(Math.round(heading));
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (text: string) => {
+    setDraft(null);
+    const t = text.trim();
+    if (t === "") return onChange(null);
+    const n = Number(t);
+    if (Number.isFinite(n)) onChange(normDeg(n));
+  };
+  const step = (by: number) => onChange(normDeg((heading ?? 0) + by));
+  return (
+    <input
+      aria-label={`Heading of waypoint ${index + 1}, degrees`}
+      data-testid={`heading-${index}`}
+      inputMode="numeric"
+      placeholder="—"
+      value={draft ?? shown}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => {
+        const big = e.shiftKey ? 15 : 1;
+        if (e.key === "ArrowUp" || e.key === "ArrowRight") step(big);
+        else if (e.key === "ArrowDown" || e.key === "ArrowLeft") step(-big);
+        else if (e.key === "Delete") onChange(null);
+        else if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        else return;
+        e.preventDefault();
+        setDraft(null);
+      }}
+      style={{
+        width: 38,
+        ...mono,
+        fontSize: 11,
+        padding: "1px 4px",
+        background: "var(--canvas)",
+        color: "var(--text)",
+        border: "1px solid var(--hairline)",
+        borderRadius: 4,
+        textAlign: "right",
+      }}
+    />
+  );
+};
+
 const ControlDock: React.FC<{
   targets: UnifiedBot[];
-  pending: LH2Position[];
+  pending: Waypoint[];
   isGroup: boolean;
   selCount: number;
   onGo: () => void;
@@ -101,8 +160,25 @@ const ControlDock: React.FC<{
   onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (i: number) => void;
+  onSetPendingHeading?: (i: number, heading: number | null) => void;
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
   onToast: (msg: string) => void;
-}> = ({ targets, pending, isGroup, selCount, onGo, onStopNav, onRedo, onClearQueue, onRemovePending, onToast }) => {
+}> = ({
+  targets,
+  pending,
+  isGroup,
+  selCount,
+  onGo,
+  onStopNav,
+  onRedo,
+  onClearQueue,
+  onRemovePending,
+  onSetPendingHeading,
+  poseMode = false,
+  onPoseMode,
+  onToast,
+}) => {
   const [ledOpen, setLedOpen] = useState(false);
   const [wpOpen, setWpOpen] = useState(false);
   const drivable = targets.filter((b) => b.drivable);
@@ -123,7 +199,10 @@ const ControlDock: React.FC<{
       : `⚠  Not drivable - ${notDrivableReason(single)}`
     : anyAuto
       ? `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
-      : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map to add waypoints${pending.length ? ` · ${pending.length} queued` : ""}`;
+      : poseMode
+        ? `◈  Pose mode · click for a waypoint, drag for a pose · Space-drag pans${pending.length ? ` · ${pending.length} queued` : ""}`
+        : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map for a waypoint, drag for a pose${pending.length ? ` · ${pending.length} queued` : ""}`;
+  const sharedPoses = isGroup && drivable.length > 1 && pending.some(isPose);
 
   const popBase: React.CSSProperties = {
     position: "absolute",
@@ -199,6 +278,26 @@ const ControlDock: React.FC<{
               }}
             >
               &#9678; Waypoints{wpCount ? ` · ${wpCount}` : ""}
+            </div>
+            <div
+              data-testid="pose-mode-toggle"
+              role="switch"
+              aria-checked={poseMode}
+              title={`Pose mode (${ACTION_KEY.poseMode}): a click queues a waypoint, a drag a pose`}
+              onClick={() => onPoseMode?.(!poseMode)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "6px 9px",
+                cursor: "pointer",
+                fontSize: 12,
+                whiteSpace: "nowrap",
+                borderLeft: "1px solid var(--hairline)",
+                background: poseMode ? "rgba(228,3,46,.14)" : "transparent",
+                color: poseMode ? "var(--accent)" : "var(--muted)",
+              }}
+            >
+              &#9672; Pose
             </div>
             {(pending.length > 0 || anyAuto) && (
               <div
@@ -305,7 +404,7 @@ const ControlDock: React.FC<{
 
       {/* waypoint queue popover */}
       {wpOpen && (
-        <div style={popBase}>
+        <div style={{ ...popBase, width: 240 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
             <span style={label}>Waypoint queue</span>
             {pending.length > 0 && (
@@ -314,6 +413,11 @@ const ControlDock: React.FC<{
               </span>
             )}
           </div>
+          {sharedPoses && (
+            <div data-testid="shared-poses" style={{ fontSize: 11, color: "var(--s-Programming)", lineHeight: 1.4, marginBottom: 6 }}>
+              &#9888; {drivable.length} robots share these poses and would park on the same spot
+            </div>
+          )}
           {pending.length > 0 ? (
             <div style={{ overflow: "auto", maxHeight: 120 }}>
               {pending.map((w, i) => (
@@ -331,11 +435,21 @@ const ControlDock: React.FC<{
                 >
                   <span style={{ color: "var(--muted)", minWidth: 12 }}>{i + 1}</span>
                   <span>
-                    {Math.round(w.x)}, {Math.round(w.y)} mm
+                    {Math.round(w.x)}, {Math.round(w.y)}
                   </span>
+                  {onSetPendingHeading && (
+                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
+                      <HeadingField
+                        index={i}
+                        heading={isPose(w) ? w.heading_deg : undefined}
+                        onChange={(h) => onSetPendingHeading(i, h)}
+                      />
+                      <span style={{ color: "var(--muted)" }}>°</span>
+                    </span>
+                  )}
                   <span
                     onClick={() => onRemovePending(i)}
-                    style={{ marginLeft: "auto", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 3px" }}
+                    style={{ marginLeft: onSetPendingHeading ? 0 : "auto", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 3px" }}
                   >
                     &times;
                   </span>
@@ -344,7 +458,8 @@ const ControlDock: React.FC<{
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}.
+              &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}; Alt-drag
+              or hold for a pose.
             </div>
           )}
         </div>
@@ -532,6 +647,9 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
+              onSetPendingHeading={props.onSetPendingHeading}
+              poseMode={props.poseMode}
+              onPoseMode={props.onPoseMode}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
@@ -593,6 +711,9 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
+              onSetPendingHeading={props.onSetPendingHeading}
+              poseMode={props.poseMode}
+              onPoseMode={props.onPoseMode}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
