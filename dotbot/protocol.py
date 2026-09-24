@@ -20,6 +20,9 @@ DIRECTION_NONE = -1000
 # A waypoint heading's value when the point has none.
 WAYPOINT_NO_HEADING = 0x7FFF
 
+# The waypoint report's axle coordinate while the robot has no heading.
+AXLE_UNKNOWN = 0xFFFF
+
 
 class PayloadType(IntEnum):
     """Types of DotBot payload types."""
@@ -128,6 +131,8 @@ class PayloadDotBotAdvertisement(Payload):
             PayloadFieldMetadata(name="waypoints_reason", disp="wp_why"),
             PayloadFieldMetadata(name="batch_id", disp="batch"),
             PayloadFieldMetadata(name="max_speed_10mm", disp="vmax"),
+            PayloadFieldMetadata(name="axle_x", disp="axl_x", length=2),
+            PayloadFieldMetadata(name="axle_y", disp="axl_y", length=2),
         ]
     )
 
@@ -148,11 +153,13 @@ class PayloadDotBotAdvertisement(Payload):
     waypoints_reason: int = 0
     batch_id: int = 0
     max_speed_10mm: int = 0
-    # Whether the waypoint report (the four fields above) is on the wire; apps
+    axle_x: int = AXLE_UNKNOWN  # the estimator's axle midpoint, mm
+    axle_y: int = AXLE_UNKNOWN
+    # Whether the waypoint report (the six fields above) is on the wire; apps
     # other than dotbot-next do not send it
     report: dataclasses.InitVar[bool] = False
 
-    REPORT_SIZE = 4
+    REPORT_SIZE = 8
 
     def __post_init__(self, report):
         self.has_report = report
@@ -394,12 +401,13 @@ class PayloadWaypointHeading(Payload):
 class PayloadLH2Waypoints(Payload):
     """Dataclass that holds a list of LH2 waypoints.
 
-    After the points comes a trailer: the batch id, which the robot echoes in
-    its advertisement and uses to ignore a repeated batch, the heading
-    tolerance in degrees and the intermediate pass radius in mm (0 for the
-    firmware's defaults), then one heading per point. A point with a heading
-    is a pose: (x, y) is the axle midpoint and the robot turns to the heading
-    there. Apps that read only the points ignore the trailer.
+    Each point is a position for the robot's centre, the axle midpoint. After
+    the points comes a trailer: the batch id, which the robot echoes in its
+    advertisement and uses to ignore a repeated batch, the heading tolerance
+    in degrees and the intermediate pass radius in mm (0 for the firmware's
+    defaults), then one heading per point; the robot turns in place to a
+    point's heading there. Apps that read only the points ignore the trailer;
+    the older dotbot apps steer their photodiode, not the axle, onto a point.
     """
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(

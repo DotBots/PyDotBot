@@ -976,10 +976,12 @@ def test_advertisement_waypoint_report():
         waypoints_reason=WaypointsFailReason.PROGRESS,
         batch_id=200,
         max_speed_10mm=30,
+        axle_x=1234,
+        axle_y=567,
         report=True,
     )
     data = advert.to_bytes()
-    assert len(data) == 37
+    assert len(data) == 41
     parsed = PayloadDotBotAdvertisement().from_bytes(data)
     assert parsed.has_report
     assert (parsed.waypoint_idx, parsed.waypoints_status, parsed.waypoints_reason) == (
@@ -988,6 +990,7 @@ def test_advertisement_waypoint_report():
         WaypointsFailReason.PROGRESS,
     )
     assert (parsed.batch_id, parsed.max_speed_10mm) == (200, 30)
+    assert (parsed.axle_x, parsed.axle_y) == (1234, 567)
 
     legacy = PayloadDotBotAdvertisement(direction=-90, waypoint_idx=1).to_bytes()
     assert len(legacy) == 33
