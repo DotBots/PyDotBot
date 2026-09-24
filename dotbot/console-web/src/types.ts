@@ -38,6 +38,14 @@ export interface LH2Position {
   y: number;
 }
 
+// A waypoint is a position, or a pose when it carries a heading: then (x, y)
+// is where the robot's axle comes to rest and `heading_deg` is the way it
+// faces there, in the robot `direction` convention (0 = +y, clockwise as
+// drawn). Without one, (x, y) is a target for the LH2 photodiode.
+export interface Waypoint extends LH2Position {
+  heading_deg?: number;
+}
+
 export interface RgbLed {
   red: number;
   green: number;
@@ -83,7 +91,7 @@ export interface PyDotBot {
   lh2_position?: LH2Position;
   pose?: BotPose;
   position_history?: LH2Position[];
-  waypoints?: LH2Position[];
+  waypoints?: Waypoint[];
   waypoints_threshold?: number;
   rgb_led?: RgbLed;
   battery?: number; // volts
@@ -95,7 +103,7 @@ export interface WsNotification {
   // 6 CAMERA_DETECTION
   cmd: number;
   data?: Partial<PyDotBot> & {
-    lh2_waypoints?: LH2Position[];
+    lh2_waypoints?: Waypoint[];
   };
   calibration_session?: CalibrationSession | null;
   camera_detection?: CameraDetection;
@@ -300,7 +308,7 @@ export interface UnifiedBot {
   application: number;
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
-  waypoints: LH2Position[]; // active mission (as reported by the controller)
+  waypoints: Waypoint[]; // active mission (as reported by the controller)
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
@@ -317,7 +325,7 @@ export interface UnifiedBot {
 // [own-start, ...targets] and keeps the list once the bot arrives, so the tail
 // is the mission to repeat. A one-entry list is what stopping leaves behind -
 // the bot's own position, nothing to repeat.
-export function lastMissionTargets(bot: UnifiedBot): LH2Position[] {
+export function lastMissionTargets(bot: UnifiedBot): Waypoint[] {
   return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
 }
 
@@ -390,5 +398,5 @@ export interface RegisteredCamera {
 export interface PlannedMission {
   key: string; // sorted ids joined
   ids: string[];
-  waypoints: LH2Position[];
+  waypoints: Waypoint[];
 }

@@ -48,6 +48,7 @@ export function roleOf(e: ModifierKeys): MapRole | null {
 /** The keys that fire an action on their own: one key, one action. */
 export const ACTION_KEY = {
   go: "G",
+  poseMode: "P",
   leftPanel: "[",
   rightPanel: "]",
 } as const;
@@ -75,6 +76,19 @@ export function pressed(
   return !e.metaKey && (!e.ctrlKey || altGraph);
 }
 
+/** The key that, with Ctrl or Cmd, takes back the last queued waypoint. */
+export const UNDO_KEY = "Z";
+
+/** Whether a key press is Ctrl or Cmd + `UNDO_KEY`, and nothing else. */
+export function undoPressed(e: ModifierKeys & { key: string }): boolean {
+  return (
+    e.key.toUpperCase() === UNDO_KEY &&
+    holds(e, "ctrl") &&
+    !e.shiftKey &&
+    !e.altKey
+  );
+}
+
 /** The key that opens and closes the shortcuts panel. */
 export const SHORTCUTS_KEY = "?";
 
@@ -94,7 +108,7 @@ export function typingIn(target: EventTarget | null): boolean {
  * key is a modifier, an action key, or the name of a gesture.
  */
 export interface Shortcut {
-  keys: (Modifier | ActionKey | string)[];
+  keys: (Modifier | ActionKey | typeof UNDO_KEY | string)[];
   does: string;
 }
 
@@ -129,6 +143,27 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
         does: "Queue a waypoint there for the selected robots",
       },
       {
+        keys: [MAP_MODIFIER.waypoint, "drag or hold"],
+        does: "Queue a pose: the robot parks there, facing the cursor",
+      },
+      {
+        keys: [MAP_MODIFIER.select, "while aiming"],
+        does: "Snap the heading to 15°",
+      },
+      { keys: ["Esc while aiming"], does: "Cancel the waypoint" },
+      {
+        keys: [ACTION_KEY.poseMode],
+        does: "Pose mode: a click queues a waypoint, a drag a pose; Space + drag pans",
+      },
+      {
+        keys: ["scroll over a queued pose"],
+        does: "Turn it 15° a notch; or drag the knob at its nose",
+      },
+      {
+        keys: ["ctrl", UNDO_KEY],
+        does: "Take back the last queued waypoint",
+      },
+      {
         keys: [ACTION_KEY.go],
         does: "Send the selected robots to their queued waypoints, or stop them on their way",
       },
@@ -160,10 +195,10 @@ const MODIFIERS = new Set<string>(Object.values(MAP_MODIFIER));
 /** Whether a key column entry names a modifier rather than a gesture. */
 export const isModifier = (key: string): key is Modifier => MODIFIERS.has(key);
 
-const KEYS = new Set<string>(Object.values(ACTION_KEY));
+const KEYS = new Set<string>([...Object.values(ACTION_KEY), UNDO_KEY]);
 
 /** Whether a key column entry names a key on its own rather than a gesture. */
-export const isKey = (key: string): key is ActionKey => KEYS.has(key);
+export const isKey = (key: string): key is ActionKey | typeof UNDO_KEY => KEYS.has(key);
 
 /** Whether this browser runs on a Mac, where the modifiers have other names. */
 export const onMac = (): boolean =>

@@ -94,7 +94,7 @@ interface HarnessProps {
   bots: UnifiedBot[];
   selection?: Set<string>;
   from?: Camera;
-  planned?: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
+  planned?: { key: string; ids: string[]; waypoints: LH2Position[]; led: string | null }[];
   robotDrawing?: RobotDrawing;
 }
 
@@ -179,7 +179,7 @@ describe("waypoints on the map", () => {
   });
 
   it("show a queued mission only while one of its robots is selected", () => {
-    const planned = [{ ids: ["b"], waypoints: [{ x: 100, y: 100 }], led: null }];
+    const planned = [{ key: "b", ids: ["b"], waypoints: [{ x: 100, y: 100 }], led: null }];
     render(<Harness bots={fleet()} planned={planned} />);
     expect(screen.queryByTestId("planned-b-0")).not.toBeInTheDocument();
     cleanup();

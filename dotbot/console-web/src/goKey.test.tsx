@@ -126,14 +126,13 @@ const held = (modifier: Modifier) => ({
   metaKey: false,
   altKey: modifier === "alt",
 });
-// Queue a waypoint the way the map does: the waypoint modifier and a click.
-const queueWaypoint = () =>
-  fireEvent.pointerDown(canvas(), {
-    button: 0,
-    clientX: 450,
-    clientY: 300,
-    ...held(MAP_MODIFIER.waypoint),
-  });
+// Queue a waypoint the way the map does: the waypoint modifier and a click,
+// which queues on release.
+const queueWaypoint = () => {
+  const at = { button: 0, clientX: 450, clientY: 300, ...held(MAP_MODIFIER.waypoint) };
+  fireEvent.pointerDown(canvas(), at);
+  fireEvent.pointerUp(canvas(), at);
+};
 
 describe("the go key", () => {
   it("sends the selection to its queued waypoints, as Go does", () => {

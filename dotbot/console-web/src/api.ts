@@ -6,12 +6,12 @@ import {
   CalibrationSession,
   ControllerBuild,
   ControllerConnection,
-  LH2Position,
   PyDotBot,
   RegisteredCamera,
   RgbLed,
   Site,
   SwarmitNode,
+  Waypoint,
 } from "./types";
 import { MRTA_UNAVAILABLE, MrtaStatus, parseStatus } from "./mrta";
 
@@ -116,7 +116,7 @@ export async function putWaypoints(
   address: string,
   application: number,
   threshold: number,
-  waypoints: LH2Position[],
+  waypoints: Waypoint[],
 ): Promise<void> {
   await fetch(`${CONTROLLER}/dotbots/${address}/${application}/waypoints`, {
     method: "PUT",

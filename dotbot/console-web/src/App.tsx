@@ -53,8 +53,8 @@ import {
   ControllerBuild,
   ControllerConnection,
   lastMissionTargets,
-  LH2Position,
   PlannedMission,
+  Waypoint,
 } from "./types";
 import { useCalibration, useCapturer } from "./useCalibration";
 import { useFleet } from "./useFleet";
@@ -447,7 +447,7 @@ export const App: React.FC = () => {
   const pending = selPlanned?.waypoints ?? [];
 
   const onAddWaypoint = useCallback(
-    (p: LH2Position) => {
+    (p: Waypoint) => {
       if (drivableSelected.length === 0) return;
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
@@ -808,6 +808,7 @@ export const App: React.FC = () => {
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
+                  key: m.key,
                   ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,

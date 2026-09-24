@@ -1,0 +1,213 @@
+import React from "react";
+
+import { BotGlyph, robotDraw } from "./BotGlyph";
+import { poseAt } from "./poseGesture";
+import type { BotPose, LH2Position } from "./types";
+
+// A pose waypoint on the map: the robot's own silhouette with its axle on the
+// waypoint, or, with no body to borrow or too small to read, a diamond with a
+// tick toward the heading. The caller places this at the anchor, in screen
+// pixels, the way it places a robot.
+
+/** Screen pixels from the nose, or the tick's end, to the rotate knob. */
+export const KNOB_GAP_PX = 10;
+export const KNOB_R_PX = 5;
+
+export type PoseLook = "unarmed" | "aiming" | "queued" | "active";
+
+export type PoseShape =
+  | { kind: "board"; pose: BotPose }
+  | { kind: "tick" };
+
+/**
+ * What a pose at `anchor` facing `heading` is drawn as: the borrowed body
+ * when there is one and it reads at this zoom, the tick otherwise.
+ */
+export function poseShape(
+  template: BotPose | null,
+  anchor: LH2Position,
+  heading: number,
+  pxPerMm: number,
+): PoseShape {
+  if (!template) return { kind: "tick" };
+  const pose = poseAt(template, anchor, heading);
+  const draw = robotDraw(pose, { mode: "body", footprint: false }, pxPerMm, 1);
+  return draw.shape.kind === "board" ? { kind: "board", pose } : { kind: "tick" };
+}
+
+/** The unit vector a heading faces, in screen axes. */
+export const facing = (heading: number): LH2Position => {
+  const r = (heading * Math.PI) / 180;
+  return { x: -Math.sin(r), y: Math.cos(r) };
+};
+
+/** Where the knob sits, in screen pixels from the anchor. */
+export function knobOffset(shape: PoseShape, heading: number, pxPerMm: number, tickPx: number): LH2Position {
+  const f = facing(heading);
+  if (shape.kind === "tick") {
+    return { x: f.x * (tickPx + KNOB_GAP_PX), y: f.y * (tickPx + KNOB_GAP_PX) };
+  }
+  const { nose, axle } = shape.pose;
+  const ahead = ((nose.x - axle.x) * f.x + (nose.y - axle.y) * f.y) * pxPerMm;
+  return { x: f.x * (ahead + KNOB_GAP_PX), y: f.y * (ahead + KNOB_GAP_PX) };
+}
+
+interface PoseMarkerProps {
+  template: BotPose | null;
+  anchor: LH2Position;
+  heading: number;
+  pxPerMm: number;
+  /** The robot's LED colour, or the accent. */
+  color: string;
+  look: PoseLook;
+  /** The waypoint's place in its queue, from 1. */
+  index?: number;
+  /** How many robots share this pose, when more than one. */
+  shared?: number;
+  /** Diamond size, as the plain waypoints around it are drawn. */
+  diamondPx: number;
+  knob?: boolean;
+  onKnobDown?: (e: React.PointerEvent) => void;
+  testId?: string;
+}
+
+export const PoseMarker: React.FC<PoseMarkerProps> = ({
+  template,
+  anchor,
+  heading,
+  pxPerMm,
+  color,
+  look,
+  index,
+  shared,
+  diamondPx,
+  knob = false,
+  onKnobDown,
+  testId,
+}) => {
+  const shape = poseShape(template, anchor, heading, pxPerMm);
+  const f = facing(heading);
+  const tickPx = diamondPx * 1.8;
+  const ghost = look === "unarmed" || look === "aiming";
+  const faint = look === "unarmed";
+  const k = knobOffset(shape, heading, pxPerMm, tickPx);
+
+  let glyph: React.ReactNode;
+  if (shape.kind === "board") {
+    const draw = robotDraw(shape.pose, { mode: "body", footprint: false }, pxPerMm, 1);
+    const dx = (shape.pose.photodiode.x - anchor.x) * pxPerMm;
+    const dy = (shape.pose.photodiode.y - anchor.y) * pxPerMm;
+    glyph = (
+      <div
+        style={{
+          position: "absolute",
+          left: dx,
+          top: dy,
+          transform: "translate(-50%, -50%)",
+          opacity: faint ? 0.55 : look === "active" ? 0.85 : 1,
+        }}
+      >
+        <BotGlyph
+          state={color}
+          led={null}
+          shape={draw.shape}
+          pxPerMm={pxPerMm}
+          footprintPx={draw.footprintPx}
+          ghost={ghost || look === "queued"}
+          outlineColor={ghost ? "var(--text)" : color}
+        />
+      </div>
+    );
+  }
+
+  const half = Math.max(tickPx, Math.hypot(k.x, k.y)) + KNOB_R_PX + 4;
+  return (
+    <div
+      data-testid={testId}
+      data-pose-shape={shape.kind}
+      data-heading={Math.round(heading)}
+      data-look={look}
+      style={{ position: "absolute", width: 0, height: 0, pointerEvents: "none" }}
+    >
+      {glyph}
+      <svg
+        width={2 * half}
+        height={2 * half}
+        viewBox={`${-half} ${-half} ${2 * half} ${2 * half}`}
+        style={{ position: "absolute", left: -half, top: -half, overflow: "visible" }}
+      >
+        {shape.kind === "tick" && (
+          <g opacity={faint ? 0.6 : 1}>
+            <line
+              data-layer="pose-tick"
+              x1={0}
+              y1={0}
+              x2={f.x * tickPx}
+              y2={f.y * tickPx}
+              stroke={color}
+              strokeWidth={2.5}
+              strokeLinecap="round"
+            />
+            <rect
+              x={-diamondPx / 2}
+              y={-diamondPx / 2}
+              width={diamondPx}
+              height={diamondPx}
+              transform="rotate(45)"
+              fill={look === "active" ? color : "var(--canvas)"}
+              stroke={color}
+              strokeWidth={1.5}
+              strokeDasharray={ghost ? "3 2" : undefined}
+            />
+          </g>
+        )}
+        {/* the axle: the point the pose pins down */}
+        {shape.kind === "board" && (
+          <circle data-layer="pose-axle" r={2.5} fill="var(--text)" stroke="var(--canvas)" strokeWidth={1} />
+        )}
+        {index !== undefined && (
+          <text
+            x={-f.x * 12}
+            y={-f.y * 12 + 3.5}
+            textAnchor="middle"
+            style={{ font: "700 10px/1 var(--font-mono)", paintOrder: "stroke" }}
+            fill="var(--text)"
+            stroke="var(--canvas)"
+            strokeWidth={3}
+          >
+            {index}
+          </text>
+        )}
+        {shared !== undefined && shared > 1 && (
+          <text
+            data-layer="pose-shared"
+            x={10}
+            y={-10}
+            style={{ font: "600 9px/1 var(--font-mono)", paintOrder: "stroke" }}
+            fill="var(--s-Programming)"
+            stroke="var(--canvas)"
+            strokeWidth={3}
+          >
+            ×{shared}
+          </text>
+        )}
+        {knob && (
+          <g>
+            <line x1={k.x - f.x * KNOB_GAP_PX} y1={k.y - f.y * KNOB_GAP_PX} x2={k.x} y2={k.y} stroke={color} strokeWidth={1.25} />
+            <circle
+              data-testid={testId ? `${testId}-knob` : undefined}
+              cx={k.x}
+              cy={k.y}
+              r={KNOB_R_PX}
+              fill="var(--surface)"
+              stroke={color}
+              strokeWidth={2}
+              style={{ pointerEvents: "auto", cursor: "grab" }}
+              onPointerDown={onKnobDown}
+            />
+          </g>
+        )}
+      </svg>
+    </div>
+  );
+};

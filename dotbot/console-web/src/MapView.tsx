@@ -29,9 +29,28 @@ import {
   scaleBar,
   ticksInSite,
 } from "./grid";
-import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
+import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, hasHeading, robotDraw } from "./BotGlyph";
+import {
+  ARM_PX,
+  HOLD_MS,
+  PoseGesture,
+  RING_MS,
+  bearing,
+  headingOf,
+  isPose,
+  moveGesture,
+  normDeg,
+  releaseGesture,
+  silhouetteTemplate,
+  snapDeg,
+  SNAP_DEG,
+  startGesture,
+  tickGesture,
+  wheelSteps,
+} from "./poseGesture";
+import { KNOB_R_PX, PoseMarker, knobOffset, poseShape } from "./PoseMarker";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
-import { MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf } from "./shortcuts";
+import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, holds, roleOf, typingIn } from "./shortcuts";
 import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import {
@@ -42,6 +61,7 @@ import {
   RegisteredCamera,
   Site,
   UnifiedBot,
+  Waypoint,
 } from "./types";
 import { useSmoothPositions } from "./useSmoothPositions";
 import {
@@ -106,12 +126,18 @@ interface MapViewProps {
   // Whether robots are drawn as their bodies or their sensor points.
   robotDrawing?: RobotDrawing;
   // Local queues, not yet sent: the robots each is bound to, and its points.
-  plannedMissions: { ids: string[]; waypoints: LH2Position[]; led: string | null }[];
+  plannedMissions: { key: string; ids: string[]; waypoints: Waypoint[]; led: string | null }[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   onGeom: (g: ViewGeom) => void;
   onSelect: (ids: string[], mode: "replace" | "toggle" | "add") => void;
-  onAddWaypoint: (p: LH2Position) => void;
+  onAddWaypoint: (p: Waypoint) => void;
+  // Turns a queued waypoint into a pose facing `heading`, or back into a
+  // position with null.
+  onSetHeading?: (key: string, index: number, heading: number | null) => void;
+  // Pose mode: a plain press places waypoints and poses, and Space + drag pans.
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
   // Calibration mode: the rectangle being calibrated, drawn over the map.
   // While it is open, clicking a robot chooses it as the capturer.
   session?: CalibrationSession | null;
@@ -188,6 +214,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
   const dragRef = useRef<DragKind | null>(null);
+  // A waypoint being placed: a position until it is held or dragged, then a
+  // pose. The ref is what the handlers read; the state is what is drawn.
+  const [gesture, setGestureState] = useState<PoseGesture | null>(null);
+  const gestureRef = useRef<PoseGesture | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const cursorRef = useRef<{ x: number; y: number; shift: boolean } | null>(null);
+  // Space held in pose mode hands a plain drag back to the pan.
+  const spaceRef = useRef(false);
+  // The queued pose under the pointer, whose knob and wheel turn it.
+  const [hoverPose, setHoverPose] = useState<{ key: string; index: number } | null>(null);
+  const knobRef = useRef<{ key: string; index: number; pivot: { x: number; y: number } } | null>(null);
+  const wheelCarry = useRef(0);
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
@@ -319,15 +358,135 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     return { x: Math.round(p.x), y: Math.round(p.y) };
   };
 
+  // A frame point to the client pixel it is drawn at.
+  const frameToClient = (p: LH2Position): { x: number; y: number } | null => {
+    const el = wrapRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const { fx, fy } = areaToFraction(p, props.viewport);
+    const ux = fx * boxW + (r.width - boxW) / 2;
+    const uy = fy * boxH + (r.height - boxH) / 2;
+    return {
+      x: (ux - r.width / 2) * cam.scale + r.left + r.width / 2 + cam.tx,
+      y: (uy - r.height / 2) * cam.scale + r.top + r.height / 2 + cam.ty,
+    };
+  };
+
+  const setGesture = (g: PoseGesture | null) => {
+    gestureRef.current = g;
+    setGestureState(g);
+  };
+
+  const endGesture = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    cursorRef.current = null;
+    setCursor(null);
+    setGesture(null);
+  };
+
+  // The queue a new waypoint would join: the last one bound to the selection.
+  const selectionMission = () => {
+    const ms = props.plannedMissions.filter((m) => m.ids.some((id) => props.selection.has(id)));
+    return ms.length ? ms[ms.length - 1] : null;
+  };
+  const selectedBots = () => props.bots.filter((b) => props.selection.has(b.id));
+
+  // A waypoint placed at a client pixel: from the floor, or from a robot, in
+  // which case a pose turns that robot in place about its own axle.
+  const beginGesture = (x: number, y: number, on: UnifiedBot | null) => {
+    const at = pxToMm(x, y);
+    if (!at) return;
+    let poseAtMm = at;
+    let pivot = { x, y };
+    if (on?.pose && hasHeading(on.pose)) {
+      poseAtMm = { x: Math.round(on.pose.axle.x), y: Math.round(on.pose.axle.y) };
+      pivot = frameToClient(on.pose.axle) ?? pivot;
+    }
+    // The silhouette first faces the way the robot would arrive: from the
+    // last queued waypoint, or from where the robot is.
+    const last = selectionMission()?.waypoints.slice(-1)[0];
+    const from = last ?? selectedBots().find((b) => b.position)?.position ?? null;
+    const approach = from ? bearing(from, poseAtMm) : null;
+    const template = silhouetteTemplate(props.bots, props.selection);
+    const heading = on?.pose ? on.pose.heading_deg : (approach ?? template?.heading_deg ?? 0);
+    setGesture(startGesture({ x, y }, at, Date.now(), heading, pivot, poseAtMm));
+    cursorRef.current = { x, y, shift: false };
+    setCursor({ x, y });
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      const g = gestureRef.current;
+      if (g) setGesture(tickGesture(g, Date.now()));
+    }, HOLD_MS);
+  };
+
+  const moveTo = (x: number, y: number, shift: boolean) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    cursorRef.current = { x, y, shift };
+    setCursor({ x, y });
+    setGesture(moveGesture(g, x, y, Date.now(), shift));
+  };
+
+  // Esc, the other button and a lost pointer all leave nothing behind.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingIn(e.target)) return;
+      if (e.key === "Escape") {
+        if (gestureRef.current) {
+          endGesture();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        } else if (knobRef.current) {
+          knobRef.current = null;
+        } else if (props.poseMode && props.onPoseMode) {
+          props.onPoseMode(false);
+          e.preventDefault();
+        }
+        return;
+      }
+      if (e.key === "Shift" && gestureRef.current && cursorRef.current) {
+        const c = cursorRef.current;
+        moveTo(c.x, c.y, e.type === "keydown");
+        return;
+      }
+      if (e.key === " " && props.poseMode) {
+        spaceRef.current = e.type === "keydown";
+        e.preventDefault();
+      }
+    };
+    const onBlur = () => {
+      spaceRef.current = false;
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  });
+  React.useEffect(
+    () => () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+    },
+    [],
+  );
+
   // Pointer gestures, by the modifier held: none pans, and a press that does
-  // not move clears the selection; the rest are `MAP_MODIFIER`'s roles.
+  // not move clears the selection; the rest are `MAP_MODIFIER`'s roles. In
+  // pose mode a plain press places a waypoint instead, and Space + drag pans.
   const onCanvasDown = (e: React.PointerEvent) => {
+    if (gestureRef.current) {
+      if (e.button !== 0) endGesture();
+      return;
+    }
     if (e.button !== 0) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const role = roleOf(e);
-    if (role === "waypoint") {
-      const p = pxToMm(e.clientX, e.clientY);
-      if (p) props.onAddWaypoint(p);
+    if (role === "waypoint" || (props.poseMode && role === null && !spaceRef.current)) {
+      beginGesture(e.clientX, e.clientY, null);
       return;
     }
     if (role === "select" || role === "zoom") {
@@ -339,6 +498,22 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   };
 
   const onCanvasMove = (e: React.PointerEvent) => {
+    if (gestureRef.current) {
+      // A second button pressed mid-gesture arrives as a move.
+      if (e.buttons & 2) endGesture();
+      else moveTo(e.clientX, e.clientY, e.shiftKey);
+      return;
+    }
+    const knob = knobRef.current;
+    if (knob) {
+      const dx = e.clientX - knob.pivot.x;
+      const dy = e.clientY - knob.pivot.y;
+      if (Math.hypot(dx, dy) >= KNOB_R_PX) {
+        const free = headingOf(dx, dy);
+        props.onSetHeading?.(knob.key, knob.index, e.shiftKey ? snapDeg(free) : free);
+      }
+      return;
+    }
     if (panRef.current) {
       const p = panRef.current;
       const dx = e.clientX - p.x0;
@@ -352,12 +527,25 @@ export const MapView: React.FC<MapViewProps> = (props) => {
 
   // Shared by pointerup's siblings: drop every gesture without acting on it.
   const onCanvasCancel = () => {
+    endGesture();
+    knobRef.current = null;
     panRef.current = null;
     dragRef.current = null;
     setDrag(null);
   };
 
-  const onCanvasUp = () => {
+  const onCanvasUp = (e: React.PointerEvent) => {
+    const g = gestureRef.current;
+    if (g) {
+      const w = releaseGesture(g, e.clientX, e.clientY, Date.now(), e.shiftKey);
+      endGesture();
+      props.onAddWaypoint(w);
+      return;
+    }
+    if (knobRef.current) {
+      knobRef.current = null;
+      return;
+    }
     if (panRef.current) {
       const moved = panRef.current.moved;
       panRef.current = null;
@@ -416,6 +604,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // browser from zooming the page as well.
   const wheelRef = useRef<(e: WheelEvent) => void>(() => {});
   wheelRef.current = (e: WheelEvent) => {
+    if (hoverPose && !holds(e, MAP_MODIFIER.zoom)) {
+      e.preventDefault();
+      const m = props.plannedMissions.find((x) => x.key === hoverPose.key);
+      const w = m?.waypoints[hoverPose.index];
+      if (!w || !isPose(w)) return;
+      const { steps, carry } = wheelSteps(wheelCarry.current, e.deltaY, e.deltaMode);
+      wheelCarry.current = carry;
+      if (steps) props.onSetHeading?.(hoverPose.key, hoverPose.index, normDeg(w.heading_deg + steps * SNAP_DEG));
+      return;
+    }
     if (!holds(e, MAP_MODIFIER.zoom)) return;
     e.preventDefault();
     const el = wrapRef.current;
@@ -582,6 +780,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       // Ctrl and a press is the secondary click on a Mac: a drag held on it
       // would otherwise open the menu under itself.
       onContextMenu={(e) => {
+        if (gestureRef.current) {
+          endGesture();
+          e.preventDefault();
+        }
         if (dragRef.current) e.preventDefault();
       }}
       style={{
@@ -591,7 +793,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         background: "var(--canvas)",
         cursor: panRef.current
           ? "grabbing"
-          : drag?.kind === "zoom"
+          : gesture || props.poseMode
+            ? "crosshair"
+            : drag?.kind === "zoom"
             ? "zoom-in"
             : drag
               ? "crosshair"
@@ -848,6 +1052,32 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               const { waypointPx } = botDraw(b);
               return b.waypoints.map((w, i) => {
                 const q = pctPos(w);
+                if (isPose(w)) {
+                  return (
+                    <div
+                      key={`${b.id}-wp-${i}`}
+                      title={`waypoint ${i + 1} · facing ${Math.round(w.heading_deg)}°`}
+                      style={{
+                        position: "absolute",
+                        left: `${q.left}%`,
+                        top: `${q.top}%`,
+                        transform: `scale(${chrome})`,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <PoseMarker
+                        testId={`waypoint-${b.id}-${i}`}
+                        template={b.pose && hasHeading(b.pose) ? b.pose : null}
+                        anchor={w}
+                        heading={w.heading_deg}
+                        pxPerMm={perMm}
+                        color={led}
+                        look="active"
+                        diamondPx={waypointPx}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={`${b.id}-wp-${i}`}
@@ -877,13 +1107,74 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const waypointPx = owner
                   ? botDraw(owner).waypointPx
                   : WAYPOINT_MIN_PX;
+                const template = silhouetteTemplate(props.bots, m.ids);
                 return m.waypoints.map((p, i) => {
                   const q = pctPos(p);
                   const led = m.led ?? "var(--accent)";
+                  if (isPose(p)) {
+                    const hovered = hoverPose?.key === m.key && hoverPose.index === i;
+                    const shape = poseShape(template, p, p.heading_deg, perMm);
+                    const k = knobOffset(shape, p.heading_deg, perMm, waypointPx * 1.8);
+                    // The hit area reaches the knob, so moving onto it keeps
+                    // the pose hovered.
+                    const hitPx = Math.hypot(k.x, k.y) + KNOB_R_PX + 4;
+                    const pivot = { key: m.key, index: i };
+                    return (
+                      <div
+                        key={`pend-${m.key}-${i}`}
+                        title={`waypoint ${i + 1} · facing ${Math.round(p.heading_deg)}°`}
+                        style={{
+                          position: "absolute",
+                          left: `${q.left}%`,
+                          top: `${q.top}%`,
+                          transform: `scale(${chrome})`,
+                          zIndex: hovered ? 7 : 3,
+                        }}
+                      >
+                        <div
+                          data-testid={`planned-hit-${m.key}-${i}`}
+                          onPointerEnter={() => setHoverPose(pivot)}
+                          onPointerLeave={() =>
+                            setHoverPose((h) =>
+                              h && h.key === m.key && h.index === i && !knobRef.current ? null : h,
+                            )
+                          }
+                          style={{
+                            position: "absolute",
+                            left: -hitPx,
+                            top: -hitPx,
+                            width: 2 * hitPx,
+                            height: 2 * hitPx,
+                            borderRadius: "50%",
+                          }}
+                        />
+                        <PoseMarker
+                          testId={`planned-${m.key}-${i}`}
+                          template={template}
+                          anchor={p}
+                          heading={p.heading_deg}
+                          pxPerMm={perMm}
+                          color={led}
+                          look="queued"
+                          index={i + 1}
+                          shared={m.ids.length}
+                          diamondPx={waypointPx}
+                          knob={hovered}
+                          onKnobDown={(e) => {
+                            if (e.button !== 0) return;
+                            e.stopPropagation();
+                            wrapRef.current?.setPointerCapture?.(e.pointerId);
+                            const c = frameToClient(p);
+                            if (c) knobRef.current = { ...pivot, pivot: c };
+                          }}
+                        />
+                      </div>
+                    );
+                  }
                   return (
                     <div
-                      key={`pend-${m.ids.join("-")}-${i}`}
-                      data-testid={`planned-${m.ids.join("-")}-${i}`}
+                      key={`pend-${m.key}-${i}`}
+                      data-testid={`planned-${m.key}-${i}`}
                       title={`waypoint ${i + 1}`}
                       style={{
                         position: "absolute",
@@ -901,6 +1192,55 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   );
                 });
               })}
+
+          {/* the waypoint being placed: a diamond while it is still a click,
+              then the silhouette pinned at its axle */}
+          {gesture && (() => {
+            const g = gesture;
+            const template = silhouetteTemplate(props.bots, props.selection);
+            const owner = selectedBots()[0];
+            const diamondPx = owner ? botDraw(owner).waypointPx : WAYPOINT_MIN_PX;
+            const led = owner ? ledCss(owner) : "var(--accent)";
+            const q = pctPos(g.phase === "pressing" ? g.at : g.poseAt);
+            return (
+              <div
+                data-testid="placing"
+                data-phase={g.phase}
+                style={{
+                  position: "absolute",
+                  left: `${q.left}%`,
+                  top: `${q.top}%`,
+                  transform: `scale(${chrome})`,
+                  pointerEvents: "none",
+                  zIndex: 8,
+                }}
+              >
+                {g.phase === "pressing" ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      width: diamondPx,
+                      height: diamondPx,
+                      transform: "translate(-50%, -50%) rotate(45deg)",
+                      border: `1.5px dashed ${led}`,
+                      boxShadow: `0 0 4px ${led}`,
+                    }}
+                  />
+                ) : (
+                  <PoseMarker
+                    testId="placing-pose"
+                    template={template}
+                    anchor={g.poseAt}
+                    heading={g.heading}
+                    pxPerMm={perMm}
+                    color={led}
+                    look={g.phase === "rotating" ? "aiming" : "unarmed"}
+                    diamondPx={diamondPx}
+                  />
+                )}
+              </div>
+            );
+          })()}
 
           {/* bots: the glyph, its chrome and the chip label */}
           {props.layers.dotBots &&
@@ -955,8 +1295,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       if (role === "zoom") return;
                       e.stopPropagation();
                       if (role === "waypoint") {
-                        const p = pxToMm(e.clientX, e.clientY);
-                        if (p) props.onAddWaypoint(p);
+                        if (e.button !== 0) return;
+                        wrapRef.current?.setPointerCapture?.(e.pointerId);
+                        beginGesture(e.clientX, e.clientY, b);
                         return;
                       }
                       if (props.session && props.onPickCapturer) {
@@ -1149,6 +1490,116 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             zIndex: 20,
           }}
         />
+      )}
+
+      {/* the placing gesture's own chrome, in client pixels: the ring that
+          fills while a still press becomes a pose, then the lever from the
+          axle to the cursor and the heading it sets */}
+      {gesture && cursor && (() => {
+        const g = gesture;
+        const ringR = ARM_PX * 0.75;
+        const len = 2 * Math.PI * ringR;
+        const armed = g.phase === "rotating";
+        return (
+          <svg
+            data-testid="placing-chrome"
+            style={{
+              position: "fixed",
+              inset: 0,
+              width: "100vw",
+              height: "100vh",
+              pointerEvents: "none",
+              zIndex: 20,
+              overflow: "visible",
+            }}
+          >
+            {g.phase === "pressing" && (
+              <circle
+                className="db-pose-ring"
+                cx={g.press.x}
+                cy={g.press.y}
+                r={ringR}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={2.5}
+                transform={`rotate(-90 ${g.press.x} ${g.press.y})`}
+                style={
+                  {
+                    "--ring-len": `${len}`,
+                    "--ring-ms": `${HOLD_MS - RING_MS}ms`,
+                    "--ring-delay": `${RING_MS}ms`,
+                  } as React.CSSProperties
+                }
+              />
+            )}
+            {g.phase !== "pressing" && (
+              <>
+                <circle
+                  cx={g.pivot.x}
+                  cy={g.pivot.y}
+                  r={ARM_PX}
+                  fill="none"
+                  stroke="var(--muted)"
+                  strokeWidth={1}
+                  strokeDasharray="2 3"
+                  opacity={armed ? 0.35 : 0.9}
+                />
+                <line
+                  data-testid="placing-lever"
+                  x1={g.pivot.x}
+                  y1={g.pivot.y}
+                  x2={cursor.x}
+                  y2={cursor.y}
+                  stroke="var(--text)"
+                  strokeWidth={1.25}
+                  strokeDasharray="5 4"
+                  opacity={armed ? 0.9 : 0.4}
+                />
+                <text
+                  data-testid="placing-readout"
+                  x={cursor.x + 12}
+                  y={cursor.y - 12}
+                  style={{ font: "600 11px/1 var(--font-mono)", paintOrder: "stroke" }}
+                  fill="var(--text)"
+                  stroke="var(--canvas)"
+                  strokeWidth={3}
+                >
+                  {armed ? `${Math.round(g.heading)}°` : "position"}
+                </text>
+              </>
+            )}
+          </svg>
+        );
+      })()}
+
+      {/* pose mode says it is on, since a mode nobody can see is an error
+          waiting to happen; pressing the chip turns it off */}
+      {props.poseMode && (
+        <button
+          type="button"
+          data-testid="pose-mode-chip"
+          className="db-map-btn"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => props.onPoseMode?.(false)}
+          title="Pose mode: a click queues a waypoint, a drag a pose. Space + drag pans."
+          style={{
+            position: "absolute",
+            top: CHROME_INSET_PX + 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "5px 10px",
+            font: "600 11px/1 var(--font-mono)",
+            letterSpacing: ".5px",
+            color: "var(--text)",
+            background: "var(--surface)",
+            border: "1px solid var(--accent)",
+            borderRadius: 14,
+            boxShadow: "0 4px 16px rgba(0,0,0,.3)",
+            zIndex: 10,
+          }}
+        >
+          ◈ POSE MODE · <kbd className="db-kbd">{ACTION_KEY.poseMode}</kbd>
+        </button>
       )}
 
       {/* the zoom bar: minus, the slider that says where in the range the map
