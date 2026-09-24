@@ -159,7 +159,12 @@ def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
 async def dotbots_wheel_velocity(
     address: str, application: int, command: DotBotWheelVelocityCommandModel
 ):
-    """Hand the DotBot's wheel speeds to its onboard wheel loop."""
+    """Hand the DotBot's wheel speeds to its onboard wheel loop.
+
+    Only the dotbot-next firmware app acts on this command; other apps accept
+    the frame and ignore it. dotbot-next stops the wheels about 500 ms after
+    the last command, so a caller must resend faster than 2 Hz.
+    """
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     api.controller.send_payload(
