@@ -44,8 +44,8 @@ class DotBotMoveRawCommandModel(BaseModel):
 class DotBotWheelVelocityCommandModel(BaseModel):
     """Model class that defines a wheel velocity command, in mm/s per wheel."""
 
-    left_mm_s: int = Field(ge=-800, le=800)
-    right_mm_s: int = Field(ge=-800, le=800)
+    left_mm_s: int = Field(ge=-700, le=700)
+    right_mm_s: int = Field(ge=-700, le=700)
 
 
 class DotBotRgbLedCommandModel(BaseModel):

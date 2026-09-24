@@ -113,12 +113,53 @@ async def test_set_dotbots_wheel_velocity(dotbots, code, found):
 
 
 @pytest.mark.asyncio
-async def test_set_dotbots_wheel_velocity_out_of_range():
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({"left_mm_s": 701, "right_mm_s": 0}, id="left_above"),
+        pytest.param({"left_mm_s": -701, "right_mm_s": 0}, id="left_below"),
+        pytest.param({"left_mm_s": 0, "right_mm_s": 701}, id="right_above"),
+        pytest.param({"left_mm_s": 0, "right_mm_s": -701}, id="right_below"),
+        pytest.param({"left_mm_s": 1.5, "right_mm_s": 0}, id="non_integer"),
+        pytest.param({"left_mm_s": 0}, id="missing_field"),
+    ],
+)
+async def test_set_dotbots_wheel_velocity_rejects_invalid(body):
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            swarm="0000",
+            last_seen=123.4,
+        ),
+    }
     response = await client.put(
         "/controller/dotbots/4242/0/wheel_velocity",
-        json={"left_mm_s": 900, "right_mm_s": 0},
+        json=body,
     )
     assert response.status_code == 422
+    api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("speed", [700, -700])
+async def test_set_dotbots_wheel_velocity_accepts_the_bounds(speed):
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            swarm="0000",
+            last_seen=123.4,
+        ),
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/wheel_velocity",
+        json={"left_mm_s": speed, "right_mm_s": -speed},
+    )
+    assert response.status_code == 200
+    api.controller.send_payload.assert_called_with(
+        0x4242, PayloadCommandWheelVelocity(left_mm_s=speed, right_mm_s=-speed)
+    )
 
 
 @pytest.mark.asyncio
