@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import { stateLabel } from "./viewChrome";
 
-import { LINK_LABEL, UnifiedBot } from "./types";
+import { CameraDetection, CameraRobot, LINK_LABEL, UnifiedBot } from "./types";
 
 // Right-side inspector: the low-level layer next to the map's high-level one.
 // Renders what `dotbot swarm info` prints, from the same /status payload, and
@@ -38,6 +38,25 @@ export function formatHeading(bot: UnifiedBot): string {
   const pose = bot.pose;
   if (!pose || pose.heading_source === "none") return "unknown";
   return `${Math.round(pose.heading_deg)} deg (${pose.heading_source})`;
+}
+
+/** The robot a camera last fitted under this bot's address, if any did. */
+export function cameraRobotFor(
+  bot: UnifiedBot,
+  detections: Record<string, CameraDetection>,
+): CameraRobot | null {
+  for (const detection of Object.values(detections)) {
+    const robot = detection.robots?.find((r) => r.address === bot.id);
+    if (robot) return robot;
+  }
+  return null;
+}
+
+/** The body heading an overhead camera measures, in the direction convention. */
+export function formatCameraHeading(robot: CameraRobot | null): string {
+  if (!robot) return "not seen";
+  const confidence = robot.status === "found" ? "" : ", low confidence";
+  return `${Math.round(robot.pose.heading_deg)} deg${confidence}`;
 }
 
 const hex32 = (v: number) => `0x${(v >>> 0).toString(16).padStart(8, "0")}`;
@@ -112,7 +131,11 @@ const Row: React.FC<{ k: string; v: string; indent?: boolean; accent?: boolean }
   </div>
 );
 
-const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
+const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boolean }> = ({
+  bot,
+  camera,
+  cameras,
+}) => {
   const [showRaw, setShowRaw] = useState(false);
   const [copied, setCopied] = useState(false);
   const sw = bot.swarmit;
@@ -169,6 +192,7 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
         v={bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}
       />
       <Row k="Heading" v={formatHeading(bot)} />
+      {cameras && <Row k="Camera" v={formatCameraHeading(camera)} />}
 
       {info && (
         <>
@@ -246,14 +270,29 @@ const Card: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
   );
 };
 
-export const InspectorBody: React.FC<{ bots: UnifiedBot[] }> = ({ bots }) => (
-  <div style={{ padding: 12 }}>
-    {bots.length === 0 ? (
-      <div style={{ ...mono, color: "var(--muted)", fontSize: 11 }}>
-        Select a bot to inspect it.
-      </div>
-    ) : (
-      bots.map((b) => <Card key={b.id} bot={b} />)
-    )}
-  </div>
-);
+// `cameraDetections` is each camera's latest detection, keyed by area; with
+// none, the Camera row is left out rather than reading "not seen".
+export const InspectorBody: React.FC<{
+  bots: UnifiedBot[];
+  cameraDetections?: Record<string, CameraDetection>;
+}> = ({ bots, cameraDetections = {} }) => {
+  const cameras = Object.keys(cameraDetections).length > 0;
+  return (
+    <div style={{ padding: 12 }}>
+      {bots.length === 0 ? (
+        <div style={{ ...mono, color: "var(--muted)", fontSize: 11 }}>
+          Select a bot to inspect it.
+        </div>
+      ) : (
+        bots.map((b) => (
+          <Card
+            key={b.id}
+            bot={b}
+            camera={cameraRobotFor(b, cameraDetections)}
+            cameras={cameras}
+          />
+        ))
+      )}
+    </div>
+  );
+};

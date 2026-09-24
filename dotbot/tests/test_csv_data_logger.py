@@ -15,17 +15,24 @@ FOUND = {
     "status": "found",
     "candidates": 1,
     "elapsed_ms": 48.2,
-    "pose": {
-        "centre_mm": [1523.4, 488.1],
-        "photodiode_mm": [1540.2, 511.7],
-        "nose_mm": [1551.0, 526.2],
-        "outline_mm": [[1481.2, 500.3]],
-        "heading_deg": -37.5,
-        "heading_atan2_deg": 52.5,
-        "green_flare": 0.82,
-        "tmpl_margin": 0.91,
-        "refined": True,
-    },
+    "robots": [
+        {
+            "address": "0000000000000001",
+            "status": "found",
+            "timestamp": 1758100000.123,
+            "pose": {
+                "centre_mm": [1523.4, 488.1],
+                "photodiode_mm": [1540.2, 511.7],
+                "nose_mm": [1551.0, 526.2],
+                "outline_mm": [[1481.2, 500.3]],
+                "heading_deg": -37.5,
+                "heading_atan2_deg": 52.5,
+                "green_flare": 0.82,
+                "tmpl_margin": 0.91,
+                "refined": True,
+            },
+        }
+    ],
 }
 
 NOTHING = {
@@ -62,7 +69,7 @@ def test_the_camera_log_sits_beside_the_robot_log():
 def test_a_found_detection_writes_every_column(tmp_path):
     path = camera_log_path(tmp_path / "run.csv")
     logger = CameraCSVLogger(path, area="dev-corner", camera_id="22248be43bde6d93")
-    logger.log(FOUND, LH2)
+    logger.log(FOUND, LH2, FOUND["robots"][0])
     logger.close()
 
     with open(path, newline="") as handle:
@@ -81,6 +88,8 @@ def test_a_found_detection_writes_every_column(tmp_path):
     assert row["lh2_travel_direction_deg"] == "315"
     assert row["lh2_packet_age_s"] == "0.42"
     assert row["lh2_in_area"] == "1"
+    assert row["cam_address"] == "0000000000000001"
+    assert row["cam_status"] == "found"
     assert all(row[name] != "" for name in CameraCSVLogger.FIELDNAMES)
 
 
@@ -102,7 +111,7 @@ def test_a_detection_of_nothing_is_a_row_too(tmp_path):
 def test_rows_append_to_an_existing_file(tmp_path):
     path = camera_log_path(tmp_path / "run.csv")
     first = CameraCSVLogger(path, area="dev-corner")
-    first.log(FOUND, LH2)
+    first.log(FOUND, LH2, FOUND["robots"][0])
     first.close()
     second = CameraCSVLogger(path, area="dev-corner")
     second.log(NOTHING, None)
@@ -192,7 +201,7 @@ def test_a_re_registered_camera_still_appends(tmp_path):
     """`camera_id` is on every row, so a new registration is recoverable."""
     path = camera_log_path(tmp_path / "run.csv")
     first = CameraCSVLogger(path, area="dev-corner", camera_id="1111111111111111")
-    first.log(FOUND, LH2)
+    first.log(FOUND, LH2, FOUND["robots"][0])
     first.close()
     second = CameraCSVLogger(path, area="dev-corner", camera_id="2222222222222222")
     second.log(NOTHING, None)

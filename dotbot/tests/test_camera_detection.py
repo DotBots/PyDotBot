@@ -36,11 +36,7 @@ from dotbot.camera.detection.pose import (
 from dotbot.camera.detection.robot import GREEN_FLARE_MIN, TMPL_MARGIN_MIN, classify
 from dotbot.camera.sheets import MARKER_DICTIONARY
 from dotbot.tests.camera_fixtures import DETECTION_AREA as AREA
-from dotbot.tests.camera_fixtures import (
-    MM_PER_PX,
-    carpet,
-    draw_robot,
-)
+from dotbot.tests.camera_fixtures import MM_PER_PX, carpet, draw_robot
 
 # The middle of the default raster, in raster pixels.
 CENTRE_PX = (125.0, 125.0)
@@ -100,6 +96,18 @@ def test_finds_the_robot_in_a_bench_raster():
     assert detection.status == "found"
     assert detection.pose.centre_px == pytest.approx((418.7, 374.6), abs=3.0)
     assert abs(wrap180(detection.pose.heading_atan2_deg - 3.0)) < 3.0
+
+
+def test_finds_both_robots_in_the_bench_raster():
+    """The cabled robot answers the filter harder, and the other is still found."""
+    raster = cv2.imread(str(BENCH_RASTER))
+    detection = RobotDetector(MM_PER_PX, budget_ms=float("inf")).detect(raster)
+    assert detection.candidates == 2
+    cabled, free = detection.robots
+    assert cabled.pose.centre_px == pytest.approx((418.7, 374.6), abs=3.0)
+    assert free.status == "found"
+    assert free.pose.centre_px == pytest.approx((117.7, 168.7), abs=3.0)
+    assert abs(wrap180(free.pose.heading_atan2_deg + 74.6)) < 3.0
 
 
 def test_direction_convention():
@@ -499,3 +507,238 @@ def test_the_nose_signal_holds_when_the_board_is_displaced():
     # The lever this replaced swings 25 mm under the same displacement and
     # dips under its own 8 mm floor; the flare keeps several times its margin.
     assert min(flares) > 3 * GREEN_FLARE_MIN
+
+
+# --- several robots ---------------------------------------------------------
+
+# Five robots on a 500 x 500 raster, a metre square at 2 mm/px, each at its
+# own heading, in raster pixels and the detector's heading convention.
+FLEET = [
+    ((90.0, 90.0), 0.0),
+    ((400.0, 100.0), 90.0),
+    ((250.0, 250.0), -135.0),
+    ((100.0, 400.0), 37.0),
+    ((390.0, 390.0), 180.0),
+]
+
+
+def unhurried(**kwargs):
+    """A detector with no frame budget, so what it finds is not machine speed."""
+    kwargs.setdefault("max_robots", len(FLEET))
+    return RobotDetector(MM_PER_PX, budget_ms=float("inf"), **kwargs)
+
+
+def fleet_raster(robots):
+    raster = carpet(500, 500)
+    for centre, heading in robots:
+        raster = draw_robot(raster, centre, heading)
+    return raster
+
+
+def prior_for(address, centre, heading, lag_mm=(12.0, -9.0)):
+    """The fix a robot advertises: its photodiode, trailing by `lag_mm`."""
+    from dotbot.camera.detection import Prior
+
+    _, forward = axes(heading)
+    point = (
+        np.asarray(centre)
+        + forward * PHOTODIODE_AHEAD_MM / MM_PER_PX
+        + np.asarray(lag_mm) / MM_PER_PX
+    )
+    return Prior(address, (float(point[0]), float(point[1])))
+
+
+def by_address(detection):
+    return {r.address: r for r in detection.robots}
+
+
+def assert_at(fix, centre, heading, atol_px=2.0):
+    assert fix.status == "found"
+    assert np.allclose(fix.pose.centre_px, centre, atol=atol_px)
+    assert abs(wrap180(fix.pose.heading_atan2_deg - heading)) < 3.0
+
+
+@pytest.mark.parametrize("count", [2, 3, 5])
+def test_several_robots_are_found_each_with_its_own_address(count):
+    robots = FLEET[:count]
+    priors = [prior_for(f"bot{i}", c, h) for i, (c, h) in enumerate(robots)]
+    detection = unhurried().detect(fleet_raster(robots), priors)
+
+    assert detection.status == "found"
+    assert detection.candidates == count
+    named = by_address(detection)
+    assert set(named) == {f"bot{i}" for i in range(count)}
+    for i, (centre, heading) in enumerate(robots):
+        assert_at(named[f"bot{i}"], centre, heading)
+
+
+def test_a_robot_with_no_fix_is_still_found_unnamed():
+    """The fixes name what they stand on; the proposer finds the rest."""
+    robots = FLEET[:3]
+    priors = [prior_for("bot0", *robots[0])]
+    detection = unhurried().detect(fleet_raster(robots), priors)
+
+    assert len(detection.robots) == 3
+    assert detection.robots[0].address == "bot0"
+    assert_at(detection.robots[0], *robots[0])
+    unnamed = [r for r in detection.robots if r.address is None]
+    assert len(unnamed) == 2
+    for centre, heading in robots[1:]:
+        (fix,) = (r for r in unnamed if np.allclose(r.pose.centre_px, centre, atol=2.0))
+        assert_at(fix, centre, heading)
+
+
+def test_a_fix_on_empty_floor_names_nothing():
+    """A fix further than the gate from every candidate names no candidate."""
+    robots = FLEET[:1]
+    far = prior_for("elsewhere", (400.0, 400.0), 0.0)
+    detection = unhurried().detect(fleet_raster(robots), [far])
+    (fix,) = detection.robots
+    assert fix.address is None
+    assert_at(fix, *robots[0])
+
+
+def test_the_cap_keeps_named_robots_first():
+    priors = [prior_for("bot4", *FLEET[4]), prior_for("bot2", *FLEET[2])]
+    detection = unhurried(max_robots=3).detect(fleet_raster(FLEET), priors)
+    assert detection.candidates == 5
+    assert len(detection.robots) == 3
+    assert {r.address for r in detection.robots[:2]} == {"bot4", "bot2"}
+    assert detection.robots[2].address is None
+
+
+def test_one_robot_with_no_fix_is_found_as_before():
+    """A single robot and no lighthouse is the whole-frame path on its own."""
+    detection = unhurried().detect(fleet_raster(FLEET[3:4]))
+    (fix,) = detection.robots
+    assert fix.address is None
+    assert_at(fix, *FLEET[3])
+    assert detection.pose == fix.pose
+
+
+@pytest.mark.parametrize("gap_mm", [30.0, 40.0])
+@pytest.mark.parametrize("headings", [(90.0, 90.0), (0.0, 180.0), (30.0, -60.0)])
+def test_two_robots_a_few_centimetres_apart_are_two_robots(gap_mm, headings):
+    """The proposer separates them on its own, with no fix to help it."""
+    a = (200.0, 250.0)
+    b = (a[0] + (94.0 + gap_mm) / MM_PER_PX, 250.0)
+    raster = fleet_raster([(a, headings[0]), (b, headings[1])])
+    detection = unhurried().detect(raster)
+    assert len(detection.robots) == 2
+    for centre, heading in ((a, headings[0]), (b, headings[1])):
+        (fix,) = (
+            r
+            for r in detection.robots
+            if np.allclose(r.pose.centre_px, centre, atol=2.0)
+        )
+        assert_at(fix, centre, heading)
+
+
+@pytest.mark.parametrize("gap_mm", [0.0, 10.0, 20.0])
+@pytest.mark.parametrize("headings", [(90.0, 90.0), (0.0, 180.0), (30.0, -60.0)])
+def test_two_touching_robots_are_told_apart_by_their_fixes(gap_mm, headings):
+    """Too close for the proposer, which sees one blob; two fixes split it."""
+    a = (200.0, 250.0)
+    b = (a[0] + (94.0 + gap_mm) / MM_PER_PX, 250.0)
+    raster = fleet_raster([(a, headings[0]), (b, headings[1])])
+    priors = [
+        prior_for("a", a, headings[0], lag_mm=(10.0, -16.0)),
+        prior_for("b", b, headings[1], lag_mm=(-12.0, 8.0)),
+    ]
+    named = by_address(unhurried().detect(raster, priors))
+    assert set(named) == {"a", "b"}
+    assert_at(named["a"], a, headings[0])
+    assert_at(named["b"], b, headings[1])
+
+
+def test_a_frame_out_of_time_fits_the_rest_on_the_next():
+    """With no budget, one robot per frame, oldest first, the rest carried."""
+    robots = FLEET[:3]
+    raster = fleet_raster(robots)
+    priors = [prior_for(f"bot{i}", c, h) for i, (c, h) in enumerate(robots)]
+    detector = RobotDetector(MM_PER_PX, budget_ms=0.0, max_robots=len(FLEET))
+
+    first = detector.detect(raster, priors, stamp=1.0)
+    assert [r.stamp for r in first.robots] == [1.0]
+
+    second = detector.detect(raster, priors, stamp=2.0)
+    assert sorted(r.stamp for r in second.robots) == [1.0, 2.0]
+
+    third = detector.detect(raster, priors, stamp=3.0)
+    assert sorted(r.stamp for r in third.robots) == [1.0, 2.0, 3.0]
+    named = by_address(third)
+    for i, (centre, heading) in enumerate(robots):
+        assert_at(named[f"bot{i}"], centre, heading)
+
+    # Every robot has been fitted once, so the oldest goes next.
+    fourth = detector.detect(raster, priors, stamp=4.0)
+    assert sorted(r.stamp for r in fourth.robots) == [2.0, 3.0, 4.0]
+
+
+def test_a_carried_pose_goes_with_its_robot():
+    """A robot no longer proposed is not reported from an older frame."""
+    robots = FLEET[:2]
+    priors = [prior_for(f"bot{i}", c, h) for i, (c, h) in enumerate(robots)]
+    detector = RobotDetector(MM_PER_PX, budget_ms=0.0, max_robots=len(FLEET))
+    detector.detect(fleet_raster(robots), priors, stamp=1.0)
+    detector.detect(fleet_raster(robots), priors, stamp=2.0)
+
+    alone = detector.detect(fleet_raster(robots[:1]), priors[:1], stamp=3.0)
+    assert [r.address for r in alone.robots] == ["bot0"]
+
+
+def test_the_outline_is_drawn_in_its_own_box_exactly_as_on_the_whole_grid():
+    """Drawing only the box is a saving, never a change in the fit's score."""
+    from dotbot.camera.detection.pose import OUTLINE_MM, SS, poly_px, render
+
+    n = 85
+    for cx, cy, heading in [(42.0, 42.0, 0.0), (40.3, 47.8, 37.0), (2.0, 80.0, -123.0)]:
+        whole = np.zeros((n * SS, n * SS), np.uint8)
+        corners = poly_px(OUTLINE_MM, cx, cy, heading, MM_PER_PX)
+        cv2.fillPoly(whole, [np.round((corners + 0.5) * SS).astype(np.int32)], 255)
+        expected = cv2.resize(whole, (n, n), interpolation=cv2.INTER_AREA) / 255.0
+
+        box, x0, y0 = render(OUTLINE_MM, n, cx, cy, heading, MM_PER_PX)
+        drawn = np.zeros((n, n))
+        drawn[y0 : y0 + box.shape[0], x0 : x0 + box.shape[1]] = box
+        assert np.array_equal(drawn.astype(np.float32), expected.astype(np.float32))
+
+
+def test_two_robots_are_named_as_a_whole_not_nearest_pair_first():
+    """A's stale fix nearer B than A must not hand B A's name."""
+    from dotbot.camera.detection import Prior
+
+    a, b = (200.0, 250.0), (267.0, 250.0)
+    raster = fleet_raster([(a, 0.0), (b, 0.0)])
+    priors = [Prior("a", (240.0, 250.0)), Prior("b", (300.0, 250.0))]
+    named = by_address(unhurried().detect(raster, priors))
+    assert set(named) == {"a", "b"}
+    assert_at(named["a"], a, 0.0)
+    assert_at(named["b"], b, 0.0)
+
+
+def test_a_second_fix_on_one_robot_is_not_a_second_robot():
+    """A stale fix within reach of a lone robot adds no copy of its pose."""
+    from dotbot.camera.detection import Prior
+
+    a = (200.0, 250.0)
+    priors = [Prior("a", (210.0, 250.0)), Prior("stale", (160.0, 250.0))]
+    detection = unhurried().detect(fleet_raster([(a, 0.0)]), priors)
+    assert [r.address for r in detection.robots] == ["a"]
+    assert_at(detection.robots[0], a, 0.0)
+
+
+def test_matching_takes_the_most_pairs_then_the_least_distance():
+    from dotbot.camera.detection.robot import match_within
+
+    pairs = sorted([(27.0, 1, 0), (40.0, 0, 0), (50.0, 1, 1), (117.0, 0, 1)])
+    assert match_within(pairs, gate=54.5) == {0: 0, 1: 1}
+    assert match_within(pairs, gate=54.5, exact_max=0) == {1: 0}
+
+
+def test_the_default_cap_is_two_robots():
+    detection = RobotDetector(MM_PER_PX, budget_ms=float("inf")).detect(
+        fleet_raster(FLEET)
+    )
+    assert detection.candidates == len(FLEET)
+    assert len(detection.robots) == 2

@@ -103,9 +103,9 @@ export interface WsNotification {
 
 // --- what a camera sees on its own area ------------------------------------
 //
-// One pose per frame, the strongest candidate, with no association to any
-// robot address: the layer exists to put the camera's idea of a robot over
-// the lighthouse's, and the reader makes the association by looking.
+// One pose per robot the camera found, each named with the address of the
+// robot whose lighthouse fix stands on it, or unnamed when none does: the
+// layer exists to put the camera's idea of a robot over the lighthouse's.
 
 // Every *_mm is frame millimetres, x right and y down, the same frame as an
 // LH2 position. `centre_mm` is the board outline's centre, which is what the
@@ -132,10 +132,20 @@ export interface CameraPose {
   refined: boolean;
 }
 
-// `status` is "found" when the estimator stands behind the pose, "refused"
-// when it fitted one but a confidence signal did not clear its floor, and
-// "none" when there was nothing to fit - in which case there is no pose, so
-// key on the status and never on the field's presence.
+// One robot of a frame. `status` is "found" when the estimator stands behind
+// the pose and "refused" when a confidence signal did not clear its floor.
+// `timestamp` is the frame the pose was fitted on, an earlier one than the
+// detection's own when that frame ran out of time for this robot.
+export interface CameraRobot {
+  address: string | null;
+  status: "found" | "refused";
+  timestamp: number;
+  pose: CameraPose;
+}
+
+// The frame's `status` is "found" when any robot's is, "refused" when poses
+// were fitted and none was, and "none" when there was nothing to fit, in
+// which case `robots` is empty. `rate_hz` is how often the detector runs.
 export interface CameraDetection {
   area: string;
   camera_id: string;
@@ -144,7 +154,8 @@ export interface CameraDetection {
   status: "found" | "refused" | "none";
   candidates: number;
   elapsed_ms: number;
-  pose?: CameraPose;
+  rate_hz: number;
+  robots: CameraRobot[];
 }
 
 // --- the calibration session the controller owns ---------------------------

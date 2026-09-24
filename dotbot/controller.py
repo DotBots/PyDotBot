@@ -51,7 +51,9 @@ from dotbot.adapter import (
 )
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_float32
+from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.raster import WARP_FPS_MAX
+from dotbot.camera.rate import DETECT_SHARE
 from dotbot.camera.service import CameraService
 from dotbot.csv_data_logger import (
     CameraCSVLogger,
@@ -105,6 +107,8 @@ PLACEHOLDER_HEADING_DEG = 0
 
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
+# A robot silent this long no longer names what a camera sees.
+CAMERA_PRIOR_MAX_AGE_S = 2.0
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
 
@@ -152,6 +156,8 @@ class ControllerSettings:
     lh2_calibration: Optional[str] = None
     camera_calibration: Optional[str] = None
     camera_detect: bool = True
+    camera_max_robots: int = MAX_ROBOTS
+    camera_detect_share: float = DETECT_SHARE
     background_map: str = ""
     headless: bool = False
     verbose: bool = False
@@ -335,6 +341,9 @@ class Controller:
             area,
             detect=self.settings.camera_detect,
             on_detection=self._on_camera_detection,
+            priors=lambda: self._lh2_priors(area),
+            max_robots=self.settings.camera_max_robots,
+            detect_share=self.settings.camera_detect_share,
         )
         # `start()` hands the detector its first frame before it returns, so
         # the bookkeeping a detection row needs is in place first and rolled
@@ -373,8 +382,30 @@ class Controller:
             area=area.name,
         )
 
+    def _lh2_priors(self, area) -> List[tuple]:
+        """The lighthouse fixes a camera over `area` may name robots from.
+
+        Runs on the camera's detector thread, reading the robot table the
+        way `_on_camera_detection` does. The area is grown by one robot, so
+        a robot whose photodiode sits just outside it still names its body.
+        A robot silent for `CAMERA_PRIOR_MAX_AGE_S` names nothing.
+        """
+        margin = robot_geometry().envelope_mm
+        fresh_since = time.time() - CAMERA_PRIOR_MAX_AGE_S
+        priors = []
+        for dotbot in list(self.dotbots.values()):
+            position = dotbot.lh2_position
+            if (
+                position is not None
+                and dotbot.last_seen >= fresh_since
+                and area.x - margin <= position.x <= area.x_max + margin
+                and area.y - margin <= position.y <= area.y_max + margin
+            ):
+                priors.append((dotbot.address, position.x, position.y))
+        return priors
+
     def _on_camera_detection(self, record: dict) -> None:
-        """One detection, logged with the lighthouse's answer for the same floor.
+        """One detection, logged with the lighthouse's answer for each robot.
 
         Runs on the camera's detector thread. `list(dict.values())` is atomic
         under the GIL and the model fields are reassigned whole, so the robot
@@ -384,7 +415,9 @@ class Controller:
         if logger is None:
             return
         try:
-            logger.log(record, self._lh2_in_area(record))
+            robots = record.get("robots") or [None]
+            for robot in robots:
+                logger.log(record, self._lh2_in_area(record, robot), robot)
         except Exception as exc:  # pylint:disable=broad-except
             self.logger.warning(
                 "Camera detection row not written",
@@ -392,42 +425,49 @@ class Controller:
                 error=str(exc),
             )
 
-    def _lh2_in_area(self, record: dict) -> Optional[dict]:
-        """The lighthouse pose of the robot the camera is looking at.
+    def _lh2_in_area(self, record: dict, robot: Optional[dict]) -> Optional[dict]:
+        """The lighthouse pose to compare one camera robot against.
 
-        Rectangle membership, not tracking: with more than one robot in the
-        area the nearest to the detected pose is taken and `in_area` says how
-        many there were, so a row that cannot mean a one-to-one comparison
-        can be filtered out. `packet_age_s` ages the last packet of any kind
-        from that robot, not the fix it carries.
+        The robot the detector named, when it named one; otherwise the one
+        standing nearest the detected pose, by rectangle membership rather
+        than tracking. `in_area` says how many robots stood in the area, so
+        a row that cannot mean a one-to-one comparison can be filtered out.
+        `packet_age_s` ages the last packet of any kind from that robot, not
+        the fix it carries.
         """
         area = next(
             (c.area for c in self.cameras if c.area.name == record.get("area")), None
         )
         if area is None:
             return None
+        positions = [(d, d.lh2_position) for d in list(self.dotbots.values())]
         standing = [
-            dotbot
-            for dotbot in list(self.dotbots.values())
-            if dotbot.lh2_position is not None
-            and area.x <= dotbot.lh2_position.x <= area.x_max
-            and area.y <= dotbot.lh2_position.y <= area.y_max
+            (dotbot, position)
+            for dotbot, position in positions
+            if position is not None
+            and area.x <= position.x <= area.x_max
+            and area.y <= position.y <= area.y_max
         ]
-        if not standing:
+        robot = robot or {}
+        named = self.dotbots.get(robot.get("address") or "")
+        named_position = None if named is None else named.lh2_position
+        if named_position is not None:
+            chosen, position = named, named_position
+        elif not standing:
             return {"in_area": 0}
-        pose = record.get("pose") or {}
-        target = pose.get("centre_mm") or area.centre
-        nearest = min(
-            standing,
-            key=lambda d: (d.lh2_position.x - target[0]) ** 2
-            + (d.lh2_position.y - target[1]) ** 2,
-        )
+        else:
+            pose = robot.get("pose") or {}
+            target = pose.get("centre_mm") or area.centre
+            chosen, position = min(
+                standing,
+                key=lambda s: (s[1].x - target[0]) ** 2 + (s[1].y - target[1]) ** 2,
+            )
         return {
-            "address": nearest.address,
-            "x": nearest.lh2_position.x,
-            "y": nearest.lh2_position.y,
-            "direction": nearest.direction,
-            "packet_age_s": round(time.time() - nearest.last_seen, 3),
+            "address": chosen.address,
+            "x": position.x,
+            "y": position.y,
+            "direction": chosen.direction,
+            "packet_age_s": round(time.time() - chosen.last_seen, 3),
             "in_area": len(standing),
         }
 

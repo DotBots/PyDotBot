@@ -152,6 +152,17 @@ def test_load_bad_type_rejected(tmp_path):
         cfg.load_config(path)
 
 
+@pytest.mark.parametrize(
+    "line",
+    ["camera_max_robots = 0", "camera_detect_share = 0.0", "camera_detect_share = 1.5"],
+)
+def test_load_camera_limit_out_of_range_rejected(tmp_path, line):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(f"[run.controller]\n{line}\n")
+    with pytest.raises(cfg.ConfigError):
+        cfg.load_config(path)
+
+
 # --- deployment selection ------------------------------------------------------
 
 

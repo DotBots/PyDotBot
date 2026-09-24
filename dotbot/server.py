@@ -42,6 +42,7 @@ from dotbot.models import (
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
     DotBotCalibrationStartModel,
+    DotBotCameraDetectionModel,
     DotBotCameraModel,
     DotBotConnectionModel,
     DotBotModel,
@@ -341,6 +342,21 @@ async def cameras():
         for camera in api.controller.cameras
         if camera.live
     ]
+
+
+@api.get(
+    path="/controller/cameras/{area}/detection",
+    response_model=Optional[DotBotCameraDetectionModel],
+    summary="Return the latest detection of the camera covering one area",
+    tags=["controller"],
+)
+async def camera_detection(area: str):
+    """Camera detection HTTP GET handler; null before the first detection."""
+    for camera in api.controller.cameras:
+        if camera.live and camera.area.name == area:
+            record = camera.held_detection()
+            return None if record is None else DotBotCameraDetectionModel(**record)
+    raise HTTPException(status_code=404, detail=f"No camera covers area {area!r}")
 
 
 @api.get(

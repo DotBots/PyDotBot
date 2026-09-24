@@ -90,11 +90,13 @@ export function stationsSummary(session: CalibrationSession | null): string {
 // --- what the overhead cameras see -----------------------------------------
 
 /** What a camera's own detector last made of the floor it looks at. */
-export const DETECTION_TEXT: Record<CameraDetection["status"], string> = {
-  found: "robot seen",
-  refused: "robot, low confidence",
-  none: "no robot",
-};
+export function detectionText(detection: CameraDetection): string {
+  const n = detection.robots.length;
+  if (detection.status === "none" || n === 0) return "no robot";
+  const robots = n === 1 ? "robot" : `${n} robots`;
+  if (detection.status === "found") return `${robots} seen`;
+  return `${robots}, low confidence`;
+}
 
 export interface CameraStatusRow {
   area: string;
@@ -112,7 +114,7 @@ export function cameraStatusRows(
     const detection = detections[camera.area];
     let label: string;
     if (camera.detect === false) label = "detection off";
-    else if (detection) label = DETECTION_TEXT[detection.status];
+    else if (detection) label = detectionText(detection);
     else label = "no frame yet";
     return { area: camera.area, label };
   });

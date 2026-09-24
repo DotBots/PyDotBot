@@ -124,14 +124,15 @@ def camera_log_path(csv_data_output: Union[str, Path]) -> Path:
 
 
 class CameraCSVLogger:
-    """One row per camera detection, with the lighthouse's own answer beside it.
+    """One row per robot per camera detection, with the lighthouse's answer beside it.
 
     A second file rather than more columns on the robot log: that one is
-    keyed to an address and written when a packet arrives, a detection has
-    no address and arrives from another thread. Each row copies the latest
-    lighthouse pose of the one robot standing in the camera's area, which is
-    what makes a single row enough to draw both poses superimposed.
-    `timestamp` joins the two files.
+    written when a packet arrives, a detection arrives from another thread
+    and may carry no address. Each row copies the latest lighthouse pose of
+    the robot the detector named, or of the one nearest it when it named
+    none, which is what makes a single row enough to draw both poses
+    superimposed. A detection with no robot is one row with no pose.
+    `timestamp` and `sequence` join the rows of one frame.
 
     The sidecar beside the CSV is what says what each column means; it is
     written from `_sidecar_text` and read back by anyone analysing the log.
@@ -145,6 +146,9 @@ class CameraCSVLogger:
         "status",
         "candidates",
         "elapsed_ms",
+        "cam_address",
+        "cam_status",
+        "cam_timestamp",
         "cam_centre_x_mm",
         "cam_centre_y_mm",
         "cam_photodiode_x_mm",
@@ -230,13 +234,16 @@ class CameraCSVLogger:
                 "Pass a new --csv-data-output."
             )
 
-    def log(self, record: dict, lh2: Optional[dict] = None) -> None:
-        """One detection, and the lighthouse pose it is to be compared with.
+    def log(
+        self, record: dict, lh2: Optional[dict] = None, robot: Optional[dict] = None
+    ) -> None:
+        """One robot of one detection, and the lighthouse pose to compare it with.
 
-        Every detection is a row, `none` included, so a gap in the file is a
-        gap in the detection and not an absence of robots.
+        Every detection writes at least one row, `none` included, so a gap in
+        the file is a gap in the detection and not an absence of robots.
         """
-        pose = record.get("pose") or {}
+        robot = robot or {}
+        pose = robot.get("pose") or {}
         centre = pose.get("centre_mm", (None, None))
         photodiode = pose.get("photodiode_mm", (None, None))
         lh2 = lh2 or {}
@@ -248,6 +255,9 @@ class CameraCSVLogger:
             "status": record.get("status"),
             "candidates": record.get("candidates"),
             "elapsed_ms": record.get("elapsed_ms"),
+            "cam_address": robot.get("address"),
+            "cam_status": robot.get("status"),
+            "cam_timestamp": robot.get("timestamp"),
             "cam_centre_x_mm": centre[0],
             "cam_centre_y_mm": centre[1],
             "cam_photodiode_x_mm": photodiode[0],
@@ -283,7 +293,7 @@ class CameraCSVLogger:
 
         outline = ", ".join(f"[{float(x)}, {float(y)}]" for x, y in OUTLINE_MM)
         lines = [
-            "schema_version = 1",
+            "schema_version = 2",
             'kind = "camera-detection-log"',
             f'area = "{self.area}"',
             f'camera_id = "{self.camera_id}"',
@@ -315,6 +325,12 @@ class CameraCSVLogger:
             "last accepted fix in every advertisement, so a small age does "
             'not mean a fresh fix"',
             'timestamp = "time.time() when the frame was read from the device"',
+            'cam_address = "the robot whose lighthouse fix stood on this '
+            "camera candidate, empty when none did; lh2_* then describe the "
+            'robot standing nearest it"',
+            'cam_timestamp = "time.time() of the frame this pose was fitted '
+            "on, earlier than timestamp when the frame ran out of time and "
+            'the pose was carried from an earlier one"',
             "",
             "[robot]",
             f"outline_mm = [{outline}]",

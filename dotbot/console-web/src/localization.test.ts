@@ -183,8 +183,16 @@ describe("the station rows", () => {
 });
 
 const camera = (area: string) => ({ area }) as RegisteredCamera;
-const detection = (area: string, status: CameraDetection["status"]) =>
-  ({ area, status }) as CameraDetection;
+const detection = (
+  area: string,
+  status: CameraDetection["status"],
+  robots = status === "none" ? 0 : 1,
+) =>
+  ({
+    area,
+    status,
+    robots: Array.from({ length: robots }, () => ({ status })),
+  }) as CameraDetection;
 
 describe("the camera rows", () => {
   it("names each camera's area and what it last saw", () => {
@@ -207,6 +215,18 @@ describe("the camera rows", () => {
     ).toEqual([
       { area: "a", label: "robot, low confidence" },
       { area: "b", label: "no robot" },
+    ]);
+  });
+
+  it("counts the robots when there is more than one", () => {
+    expect(
+      cameraStatusRows([camera("a"), camera("b")], {
+        a: detection("a", "found", 3),
+        b: detection("b", "refused", 2),
+      }),
+    ).toEqual([
+      { area: "a", label: "3 robots seen" },
+      { area: "b", label: "2 robots, low confidence" },
     ]);
   });
 

@@ -214,6 +214,8 @@ describe("withDetection (one camera's latest view of its own area)", () => {
     status: "none",
     candidates: 0,
     elapsed_ms: 4.2,
+    rate_hz: 3.4,
+    robots: [],
   });
 
   it("keys by area", () => {

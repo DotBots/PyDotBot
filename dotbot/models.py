@@ -158,18 +158,31 @@ class DotBotCameraPoseModel(BaseModel):
     refined: bool = False
 
 
+class DotBotCameraRobotModel(BaseModel):
+    """One robot a camera frame found, and whose it is when that is known.
+
+    `address` is the robot whose lighthouse fix stands on this candidate,
+    or null when none does. `status` is `found` when both confidence
+    signals clear their floor and `refused` when one does not. `timestamp`
+    is when the frame the pose was fitted on was read, which is an earlier
+    frame's than the detection's own when the frame ran out of time.
+    """
+
+    address: Optional[str] = None
+    status: str = "found"
+    timestamp: float = 0.0
+    pose: DotBotCameraPoseModel
+
+
 class DotBotCameraDetectionModel(BaseModel):
-    """One camera frame's verdict on whether a robot stands on its area.
+    """One camera frame's verdict on the robots standing on its area.
 
-    `status` is `found` when both confidence signals clear their floor,
-    `refused` when a pose was fitted but one of them did not, and `none`
-    when there was nothing to fit, in which case there is no `pose`.
-    `sequence` is the warp counter, so a detection can be matched to the
-    frame the stream showed, and `timestamp` is when that frame was read
-    off the device.
-
-    The detector identifies nothing: one pose per frame, the strongest
-    candidate, with no association to any robot address.
+    `status` is `found` when any robot's pose clears both confidence
+    signals, `refused` when poses were fitted but none did, and `none` when
+    there was nothing to fit, in which case `robots` is empty. `sequence`
+    is the warp counter, so a detection can be matched to the frame the
+    stream showed, and `timestamp` is when that frame was read off the
+    device. `rate_hz` is the rate the detector was running at.
     """
 
     area: str
@@ -179,7 +192,8 @@ class DotBotCameraDetectionModel(BaseModel):
     status: str = "none"
     candidates: int = 0
     elapsed_ms: float = 0.0
-    pose: Optional[DotBotCameraPoseModel] = None
+    rate_hz: float = 0.0
+    robots: List[DotBotCameraRobotModel] = []
 
 
 class DotBotCalibrationReadsModel(BaseModel):

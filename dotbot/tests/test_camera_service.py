@@ -9,6 +9,7 @@ the accuracy it shows is the plumbing's, not a lens's.
 """
 
 import dataclasses
+import time
 
 import cv2
 import numpy as np
@@ -162,11 +163,11 @@ class RecordingDetector:
     def __init__(self):
         self.frames = []
 
-    def detect(self, bgr):
+    def detect(self, bgr, priors=(), stamp=None):
         from dotbot.camera.detection import Detection
 
         self.frames.append(bgr)
-        return Detection("none", 0, None, 0.0)
+        return Detection("none", 0, (), 0.0)
 
 
 def test_the_detector_sees_the_uncompressed_warp(synthetic_camera):
@@ -228,13 +229,93 @@ def test_a_colour_frame_with_a_robot_is_detected_in_frame_millimetres():
     assert record["camera_id"] == calibration.id
     # The four sheets are in plain view and none of them is a robot.
     assert record["candidates"] == 1
-    pose = record["pose"]
+    (robot,) = record["robots"]
+    assert robot["address"] is None
+    assert robot["timestamp"] == record["timestamp"]
+    pose = robot["pose"]
     assert np.allclose(pose["centre_mm"], truth_mm, atol=4.0)
     assert abs(((pose["heading_atan2_deg"] - heading) + 180) % 360 - 180) < 3.0
     assert abs(((pose["heading_deg"] - (heading - 90)) + 180) % 360 - 180) < 3.0
     _, forward = axes(pose["heading_atan2_deg"])
     centre = np.asarray(pose["centre_mm"])
     assert np.allclose(pose["photodiode_mm"], centre + forward * 29.0, atol=0.1)
+
+
+def wait_for_robots(service, count, timeout=20.0):
+    """The first record carrying `count` robots, which a frame budget can
+    spread over more than one detection."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record = service.held_detection()
+        if record is not None and len(record["robots"]) >= count:
+            return record
+        time.sleep(0.05)
+    raise AssertionError(f"no detection carried {count} robots")
+
+
+def test_robots_are_named_from_the_fixes_the_controller_holds():
+    """Fixes go in as frame millimetres and come back as addresses.
+
+    Three robots, two with a fix: the pair are named and the third is still
+    found, unnamed, through the same warp and back to millimetres.
+    """
+    from dotbot.camera.detection.pose import PHOTODIODE_AHEAD_MM, axes
+
+    robots = [
+        ((1250.0, 250.0), 0.0),
+        ((1700.0, 400.0), 120.0),
+        ((1400.0, 700.0), -60.0),
+    ]
+    frame = synthetic_colour_frame(DEV_CORNER, robots)
+    calibration = registration_for(frame)
+
+    def fix(centre, heading):
+        _, forward = axes(heading)
+        return tuple(np.asarray(centre) + forward * PHOTODIODE_AHEAD_MM + (15.0, -10.0))
+
+    service = CameraService(
+        calibration,
+        DEV_CORNER,
+        open_source=looping(frame),
+        priors=lambda: [("aa", *fix(*robots[0])), ("bb", *fix(*robots[1]))],
+        max_robots=3,
+    )
+    assert service.start()
+    try:
+        record = wait_for_robots(service, 3)
+    finally:
+        service.stop()
+
+    assert record["status"] == "found"
+    assert record["rate_hz"] > 0
+    assert [r["address"] for r in record["robots"]] == ["aa", "bb", None]
+    for robot, (centre, _) in zip(record["robots"], robots):
+        assert np.allclose(robot["pose"]["centre_mm"], centre, atol=4.0)
+
+
+def test_the_robot_cap_reaches_the_detector():
+    robots = [
+        ((1250.0, 250.0), 0.0),
+        ((1700.0, 400.0), 120.0),
+        ((1400.0, 700.0), -60.0),
+    ]
+    frame = synthetic_colour_frame(DEV_CORNER, robots)
+    service = CameraService(
+        registration_for(frame),
+        DEV_CORNER,
+        open_source=looping(frame),
+        max_robots=2,
+    )
+    assert service.start()
+    try:
+        wait_for_robots(service, 2)
+        # Long enough for a third robot to have been fitted, were it allowed.
+        time.sleep(1.0)
+        record = service.held_detection()
+    finally:
+        service.stop()
+    assert record["candidates"] == 3
+    assert len(record["robots"]) == 2
 
 
 def test_no_robot_reports_none_not_nothing(synthetic_camera):
@@ -254,7 +335,7 @@ def test_no_robot_reports_none_not_nothing(synthetic_camera):
 
     assert record is not None
     assert record["status"] == "none"
-    assert "pose" not in record
+    assert record["robots"] == []
     assert record["candidates"] == 0
 
 
@@ -387,13 +468,13 @@ def test_a_pose_that_will_not_convert_costs_one_record_not_the_detector(
         def __init__(self):
             self.calls = 0
 
-        def detect(self, bgr):
-            from dotbot.camera.detection import Detection
+        def detect(self, bgr, priors=(), stamp=None):
+            from dotbot.camera.detection import Detection, RobotFix
 
             self.calls += 1
             if self.calls == 1:
-                return Detection("found", 1, object(), 0.0)
-            return Detection("none", 0, None, 0.0)
+                return Detection("found", 1, (RobotFix("found", object()),), 0.0)
+            return Detection("none", 0, (), 0.0)
 
     frame = cv2.imread(str(synthetic_camera.source))
     service = CameraService(
@@ -439,12 +520,12 @@ class BlockingDetector:
         self.release = threading.Event()
         self.entered = threading.Event()
 
-    def detect(self, bgr):
+    def detect(self, bgr, priors=(), stamp=None):
         from dotbot.camera.detection import Detection
 
         self.entered.set()
         self.release.wait(timeout=5.0)
-        return Detection("none", 0, None, 0.0)
+        return Detection("none", 0, (), 0.0)
 
 
 def test_a_stuck_detector_does_not_stall_the_warp(synthetic_camera):
