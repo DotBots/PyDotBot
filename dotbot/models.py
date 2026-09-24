@@ -89,12 +89,10 @@ class DotBotGPSPosition(BaseModel):
 
 
 class DotBotLH2Waypoint(DotBotLH2Position):
-    """An LH2 waypoint, optionally a pose.
+    """An LH2 waypoint: a position for the robot's centre, the axle midpoint.
 
-    Without a heading, (x, y) is a target for the robot's LH2 photodiode. With
-    one, (x, y) is the axle midpoint and the robot turns in place to face
-    `heading_deg` there: degrees clockwise from +y, as the advertised
-    `direction`, normalised to [0, 360).
+    With `heading_deg` the robot also turns in place to face it there: degrees
+    clockwise from +y, as the advertised `direction`, normalised to [0, 360).
     """
 
     heading_deg: Optional[float] = None
@@ -108,12 +106,15 @@ class DotBotLH2Waypoint(DotBotLH2Position):
 class DotBotWaypoints(BaseModel):
     """Waypoints model.
 
-    The robot drives through the points in order. It passes an intermediate
-    point once its photodiode is within `intermediate_threshold` mm of it, or
-    past it along the leg, without stopping, and stops at the last one within
-    `threshold` mm. A point with a heading is a pose: the robot stops there
-    within `threshold`, turns to the heading within `heading_tolerance`
-    degrees, then goes on. None leaves the firmware's default.
+    Each point is a position for the robot's centre, the axle midpoint (the
+    older dotbot apps steer their LH2 photodiode onto it instead). The robot
+    drives through the points in order. It passes an intermediate point once
+    its centre is within `intermediate_threshold` mm of it, or past it along
+    the leg, without stopping, and stops at the last one within `threshold`
+    mm; below 5 mm it settles at rest until within it. A point with a heading
+    is a pose: the robot stops there within `threshold`, turns to the heading
+    within `heading_tolerance` degrees, then goes on. None leaves the
+    firmware's default.
     """
 
     threshold: int
@@ -506,6 +507,7 @@ class DotBotModel(BaseModel):
         None  # the point being driven to; the count once arrived
     )
     max_speed: Optional[int] = None  # cruise speed limit in force, mm/s
+    axle_position: Optional[DotBotLH2Position] = None  # the robot's own estimate
     position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
@@ -542,6 +544,7 @@ class DotBotNotificationUpdate(BaseModel):
     waypoints_reason: Optional[str] = None
     waypoint_index: Optional[int] = None
     max_speed: Optional[int] = None
+    axle_position: Optional[DotBotLH2Position] = None
     position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
 
 

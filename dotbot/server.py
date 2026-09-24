@@ -45,6 +45,7 @@ from dotbot.models import (
     DotBotCameraDetectionModel,
     DotBotCameraModel,
     DotBotConnectionModel,
+    DotBotLH2Position,
     DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -243,6 +244,16 @@ async def dotbots_waypoints(
     )
 
 
+def _axle_position(dotbot: DotBotModel) -> Optional[DotBotLH2Position]:
+    """Where the robot's centre is: its own estimate, else the body pose
+    expanded from its fix."""
+    if dotbot.axle_position is not None:
+        return dotbot.axle_position
+    if dotbot.pose is not None:
+        return dotbot.pose.axle
+    return dotbot.lh2_position
+
+
 def _heading_cdeg(waypoint) -> int:
     """A waypoint's heading on the wire: centidegrees in [-18000, 18000)."""
     heading = getattr(waypoint, "heading_deg", None)
@@ -280,10 +291,9 @@ async def _dotbots_waypoints(
             waypoints_threshold=waypoints.threshold,
         )
     else:  # DotBot application
-        if api.controller.dotbots[address].lh2_position is not None:
-            waypoints_list = [
-                api.controller.dotbots[address].lh2_position
-            ] + waypoints.waypoints
+        start = _axle_position(api.controller.dotbots[address])
+        if start is not None:
+            waypoints_list = [start] + waypoints.waypoints
         payload = PayloadLH2Waypoints(
             threshold=waypoints.threshold,
             count=len(waypoints.waypoints),

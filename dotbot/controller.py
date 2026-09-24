@@ -79,6 +79,7 @@ from dotbot.models import (
     DotBotStatus,
 )
 from dotbot.protocol import (
+    AXLE_UNKNOWN,
     DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
@@ -678,6 +679,7 @@ class Controller:
             dotbot.waypoints_reason = self.dotbots[source].waypoints_reason
             dotbot.waypoint_index = self.dotbots[source].waypoint_index
             dotbot.max_speed = self.dotbots[source].max_speed
+            dotbot.axle_position = self.dotbots[source].axle_position
             dotbot.position_history = self.dotbots[source].position_history
             dotbot.battery = self.dotbots[source].battery
             dotbot.calibrated = self.dotbots[source].calibrated
@@ -1042,18 +1044,25 @@ class Controller:
                 reason = WaypointsAbortReason(advert.waypoints_reason).name
         except ValueError:
             reason = str(advert.waypoints_reason)
-        report = (status, reason, advert.waypoint_idx, advert.max_speed_10mm * 10)
+        axle = (
+            None
+            if AXLE_UNKNOWN in (advert.axle_x, advert.axle_y)
+            else DotBotLH2Position(x=advert.axle_x, y=advert.axle_y)
+        )
+        report = (status, reason, advert.waypoint_idx, advert.max_speed_10mm * 10, axle)
         changed = report != (
             dotbot.waypoints_status,
             dotbot.waypoints_reason,
             dotbot.waypoint_index,
             dotbot.max_speed,
+            dotbot.axle_position,
         )
         (
             dotbot.waypoints_status,
             dotbot.waypoints_reason,
             dotbot.waypoint_index,
             dotbot.max_speed,
+            dotbot.axle_position,
         ) = report
         return changed
 

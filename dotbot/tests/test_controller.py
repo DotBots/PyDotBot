@@ -1033,6 +1033,12 @@ async def test_the_waypoint_report_reaches_the_model(controller):
     assert dotbot.waypoints_reason == "PROGRESS"
     assert dotbot.waypoint_index == 2
     assert dotbot.max_speed == 300
+    assert dotbot.axle_position is None  # no heading yet
+
+    controller.handle_received_frame(_report(axle_x=1100, axle_y=950))
+    assert controller.dotbots[addr_to_hex(BOT)].axle_position == DotBotLH2Position(
+        x=1100, y=950
+    )
 
     controller.handle_received_frame(
         _report(waypoints_status=WaypointsStatus.ABORTED, waypoints_reason=2)

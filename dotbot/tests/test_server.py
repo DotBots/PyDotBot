@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import ControllerSettings, device_pose
+from dotbot.controller import ControllerSettings, body_pose, device_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -34,6 +34,7 @@ from dotbot.protocol import (
     PayloadLH2Location,
     PayloadLH2Waypoints,
 )
+from dotbot.robots import ROBOT_DEFAULT
 from dotbot.server import api
 from dotbot.site import Site
 from dotbot.tests.camera_fixtures import (
@@ -1722,3 +1723,25 @@ async def test_set_dotbots_max_speed_unknown_dotbot():
     )
     assert response.status_code == 404
     api.controller.send_max_speed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_waypoints_start_from_the_axle():
+    """The echoed waypoint list starts at the robot's centre: its own axle
+    estimate, else the body pose's axle, else the photodiode fix."""
+    photodiode = DotBotLH2Position(x=1000, y=1000)
+    robot = DotBotModel(
+        address="4242",
+        application=ApplicationType.DotBot,
+        last_seen=123.4,
+        lh2_position=photodiode,
+        pose=body_pose(ROBOT_DEFAULT, photodiode, 90),
+    )
+    api.controller.dotbots = {"4242": robot}
+    body = {"threshold": 10, "waypoints": [{"x": 500, "y": 100}]}
+    await client.put("/controller/dotbots/4242/0/waypoints", json=body)
+    assert robot.waypoints[0] == robot.pose.axle != photodiode
+
+    robot.axle_position = DotBotLH2Position(x=1001, y=949)
+    await client.put("/controller/dotbots/4242/0/waypoints", json=body)
+    assert robot.waypoints[0] == DotBotLH2Position(x=1001, y=949)
