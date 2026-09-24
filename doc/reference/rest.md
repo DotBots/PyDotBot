@@ -43,6 +43,7 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `GET` | `/controller/map_size` | Controller map size |
 | `GET` | `/controller/background_map` | Background map image (base64) |
 | `PUT` | `/controller/dotbots/{address}/{application}/move_raw` | Drive the motors |
+| `PUT` | `/controller/dotbots/{address}/{application}/wheel_velocity` | Set each wheel's speed: `left_mm_s` / `right_mm_s`, in mm/s, within ±800 |
 | `PUT` | `/controller/dotbots/{address}/{application}/rgb_led` | Set the RGB LED |
 | `PUT` | `/controller/dotbots/{address}/{application}/waypoints` | Set navigation waypoints |
 | `DELETE` | `/controller/dotbots/{address}/positions` | Clear position history |
