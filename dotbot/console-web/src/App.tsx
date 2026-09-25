@@ -49,6 +49,8 @@ import {
 } from "./shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
+import { TestbedControls } from "./TestbedControls";
+import { TestbedAction, targetsOf } from "./testbed";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   canRedoMission,
@@ -434,6 +436,27 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts]);
 
+  // Start and Stop act on the selection, or with none on the whole fleet. The
+  // stop key works with the shortcuts panel open: it is the safety action.
+  const testbed = useCallback(
+    (action: TestbedAction) => {
+      const ids = selection.size ? [...selection] : undefined;
+      orch.act(action, ids, targetsOf(action, bots, ids));
+    },
+    [orch.act, selection, bots],
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.stop)) testbed("stop");
+      else if (!shortcuts && pressed(e, ACTION_KEY.start)) testbed("start");
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, testbed]);
+
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
     setSelection((prev) => {
@@ -769,6 +792,14 @@ export const App: React.FC = () => {
           <span style={{ fontSize: 11, color: "var(--muted)" }}>&middot; {bots.length} bots</span>
         </div>
         <div style={{ flex: 1 }} />
+        <TestbedControls
+          selected={selection.size}
+          busy={orch.busy}
+          outcome={orch.outcome}
+          onStart={() => testbed("start")}
+          onStop={() => testbed("stop")}
+          onSelectIds={(ids) => onSelect(ids, "replace")}
+        />
         <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />
         {/* theme: Dark | Light segmented (v1) */}
         <div
@@ -824,8 +855,8 @@ export const App: React.FC = () => {
               window.localStorage.getItem("dotbot.console.startAfterFlash") === "1",
             )
           }
-          onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
-          onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
+          onStart={() => testbed("start")}
+          onStop={() => testbed("stop")}
           onSelectIds={(ids) => onSelect(ids, "replace")}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}

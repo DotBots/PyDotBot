@@ -51,6 +51,8 @@ export const ACTION_KEY = {
   poseMode: "P",
   leftPanel: "[",
   rightPanel: "]",
+  start: "R",
+  stop: "X",
 } as const;
 
 export type ActionKey = (typeof ACTION_KEY)[keyof typeof ACTION_KEY];
@@ -174,6 +176,19 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {
         keys: [ACTION_KEY.go],
         does: "Send the selected robots to their queued waypoints, or stop them on their way",
+      },
+    ],
+  },
+  {
+    surface: "Testbed",
+    rows: [
+      {
+        keys: [ACTION_KEY.start],
+        does: "Start the sandbox app on the selected robots, or the whole fleet",
+      },
+      {
+        keys: [ACTION_KEY.stop],
+        does: "Stop the sandbox app on the selected robots, or the whole fleet",
       },
     ],
   },
