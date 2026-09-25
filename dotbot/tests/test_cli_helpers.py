@@ -38,6 +38,13 @@ bots = 1000
 """
 
 
+@pytest.fixture(autouse=True)
+def _no_user_config(tmp_path, monkeypatch):
+    """Keep the developer's ~/.dotbot/config.toml out of the "no config" cases."""
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", tmp_path / "no-user.toml")
+    monkeypatch.delenv("DOTBOT_CONFIG", raising=False)
+
+
 @pytest.fixture
 def runner():
     return CliRunner()
