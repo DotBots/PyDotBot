@@ -1760,6 +1760,31 @@ async def test_set_dotbots_waypoints_poses():
 
 
 @pytest.mark.asyncio
+async def test_set_dotbots_waypoints_empty_clears_the_batch():
+    """The console clears a robot's waypoints with an empty batch: it goes
+    out with no points, and the record keeps only where the robot stood."""
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            last_seen=123.4,
+            lh2_position=DotBotLH2Position(x=100, y=500),
+            waypoints=[
+                DotBotLH2Position(x=100, y=500),
+                DotBotLH2Waypoint(x=900, y=900),
+            ],
+        )
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints", json={"threshold": 10, "waypoints": []}
+    )
+    assert response.status_code == 200
+    address, payload = api.controller.send_waypoints.call_args.args
+    assert (address, payload.count, payload.waypoints) == ("4242", 0, [])
+    assert api.controller.dotbots["4242"].waypoints == [DotBotLH2Position(x=100, y=500)]
+
+
+@pytest.mark.asyncio
 async def test_set_dotbots_waypoints_poses_echo_their_heading():
     """The console draws an active pose and repeats a mission from what the
     controller echoes, so a heading survives into the notification and the
