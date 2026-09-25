@@ -101,6 +101,16 @@ export interface Layers {
   trails: boolean;
 }
 
+export interface SpreadPreviewLeg {
+  id: string;
+  from: LH2Position | null;
+  to: LH2Position;
+  color: string;
+  crossing: boolean;
+  flagged: boolean;
+  ringMm: number;
+}
+
 interface MapViewProps {
   bots: UnifiedBot[];
   // The part of the frame the map draws: the whole site plus a margin.
@@ -128,7 +138,17 @@ interface MapViewProps {
   // Whether robots are drawn as their bodies or their sensor points.
   robotDrawing?: RobotDrawing;
   // Local queues, not yet sent: the robots each is bound to, and its points.
-  plannedMissions: { key: string; ids: string[]; waypoints: Waypoint[]; led: string | null }[];
+  plannedMissions: {
+    key: string;
+    ids: string[];
+    waypoints: Waypoint[];
+    led: string | null;
+    // A spread gives each point its own robot and colour.
+    colors?: string[];
+  }[];
+  // A spread's preview: each robot's straight path to its target, and the
+  // targets a hazard flags, ringed at the spacing they should keep.
+  spreadLegs?: SpreadPreviewLeg[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   onGeom: (g: ViewGeom) => void;
@@ -1270,7 +1290,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 const template = silhouetteTemplate(props.bots, m.ids);
                 return m.waypoints.map((p, i) => {
                   const q = pctPos(p);
-                  const led = m.led ?? "var(--accent)";
+                  const led = m.colors?.[i] ?? m.led ?? "var(--accent)";
                   if (isPose(p)) {
                     const hovered = hoverPose?.key === m.key && hoverPose.index === i;
                     const shape = poseShape(template, p, p.heading_deg, perMm);
@@ -1318,7 +1338,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                           color={led}
                           look="queued"
                           index={i + 1}
-                          shared={m.ids.length}
+                          shared={m.colors ? 1 : m.ids.length}
                           diamondPx={waypointPx}
                           knob={hovered}
                           onKnobDown={(e) => {
@@ -1354,6 +1374,57 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   );
                 });
               })}
+
+          {/* a spread's preview: robot -> its own target, colour-matched;
+              a crossing path is drawn heavier, a flagged target ringed */}
+          {props.layers.waypoints && props.spreadLegs && props.spreadLegs.length > 0 && (
+            <svg
+              data-testid="spread-preview"
+              width={boxW}
+              height={boxH}
+              style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
+            >
+              {props.spreadLegs.map((l, i) => {
+                const px = (p: LH2Position) => {
+                  const { fx, fy } = areaToFraction(p, props.viewport);
+                  return { x: fx * boxW, y: fy * boxH };
+                };
+                const b = px(l.to);
+                const a = l.from ? px(l.from) : null;
+                const ring = (l.ringMm * boxW) / props.viewport.w;
+                return (
+                  <g key={`${l.id}-${i}`} data-testid={`spread-leg-${l.id}`} data-crossing={l.crossing}>
+                    {a && (
+                      <>
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke={l.crossing ? "var(--s-Stopping)" : l.color}
+                          strokeWidth={(l.crossing ? 2.5 : 1.5) * chrome}
+                          strokeDasharray={l.crossing ? undefined : `${6 * chrome} ${4 * chrome}`}
+                        />
+                        <circle cx={a.x} cy={a.y} r={5 * chrome} fill="none" stroke={l.color} strokeWidth={2 * chrome} />
+                      </>
+                    )}
+                    {l.flagged && (
+                      <circle
+                        data-testid={`spread-flag-${i}`}
+                        cx={b.x}
+                        cy={b.y}
+                        r={ring}
+                        fill="rgba(239,68,68,.08)"
+                        stroke="var(--s-Stopping)"
+                        strokeWidth={1.5 * chrome}
+                        strokeDasharray={`${4 * chrome} ${3 * chrome}`}
+                      />
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          )}
 
           {/* the waypoint being placed: a diamond while it is still a click,
               then the silhouette pinned at its axle */}

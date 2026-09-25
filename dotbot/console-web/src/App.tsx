@@ -35,6 +35,8 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
+import { SpreadPanel, SpreadRun } from "./SpreadPanel";
+import { describeHazards, hazardCount, planSpread, spreadColor, swap } from "./spread";
 import { WaypointSettings, batchFields, loadWaypointSettings, saveWaypointSettings } from "./arrival";
 import {
   ACTION_KEY,
@@ -155,6 +157,10 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
+  // Selections sending one target per robot, by mission key: the operator's
+  // robot for each target, or null for the shortest assignment.
+  const [spread, setSpread] = useState<Record<string, string[] | null>>({});
+  const [spreadRun, setSpreadRun] = useState<SpreadRun | null>(null);
   // How missions end and pass their points, this browser's choice.
   const [wpSettings, setWpSettingsState] = useState(loadWaypointSettings);
   const setWpSettings = useCallback((s: WaypointSettings) => {
@@ -478,6 +484,9 @@ export const App: React.FC = () => {
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");
   const selPlanned = planned.find((m) => m.key === selKey);
   const pending = selPlanned?.waypoints ?? [];
+  const spreadOn = drivableSelected.length > 1 && selKey in spread;
+  const extent = siteExtentArea(site);
+  const spreadPlan = spreadOn ? planSpread(drivableSelected, pending, spread[selKey], extent) : null;
 
   const onAddWaypoint = useCallback(
     (p: Waypoint) => {
@@ -487,7 +496,12 @@ export const App: React.FC = () => {
       }
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
-      if ((planned.find((m) => m.key === key)?.waypoints.length ?? 0) >= MAX_WAYPOINTS) {
+      const have = planned.find((m) => m.key === key)?.waypoints.length ?? 0;
+      if (key in spread && have >= ids.length) {
+        showToast(`One target per robot: all ${ids.length} placed`);
+        return;
+      }
+      if (have >= MAX_WAYPOINTS) {
         showToast(`A robot takes at most ${MAX_WAYPOINTS} waypoints at once`);
         return;
       }
@@ -497,11 +511,42 @@ export const App: React.FC = () => {
         return [...prev, { key, ids, waypoints: [p] }];
       });
     },
-    [drivableSelected, planned, selection, showToast],
+    [drivableSelected, planned, selection, showToast, spread],
+  );
+
+  // Each robot its own single-target batch; the hazards are hints, so they
+  // only ask before sending.
+  const sendSpread = useCallback(
+    (m: PlannedMission) => {
+      const robots = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
+      if (m.waypoints.length !== robots.length) {
+        showToast(`Place one target per robot: ${m.waypoints.length} of ${robots.length}`);
+        return;
+      }
+      const plan = planSpread(robots, m.waypoints, spread[m.key], siteExtentArea(site));
+      if (hazardCount(plan.hazards) > 0) {
+        const lines = describeHazards(plan.hazards, plan.legs, plan.spacing);
+        if (!window.confirm(`${lines.join("\n")}\n\nSend anyway?`)) return;
+      }
+      const byId = new Map(robots.map((b) => [b.id, b]));
+      plan.order.forEach((id, t) => {
+        const b = byId.get(id)!;
+        putWaypoints(b.id, b.application, arrivalMm, [m.waypoints[t]], batchFields(wpSettings)).catch(() => {});
+      });
+      setSpreadRun({ order: plan.order, targets: m.waypoints });
+      showToast(`${robots.length} robots sent to their own targets`);
+      setPlanned((prev) => prev.filter((x) => x.key !== m.key));
+      setSpread((prev) => ({ ...prev, [m.key]: null }));
+    },
+    [bots, showToast, arrivalMm, wpSettings, spread, site],
   );
 
   const sendMission = useCallback(
     (m: PlannedMission) => {
+      if (m.key in spread && m.ids.length > 1) {
+        sendSpread(m);
+        return;
+      }
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
       targets.forEach((b) => {
         putWaypoints(b.id, b.application, arrivalMm, m.waypoints, batchFields(wpSettings)).catch(() => {});
@@ -513,7 +558,33 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast, arrivalMm, wpSettings],
+    [bots, showToast, arrivalMm, wpSettings, spread, sendSpread],
+  );
+
+  const onSpreadToggle = useCallback(
+    (on: boolean) => {
+      setSpread((prev) => {
+        const next = { ...prev };
+        if (on) next[selKey] = null;
+        else delete next[selKey];
+        return next;
+      });
+      // A route longer than the robots cannot become one target each.
+      if (on && pending.length > drivableSelected.length) {
+        setPlanned((prev) =>
+          prev.map((m) => (m.key === selKey ? { ...m, waypoints: m.waypoints.slice(0, drivableSelected.length) } : m)),
+        );
+        showToast(`Kept the first ${drivableSelected.length} points, one per robot`);
+      }
+    },
+    [selKey, pending.length, drivableSelected.length, showToast],
+  );
+  const onSpreadSwap = useCallback(
+    (t: number, id: string) => {
+      if (!spreadPlan) return;
+      setSpread((prev) => ({ ...prev, [selKey]: swap(spreadPlan.order, t, id) }));
+    },
+    [selKey, spreadPlan],
   );
 
   const onGo = useCallback(() => {
@@ -895,8 +966,18 @@ export const App: React.FC = () => {
                   ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
+                  ...(m.key in spread && m.ids.length > 1 ? { colors: m.waypoints.map((_, t) => spreadColor(t)) } : {}),
                 };
               })}
+              spreadLegs={spreadPlan?.legs.map((l) => ({
+                id: l.id,
+                from: l.from,
+                to: l.to,
+                color: spreadColor(l.target),
+                crossing: spreadPlan.hazards.crossings.some(([a, b]) => a === l.target || b === l.target),
+                flagged: spreadPlan.flagged.has(l.target),
+                ringMm: spreadPlan.spacing / 2,
+              }))}
               cam={cam}
               setCam={setCam}
               onGeom={setGeom}
@@ -911,6 +992,18 @@ export const App: React.FC = () => {
               site={site}
               onZoom={zoomTo}
               onShortcuts={() => setShortcuts(true)}
+            />
+          )}
+          {view === "map" && drivableSelected.length > 1 && !session && (
+            <SpreadPanel
+              bots={drivableSelected}
+              on={spreadOn}
+              plan={spreadPlan}
+              onToggle={onSpreadToggle}
+              onSwap={onSpreadSwap}
+              onShortest={() => setSpread((prev) => ({ ...prev, [selKey]: null }))}
+              run={spreadRun && spreadRun.order.some((id) => selection.has(id)) ? spreadRun : null}
+              allBots={bots}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
