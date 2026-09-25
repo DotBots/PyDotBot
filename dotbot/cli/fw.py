@@ -30,6 +30,7 @@ build-from-source → error (it never fetches); `device flash-swarmit-sandbox`
 """
 
 import sys
+import time
 from pathlib import Path
 
 import click
@@ -39,7 +40,9 @@ from dotbot.cli._artifacts import (
     artifacts_dir,
     echo_artifact_path,
 )
+from dotbot.cli import _fw_helpers
 from dotbot.cli._cfg import from_config
+from dotbot.cli._fw_sources import SOURCES
 from dotbot.cli._fw_helpers import (
     BARE_TARGETS,
     CONFIGS,
@@ -212,66 +215,135 @@ def list_targets(sandbox):
 @_target_option
 @_project_option
 @_config_option
+@click.option(
+    "--source",
+    "-S",
+    "sources",
+    type=click.Choice(SOURCES),
+    multiple=True,
+    help=(
+        "Source to build (repeatable). Default: every source, or just "
+        "dotbot-firmware with --app. Checkouts: DOTBOT_FIRMWARE_REPO / "
+        "[fw].firmware_repo and DOTBOT_SWARMIT_REPO / [fw].swarmit_repo, "
+        "a relative config path resolving against the config file, "
+        "defaulting to repos/<name> next to the config file."
+    ),
+)
 @_sandbox_option
+@click.option(
+    "--bare",
+    is_flag=True,
+    default=False,
+    help="dotbot-firmware: bare apps only. Default: bare and sandbox apps.",
+)
+@click.option(
+    "--rebuild",
+    is_flag=True,
+    default=False,
+    help="Force full rebuild (pass `-rebuild` to emBuild). Default: incremental.",
+)
 @click.option(
     "--out",
     "out_dir",
     type=click.Path(file_okay=False, dir_okay=True),
     default=None,
-    help=f"Where to collect artifacts. Default: {DEFAULT_ARTIFACTS_DISPLAY}/dotbot-firmware-local/.",
+    help=(
+        "Collect everything into this directory. Default: "
+        f"{DEFAULT_ARTIFACTS_DISPLAY}/<source>-local/."
+    ),
 )
 @click.option(
     "--print-path",
     is_flag=True,
     default=False,
-    help="Print where the artifact lives without building.",
+    help="Print where each artifact would be collected, without building.",
 )
 @click.option("-v", "--verbose", is_flag=True, default=False)
 @click.pass_context
-def artifacts(ctx, target, project, config, sandbox, out_dir, print_path, verbose):
-    """Build + collect artifacts into the local cache (default).
+def artifacts(
+    ctx,
+    target,
+    project,
+    config,
+    sources,
+    sandbox,
+    bare,
+    rebuild,
+    out_dir,
+    print_path,
+    verbose,
+):
+    """Build a release's firmware set from local checkouts into the cache.
 
-    Without --out, built apps land in the source-qualified
-    ``<cache>/dotbot-firmware-local/`` dir so `device flash <app>` finds them
-    alongside fetched releases.
+    Collects into ``<cache>/<source>-local/`` under the release file names,
+    so `device flash`, `swarm flash` and `-f local` find them alongside
+    fetched releases. dotbot-firmware builds the apps its release ships for
+    the board (bare and sandbox); swarmit builds the bootloader for the
+    board, the network core and the Mari gateway from its mari submodule.
     """
-    import shutil
+    from dotbot.cli import _fw_sources as fs
 
     target = from_config(ctx, "target", "board", "fw")
     config = from_config(ctx, "config", "build_config", "fw")
     sandbox = from_config(ctx, "sandbox", "sandbox", "fw")
-    build_target = _resolve_build_target(target, sandbox)
+    if sandbox and bare:
+        raise click.ClickException("--sandbox and --bare are mutually exclusive.")
+    explicit = bool(sources)
+    if not sources:
+        sources = ("dotbot-firmware",) if project else SOURCES
+    if project and "dotbot-firmware" not in sources:
+        raise click.ClickException("--app names a dotbot-firmware app.")
+
+    planned: list[tuple[str, list[Path], object]] = []
+    for source in sources:
+        if source == "swarmit":
+            if target not in fs.SWARMIT_BOARDS:
+                msg = f"swarmit has no bootloader for board {target!r}"
+                if explicit:
+                    raise click.ClickException(msg + ".")
+                click.echo(f"[skip] {msg}", err=True)
+                continue
+            repo = _fw_helpers.resolve_swarmit_repo()
+            files = [s.cwd / s.output for s in fs.swarmit_steps(repo, target, config)]
+            planned.append((source, files, None))
+            continue
+        if sandbox:
+            flavors = ["sandbox"]
+        elif bare:
+            flavors = ["bare"]
+        else:
+            flavors = [f for f in fs.FLAVORS if fs.flavor_supports(target, f)]
+        for flavor in flavors:
+            _resolve_build_target(target, flavor == "sandbox")
+        plan = fs.dotbot_firmware_plan(target, flavors, project)
+        planned.append((source, fs.dotbot_firmware_outputs(plan, config), plan))
+
+    root = artifacts_dir()
+
+    def dest(source):
+        return Path(out_dir).resolve() if out_dir else fs.local_dir(source, root)
+
     if print_path:
-        if not project:
-            raise click.ClickException(
-                "`--print-path` requires `--app NAME` — there is no canonical "
-                "artifact path without a specific project."
-            )
-        click.echo(str(artifact_path(build_target, project, config)))
+        for source, files, _ in planned:
+            for f in files:
+                click.echo(str(dest(source) / f.name))
         return
-    out = (
-        Path(out_dir).resolve()
-        if out_dir
-        else artifacts_dir() / "dotbot-firmware-local"
-    )
-    click.echo(
-        f"Building + collecting artifacts for {target} ({config}) → {out}/...",
-        err=True,
-    )
-    # Force a full rebuild: bare and sandbox share the SES Output dir per
-    # board (`$(BuildTarget)`), so incremental can pick up stale objects
-    # from the other flavor and link-error.
-    elapsed = run_make(build_target, config, project, rebuild=True, quiet=not verbose)
-    out.mkdir(parents=True, exist_ok=True)
-    apps_to_collect = [project] if project else list_projects(build_target)
-    copied = []
-    for app in apps_to_collect:
-        src = artifact_path(build_target, app, config)
-        if src.is_file():
-            dst = out / src.name
-            shutil.copy2(src, dst)
-            copied.append(dst)
-    echo_artifact_path(out, action="collected into")
+
+    mode = "rebuild" if rebuild else "incremental"
+    copied: list[Path] = []
+    t0 = time.perf_counter()
+    for source, files, plan in planned:
+        click.echo(f"Building {source} for {target} ({config}, {mode})...", err=True)
+        if source == "swarmit":
+            files = fs.build_swarmit(target, config, rebuild=rebuild, verbose=verbose)
+        else:
+            files = fs.build_dotbot_firmware(
+                plan, config, rebuild=rebuild, verbose=verbose
+            )
+        out = dest(source)
+        copied += fs.collect(files, out)
+        echo_artifact_path(out, action="collected into")
+    elapsed = time.perf_counter() - t0
     click.echo(f"✓ Collected {len(copied)} artifact(s) in {elapsed:.1f}s", err=True)
     for p in copied:
         click.echo(str(p))

@@ -269,6 +269,35 @@ def list_projects(target: str) -> list[str]:
     ]
 
 
+def list_release_projects(target: str) -> list[str]:
+    """The apps a DotBot-firmware release ships for `target`.
+
+    Read from the Makefile's `ARTIFACT_PROJECTS`, the list its own
+    `artifacts` target (and so the release workflow) builds.
+    """
+    repo = resolve_firmware_repo()
+    result = subprocess.run(
+        [
+            "make",
+            "-s",
+            f"BUILD_TARGET={target}",
+            "--eval",
+            "print-release-projects: ; @echo $(ARTIFACT_PROJECTS)",
+            "print-release-projects",
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(
+            f"Reading ARTIFACT_PROJECTS for BUILD_TARGET={target} failed:\n"
+            f"{result.stderr}"
+        )
+    return result.stdout.split()
+
+
 def run_make(
     target: str,
     config: str,

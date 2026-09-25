@@ -199,56 +199,6 @@ def test_fw_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_mak
     assert "clean" in cmd
 
 
-def test_fw_artifacts_builds_then_collects_to_user_dir(
-    runner, fake_repo, fake_segger, capture_make, tmp_path
-):
-    """`dotbot fw artifacts` no longer runs `make artifacts` (whose path
-    formula is buggy for sandbox and writes to the firmware repo's
-    `artifacts/`). It does a regular build, then copies the produced
-    artifacts to the user-chosen out dir (default `./artifacts/`)."""
-    out = tmp_path / "user-artifacts"
-    result = runner.invoke(
-        fw_cmd, ["artifacts", "--target", "dotbot-v3", "--out", str(out)]
-    )
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    # Builds (no explicit make target), doesn't invoke `make artifacts`.
-    assert "artifacts" not in cmd
-    assert "BUILD_TARGET=dotbot-v3" in cmd
-    # The user-chosen out dir was created.
-    assert out.is_dir()
-
-
-def test_fw_artifacts_print_path_requires_app(runner, fake_repo, fake_segger):
-    """`--print-path` without `--app` exits with a hint."""
-    result = runner.invoke(
-        fw_cmd, ["artifacts", "--target", "dotbot-v3", "--print-path"]
-    )
-    assert result.exit_code != 0
-    assert "--app" in result.output
-
-
-def test_fw_artifacts_print_path_returns_makefile_formula(
-    runner, fake_repo, fake_segger
-):
-    result = runner.invoke(
-        fw_cmd,
-        ["artifacts", "--target", "dotbot-v3", "--app", "dotbot", "--print-path"],
-    )
-    assert result.exit_code == 0, result.output
-    out = result.output.strip()
-    expected = str(
-        Path("apps")
-        / "dotbot"
-        / "Output"
-        / "dotbot-v3"
-        / "Release"
-        / "Exe"
-        / "dotbot-dotbot-v3.hex"
-    )
-    assert out.endswith(expected)
-
-
 def test_fw_new_still_not_implemented(runner):
     """`new` is deferred to a separate templates plan."""
     result = runner.invoke(fw_cmd, ["new", "my-experiment"])
@@ -305,74 +255,12 @@ def test_sandbox_build_default_board(runner, fake_repo, fake_segger, capture_mak
     assert "BUILD_CONFIG=Release" in cmd
 
 
-def test_sandbox_artifacts_print_path_uses_bin_extension(
-    runner, fake_repo, fake_segger
-):
-    """Sandbox artifacts are `.bin` (what swarmit OTA flashes), not `.hex`."""
-    result = runner.invoke(
-        fw_cmd,
-        [
-            "artifacts",
-            "--target",
-            "dotbot-v3",
-            "--app",
-            "dotbot",
-            "--sandbox",
-            "--print-path",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    out = result.output.strip()
-    # SES's `$(BuildTarget)` macro now matches the make-level BUILD_TARGET
-    # (including the `sandbox-` prefix), so Output paths are flavor-distinct.
-    expected = str(
-        Path("apps-sandbox")
-        / "dotbot"
-        / "Output"
-        / "sandbox-dotbot-v3"
-        / "Release"
-        / "Exe"
-        / "dotbot-sandbox-dotbot-v3.bin"
-    )
-    assert out.endswith(expected)
-
-
 def test_sandbox_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_make):
     result = runner.invoke(fw_cmd, ["clean", "--target", "dotbot-v3", "--sandbox"])
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
     assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
     assert "clean" in cmd
-
-
-def test_sandbox_artifacts_collected_filename_distinct_from_bare(
-    runner, fake_repo, fake_segger, capture_make, tmp_path, monkeypatch
-):
-    """Sandbox artifacts collect with a filename naturally distinct from
-    any bare equivalent — `dotbot-sandbox-dotbot-v3.bin` vs bare
-    `dotbot-dotbot-v3.hex` — because SES's `$(BuildTarget)` macro now
-    includes the `sandbox-` prefix. No CLI-side mangling required."""
-    src_dir = (
-        fake_repo
-        / "apps-sandbox"
-        / "dotbot"
-        / "Output"
-        / "sandbox-dotbot-v3"
-        / "Release"
-        / "Exe"
-    )
-    src_dir.mkdir(parents=True)
-    (src_dir / "dotbot-sandbox-dotbot-v3.bin").write_bytes(b"\xde\xad\xbe\xef")
-    monkeypatch.setattr("dotbot.cli.fw.list_projects", lambda target: ["dotbot"])
-    out = tmp_path / "user-artifacts"
-    result = runner.invoke(
-        fw_cmd,
-        ["artifacts", "--target", "dotbot-v3", "--sandbox", "--out", str(out)],
-    )
-    assert result.exit_code == 0, result.output
-    collected = list(out.iterdir())
-    assert len(collected) == 1
-    assert collected[0].name == "dotbot-sandbox-dotbot-v3.bin"
 
 
 # ── Output polish: preamble, timing, gated make-line echo ───────────────
@@ -428,18 +316,6 @@ def test_fw_clean_prints_cleaned_success_line(
     assert result.exit_code == 0, result.output
     assert "Cleaning dotbot-v3" in result.output
     assert "✓ Cleaned" in result.output
-
-
-def test_fw_artifacts_prints_collected_success_line(
-    runner, fake_repo, fake_segger, capture_make, tmp_path
-):
-    result = runner.invoke(
-        fw_cmd,
-        ["artifacts", "--target", "dotbot-v3", "--out", str(tmp_path / "out")],
-    )
-    assert result.exit_code == 0, result.output
-    assert "Building + collecting artifacts" in result.output
-    assert "✓ Collected" in result.output
 
 
 def test_run_make_returns_elapsed_seconds(fake_repo, fake_segger, monkeypatch):
