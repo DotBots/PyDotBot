@@ -17,6 +17,7 @@ import {
   CalibrationSession,
   LH2Position,
   LinkState,
+  missionReport,
   PyDotBot,
   RegisteredCamera,
   STATE_ORDER,
@@ -139,6 +140,8 @@ export function merge(
       drivable: link === "active" && (state === null || state === "Running"),
       nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
+      mission: missionReport(py),
+      axle: py?.axle_position ?? (pose && pose.heading_source !== "none" ? pose.axle : null),
       trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
@@ -152,6 +155,18 @@ export function merge(
 }
 
 /** The detections keyed by area, with `detection`'s area replaced. */
+/**
+ * The waypoint report from an update, into `bot`. It arrives whole with its
+ * null fields left out, so a field missing beside the status is now null.
+ */
+export function applyReport(bot: Partial<PyDotBot>, d: Partial<PyDotBot>): void {
+  if (d.waypoints_status === undefined) return;
+  bot.waypoints_status = d.waypoints_status;
+  bot.waypoints_reason = d.waypoints_reason ?? null;
+  bot.waypoint_index = d.waypoint_index ?? null;
+  bot.axle_position = d.axle_position ?? null;
+}
+
 export function withDetection(
   previous: Record<string, CameraDetection>,
   detection: CameraDetection,
@@ -270,6 +285,7 @@ export function useFleet(): {
           if (d.lh2_waypoints !== undefined) bot.waypoints = d.lh2_waypoints;
           if (d.waypoints_threshold !== undefined)
             bot.waypoints_threshold = d.waypoints_threshold;
+          applyReport(bot, d);
           rebuild();
         } else {
           // RELOAD / NEW_DOTBOT / unknown -> refetch everything.

@@ -83,6 +83,8 @@ export interface BotBody {
   wheels: LH2Position[][];
   centre: LH2Position;
   nose: LH2Position;
+  /** The axle midpoint: the robot's centre, where a waypoint puts it. */
+  axle: LH2Position;
   spanMm: number;
   /** The robot's plan-view size, from the pose. */
   envelopeMm: number;
@@ -120,6 +122,7 @@ export function botBody(pose: BotPose | null | undefined): BotBody | null {
     wheels: pose.wheels.map((wheel) => wheel.map(rel)),
     centre: rel(pose.centre),
     nose: rel(pose.nose),
+    axle: rel(pose.axle),
     spanMm: Math.max(extent(forward), extent(across)),
     envelopeMm: pose.envelope_mm,
     source: pose.heading_source,
@@ -254,6 +257,12 @@ interface BotGlyphProps {
   pxPerMm: number;
   /** The circle's diameter, for `mark`. */
   footprintPx: number;
+  /**
+   * A pose not yet placed, drawn as a dashed outline over a faint fill, and
+   * the board's stroke colour. Only the board level reads it.
+   */
+  ghost?: boolean;
+  outlineColor?: string;
 }
 
 const Frame: React.FC<{ half: number; children: React.ReactNode; filter?: boolean }> = ({
@@ -413,7 +422,15 @@ const SensorPoint: React.FC<{
  * The bot as one SVG whose origin is the pose's photodiode, so the caller places
  * it at the point it already has and the body falls where the pose puts it.
  */
-export const BotGlyph: React.FC<BotGlyphProps> = ({ state, led, shape, pxPerMm, footprintPx }) => {
+export const BotGlyph: React.FC<BotGlyphProps> = ({
+  state,
+  led,
+  shape,
+  pxPerMm,
+  footprintPx,
+  ghost = false,
+  outlineColor = "rgba(0,0,0,.45)",
+}) => {
   if (shape.kind === "sensor") return <SensorPoint state={state} led={led} {...shape} />;
   const body = shape.body;
   const px = (p: LH2Position): LH2Position => ({
@@ -457,8 +474,19 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({ state, led, shape, pxPerMm, 
         data-layer="board"
         points={body.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
         fill={state}
-        stroke="rgba(0,0,0,.45)"
-        strokeWidth={stroke}
+        fillOpacity={ghost ? 0.3 : undefined}
+        stroke={outlineColor}
+        strokeWidth={ghost ? Math.max(1.5, stroke) : stroke}
+        strokeDasharray={ghost ? `${4 * Math.max(1, stroke)} ${3 * Math.max(1, stroke)}` : undefined}
+      />
+      <circle
+        data-layer="axle"
+        cx={body.axle.x * pxPerMm}
+        cy={body.axle.y * pxPerMm}
+        r={Math.max(1.5, Math.min(3.5, footprintPx * 0.03))}
+        fill={WHITE}
+        stroke={DARK}
+        strokeWidth={Math.max(0.6, stroke)}
       />
       <SensorMark r={Math.max(2.6, Math.min(12, footprintPx * 0.085))} led={led} />
     </Frame>

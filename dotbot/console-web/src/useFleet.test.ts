@@ -8,6 +8,7 @@ import {
   merge,
   severityOf,
   withDetection,
+  applyReport,
 } from "./useFleet";
 
 const pose = (over: Partial<BotPose> = {}): BotPose => ({
@@ -373,5 +374,29 @@ describe("derivePose (whose pose is live)", () => {
 
   it("does not draw swarmit's unlocated origin", () => {
     expect(derivePose(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown").position).toBeNull();
+  });
+});
+
+describe("applyReport (the waypoint report in an update)", () => {
+  it("clears what the update leaves out beside the status", () => {
+    const bot: Partial<PyDotBot> = {
+      waypoints_status: 3,
+      waypoints_reason: "PROGRESS",
+      waypoint_index: 1,
+      axle_position: { x: 1, y: 2 },
+    };
+    applyReport(bot, { waypoints_status: 1, waypoint_index: 0 });
+    expect(bot).toEqual({
+      waypoints_status: 1,
+      waypoints_reason: null,
+      waypoint_index: 0,
+      axle_position: null,
+    });
+  });
+
+  it("leaves the report alone for an update without one", () => {
+    const bot: Partial<PyDotBot> = { waypoints_status: 2, waypoint_index: 3 };
+    applyReport(bot, { battery: 3.1 });
+    expect(bot).toEqual({ waypoints_status: 2, waypoint_index: 3 });
   });
 });

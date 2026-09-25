@@ -35,6 +35,7 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
+import { WaypointSettings, batchFields, loadWaypointSettings, saveWaypointSettings } from "./arrival";
 import {
   ACTION_KEY,
   CLOSE_KEY,
@@ -44,6 +45,7 @@ import {
   onMac,
   pressed,
   typingIn,
+  undoPressed,
 } from "./shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
@@ -53,8 +55,8 @@ import {
   ControllerBuild,
   ControllerConnection,
   lastMissionTargets,
-  LH2Position,
   PlannedMission,
+  Waypoint,
 } from "./types";
 import { useCalibration, useCapturer } from "./useCalibration";
 import { useFleet } from "./useFleet";
@@ -74,7 +76,8 @@ import {
   zoomMax,
 } from "./zoom";
 
-const WAYPOINT_THRESHOLD = 60; // mm, arrival radius sent with waypoint missions
+// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch.
+const MAX_WAYPOINTS = 16;
 
 // Build provenance, quiet enough to ignore until it is the question:
 // `v0.30.0`, `v0.30.0 6573d53`, or `v0.30.0 6573d53*` for a dirty checkout.
@@ -150,6 +153,13 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
+  // How missions end and pass their points, this browser's choice.
+  const [wpSettings, setWpSettingsState] = useState(loadWaypointSettings);
+  const setWpSettings = useCallback((s: WaypointSettings) => {
+    setWpSettingsState(s);
+    saveWaypointSettings(s);
+  }, []);
+  const arrivalMm = wpSettings.arrivalMm;
   const [layers, setLayers] = useState<Layers>({
     batteryBars: true,
     waypoints: true,
@@ -447,24 +457,31 @@ export const App: React.FC = () => {
   const pending = selPlanned?.waypoints ?? [];
 
   const onAddWaypoint = useCallback(
-    (p: LH2Position) => {
-      if (drivableSelected.length === 0) return;
+    (p: Waypoint) => {
+      if (drivableSelected.length === 0) {
+        showToast(selection.size === 0 ? "Nothing selected" : "Not drivable");
+        return;
+      }
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
+      if ((planned.find((m) => m.key === key)?.waypoints.length ?? 0) >= MAX_WAYPOINTS) {
+        showToast(`A robot takes at most ${MAX_WAYPOINTS} waypoints at once`);
+        return;
+      }
       setPlanned((prev) => {
         const hit = prev.find((m) => m.key === key);
         if (hit) return prev.map((m) => (m.key === key ? { ...m, waypoints: [...m.waypoints, p] } : m));
         return [...prev, { key, ids, waypoints: [p] }];
       });
     },
-    [drivableSelected],
+    [drivableSelected, planned, selection, showToast],
   );
 
   const sendMission = useCallback(
     (m: PlannedMission) => {
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
       targets.forEach((b) => {
-        putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, m.waypoints).catch(() => {});
+        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, batchFields(wpSettings)).catch(() => {});
       });
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
@@ -473,7 +490,7 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast],
+    [bots, showToast, arrivalMm, wpSettings],
   );
 
   const onGo = useCallback(() => {
@@ -490,10 +507,10 @@ export const App: React.FC = () => {
 
   const onStopNav = useCallback(() => {
     drivableSelected.forEach((b) => {
-      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {});
+      putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {});
     });
     if (drivableSelected.length > 0) showToast("Navigation stopped");
-  }, [drivableSelected, showToast]);
+  }, [drivableSelected, showToast, arrivalMm]);
 
   // Redo sends each bot the mission it last ran, which the controller still
   // holds after the bot arrived. Each bot gets its own list, so a selection
@@ -502,10 +519,10 @@ export const App: React.FC = () => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
     again.forEach((b) => {
-      putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, lastMissionTargets(b)).catch(() => {});
+      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), batchFields(wpSettings)).catch(() => {});
     });
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast]);
+  }, [selectedBots, showToast, arrivalMm, wpSettings]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -547,6 +564,41 @@ export const App: React.FC = () => {
     [selKey],
   );
 
+  // A queued waypoint's heading: a number makes it a pose, null a position.
+  const onSetHeading = useCallback((key: string, i: number, heading: number | null) => {
+    setPlanned((prev) =>
+      prev.map((m) => {
+        if (m.key !== key || !m.waypoints[i]) return m;
+        const { x, y } = m.waypoints[i];
+        const w: Waypoint = heading === null ? { x, y } : { x, y, heading_deg: heading };
+        return { ...m, waypoints: m.waypoints.map((o, j) => (j === i ? w : o)) };
+      }),
+    );
+  }, []);
+  const onSetPendingHeading = useCallback(
+    (i: number, heading: number | null) => onSetHeading(selKey, i, heading),
+    [onSetHeading, selKey],
+  );
+
+  // Pose mode: a plain press on the map places waypoints and poses.
+  const [poseMode, setPoseMode] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcuts || e.repeat || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.poseMode)) {
+        setPoseMode((on) => !on);
+        e.preventDefault();
+      } else if (undoPressed(e)) {
+        // Takes back what is queued, never a mission already sent.
+        if (queued > 0) onRemovePending(queued - 1);
+        else showToast("Nothing queued to take back");
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcuts, queued, onRemovePending, showToast]);
+
   // Recently-completed missions: a bot flipping AUTO -> MANUAL just arrived.
   const [doneMissions, setDoneMissions] = useState<DoneMission[]>([]);
   const prevNavRef = useRef<Record<string, "drive" | "auto">>({});
@@ -566,10 +618,10 @@ export const App: React.FC = () => {
     (ids: string[]) => {
       bots
         .filter((b) => ids.includes(b.id) && b.drivable)
-        .forEach((b) => putWaypoints(b.id, b.application, WAYPOINT_THRESHOLD, []).catch(() => {}));
+        .forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
       showToast("Mission interrupted");
     },
-    [bots, showToast],
+    [bots, showToast, arrivalMm],
   );
 
   const layerRows: { key: keyof Layers; label: string }[] = [
@@ -808,6 +860,7 @@ export const App: React.FC = () => {
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
+                  key: m.key,
                   ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
@@ -818,6 +871,10 @@ export const App: React.FC = () => {
               onGeom={setGeom}
               onSelect={onSelect}
               onAddWaypoint={onAddWaypoint}
+              onSetHeading={onSetHeading}
+              poseMode={poseMode}
+              onPoseMode={setPoseMode}
+              waypointSettings={wpSettings}
               session={session}
               onPickCapturer={(id) => setCapturer(id.toUpperCase())}
               site={site}
@@ -935,6 +992,11 @@ export const App: React.FC = () => {
         onRedo={onRedo}
         onClearQueue={onClearQueue}
         onRemovePending={onRemovePending}
+        onSetPendingHeading={onSetPendingHeading}
+        waypointSettings={wpSettings}
+        onWaypointSettings={setWpSettings}
+        poseMode={poseMode}
+        onPoseMode={setPoseMode}
         onToast={showToast}
       />
     </div>

@@ -6,7 +6,18 @@ import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
-import { Area, BotState, canRedoMission, LH2Position, LINK_LABEL, STATE_ORDER, Site, UnifiedBot } from "./types";
+import {
+  ARRIVAL_NOTE,
+  ARRIVAL_PRESETS,
+  FIRMWARE_HEADING_TOL_DEG,
+  HEADING_TOL_DEG,
+  RADIUS_MM,
+  WaypointSettings,
+  clampTo,
+} from "./arrival";
+import { isPose, normDeg } from "./poseGesture";
+import { ACTION_KEY } from "./shortcuts";
+import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -40,7 +51,7 @@ interface FooterProps {
   /** The area names this browser hides, ticked under Layers > Areas. */
   hiddenAreas: Set<string>;
   selection: Set<string>;
-  pendingWaypoints: LH2Position[];
+  pendingWaypoints: Waypoint[];
   cam: Camera;
   setCam: React.Dispatch<React.SetStateAction<Camera>>;
   geom: ViewGeom | null;
@@ -50,6 +61,11 @@ interface FooterProps {
   onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (index: number) => void;
+  onSetPendingHeading?: (index: number, heading: number | null) => void;
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
+  waypointSettings?: WaypointSettings;
+  onWaypointSettings?: (s: WaypointSettings) => void;
   onToast: (msg: string) => void;
 }
 
@@ -91,9 +107,187 @@ const BatteryBar: React.FC<{ bot: UnifiedBot }> = ({ bot }) => {
 
 // The control dock, per v1: pad + LED button + segmented waypoint group,
 // with popovers anchored above and everything gated when nothing is drivable.
+/**
+ * A queued waypoint's heading as a number to type or step: arrows turn it a
+ * degree, Shift + arrows 15, and clearing it (or Delete) makes the waypoint a
+ * position again. The number is the one the REST call carries.
+ */
+export const HeadingField: React.FC<{
+  index: number;
+  heading: number | undefined;
+  onChange: (heading: number | null) => void;
+}> = ({ index, heading, onChange }) => {
+  const shown = heading === undefined ? "" : String(Math.round(heading));
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (text: string) => {
+    setDraft(null);
+    const t = text.trim();
+    if (t === "") return onChange(null);
+    const n = Number(t);
+    if (Number.isFinite(n)) onChange(normDeg(n));
+  };
+  const typed = draft === null || draft.trim() === "" ? NaN : Number(draft);
+  const step = (by: number) => onChange(normDeg((Number.isFinite(typed) ? typed : (heading ?? 0)) + by));
+  return (
+    <input
+      aria-label={`Heading of waypoint ${index + 1}, degrees`}
+      data-testid={`heading-${index}`}
+      inputMode="numeric"
+      placeholder="—"
+      value={draft ?? shown}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => {
+        if (draft !== null) commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        const big = e.shiftKey ? 15 : 1;
+        if (e.key === "ArrowUp" || e.key === "ArrowRight") step(big);
+        else if (e.key === "ArrowDown" || e.key === "ArrowLeft") step(-big);
+        else if (e.key === "Delete") onChange(null);
+        else if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        else return;
+        e.preventDefault();
+        setDraft(null);
+      }}
+      style={{
+        width: 38,
+        ...mono,
+        fontSize: 11,
+        padding: "1px 4px",
+        background: "var(--canvas)",
+        color: "var(--text)",
+        border: "1px solid var(--hairline)",
+        borderRadius: 4,
+        textAlign: "right",
+      }}
+    />
+  );
+};
+
+/**
+ * A number field that commits on Enter or blur, held to `range`; an empty
+ * field is null when `optional`, and reverts otherwise.
+ */
+const NumberSetting: React.FC<{
+  label: string;
+  unit: string;
+  value: number | null;
+  range: { min: number; max: number };
+  placeholder?: string;
+  optional?: boolean;
+  testId: string;
+  onChange: (v: number | null) => void;
+}> = ({ label, unit, value, range, placeholder, optional = false, testId, onChange }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (text: string) => {
+    setDraft(null);
+    const v = clampTo(text, range);
+    if (v !== null) onChange(v);
+    else if (optional && text.trim() === "") onChange(null);
+  };
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <span style={{ color: "var(--muted)", flex: 1 }}>{label}</span>
+      <input
+        data-testid={testId}
+        inputMode="numeric"
+        aria-label={`${label}, ${unit}`}
+        placeholder={placeholder}
+        value={draft ?? (value === null ? "" : String(value))}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        }}
+        style={{
+          width: 42,
+          ...mono,
+          fontSize: 11,
+          padding: "1px 4px",
+          background: "var(--canvas)",
+          color: "var(--text)",
+          border: "1px solid var(--hairline)",
+          borderRadius: 4,
+          textAlign: "right",
+        }}
+      />
+      <span style={{ color: "var(--muted)", width: 18 }}>{unit}</span>
+    </label>
+  );
+};
+
+/** How missions end and pass their points: presets, then exact numbers. */
+export const WaypointSettingsSection: React.FC<{
+  value: WaypointSettings;
+  onChange: (s: WaypointSettings) => void;
+}> = ({ value, onChange }) => (
+  <div
+    data-testid="waypoint-settings"
+    style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--hairline)", fontSize: 11, display: "grid", gap: 5 }}
+  >
+    <span style={label}>Waypoint settings</span>
+    <div
+      role="radiogroup"
+      aria-label="Stop within"
+      title="How close the robot's centre comes to the last waypoint before it stops and turns; under 5 mm it settles slowly"
+      style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}
+    >
+      {ARRIVAL_PRESETS.map((p) => (
+        <button
+          type="button"
+          key={p.mm}
+          role="radio"
+          aria-checked={value.arrivalMm === p.mm}
+          data-testid={`arrival-${p.mm}`}
+          title={ARRIVAL_NOTE[p.mm]}
+          onClick={() => onChange({ ...value, arrivalMm: p.mm })}
+          style={{
+            font: "inherit",
+            background: "transparent",
+            padding: "2px 6px",
+            borderRadius: 4,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            border: `1px solid ${value.arrivalMm === p.mm ? "var(--accent)" : "var(--hairline)"}`,
+            color: value.arrivalMm === p.mm ? "var(--accent)" : "var(--text)",
+          }}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+    <NumberSetting
+      label="Stop within"
+      unit="mm"
+      testId="arrival-mm"
+      value={value.arrivalMm}
+      range={RADIUS_MM}
+      onChange={(v) => v !== null && onChange({ ...value, arrivalMm: v })}
+    />
+    <NumberSetting
+      label="Pass points within"
+      unit="mm"
+      testId="pass-mm"
+      value={value.passMm}
+      range={RADIUS_MM}
+      onChange={(v) => v !== null && onChange({ ...value, passMm: v })}
+    />
+    <NumberSetting
+      label="Heading within"
+      unit="°"
+      testId="heading-tol"
+      value={value.headingTolDeg}
+      range={HEADING_TOL_DEG}
+      placeholder={String(FIRMWARE_HEADING_TOL_DEG)}
+      optional
+      onChange={(v) => onChange({ ...value, headingTolDeg: v })}
+    />
+  </div>
+);
+
 const ControlDock: React.FC<{
   targets: UnifiedBot[];
-  pending: LH2Position[];
+  pending: Waypoint[];
   isGroup: boolean;
   selCount: number;
   onGo: () => void;
@@ -101,8 +295,29 @@ const ControlDock: React.FC<{
   onRedo: () => void;
   onClearQueue: () => void;
   onRemovePending: (i: number) => void;
+  onSetPendingHeading?: (i: number, heading: number | null) => void;
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
+  waypointSettings?: WaypointSettings;
+  onWaypointSettings?: (s: WaypointSettings) => void;
   onToast: (msg: string) => void;
-}> = ({ targets, pending, isGroup, selCount, onGo, onStopNav, onRedo, onClearQueue, onRemovePending, onToast }) => {
+}> = ({
+  targets,
+  pending,
+  isGroup,
+  selCount,
+  onGo,
+  onStopNav,
+  onRedo,
+  onClearQueue,
+  onRemovePending,
+  onSetPendingHeading,
+  poseMode = false,
+  onPoseMode,
+  waypointSettings,
+  onWaypointSettings,
+  onToast,
+}) => {
   const [ledOpen, setLedOpen] = useState(false);
   const [wpOpen, setWpOpen] = useState(false);
   const drivable = targets.filter((b) => b.drivable);
@@ -122,8 +337,18 @@ const ControlDock: React.FC<{
       ? "⚠  Not drivable - no DBP in selection"
       : `⚠  Not drivable - ${notDrivableReason(single)}`
     : anyAuto
-      ? `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
-      : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map to add waypoints${pending.length ? ` · ${pending.length} queued` : ""}`;
+      ? single?.mission?.state === "in_progress" && single.mission.index !== null
+        ? `▶  Navigating · waypoint ${Math.min(single.mission.index + 1, activeCount)} of ${activeCount}`
+        : `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`
+      : poseMode
+        ? `◈  Pose mode · click for a waypoint, drag for a pose · Space-drag pans${pending.length ? ` · ${pending.length} queued` : ""}`
+        : `${isGroup ? `${drivable.length} of ${selCount} drivable · ` : "◉  "}Drag pad to drive · ⌥ Alt-click map for a waypoint, drag for a pose${pending.length ? ` · ${pending.length} queued` : ""}`;
+  // How the robot says its last batch ended, while nothing newer is under way.
+  const report =
+    single?.mission && single.mission.state !== "in_progress" && !anyAuto && pending.length === 0
+      ? single.mission
+      : null;
+  const sharedPoses = isGroup && drivable.length > 1 && pending.some(isPose);
 
   const popBase: React.CSSProperties = {
     position: "absolute",
@@ -200,6 +425,29 @@ const ControlDock: React.FC<{
             >
               &#9678; Waypoints{wpCount ? ` · ${wpCount}` : ""}
             </div>
+            <button
+              type="button"
+              data-testid="pose-mode-toggle"
+              role="switch"
+              aria-checked={poseMode}
+              title={`Pose mode (${ACTION_KEY.poseMode}): a click queues a waypoint, a drag a pose`}
+              onClick={() => onPoseMode?.(!poseMode)}
+              style={{
+                font: "inherit",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                padding: "6px 9px",
+                cursor: "pointer",
+                fontSize: 12,
+                whiteSpace: "nowrap",
+                borderLeft: "1px solid var(--hairline)",
+                background: poseMode ? "rgba(228,3,46,.14)" : "transparent",
+                color: poseMode ? "var(--accent)" : "var(--muted)",
+              }}
+            >
+              &#9672; Pose
+            </button>
             {(pending.length > 0 || anyAuto) && (
               <div
                 onClick={() => (anyAuto ? onStopNav() : onGo())}
@@ -261,7 +509,30 @@ const ControlDock: React.FC<{
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{hint}</div>
+      <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+        {report && (
+          <span
+            data-testid="mission-report"
+            data-state={report.state}
+            title={report.code ?? undefined}
+            style={{
+              marginRight: 8,
+              padding: "1px 6px",
+              borderRadius: 4,
+              fontWeight: 600,
+              color: report.state === "arrived" ? "var(--s-Running)" : "var(--s-Programming)",
+              border: "1px solid currentColor",
+            }}
+          >
+            {report.state === "arrived"
+              ? "✓ Arrived"
+              : report.state === "failed"
+                ? `⚠ Failed${report.reason ? `: ${report.reason}` : ""}`
+                : `■ Aborted${report.reason ? `: ${report.reason}` : ""}`}
+          </span>
+        )}
+        {hint}
+      </div>
 
       {/* click-away overlay */}
       {(ledOpen || wpOpen) && (
@@ -305,7 +576,7 @@ const ControlDock: React.FC<{
 
       {/* waypoint queue popover */}
       {wpOpen && (
-        <div style={popBase}>
+        <div style={{ ...popBase, width: 280 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
             <span style={label}>Waypoint queue</span>
             {pending.length > 0 && (
@@ -314,6 +585,11 @@ const ControlDock: React.FC<{
               </span>
             )}
           </div>
+          {sharedPoses && (
+            <div data-testid="shared-poses" style={{ fontSize: 11, color: "var(--s-Programming)", lineHeight: 1.4, marginBottom: 6 }}>
+              &#9888; {drivable.length} robots share these poses and would park on the same spot
+            </div>
+          )}
           {pending.length > 0 ? (
             <div style={{ overflow: "auto", maxHeight: 120 }}>
               {pending.map((w, i) => (
@@ -331,11 +607,21 @@ const ControlDock: React.FC<{
                 >
                   <span style={{ color: "var(--muted)", minWidth: 12 }}>{i + 1}</span>
                   <span>
-                    {Math.round(w.x)}, {Math.round(w.y)} mm
+                    {Math.round(w.x)}, {Math.round(w.y)}
                   </span>
+                  {onSetPendingHeading && (
+                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
+                      <HeadingField
+                        index={i}
+                        heading={isPose(w) ? w.heading_deg : undefined}
+                        onChange={(h) => onSetPendingHeading(i, h)}
+                      />
+                      <span style={{ color: "var(--muted)" }}>°</span>
+                    </span>
+                  )}
                   <span
                     onClick={() => onRemovePending(i)}
-                    style={{ marginLeft: "auto", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 3px" }}
+                    style={{ marginLeft: onSetPendingHeading ? 0 : "auto", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 3px" }}
                   >
                     &times;
                   </span>
@@ -344,8 +630,12 @@ const ControlDock: React.FC<{
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}.
+              &#8997; Alt-click the map to add waypoints for {isGroup ? "the selection" : "this bot"}; Alt-drag
+              or hold for a pose.
             </div>
+          )}
+          {waypointSettings && onWaypointSettings && (
+            <WaypointSettingsSection value={waypointSettings} onChange={onWaypointSettings} />
           )}
         </div>
       )}
@@ -532,6 +822,11 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
+              onSetPendingHeading={props.onSetPendingHeading}
+              poseMode={props.poseMode}
+              onPoseMode={props.onPoseMode}
+              waypointSettings={props.waypointSettings}
+              onWaypointSettings={props.onWaypointSettings}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />
@@ -593,6 +888,11 @@ export const Footer: React.FC<FooterProps> = (props) => {
               onRedo={props.onRedo}
               onClearQueue={props.onClearQueue}
               onRemovePending={props.onRemovePending}
+              onSetPendingHeading={props.onSetPendingHeading}
+              poseMode={props.poseMode}
+              onPoseMode={props.onPoseMode}
+              waypointSettings={props.waypointSettings}
+              onWaypointSettings={props.onWaypointSettings}
               onToast={props.onToast}
             />
             <div style={{ flex: 1 }} />

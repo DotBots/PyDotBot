@@ -6,7 +6,8 @@ import { areaToFraction } from "./frame";
 import { frameMm } from "./grid";
 import { MapView } from "./MapView";
 import { MAP_MODIFIER, Modifier } from "./shortcuts";
-import type { Area, LH2Position, Site, UnifiedBot } from "./types";
+import type { Area, BotPose, LH2Position, Site, UnifiedBot, Waypoint } from "./types";
+import { HOLD_MS } from "./poseGesture";
 import {
   Camera,
   FRAME_CAMERA,
@@ -66,6 +67,11 @@ interface HarnessProps {
   selection?: Set<string>;
   from?: Camera;
   onSelect?: (ids: string[], mode: "replace" | "toggle" | "add") => void;
+  onAddWaypoint?: (w: Waypoint) => void;
+  planned?: { key: string; ids: string[]; waypoints: Waypoint[]; led: string | null }[];
+  onSetHeading?: (key: string, index: number, heading: number | null) => void;
+  poseMode?: boolean;
+  onPoseMode?: (on: boolean) => void;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -73,6 +79,11 @@ const Harness: React.FC<HarnessProps> = ({
   selection = new Set(),
   from = FRAME_CAMERA,
   onSelect = () => {},
+  onAddWaypoint = () => {},
+  planned = [],
+  onSetHeading,
+  poseMode,
+  onPoseMode,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -91,12 +102,15 @@ const Harness: React.FC<HarnessProps> = ({
         trails: false,
         crashedOnly: false,
       }}
-      plannedMissions={[]}
+      plannedMissions={planned}
       cam={cam}
       setCam={setCam}
       onGeom={() => {}}
       onSelect={onSelect}
-      onAddWaypoint={() => {}}
+      onAddWaypoint={onAddWaypoint}
+      onSetHeading={onSetHeading}
+      poseMode={poseMode}
+      onPoseMode={onPoseMode}
       site={C405}
       onZoom={() => {}}
     />
@@ -149,7 +163,7 @@ const drag = (
 ) => {
   const el = canvas();
   fireEvent.pointerDown(el, { button: 0, clientX: from[0], clientY: from[1], ...held(modifier) });
-  fireEvent.pointerMove(el, { clientX: to[0], clientY: to[1], ...held(modifier) });
+  fireEvent.pointerMove(el, { buttons: 1, clientX: to[0], clientY: to[1], ...held(modifier) });
   fireEvent.pointerUp(el, { clientX: to[0], clientY: to[1], ...held(modifier) });
 };
 
@@ -202,11 +216,11 @@ describe("a gesture the browser cancels", () => {
 
     // A select drag the browser takes over part-way: no pointerup ever comes.
     fireEvent.pointerDown(el, { button: 0, clientX: 100, clientY: 100, ...held(MAP_MODIFIER.select) });
-    fireEvent.pointerMove(el, { clientX: 300, clientY: 300, ...held(MAP_MODIFIER.select) });
+    fireEvent.pointerMove(el, { buttons: 1, clientX: 300, clientY: 300, ...held(MAP_MODIFIER.select) });
     fireEvent.pointerCancel(el, { clientX: 300, clientY: 300 });
 
     // Moving afterwards with nothing held must neither select nor pan.
-    fireEvent.pointerMove(el, { clientX: 700, clientY: 500 });
+    fireEvent.pointerMove(el, { buttons: 1, clientX: 700, clientY: 500 });
 
     // The rectangle is the symptom: without a cancel path it stays painted
     // and keeps tracking a cursor with no button held.
@@ -405,4 +419,378 @@ describe("a panel toggle", () => {
       expectCamera(camera(), before);
     });
   }
+});
+
+// --- placing a waypoint, and a pose -------------------------------------------
+
+// A v3-sized body facing down the map, axle at (500, 500), photodiode ahead.
+const POSE: BotPose = {
+  heading_deg: 0,
+  heading_source: "ekf",
+  photodiode: { x: 500, y: 553.5 },
+  axle: { x: 500, y: 500 },
+  centre: { x: 500, y: 520 },
+  nose: { x: 500, y: 570 },
+  led: { x: 500, y: 560 },
+  outline: [
+    { x: 470, y: 460 },
+    { x: 530, y: 460 },
+    { x: 530, y: 570 },
+    { x: 470, y: 570 },
+  ],
+  wheels: [],
+  reach_mm: 90,
+  core_mm: 25,
+  envelope_mm: 110,
+};
+
+const alt = held(MAP_MODIFIER.waypoint);
+const rounded = (p: LH2Position) => ({ x: Math.round(p.x), y: Math.round(p.y) });
+// A point `r` px out from (x, y), facing `heading` in the robot convention.
+const out = (x: number, y: number, heading: number, r = 100) => ({
+  clientX: x - r * Math.sin((heading * Math.PI) / 180),
+  clientY: y + r * Math.cos((heading * Math.PI) / 180),
+});
+const placing = () => screen.queryByTestId("placing");
+
+describe("placing a waypoint with the waypoint modifier", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("queues a position on a quick click, on release rather than on press", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(placing()).toHaveAttribute("data-phase", "pressing");
+    act(() => vi.advanceTimersByTime(HOLD_MS - 50));
+    fireEvent.pointerUp(canvas(), { clientX: 451, clientY: 301, ...alt });
+    expect(onAdd).toHaveBeenCalledWith(rounded(under(450, 300, FRAME_CAMERA)));
+    expect(onAdd.mock.calls[0][0]).not.toHaveProperty("heading_deg");
+    expect(placing()).toBeNull();
+  });
+
+  it("turns into a pose held still, which then faces the cursor", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(placing()).toHaveAttribute("data-phase", "silhouette");
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 550, clientY: 300 });
+    expect(placing()).toHaveAttribute("data-phase", "rotating");
+    expect(screen.getByTestId("placing-pose")).toHaveAttribute("data-heading", "270");
+    expect(screen.getByTestId("placing-readout")).toHaveTextContent("270°");
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    expect(onAdd).toHaveBeenCalledWith({
+      ...rounded(under(450, 300, FRAME_CAMERA)),
+      heading_deg: 270,
+    });
+  });
+
+  it("queues a position when a drag is released inside the arming radius", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 456, clientY: 300 });
+    expect(placing()).toHaveAttribute("data-phase", "silhouette");
+    fireEvent.pointerUp(canvas(), { clientX: 470, clientY: 300 });
+    expect(onAdd.mock.calls[0][0]).not.toHaveProperty("heading_deg");
+  });
+
+  it("snaps to 15 degrees with Shift", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, ...out(450, 300, 52) });
+    expect(Number(screen.getByTestId("placing-pose").dataset.heading)).toBe(52);
+    fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
+    expect(screen.getByTestId("placing-pose")).toHaveAttribute("data-heading", "45");
+    fireEvent.pointerUp(canvas(), { ...out(450, 300, 52), shiftKey: true });
+    expect(onAdd.mock.calls[0][0].heading_deg).toBe(45);
+  });
+
+  it("queues nothing when Esc, the other button or the browser cancels it", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    const begin = () => {
+      fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+      fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 550, clientY: 300 });
+    };
+    begin();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(placing()).toBeNull();
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    begin();
+    fireEvent.contextMenu(canvas());
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    begin();
+    fireEvent.pointerMove(canvas(), { clientX: 560, clientY: 300, buttons: 3 });
+    fireEvent.pointerUp(canvas(), { clientX: 560, clientY: 300 });
+    begin();
+    fireEvent.pointerCancel(canvas());
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("draws the selected robot's own body, axle on the point", () => {
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE });
+    render(<Harness bots={[b]} selection={new Set(["a"])} from={{ scale: 8, tx: 0, ty: 0 }} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 300, clientY: 200, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 300, clientY: 300 });
+    const pose = screen.getByTestId("placing-pose");
+    expect(pose).toHaveAttribute("data-pose-shape", "board");
+    expect(pose.querySelector('[data-layer="board"]')).not.toBeNull();
+    expect(pose.querySelector('[data-layer="axle"]')).not.toBeNull();
+  });
+
+  it("falls back to a diamond and a tick with no body to borrow", () => {
+    render(<Harness />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 450, clientY: 400 });
+    expect(screen.getByTestId("placing-pose")).toHaveAttribute("data-pose-shape", "arrow");
+  });
+
+  it("turns a robot in place when started on it: the pose is its own axle", () => {
+    const onAdd = vi.fn();
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE });
+    render(<Harness bots={[b]} selection={new Set(["a"])} onAddWaypoint={onAdd} />);
+    // jsdom puts every robot at the canvas origin; the press lands on it.
+    fireEvent.pointerDown(document.getElementById("bot-a")!, { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 900, clientY: 0 });
+    fireEvent.pointerUp(canvas(), { clientX: 900, clientY: 0 });
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onAdd.mock.calls[0][0]).toMatchObject({ x: 500, y: 500 });
+    expect(typeof onAdd.mock.calls[0][0].heading_deg).toBe("number");
+  });
+});
+
+describe("placing on a robot outside the selection", () => {
+  it("queues the point pressed, not that robot's axle", () => {
+    const onAdd = vi.fn();
+    const a = bot("a", { x: 900, y: 900 }, { pose: POSE });
+    const b = bot("b", { x: 500, y: 553.5 }, { pose: POSE });
+    render(<Harness bots={[a, b]} selection={new Set(["a"])} onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(document.getElementById("bot-b")!, { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 900, clientY: 0 });
+    fireEvent.pointerUp(canvas(), { clientX: 900, clientY: 0 });
+    expect(onAdd.mock.calls[0][0]).toMatchObject(rounded(under(450, 300, FRAME_CAMERA)));
+  });
+});
+
+describe("a press the browser loses", () => {
+  it("ends on a mouse move with no button held, or when the canvas loses its capture", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 0, clientX: 550, clientY: 300 });
+    expect(placing()).toBeNull();
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.lostPointerCapture(canvas());
+    expect(placing()).toBeNull();
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("keeps a touch hold through the long-press menu", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} poseMode />);
+    const t = { pointerId: 1, pointerType: "touch", button: 0, clientX: 450, clientY: 300 };
+    fireEvent.pointerDown(canvas(), t);
+    canvas().dispatchEvent(new PointerEvent("contextmenu", { bubbles: true, pointerType: "touch" }));
+    expect(placing()).not.toBeNull();
+    fireEvent.pointerMove(canvas(), { ...t, clientX: 450, clientY: 200 });
+    fireEvent.pointerUp(canvas(), { ...t, clientX: 450, clientY: 200 });
+    expect(onAdd.mock.calls[0][0].heading_deg).toBeCloseTo(180);
+  });
+});
+
+describe("turning a robot in place", () => {
+  it("pivots on the robot's own axle estimate when it reports one", () => {
+    const onAdd = vi.fn();
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE, axle: { x: 510, y: 505 } });
+    render(<Harness bots={[b]} selection={new Set(["a"])} onAddWaypoint={onAdd} />);
+    fireEvent.pointerDown(document.getElementById("bot-a")!, { button: 0, clientX: 450, clientY: 300, ...alt });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 900, clientY: 0 });
+    fireEvent.pointerUp(canvas(), { clientX: 900, clientY: 0 });
+    expect(onAdd.mock.calls[0][0]).toMatchObject({ x: 510, y: 505 });
+  });
+});
+
+describe("pose mode", () => {
+  it("places with a plain press: a click is a position, a drag a pose", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} poseMode />);
+    expect(screen.getByTestId("pose-mode-chip")).toBeInTheDocument();
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300 });
+    fireEvent.pointerUp(canvas(), { clientX: 450, clientY: 300 });
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300 });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 450, clientY: 200 });
+    fireEvent.pointerUp(canvas(), { clientX: 450, clientY: 200 });
+    expect(onAdd.mock.calls[0][0]).not.toHaveProperty("heading_deg");
+    expect(onAdd.mock.calls[1][0].heading_deg).toBeCloseTo(180);
+  });
+
+  it("pans with two fingers, dropping the pose the first one started", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} poseMode from={{ scale: 2, tx: 0, ty: 0 }} />);
+    const t = (id: number, x: number, y: number) => ({ pointerId: id, pointerType: "touch", button: 0, clientX: x, clientY: y });
+    fireEvent.pointerDown(canvas(), t(1, 400, 300));
+    fireEvent.pointerDown(canvas(), t(2, 500, 300));
+    expect(placing()).toBeNull();
+    fireEvent.pointerMove(canvas(), t(1, 440, 320));
+    fireEvent.pointerMove(canvas(), t(2, 540, 320));
+    expect(camera().tx).toBeCloseTo(40, 6);
+    expect(camera().ty).toBeCloseTo(20, 6);
+    fireEvent.pointerUp(canvas(), t(1, 440, 320));
+    fireEvent.pointerUp(canvas(), t(2, 540, 320));
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pose with Esc and stays in pose mode", () => {
+    const onPoseMode = vi.fn();
+    render(<Harness poseMode onPoseMode={onPoseMode} />);
+    fireEvent.pointerDown(canvas(), { button: 0, clientX: 450, clientY: 300 });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 450, clientY: 200 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyUp(window, { key: "Escape" });
+    expect(placing()).toBeNull();
+    expect(onPoseMode).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onPoseMode).toHaveBeenCalledWith(false);
+  });
+
+  it("does not jump when one of two fingers lifts first", () => {
+    render(<Harness poseMode from={{ scale: 2, tx: 0, ty: 0 }} />);
+    const t = (id: number, x: number, y: number) => ({ pointerId: id, pointerType: "touch", button: 0, clientX: x, clientY: y });
+    fireEvent.pointerDown(canvas(), t(1, 400, 300));
+    fireEvent.pointerDown(canvas(), t(2, 500, 300));
+    fireEvent.pointerMove(canvas(), t(1, 440, 320));
+    fireEvent.pointerMove(canvas(), t(2, 540, 320));
+    fireEvent.pointerUp(canvas(), t(1, 440, 320));
+    fireEvent.pointerMove(canvas(), t(2, 600, 320));
+    expect(camera().tx).toBeCloseTo(40, 6);
+    fireEvent.pointerDown(canvas(), t(3, 300, 300));
+    expect(placing()).toBeNull();
+  });
+
+  it("leaves Space to a focused button", () => {
+    render(<Harness poseMode />);
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+    const down = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    button.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+    button.remove();
+  });
+
+  it("pans with Space held, and places nothing", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAddWaypoint={onAdd} poseMode from={{ scale: 2, tx: 0, ty: 0 }} />);
+    fireEvent.keyDown(window, { key: " " });
+    drag(null, [400, 300], [440, 320]);
+    fireEvent.keyUp(window, { key: " " });
+    expect(camera().tx).toBeCloseTo(40, 6);
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe("a queued pose", () => {
+  const cam = FRAME_CAMERA;
+  const pivot = under(450, 300, cam);
+  const planned = [{ key: "a", ids: ["a"], waypoints: [{ ...pivot, heading_deg: 90 }], led: null }];
+
+  it("turns with its knob, and snaps with Shift", () => {
+    const onSet = vi.fn();
+    render(<Harness planned={planned} selection={new Set(["a"])} onSetHeading={onSet} />);
+    expect(screen.queryByTestId("planned-a-0-knob")).toBeNull();
+    fireEvent.pointerEnter(screen.getByTestId("planned-hit-a-0"));
+    fireEvent.pointerDown(screen.getByTestId("planned-a-0-knob"), { button: 0 });
+    fireEvent.pointerMove(canvas(), { buttons: 1, clientX: 550, clientY: 300 });
+    expect(onSet).toHaveBeenLastCalledWith("a", 0, 270);
+    fireEvent.pointerMove(canvas(), { buttons: 1, ...out(450, 300, 52), shiftKey: true });
+    expect(onSet).toHaveBeenLastCalledWith("a", 0, 45);
+    fireEvent.pointerUp(canvas(), { clientX: 550, clientY: 300 });
+    expect(screen.queryByTestId("planned-a-0-knob")).toBeNull();
+    fireEvent.wheel(canvas(), { deltaY: 120, clientX: 900, clientY: 0 });
+    expect(onSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("turns 15 degrees a wheel notch while hovered, and leaves the wheel alone otherwise", () => {
+    const onSet = vi.fn();
+    render(<Harness planned={planned} selection={new Set(["a"])} onSetHeading={onSet} />);
+    fireEvent.wheel(canvas(), { deltaY: 120, clientX: 450, clientY: 300 });
+    expect(onSet).not.toHaveBeenCalled();
+    fireEvent.pointerEnter(screen.getByTestId("planned-hit-a-0"));
+    fireEvent.wheel(canvas(), { deltaY: 120, clientX: 450, clientY: 300 });
+    expect(onSet).toHaveBeenLastCalledWith("a", 0, 105);
+    fireEvent.wheel(canvas(), { deltaY: -120, clientX: 450, clientY: 300 });
+    expect(onSet).toHaveBeenLastCalledWith("a", 0, 75);
+  });
+
+  it("shows how many robots share it", () => {
+    const shared = [{ ...planned[0], key: "a-b", ids: ["a", "b"] }];
+    render(<Harness planned={shared} selection={new Set(["a"])} />);
+    expect(screen.getByTestId("planned-a-b-0").querySelector('[data-layer="pose-shared"]')).toHaveTextContent("×2");
+  });
+});
+
+describe("a plain waypoint", () => {
+  it("marks where the robot's centre stops, ringed by the robot's reach once it reads", () => {
+    const planned = [{ key: "a", ids: ["a"], waypoints: [{ x: 800, y: 800 }], led: null }];
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE });
+    const { unmount } = render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} from={{ scale: 8, tx: 0, ty: 0 }} />);
+    expect(document.querySelectorAll('[data-layer="waypoint-centre"]')).toHaveLength(1);
+    expect(document.querySelector('[data-layer="waypoint-footprint"]')).not.toBeNull();
+    // and the robot marks its own centre, so the two line up
+    expect(screen.getByTestId("glyph-a").querySelector('[data-layer="axle"]')).not.toBeNull();
+    unmount();
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} />);
+    expect(document.querySelector('[data-layer="waypoint-centre"]')).not.toBeNull();
+    expect(document.querySelector('[data-layer="waypoint-footprint"]')).toBeNull();
+  });
+});
+
+describe("a robot reporting its own axle", () => {
+  it("has its body drawn about that axle rather than the geometry record's", () => {
+    const at = (axle?: LH2Position) => {
+      const b = bot("a", { x: 500, y: 553.5 }, { pose: POSE, axle });
+      const { unmount } = render(<Harness bots={[b]} from={{ scale: 8, tx: 0, ty: 0 }} />);
+      const glyph = screen.getByTestId("glyph-a");
+      const cy = Number(glyph.querySelector('[data-layer="axle"]')!.getAttribute("cy"));
+      const board = glyph.querySelector('[data-layer="board"]')!.getAttribute("points");
+      unmount();
+      return { cy, board };
+    };
+    const record = at();
+    const own = at({ x: 500, y: 502 });
+    expect(own.cy).toBeGreaterThan(record.cy);
+    expect(own.board).not.toBe(record.board);
+  });
+});
+
+describe("a queued pose on a robot with no heading", () => {
+  // What the controller sends for a robot whose direction reads -1000: the
+  // body expanded on a placeholder heading, marked "none".
+  const STILL: BotPose = { ...POSE, heading_source: "none", heading_deg: 0 };
+  const planned = [{ key: "a", ids: ["a"], waypoints: [{ x: 800, y: 800, heading_deg: 120 }], led: null }];
+
+  it("is still the robot's silhouette, at the pose's own heading", () => {
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: STILL, heading: null });
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} from={{ scale: 8, tx: 0, ty: 0 }} />);
+    const pose = screen.getByTestId("planned-a-0");
+    expect(pose).toHaveAttribute("data-pose-shape", "board");
+    expect(pose).toHaveAttribute("data-heading", "120");
+    expect(pose.querySelector('[data-layer="board"]')).not.toBeNull();
+    expect(pose.querySelector('[data-layer="pose-arrow"] polygon')).not.toBeNull();
+  });
+
+  it("says what it asks of the robot on hover", () => {
+    const b = bot("a", { x: 500, y: 553.5 }, { pose: STILL });
+    render(<Harness bots={[b]} planned={planned} selection={new Set(["a"])} />);
+    expect(screen.getByTestId("planned-hit-a-0")).toHaveAttribute("title", "Pose 1: face 120°, stop within 10 mm");
+  });
 });

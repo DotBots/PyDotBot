@@ -1691,6 +1691,42 @@ async def test_set_dotbots_waypoints_poses():
 
 
 @pytest.mark.asyncio
+async def test_set_dotbots_waypoints_poses_echo_their_heading():
+    """The console draws an active pose and repeats a mission from what the
+    controller echoes, so a heading survives into the notification and the
+    robot's record, after the robot's own start point."""
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            last_seen=123.4,
+            lh2_position=DotBotLH2Position(x=100, y=100),
+        )
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints",
+        json={
+            "threshold": 60,
+            "waypoints": [
+                {"x": 500, "y": 100},
+                {"x": 600, "y": 100, "heading_deg": 270},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    notification = api.controller.notify_clients.await_args[0][0]
+    echoed = notification.model_dump(exclude_none=True)["data"]["lh2_waypoints"]
+    assert echoed == [
+        {"x": 100, "y": 100},
+        {"x": 500, "y": 100},
+        {"x": 600, "y": 100, "heading_deg": 270.0},
+    ]
+    stored = api.controller.dotbots["4242"].model_dump(mode="json")["waypoints"]
+    assert stored[2]["heading_deg"] == 270.0
+    assert stored[1].get("heading_deg") is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "speed,code,called",
     [

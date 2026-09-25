@@ -4,6 +4,7 @@ import { deriveMissions } from "./TestbedRail";
 import {
   canRedoMission,
   lastMissionTargets,
+  missionReport,
   PlannedMission,
   UnifiedBot,
 } from "./types";
@@ -117,5 +118,33 @@ describe("the last mission a bot can repeat", () => {
   it("is refused for a bot that cannot be driven", () => {
     const a = bot("aaaa", { drivable: false, waypoints: [{ x: 1, y: 1 }, ...targets] });
     expect(canRedoMission(a)).toBe(false);
+  });
+});
+
+describe("missionReport", () => {
+  it("reads the robot's status, and nothing from an app that sends none", () => {
+    expect(missionReport({ waypoints_status: 2, waypoint_index: 3 })).toEqual({
+      state: "arrived",
+      index: 3,
+      reason: null,
+      code: null,
+    });
+    expect(missionReport({ waypoints_status: 3, waypoints_reason: "timeout" })?.reason).toBe("timeout");
+    expect(missionReport({ waypoints_status: 0 })).toBeNull();
+    expect(missionReport({})).toBeNull();
+    expect(missionReport(undefined)).toBeNull();
+  });
+
+  it("names every reason the controller reports in words", () => {
+    const reasons = ["NO_HEADING", "TURN", "PROGRESS", "HEADING_LOST", "HOLD", "SETTLE", "STOP", "DIRECT", "CONTROL_MODE"];
+    for (const code of reasons) {
+      const r = missionReport({ waypoints_status: 3, waypoints_reason: code });
+      expect(r?.code).toBe(code);
+      expect(r?.reason).not.toBe(code);
+    }
+    expect(missionReport({ waypoints_status: 4, waypoints_reason: "DIRECT" })).toMatchObject({
+      state: "aborted",
+      reason: "driven by hand",
+    });
   });
 });

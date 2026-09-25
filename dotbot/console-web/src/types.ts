@@ -38,6 +38,13 @@ export interface LH2Position {
   y: number;
 }
 
+// A waypoint is where the robot's axle midpoint comes to rest, and a pose
+// when it also carries `heading_deg`, the way the robot faces there, in the
+// robot `direction` convention (0 = +y, clockwise as drawn).
+export interface Waypoint extends LH2Position {
+  heading_deg?: number;
+}
+
 export interface RgbLed {
   red: number;
   green: number;
@@ -82,9 +89,17 @@ export interface PyDotBot {
   direction?: number;
   lh2_position?: LH2Position;
   pose?: BotPose;
+  // The axle midpoint as the robot itself estimates it; null from apps that
+  // do not report it, or with no heading yet.
+  axle_position?: LH2Position | null;
   position_history?: LH2Position[];
-  waypoints?: LH2Position[];
+  waypoints?: Waypoint[];
   waypoints_threshold?: number;
+  // The robot's own report on its last waypoint batch, from apps that send
+  // one: 0 NONE, 1 IN_PROGRESS, 2 ARRIVED, 3 FAILED, 4 ABORTED.
+  waypoints_status?: number | null;
+  waypoints_reason?: string | null;
+  waypoint_index?: number | null;
   rgb_led?: RgbLed;
   battery?: number; // volts
   calibrated?: number;
@@ -95,7 +110,7 @@ export interface WsNotification {
   // 6 CAMERA_DETECTION
   cmd: number;
   data?: Partial<PyDotBot> & {
-    lh2_waypoints?: LH2Position[];
+    lh2_waypoints?: Waypoint[];
   };
   calibration_session?: CalibrationSession | null;
   camera_detection?: CameraDetection;
@@ -300,7 +315,12 @@ export interface UnifiedBot {
   application: number;
   drivable: boolean; // a DBP-speaking image is running (= known to PyDotBot and active)
   nav: "drive" | "auto"; // auto = navigating waypoints (firmware AUTO mode)
-  waypoints: LH2Position[]; // active mission (as reported by the controller)
+  waypoints: Waypoint[]; // active mission (as reported by the controller)
+  // How the robot says its last batch stands; absent from apps that do not report.
+  mission?: MissionReport | null;
+  // The robot's centre, where a waypoint puts it: its own estimate when it
+  // reports one, else the axle of the body the controller expanded.
+  axle?: LH2Position | null;
   trail: LH2Position[];
   image: string | null; // firmware image the bot reports running
   resetCause: string | null; // why it last booted, swarmit's vocabulary
@@ -313,11 +333,51 @@ export interface UnifiedBot {
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
 }
 
+export type MissionState = "in_progress" | "arrived" | "failed" | "aborted";
+
+export interface MissionReport {
+  state: MissionState;
+  /** The point being driven to, from 0; the count once arrived. */
+  index: number | null;
+  /** Why it failed or was aborted, in words. */
+  reason: string | null;
+  /** The controller's name for that reason. */
+  code: string | null;
+}
+
+const MISSION_REASONS: Record<string, string> = {
+  NO_HEADING: "no heading",
+  TURN: "could not turn",
+  PROGRESS: "stopped making progress",
+  HEADING_LOST: "heading lost",
+  HOLD: "position lost",
+  SETTLE: "could not settle",
+  STOP: "stopped",
+  DIRECT: "driven by hand",
+  CONTROL_MODE: "mode changed",
+};
+
+const MISSION_STATES: Record<number, MissionState> = {
+  1: "in_progress",
+  2: "arrived",
+  3: "failed",
+  4: "aborted",
+};
+
+/** The robot's report on its batch, or null when it sends none. */
+export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport | null {
+  const state = MISSION_STATES[py?.waypoints_status ?? 0];
+  if (!state) return null;
+  const code = py?.waypoints_reason ?? null;
+  const reason = code === null ? null : (MISSION_REASONS[code] ?? code);
+  return { state, index: py?.waypoint_index ?? null, reason, code };
+}
+
 // The targets of the last mission sent to this bot. The controller stores
 // [own-start, ...targets] and keeps the list once the bot arrives, so the tail
 // is the mission to repeat. A one-entry list is what stopping leaves behind -
 // the bot's own position, nothing to repeat.
-export function lastMissionTargets(bot: UnifiedBot): LH2Position[] {
+export function lastMissionTargets(bot: UnifiedBot): Waypoint[] {
   return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
 }
 
@@ -390,5 +450,5 @@ export interface RegisteredCamera {
 export interface PlannedMission {
   key: string; // sorted ids joined
   ids: string[];
-  waypoints: LH2Position[];
+  waypoints: Waypoint[];
 }
