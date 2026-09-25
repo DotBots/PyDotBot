@@ -17,6 +17,12 @@ from dotbot_utils.protocol import Payload, PayloadFieldMetadata, register_parser
 # The advertised `direction` when the robot has no heading.
 DIRECTION_NONE = -1000
 
+# A waypoint heading's value when the point has none.
+WAYPOINT_NO_HEADING = 0x7FFF
+
+# The waypoint report's axle coordinate while the robot has no heading.
+AXLE_UNKNOWN = 0xFFFF
+
 
 class PayloadType(IntEnum):
     """Types of DotBot payload types."""
@@ -35,6 +41,7 @@ class PayloadType(IntEnum):
     LH2_CALIBRATION_HOMOGRAPHY = 0x0E
     CMD_WHEEL_VELOCITY = 0x0F
     RAW_DATA = 0x10
+    CMD_MAX_SPEED = 0x11
     DOTBOT_SIMULATOR_DATA = 0xFA
 
 
@@ -53,6 +60,35 @@ class ControlModeType(IntEnum):
 
     MANUAL = 0
     AUTO = 1
+
+
+class WaypointsStatus(IntEnum):
+    """How the last waypoint batch stands, as the robot reports it."""
+
+    NONE = 0
+    IN_PROGRESS = 1
+    ARRIVED = 2
+    FAILED = 3
+    ABORTED = 4
+
+
+class WaypointsFailReason(IntEnum):
+    """Why a batch FAILED."""
+
+    NO_HEADING = 1
+    TURN = 2
+    PROGRESS = 3
+    HEADING_LOST = 4
+    HOLD = 5
+    SETTLE = 6
+
+
+class WaypointsAbortReason(IntEnum):
+    """Why a batch was ABORTED."""
+
+    STOP = 1
+    DIRECT = 2
+    CONTROL_MODE = 3
 
 
 @dataclass
@@ -91,6 +127,12 @@ class PayloadDotBotAdvertisement(Payload):
             PayloadFieldMetadata(name="waypoint_x", disp="wp_x", length=4),
             PayloadFieldMetadata(name="waypoint_y", disp="wp_y", length=4),
             PayloadFieldMetadata(name="waypoint_idx", disp="wp_idx"),
+            PayloadFieldMetadata(name="waypoints_status", disp="wp_st"),
+            PayloadFieldMetadata(name="waypoints_reason", disp="wp_why"),
+            PayloadFieldMetadata(name="batch_id", disp="batch"),
+            PayloadFieldMetadata(name="max_speed_10mm", disp="vmax"),
+            PayloadFieldMetadata(name="axle_x", disp="axl_x", length=2),
+            PayloadFieldMetadata(name="axle_y", disp="axl_y", length=2),
         ]
     )
 
@@ -107,6 +149,46 @@ class PayloadDotBotAdvertisement(Payload):
     waypoint_x: int = 0
     waypoint_y: int = 0
     waypoint_idx: int = 0
+    waypoints_status: int = WaypointsStatus.NONE
+    waypoints_reason: int = 0
+    batch_id: int = 0
+    max_speed_10mm: int = 0
+    axle_x: int = AXLE_UNKNOWN  # the estimator's axle midpoint, mm
+    axle_y: int = AXLE_UNKNOWN
+    # Whether the waypoint report (the six fields above) is on the wire; apps
+    # other than dotbot-next do not send it
+    report: dataclasses.InitVar[bool] = False
+
+    REPORT_SIZE = 8
+
+    def __post_init__(self, report):
+        self.has_report = report
+
+    def from_bytes(self, bytes_):
+        base = self.size - self.REPORT_SIZE
+        self.has_report = len(bytes_) >= self.size
+        if self.has_report:
+            return super().from_bytes(bytes_)
+        if len(bytes_) < base:
+            raise ValueError("Not enough bytes to parse")
+        return super().from_bytes(bytes(bytes_[:base]) + bytes(self.REPORT_SIZE))
+
+    def to_bytes(self, byteorder="little") -> bytes:
+        buffer = super().to_bytes(byteorder)
+        return buffer if self.has_report else buffer[: -self.REPORT_SIZE]
+
+
+@dataclass
+class PayloadCommandMaxSpeed(Payload):
+    """Dataclass that holds a max speed command, in mm/s; 0 restores the default."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(name="max_speed_mm_s", disp="vmax", length=2),
+        ]
+    )
+
+    max_speed_mm_s: int = 0
 
 
 @dataclass
@@ -300,20 +382,83 @@ class PayloadControlMode(Payload):
 
 
 @dataclass
+class PayloadWaypointHeading(Payload):
+    """One waypoint's heading, in centidegrees, 0 facing +y and clockwise
+    positive, or WAYPOINT_NO_HEADING."""
+
+    metadata: list[PayloadFieldMetadata] = dataclasses.field(
+        default_factory=lambda: [
+            PayloadFieldMetadata(
+                name="heading_cdeg", disp="hdg", length=2, signed=True
+            ),
+        ]
+    )
+
+    heading_cdeg: int = WAYPOINT_NO_HEADING
+
+
+@dataclass
 class PayloadLH2Waypoints(Payload):
-    """Dataclass that holds a list of LH2 waypoints."""
+    """Dataclass that holds a list of LH2 waypoints.
+
+    Each point is a position for the robot's centre, the axle midpoint. After
+    the points comes a trailer: the batch id, which the robot echoes in its
+    advertisement and uses to ignore a repeated batch, the heading tolerance
+    in degrees and the intermediate pass radius in mm (0 for the firmware's
+    defaults), then one heading per point; the robot turns in place to a
+    point's heading there. Apps that read only the points ignore the trailer;
+    the older dotbot apps steer their photodiode, not the axle, onto a point.
+    """
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
             PayloadFieldMetadata(name="threshold", disp="thr.", length=2),
             PayloadFieldMetadata(name="count", disp="len."),
             PayloadFieldMetadata(name="waypoints", type_=list, length=0),
+            PayloadFieldMetadata(name="batch_id", disp="batch"),
+            PayloadFieldMetadata(name="heading_tol_deg", disp="tol"),
+            PayloadFieldMetadata(name="pass_mm", disp="pass", length=2),
+            PayloadFieldMetadata(name="headings", type_=list, length=0),
         ]
     )
 
     threshold: int = 0
     count: int = 0
     waypoints: list[PayloadLH2Location] = dataclasses.field(default_factory=lambda: [])
+    batch_id: int = 0
+    heading_tol_deg: int = 0
+    pass_mm: int = 0
+    headings: list[PayloadWaypointHeading] = dataclasses.field(
+        default_factory=lambda: []
+    )
+
+    def from_bytes(self, bytes_):
+        points_end = 3 + 8 * (bytes_[2] if len(bytes_) > 2 else 0)
+        if len(bytes_) >= points_end + 4 + 2 * (points_end - 3) // 8:
+            return super().from_bytes(bytes_)
+        # No trailer: points only, every one without a heading
+        self.batch_id = self.heading_tol_deg = self.pass_mm = 0
+        super().from_bytes(
+            bytes(bytes_[:points_end])
+            + bytes(4)
+            + WAYPOINT_NO_HEADING.to_bytes(2, "little") * ((points_end - 3) // 8)
+        )
+        return self
+
+    def __post_init__(self):
+        self._pad_headings()
+
+    def _pad_headings(self):
+        """One heading per point, none for those not given one."""
+        missing = len(self.waypoints) - len(self.headings)
+        if missing > 0:
+            self.headings = self.headings + [
+                PayloadWaypointHeading() for _ in range(missing)
+            ]
+
+    def to_bytes(self, byteorder="little") -> bytes:
+        self._pad_headings()
+        return super().to_bytes(byteorder)
 
 
 @dataclass
@@ -352,6 +497,7 @@ register_parser(PayloadType.ADVERTISEMENT, PayloadAdvertisement)
 register_parser(PayloadType.CMD_MOVE_RAW, PayloadCommandMoveRaw)
 register_parser(PayloadType.CMD_RGB_LED, PayloadCommandRgbLed)
 register_parser(PayloadType.CMD_WHEEL_VELOCITY, PayloadCommandWheelVelocity)
+register_parser(PayloadType.CMD_MAX_SPEED, PayloadCommandMaxSpeed)
 register_parser(PayloadType.CMD_XGO_ACTION, PayloadCommandXgoAction)
 register_parser(PayloadType.LH2_PROCESSED_DATA, PayloadLh2ProcessedLocation)
 register_parser(PayloadType.DOTBOT_ADVERTISEMENT, PayloadDotBotAdvertisement)
