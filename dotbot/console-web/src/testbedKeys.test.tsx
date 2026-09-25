@@ -166,4 +166,19 @@ describe("the testbed controls", () => {
     press(ACTION_KEY.stop);
     expect(act.mock.calls.map((c) => c[0])).toEqual(["stop"]);
   });
+
+  it("live in the top bar only, not in the left panel open or collapsed", () => {
+    const railCopies = () =>
+      [...document.querySelectorAll("div")].filter((d) =>
+        /^[▶■]\s*(Start|Stop)$/.test((d.textContent ?? "").replace(/\u00a0/g, " ").trim()),
+      );
+    const { unmount } = render(<App />);
+    expect(railCopies()).toEqual([]);
+    expect(screen.getAllByRole("button", { name: /^[▶■] (Start|Stop)/ })).toHaveLength(2);
+    unmount();
+    window.history.replaceState({}, "", "/?rail=collapsed");
+    render(<App />);
+    expect(document.querySelector('[title="Start"], [title="Stop"]')).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^[▶■] (Start|Stop)/ })).toHaveLength(2);
+  });
 });

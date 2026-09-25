@@ -939,8 +939,6 @@ export const App: React.FC = () => {
               window.localStorage.getItem("dotbot.console.startAfterFlash") === "1",
             )
           }
-          onStart={() => testbed("start")}
-          onStop={() => testbed("stop")}
           onSelectIds={(ids) => onSelect(ids, "replace")}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
