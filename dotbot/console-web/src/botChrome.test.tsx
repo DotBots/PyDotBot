@@ -121,6 +121,7 @@ const Harness: React.FC<HarnessProps> = ({
         dotBots: true,
         trails: false,
         crashedOnly: false,
+        allWaypoints: false,
       }}
       robotDrawing={robotDrawing}
       plannedMissions={planned}

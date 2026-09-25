@@ -51,6 +51,7 @@ const Harness: React.FC = () => {
             dotBots: true,
             trails: false,
             crashedOnly: false,
+            allWaypoints: false,
           }}
           plannedMissions={[]}
           cam={{ scale: 1, tx: 0, ty: 0 }}
@@ -85,6 +86,7 @@ const Harness: React.FC = () => {
             dotBots: true,
             trails: false,
             crashedOnly: false,
+            allWaypoints: false,
           }}
           layerRows={[]}
           onLayerToggle={() => {}}

@@ -99,6 +99,8 @@ export interface Layers {
   dotBots: boolean;
   crashedOnly: boolean;
   trails: boolean;
+  // Every robot's waypoints, not only the selection's.
+  allWaypoints: boolean;
 }
 
 export interface SpreadPreviewLeg {
@@ -1224,7 +1226,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               operator is working on. */}
           {props.layers.waypoints &&
             props.bots.flatMap((b) => {
-              if (!props.selection.has(b.id) || b.waypoints.length === 0) return [];
+              if ((!props.selection.has(b.id) && !props.layers.allWaypoints) || b.waypoints.length === 0) return [];
               const led = ledCss(b);
               const { waypointPx } = botDraw(b);
               const template = silhouetteTemplate(props.bots, [b.id]);

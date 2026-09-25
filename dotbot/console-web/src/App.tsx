@@ -175,6 +175,7 @@ export const App: React.FC = () => {
     dotBots: true,
     trails: false,
     crashedOnly: false,
+    allWaypoints: false,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
@@ -718,12 +719,24 @@ export const App: React.FC = () => {
     [bots, showToast, arrivalMm],
   );
 
+  // Clearing a batch is an empty one: the robot stops and the controller
+  // keeps only where it stood.
+  const onClearWaypoints = useCallback(
+    (ids: string[]) => {
+      const targets = bots.filter((b) => ids.includes(b.id) && b.link !== "unknown");
+      targets.forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
+      showToast(`Waypoints cleared · ${targets.length} bot${targets.length === 1 ? "" : "s"}`);
+    },
+    [bots, showToast, arrivalMm],
+  );
+
   const layerRows: { key: keyof Layers; label: string }[] = [
     { key: "batteryBars", label: "Battery Bars" },
     { key: "waypoints", label: "Waypoints" },
     { key: "hotSpots", label: "HotSpots" },
     { key: "dotBots", label: "DotBots" },
     { key: "trails", label: "Trails" },
+    { key: "allWaypoints", label: "Every robot's waypoints" },
     { key: "crashedOnly", label: "Only crashed bots" },
   ];
 
@@ -932,6 +945,9 @@ export const App: React.FC = () => {
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
+          showAllWaypoints={!!layers.allWaypoints}
+          onShowAllWaypoints={(on) => setLayers((prev) => ({ ...prev, allWaypoints: on }))}
+          onClearWaypoints={onClearWaypoints}
           site={site}
           session={session}
           cameras={cameras}

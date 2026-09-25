@@ -13,6 +13,8 @@ import { FirmwareSection } from "./FirmwareSection";
 import { PanelToggle } from "./PanelToggle";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
+import { HeldWaypointsList } from "./HeldWaypointsList";
+import { heldWaypoints } from "./heldWaypoints";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
 // Testbed tab (orchestration controls - disabled until the swarmit write path
@@ -56,6 +58,9 @@ interface TestbedRailProps {
   onGoMission: (key: string) => void;
   onDiscardMission: (key: string) => void;
   onStopMission: (ids: string[]) => void;
+  showAllWaypoints: boolean;
+  onShowAllWaypoints: (on: boolean) => void;
+  onClearWaypoints: (ids: string[]) => void;
   site: Site | null;
   session: CalibrationSession | null;
   cameras?: RegisteredCamera[];
@@ -561,6 +566,15 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                     press <b>Go</b> to make it <b>Active</b>. Click a mission to reselect its bots.
                   </div>
                 )}
+                <HeldWaypointsList
+                  rows={heldWaypoints(props.bots)}
+                  bots={props.bots}
+                  selection={props.selection}
+                  showAll={props.showAllWaypoints}
+                  onShowAll={props.onShowAllWaypoints}
+                  onClear={props.onClearWaypoints}
+                  onSelectIds={props.onSelectIds}
+                />
                 {props.doneMissions.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--hairline)", marginTop: 6, paddingTop: 10 }}>
                     <div style={{ ...label10, marginBottom: 8 }}>Recently completed</div>

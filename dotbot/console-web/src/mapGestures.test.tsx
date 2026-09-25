@@ -101,6 +101,7 @@ const Harness: React.FC<HarnessProps> = ({
         dotBots: true,
         trails: false,
         crashedOnly: false,
+        allWaypoints: false,
       }}
       plannedMissions={planned}
       cam={cam}
