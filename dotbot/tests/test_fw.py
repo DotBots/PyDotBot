@@ -24,6 +24,7 @@ from click.testing import CliRunner
 
 from dotbot.cli import _fw_helpers
 from dotbot.cli.fw import cmd as fw_cmd
+from dotbot.config import DotbotConfig
 
 
 @pytest.fixture
@@ -623,54 +624,103 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
     assert "~/.dotbot/config.toml" in msg
 
 
-def test_resolve_firmware_repo_finds_sibling_clone(
-    tmp_path, monkeypatch, isolated_home
+@pytest.fixture
+def repo_env(tmp_path, monkeypatch):
+    """No checkout env vars, no user config file, a clean cwd."""
+    for var in ("DOTBOT_FIRMWARE_REPO", "DOTBOT_SWARMIT_REPO", "DOTBOT_CONFIG"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", tmp_path / "no-user.toml")
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    return tmp_path
+
+
+def _repo(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "Makefile").write_text("# fake\n")
+    return path
+
+
+def _config_file(path: Path, body: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body)
+    return path
+
+
+def test_relative_config_path_resolves_against_the_config_file(
+    repo_env, monkeypatch
 ):
-    """The fallback lookup path: `<cwd>/DotBot-firmware/Makefile`."""
-    repo = tmp_path / "DotBot-firmware"
-    repo.mkdir()
-    (repo / "Makefile").touch()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+    ws = repo_env / "workspace"
+    repo = _repo(ws / "checkouts" / "fw")
+    cfg = _config_file(ws / "dotbot.toml", '[fw]\nfirmware_repo = "checkouts/fw"\n')
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
-def test_resolve_firmware_repo_env_var_wins(tmp_path, monkeypatch, isolated_home):
-    """Env var overrides the config and the CWD-sibling default."""
-    sibling = tmp_path / "DotBot-firmware"
-    sibling.mkdir()
-    (sibling / "Makefile").touch()
-    elsewhere = tmp_path / "elsewhere" / "DotBot-firmware"
-    elsewhere.mkdir(parents=True)
-    (elsewhere / "Makefile").touch()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(elsewhere))
-    assert _fw_helpers.resolve_firmware_repo() == elsewhere
-
-
-def test_resolve_firmware_repo_falls_back_to_config(
-    tmp_path, monkeypatch, isolated_home
-):
-    """No env var and no ./DotBot-firmware -> `[fw].firmware_repo` from config wins."""
-    repo = tmp_path / "fw-clone"
-    repo.mkdir()
-    (repo / "Makefile").touch()
-    _write_config(isolated_home, f'[fw]\nfirmware_repo = "{repo.as_posix()}"\n')
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
-    monkeypatch.chdir(tmp_path)  # no ./DotBot-firmware here
-    assert _fw_helpers.resolve_firmware_repo() == repo
-
-
-def test_resolve_firmware_repo_errors_when_nothing_found(tmp_path, monkeypatch):
-    """No env var, no `<cwd>/DotBot-firmware/` → clear error with both
-    escape hatches in the message."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("DOTBOT_FIRMWARE_REPO", raising=False)
+def test_relative_config_path_ignores_the_cwd(repo_env, monkeypatch):
+    ws = repo_env / "workspace"
+    cfg = _config_file(ws / "dotbot.toml", '[fw]\nswarmit_repo = "sw"\n')
+    _repo(Path.cwd() / "sw")  # a decoy next to the cwd, not the config
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     with pytest.raises(click.ClickException) as excinfo:
-        _fw_helpers.resolve_firmware_repo()
+        _fw_helpers.resolve_swarmit_repo()
     msg = str(excinfo.value)
-    assert "DOTBOT_FIRMWARE_REPO" in msg
-    assert "cd" in msg  # the "cd to the directory containing your clone" hint
+    assert str(ws / "sw") in msg
+    assert str(cfg) in msg
+
+
+def test_default_is_repos_next_to_the_config_file(repo_env, monkeypatch):
+    ws = repo_env / "workspace"
+    fw = _repo(ws / "repos" / "DotBot-firmware")
+    sw = _repo(ws / "repos" / "swarmit")
+    cfg = _config_file(ws / "dotbot.toml", "")
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
+    assert _fw_helpers.resolve_firmware_repo() == fw
+    assert _fw_helpers.resolve_swarmit_repo() == sw
+
+
+def test_default_uses_the_config_path_on_the_click_context(repo_env):
+    ws = repo_env / "workspace"
+    sw = _repo(ws / "repos" / "swarmit")
+    cfg = _config_file(ws / "dotbot.toml", "")
+
+    @click.command()
+    def probe():
+        click.echo(_fw_helpers.resolve_swarmit_repo())
+
+    result = CliRunner().invoke(
+        probe, [], obj={"config": DotbotConfig(), "config_path": cfg}
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == str(sw)
+
+
+def test_env_var_beats_config_and_default(repo_env, monkeypatch):
+    ws = repo_env / "workspace"
+    _repo(ws / "repos" / "swarmit")
+    elsewhere = _repo(repo_env / "elsewhere")
+    cfg = _config_file(ws / "dotbot.toml", '[fw]\nswarmit_repo = "repos/swarmit"\n')
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
+    monkeypatch.setenv("DOTBOT_SWARMIT_REPO", str(elsewhere))
+    assert _fw_helpers.resolve_swarmit_repo() == elsewhere
+
+
+def test_absolute_config_path_is_used_as_is(repo_env, monkeypatch):
+    repo = _repo(repo_env / "abs" / "DotBot-firmware")
+    cfg = _config_file(
+        repo_env / "ws" / "dotbot.toml", f'[fw]\nfirmware_repo = "{repo.as_posix()}"\n'
+    )
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
+    assert _fw_helpers.resolve_firmware_repo() == repo
+
+
+def test_nothing_found_names_the_key_and_env_var(repo_env):
+    with pytest.raises(click.ClickException) as excinfo:
+        _fw_helpers.resolve_swarmit_repo()
+    msg = str(excinfo.value)
+    assert "DOTBOT_SWARMIT_REPO" in msg
+    assert "[fw].swarmit_repo" in msg
 
 
 def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(

@@ -138,6 +138,7 @@ class FwSection(_Strict):
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
     firmware_repo: str | None = None  # path to the DotBot-firmware clone
+    swarmit_repo: str | None = None  # path to the swarmit clone
 
 
 class DeviceSection(_Strict):

@@ -16,7 +16,7 @@ DotBot-firmware && make ...` doesn't give you:
 
 1. SEGGER_DIR is auto-resolved (env → macOS default → clear error).
 2. The firmware repo is auto-located (`DOTBOT_FIRMWARE_REPO` env →
-   `./DotBot-firmware/`).
+   `[fw].firmware_repo` → `repos/DotBot-firmware` next to the config file).
 
 Everything else is plain make.
 """

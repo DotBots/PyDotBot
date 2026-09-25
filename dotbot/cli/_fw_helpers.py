@@ -24,9 +24,11 @@ segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
 Resolution order (first match wins):
 - SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
   `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
-- firmware repo: `DOTBOT_FIRMWARE_REPO` env var → `[fw].firmware_repo` in
-  config → `<cwd>/DotBot-firmware/`. No parent walk-up or `repos/` heuristics:
-  set the env var, persist the path in config, or `cd` to where your clone is.
+- source checkouts (`resolve_repo`): the env var (`DOTBOT_FIRMWARE_REPO`,
+  `DOTBOT_SWARMIT_REPO`) → the config key (`[fw].firmware_repo`,
+  `[fw].swarmit_repo`), a relative value resolving against the directory of
+  the config file that set it → `repos/DotBot-firmware` / `repos/swarmit`
+  next to the config file in use → error.
 """
 
 import difflib
@@ -35,6 +37,7 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -66,8 +69,8 @@ DEFAULT_BARE_TARGET = "dotbot-v3"
 DEFAULT_SANDBOX_BOARD = "dotbot-v3"
 
 
-def _config_fw_value(key: str) -> Optional[str]:
-    """Read `[fw].<key>` from the resolved unified config, or None.
+def _loaded_config():
+    """The resolved unified config and the file it came from.
 
     Uses the config the root `dotbot` group already resolved onto the Click
     context when one is active (so `-c`, the cwd `dotbot.toml`, the
@@ -75,18 +78,20 @@ def _config_fw_value(key: str) -> Optional[str]:
     direct (non-CLI) calls it discovers and loads the config fresh.
     """
     ctx = click.get_current_context(silent=True)
-    cfg = (
-        ctx.obj.get("config")
-        if (ctx is not None and isinstance(ctx.obj, dict))
-        else None
-    )
-    if cfg is None:
-        from dotbot import config as _config
+    obj = ctx.obj if (ctx is not None and isinstance(ctx.obj, dict)) else None
+    if obj is not None and obj.get("config") is not None:
+        return obj["config"], obj.get("config_path")
+    from dotbot import config as _config
 
-        try:
-            cfg, _ = _config.load_discovered()
-        except _config.ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
+    try:
+        return _config.load_discovered()
+    except _config.ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _config_fw_value(key: str) -> Optional[str]:
+    """Read `[fw].<key>` from the resolved unified config, or None."""
+    cfg, _ = _loaded_config()
     val = getattr(cfg.fw, key, None)
     return str(val) if val else None
 
@@ -133,39 +138,68 @@ def resolve_segger_dir() -> Path:
     )
 
 
-def resolve_firmware_repo() -> Path:
-    """DOTBOT_FIRMWARE_REPO env → `[fw].firmware_repo` config → ./DotBot-firmware/ → error.
+@dataclass(frozen=True)
+class RepoSpec:
+    """How one source checkout is located: env var, config key, default dir."""
 
-    Mirrors `resolve_segger_dir`: an env var wins, else the persisted
-    `[fw].firmware_repo` in `~/.dotbot/config.toml`, else the user `cd`'d to a
-    directory containing a sibling `DotBot-firmware/` clone. No parent walk-up
-    or `repos/` heuristics.
+    env_var: str
+    config_key: str
+    dirname: str
+
+
+FIRMWARE_REPO = RepoSpec("DOTBOT_FIRMWARE_REPO", "firmware_repo", "DotBot-firmware")
+SWARMIT_REPO = RepoSpec("DOTBOT_SWARMIT_REPO", "swarmit_repo", "swarmit")
+
+
+def resolve_repo(spec: RepoSpec) -> Path:
+    """Locate a source checkout (a directory holding a Makefile).
+
+    env var → `[fw].<key>` (relative to the config file's directory) →
+    `repos/<dirname>` next to the config file in use → error.
     """
-    env = os.environ.get("DOTBOT_FIRMWARE_REPO")
+    env = os.environ.get(spec.env_var)
     if env:
-        candidate = Path(env)
+        candidate = Path(env).expanduser()
         if (candidate / "Makefile").is_file():
             return candidate
         raise click.ClickException(
-            f"DOTBOT_FIRMWARE_REPO={env!r} does not contain a Makefile."
+            f"{spec.env_var}={env!r} does not contain a Makefile."
         )
-    cfg = _config_fw_value("firmware_repo")
-    if cfg:
-        candidate = Path(cfg)
+    cfg, cfg_path = _loaded_config()
+    base = Path(cfg_path).resolve().parent if cfg_path is not None else None
+    value = getattr(cfg.fw, spec.config_key, None)
+    if value:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute() and base is not None:
+            candidate = base / candidate
         if (candidate / "Makefile").is_file():
             return candidate
+        where = f" (set in {cfg_path})" if cfg_path is not None else ""
         raise click.ClickException(
-            f"[fw].firmware_repo={cfg!r} does not contain a Makefile."
+            f"[fw].{spec.config_key}={value!r}{where} resolves to {candidate}, "
+            "which does not contain a Makefile."
         )
-    candidate = Path.cwd() / "DotBot-firmware"
-    if (candidate / "Makefile").is_file():
-        return candidate
+    if base is not None:
+        candidate = base / "repos" / spec.dirname
+        if (candidate / "Makefile").is_file():
+            return candidate
     raise click.ClickException(
-        "Could not locate DotBot-firmware. Either:\n"
-        "  - `cd` to the directory containing your DotBot-firmware clone,\n"
-        "  - export DOTBOT_FIRMWARE_REPO=/path/to/DotBot-firmware, or\n"
-        '  - add to ~/.dotbot/config.toml:  [fw]\\n  firmware_repo = "/path/to/DotBot-firmware"'
+        f"Could not locate your {spec.dirname} checkout. Either:\n"
+        f"  - export {spec.env_var}=/path/to/{spec.dirname}, or\n"
+        f"  - set [fw].{spec.config_key} in your config (a relative path "
+        "resolves against the config file's directory), or\n"
+        f"  - keep the clone at repos/{spec.dirname} next to your dotbot.toml."
     )
+
+
+def resolve_firmware_repo() -> Path:
+    """The DotBot-firmware checkout (see `resolve_repo`)."""
+    return resolve_repo(FIRMWARE_REPO)
+
+
+def resolve_swarmit_repo() -> Path:
+    """The swarmit checkout (see `resolve_repo`)."""
+    return resolve_repo(SWARMIT_REPO)
 
 
 def suggest_close_match(name: str, candidates: Iterable[str]) -> str:
