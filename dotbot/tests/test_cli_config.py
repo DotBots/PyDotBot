@@ -108,10 +108,11 @@ def test_fw_build_rejects_old_short_flag(runner):
     assert result.exit_code != 0
 
 
-def test_device_flash_uses_build_config(runner):
+def test_device_flash_selects_a_set_and_never_builds(runner):
     result = runner.invoke(cli, ["device", "flash", "--help"])
     assert result.exit_code == 0
-    assert "--build-config" in result.output
+    assert "--fw-version" in result.output
+    assert "--build-config" not in result.output
 
 
 # --- config init: the default site ------------------------------------------

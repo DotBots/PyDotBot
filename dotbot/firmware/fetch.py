@@ -1,11 +1,11 @@
 """Firmware release fetching + cache layout (no CLI, no flashing).
 
-The engine behind `dotbot fw fetch` and the auto-fetch hook in
-`flash.flash_role`: decide which GitHub release to pull (pinned / latest /
-an explicit tag), download every asset it publishes into the
-source-qualified cache (`~/.dotbot/artifacts/<source>-<version>/`), and
-record provenance in a `manifest.json`. Pure library code; the Click
-surface lives in `dotbot/cli/fw.py`.
+The engine behind `dotbot fw fetch` and the `-f` rule every flash command
+shares (`resolve_fw_dir`): decide which GitHub release to pull (pinned /
+latest / an explicit tag), download every asset it publishes into the
+source-qualified cache (`~/.dotbot/artifacts/<source>-<version>/`), record
+provenance in a `manifest.json`, and find the set a flash reads from.
+Pure library code; the Click surface lives in `dotbot/cli/fw.py`.
 
 Kept separate from `flash.py` (the hardware-facing flashing engine): this
 module never touches a device, only the network + the cache.
@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import time
 import urllib.error
 import urllib.request
@@ -73,6 +72,100 @@ def validate_set_name(name: str) -> str:
             "with a digit or 'v<digit>' reads as a release tag)."
         )
     return name
+
+
+def _missing(root: Path, required) -> list[str]:
+    return [name for name in required if not (root / name).is_file()]
+
+
+def _release_dir(
+    source: str, tag: str, bin_dir: Path, required, build_args: str | None = None
+) -> Path:
+    root = resolve_fw_root(bin_dir, source, tag)
+    if not root.is_dir() or _missing(root, required):
+        click.echo(f"[INFO] {source} {tag} is not cached in {root}; fetching...")
+        root = fetch_assets(source, tag, bin_dir)
+    missing = _missing(root, required)
+    if missing:
+        raise click.ClickException(
+            f"{source} release {tag} does not publish {', '.join(missing)}.\n"
+            f"  - build it: {_build_line(source, 'local', build_args)}, "
+            "then pass -f local"
+        )
+    return root
+
+
+def resolve_fw_dir(
+    source: str,
+    fw_version: str | None,
+    bin_dir: Path,
+    *,
+    required=(),
+    build_args: str | None = None,
+) -> tuple[Path, str]:
+    """The directory a flash command reads ``source`` firmware from, and its label.
+
+    - omitted: the release pydotbot pins;
+    - a value containing ``/``: a directory of release-named files, used as-is;
+    - ``latest``: the newest release, resolved to its tag;
+    - anything else: ``<bin_dir>/<source>-<value>/``, a release tag or a set
+      built by `dotbot fw build` (``local`` or an ``--as`` name).
+
+    A release tag missing from the cache is fetched; nothing is ever built.
+    ``required`` names the files that must be present; ``build_args`` (e.g.
+    ``-a dotbot``) completes the `dotbot fw build` line an error suggests.
+    """
+    if fw_version is None:
+        tag = pinned_version(source)
+        click.echo(
+            f"[INFO] no -f given: using the {source} release pydotbot pins, {tag}"
+        )
+        return _release_dir(source, tag, bin_dir, required, build_args), tag
+    if "/" in fw_version or os.sep in fw_version:
+        path = Path(fw_version).expanduser()
+        if not path.is_dir():
+            raise click.ClickException(f"-f {fw_version}: no such directory.")
+        missing = _missing(path, required)
+        if missing:
+            raise click.ClickException(
+                f"{path} is used as-is and has no {', '.join(missing)}."
+            )
+        return path.resolve(), path.resolve().name
+    if fw_version == "latest":
+        tag = resolve_latest_version(source)
+        click.echo(f"[INFO] latest {source} release: {tag}")
+        return _release_dir(source, tag, bin_dir, required, build_args), tag
+    if is_release_tag(fw_version):
+        return (
+            _release_dir(source, fw_version, bin_dir, required, build_args),
+            fw_version,
+        )
+    root = resolve_fw_root(bin_dir, source, fw_version)
+    if not root.is_dir():
+        raise click.ClickException(
+            f"No '{fw_version}' {source} set: {root} does not exist.\n"
+            "-f takes a release tag, 'latest', a set built by `dotbot fw build`, "
+            "or a directory path containing '/'.\n"
+            f"  - build it: {_build_line(source, fw_version, build_args)}\n"
+            f"  - or fetch a release: dotbot fw fetch {source} -f <tag>"
+        )
+    missing = _missing(root, required)
+    if missing:
+        raise click.ClickException(
+            f"The '{fw_version}' {source} set ({root}) has no "
+            f"{', '.join(missing)}.\n"
+            f"  - build it: {_build_line(source, fw_version, build_args)}"
+        )
+    return root, fw_version
+
+
+def _build_line(source: str, name: str, build_args: str | None = None) -> str:
+    line = f"dotbot fw build {source}"
+    if build_args:
+        line += f" {build_args}"
+    if name != "local":
+        line += f" --as {name}"
+    return line
 
 
 def _human_size(num_bytes: int) -> str:
@@ -198,32 +291,23 @@ def pinned_version(source: str) -> str:
     )
 
 
-def fetch_assets(
-    source: str, fw_version: str, bin_dir: Path, local_root: Path | None = None
-) -> Path:
-    """Fetch one source's firmware into ``bin_dir/<source>-<version>/``.
+def fetch_assets(source: str, fw_version: str, bin_dir: Path) -> Path:
+    """Fetch one release into ``bin_dir/<source>-<tag>/``.
 
-    For a released version, downloads every ``.hex``/``.bin`` asset the GitHub
-    release publishes (so it adapts to whatever the release ships, no hardcoded
-    asset list) and writes a ``manifest.json`` with provenance. For
-    ``fw_version="local"``, symlinks/copies from a local build tree into
-    ``<source>-local/``. Used by `dotbot fw fetch` and the auto-fetch hook in
-    `flash_role`.
+    Downloads every ``.hex``/``.bin`` asset the GitHub release publishes and
+    writes a ``manifest.json`` with provenance. ``fw_version`` is a tag or
+    ``latest``.
     """
     if source not in RELEASE_SOURCES:
         raise click.ClickException(
             f"Unknown firmware source '{source}'. Known: {', '.join(RELEASE_SOURCES)}."
         )
-    if fw_version == "local" and not local_root:
-        raise click.ClickException("--local-root is required when --fw-version=local.")
-    if fw_version != "local" and local_root:
-        click.echo(
-            "[WARN] --local-root ignored when --fw-version is not 'local'.",
-            err=True,
+    if fw_version != "latest" and not is_release_tag(fw_version):
+        raise click.ClickException(
+            f"'{fw_version}' is not a release tag. `dotbot fw fetch` takes a tag "
+            "(e.g. 1.23.0) or 'latest'; a locally built set comes from "
+            f"`dotbot fw build {source}`."
         )
-
-    if fw_version == "local":
-        return _link_local_assets(source, local_root, bin_dir)
 
     release = resolve_release(source, fw_version)
     tag = release["tag_name"]
@@ -285,51 +369,3 @@ def _write_manifest(
         "files": sorted(files),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-
-
-def _link_local_assets(source: str, local_root: Path, bin_dir: Path) -> Path:
-    """Symlink/copy a local build tree into ``bin_dir/<source>-local/``."""
-    if source != "swarmit":
-        raise click.ClickException(
-            f"--fw-version local is only wired for source 'swarmit' so far, "
-            f"not '{source}'."
-        )
-    local_root = local_root.expanduser().resolve()
-    out_dir = resolve_fw_root(bin_dir, source, "local")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    mapping = {
-        "bootloader-dotbot-v3.hex": local_root
-        / "device/bootloader/Output/dotbot-v3/Debug/Exe/bootloader-dotbot-v3.hex",
-        "netcore-nrf5340-net.hex": local_root
-        / "device/network_core/Output/nrf5340-net/Debug/Exe/netcore-nrf5340-net.hex",
-        "03app_gateway_app-nrf5340-app.hex": local_root
-        / "mari/firmware/app/03app_gateway_app/Output/nrf5340-app/Debug/Exe/03app_gateway_app-nrf5340-app.hex",
-        "03app_gateway_net-nrf5340-net.hex": local_root
-        / "mari/firmware/app/03app_gateway_net/Output/nrf5340-net/Debug/Exe/03app_gateway_net-nrf5340-net.hex",
-    }
-    missing = [name for name, src in mapping.items() if not src.exists()]
-    if missing:
-        raise click.ClickException(
-            f"Missing local build artifacts: {', '.join(missing)}"
-        )
-    for name, src in mapping.items():
-        _link_or_copy(src, out_dir / name)
-    # One gateway net-core image per Mari schedule, as build-schedules.sh
-    # files them. Optional: a tree that never ran it has none, and only
-    # `--schedule` looks for them.
-    schedules_dir = local_root / "mari/firmware/Output/schedules"
-    for src in sorted(schedules_dir.glob("03app_gateway_net-*.hex")):
-        _link_or_copy(src, out_dir / src.name)
-    return out_dir
-
-
-def _link_or_copy(src: Path, dest: Path) -> None:
-    """Symlink ``src`` at ``dest``, falling back to a copy where links fail."""
-    if dest.exists() or dest.is_symlink():
-        dest.unlink()
-    try:
-        os.symlink(src, dest)
-        click.echo(f"[LINK] {dest} -> {src}")
-    except OSError:
-        shutil.copy2(src, dest)
-        click.echo(f"[COPY] {dest} <- {src}")

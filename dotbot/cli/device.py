@@ -57,6 +57,24 @@ def _probe_option(f):
     )(f)
 
 
+def _fw_version_option(source: str):
+    def deco(f):
+        return click.option(
+            "--fw-version",
+            "-f",
+            default=None,
+            help=(
+                f"Which {source} set to flash: a release tag, 'latest', a set "
+                "built by `dotbot fw build` ('local' or its --as name), or a "
+                "directory path (containing '/') of release-named files. "
+                "Default: the release pydotbot pins. A release missing from "
+                f"{DEFAULT_ARTIFACTS_DISPLAY}/ is fetched; nothing is built."
+            ),
+        )(f)
+
+    return deco
+
+
 @cmd.command()
 @click.argument("app")
 @_probe_option
@@ -67,65 +85,46 @@ def _probe_option(f):
     show_default=True,
     help=(
         "Target board: selects the chip family + core to flash (nRF52 vs "
-        f"nRF5340 app/net) and resolves <app>-<board> in {DEFAULT_ARTIFACTS_DISPLAY}/."
+        f"nRF5340 app/net) and the <app> image name in {DEFAULT_ARTIFACTS_DISPLAY}/."
     ),
 )
-@click.option("--sandbox", is_flag=True, help="Resolve the sandbox-app flavor (.bin).")
 @click.option(
-    "--build-config",
-    "config",
-    type=click.Choice(("Debug", "Release")),
-    default="Release",
-    show_default=True,
-    help="Build configuration (for auto-resolving the artifact).",
+    "--bare",
+    is_flag=True,
+    help=(
+        "Flash the bare-metal app (.hex). Default: the sandboxed app (.bin) on "
+        "boards that have a sandbox, which runs under a swarmit sandbox host."
+    ),
 )
+@_fw_version_option("dotbot-firmware")
 @click.pass_context
-def flash(ctx, app, probe, board, sandbox, config):
+def flash(ctx, app, probe, board, bare, fw_version):
     """Flash a firmware image to one cabled device (whole-chip program).
 
-    APP is an app name (resolved against ~/.dotbot/artifacts/, building from source
-    if needed) or an explicit `.hex`/`.bin` file path. `--board` selects the
-    chip family + core to program (see `dotbot fw targets`); no sandbox host
-    is required.
+    APP is an app name, looked up in the dotbot-firmware set -f selects, or
+    an explicit `.hex`/`.bin` file path. `--board` selects the chip family +
+    core to program (see `dotbot fw targets`). Nothing is built: for your own
+    build, run `dotbot fw build dotbot-firmware -a APP` then pass `-f local`.
     """
     from dotbot.firmware.flash import flash_app_image
 
     board = from_config(ctx, "board", "board", "device")
     probe = from_config(ctx, "probe", "probe", "device")
-    config = from_config(ctx, "config", "build_config", "device")
     ensure_nrfjprog()
     if _looks_like_path(app):
+        if fw_version is not None:
+            raise click.ClickException(
+                "-f selects the set an app name resolves from; an explicit "
+                "file path needs no -f."
+            )
         image = Path(app)
         if not image.is_file():
             raise click.ClickException(f"Firmware image not found: {image}")
     else:
-        image = resolve_app_artifact(app, board=board, config=config, sandbox=sandbox)
+        image = resolve_app_artifact(
+            app, board=board, bare=bare, fw_version=fw_version
+        )
     flash_app_image(image, board=board, sn_starting_digits=probe)
-
-
-def _fw_version_option(f):
-    return click.option(
-        "--fw-version",
-        "-f",
-        default=None,
-        help=(
-            "Release version to flash, e.g. 0.8.0rc2 (default: the swarmit "
-            f"version pydotbot pins). Binaries are fetched into {DEFAULT_ARTIFACTS_DISPLAY}/ if not cached."
-        ),
-    )(f)
-
-
-def _local_root_option(f):
-    return click.option(
-        "--local-root",
-        type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
-        default=None,
-        help=(
-            "With -f local: root of the build tree to flash from (e.g. a "
-            "worktree). Re-links the local artifacts before flashing, so this "
-            "is `dotbot fw fetch -f local --local-root <path>` in one step."
-        ),
-    )(f)
 
 
 @cmd.command(name="flash-swarmit-sandbox")
@@ -140,20 +139,15 @@ def _local_root_option(f):
     type=click.Path(path_type=Path, dir_okay=False, exists=True),
     help="Optional LH2 calibration file (schema 2) to bake into the config page.",
 )
-@_fw_version_option
-@_local_root_option
+@_fw_version_option("swarmit")
 @_probe_option
 @click.pass_context
-def flash_swarmit_sandbox(
-    ctx, swarm_id, calibration_path, fw_version, local_root, probe
-):
+def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
     """Turn a DotBot v3 into a swarm sandbox host (was `provision -d dotbot-v3`).
 
     Flashes the SwarmIT bootloader (app core) + netcore + writes the
-    network identity. Auto-fetches the release if not already in
-    ~/.dotbot/artifacts/swarmit-<version>/.
+    network identity, from the swarmit set -f selects.
     """
-    from dotbot.firmware.fetch import pinned_version
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -162,11 +156,6 @@ def flash_swarmit_sandbox(
             "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
             "--swarm-id 0100), or set swarm_id (or a deployment) in your "
             "config."
-        )
-    if fw_version is None:
-        fw_version = pinned_version("swarmit")
-        click.echo(
-            f"No version specified, using the pinned swarmit version: {fw_version}"
         )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
@@ -177,7 +166,6 @@ def flash_swarmit_sandbox(
         calibration_path=calibration_path,
         bin_dir=artifacts_dir(),
         sn_starting_digits=probe,
-        local_root=local_root,
     )
 
 
@@ -195,22 +183,20 @@ def flash_swarmit_sandbox(
         "Mari TSCH schedule to put on the gateway: "
         f"{describe_schedules()}. The schedule is compiled into the net-core "
         "image, so this selects the per-schedule image that Mari's "
-        "build-schedules.sh produces. Omit it to flash whichever schedule the "
-        "artifact was built with."
+        "build-schedules.sh produces (`dotbot fw build` does not build those "
+        "yet). Omit it to flash whichever schedule the artifact was built with."
     ),
 )
-@_fw_version_option
-@_local_root_option
+@_fw_version_option("swarmit")
 @_probe_option
 @click.pass_context
-def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, local_root, probe):
+def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, probe):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
-    identity. Auto-fetches the release if absent. (To run the host-side
+    identity, from the swarmit set -f selects. (To run the host-side
     UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
-    from dotbot.firmware.fetch import pinned_version
     from dotbot.firmware.flash import flash_role, normalize_network_id
 
     swarm_id = from_config(ctx, "swarm_id", "swarm_id", None)
@@ -220,11 +206,6 @@ def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, local_root, probe):
             "--swarm-id 0100), or set swarm_id (or a deployment) in your "
             "config."
         )
-    if fw_version is None:
-        fw_version = pinned_version("swarmit")
-        click.echo(
-            f"No version specified, using the pinned swarmit version: {fw_version}"
-        )
     ensure_nrfjprog()
     net_id = normalize_network_id(swarm_id)
     flash_role(
@@ -233,7 +214,6 @@ def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, local_root, probe):
         fw_version=fw_version,
         bin_dir=artifacts_dir(),
         sn_starting_digits=probe,
-        local_root=local_root,
         schedule=schedule,
     )
 

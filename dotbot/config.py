@@ -144,7 +144,6 @@ class FwSection(_Strict):
 class DeviceSection(_Strict):
     board: str | None = None
     probe: str | None = None
-    build_config: str | None = None
 
 
 class SwarmSection(_Strict):

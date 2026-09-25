@@ -6,7 +6,8 @@
 `dotbot swarm` is a passthrough to swarmit's CLI, whose `flash` takes a
 firmware file. This lets an operator flash a bundled example app by a short,
 persona-friendly name (`rc-car`, `spin`, `lights`) instead of typing the full
-~/.dotbot/artifacts/<source>-<version>/<app>-sandbox-<board>.bin path. A token
+~/.dotbot/artifacts/dotbot-firmware-<set>/<app>-sandbox-<board>.bin path, with
+`-f` picking the set by the rule every flash command shares. A token
 that already looks like a path is passed straight through, so the
 explicit-path workflow keeps working unchanged.
 
@@ -19,10 +20,10 @@ from pathlib import Path
 
 import click
 
-from dotbot.cli._artifacts import _find_in_cache
+from dotbot.cli._artifacts import artifacts_dir
 
 # Friendly name -> sandbox-app stem. The stem resolves to
-# `<stem>-sandbox-<board>.bin` in the fetched dotbot-firmware release.
+# `<stem>-sandbox-<board>.bin` in the dotbot-firmware set `-f` selects.
 APP_CATALOG = {
     "rc-car": "dotbot",  # drive the DotBot from the UI / keyboard / joystick
     "spin": "spin",  # the DotBots spin in place
@@ -34,7 +35,9 @@ _DEFAULT_BOARD = "dotbot-v3"
 # swarmit's `flash` options that consume the following token as their value;
 # everything else starting with "-" is a bare flag. Used to find the firmware
 # positional among the flash args.
-_VALUE_FLAGS = {"-t", "--ota-timeout", "-r", "--ota-max-retries"}
+_VALUE_FLAGS = {"-t", "--ota-timeout", "-r", "--ota-max-retries", "--image-version"}
+# PyDotBot's own `flash` option, consumed here and never forwarded to swarmit.
+_FW_VERSION_FLAGS = ("-f", "--fw-version")
 
 
 def _looks_like_path(value: str) -> bool:
@@ -46,8 +49,48 @@ def _looks_like_path(value: str) -> bool:
     )
 
 
-def _bin_for(stem: str, board: str = _DEFAULT_BOARD) -> Path | None:
-    return _find_in_cache(f"{stem}-sandbox-{board}.bin")
+def _filename(stem: str, board: str = _DEFAULT_BOARD) -> str:
+    return f"{stem}-sandbox-{board}.bin"
+
+
+def _bin_for(stem: str, fw_version: str | None) -> Path:
+    from dotbot.firmware.fetch import resolve_fw_dir
+
+    name = _filename(stem)
+    root, _ = resolve_fw_dir(
+        "dotbot-firmware",
+        fw_version,
+        artifacts_dir(),
+        required=(name,),
+        build_args=f"-a {stem}",
+    )
+    return root / name
+
+
+def _pop_fw_version(rest: list[str]) -> tuple[list[str], str | None]:
+    """Remove `-f/--fw-version VALUE` from `rest`; return (rest, value)."""
+    out: list[str] = []
+    value = None
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        if tok in _VALUE_FLAGS:
+            out += rest[i : i + 2]
+            i += 2
+            continue
+        if tok in _FW_VERSION_FLAGS:
+            if i + 1 >= len(rest):
+                raise click.ClickException(f"{tok} needs a value.")
+            value = rest[i + 1]
+            i += 2
+            continue
+        if tok.startswith("--fw-version="):
+            value = tok.split("=", 1)[1]
+            i += 1
+            continue
+        out.append(tok)
+        i += 1
+    return out, value
 
 
 def _first_positional(rest: list[str]) -> int | None:
@@ -65,13 +108,22 @@ def _first_positional(rest: list[str]) -> int | None:
     return None
 
 
-def render_catalog() -> str:
-    lines = ["Bundled apps you can flash by name:", ""]
+def render_catalog(fw_version: str | None = None) -> str:
+    from dotbot.firmware.fetch import pinned_version, resolve_fw_root
+
+    label = fw_version or pinned_version("dotbot-firmware")
+    root = None
+    if label != "latest" and "/" not in label:
+        root = resolve_fw_root(artifacts_dir(), "dotbot-firmware", label)
+    elif "/" in label:
+        root = Path(label).expanduser()
+    lines = [f"Bundled apps you can flash by name (from dotbot-firmware {label}):", ""]
     width = max(len(name) for name in APP_CATALOG)
     for name, stem in APP_CATALOG.items():
-        filename = f"{stem}-sandbox-{_DEFAULT_BOARD}.bin"
-        fetched = _bin_for(stem) is not None
-        suffix = "" if fetched else "  (not fetched - run `dotbot fw fetch`)"
+        filename = _filename(stem)
+        suffix = ""
+        if root is not None and not (root / filename).is_file():
+            suffix = "  (not in the cache yet)"
         lines.append(f"  {name:<{width}}  ->  {filename}{suffix}")
     lines += [
         "",
@@ -81,17 +133,23 @@ def render_catalog() -> str:
 
 
 def flash_help_epilog() -> str:
-    """A two-line epilog appended to swarmit's `flash --help` output.
+    """An epilog appended to swarmit's `flash --help` output.
 
-    swarmit owns the `flash` command, so the bundled-name sugar isn't in its
-    native help. Attaching this as the command's epilog lets Click render the
-    names after the Options block (the `\\b` keeps the two lines unwrapped).
+    swarmit owns the `flash` command, so the bundled-name sugar and `-f`
+    aren't in its native help. Attaching this as the command's epilog lets
+    Click render them after the Options block (`\\b` keeps the lines
+    unwrapped).
     """
     names = ", ".join(APP_CATALOG)
     return (
         "\b\n"
         f"Examples: flash a bundled app by name ({names}), or an explicit "
         ".hex/.bin path.\n"
+        "-f, --fw-version picks the dotbot-firmware set a bundled name comes "
+        "from:\n"
+        "  a release tag, 'latest', a set built by `dotbot fw build` ('local'),\n"
+        "  or a directory path; default: the release pydotbot pins, fetched\n"
+        "  if missing. Nothing is built.\n"
         "Run `dotbot swarm flash --list` to see what each bundled app flashes."
     )
 
@@ -101,12 +159,12 @@ def resolve_flash_args(rest: list[str]) -> tuple[list[str], bool]:
 
     Returns `(new_rest, handled)`. `handled=True` means the command was fully
     serviced here (e.g. `--list`) and the caller must NOT forward it to swarmit.
-    A token that's already a path, or any flag-only invocation, passes through
-    untouched.
+    `-f/--fw-version` is consumed here. A token that's already a path, or any
+    flag-only invocation, passes through untouched.
     """
-    rest = list(rest)
+    rest, fw_version = _pop_fw_version(list(rest))
     if "--list" in rest:
-        click.echo(render_catalog())
+        click.echo(render_catalog(fw_version))
         return rest, True
 
     idx = _first_positional(rest)
@@ -115,18 +173,17 @@ def resolve_flash_args(rest: list[str]) -> tuple[list[str], bool]:
 
     target = rest[idx]
     if target in APP_CATALOG:
-        stem = APP_CATALOG[target]
-        path = _bin_for(stem)
-        if path is None:
-            raise click.ClickException(
-                f"'{target}' maps to {stem}-sandbox-{_DEFAULT_BOARD}.bin, which "
-                "isn't in the artifacts cache yet. Run `dotbot fw fetch` first."
-            )
+        path = _bin_for(APP_CATALOG[target], fw_version)
         rest[idx] = str(path)
         click.echo(f"Flashing '{target}' -> {path}", err=True)
         return rest, False
 
     if _looks_like_path(target):
+        if fw_version is not None:
+            raise click.ClickException(
+                "-f selects the set a bundled app name resolves from; an "
+                "explicit file path needs no -f."
+            )
         return rest, False  # explicit path - passthrough
 
     raise click.ClickException(

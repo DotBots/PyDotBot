@@ -18,7 +18,7 @@ from pathlib import Path
 
 import click
 
-from .fetch import fetch_assets, resolve_fw_root
+from .fetch import resolve_fw_dir
 from .nrf import (
     do_daplink,
     do_daplink_if,
@@ -292,7 +292,7 @@ def manifest_matches(
 def describe_image(path: Path) -> str:
     """``path``, plus the symlink target and its build time when it is a link.
 
-    ``-f local`` resolves to a directory of symlinks into a build tree, so the
+    A directory passed to ``-f`` may hold symlinks into a build tree, so the
     path alone does not say which tree (or how stale a build) is about to be
     flashed. Resolving it here means every flash reports its own provenance.
     """
@@ -310,12 +310,11 @@ def flash_role(
     role: str,
     *,
     net_id: tuple[int, str],
-    fw_version: str,
+    fw_version: str | None,
     calibration_path: Path | None = None,
     bin_dir: Path = DEFAULT_BIN_DIR,
     sn_starting_digits: str | None = None,
     default_app_name: str | None = None,
-    local_root: Path | None = None,
     schedule: str | None = None,
 ) -> None:
     """Flash a device's role: system firmware bundle (app+net cores) + config.
@@ -324,13 +323,8 @@ def flash_role(
     `dotbot device flash-mari-gateway` (role='gateway'). Selects the J-Link,
     flashes both cores, writes the config page (magic + has_net_id +
     net_id [+ calibration, dotbot-v3 only]), then best-effort reads back
-    net_id/device_id (never raises on readback failure). If the role's
-    images are absent from ``bin_dir/<fw_version>/``, fetches the release
-    first (the "run fetch under the hood" behaviour).
-
-    ``local_root`` (only with ``fw_version="local"``) re-points the local
-    symlinks at that build tree before flashing, so a one-liner can target a
-    worktree instead of whichever tree a previous `dotbot fw fetch` linked.
+    net_id/device_id (never raises on readback failure). ``fw_version``
+    selects the swarmit set by the `-f` rule of `fetch.resolve_fw_dir`.
 
     ``schedule`` (gateway only) selects the per-schedule net-core image rather
     than the role's default one. The schedule is compiled into the image, so
@@ -341,8 +335,6 @@ def flash_role(
 
     # Checked before the J-Link probe so a bad flag combination fails
     # instantly rather than after hardware selection.
-    if local_root is not None and fw_version != "local":
-        raise click.ClickException("--local-root requires --fw-version local.")
     if schedule is not None:
         if role != "gateway":
             raise click.ClickException(
@@ -355,6 +347,21 @@ def flash_role(
                 f"{describe_schedules()}."
             )
     net_asset = net_image_name(schedule) if schedule else assets["net"]
+    required = (assets["app"],) if schedule else (assets["app"], assets["net"])
+    fw_root, fw_version = resolve_fw_dir(
+        "swarmit", fw_version, bin_dir, required=required
+    )
+    if schedule is not None and not (fw_root / net_asset).exists():
+        raise click.ClickException(
+            f"No gateway net-core image for the {schedule} schedule: "
+            f"{fw_root / net_asset} is not there.\n"
+            "A swarmit release publishes a single gateway net-core image, and "
+            "`dotbot fw build` does not build the per-schedule images yet. "
+            "Build it by hand in your swarmit checkout, then copy it into a set:\n"
+            f"  - mari/firmware/build-schedules.sh {schedule}\n"
+            f"  - cp mari/firmware/Output/schedules/{net_asset} {fw_root}/\n"
+            "  - flash again with the same -f"
+        )
 
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
@@ -403,29 +410,6 @@ def flash_role(
             f"[INFO] calibration: {len(calibration.stations)} matrices, "
             f"site {calibration.site.name}, id {calibration.id} "
             f"from {calibration_path}"
-        )
-
-    fw_root = resolve_fw_root(bin_dir, "swarmit", fw_version)
-    # Auto-fetch: if the role's images aren't already present, pull the
-    # swarmit release into bin_dir/swarmit-<version>/ before flashing.
-    pre_app = fw_root / assets["app"]
-    pre_net = fw_root / net_asset
-    if fw_version == "local" and local_root is not None:
-        fetch_assets("swarmit", "local", bin_dir, local_root)
-    elif fw_version != "local" and not (pre_app.exists() and pre_net.exists()):
-        click.echo(f"[INFO] firmware {fw_version} not found in {fw_root}; fetching...")
-        fetch_assets("swarmit", fw_version, bin_dir)
-    if not fw_root.exists():
-        raise click.ClickException(f"Firmware root not found: {fw_root}")
-    if schedule is not None and not (fw_root / net_asset).exists():
-        raise click.ClickException(
-            f"No gateway net-core image for the {schedule} schedule: "
-            f"{fw_root / net_asset} is not there.\n"
-            "A swarmit release publishes a single gateway net-core image, "
-            "built with one schedule, so --schedule needs a tree where the "
-            "per-schedule images have been built:\n"
-            f"  \u2022 build it: <local-root>/mari/firmware/build-schedules.sh {schedule}\n"
-            "  \u2022 then flash with -f local --local-root <that tree>"
         )
 
     device = role
@@ -486,9 +470,7 @@ def flash_role(
             continue
         if p.is_symlink():
             # Path.exists() follows symlinks; a dangling symlink reports
-            # missing without surfacing the broken target. Re-running
-            # `dotbot fw fetch -f <ver> --local-root <path>` typically
-            # refreshes these.
+            # missing without surfacing the broken target.
             missing.append(f"{p} (broken symlink → {os.readlink(p)})")
         else:
             missing.append(str(p))
