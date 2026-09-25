@@ -165,8 +165,8 @@ async def dotbots_wheel_velocity(
 ):
     """Hand the DotBot's wheel speeds to its onboard wheel loop.
 
-    Only the dotbot-next firmware app acts on this command; other apps accept
-    the frame and ignore it. dotbot-next stops the wheels about 500 ms after
+    Only the sandbox dotbot firmware app acts on this command; other apps
+    accept the frame and ignore it. It stops the wheels about 500 ms after
     the last command, so a caller must resend faster than 2 Hz.
     """
     if address not in api.controller.dotbots:
@@ -190,8 +190,8 @@ async def dotbots_max_speed(
     """Set the fastest a DotBot drives between waypoints, until the next
     change or a reset; 0 restores the firmware's default.
 
-    Only the dotbot-next firmware app acts on this command, and clamps the
-    value to 20 to 700 mm/s.
+    Only the sandbox dotbot firmware app acts on this command, and clamps
+    the value to 20 to 700 mm/s.
     """
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")

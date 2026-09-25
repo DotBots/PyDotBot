@@ -155,8 +155,8 @@ class PayloadDotBotAdvertisement(Payload):
     max_speed_10mm: int = 0
     axle_x: int = AXLE_UNKNOWN  # the estimator's axle midpoint, mm
     axle_y: int = AXLE_UNKNOWN
-    # Whether the waypoint report (the six fields above) is on the wire; apps
-    # other than dotbot-next do not send it
+    # Whether the waypoint report (the six fields above) is on the wire; only
+    # the sandbox dotbot app sends it
     report: dataclasses.InitVar[bool] = False
 
     REPORT_SIZE = 8
@@ -407,7 +407,7 @@ class PayloadLH2Waypoints(Payload):
     in degrees and the intermediate pass radius in mm (0 for the firmware's
     defaults), then one heading per point; the robot turns in place to a
     point's heading there. Apps that read only the points ignore the trailer;
-    the older dotbot apps steer their photodiode, not the axle, onto a point.
+    the bare dotbot app steers its photodiode, not the axle, onto a point.
     """
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(

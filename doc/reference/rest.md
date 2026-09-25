@@ -43,7 +43,7 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `GET` | `/controller/map_size` | Controller map size |
 | `GET` | `/controller/background_map` | Background map image (base64) |
 | `PUT` | `/controller/dotbots/{address}/{application}/move_raw` | Drive the motors |
-| `PUT` | `/controller/dotbots/{address}/{application}/wheel_velocity` | Set each wheel's speed: `left_mm_s` / `right_mm_s`, in mm/s, within ±700. Only the `dotbot-next` firmware app acts on it (other apps ignore it), and it stops the wheels about 500 ms after the last command, so resend faster than 2 Hz |
+| `PUT` | `/controller/dotbots/{address}/{application}/wheel_velocity` | Set each wheel's speed: `left_mm_s` / `right_mm_s`, in mm/s, within ±700. Only the sandbox `dotbot` firmware app acts on it (other apps ignore it), and it stops the wheels about 500 ms after the last command, so resend faster than 2 Hz |
 | `PUT` | `/controller/dotbots/{address}/{application}/rgb_led` | Set the RGB LED |
 | `PUT` | `/controller/dotbots/{address}/{application}/waypoints` | Set navigation waypoints |
 | `DELETE` | `/controller/dotbots/{address}/positions` | Clear position history |

@@ -107,7 +107,7 @@ class DotBotWaypoints(BaseModel):
     """Waypoints model.
 
     Each point is a position for the robot's centre, the axle midpoint (the
-    older dotbot apps steer their LH2 photodiode onto it instead). The robot
+    bare dotbot app steers its LH2 photodiode onto it instead). The robot
     drives through the points in order. It passes an intermediate point once
     its centre is within `intermediate_threshold` mm of it, or past it along
     the leg, without stopping, and stops at the last one within `threshold`
@@ -517,7 +517,7 @@ class DotBotModel(BaseModel):
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 100  # in mm
-    # The waypoint report, from apps that send one (dotbot-next)
+    # The waypoint report, from apps that send one (the sandbox dotbot app)
     waypoints_status: Optional[WaypointsStatus] = None
     waypoints_reason: Optional[str] = None  # why FAILED or ABORTED
     waypoint_index: Optional[int] = (

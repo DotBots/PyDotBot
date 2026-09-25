@@ -59,7 +59,7 @@ DIRECTION_THRESHOLD_MM = 50
 
 SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
 
-# The dotbot-next firmware stops the wheels this long after the last wheel
+# The sandbox dotbot firmware stops the wheels this long after the last wheel
 # velocity command.
 WHEEL_VELOCITY_TIMEOUT_S = 0.5
 
