@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Tests for `dotbot fw` (bare firmware build/clean/targets/artifacts).
+"""Tests for `dotbot fw` (clean/targets/make, board flavours, SES and repo lookup).
 
 These tests stub `subprocess.call` / `subprocess.run` so they don't
 need a SEGGER install or a DotBot-firmware checkout — they verify the
@@ -84,29 +84,48 @@ def capture_make(monkeypatch):
 def test_fw_help_lists_real_subcommands(runner):
     result = runner.invoke(fw_cmd, ["--help"])
     assert result.exit_code == 0
-    for sub in ("build", "clean", "targets", "artifacts", "fetch", "list"):
+    for sub in ("build", "clean", "targets", "fetch", "list"):
         assert sub in result.output
-    # Sandbox is a flavor flag now, not a separate namespace:
-    assert "--sandbox" in result.output
+    assert "artifacts " not in result.output
+    assert "--bare" in result.output
+    assert "--sandbox" not in result.output
 
 
-def test_fw_targets_lists_bare_targets_one_per_line(runner):
+def test_fw_artifacts_is_gone(runner):
+    result = runner.invoke(fw_cmd, ["artifacts"])
+    assert result.exit_code != 0
+
+
+def test_fw_targets_lists_every_board_with_its_apps(runner):
     result = runner.invoke(fw_cmd, ["targets"])
     assert result.exit_code == 0
-    lines = [ln for ln in result.output.splitlines() if ln.strip()]
-    assert "dotbot-v3" in lines
-    assert "sailbot-v1" in lines
-    # No sandbox-* targets under the bare namespace:
-    assert not any(ln.startswith("sandbox-") for ln in lines)
-    # One target per line, no decoration:
-    assert all(ln == ln.strip() for ln in lines)
+    rows = {
+        ln.split()[0]: ln.split(None, 1)[1]
+        for ln in result.output.splitlines()
+        if ln.strip()
+    }
+    assert rows["dotbot-v3"].startswith("sandboxed apps (bare with --bare)")
+    assert rows["nrf5340dk"].startswith("sandboxed apps")
+    assert rows["sailbot-v1"] == "bare apps"
+    assert not any(board.startswith("sandbox-") for board in rows)
 
 
-def test_fw_build_rejects_sandbox_target_with_redirect_hint(runner):
-    """A `sandbox-` prefixed bare target points at the `--sandbox` flag."""
+def test_fw_targets_has_no_sandbox_flag(runner):
+    assert runner.invoke(fw_cmd, ["targets", "--sandbox"]).exit_code != 0
+
+
+@pytest.mark.parametrize("sub", ["build", "clean"])
+def test_sandbox_flag_is_gone(runner, sub):
+    result = runner.invoke(fw_cmd, [sub, "--sandbox"])
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
+def test_sandbox_prefixed_board_points_at_the_default(runner):
     result = runner.invoke(fw_cmd, ["build", "--target", "sandbox-dotbot-v3"])
     assert result.exit_code != 0
-    assert "fw build -t dotbot-v3 --sandbox" in result.output
+    assert "-t dotbot-v3" in result.output
+    assert "sandboxed apps are the default" in result.output
 
 
 def test_fw_build_rejects_unknown_target_with_suggestion(runner):
@@ -115,88 +134,60 @@ def test_fw_build_rejects_unknown_target_with_suggestion(runner):
     assert "dotbot-v3" in result.output  # didyoumean suggestion
 
 
-def test_fw_build_default_target_is_dotbot_v3(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """No-arg build defaults to dotbot-v3 (Geovane's daily target)."""
-    result = runner.invoke(fw_cmd, ["build"])
-    assert result.exit_code == 0, result.output
-    assert len(capture_make) == 1
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_TARGET=dotbot-v3" in cmd
-    assert "BUILD_CONFIG=Release" in cmd  # default per the plan
-
-
-def test_fw_build_passes_incremental_by_default(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """Default is `BUILD_MODE=` (empty → emBuild's natural incremental
-    mode) for fast edit/build loop. SES 8.22a has no `-build` flag; the
-    only valid action flag is `-rebuild`."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_MODE=" in cmd
-    assert "BUILD_MODE=-rebuild" not in cmd
-
-
-def test_fw_build_rebuild_flag_forces_full_rebuild(
-    runner, fake_repo, fake_segger, capture_make
-):
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "--rebuild"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_MODE=-rebuild" in cmd
-
-
-def test_fw_build_quiet_by_default(runner, fake_repo, fake_segger, capture_make):
-    """Default is `QUIET=1` to suppress SES `-verbose -echo` flood."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "QUIET=1" in cmd
-
-
-def test_fw_build_verbose_drops_quiet(runner, fake_repo, fake_segger, capture_make):
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "-v"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "QUIET=1" not in cmd
-
-
-def test_fw_build_with_app_appends_project_name(
-    runner, fake_repo, fake_segger, capture_make, monkeypatch
-):
-    """`--app NAME` appends the project so make builds only that one."""
-    monkeypatch.setattr(
-        "dotbot.cli.fw.list_projects", lambda target: ["dotbot", "lh2_calibration"]
-    )
-    result = runner.invoke(
-        fw_cmd, ["build", "--target", "dotbot-v3", "--app", "dotbot"]
-    )
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert cmd[-1] == "dotbot"
-
-
-def test_fw_build_rejects_unavailable_project(
-    runner, fake_repo, fake_segger, monkeypatch
-):
-    """Project not in the post-filter list is rejected pre-make."""
-    monkeypatch.setattr("dotbot.cli.fw.list_projects", lambda target: ["dotbot"])
-    result = runner.invoke(
-        fw_cmd, ["build", "--target", "dotbot-v1", "--app", "dotbot_gateway"]
-    )
+def test_bare_on_a_sandbox_only_board_names_its_bare_targets(runner):
+    result = runner.invoke(fw_cmd, ["build", "-t", "nrf5340dk", "--bare"])
     assert result.exit_code != 0
-    assert "not available" in result.output
+    assert "nrf5340dk-app" in result.output
 
 
-def test_fw_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_make):
-    result = runner.invoke(fw_cmd, ["clean", "--target", "dotbot-v3"])
+@pytest.mark.parametrize(
+    "board, bare, target",
+    [
+        ("dotbot-v3", False, "sandbox-dotbot-v3"),
+        ("dotbot-v3", True, "dotbot-v3"),
+        ("nrf5340dk", False, "sandbox-nrf5340dk"),
+        ("nrf52840dk", False, "nrf52840dk"),
+    ],
+)
+def test_sandboxed_apps_are_the_default_where_a_board_has_a_sandbox(
+    board, bare, target
+):
+    assert _fw_helpers.build_target(board, bare) == target
+
+
+def test_app_image_name_follows_the_flavour():
+    assert _fw_helpers.app_image_name("dotbot", "dotbot-v3", False) == (
+        "dotbot-sandbox-dotbot-v3.bin"
+    )
+    assert _fw_helpers.app_image_name("dotbot", "dotbot-v3", True) == (
+        "dotbot-dotbot-v3.hex"
+    )
+
+
+def test_fw_clean_cleans_the_sandboxed_target_by_default(
+    runner, fake_repo, fake_segger, capture_make
+):
+    result = runner.invoke(fw_cmd, ["clean"])
     assert result.exit_code == 0, result.output
     cmd = capture_make[0]["cmd"]
-    assert "BUILD_TARGET=dotbot-v3" in cmd
+    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
+    assert "BUILD_CONFIG=Release" in cmd
     assert "clean" in cmd
+    assert "Cleaning sandbox-dotbot-v3" in result.output
+    assert "✓ Cleaned" in result.output
+
+
+def test_fw_clean_bare(runner, fake_repo, fake_segger, capture_make):
+    result = runner.invoke(fw_cmd, ["clean", "--bare"])
+    assert result.exit_code == 0, result.output
+    assert "BUILD_TARGET=dotbot-v3" in capture_make[0]["cmd"]
+
+
+def test_fw_clean_bare_from_config(runner, fake_repo, fake_segger, capture_make):
+    cfg = DotbotConfig.model_validate({"fw": {"bare": True}})
+    result = runner.invoke(fw_cmd, ["clean"], obj={"config": cfg, "deployment": None})
+    assert result.exit_code == 0, result.output
+    assert "BUILD_TARGET=dotbot-v3" in capture_make[0]["cmd"]
 
 
 def test_fw_new_still_not_implemented(runner):
@@ -206,132 +197,12 @@ def test_fw_new_still_not_implemented(runner):
     assert "not implemented" in result.output.lower()
 
 
-# ── Sandbox flavor (`dotbot fw <cmd> --sandbox`) ────────────────────────
-# Sandbox apps are no longer a separate `swarm fw` subgroup; they're the
-# `--sandbox` flavor of the same `dotbot fw` commands (sandbox-<board>,
-# emits .bin, OTA-flashed via `dotbot swarm flash`).
-
-
-def test_sandbox_targets_lists_boards(runner):
-    result = runner.invoke(fw_cmd, ["targets", "--sandbox"])
-    assert result.exit_code == 0
-    lines = [ln for ln in result.output.splitlines() if ln.strip()]
-    assert "dotbot-v3" in lines
-    assert "nrf5340dk" in lines
-    # User-facing names — no `sandbox-` prefix:
-    assert not any(ln.startswith("sandbox-") for ln in lines)
-
-
-def test_sandbox_build_rejects_sandbox_prefix(runner):
-    """User shouldn't pass `sandbox-dotbot-v3` — drop the prefix."""
-    result = runner.invoke(
-        fw_cmd, ["build", "--target", "sandbox-dotbot-v3", "--sandbox"]
-    )
-    assert result.exit_code != 0
-    assert "Drop the `sandbox-` prefix" in result.output
-
-
-def test_sandbox_build_rejects_unknown_board(runner):
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v9", "--sandbox"])
-    assert result.exit_code != 0
-    assert "Unknown sandbox board" in result.output
-
-
-def test_sandbox_build_prepends_sandbox_prefix_to_target(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """`--sandbox --target dotbot-v3` becomes `BUILD_TARGET=sandbox-dotbot-v3`."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "--sandbox"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
-
-
-def test_sandbox_build_default_board(runner, fake_repo, fake_segger, capture_make):
-    result = runner.invoke(fw_cmd, ["build", "--sandbox"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
-    assert "BUILD_CONFIG=Release" in cmd
-
-
-def test_sandbox_clean_invokes_make_clean(runner, fake_repo, fake_segger, capture_make):
-    result = runner.invoke(fw_cmd, ["clean", "--target", "dotbot-v3", "--sandbox"])
-    assert result.exit_code == 0, result.output
-    cmd = capture_make[0]["cmd"]
-    assert "BUILD_TARGET=sandbox-dotbot-v3" in cmd
-    assert "clean" in cmd
-
-
-# ── Output polish: preamble, timing, gated make-line echo ───────────────
-
-
-def test_fw_build_quiet_does_not_echo_make_line(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """Default (no -v): make command line stays out of output."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3"])
-    assert result.exit_code == 0, result.output
-    assert "$ make" not in result.output
-
-
-def test_fw_build_verbose_echoes_make_line(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """-v echoes the full make command so it's copy-pasteable."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "-v"])
-    assert result.exit_code == 0, result.output
-    assert "$ make" in result.output
-    assert "BUILD_TARGET=dotbot-v3" in result.output
-
-
-def test_fw_build_prints_preamble_and_success(
-    runner, fake_repo, fake_segger, capture_make
-):
-    """Happy path: preamble before make, success line with timing after."""
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3"])
-    assert result.exit_code == 0, result.output
-    assert "Building" in result.output
-    assert "dotbot-v3" in result.output
-    assert "Release" in result.output
-    assert "incremental" in result.output
-    # Success line uses a check mark + timing.
-    assert "✓" in result.output
-    assert "Built dotbot-v3" in result.output
-
-
-def test_fw_build_rebuild_says_rebuild_in_preamble(
-    runner, fake_repo, fake_segger, capture_make
-):
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "--rebuild"])
-    assert result.exit_code == 0, result.output
-    assert "rebuild" in result.output
-    assert "incremental" not in result.output
-
-
-def test_fw_clean_prints_cleaned_success_line(
-    runner, fake_repo, fake_segger, capture_make
-):
-    result = runner.invoke(fw_cmd, ["clean", "--target", "dotbot-v3"])
-    assert result.exit_code == 0, result.output
-    assert "Cleaning dotbot-v3" in result.output
-    assert "✓ Cleaned" in result.output
-
-
 def test_run_make_returns_elapsed_seconds(fake_repo, fake_segger, monkeypatch):
     """`run_make` must return a float so subcommands can format the timing."""
     monkeypatch.setattr("dotbot.cli._fw_helpers.subprocess.call", lambda *a, **kw: 0)
     elapsed = _fw_helpers.run_make("dotbot-v3", "Release", "dotbot")
     assert isinstance(elapsed, float)
     assert elapsed >= 0
-
-
-def test_sandbox_build_prints_preamble(runner, fake_repo, fake_segger, capture_make):
-    result = runner.invoke(fw_cmd, ["build", "--target", "dotbot-v3", "--sandbox"])
-    assert result.exit_code == 0, result.output
-    assert "Building" in result.output
-    assert "sandbox" in result.output.lower()
-    assert "✓ Built" in result.output
 
 
 # ── `dotbot fw make` escape hatch ───────────────────────────────────────

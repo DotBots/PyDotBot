@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared helpers for the `dotbot fw` build commands (bare + --sandbox).
+"""Shared helpers for the `dotbot fw` build commands.
 
-`dotbot fw build/clean/targets/artifacts` shell out to the same
-`DotBot-firmware` Makefile, which discriminates bare vs sandbox by
-`BUILD_TARGET` prefix (`sandbox-*` routes to `apps-sandbox/`, everything
-else to `apps/`). Sandbox is the `--sandbox` flavor flag on those
-commands (not a separate namespace). The helpers here keep target
-validation, SEGGER_DIR resolution, and the make invocation contract in
-one place.
+`dotbot fw build/clean/targets` shell out to the `DotBot-firmware` Makefile,
+which discriminates bare vs sandboxed apps by `BUILD_TARGET` prefix
+(`sandbox-*` routes to `apps-sandbox/`, everything else to `apps/`). A board
+that has a sandbox builds sandboxed apps unless `--bare` is given. The helpers
+here keep target validation, SEGGER_DIR resolution, and the make invocation
+contract in one place.
 
 ## Configuration
 
@@ -61,12 +60,15 @@ BARE_TARGETS = frozenset(BOARDS)
 # BUILD_TARGET = "sandbox-" + BOARD for the sandbox path. Boards
 # supported by the SES `.emProject` files at the DotBot-firmware root.
 SANDBOX_BOARDS = frozenset({"dotbot-v2", "dotbot-v3", "nrf5340dk"})
+# Every name `-t` takes: `nrf5340dk` has only a sandbox target (its bare
+# targets are per core).
+BOARD_NAMES = BARE_TARGETS | SANDBOX_BOARDS
 
 # Valid `BUILD_CONFIG` values.
 CONFIGS = ("Debug", "Release")
-DEFAULT_CONFIG = "Release"
-DEFAULT_BARE_TARGET = "dotbot-v3"
-DEFAULT_SANDBOX_BOARD = "dotbot-v3"
+# swarmit releases ship Debug images; DotBot-firmware releases ship Release.
+DEFAULT_CONFIGS = {"swarmit": "Debug", "dotbot-firmware": "Release"}
+DEFAULT_BOARD = "dotbot-v3"
 
 
 def _loaded_config():
@@ -208,32 +210,37 @@ def suggest_close_match(name: str, candidates: Iterable[str]) -> str:
     return f" Did you mean {close[0]!r}?" if close else ""
 
 
-def validate_bare_target(target: str) -> None:
-    if target.startswith("sandbox-"):
-        raise click.ClickException(
-            f"{target!r} is a sandbox target. Use "
-            f"`dotbot fw build -t {target[len('sandbox-'):]} --sandbox` instead."
-        )
-    if target not in BARE_TARGETS:
-        hint = suggest_close_match(target, BARE_TARGETS)
-        raise click.ClickException(
-            f"Unknown bare target {target!r}.{hint}\n"
-            f"Run `dotbot fw targets` to list valid bare targets."
-        )
+def has_sandbox(board: str) -> bool:
+    return board in SANDBOX_BOARDS
 
 
-def validate_sandbox_board(board: str) -> None:
+def build_target(board: str, bare: bool) -> str:
+    """The make BUILD_TARGET for `board`: sandboxed apps where it has a sandbox."""
     if board.startswith("sandbox-"):
         raise click.ClickException(
-            f"Drop the `sandbox-` prefix — pass just the board name: "
-            f"{board[len('sandbox-'):]!r}."
+            f"Pass the board name alone, -t {board[len('sandbox-'):]}: sandboxed "
+            "apps are the default on boards that have a sandbox (--bare for "
+            "bare-metal apps)."
         )
-    if board not in SANDBOX_BOARDS:
-        hint = suggest_close_match(board, SANDBOX_BOARDS)
+    if board not in BOARD_NAMES:
+        hint = suggest_close_match(board, BOARD_NAMES)
         raise click.ClickException(
-            f"Unknown sandbox board {board!r}.{hint}\n"
-            f"Run `dotbot fw targets --sandbox` to list valid sandbox boards."
+            f"Unknown board {board!r}.{hint}\n"
+            "Run `dotbot fw targets` to list the boards."
         )
+    if bare and board not in BARE_TARGETS:
+        raise click.ClickException(
+            f"{board!r} has sandboxed apps only; its bare-metal targets are "
+            f"{', '.join(sorted(t for t in BARE_TARGETS if t.startswith(board)))}."
+        )
+    return board if bare or not has_sandbox(board) else f"sandbox-{board}"
+
+
+def app_image_name(app: str, board: str, bare: bool) -> str:
+    """The release file name of `app` for `board` (a sandboxed `.bin` or a `.hex`)."""
+    target = build_target(board, bare)
+    ext = "bin" if target.startswith("sandbox-") else "hex"
+    return f"{app}-{target}.{ext}"
 
 
 def _make_env(segger_dir: Path) -> dict:
@@ -242,9 +249,9 @@ def _make_env(segger_dir: Path) -> dict:
     return env
 
 
-def list_projects(target: str) -> list[str]:
+def list_projects(target: str, repo: Optional[Path] = None) -> list[str]:
     """Return the post-filter project list for `target` via `make list-projects`."""
-    repo = resolve_firmware_repo()
+    repo = repo or resolve_firmware_repo()
     segger = resolve_segger_dir()
     result = subprocess.run(
         ["make", "-s", "list-projects", f"BUILD_TARGET={target}"],
@@ -269,13 +276,13 @@ def list_projects(target: str) -> list[str]:
     ]
 
 
-def list_release_projects(target: str) -> list[str]:
+def list_release_projects(target: str, repo: Optional[Path] = None) -> list[str]:
     """The apps a DotBot-firmware release ships for `target`.
 
     Read from the Makefile's `ARTIFACT_PROJECTS`, the list its own
     `artifacts` target (and so the release workflow) builds.
     """
-    repo = resolve_firmware_repo()
+    repo = repo or resolve_firmware_repo()
     result = subprocess.run(
         [
             "make",
@@ -306,6 +313,7 @@ def run_make(
     rebuild: bool = False,
     quiet: bool = True,
     make_targets: Optional[list[str]] = None,
+    repo: Optional[Path] = None,
 ) -> float:
     """Invoke `make BUILD_TARGET=... BUILD_CONFIG=... [project|make_target]`.
 
@@ -330,7 +338,7 @@ def run_make(
     Returns elapsed wall-clock seconds. Raises `ClickException` on
     non-zero exit so callers can short-circuit.
     """
-    repo = resolve_firmware_repo()
+    repo = repo or resolve_firmware_repo()
     segger = resolve_segger_dir()
     embuild = segger / "bin" / "emBuild"
     if not embuild.is_file():
@@ -358,7 +366,9 @@ def run_make(
     return elapsed
 
 
-def artifact_path(target: str, project: str, config: str) -> Path:
+def artifact_path(
+    target: str, project: str, config: str, repo: Optional[Path] = None
+) -> Path:
     """Return where SES writes the artifact for (target, project, config).
 
     SES uses its internal `$(BuildTarget)` macro for the Output directory
@@ -371,7 +381,7 @@ def artifact_path(target: str, project: str, config: str) -> Path:
     is_sandbox = target.startswith("sandbox-")
     apps_dir = "apps-sandbox" if is_sandbox else "apps"
     ext = "bin" if is_sandbox else "hex"
-    repo = resolve_firmware_repo()
+    repo = repo or resolve_firmware_repo()
     return (
         repo
         / apps_dir

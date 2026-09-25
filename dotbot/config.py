@@ -134,7 +134,7 @@ class Deployment(_Strict):
 
 class FwSection(_Strict):
     board: str | None = None
-    sandbox: bool | None = None
+    bare: bool | None = None
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
     firmware_repo: str | None = None  # path to the DotBot-firmware clone

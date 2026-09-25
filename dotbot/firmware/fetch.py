@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 import urllib.error
@@ -48,8 +49,30 @@ DOTBOT_FIRMWARE_VERSION = "1.24.0"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
+# A release tag starts with a digit, optionally after a `v` (1.23.0, 0.8.0rc2,
+# v2.0). A set name built by `dotbot fw build --as` must not, so the two never
+# share a cache directory and `-f` can tell them apart without the network.
+_RELEASE_TAG_RE = re.compile(r"^v?[0-9]")
+SET_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+
+
 def resolve_fw_root(bin_dir: Path, source: str, fw_version: str) -> Path:
     return bin_dir / f"{source}-{fw_version}"
+
+
+def is_release_tag(value: str) -> bool:
+    return bool(_RELEASE_TAG_RE.match(value))
+
+
+def validate_set_name(name: str) -> str:
+    """Return `name` if it can name a built set, else raise."""
+    if name == "latest" or is_release_tag(name) or not SET_NAME_RE.match(name):
+        raise click.ClickException(
+            f"'{name}' cannot name a firmware set: use letters, digits, '.', '_' "
+            "or '-', starting with a letter, and not 'latest' (a name starting "
+            "with a digit or 'v<digit>' reads as a release tag)."
+        )
+    return name
 
 
 def _human_size(num_bytes: int) -> str:

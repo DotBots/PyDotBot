@@ -649,7 +649,7 @@ def test_fetch_no_args_resolves_pinned_versions(monkeypatch):
 
 
 def test_fetch_explicit_version_overrides_pin(monkeypatch):
-    """-f <tag> with --source bypasses the pin and passes through verbatim."""
+    """-f <tag> with a SOURCE bypasses the pin and passes through verbatim."""
     from dotbot.cli.fw import cmd as fw_cmd
 
     calls: list[tuple[str, str]] = []
@@ -662,7 +662,7 @@ def test_fetch_explicit_version_overrides_pin(monkeypatch):
             calls.append((src, version)) or Path(f"/x/{src}-{version}")
         ),
     )
-    res = CliRunner().invoke(fw_cmd, ["fetch", "-S", "dotbot-firmware", "-f", "1.21.0"])
+    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot-firmware", "-f", "1.21.0"])
     assert res.exit_code == 0, res.output
     assert calls == [("dotbot-firmware", "1.21.0")]
     assert pin_called == []  # explicit -f never consults the pin
