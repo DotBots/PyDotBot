@@ -76,6 +76,7 @@ from dotbot.protocol import (
     PayloadWaypointHeading,
 )
 from dotbot.swarm_client import conn_string
+from dotbot.ws_clients import TransportScope
 
 ws_adapter = TypeAdapter(WSMessage)
 
@@ -123,6 +124,8 @@ api.add_middleware(
     allow_headers=["*"],
 )
 api.add_middleware(ReverseProxyMiddleware)
+# Last, so it is the outermost: see TransportScope.
+api.add_middleware(TransportScope)
 
 
 @api.put(

@@ -5,6 +5,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import WebSocketDisconnect
 from httpx import ASGITransport, AsyncClient
 
 from dotbot import ws_clients
@@ -16,7 +17,7 @@ from dotbot.models import (
     DotBotStatus,
 )
 from dotbot.server import api
-from dotbot.ws_clients import WsClient
+from dotbot.ws_clients import TRANSPORT_KEY, TransportScope, WsClient
 
 
 class RecordingWebSocket:
@@ -101,7 +102,7 @@ async def test_a_put_returns_while_a_client_never_reads(controller):
     assert update["data"]["address"] == "4242"
 
     await _until(lambda: stuck not in controller.websockets)
-    stuck.close.assert_awaited()
+    await _until(lambda: stuck.close.await_count == 1)
     assert reading in controller.websockets
 
 
@@ -148,3 +149,82 @@ async def test_a_removed_client_gets_nothing_more(controller):
     await asyncio.sleep(0.05)
     assert websocket.received == []
     assert controller.websockets == {}
+
+
+class BackloggedWebSocket(StuckWebSocket):
+    """A client that stopped reading: its close frame never gets through."""
+
+    def __init__(self, write_buffer=0):
+        async def close():
+            await asyncio.Event().wait()
+
+        self.close = AsyncMock(side_effect=close)
+        self.transport = MagicMock()
+        self.transport.get_write_buffer_size.return_value = write_buffer
+        self.scope = {TRANSPORT_KEY: self.transport}
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_client_whose_close_stalls_is_aborted():
+    websocket = BackloggedWebSocket()
+    client = WsClient(websocket, MagicMock(), queue_size=1, send_timeout=0.05)
+    for i in range(3):
+        client.send(str(i))
+    await _until(lambda: websocket.transport.abort.called)
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_client_closed_behind_a_backlog_is_aborted():
+    websocket = BackloggedWebSocket(write_buffer=65536)
+    websocket.close = AsyncMock()
+    client = WsClient(websocket, MagicMock(), queue_size=1, send_timeout=0.05)
+    for i in range(3):
+        client.send(str(i))
+    await _until(lambda: websocket.transport.abort.called)
+    websocket.close.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_client_that_closes_cleanly_is_not_aborted():
+    websocket = BackloggedWebSocket()
+    websocket.close = AsyncMock()
+    client = WsClient(websocket, MagicMock(), queue_size=1, send_timeout=0.05)
+    for i in range(3):
+        client.send(str(i))
+    await _until(lambda: websocket.close.await_count == 1)
+    await asyncio.sleep(0.05)
+    websocket.transport.abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_client_that_closed_is_forgotten_without_a_warning(monkeypatch):
+    websocket = MagicMock()
+    websocket.send_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000))
+    websocket.close = AsyncMock()
+    on_drop = MagicMock()
+    warnings = MagicMock()
+    client = WsClient(websocket, on_drop)
+    monkeypatch.setattr(client.logger, "warning", warnings)
+    client.send("x")
+    await _until(lambda: on_drop.called)
+    warnings.assert_not_called()
+    await asyncio.sleep(0.02)
+    websocket.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_transport_is_found_from_the_server_send():
+    class Protocol:
+        transport = object()
+
+        async def send(self, message):
+            pass
+
+    seen = {}
+
+    async def app(scope, receive, send):
+        seen.update(scope)
+
+    protocol = Protocol()
+    await TransportScope(app)({"type": "websocket"}, None, protocol.send)
+    assert seen[TRANSPORT_KEY] is protocol.transport
