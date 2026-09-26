@@ -190,6 +190,39 @@ def test_fw_clean_bare_from_config(runner, fake_repo, fake_segger, capture_make)
     assert "BUILD_TARGET=dotbot-v3" in capture_make[0]["cmd"]
 
 
+_BARE_CFG = {"config": DotbotConfig.model_validate({"fw": {"bare": True}})}
+
+
+@pytest.mark.parametrize(
+    "args, obj, env, bare",
+    [
+        ([], None, None, False),
+        (["--bare"], None, None, True),
+        (["--sandboxed"], _BARE_CFG, None, False),
+        ([], _BARE_CFG, None, True),
+        ([], _BARE_CFG, "0", False),
+        ([], None, "1", True),
+        (["--sandboxed"], None, "1", False),
+    ],
+)
+@pytest.mark.parametrize("sub", ["build", "clean"])
+def test_fw_bare_precedence(runner, monkeypatch, sub, args, obj, env, bare):
+    monkeypatch.delenv("DOTBOT_BARE", raising=False)
+    if env is None:
+        monkeypatch.delenv("DOTBOT_FW_BARE", raising=False)
+    else:
+        monkeypatch.setenv("DOTBOT_FW_BARE", env)
+    seen = []
+
+    def spy(board, bare):
+        seen.append(bare)
+        raise click.ClickException("stop")
+
+    monkeypatch.setattr(_fw_helpers, "build_target", spy)
+    runner.invoke(fw_cmd, [sub, *args], obj=obj)
+    assert seen == [bare]
+
+
 def test_fw_new_still_not_implemented(runner):
     """`new` is deferred to a separate templates plan."""
     result = runner.invoke(fw_cmd, ["new", "my-experiment"])

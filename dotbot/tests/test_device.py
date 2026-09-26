@@ -1080,10 +1080,51 @@ def test_device_flash_path_takes_no_f(runner, _no_nrfjprog_gate, tmp_path):
     assert "needs no -f" in result.output
 
 
-def test_device_flash_has_bare_not_sandbox(runner):
+def test_device_flash_has_bare_sandboxed_pair(runner):
     result = runner.invoke(device_cmd, ["flash", "--help"])
-    assert "--bare" in result.output
-    assert "--sandbox" not in result.output
+    assert "--bare / --sandboxed" in result.output
+    assert "--sandbox " not in result.output
+
+
+@pytest.mark.parametrize(
+    "args, cfg, env, image",
+    [
+        ([], None, None, "dotbot-sandbox-dotbot-v3.bin"),
+        (["--bare"], None, None, "dotbot-dotbot-v3.hex"),
+        ([], {"fw": {"bare": True}}, None, "dotbot-dotbot-v3.hex"),
+        (["--sandboxed"], {"fw": {"bare": True}}, None, "dotbot-sandbox-dotbot-v3.bin"),
+        ([], {"fw": {"bare": True}}, "0", "dotbot-sandbox-dotbot-v3.bin"),
+        ([], None, "1", "dotbot-dotbot-v3.hex"),
+    ],
+)
+def test_device_flash_bare_precedence(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch, no_build, args, cfg, env, image
+):
+    from dotbot.config import DotbotConfig
+
+    monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path))
+    monkeypatch.delenv("DOTBOT_BARE", raising=False)
+    if env is None:
+        monkeypatch.delenv("DOTBOT_FW_BARE", raising=False)
+    else:
+        monkeypatch.setenv("DOTBOT_FW_BARE", env)
+    local = _make_set(
+        tmp_path,
+        "local",
+        ("dotbot-sandbox-dotbot-v3.bin", "dotbot-dotbot-v3.hex"),
+        source="dotbot-firmware",
+    )
+    flashed = []
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_app_image",
+        lambda image, **kw: flashed.append(image),
+    )
+    obj = {"config": DotbotConfig.model_validate(cfg)} if cfg else None
+    result = runner.invoke(
+        device_cmd, ["flash", "dotbot", "-f", "local", *args], obj=obj
+    )
+    assert result.exit_code == 0, result.output
+    assert flashed == [local / image]
 
 
 # ── fw fetch ─────────────────────────────────────────────────────────────

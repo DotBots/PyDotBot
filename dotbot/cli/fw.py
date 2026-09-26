@@ -100,13 +100,12 @@ def _config_option(help_text):
 
 def _bare_option(f):
     return click.option(
-        "--bare",
-        is_flag=True,
-        default=False,
+        "--bare/--sandboxed",
+        default=None,
         help=(
-            "Bare-metal apps (.hex). Default: sandboxed apps (.bin) on boards "
-            "that have a sandbox (dotbot-v3, dotbot-v2, nrf5340dk), bare "
-            "elsewhere."
+            "Bare-metal apps (.hex) or sandboxed apps (.bin). Default: [fw].bare "
+            "in config, else sandboxed on boards that have a sandbox "
+            "(dotbot-v3, dotbot-v2, nrf5340dk), bare elsewhere."
         ),
     )(f)
 
@@ -210,7 +209,7 @@ def build(
 
     target = from_config(ctx, "target", "board", "fw")
     config = from_config(ctx, "config", "build_config", "fw")
-    bare = from_config(ctx, "bare", "bare", "fw")
+    bare = from_config(ctx, "bare", "bare", "fw", default=False)
     validate_set_name(set_name)
     explicit = bool(sources)
     sources = list(dict.fromkeys(sources)) or list(SOURCES)
@@ -332,7 +331,7 @@ def clean(ctx, target, config, bare, verbose):
     config = from_config(ctx, "config", "build_config", "fw") or DEFAULT_CONFIGS[
         "dotbot-firmware"
     ]
-    bare = from_config(ctx, "bare", "bare", "fw")
+    bare = from_config(ctx, "bare", "bare", "fw", default=False)
     build_target = _fw_helpers.build_target(target, bare)
     click.echo(f"Cleaning {build_target} ({config})...", err=True)
     elapsed = run_make(build_target, config, make_targets=["clean"], quiet=not verbose)

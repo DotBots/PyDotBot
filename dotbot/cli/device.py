@@ -89,11 +89,12 @@ def _fw_version_option(source: str):
     ),
 )
 @click.option(
-    "--bare",
-    is_flag=True,
+    "--bare/--sandboxed",
+    default=None,
     help=(
-        "Flash the bare-metal app (.hex). Default: the sandboxed app (.bin) on "
-        "boards that have a sandbox, which runs under a swarmit sandbox host."
+        "Flash the bare-metal app (.hex) or the sandboxed app (.bin), which "
+        "runs under a swarmit sandbox host. Default: [fw].bare in config, else "
+        "sandboxed on boards that have a sandbox."
     ),
 )
 @_fw_version_option("dotbot-firmware")
@@ -110,6 +111,7 @@ def flash(ctx, app, probe, board, bare, fw_version):
 
     board = from_config(ctx, "board", "board", "device")
     probe = from_config(ctx, "probe", "probe", "device")
+    bare = from_config(ctx, "bare", "bare", "fw", default=False)
     ensure_nrfjprog()
     if _looks_like_path(app):
         if fw_version is not None:
