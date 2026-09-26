@@ -86,3 +86,20 @@ curl -X POST localhost:8001/stop -H 'Content-Type: application/json' \
 # screenshot for the Claude Design re-seed loop
 node dotbot/console-web/dev/screenshot.mjs "http://127.0.0.1:5173/?sel=1111" out.png
 ```
+
+## Performance harness
+
+Not part of `npm test` or CI. Build first, venv active (it launches
+`dotbot run simulator` itself, on port 18100, with `BROWSER=true --headless`):
+
+```bash
+npm --prefix dotbot/console-web run build
+npm --prefix dotbot/console-web run perf -- --robots 10,50,100,200 --duration 60 --out <dir>
+```
+
+It writes `<dir>/results.json` (load, frames, long tasks, main-thread time,
+WebSocket rates, heap growth, React commits, interaction latencies per fleet
+size, plus a React profiling-build pass naming the components that render per
+commit) and prints a table. `--no-profile` / `--no-interactions` skip passes;
+`--chrome` or `CHROME_PATH` picks the browser. With a snap-packaged Chrome,
+point `--out` outside `/tmp`, which it cannot write to.

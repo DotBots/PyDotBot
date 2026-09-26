@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/.",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "perf": "node perf/console_perf.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",
