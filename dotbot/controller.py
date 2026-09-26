@@ -721,8 +721,12 @@ class Controller:
         if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
             logger = logger.bind(application=ApplicationType.DotBot.name)
             dotbot.calibrated = int(frame.packet.payload.calibrated)
-            dict_adv = dataclasses.asdict(frame.packet.payload)
-            dict_adv.pop("metadata", None)
+            # Not dataclasses.asdict(): it deep-copies the field metadata
+            dict_adv = {
+                field.name: getattr(frame.packet.payload, field.name)
+                for field in dataclasses.fields(frame.packet.payload)
+                if field.name != "metadata"
+            }
             logger.info(
                 "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
             )
@@ -972,11 +976,9 @@ class Controller:
         await self._broadcast(notification.model_dump(exclude_none=True))
 
     async def _broadcast(self, message: dict):
+        text = json.dumps(message)
         await asyncio.gather(
-            *[
-                self._ws_send_safe(websocket, json.dumps(message))
-                for websocket in self.websockets
-            ]
+            *[self._ws_send_safe(websocket, text) for websocket in self.websockets]
         )
 
     def send_confirmed(
