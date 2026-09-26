@@ -269,6 +269,7 @@ export function useFleet(): {
             return;
           }
           const d = msg.data;
+          if (d.status !== undefined) bot.status = d.status;
           if (d.direction !== undefined) bot.direction = d.direction;
           if (d.pose !== undefined) bot.pose = d.pose;
           if (d.battery !== undefined) bot.battery = d.battery;
