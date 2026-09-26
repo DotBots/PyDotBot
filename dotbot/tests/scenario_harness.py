@@ -79,7 +79,7 @@ class Scenario:
         adapter.simulator = self.sim
         self.controller.adapter = adapter
         self.socket = RecordingSocket()
-        self.controller.websockets.append(self.socket)
+        self.controller.add_websocket(self.socket)
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=api), base_url="http://scenario"
         )

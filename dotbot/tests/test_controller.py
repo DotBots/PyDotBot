@@ -832,10 +832,12 @@ async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
 
     websocket = MagicMock()
     websocket.send_text = AsyncMock()
-    controller.websockets = [websocket]
+    controller.add_websocket(websocket)
 
     await controller._notify_calibration_session({"outstanding": None, "total": 4})
     await controller._notify_calibration_session(None)
+    await asyncio.sleep(0.05)
+    controller.remove_websocket(websocket)
 
     first, second = (json.loads(c.args[0]) for c in websocket.send_text.await_args_list)
     assert first["cmd"] == 5
@@ -1311,12 +1313,13 @@ class _StatusClient:
 async def _sent(controller, *frames):
     """The messages a status client receives for `frames`, in order."""
     client = _StatusClient()
-    controller.websockets = [client]
+    controller.add_websocket(client)
     for frame in frames:
         controller.handle_received_frame(frame)
-        # The broadcast task, then the send it gathers
+        # The broadcast task, then the client's send
         for _ in range(3):
             await asyncio.sleep(0)
+    controller.remove_websocket(client)
     return client.messages
 
 
@@ -1412,11 +1415,13 @@ async def test_a_new_robot_is_announced_without_data(controller):
 async def test_a_status_change_is_an_update_not_a_reload(controller):
     controller.handle_received_frame(_advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
     client = _StatusClient()
-    controller.websockets = [client]
+    controller.add_websocket(client)
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
-    await asyncio.sleep(0)
+    for _ in range(3):
+        await asyncio.sleep(0)
+    controller.remove_websocket(client)
     updates = [m for m in client.messages if m["data"]["address"] == addr_to_hex(BOT)]
     assert updates == [
         {

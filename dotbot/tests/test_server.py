@@ -701,10 +701,12 @@ async def test_clear_dotbot_position_history(dotbots, address, code, found):
 async def test_ws_client():
     with TestClient(api).websocket_connect("/controller/ws/status") as websocket:
         await asyncio.sleep(0.1)
-        assert len(api.controller.websockets) == 1
+        api.controller.add_websocket.assert_called_once()
         websocket.close()
         await asyncio.sleep(0.1)
-        assert len(api.controller.websockets) == 0
+        api.controller.remove_websocket.assert_called_once_with(
+            api.controller.add_websocket.call_args.args[0]
+        )
 
 
 @pytest.mark.asyncio

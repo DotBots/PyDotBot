@@ -606,13 +606,14 @@ async def background_map():
 async def websocket_endpoint(websocket: WebSocket):
     """Websocket server endpoint."""
     await websocket.accept()
-    api.controller.websockets.append(websocket)
+    api.controller.add_websocket(websocket)
     try:
         while True:
             _ = await websocket.receive_text()
-    except WebSocketDisconnect:
-        if websocket in api.controller.websockets:
-            api.controller.websockets.remove(websocket)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        api.controller.remove_websocket(websocket)
 
 
 @api.websocket("/controller/ws/dotbots")

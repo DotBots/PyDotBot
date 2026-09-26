@@ -23,9 +23,7 @@ from itertools import islice
 from typing import Callable, Deque, Dict, List, Optional, Tuple, Union
 
 import serial
-import starlette
 import uvicorn
-import websockets
 from dotbot_utils.protocol import Frame, Payload
 from dotbot_utils.serial_interface import SerialInterfaceException
 from fastapi import WebSocket
@@ -107,6 +105,7 @@ from dotbot.robots import (
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.swarm_client import build_swarmit_client, conn_string
+from dotbot.ws_clients import WsClient
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -360,7 +359,7 @@ class Controller:
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
         self.advertised_batch_ids: Dict[str, int] = {}
-        self.websockets = []
+        self.websockets: Dict[WebSocket, WsClient] = {}
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
@@ -1023,21 +1022,18 @@ class Controller:
             pose=dotbot.pose,
         )
 
-    async def _ws_send_safe(self, websocket: WebSocket, msg: str):
-        """Safely send a message to a websocket client."""
-        try:
-            await websocket.send_text(msg)
-        except (
-            websockets.exceptions.ConnectionClosedError,
-            RuntimeError,
-            starlette.websockets.WebSocketDisconnect,
-        ) as exc:
-            self.logger.warning(
-                "Failed to send message to websocket client",
-                error=str(exc),
-            )
-            if websocket in self.websockets:
-                self.websockets.remove(websocket)
+    def add_websocket(self, websocket: WebSocket):
+        """Start delivering notifications to a connected websocket client."""
+        self.websockets[websocket] = WsClient(websocket, self._forget_websocket)
+
+    def remove_websocket(self, websocket: WebSocket):
+        """Stop delivering notifications to a websocket client."""
+        client = self.websockets.pop(websocket, None)
+        if client is not None:
+            client.close()
+
+    def _forget_websocket(self, websocket: WebSocket):
+        self.websockets.pop(websocket, None)
 
     def _swarmit_client(self, device: str = ""):
         """A swarmit client on the same connection the controller runs on.
@@ -1077,10 +1073,10 @@ class Controller:
         await self._broadcast(notification.model_dump(exclude_none=True))
 
     async def _broadcast(self, message: dict):
+        """Queue a message for every client; never waits on delivery."""
         text = json.dumps(message)
-        await asyncio.gather(
-            *[self._ws_send_safe(websocket, text) for websocket in self.websockets]
-        )
+        for client in list(self.websockets.values()):
+            client.send(text)
 
     def send_confirmed(
         self,
