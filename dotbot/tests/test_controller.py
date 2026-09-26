@@ -245,6 +245,20 @@ async def test_controller_get_dotbots_query(query, length, controller):
     assert len(dotbots) == length
 
 
+@pytest.mark.parametrize("max_positions,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))])
+def test_controller_get_dotbots_keeps_newest_history(
+    controller, max_positions, expected
+):
+    """A capped history keeps the newest points, not the oldest."""
+    dotbot = controller.dotbots["0000000000000000"]
+    dotbot.position_history = [DotBotLH2Position(x=i, y=i) for i in range(10)]
+    (result,) = controller.get_dotbots(
+        DotBotQueryModel(address=dotbot.address, max_positions=max_positions)
+    )
+    assert [p.x for p in result.position_history] == expected
+    assert len(dotbot.position_history) == 10
+
+
 def test_controller_sailbot_simulator():
     """Check controller called for sailbot simulator."""
 

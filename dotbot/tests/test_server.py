@@ -548,6 +548,21 @@ async def test_get_dotbot(dotbots, address, code, found, result):
 
 
 @pytest.mark.asyncio
+async def test_get_dotbot_keeps_newest_history():
+    api.controller.dotbots = {
+        "12345": DotBotModel(
+            address="12345",
+            last_seen=123.4,
+            position_history=[DotBotLH2Position(x=i, y=i) for i in range(5)],
+        )
+    }
+    response = await client.get("/controller/dotbots/12345?max_positions=2")
+    assert response.status_code == 200
+    history = response.json()["position_history"]
+    assert [p["x"] for p in history] == [3, 4]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dotbots,address,code,found",
     [

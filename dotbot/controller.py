@@ -1185,14 +1185,12 @@ class Controller:
                 if query.min_position_y is not None:
                     if query.min_position_y > dotbot.lh2_position.y:
                         continue
-            _dotbot = DotBotModel(**dotbot.model_dump())
             max_positions = (
                 MAX_POSITION_HISTORY_SIZE
                 if query.max_positions is None
                 else query.max_positions
             )
-            _dotbot.position_history = _dotbot.position_history[:max_positions]
-            dotbots.append(_dotbot)
+            dotbots.append(dotbot.with_recent_history(max_positions))
         dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
         if query.limit is not None:
             dotbots = dotbots[: query.limit]
