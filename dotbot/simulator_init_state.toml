@@ -1,6 +1,10 @@
 # This file is used to create and configure simulated DotBot instances for the simulator.
 # It is only used when the flag `-p dotbot-simulator` is set, otherwise it is ignored.
 #
+# `pos_x` / `pos_y` place a robot's centre, its axle midpoint. Each robot runs
+# the sandbox dotbot app: waypoints are steered on board, and the advertised
+# LH2 position is the photodiode, a lever arm ahead of the axle.
+#
 # A robot with no `pos_x` / `pos_y` is placed inside the active site: its
 # `arena` area, else its first declared area, else its whole extent, else a
 # 2 x 2 m square at the frame origin. Unplaced robots share a grid, so they
@@ -17,8 +21,9 @@ mqtt_latency_ms = 0.0  # one-way MQTT broker latency in ms (applied in both mode
 [[dotbots]]
 address = "BADCAFE111111111" # DotBot unique address
 calibrated = 0xff # optional, defaults to only first lighthouse calibrated
-direction = 0 # [0, 360] in degrees, 0 is facing north, increasing clockwise
+direction = 0 # heading in degrees, 0 facing +y, clockwise; the robot starts tracking it
 network_mode = "default" # optional, defaults to "default", can be set to "mari"
+lh2_noise_mm = 0 # optional, standard deviation of each LH2 fix, mm
 
 [[dotbots]]
 address = "DEADBEEF22222222"
@@ -32,7 +37,8 @@ direction = 180
 address = "BADC0DE444444444"
 direction = 360
 
-# No `direction`: this robot advertises no heading until it has travelled far
-# enough for one, as a real robot does from boot until its first fix.
+# No `direction`: this robot faces +y and advertises no heading until it has
+# moved its photodiode 40 mm, as a real robot does from boot. Sent a waypoint,
+# it spins in place first.
 [[dotbots]]
 address = "F00DFACE55555555"

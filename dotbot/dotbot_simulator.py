@@ -4,17 +4,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Dotbot simulator for the DotBot project."""
+"""Dotbot simulator for the DotBot project.
 
-import ctypes
+Each simulated robot runs the sandbox dotbot app's 10 ms tick: the wheel loop,
+the pose estimator's life cycle, the waypoint steering of `dotbot.steering`,
+and the app's advertisement with its waypoint report.
+"""
+
 import heapq
+import math
 import queue
 import random
 import threading
 import time
-from dataclasses import dataclass
-from enum import Enum
-from math import atan2, ceil, cos, pi, sin, sqrt
+from enum import Enum, IntEnum
+from math import ceil, sqrt
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
@@ -30,13 +34,31 @@ from dotbot import (
 from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import (
+    AXLE_UNKNOWN,
     DIRECTION_NONE,
     ControlModeType,
     PayloadDotBotAdvertisement,
     PayloadType,
+    WaypointsAbortReason,
+    WaypointsStatus,
 )
 from dotbot.robots import robot_geometry
 from dotbot.site import Site
+from dotbot.steering import (
+    LEVER_ARM_EFFECTIVE_MM,
+    PERIOD_TICKS,
+    Completion,
+    Output,
+    Pose,
+    PoseStatus,
+    Steering,
+    SteeringConf,
+    SteeringState,
+    forward,
+    path_from_payload,
+    track_effective_mm,
+    wrap180,
+)
 
 _GEOMETRY = robot_geometry()
 
@@ -47,28 +69,34 @@ L = _GEOMETRY.track_mm  # distance between the two wheels in mm
 ENCODER_CPR = _GEOMETRY.encoder_cpr  # counts per motor shaft revolution
 MM_PER_COUNT = _GEOMETRY.mm_per_count
 
-# Control parameters for the automatic mode
-MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 1.5
-REDUCE_SPEED_FACTOR = 0.8
-REDUCE_SPEED_ANGLE = 25
+SIMULATOR_STEP_DELTA_T = 0.01  # one app tick, 10 ms
+TICKS_PER_POSITION = 10  # a new LH2 fix every 100 ms
+TICKS_PER_TIMEOUT = 20
+# ~500 ms without a raw or wheel velocity command stops the wheels
+TIMEOUT_STOP_TICKS = 52
 
-# Travel away from the last recorded point before a new heading is computed.
-# Mirrors DB_DIRECTION_THRESHOLD in the firmware control loop.
-DIRECTION_THRESHOLD_MM = 50
+# Wheel lag: each wheel follows its setpoint, and brakes, with this time
+# constant, which makes the braking run-on 0.05 s times the speed
+WHEEL_TAU_S = 0.05
+WHEEL_SPEED_MAX_MM_S = 700
+MAX_SPEED_MIN_MM_S = 20
+MAX_SPEED_MAX_MM_S = 700
 
-SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
+# The duty the advertisement reports for a wheel speed: the wheel loop's
+# running feedforward line
+PWM_RUN = 32.0
+PWM_PER_MM_S = 0.097
 
-# The sandbox dotbot firmware stops the wheels this long after the last wheel
-# velocity command.
-WHEEL_VELOCITY_TIMEOUT_S = 0.5
+# Pose estimator life cycle (DotBot-libs drv/pose_estimator.h)
+ESTIMATOR_SEED_FIXES = 3
+ESTIMATOR_ACQUIRE_MM = 40.0
+ESTIMATOR_TIMEOUT_TICKS = 100
 
 # Battery model parameters
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
-SIMULATOR_UPDATE_INTERVAL_S = 0.05
 
 MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
@@ -109,17 +137,25 @@ def wheel_speed_from_pwm(pwm: float) -> float:
 
 
 def pwm_from_wheel_speed(speed_mm_s: float) -> int:
-    """Convert a wheel speed in mm/s to the PWM that would produce it."""
-    pwm = round(speed_mm_s * R * 127 / (D * Kv))
-    return max(-100, min(100, pwm))
+    """The duty the wheel loop drives a wheel speed with."""
+    if speed_mm_s == 0:
+        return 0
+    duty = min(100.0, PWM_RUN + PWM_PER_MM_S * abs(speed_mm_s))
+    return int(math.copysign(duty, speed_mm_s))
 
 
-@dataclass
-class Waypoint:
-    """Waypoint class for the dotbot simulator."""
+def _lround(value: float) -> int:
+    """C lroundf: halves away from zero."""
+    return int(math.copysign(math.floor(abs(value) + 0.5), value))
 
-    x: int
-    y: int
+
+class DriveMode(IntEnum):
+    """Who writes the motors, as the app's drive_mode_t."""
+
+    IDLE = 0
+    RAW = 1
+    VELOCITY = 2
+    WAYPOINT = 3
 
 
 class SimulatedNetworkMode(str, Enum):
@@ -150,8 +186,11 @@ def _random_address() -> str:
 class SimulatedDotBotSettings(BaseModel):
     """One simulated robot as a world file declares it.
 
-    `pos_x` / `pos_y` are frame millimetres. Leaving them out asks for a
-    placement inside the active site instead - see `place_dotbots`.
+    `pos_x` / `pos_y` are the axle midpoint in frame millimetres. Leaving them
+    out asks for a placement inside the active site instead - see
+    `place_dotbots`. A `direction` is the robot's heading and starts its
+    estimator tracking; without one the robot faces +y and starts with no
+    heading, as a real robot does from boot.
     """
 
     address: str = Field(default_factory=_random_address)
@@ -161,48 +200,10 @@ class SimulatedDotBotSettings(BaseModel):
     calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
-    custom_control_loop_library: Path = None
+    lh2_noise_mm: float = 0
     gru_model_path: Path = None
     battery_model_path: Path = None
     network_mode: SimulatedNetworkMode = SimulatedNetworkMode.DEFAULT
-
-
-class ControlLoopWaypoint(ctypes.Structure):
-    """Mirrors coordinate_t from control_loop.h — used when calling control_loop_set_waypoints."""
-
-    _fields_ = [
-        ("x", ctypes.c_uint32),
-        ("y", ctypes.c_uint32),
-    ]
-
-
-class RobotControl(ctypes.Structure):
-    """Mirrors robot_control_t from control_loop.h.
-
-    Only the stable external I/O boundary is represented here.  All internal
-    algorithm state lives in the opaque context managed by the C library.
-    Layout must stay in sync with the C struct (no internal padding gaps).
-    """
-
-    _fields_ = [
-        # Inputs — robot state (4-byte fields first, no padding gaps)
-        ("pos_x", ctypes.c_uint32),
-        ("pos_y", ctypes.c_uint32),
-        ("encoder_left", ctypes.c_int32),  # signed delta counts since last call
-        ("encoder_right", ctypes.c_int32),  # signed delta counts since last call
-        # Outputs — current target waypoint coordinates (written by C, for telemetry)
-        ("waypoint_x", ctypes.c_uint32),
-        ("waypoint_y", ctypes.c_uint32),
-        # Input — robot heading (2-byte, followed by 1-byte fields — no internal padding)
-        ("direction", ctypes.c_int16),
-        # Outputs — actuation (written by C)
-        ("pwm_left", ctypes.c_int8),
-        ("pwm_right", ctypes.c_int8),
-        # Outputs — status flags (written by C)
-        ("waypoint_reached", ctypes.c_uint8),
-        ("all_done", ctypes.c_uint8),
-        ("waypoint_idx", ctypes.c_uint8),
-    ]
 
 
 class InitStateToml(BaseModel):
@@ -211,55 +212,60 @@ class InitStateToml(BaseModel):
 
 
 class DotBotSimulator:
-    """Simulator class for the dotbot."""
+    """One simulated robot running the sandbox dotbot app."""
 
-    def __init__(self, settings: SimulatedDotBotSettings, tx_queue: queue.Queue):
+    def __init__(
+        self,
+        settings: SimulatedDotBotSettings,
+        tx_queue: queue.Queue,
+        steering_conf: SteeringConf = SteeringConf(),
+    ):
         self.address = settings.address.upper()
-        self.pos_x = settings.pos_x or 0
-        self.pos_y = settings.pos_y or 0
-        self.theta = (
-            settings.direction * -1 if settings.direction != DIRECTION_NONE else 0
-        )
+        # Truth: the axle midpoint and the heading, 0 facing +y, clockwise
+        self.pos_x = float(settings.pos_x or 0)
+        self.pos_y = float(settings.pos_y or 0)
+        has_heading = settings.direction != DIRECTION_NONE
+        self.heading_deg = wrap180(float(settings.direction)) if has_heading else 0.0
         self.motor_left_error = settings.motor_left_error
         self.motor_right_error = settings.motor_right_error
-        self.custom_control_loop_library = settings.custom_control_loop_library
-        self._control_loop_func = self._init_control_loop()
-        self.time_elapsed_s = 0
+        self.lh2_noise_mm = settings.lh2_noise_mm
+        self.time_elapsed_s = 0.0
+        self.ticks = 0
 
+        # Wheels: actual speeds, and the wheel loop's setpoints
+        self.v_left = 0.0
+        self.v_right = 0.0
+        self.setpoint_left = 0.0
+        self.setpoint_right = 0.0
         self.pwm_left = 0
         self.pwm_right = 0
-        # Wheel speeds in mm/s set by a wheel velocity command; None while the
-        # wheels are driven by PWM.
-        self.wheel_velocity: Optional[Tuple[int, int]] = None
-        self._wheel_velocity_deadline = 0.0
-        self.direction = settings.direction
-        # Point the next heading is measured from. The frame origin at boot, as
-        # on the real robot, so the first heading is an origin bearing.
-        self._direction_origin_x = 0.0
-        self._direction_origin_y = 0.0
+        self.drive_mode = DriveMode.IDLE
+        self._last_command_tick = 0
+        # Wheel travel not yet reported in an advertisement, in counts
+        self._encoder_left = 0.0
+        self._encoder_right = 0.0
 
-        # Accumulated encoder deltas between control-loop calls (control runs at
-        # SIMULATOR_UPDATE_INTERVAL_S, physics at SIMULATOR_STEP_DELTA_T — multiple
-        # physics steps per control call)
-        self.encoder_left_acc = 0.0
-        self.encoder_right_acc = 0.0
-        # Last encoder delta actually passed to update_control — advertised to match
-        # real-robot telemetry semantics (the value from the most recent control call)
-        self._last_encoder_left = 0
-        self._last_encoder_right = 0
+        # Estimator life cycle; its pose, when it has one, is the truth
+        self.lh2_visible = True
+        self.estimator_status = (
+            PoseStatus.TRACKING if has_heading else PoseStatus.SEEDING
+        )
+        self._chain_count = 0
+        self._chain_x = 0.0
+        self._chain_y = 0.0
+        self._ticks_since_accept = 0
+        self._last_fix: Optional[Tuple[float, float]] = None
+
+        self.steering = Steering(steering_conf)
+        self._steering_brake = False
+        self.batch_id = 0
+        self._abort_reason = WaypointsAbortReason.STOP
 
         self.calibrated = settings.calibrated
-        self.waypoint_threshold = 0
-        self.waypoints = []
-        self.waypoint_index = 0
-        self.waypoint_x = 0
-        self.waypoint_y = 0
 
         self.logger = LOGGER.bind(context=__name__, address=self.address)
         self._gru_model = None
-        self._gru_buffer: list[list[float]] = (
-            []
-        )  # rolling window of raw feature vectors
+        self._gru_buffer: list[list[float]] = []
         if settings.gru_model_path is not None:
             self._gru_model = self._load_gru_model(settings.gru_model_path)
 
@@ -272,17 +278,14 @@ class DotBotSimulator:
         self.tx_queue = tx_queue
         self.queue = queue.Queue()
         self.advertise_thread = threading.Thread(target=self.advertise, daemon=True)
-        self.control_thread = threading.Thread(target=self.control_thread, daemon=True)
         self.rx_thread = threading.Thread(target=self.rx_frame, daemon=True)
         self.main_thread = threading.Thread(target=self.update_state, daemon=True)
-        self.controller_mode: ControlModeType = ControlModeType.MANUAL
         self._stop_event = threading.Event()
         self.logger.info(
             "DotBot simulator initialized",
             pos_x=self.pos_x,
             pos_y=self.pos_y,
-            direction=self.direction,
-            theta=self.theta,
+            heading=self.heading_deg if has_heading else None,
         )
 
     def _load_gru_model(self, path: Path):
@@ -339,7 +342,6 @@ class DotBotSimulator:
     def start(self):
         self.rx_thread.start()
         self.advertise_thread.start()
-        self.control_thread.start()
         self.main_thread.start()
         self.logger.info("DotBot simulator started")
 
@@ -350,99 +352,227 @@ class DotBotSimulator:
             source=int(self.address, 16),
         )
 
+    # --- Truth and the plant ------------------------------------------------
+
+    @property
+    def controller_mode(self) -> ControlModeType:
+        """The advertisement's mode: AUTO while a batch is in progress."""
+        return ControlModeType.AUTO if self.steering.active else ControlModeType.MANUAL
+
+    @property
+    def direction(self) -> int:
+        """The advertised heading: the estimator's while it tracks, else
+        DIRECTION_NONE."""
+        if self.estimator_status != PoseStatus.TRACKING:
+            return DIRECTION_NONE
+        heading = _lround(self.heading_deg)
+        return heading - 360 if heading >= 180 else heading
+
+    @property
+    def photodiode(self) -> Tuple[float, float]:
+        fx, fy = forward(self.heading_deg)
+        return (
+            self.pos_x + LEVER_ARM_EFFECTIVE_MM * fx,
+            self.pos_y + LEVER_ARM_EFFECTIVE_MM * fy,
+        )
+
+    def _move_body(self, dl: float, dr: float):
+        """Move the truth by a travel of each wheel, in mm."""
+        d = (dl + dr) / 2.0
+        dtheta = (dl - dr) / track_effective_mm(dl, dr) * 180.0 / math.pi
+        fx, fy = forward(self.heading_deg + dtheta / 2.0)
+        self.pos_x += d * fx
+        self.pos_y += d * fy
+        self.heading_deg = wrap180(self.heading_deg + dtheta)
+
     def diff_drive_model_update(self, dt=SIMULATOR_STEP_DELTA_T):
-        """State space model update."""
-        pos_x_old = self.pos_x
-        pos_y_old = self.pos_y
-        theta_old = self.theta
+        """Move open loop on the reported duties alone, with no wheel lag.
 
+        What the controller's twin of a real robot runs on.
+        """
+        v_left = wheel_speed_from_pwm(self.pwm_left) * (1 - self.motor_left_error)
+        v_right = wheel_speed_from_pwm(self.pwm_right) * (1 - self.motor_right_error)
+        self._move_body(v_left * dt, v_right * dt)
+        self._models_update(dt)
+
+    def _wheel_targets(self) -> Tuple[float, float]:
+        if self._steering_brake:
+            return 0.0, 0.0
+        if self.drive_mode == DriveMode.RAW:
+            # Open-loop duty: the motor error shows in the wheel speeds
+            return (
+                wheel_speed_from_pwm(self.pwm_left) * (1 - self.motor_left_error),
+                wheel_speed_from_pwm(self.pwm_right) * (1 - self.motor_right_error),
+            )
+        return self.setpoint_left, self.setpoint_right
+
+    def _wheel_service(self, dt: float):
+        target_left, target_right = self._wheel_targets()
+        gain = 1.0 - math.exp(-dt / WHEEL_TAU_S)
+        v_left = self.v_left + gain * (target_left - self.v_left)
+        v_right = self.v_right + gain * (target_right - self.v_right)
+        dl = (self.v_left + v_left) / 2.0 * dt
+        dr = (self.v_right + v_right) / 2.0 * dt
+        self.v_left, self.v_right = v_left, v_right
+        if abs(self.v_left) < 0.1 and target_left == 0:
+            self.v_left = 0.0
+        if abs(self.v_right) < 0.1 and target_right == 0:
+            self.v_right = 0.0
+        self._encoder_left += dl / MM_PER_COUNT
+        self._encoder_right += dr / MM_PER_COUNT
+        self._move_body(dl, dr)
+        if self.drive_mode != DriveMode.RAW:
+            if self._steering_brake:
+                self.pwm_left = self.pwm_right = 0
+            else:
+                self.pwm_left = pwm_from_wheel_speed(self.setpoint_left)
+                self.pwm_right = pwm_from_wheel_speed(self.setpoint_right)
+
+    # --- Estimator ------------------------------------------------------
+
+    def kidnap(self, x_mm: float, y_mm: float, heading_deg: float):
+        """Move the robot by hand: the estimator loses its heading until
+        motion re-acquires it."""
+        self.pos_x, self.pos_y = float(x_mm), float(y_mm)
+        self.heading_deg = wrap180(float(heading_deg))
+        self.estimator_status = PoseStatus.SEEDING
+        self._chain_count = 0
+
+    def _estimator_predict(self):
+        self._ticks_since_accept += 1
         if (
-            self.wheel_velocity is not None
-            and time.monotonic() > self._wheel_velocity_deadline
+            self.estimator_status == PoseStatus.TRACKING
+            and self._ticks_since_accept > ESTIMATOR_TIMEOUT_TICKS
         ):
-            self._stop_wheel_velocity()
+            self.estimator_status = PoseStatus.LOST
 
-        if self.wheel_velocity is not None:
-            # The onboard wheel loop closes on the encoders, so the motor error
-            # does not show in the wheel speeds.
-            v_left_real, v_right_real = self.wheel_velocity
-        else:
-            # Compute each wheel's real speed considering the motor error and the minimum PWM to move
-            v_left_real = wheel_speed_from_pwm(self.pwm_left) * (
-                1 - self.motor_left_error
-            )
-            v_right_real = wheel_speed_from_pwm(self.pwm_right) * (
-                1 - self.motor_right_error
-            )
+    def _estimator_update(self, x: float, y: float):
+        """A chain of fixes seeds the pose once the photodiode has moved
+        ESTIMATOR_ACQUIRE_MM from the first of them; any later fix is accepted."""
+        if self.estimator_status != PoseStatus.SEEDING:
+            self.estimator_status = PoseStatus.TRACKING
+            self._ticks_since_accept = 0
+            return
+        if self._chain_count == 0:
+            self._chain_x, self._chain_y = x, y
+            self._chain_count = 1
+            return
+        self._chain_count += 1
+        travel = math.hypot(x - self._chain_x, y - self._chain_y)
+        if self._chain_count >= ESTIMATOR_SEED_FIXES and travel >= ESTIMATOR_ACQUIRE_MM:
+            self.estimator_status = PoseStatus.TRACKING
+            self._ticks_since_accept = 0
+            self._chain_count = 0
 
-        V = (v_right_real + v_left_real) / 2
-        w = (v_right_real - v_left_real) / L
-        x_dot = V * cos(theta_old * pi / 180 - pi / 2)
-        y_dot = V * sin(theta_old * pi / 180 + pi / 2)
-        dx = x_dot * dt
-        dy = y_dot * dt
+    def _position_poll(self):
+        if not self.lh2_visible:
+            return
+        x, y = self.photodiode
+        if self.lh2_noise_mm > 0:
+            x += random.gauss(0, self.lh2_noise_mm)
+            y += random.gauss(0, self.lh2_noise_mm)
+        self._last_fix = (x, y)
+        self._estimator_update(x, y)
+        self.steering.fix(x, y)
 
-        self.pos_x = pos_x_old + dx
-        self.pos_y = pos_y_old + dy
-        self.theta = (theta_old + w * dt * 180 / pi) % 360
+    def _pose(self) -> Pose:
+        return Pose(self.estimator_status, self.pos_x, self.pos_y, self.heading_deg)
 
-        origin_dx = self.pos_x - self._direction_origin_x
-        origin_dy = self.pos_y - self._direction_origin_y
-        moved = dx != 0 or dy != 0
-        if moved and sqrt(origin_dx**2 + origin_dy**2) > DIRECTION_THRESHOLD_MM:
-            self.direction = int(-1 * atan2(origin_dx, origin_dy) * 180 / pi) % 360
-            if self.direction > 180:
-                self.direction -= 360
-            self._direction_origin_x = self.pos_x
-            self._direction_origin_y = self.pos_y
+    # --- The app's tick -------------------------------------------------
 
-        # Accumulate encoder counts for this physics step
-        if self.controller_mode == ControlModeType.AUTO:
-            self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
-            self.encoder_right_acc += (
-                v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
-            )
+    def tick(self):
+        """One 10 ms tick of the app, and of the plant under it."""
+        self.ticks += 1
+        self._wheel_service(SIMULATOR_STEP_DELTA_T)
+        self._estimator_predict()
+        if self.ticks % TICKS_PER_POSITION == 0:
+            self._position_poll()
+        if self.ticks % PERIOD_TICKS == 0 and self.drive_mode == DriveMode.WAYPOINT:
+            out = Output()
+            self.steering.step(self._pose(), PERIOD_TICKS, out)
+            self._steering_apply(out)
+        if self.drive_mode == DriveMode.WAYPOINT:
+            out = Output()
+            if self.steering.poll(self._pose(), out):
+                self._steering_apply(out)
+        if self.ticks % TICKS_PER_TIMEOUT == 0:
+            self._timeout_check()
+        self._models_update(SIMULATOR_STEP_DELTA_T)
 
-        # Update GRU feature buffer with the post-step state
+    def _steering_apply(self, out: Output):
+        if out.brake:
+            if not self._steering_brake:
+                self.setpoint_left = self.setpoint_right = 0.0
+                self._steering_brake = True
+            return
+        self._steering_brake = False
+        # Past the wheel limit, both wheels give up the excess, so the turn is kept
+        left, right = out.left_mm_s, out.right_mm_s
+        excess = max(abs(left), abs(right)) - WHEEL_SPEED_MAX_MM_S
+        if excess > 0:
+            shift = excess if left + right >= 0 else -excess
+            left -= shift
+            right -= shift
+        limit = WHEEL_SPEED_MAX_MM_S
+        self.setpoint_left = max(-limit, min(limit, left))
+        self.setpoint_right = max(-limit, min(limit, right))
+
+    def _timeout_check(self):
+        if (
+            self.drive_mode not in (DriveMode.IDLE, DriveMode.WAYPOINT)
+            and self.ticks - self._last_command_tick > TIMEOUT_STOP_TICKS
+        ):
+            self._drive_stop()
+
+    def _enter_drive_mode(self, mode: DriveMode):
+        if mode != DriveMode.WAYPOINT:
+            self.steering.stop()
+        self._steering_brake = False
+        self.drive_mode = mode
+        self.setpoint_left = self.setpoint_right = 0.0
+
+    def _drive_stop(self):
+        self._enter_drive_mode(DriveMode.IDLE)
+        self.pwm_left = self.pwm_right = 0
+
+    def _note_abort(self, reason: WaypointsAbortReason):
+        if self.steering.active:
+            self._abort_reason = reason
+
+    def _models_update(self, dt: float):
+        """The optional learned residual and battery models."""
         if self._gru_model is not None:
             self._gru_buffer.append(
                 [
                     float(self.pwm_left),
                     float(self.pwm_right),
-                    float(self.encoder_left_acc),
-                    float(self.encoder_right_acc),
+                    float(self._encoder_left),
+                    float(self._encoder_right),
                     float(self.direction),
                     float(self.pos_x),
                     float(self.pos_y),
                 ]
             )
-            # Keep only as many steps as needed to avoid unbounded growth
             if len(self._gru_buffer) > GRU_SEQ_LEN_DEFAULT:
                 self._gru_buffer.pop(0)
             res_x, res_y, res_enc_l, res_enc_r = self._gru_residual()
             self.pos_x += res_x
             self.pos_y += res_y
-            if self.controller_mode == ControlModeType.AUTO:
-                self.encoder_left_acc += res_enc_l
-                self.encoder_right_acc += res_enc_r
+            self._encoder_left += res_enc_l
+            self._encoder_right += res_enc_r
 
         self.time_elapsed_s += dt
         if self._battery_model is not None:
             try:
                 import torch
 
-                # Encoders are only reported by the real hardware in AUTO mode;
-                # mirror that here so the battery model sees consistent inputs.
-                in_auto = self.controller_mode == ControlModeType.AUTO
-                enc_left = float(self.encoder_left_acc) if in_auto else 0.0
-                enc_right = float(self.encoder_right_acc) if in_auto else 0.0
                 features = torch.tensor(
                     [
                         [
                             float(self.pwm_left),
                             float(self.pwm_right),
-                            enc_left,
-                            enc_right,
+                            float(self._encoder_left),
+                            float(self._encoder_right),
                             float(int(self.controller_mode)),
                         ]
                     ],
@@ -456,215 +586,150 @@ class DotBotSimulator:
         else:
             self.battery_voltage = battery_discharge_model(self.time_elapsed_s)
 
-        self.logger.debug(
-            "State updated",
-            pos_x=int(self.pos_x),
-            pos_y=int(self.pos_y),
-            theta=int(self.theta),
-            direction=int(self.direction),
-            pwm_left=int(self.pwm_left),
-            pwm_right=int(self.pwm_right),
-        )
-
-    def _stop_wheel_velocity(self):
-        self.wheel_velocity = None
-        self.pwm_left = 0
-        self.pwm_right = 0
-
     def update_state(self):
-        """Update the state of the dotbot simulator."""
+        """Run the app's tick every 10 ms."""
         while True:
             with self._lock:
-                self.diff_drive_model_update()
-            is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
-            if is_stopped:
+                previous = self.steering.state
+                self.tick()
+                if self.steering.state != previous:
+                    self.logger.debug(
+                        "Steering state",
+                        state=self.steering.state.name,
+                        index=self.steering.index,
+                    )
+            if self._stop_event.wait(SIMULATOR_STEP_DELTA_T):
                 break
 
-    def _init_control_loop(self) -> callable:
-        """Initialize the control loop, potentially loading a custom control loop library."""
-        if self.custom_control_loop_library is not None:
-            lib = ctypes.CDLL(self.custom_control_loop_library)
-            self.custom_control_loop_library = lib
+    # --- Radio ----------------------------------------------------------
 
-            lib.control_loop_alloc.argtypes = []
-            lib.control_loop_alloc.restype = ctypes.c_void_p
-
-            lib.control_loop_free.argtypes = [ctypes.c_void_p]
-            lib.control_loop_free.restype = None
-
-            lib.control_loop_set_waypoints.argtypes = [
-                ctypes.c_void_p,
-                ctypes.POINTER(ControlLoopWaypoint),
-                ctypes.c_uint8,
-                ctypes.c_uint32,
-            ]
-            lib.control_loop_set_waypoints.restype = None
-
-            lib.update_control.argtypes = [
-                ctypes.POINTER(RobotControl),
-                ctypes.c_void_p,
-            ]
-            lib.update_control.restype = None
-
-            self._control_ctx = lib.control_loop_alloc()
-            self.custom_robot_control = RobotControl()
-            return self._control_loop_custom
+    def advertisement(self) -> PayloadDotBotAdvertisement:
+        """The app's advertisement, taking the encoder counts it reports."""
+        steering = self.steering
+        if self.estimator_status == PoseStatus.TRACKING:
+            position = self.photodiode
         else:
-            return self._control_loop_default
-
-    def _control_loop_custom(self):
-        """Control loop using a custom control loop library."""
-        self.custom_robot_control.pos_x = int(self.pos_x)
-        self.custom_robot_control.pos_y = int(self.pos_y)
-        self.custom_robot_control.direction = self.direction
-        self._last_encoder_left = int(self.encoder_left_acc)
-        self._last_encoder_right = int(self.encoder_right_acc)
-        self.custom_robot_control.encoder_left = self._last_encoder_left
-        self.custom_robot_control.encoder_right = self._last_encoder_right
-        self.encoder_left_acc = 0
-        self.encoder_right_acc = 0
-
-        self.custom_control_loop_library.update_control(
-            ctypes.byref(self.custom_robot_control),
-            self._control_ctx,
-        )
-
-        self.pwm_left = self.custom_robot_control.pwm_left
-        self.pwm_right = self.custom_robot_control.pwm_right
-        self.waypoint_index = self.custom_robot_control.waypoint_idx
-        self.waypoint_x = self.custom_robot_control.waypoint_x
-        self.waypoint_y = self.custom_robot_control.waypoint_y
-
-        self.logger.info(
-            "Custom loop",
-            pwm_left=self.pwm_left,
-            pwm_right=self.pwm_right,
+            position = self._last_fix or (0.0, 0.0)
+        encoder_left = int(self._encoder_left)
+        encoder_right = int(self._encoder_right)
+        self._encoder_left -= encoder_left
+        self._encoder_right -= encoder_right
+        waypoint_x = waypoint_y = 0
+        if steering.state != SteeringState.IDLE:
+            waypoint_x = _lround(steering.target.x_mm)
+            waypoint_y = _lround(steering.target.y_mm)
+        status, reason = {
+            Completion.IN_PROGRESS: (WaypointsStatus.IN_PROGRESS, 0),
+            Completion.ARRIVED: (WaypointsStatus.ARRIVED, 0),
+            Completion.FAILED: (WaypointsStatus.FAILED, int(steering.fail)),
+            Completion.ABORTED: (WaypointsStatus.ABORTED, int(self._abort_reason)),
+        }.get(steering.completion, (WaypointsStatus.NONE, 0))
+        axle_x = axle_y = AXLE_UNKNOWN
+        if (
+            self.estimator_status == PoseStatus.TRACKING
+            and 0 <= self.pos_x < AXLE_UNKNOWN
+            and 0 <= self.pos_y < AXLE_UNKNOWN
+        ):
+            axle_x, axle_y = _lround(self.pos_x), _lround(self.pos_y)
+        return PayloadDotBotAdvertisement(
+            calibrated=self.calibrated,
             direction=self.direction,
-            encoder_left=int(self.custom_robot_control.encoder_left),
-            encoder_right=int(self.custom_robot_control.encoder_right),
-            waypoint_index=self.custom_robot_control.waypoint_idx,
-            waypoint_x=self.custom_robot_control.waypoint_x,
-            waypoint_y=self.custom_robot_control.waypoint_y,
-            waypoint_reached=self.custom_robot_control.waypoint_reached,
-            all_done=self.custom_robot_control.all_done,
-        )
-
-        if self.custom_robot_control.all_done:
-            self.logger.info("All waypoints completed")
-            self.waypoint_index = 0
-            self.waypoint_x = 0
-            self.waypoint_y = 0
-            self.controller_mode = ControlModeType.MANUAL
-            self.encoder_right_acc = 0
-            self.encoder_left_acc = 0
-
-    def _control_loop_default(self):
-        self._last_encoder_left = int(self.encoder_left_acc)
-        self._last_encoder_right = int(self.encoder_right_acc)
-        self.encoder_left_acc = 0.0
-        self.encoder_right_acc = 0.0
-
-        delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
-        delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
-        distance_to_target = sqrt(delta_x**2 + delta_y**2)
-
-        # check if we are close enough to the "next" waypoint
-        if distance_to_target < self.waypoint_threshold:
-            self.logger.info("Waypoint reached", waypoint_index=self.waypoint_index)
-            self.waypoint_index += 1
-            # check if there are no more waypoints:
-            if self.waypoint_index >= len(self.waypoints):
-                self.logger.info(
-                    "Last waypoint reached", waypoint_index=self.waypoint_index
-                )
-                self.pwm_left = 0
-                self.pwm_right = 0
-                self.waypoint_index = 0
-                self.waypoint_x = 0
-                self.waypoint_y = 0
-                self.controller_mode = ControlModeType.MANUAL
-                self.encoder_right_acc = 0
-                self.encoder_left_acc = 0
-                return
-
-        self.waypoint_x = int(self.waypoints[self.waypoint_index].pos_x)
-        self.waypoint_y = int(self.waypoints[self.waypoint_index].pos_y)
-
-        angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
-        # Steer on the true pose: the advertised direction lags travel, so a
-        # bot turning in place would never see its own heading change.
-        robot_angle = -self.theta
-        if robot_angle >= 180:
-            robot_angle -= 360
-        elif robot_angle < -180:
-            robot_angle += 360
-
-        error_angle = angle_to_target - robot_angle
-        if error_angle >= 180:
-            error_angle -= 360
-        elif error_angle < -180:
-            error_angle += 360
-
-        speed_reduction_factor: float = 1.0
-        if distance_to_target < self.waypoint_threshold * 2:
-            speed_reduction_factor = REDUCE_SPEED_FACTOR
-        if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
-            speed_reduction_factor = REDUCE_SPEED_FACTOR
-
-        angular_speed = (error_angle / 180) * MOTOR_SPEED * ANGULAR_SPEED_GAIN
-        self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
-        self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
-
-        self.logger.info(
-            "Loop update",
-            robot_angle=int(robot_angle),
-            direction=int(self.direction),
-            angle_to_target=int(angle_to_target),
-            error_angle=int(error_angle),
-            angular_speed=int(angular_speed),
+            pos_x=max(0, _lround(position[0])),
+            pos_y=max(0, _lround(position[1])),
+            battery=int(self.battery_voltage),
             pwm_left=int(self.pwm_left),
             pwm_right=int(self.pwm_right),
-            theta=int(self.theta),
-            waypoint=f"{self.waypoint_index}/{len(self.waypoints)}",
+            mode=int(self.controller_mode),
+            encoder_left=encoder_left,
+            encoder_right=encoder_right,
+            waypoint_x=waypoint_x,
+            waypoint_y=waypoint_y,
+            waypoint_idx=steering.index,
+            waypoints_status=int(status),
+            waypoints_reason=reason,
+            batch_id=self.batch_id,
+            max_speed_10mm=_lround(steering.v_max_mm_s / 10.0),
+            axle_x=axle_x,
+            axle_y=axle_y,
+            report=True,
         )
-
-    def control_thread(self):
-        """Control thread to update the state of the dotbot simulator."""
-        while self._stop_event.is_set() is False:
-            if self.controller_mode == ControlModeType.AUTO:
-                with self._lock:
-                    self._control_loop_func()
-            is_stopped = self._stop_event.wait(SIMULATOR_UPDATE_INTERVAL_S)
-            if is_stopped:
-                break
 
     def advertise(self):
         """Send an advertisement message to the gateway."""
         while self._stop_event.is_set() is False:
-            payload = Frame(
-                header=self.header,
-                packet=Packet.from_payload(
-                    PayloadDotBotAdvertisement(
-                        calibrated=self.calibrated,
-                        direction=self.direction,
-                        pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
-                        pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        battery=int(self.battery_voltage),
-                        pwm_left=int(self.pwm_left),
-                        pwm_right=int(self.pwm_right),
-                        mode=int(self.controller_mode),
-                        encoder_left=self._last_encoder_left,
-                        encoder_right=self._last_encoder_right,
-                        waypoint_x=int(self.waypoint_x),
-                        waypoint_y=int(self.waypoint_y),
-                        waypoint_idx=int(self.waypoint_index),
-                    )
-                ),
+            with self._lock:
+                payload = self.advertisement()
+            self.tx_queue.put_nowait(
+                Frame(header=self.header, packet=Packet.from_payload(payload))
             )
-            self.tx_queue.put_nowait(payload)
-            is_stopped = self._stop_event.wait(ADVERTISEMENT_INTERVAL_S)
-            if is_stopped:
+            if self._stop_event.wait(ADVERTISEMENT_INTERVAL_S):
                 break
+
+    def handle_payload(self, payload_type: PayloadType, payload):
+        """Apply one command, as the app's _rx_process()."""
+        if payload_type in (
+            PayloadType.CMD_MOVE_RAW,
+            PayloadType.CMD_WHEEL_VELOCITY,
+            PayloadType.LH2_WAYPOINTS,
+        ):
+            self._last_command_tick = self.ticks
+        if payload_type == PayloadType.CMD_MOVE_RAW:
+            left, right = payload.left_y, payload.right_y
+            left = left - 256 if left > 127 else left
+            right = right - 256 if right > 127 else right
+            self._note_abort(WaypointsAbortReason.DIRECT)
+            self._enter_drive_mode(DriveMode.RAW)
+            self.pwm_left = int(100 * (left / 127))
+            self.pwm_right = int(100 * (right / 127))
+            self.logger.info(
+                "RAW command received", pwm_left=self.pwm_left, pwm_right=self.pwm_right
+            )
+        elif payload_type == PayloadType.CMD_WHEEL_VELOCITY:
+            if self.drive_mode != DriveMode.VELOCITY:
+                self._note_abort(WaypointsAbortReason.DIRECT)
+                self._enter_drive_mode(DriveMode.VELOCITY)
+            limit = WHEEL_SPEED_MAX_MM_S
+            self.setpoint_left = max(-limit, min(limit, payload.left_mm_s))
+            self.setpoint_right = max(-limit, min(limit, payload.right_mm_s))
+            self.logger.info(
+                "Wheel velocity command received",
+                left_mm_s=payload.left_mm_s,
+                right_mm_s=payload.right_mm_s,
+            )
+        elif payload_type == PayloadType.LH2_WAYPOINTS:
+            path, batch_id = path_from_payload(payload)
+            # A resent batch the robot already has, its advertisement not yet heard
+            if batch_id != 0 and batch_id == self.batch_id:
+                return
+            self.batch_id = batch_id
+            self.logger.info(
+                "Waypoints received",
+                batch_id=batch_id,
+                threshold=path.threshold_mm,
+                count=path.count,
+            )
+            if path.count == 0:
+                self._note_abort(WaypointsAbortReason.STOP)
+                self._drive_stop()
+                return
+            if self.drive_mode != DriveMode.WAYPOINT:
+                self._enter_drive_mode(DriveMode.WAYPOINT)
+            self._steering_brake = False
+            self.steering.set_path(path)
+        elif payload_type == PayloadType.CMD_MAX_SPEED:
+            v = payload.max_speed_mm_s
+            if v != 0:
+                v = max(MAX_SPEED_MIN_MM_S, min(MAX_SPEED_MAX_MM_S, v))
+            self.steering.set_max_speed(float(v))
+        elif payload_type == PayloadType.CONTROL_MODE:
+            self._note_abort(WaypointsAbortReason.CONTROL_MODE)
+            self._drive_stop()
+        elif payload_type == PayloadType.CMD_RGB_LED:
+            pass
+        else:
+            self.logger.warning(
+                "Unhandled payload type", payload_type=f"0x{int(payload_type):02X}"
+            )
 
     def rx_frame(self):
         """Decode the serial input received from the gateway."""
@@ -673,93 +738,18 @@ class DotBotSimulator:
             frame = self.queue.get()
             if frame is None:
                 break
+            if self.address != addr_to_hex(int(frame.header.destination)):
+                continue
             with self._lock:
-                if self.address == addr_to_hex(int(frame.header.destination)):
-                    if frame.payload_type == PayloadType.CMD_MOVE_RAW:
-                        self.controller_mode = ControlModeType.MANUAL
-                        self.wheel_velocity = None
-                        self.waypoint_index = 0
-                        self.waypoint_x = 0
-                        self.waypoint_y = 0
-                        self.pwm_left = frame.packet.payload.left_y
-                        self.pwm_right = frame.packet.payload.right_y
-                        if self.pwm_left > 127:
-                            self.pwm_left = self.pwm_left - 256
-                        if self.pwm_right > 127:
-                            self.pwm_right = self.pwm_right - 256
-                        self.logger.info(
-                            "RAW command received",
-                            pwm_left=self.pwm_left,
-                            pwm_right=self.pwm_right,
-                        )
-                    elif frame.payload_type == PayloadType.CMD_WHEEL_VELOCITY:
-                        self.controller_mode = ControlModeType.MANUAL
-                        self.waypoint_index = 0
-                        self.waypoint_x = 0
-                        self.waypoint_y = 0
-                        left = frame.packet.payload.left_mm_s
-                        right = frame.packet.payload.right_mm_s
-                        self.wheel_velocity = (left, right)
-                        self._wheel_velocity_deadline = (
-                            time.monotonic() + WHEEL_VELOCITY_TIMEOUT_S
-                        )
-                        self.pwm_left = pwm_from_wheel_speed(left)
-                        self.pwm_right = pwm_from_wheel_speed(right)
-                        self.logger.info(
-                            "Wheel velocity command received",
-                            left_mm_s=left,
-                            right_mm_s=right,
-                        )
-                    elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
-                        self.wheel_velocity = None
-                        self.waypoint_threshold = frame.packet.payload.threshold
-                        self.waypoints = frame.packet.payload.waypoints
-                        self.waypoint_index = 0
-                        self.encoder_left_acc = 0.0
-                        self.encoder_right_acc = 0.0
-                        if hasattr(self, "_control_ctx"):
-                            n = len(self.waypoints)
-                            WaypointArray = ControlLoopWaypoint * n
-                            waypoint_arr = WaypointArray(
-                                *[
-                                    ControlLoopWaypoint(x=int(w.pos_x), y=int(w.pos_y))
-                                    for w in self.waypoints
-                                ]
-                            )
-                            self.custom_control_loop_library.control_loop_set_waypoints(
-                                self._control_ctx,
-                                waypoint_arr,
-                                n,
-                                int(self.waypoint_threshold),
-                            )
-                        self.logger.info(
-                            "Waypoints received",
-                            threshold=self.waypoint_threshold,
-                            waypoints=self.waypoints,
-                        )
-                        if self.waypoints:
-                            self.controller_mode = ControlModeType.AUTO
-                        else:
-                            self.pwm_left = 0
-                            self.pwm_right = 0
-                            self.controller_mode = ControlModeType.MANUAL
-                    else:
-                        self.logger.warning(
-                            "Unhandled payload type",
-                            payload_type=f"0x{int(frame.payload_type):02X}",
-                        )
+                self.handle_payload(frame.payload_type, frame.packet.payload)
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
         self._stop_event.set()
         self.queue.put_nowait(None)  # unblock the rx_thread if waiting on the queue
         self.advertise_thread.join()
-        self.control_thread.join()
         self.rx_thread.join()
         self.main_thread.join()
-        if hasattr(self, "_control_ctx"):
-            self.custom_control_loop_library.control_loop_free(self._control_ctx)
-            self._control_ctx = None
 
 
 class MariNetworkSimulator:

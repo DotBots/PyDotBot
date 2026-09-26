@@ -1,7 +1,8 @@
-"""Tests for the simulated DotBot's receive path."""
+"""Tests for the simulated DotBot: its receive path, its plant, and the
+sandbox dotbot app it runs."""
 
+import math
 import queue
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,12 +11,11 @@ from dotbot_utils.protocol import Frame, Header, Packet
 from dotbot import addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
-    DIRECTION_THRESHOLD_MM,
-    MOTOR_SPEED,
     SIMULATOR_STEP_DELTA_T,
-    SIMULATOR_UPDATE_INTERVAL_S,
+    TIMEOUT_STOP_TICKS,
     DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
+    DriveMode,
     SimulatedDotBotSettings,
     grid_positions,
     packaged_init_state_path,
@@ -23,23 +23,41 @@ from dotbot.dotbot_simulator import (
     placement_area,
 )
 from dotbot.protocol import (
+    AXLE_UNKNOWN,
     DIRECTION_NONE,
     ControlModeType,
+    PayloadCommandMaxSpeed,
     PayloadCommandMoveRaw,
     PayloadCommandRgbLed,
     PayloadCommandWheelVelocity,
+    PayloadControlMode,
+    PayloadDotBotAdvertisement,
+    PayloadGPSPosition,
     PayloadLH2Location,
     PayloadLH2Waypoints,
+    PayloadWaypointHeading,
+    WaypointsAbortReason,
+    WaypointsFailReason,
+    WaypointsStatus,
 )
 from dotbot.site import Site
+from dotbot.steering import SteeringState
 
 ADDRESS = "BADCAFE111111111"
 
 
-def _bot(address: str) -> DotBotSimulator:
+def _bot(address: str = ADDRESS, **settings) -> DotBotSimulator:
+    settings = {"pos_x": 100, "pos_y": 100, **settings}
     return DotBotSimulator(
-        SimulatedDotBotSettings(address=address, pos_x=100, pos_y=100),
-        queue.Queue(),
+        SimulatedDotBotSettings(address=address, **settings), queue.Queue()
+    )
+
+
+def _frame(bot_or_address, payload) -> Frame:
+    address = getattr(bot_or_address, "address", bot_or_address)
+    return Frame(
+        header=Header(destination=int(address, 16), source=0),
+        packet=Packet().from_payload(payload),
     )
 
 
@@ -53,10 +71,47 @@ def _move_raw(destination: int) -> Frame:
 
 
 def _deliver(bot: DotBotSimulator, frame: Frame) -> None:
-    """Run one pass of the rx loop over a single frame."""
-    bot.queue.put(frame)
+    """Run one pass of the rx loop over a single frame, through the wire."""
+    bot.queue.put(Frame.from_bytes(frame.to_bytes()))
     bot.queue.put(None)  # breaks the loop once the frame is handled
     bot.rx_frame()
+
+
+def _run(bot: DotBotSimulator, seconds: float) -> None:
+    for _ in range(round(seconds / SIMULATOR_STEP_DELTA_T)):
+        bot.tick()
+
+
+def _run_until_done(bot: DotBotSimulator, timeout_s: float) -> None:
+    ticks = 0
+    while bot.steering.active and ticks * SIMULATOR_STEP_DELTA_T < timeout_s:
+        bot.tick()
+        ticks += 1
+    _run(bot, 0.5)  # the run-on
+
+
+def _waypoints(bot, points, threshold=10, batch_id=0, headings=None, pass_mm=0):
+    headings = headings or [None] * len(points)
+    payload = PayloadLH2Waypoints(
+        threshold=threshold,
+        count=len(points),
+        waypoints=[PayloadLH2Location(pos_x=x, pos_y=y) for x, y in points],
+        batch_id=batch_id,
+        pass_mm=pass_mm,
+        headings=[
+            PayloadWaypointHeading()
+            if h is None
+            else PayloadWaypointHeading(heading_cdeg=round(h * 100))
+            for h in headings
+        ],
+    )
+    return _frame(bot, payload)
+
+
+def _wire_advert(bot: DotBotSimulator) -> PayloadDotBotAdvertisement:
+    """The advertisement as the controller parses it."""
+    payload = bot.advertisement()
+    return PayloadDotBotAdvertisement().from_bytes(payload.to_bytes())
 
 
 @pytest.mark.parametrize(
@@ -70,8 +125,9 @@ def _deliver(bot: DotBotSimulator, frame: Frame) -> None:
 def test_a_command_addressed_to_this_bot_is_applied(address):
     bot = _bot(address)
     _deliver(bot, _move_raw(int(address, 16)))
-    assert bot.pwm_left == 80
-    assert bot.pwm_right == 80
+    # The app scales the joystick's +-127 to +-100 duty
+    assert (bot.pwm_left, bot.pwm_right) == (62, 62)
+    assert bot.drive_mode == DriveMode.RAW
 
 
 def test_a_command_for_another_bot_is_ignored():
@@ -82,56 +138,62 @@ def test_a_command_for_another_bot_is_ignored():
 
 
 def _wheel_velocity(bot: DotBotSimulator, left: int, right: int) -> Frame:
-    return Frame(
-        header=Header(destination=int(bot.address, 16), source=0),
-        packet=Packet().from_payload(
-            PayloadCommandWheelVelocity(left_mm_s=left, right_mm_s=right)
-        ),
-    )
+    return _frame(bot, PayloadCommandWheelVelocity(left_mm_s=left, right_mm_s=right))
 
 
 def test_a_wheel_velocity_command_drives_the_wheels_at_that_speed():
-    bot = DotBotSimulator(
-        SimulatedDotBotSettings(address=ADDRESS, motor_left_error=0.3),
-        queue.Queue(),
-    )
+    bot = _bot(motor_left_error=0.3, direction=0)
     _deliver(bot, _wheel_velocity(bot, 300, 300))
-    bot.diff_drive_model_update()
-    assert bot.pos_x == pytest.approx(0)
-    assert bot.pos_y == pytest.approx(300 * SIMULATOR_STEP_DELTA_T)
+    _run(bot, 0.4)
+    assert bot.v_left == pytest.approx(300, abs=1)
+    assert bot.v_right == pytest.approx(300, abs=1)
+    # The wheel loop closes on the encoders: no motor error, no turn
+    assert bot.pos_x == pytest.approx(100)
+    assert bot.heading_deg == pytest.approx(0)
+    # The wheel lag costs 0.05 s of travel
+    assert bot.pos_y == pytest.approx(100 + 300 * (0.4 - 0.05), abs=2)
     assert bot.controller_mode == ControlModeType.MANUAL
 
 
+def test_wheel_speeds_are_capped_at_700_mm_s():
+    bot = _bot()
+    _deliver(bot, _wheel_velocity(bot, 1500, -900))
+    assert (bot.setpoint_left, bot.setpoint_right) == (700, -700)
+
+
 def test_the_wheels_stop_when_wheel_velocity_commands_stop_arriving():
-    bot = _bot(ADDRESS)
+    bot = _bot()
     _deliver(bot, _wheel_velocity(bot, 300, -300))
-    bot._wheel_velocity_deadline = time.monotonic() - 0.01
-    bot.diff_drive_model_update()
-    assert (bot.pos_x, bot.pos_y, bot.theta) == (100, 100, 0)
-    assert (bot.pwm_left, bot.pwm_right) == (0, 0)
+    _run(bot, (TIMEOUT_STOP_TICKS + 20) * SIMULATOR_STEP_DELTA_T)
+    assert bot.drive_mode == DriveMode.IDLE
+    assert (bot.setpoint_left, bot.setpoint_right) == (0, 0)
+    _run(bot, 0.5)
+    assert (bot.v_left, bot.v_right) == (0, 0)
 
 
 def test_a_move_raw_command_takes_over_from_wheel_velocity():
-    bot = _bot(ADDRESS)
+    bot = _bot()
     _deliver(bot, _wheel_velocity(bot, 300, 300))
     _deliver(bot, _move_raw(int(ADDRESS, 16)))
-    assert bot.wheel_velocity is None
-    assert bot.pwm_left == 80
+    assert bot.drive_mode == DriveMode.RAW
+    assert (bot.setpoint_left, bot.setpoint_right) == (0, 0)
+    assert bot.pwm_left == 62
 
 
 def test_an_unhandled_payload_type_is_logged():
-    bot = _bot(ADDRESS)
+    bot = _bot()
     bot.logger = MagicMock()
-    _deliver(
-        bot,
-        Frame(
-            header=Header(destination=int(ADDRESS, 16), source=0),
-            packet=Packet().from_payload(PayloadCommandRgbLed(red=1, green=2, blue=3)),
-        ),
-    )
+    _deliver(bot, _frame(bot, PayloadGPSPosition(latitude=1, longitude=2)))
     bot.logger.warning.assert_called_once_with(
-        "Unhandled payload type", payload_type="0x01"
+        "Unhandled payload type", payload_type="0x05"
     )
+
+
+def test_an_rgb_led_command_is_accepted_quietly():
+    bot = _bot()
+    bot.logger = MagicMock()
+    _deliver(bot, _frame(bot, PayloadCommandRgbLed(red=1, green=2, blue=3)))
+    bot.logger.warning.assert_not_called()
 
 
 def test_the_address_rendering_round_trips():
@@ -140,71 +202,182 @@ def test_the_address_rendering_round_trips():
         assert addr_to_hex(int(address, 16)) == address
 
 
-# --- Heading ----------------------------------------------------------------
+# --- Estimator and advertisement ---------------------------------------------
 
 
-def test_a_fresh_bot_has_no_heading_until_it_has_travelled_past_the_threshold():
-    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
+def test_a_robot_given_a_heading_advertises_it_with_its_axle():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=90)
+    advert = _wire_advert(bot)
+    assert advert.has_report
+    assert advert.direction == 90
+    assert (advert.axle_x, advert.axle_y) == (1000, 1000)
+    # The LH2 position is the photodiode, a lever arm ahead of the axle
+    assert (advert.pos_x, advert.pos_y) == (949, 1000)  # 51.5 mm, rounded half up
+    assert advert.waypoints_status == WaypointsStatus.NONE
+    assert advert.max_speed_10mm == 30
+
+
+def test_a_fresh_robot_has_no_heading_until_its_photodiode_has_moved():
+    bot = _bot(pos_x=1000, pos_y=1000)
+    _run(bot, 1.0)
+    advert = _wire_advert(bot)
+    assert advert.direction == DIRECTION_NONE
+    assert (advert.axle_x, advert.axle_y) == (AXLE_UNKNOWN, AXLE_UNKNOWN)
+    # Standing still, the position is the last raw fix of the photodiode
+    assert (advert.pos_x, advert.pos_y) == (1000, 1052)
+
+    _deliver(bot, _wheel_velocity(bot, 100, 100))
+    _run(bot, 0.3)
+    assert bot.direction == DIRECTION_NONE  # 30 mm: not far enough yet
+    _run(bot, 0.3)
+    assert bot.direction == 0
+
+
+def test_a_kidnapped_robot_loses_its_heading():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=45)
+    bot.kidnap(1500, 1500, 0)
     assert bot.direction == DIRECTION_NONE
 
-    # Started at the frame origin facing north, so pos_y is the travel so far.
-    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
-    while bot.pos_y <= DIRECTION_THRESHOLD_MM:
-        assert bot.direction == DIRECTION_NONE
-        bot.diff_drive_model_update()
+
+def test_without_fixes_a_tracking_robot_goes_lost_after_a_second():
+    bot = _bot(direction=0)
+    bot.lh2_visible = False
+    _run(bot, 0.9)
     assert bot.direction == 0
+    _run(bot, 0.3)
+    assert bot.direction == DIRECTION_NONE
 
 
-def test_the_next_heading_waits_for_another_threshold_of_travel():
-    """The recorded point advances with the heading, not with every step."""
-    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
-    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
-    while bot.direction == DIRECTION_NONE:
-        bot.diff_drive_model_update()
-
-    bot.theta = 90  # turned east, where a recomputed heading reads -90
-    bot.diff_drive_model_update()
-    assert bot.direction == 0
-    while bot.pos_x <= DIRECTION_THRESHOLD_MM:
-        bot.diff_drive_model_update()
-    assert bot.direction == -90
+def test_the_advertisement_reports_the_encoder_counts_since_the_last_one():
+    bot = _bot(direction=0)
+    _deliver(bot, _wheel_velocity(bot, 200, 200))
+    _run(bot, 0.5)
+    first = bot.advertisement()
+    second = bot.advertisement()
+    assert first.encoder_left > 500
+    assert (second.encoder_left, second.encoder_right) == (0, 0)
 
 
-def _drive_to(bot: DotBotSimulator, x: int, y: int, timeout_s: float) -> None:
-    """Run control and physics at their real rates until the waypoint run ends."""
-    waypoints = [PayloadLH2Location(pos_x=x, pos_y=y)]
-    _deliver(
-        bot,
-        Frame(
-            header=Header(destination=int(bot.address, 16), source=0),
-            packet=Packet().from_payload(
-                PayloadLH2Waypoints(threshold=50, count=1, waypoints=waypoints)
-            ),
-        ),
-    )
-    physics_per_control = round(SIMULATOR_UPDATE_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
-    elapsed = 0.0
-    while bot.controller_mode == ControlModeType.AUTO and elapsed < timeout_s:
-        bot._control_loop_default()
-        for _ in range(physics_per_control):
-            bot.diff_drive_model_update()
-        elapsed += SIMULATOR_UPDATE_INTERVAL_S
+# --- Waypoints -----------------------------------------------------------------
 
 
 @pytest.mark.parametrize("direction", [90, DIRECTION_NONE], ids=["heading", "none"])
-def test_the_default_control_loop_reaches_a_waypoint_it_must_turn_toward(direction):
-    """Guards against steering on the advertised heading, which a bot turning
-    in place never updates, so it spins without arriving."""
-    bot = DotBotSimulator(
-        SimulatedDotBotSettings(
-            address=ADDRESS, pos_x=1000, pos_y=1000, direction=direction
-        ),
-        queue.Queue(),
-    )
-    _drive_to(bot, 1000, 300, timeout_s=10)
-    assert bot.controller_mode == ControlModeType.MANUAL
-    assert (bot.pos_x - 1000) ** 2 + (bot.pos_y - 300) ** 2 < 50**2
-    assert bot.direction != DIRECTION_NONE
+def test_a_robot_reaches_a_target_it_must_turn_toward(direction):
+    bot = _bot(pos_x=1000, pos_y=1000, direction=direction)
+    _deliver(bot, _waypoints(bot, [(1000, 300)], batch_id=3))
+    assert bot.controller_mode == ControlModeType.AUTO
+    _run_until_done(bot, timeout_s=15)
+    assert bot.steering.state == SteeringState.ARRIVED
+    assert math.hypot(bot.pos_x - 1000, bot.pos_y - 300) < 10
+    advert = _wire_advert(bot)
+    assert advert.mode == ControlModeType.MANUAL
+    assert advert.waypoints_status == WaypointsStatus.ARRIVED
+    assert (advert.batch_id, advert.waypoint_idx) == (3, 1)
+    assert advert.direction != DIRECTION_NONE
+
+
+def test_a_robot_turns_in_place_before_it_drives():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1500, 1000)]))
+    states = []
+    for _ in range(300):
+        bot.tick()
+        if not states or states[-1][0] != bot.steering.state:
+            states.append((bot.steering.state, bot.pos_x, bot.pos_y))
+    assert [s for s, *_ in states[:3]] == [
+        SteeringState.NO_HEADING,
+        SteeringState.ALIGN,
+        SteeringState.DRIVE,
+    ]
+    # ALIGN turned about the axle: still at the start when DRIVE began
+    _, x, y = states[2]
+    assert math.hypot(x - 1000, y - 1000) < 2
+
+
+def test_a_pose_waypoint_ends_facing_its_heading():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1300, 1300)], headings=[-90.0]))
+    _run_until_done(bot, timeout_s=15)
+    assert bot.steering.state == SteeringState.ARRIVED
+    assert abs(bot.heading_deg - -90) < 3
+
+
+def test_a_batch_passes_its_intermediate_points_without_stopping():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1000, 1400), (1400, 1400)], pass_mm=40))
+    seen = set()
+    while bot.steering.active:
+        bot.tick()
+        if bot.steering.index == 1:
+            seen.add(round(math.hypot(bot.v_left, bot.v_right)))
+    assert bot.steering.state == SteeringState.ARRIVED
+    assert min(seen) > 0  # never stood still at the corner
+
+
+def test_a_repeat_of_the_current_batch_id_is_ignored():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1000, 1500)], batch_id=7))
+    _run(bot, 0.5)
+    _deliver(bot, _waypoints(bot, [(2000, 2000)], batch_id=7))
+    assert (bot.steering.target.x_mm, bot.steering.target.y_mm) == (1000, 1500)
+    _deliver(bot, _waypoints(bot, [(2000, 2000)], batch_id=8))
+    assert (bot.steering.target.x_mm, bot.steering.target.y_mm) == (2000, 2000)
+
+
+def test_a_new_batch_while_driving_carries_on_driving():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1000, 2000)], batch_id=1))
+    _run(bot, 1.0)
+    assert bot.steering.state == SteeringState.DRIVE
+    _deliver(bot, _waypoints(bot, [(1000, 2500)], batch_id=2))
+    assert bot.steering.state == SteeringState.DRIVE
+    assert bot.setpoint_left > 100
+
+
+def test_max_speed_is_clamped_and_advertised():
+    bot = _bot(direction=0)
+    for sent, advertised in [(150, 15), (5, 2), (5000, 70), (0, 30)]:
+        _deliver(bot, _frame(bot, PayloadCommandMaxSpeed(max_speed_mm_s=sent)))
+        assert _wire_advert(bot).max_speed_10mm == advertised
+
+
+def test_max_speed_caps_the_cruise():
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _frame(bot, PayloadCommandMaxSpeed(max_speed_mm_s=120)))
+    _deliver(bot, _waypoints(bot, [(1000, 2500)]))
+    _run(bot, 3.0)
+    assert max(bot.v_left, bot.v_right) == pytest.approx(120, abs=2)
+
+
+@pytest.mark.parametrize(
+    "command, reason",
+    [
+        (lambda bot: _move_raw(int(bot.address, 16)), WaypointsAbortReason.DIRECT),
+        (lambda bot: _wheel_velocity(bot, 0, 0), WaypointsAbortReason.DIRECT),
+        (lambda bot: _waypoints(bot, [], batch_id=9), WaypointsAbortReason.STOP),
+        (lambda bot: _frame(bot, PayloadControlMode()), WaypointsAbortReason.CONTROL_MODE),
+    ],
+    ids=["raw", "velocity", "empty batch", "control mode"],
+)
+def test_a_command_that_stops_a_batch_reports_it_aborted(command, reason):
+    bot = _bot(pos_x=1000, pos_y=1000, direction=0)
+    _deliver(bot, _waypoints(bot, [(1000, 2000)], batch_id=1))
+    _run(bot, 0.5)
+    _deliver(bot, command(bot))
+    advert = _wire_advert(bot)
+    assert advert.waypoints_status == WaypointsStatus.ABORTED
+    assert advert.waypoints_reason == reason
+    assert advert.mode == ControlModeType.MANUAL
+
+
+def test_a_batch_that_cannot_get_a_heading_reports_it_failed():
+    bot = _bot(pos_x=1000, pos_y=1000)
+    bot.lh2_visible = False
+    _deliver(bot, _waypoints(bot, [(1000, 2000)], batch_id=1))
+    _run(bot, 4.0)
+    advert = _wire_advert(bot)
+    assert advert.waypoints_status == WaypointsStatus.FAILED
+    assert advert.waypoints_reason == WaypointsFailReason.NO_HEADING
 
 
 # --- Placement of a world file's unpositioned robots -------------------------

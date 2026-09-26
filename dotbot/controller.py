@@ -547,7 +547,6 @@ class Controller:
         address: str,
         pwm_left: int,
         pwm_right: int,
-        controller_mode: ControlModeType = ControlModeType.MANUAL,
         init_pos_x: int = 0,
         init_pos_y: int = 0,
         init_direction: int = 0,
@@ -571,15 +570,12 @@ class Controller:
                 ),
                 queue.Queue(),
             )
-            twin._direction_origin_x = init_pos_x
-            twin._direction_origin_y = init_pos_y
             twin.encoder_left_acc = init_encoder_left
             twin.encoder_right_acc = init_encoder_right
             self._dotbot_twins[address] = twin
             self._dotbot_twin_timestamps[address] = now
         twin.pwm_left = pwm_left
         twin.pwm_right = pwm_right
-        twin.controller_mode = controller_mode
         dt = now - self._dotbot_twin_timestamps[address]
         self._dotbot_twin_timestamps[address] = now
         twin.diff_drive_model_update(dt)
@@ -776,7 +772,6 @@ class Controller:
                         address=dotbot.address,
                         pwm_left=frame.packet.payload.pwm_left,
                         pwm_right=frame.packet.payload.pwm_right,
-                        controller_mode=ControlModeType(frame.packet.payload.mode),
                         init_pos_x=new_position.x,
                         init_pos_y=new_position.y,
                         init_direction=frame.packet.payload.direction,
