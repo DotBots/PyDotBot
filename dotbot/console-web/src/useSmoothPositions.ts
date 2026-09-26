@@ -71,6 +71,12 @@ export function nextPosState(
   };
 }
 
+/** Whether any state is still mid-transition at `now`. */
+export function animating(states: Iterable<PosState>, now: number): boolean {
+  for (const s of states) if (now < s.t0 + s.duration) return true;
+  return false;
+}
+
 // Smoothed per-bot positions, keyed by bot id. Only bots with a known
 // position are present. Re-renders on every animation frame while at least
 // one bot is mid-transition; callers read from the returned map instead of
@@ -94,8 +100,12 @@ export function useSmoothPositions(
 
   useEffect(() => {
     let raf: number;
+    let wasAnimating = false;
     const loop = () => {
-      tick((n) => n + 1);
+      const active = animating(statesRef.current.values(), performance.now());
+      // One frame past the last transition, so every glyph lands on its target.
+      if (active || wasAnimating) tick((n) => n + 1);
+      wasAnimating = active;
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

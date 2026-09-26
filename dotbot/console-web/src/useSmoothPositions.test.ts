@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_DURATION_MS,
   MIN_DURATION_MS,
+  animating,
   lerpPos,
   nextPosState,
   positionAt,
@@ -62,5 +63,19 @@ describe("positionAt", () => {
     const s = nextPosState(nextPosState(undefined, { x: 0, y: 0 }, 0, MAP_DIAGONAL), { x: 100, y: 0 }, 0, MAP_DIAGONAL);
     const withDuration = { ...s, duration: 200 };
     expect(positionAt(withDuration, 500)).toEqual({ x: 100, y: 0 });
+  });
+});
+
+describe("animating", () => {
+  const state = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 }, t0: 1000, duration: 200, lastUpdateAt: 1000 };
+
+  it("holds while a transition is in flight", () => {
+    expect(animating([state], 1100)).toBe(true);
+  });
+
+  it("stops once every transition has ended, so an idle map stops re-rendering", () => {
+    expect(animating([state], 1200)).toBe(false);
+    expect(animating([{ ...state, duration: 0 }], 1000)).toBe(false);
+    expect(animating([], 0)).toBe(false);
   });
 });
