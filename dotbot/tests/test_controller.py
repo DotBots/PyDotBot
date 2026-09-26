@@ -1,6 +1,7 @@
 """Test module for controller base class."""
 
 import asyncio
+import json
 import pathlib
 import time
 from unittest.mock import MagicMock
@@ -1291,3 +1292,116 @@ async def test_a_direct_command_cancels_a_pending_batch(controller, clock, comma
     controller.handle_received_frame(_report(batch_id=3))
     assert controller.adapter.send_payload.call_count == 2
     assert not controller.pending_commands
+
+
+# --- the status notifications an advertisement produces ---------------------
+
+
+class _StatusClient:
+    """A status WebSocket client that keeps what it is sent."""
+
+    def __init__(self):
+        self.messages = []
+
+    async def send_text(self, text):
+        self.messages.append(json.loads(text))
+
+
+async def _sent(controller, *frames):
+    """The messages a status client receives for `frames`, in order."""
+    client = _StatusClient()
+    controller.websockets = [client]
+    for frame in frames:
+        controller.handle_received_frame(frame)
+        # The broadcast task, then the send it gathers
+        for _ in range(3):
+            await asyncio.sleep(0)
+    return client.messages
+
+
+@pytest.mark.asyncio
+async def test_an_update_carries_the_new_fix_and_no_position_history(controller):
+    controller.handle_received_frame(_advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    controller.seed_trail(
+        addr_to_hex(BOT), [DotBotLH2Position(x=i, y=i) for i in range(1000)]
+    )
+    (update,) = await _sent(
+        controller, _advertised(BOT, direction=0, pos_x=1500, pos_y=1000)
+    )
+    assert update["cmd"] == 2
+    assert "position_history" not in update["data"]
+    assert update["data"]["lh2_position"] == {"x": 1500.0, "y": 1000.0}
+    assert update["data"]["pose"]["photodiode"] == {"x": 1500.0, "y": 1000.0}
+    assert len(controller.position_history(addr_to_hex(BOT))) == 1000
+
+
+@pytest.mark.asyncio
+async def test_an_update_carries_only_what_changed(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=3000)
+    )
+    (update,) = await _sent(
+        controller,
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=2900),
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert update == {
+        "cmd": 2,
+        "data": {
+            "address": addr_to_hex(BOT),
+            "last_seen": dotbot.last_seen,
+            "battery": 2.9,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_unchanged_advertisement_sends_nothing(controller):
+    frame = _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    controller.handle_received_frame(frame)
+    assert await _sent(controller, frame) == []
+
+
+@pytest.mark.asyncio
+async def test_an_update_carries_the_waypoint_report_whole(controller):
+    controller.handle_received_frame(
+        _advertised(
+            BOT,
+            direction=0,
+            pos_x=1000,
+            pos_y=1000,
+            axle_x=1000,
+            axle_y=971,
+            waypoints_status=WaypointsStatus.IN_PROGRESS,
+            waypoint_idx=0,
+            report=True,
+        )
+    )
+    (update,) = await _sent(
+        controller,
+        _advertised(
+            BOT,
+            direction=0,
+            pos_x=1000,
+            pos_y=1000,
+            axle_x=1000,
+            axle_y=971,
+            waypoints_status=WaypointsStatus.IN_PROGRESS,
+            waypoint_idx=1,
+            report=True,
+        ),
+    )
+    data = update["data"]
+    assert data["waypoint_index"] == 1
+    assert data["waypoints_status"] == WaypointsStatus.IN_PROGRESS
+    assert data["axle_position"] == {"x": 1000.0, "y": 971.0}
+    # The fix travels with the axle estimate the robot reports beside it
+    assert data["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+
+
+@pytest.mark.asyncio
+async def test_a_new_robot_is_announced_without_data(controller):
+    (message,) = await _sent(
+        controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    assert message == {"cmd": 4}

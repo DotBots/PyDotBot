@@ -151,6 +151,19 @@ WAYPOINTS_REPORT_FIELDS = (
     "max_speed",
     "axle_position",
 )
+# Fields an UPDATE carries together whenever one of them changed, because
+# its readers take them as a set: the waypoint report is read whole, and the
+# fix is read beside the axle estimate the robot may report instead of it.
+_POSE_FIELDS = ("lh2_position", "pose", "direction", "axle_position")
+UPDATE_FIELD_GROUPS = {
+    **{name: WAYPOINTS_REPORT_FIELDS for name in WAYPOINTS_REPORT_FIELDS},
+    **{name: _POSE_FIELDS for name in _POSE_FIELDS},
+    "axle_position": tuple(dict.fromkeys(_POSE_FIELDS + WAYPOINTS_REPORT_FIELDS)),
+}
+# Changes that alone send no UPDATE: clients extend their own trail from
+# lh2_position, and last_seen changes with every frame but rides on every
+# UPDATE sent
+UPDATE_EXCLUDED_FIELDS = {"position_history", "last_seen"}
 
 
 def load_calibration(spec: str, site: Optional[str] = None):
@@ -192,7 +205,8 @@ class RobotRecord:
 
     `revs` maps a field of the model to the controller `seq` it last changed
     at. `trail` is the position history, oldest first, each point with the
-    `seq` it was added at.
+    `seq` it was added at. `notified` is the `seq` up to which the robot's
+    changes have been sent to status clients.
     """
 
     revs: Dict[str, int] = dataclasses.field(default_factory=dict)
@@ -201,6 +215,7 @@ class RobotRecord:
             default_factory=lambda: deque(maxlen=MAX_POSITION_HISTORY_SIZE)
         )
     )
+    notified: int = 0
 
 
 class ControllerException(Exception):
@@ -891,16 +906,36 @@ class Controller:
 
         if self.settings.verbose is True:
             print(frame)
-        if notification_cmd == DotBotNotificationCommand.UPDATE:
-            notification = DotBotNotificationModel(
-                cmd=notification_cmd.value,
-                data=self.dotbot_with_history(source, MAX_POSITION_HISTORY_SIZE),
-            )
-        elif notification_cmd == DotBotNotificationCommand.NEW_DOTBOT:
-            notification = DotBotNotificationModel(cmd=notification_cmd.value)
-        else:
+        if notification_cmd == DotBotNotificationCommand.NONE:
             return
-        asyncio.create_task(self.notify_clients(notification))
+        if not self.websockets or notification_cmd == DotBotNotificationCommand.NEW_DOTBOT:
+            record.notified = self.seq
+            if self.websockets:
+                asyncio.create_task(self._broadcast({"cmd": notification_cmd.value}))
+            return
+        message = self._update_message(dotbot, record)
+        if message is not None:
+            asyncio.create_task(self._broadcast(message))
+
+    def _update_message(self, dotbot: DotBotModel, record: RobotRecord):
+        """The UPDATE carrying what changed on a robot since the last one
+        sent, or None when nothing an UPDATE carries did."""
+        fields = set()
+        for name, rev in record.revs.items():
+            if rev > record.notified:
+                fields.update(UPDATE_FIELD_GROUPS.get(name, (name,)))
+        record.notified = self.seq
+        fields -= UPDATE_EXCLUDED_FIELDS
+        if not fields:
+            return None
+        return {
+            "cmd": DotBotNotificationCommand.UPDATE.value,
+            "data": {
+                "address": dotbot.address,
+                "last_seen": dotbot.last_seen,
+                **dotbot.model_dump(include=fields, exclude_none=True),
+            },
+        }
 
     def _lh2_fix(
         self,
