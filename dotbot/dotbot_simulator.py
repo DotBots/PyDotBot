@@ -97,6 +97,8 @@ INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
+# How far the live clock may fall behind the wall before it stops catching up
+MAX_LAG_TICKS = 10
 ADVERTISEMENT_TICKS = round(ADVERTISEMENT_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
 
 MARI_SLOTFRAME_SIZE = (
@@ -275,13 +277,8 @@ class DotBotSimulator:
         if settings.battery_model_path is not None:
             self._battery_model = self._load_battery_model(settings.battery_model_path)
 
-        self._lock = threading.Lock()
         self.tx_queue = tx_queue
         self.queue = queue.Queue()
-        self.advertise_thread = threading.Thread(target=self.advertise, daemon=True)
-        self.rx_thread = threading.Thread(target=self.rx_frame, daemon=True)
-        self.main_thread = threading.Thread(target=self.update_state, daemon=True)
-        self._stop_event = threading.Event()
         self.logger.info(
             "DotBot simulator initialized",
             pos_x=self.pos_x,
@@ -339,12 +336,6 @@ class DotBotSimulator:
         except Exception as exc:  # noqa: BLE001
             self.logger.warning("GRU inference failed", error=str(exc))
             return 0.0, 0.0, 0.0, 0.0
-
-    def start(self):
-        self.rx_thread.start()
-        self.advertise_thread.start()
-        self.main_thread.start()
-        self.logger.info("DotBot simulator started")
 
     @property
     def header(self):
@@ -587,21 +578,6 @@ class DotBotSimulator:
         else:
             self.battery_voltage = battery_discharge_model(self.time_elapsed_s)
 
-    def update_state(self):
-        """Run the app's tick every 10 ms."""
-        while True:
-            with self._lock:
-                previous = self.steering.state
-                self.tick()
-                if self.steering.state != previous:
-                    self.logger.debug(
-                        "Steering state",
-                        state=self.steering.state.name,
-                        index=self.steering.index,
-                    )
-            if self._stop_event.wait(SIMULATOR_STEP_DELTA_T):
-                break
-
     # --- Radio ----------------------------------------------------------
 
     def advertisement(self) -> PayloadDotBotAdvertisement:
@@ -659,15 +635,6 @@ class DotBotSimulator:
         return Frame(
             header=self.header, packet=Packet.from_payload(self.advertisement())
         )
-
-    def advertise(self):
-        """Send an advertisement message to the gateway."""
-        while self._stop_event.is_set() is False:
-            with self._lock:
-                frame = self._advertisement_frame()
-            self.tx_queue.put_nowait(frame)
-            if self._stop_event.wait(ADVERTISEMENT_INTERVAL_S):
-                break
 
     def handle_payload(self, payload_type: PayloadType, payload):
         """Apply one command, as the app's _rx_process()."""
@@ -735,66 +702,44 @@ class DotBotSimulator:
                 "Unhandled payload type", payload_type=f"0x{int(payload_type):02X}"
             )
 
-    def _rx(self, frame: Frame):
-        if self.address != addr_to_hex(int(frame.header.destination)):
-            return
-        with self._lock:
-            self.handle_payload(frame.payload_type, frame.packet.payload)
-
-    def rx_frame(self):
-        """Decode the serial input received from the gateway."""
-
-        while self._stop_event.is_set() is False:
-            frame = self.queue.get()
-            if frame is None:
-                break
-            self._rx(frame)
+    def receive(self):
+        """Apply the frames the gateway has queued for this robot."""
+        while not self.queue.empty():
+            frame = self.queue.get_nowait()
+            if self.address == addr_to_hex(int(frame.header.destination)):
+                self.handle_payload(frame.payload_type, frame.packet.payload)
 
     def step(self, phase: int = 0):
-        """One tick on the caller's thread, in place of start()'s threads:
-        the frames received since the last step, the tick, and the
-        advertisement when `phase` ticks past an advertising interval."""
-        while True:
-            try:
-                frame = self.queue.get_nowait()
-            except queue.Empty:
-                break
-            if frame is not None:
-                self._rx(frame)
-        with self._lock:
-            self.tick()
-            if (self.ticks + phase) % ADVERTISEMENT_TICKS == 0:
-                self.tx_queue.put_nowait(self._advertisement_frame())
-
-    def stop(self):
-        self.logger.info(f"Stopping DotBot {self.address} simulator...")
-        self._stop_event.set()
-        self.queue.put_nowait(None)  # unblock the rx_thread if waiting on the queue
-        self.advertise_thread.join()
-        self.rx_thread.join()
-        self.main_thread.join()
+        """One tick: the frames received since the last step, the tick, and
+        the advertisement when `phase` ticks past an advertising interval."""
+        self.receive()
+        previous = self.steering.state
+        self.tick()
+        if self.steering.state != previous:
+            self.logger.debug(
+                "Steering state",
+                state=self.steering.state.name,
+                index=self.steering.index,
+            )
+        if (self.ticks + phase) % ADVERTISEMENT_TICKS == 0:
+            self.tx_queue.put_nowait(self._advertisement_frame())
 
 
 class MariNetworkSimulator:
-    """TSCH slot-based network simulator modelling the Mari link layer."""
+    """TSCH slot-based network simulator modelling the Mari link layer.
+
+    Runs on the simulator's clock: frames are scheduled from `now`, in
+    simulated seconds, and `deliver()` hands over those whose slot has come.
+    """
 
     def __init__(self, settings: SimulatedNetworkSettings, on_frame_received: Callable):
         self._settings = settings
         self._on_frame_received = on_frame_received
         self._heap: list = []
         self._seq = 0
-        self._cond = threading.Condition()
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-
-    def start(self):
-        self._thread.start()
-
-    def stop(self):
-        self._stop_event.set()
-        with self._cond:
-            self._cond.notify_all()
-        self._thread.join()
+        self.now = 0.0
+        # Downlinks are scheduled from the controller's thread
+        self._lock = threading.Lock()
 
     def _slot_delay_s(self, dotbot_index: int, slot_shift: int = 0) -> float:
         slotframe_duration_s = (
@@ -802,15 +747,13 @@ class MariNetworkSimulator:
         )
         slot_pos = (dotbot_index + slot_shift) % MARI_SLOTFRAME_SIZE
         slot_offset_s = slot_pos * self._settings.slot_duration_ms / 1000
-        phase = time.monotonic() % slotframe_duration_s
+        phase = self.now % slotframe_duration_s
         return (slot_offset_s - phase) % slotframe_duration_s
 
     def _enqueue(self, delay_s: float, fn: Callable):
-        delivery = time.monotonic() + delay_s
-        with self._cond:
-            heapq.heappush(self._heap, (delivery, self._seq, fn))
+        with self._lock:
+            heapq.heappush(self._heap, (self.now + delay_s, self._seq, fn))
             self._seq += 1
-            self._cond.notify()
 
     def schedule_uplink(self, frame, dotbot_index: int):
         if random.randint(0, 100) > self._settings.uplink_pdr:
@@ -831,24 +774,13 @@ class MariNetworkSimulator:
         )
         self._enqueue(delay, lambda: dotbot.queue.put_nowait(frame))
 
-    def _run(self):
-        with self._cond:
-            while not self._stop_event.is_set():
-                now = time.monotonic()
-                if self._heap:
-                    deadline, _, fn = self._heap[0]
-                    if deadline <= now:
-                        heapq.heappop(self._heap)
-                        self._cond.release()
-                        try:
-                            fn()
-                        finally:
-                            self._cond.acquire()
-                        continue
-                    wait = deadline - now
-                else:
-                    wait = None
-                self._cond.wait(timeout=wait)
+    def deliver(self):
+        while True:
+            with self._lock:
+                if not self._heap or self._heap[0][0] > self.now:
+                    return
+                _, _, fn = heapq.heappop(self._heap)
+            fn()
 
 
 def packaged_init_state_path() -> Path:
@@ -941,7 +873,12 @@ def place_dotbots(
 
 
 class DotBotSimulatorCommunicationInterface:
-    """Bidirectional serial interface to control simulated robots"""
+    """Bidirectional serial interface to control simulated robots.
+
+    One clock drives the whole fleet: `step()` advances every robot one tick
+    on the caller's thread, and `start()` runs it on a thread at the tick
+    rate of the wall clock.
+    """
 
     def __init__(
         self,
@@ -951,7 +888,8 @@ class DotBotSimulatorCommunicationInterface:
     ):
         self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
-        self._stp_event = threading.Event()
+        self.ticks = 0
+        self._stop_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
         init_state = InitStateToml(
             **toml.load(resolve_init_state_path(simulator_init_state))
@@ -973,47 +911,47 @@ class DotBotSimulatorCommunicationInterface:
         self.logger = LOGGER.bind(context=__name__)
 
     def start(self):
-        for dotbot in self.dotbots:
-            dotbot.start()
-        if self._mari is not None:
-            self._mari.start()
         self.main_thread.start()
         self.logger.info("DotBot Simulation Started")
 
     def run(self):
-        """Listen continuously at each byte received on the fake serial interface."""
-        while self._stp_event.is_set() is False:
-            frame = self.queue.get()
-            if frame is None:
-                break
-            self.handle_dotbot_frame(frame)
+        """Step the fleet every SIMULATOR_STEP_DELTA_T of wall-clock time.
+
+        A step that overruns is followed at once by the next; once the fleet
+        is more than MAX_LAG_TICKS behind, simulated time gives up the lag
+        rather than catching it up in a burst.
+        """
+        deadline = time.monotonic()
+        while not self._stop_event.is_set():
+            self.step()
+            deadline += SIMULATOR_STEP_DELTA_T
+            delay = deadline - time.monotonic()
+            if delay > 0:
+                self._stop_event.wait(delay)
+            elif -delay > MAX_LAG_TICKS * SIMULATOR_STEP_DELTA_T:
+                deadline = time.monotonic()
 
     def stop(self):
         self.logger.info("Stopping DotBot Simulation...")
-        self._stp_event.set()
-        self.queue.put_nowait(None)  # unblock the run thread if waiting on the queue
-        for dotbot in self.dotbots:
-            dotbot.stop()
-        if self._mari is not None:
-            self._mari.stop()
-        self.main_thread.join()
+        self._stop_event.set()
+        if self.main_thread.is_alive():
+            self.main_thread.join()
 
     def step(self):
-        """Advance every robot one tick on the caller's thread, in place of
-        start(), and hand their advertisements over before returning.
+        """Advance every robot one tick and hand over, before returning, the
+        frames due by the end of it.
 
-        Robots advertise out of phase with one another. A robot on the "mari"
-        network mode schedules on the wall clock, so needs start().
+        Robots advertise out of phase with one another.
         """
         for index, dotbot in enumerate(self.dotbots):
             dotbot.step(phase=index)
-        while True:
-            try:
-                frame = self.queue.get_nowait()
-            except queue.Empty:
-                break
-            if frame is not None:
-                self.handle_dotbot_frame(frame)
+        self.ticks += 1
+        if self._mari is not None:
+            self._mari.now = self.ticks * SIMULATOR_STEP_DELTA_T
+        while not self.queue.empty():
+            self.handle_dotbot_frame(self.queue.get_nowait())
+        if self._mari is not None:
+            self._mari.deliver()
 
     def flush(self):
         """Flush fake serial output."""

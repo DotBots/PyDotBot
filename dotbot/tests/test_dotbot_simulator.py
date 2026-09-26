@@ -3,14 +3,19 @@ sandbox dotbot app it runs."""
 
 import math
 import queue
+import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
+import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 
 from dotbot import addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
+    ADVERTISEMENT_TICKS,
+    MARI_SLOTFRAME_SIZE,
     SIMULATOR_STEP_DELTA_T,
     TIMEOUT_STOP_TICKS,
     DotBotSimulator,
@@ -71,10 +76,9 @@ def _move_raw(destination: int) -> Frame:
 
 
 def _deliver(bot: DotBotSimulator, frame: Frame) -> None:
-    """Run one pass of the rx loop over a single frame, through the wire."""
+    """Hand the robot a single frame, through the wire."""
     bot.queue.put(Frame.from_bytes(frame.to_bytes()))
-    bot.queue.put(None)  # breaks the loop once the frame is handled
-    bot.rx_frame()
+    bot.receive()
 
 
 def _run(bot: DotBotSimulator, seconds: float) -> None:
@@ -506,3 +510,61 @@ def test_the_packaged_world_ships_a_robot_with_no_heading():
         site=HALL,
     )
     assert [bot.direction for bot in interface.dotbots].count(DIRECTION_NONE) == 1
+
+
+def _interface(tmp_path, dotbots, network=None):
+    world = tmp_path / "world.toml"
+    body = {"dotbots": dotbots, **({"network": network} if network else {})}
+    world.write_text(toml.dumps(body))
+    received = []
+    interface = DotBotSimulatorCommunicationInterface(received.append, str(world))
+    return interface, received
+
+
+def test_the_live_fleet_runs_on_one_thread_at_the_wall_clock(tmp_path):
+    interface, received = _interface(
+        tmp_path, [{"address": f"{i:016X}", "pos_x": 100, "pos_y": 100} for i in (1, 2)]
+    )
+    threads = threading.active_count()
+    interface.start()
+    try:
+        assert threading.active_count() == threads + 1
+        began = time.monotonic()
+        time.sleep(0.6)
+        elapsed = time.monotonic() - began
+    finally:
+        interface.stop()
+    assert not interface.main_thread.is_alive()
+    assert interface.ticks == pytest.approx(elapsed / SIMULATOR_STEP_DELTA_T, rel=0.2)
+    sources = {addr_to_hex(int(frame.header.source)) for frame in received}
+    assert sources == {"0000000000000001", "0000000000000002"}
+
+
+def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100,
+          "network_mode": "mari"}],
+    )
+    slotframe_ticks = math.ceil(
+        MARI_SLOTFRAME_SIZE * 1.236 / 1000 / SIMULATOR_STEP_DELTA_T
+    )
+    for _ in range(ADVERTISEMENT_TICKS - 1):
+        interface.step()
+    assert not received
+    for _ in range(slotframe_ticks + 1):
+        interface.step()
+    assert len(received) == 1
+
+
+def test_a_mari_downlink_reaches_its_robot(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100,
+          "network_mode": "mari"}],
+    )
+    bot = interface.dotbots[0]
+    interface.write(_move_raw(1).to_bytes())
+    for _ in range(20):
+        interface.step()
+    assert bot.drive_mode == DriveMode.RAW

@@ -43,7 +43,7 @@ CLK_TCK = os.sysconf("SC_CLK_TCK")
 PAGE = os.sysconf("SC_PAGE_SIZE")
 ADVERTISEMENT_S = 0.5
 AREA_MM = 9000  # robots are spread over this square, inside the steering bounds
-SIM_THREAD_TARGETS = ("update_state", "advertise", "rx_frame", "run")
+SIM_THREAD_TARGETS = ("run",)
 
 
 # --- the child: the controller under test ----------------------------------
