@@ -652,7 +652,7 @@ class DotBotSimulator:
             self._enter_drive_mode(DriveMode.RAW)
             self.pwm_left = int(100 * (left / 127))
             self.pwm_right = int(100 * (right / 127))
-            self.logger.info(
+            self.logger.debug(
                 "RAW command received", pwm_left=self.pwm_left, pwm_right=self.pwm_right
             )
         elif payload_type == PayloadType.CMD_WHEEL_VELOCITY:
@@ -662,7 +662,7 @@ class DotBotSimulator:
             limit = WHEEL_SPEED_MAX_MM_S
             self.setpoint_left = max(-limit, min(limit, payload.left_mm_s))
             self.setpoint_right = max(-limit, min(limit, payload.right_mm_s))
-            self.logger.info(
+            self.logger.debug(
                 "Wheel velocity command received",
                 left_mm_s=payload.left_mm_s,
                 right_mm_s=payload.right_mm_s,
@@ -968,7 +968,7 @@ class DotBotSimulatorCommunicationInterface:
             self._mari.schedule_uplink(frame, index)
             return
         if not self._packet_delivered(self._network.pdr):
-            self.logger.info(
+            self.logger.debug(
                 f"Packet from DotBot {addr_to_hex(int(frame.header.source))} lost in simulation"
             )
             return
@@ -981,7 +981,7 @@ class DotBotSimulatorCommunicationInterface:
                 self._mari.schedule_downlink(bytes_, dotbot, index)
                 continue
             if not self._packet_delivered(self._network.pdr):
-                self.logger.info(
+                self.logger.debug(
                     f"Packet to DotBot {dotbot.address} lost in simulation"
                 )
                 continue

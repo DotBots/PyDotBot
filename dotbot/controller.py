@@ -679,7 +679,7 @@ class Controller:
             PayloadType.ADVERTISEMENT,
             PayloadType.DOTBOT_ADVERTISEMENT,
         ]:
-            logger.info("Ignoring non advertised dotbot")
+            logger.debug("Ignoring non advertised dotbot")
             return
 
         if source in self.dotbots:
@@ -727,7 +727,7 @@ class Controller:
                 for field in dataclasses.fields(frame.packet.payload)
                 if field.name != "metadata"
             }
-            logger.info(
+            logger.debug(
                 "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
             )
             # Send calibration to dotbot if it's not calibrated and the localization system has calibration
@@ -878,7 +878,7 @@ class Controller:
             dotbot.wind_angle = frame.packet.payload.wind_angle
             dotbot.rudder_angle = frame.packet.payload.rudder_angle
             dotbot.sail_angle = frame.packet.payload.sail_angle
-            logger.info(
+            logger.debug(
                 "gps",
                 lat=new_position.latitude,
                 long=new_position.longitude,
