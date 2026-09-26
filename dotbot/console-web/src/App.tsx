@@ -81,7 +81,8 @@ import {
   zoomMax,
 } from "./zoom";
 
-// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch.
+// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch. It
+// caps one robot's route, never how many robots get one target each.
 const MAX_WAYPOINTS = 16;
 
 // Build provenance, quiet enough to ignore until it is the question:
@@ -514,11 +515,12 @@ export const App: React.FC = () => {
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
       const have = planned.find((m) => m.key === key)?.waypoints.length ?? 0;
-      if (key in spread && have >= ids.length) {
-        showToast(`One target per robot: all ${ids.length} placed`);
-        return;
-      }
-      if (have >= MAX_WAYPOINTS) {
+      if (key in spread) {
+        if (have >= ids.length) {
+          showToast(`One target per robot: all ${ids.length} placed`);
+          return;
+        }
+      } else if (have >= MAX_WAYPOINTS) {
         showToast(`A robot takes at most ${MAX_WAYPOINTS} waypoints at once`);
         return;
       }
@@ -584,12 +586,14 @@ export const App: React.FC = () => {
         else delete next[selKey];
         return next;
       });
-      // A route longer than the robots cannot become one target each.
-      if (on && pending.length > drivableSelected.length) {
+      // A route longer than the robots cannot become one target each, and
+      // targets for more robots than a batch holds cannot become one route.
+      const keep = on ? drivableSelected.length : MAX_WAYPOINTS;
+      if (pending.length > keep) {
         setPlanned((prev) =>
-          prev.map((m) => (m.key === selKey ? { ...m, waypoints: m.waypoints.slice(0, drivableSelected.length) } : m)),
+          prev.map((m) => (m.key === selKey ? { ...m, waypoints: m.waypoints.slice(0, keep) } : m)),
         );
-        showToast(`Kept the first ${drivableSelected.length} points, one per robot`);
+        showToast(on ? `Kept the first ${keep} points, one per robot` : `Kept the first ${keep} points, a robot's most`);
       }
     },
     [selKey, pending.length, drivableSelected.length, showToast],
