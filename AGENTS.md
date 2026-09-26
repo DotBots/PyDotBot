@@ -68,6 +68,24 @@ npm run build
 npm test                                     # vitest, run in CI with lint, typecheck, build
 ```
 
+### Scenario tests
+
+`dotbot/tests/test_scenarios.py` drives the real controller through its REST
+API against simulated robots, end to end: waypoint batches, headings, the
+no-heading start, FAILED / HOLD / RECOVER, max speed, pre-emption and stop, a
+ten-robot choreography, and the pre-fix (0, 0) guard. They are marked
+`scenario` and deselected by default, so `pytest` and `tox` skip them:
+
+```bash
+pytest -m scenario --no-cov        # about a second; add -k to pick one
+```
+
+They run on a stepped clock (`DotBotSimulatorCommunicationInterface.step()`,
+harness in `dotbot/tests/scenario_harness.py`): fixed seeds, no sleeps, no
+browser, no network port. They validate the simulator and the controller
+together, **not hardware**: the simulator runs a Python port of the firmware
+steering, so a green run says nothing about a real robot.
+
 CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Windows (Py 3.11/3.12, Node 18/20). Also a CMake build of `utils/control_loop` against `DotBots/DotBot-libs`.
 
 ## Cross-repo dependencies
