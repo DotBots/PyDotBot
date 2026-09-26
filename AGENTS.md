@@ -86,6 +86,28 @@ browser, no network port. They validate the simulator and the controller
 together, **not hardware**: the simulator runs a Python port of the firmware
 steering, so a green run says nothing about a real robot.
 
+### Backend benchmark
+
+`utils/perf/bench_controller.py` starts a real headless controller per fleet
+size (`-n`, default 1 10 50 100 200) and measures its CPU, RSS, event-loop
+lag, status-WebSocket rate and latency to K clients, and REST latency of
+`GET /controller/dotbots` and `PUT .../waypoints`. Mode `sim` runs the
+simulator in the controller, as `dotbot run simulator` does; mode `synth`
+feeds 2 Hz advertisements per robot through a gateway adapter, so the
+controller is measured without the simulator. Linux only; about 20 s a run.
+
+```bash
+python utils/perf/bench_controller.py --out perf.json            # full sweep
+python utils/perf/bench_controller.py -n 10 100 --clients 1 --modes synth
+python utils/perf/bench_controller.py --modes synth --trail 1000  # full trails
+```
+
+`--trail` starts each robot with that many points of history, the steady state
+of a fleet that has driven for a while; every status update carries it.
+
+It records figures and applies no thresholds; each run is one flat JSON
+record, so a CI trend or a limit can be keyed on its fields.
+
 CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Windows (Py 3.11/3.12, Node 18/20). Also a CMake build of `utils/control_loop` against `DotBots/DotBot-libs`.
 
 ## Cross-repo dependencies
