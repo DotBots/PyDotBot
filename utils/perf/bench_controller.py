@@ -167,9 +167,9 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int):
             known = set(controller.dotbots)
             handle(frame)
             for address in set(controller.dotbots) - known:
-                controller.dotbots[address].position_history = [
-                    DotBotLH2Position(x=i, y=i) for i in range(trail)
-                ]
+                controller.seed_trail(
+                    address, [DotBotLH2Position(x=i, y=i) for i in range(trail)]
+                )
 
         controller.handle_received_frame = handle_with_trail
     if mode == "synth":
