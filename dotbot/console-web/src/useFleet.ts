@@ -200,6 +200,23 @@ export function useFleet(): {
     setBots(merge(pyRef.current, swRef.current, devicePosesRef.current));
   }, []);
 
+  // Telemetry arrives per robot, so a fleet sends hundreds of updates a
+  // second; they fold into one rebuild per frame.
+  const frameRef = useRef<number | null>(null);
+  const rebuildNextFrame = useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      rebuild();
+    });
+  }, [rebuild]);
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
+
   const reloadDotBots = useCallback(async () => {
     try {
       const list = await fetchDotBots();
@@ -287,7 +304,7 @@ export function useFleet(): {
           if (d.waypoints_threshold !== undefined)
             bot.waypoints_threshold = d.waypoints_threshold;
           applyReport(bot, d);
-          rebuild();
+          rebuildNextFrame();
         } else {
           // RELOAD / NEW_DOTBOT / unknown -> refetch everything.
           reloadDotBots();
@@ -299,7 +316,7 @@ export function useFleet(): {
       closed = true;
       ws?.close();
     };
-  }, [reloadDotBots, rebuild]);
+  }, [reloadDotBots, rebuildNextFrame]);
 
   // Slow refresh for fields the WS does not push (mode/nav, status, waypoint
   // clears): the controller only notifies telemetry deltas, so a bot's
