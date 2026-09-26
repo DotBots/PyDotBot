@@ -236,32 +236,47 @@ class RobotGeometry:
         """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
         return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
 
+    @cached_property
+    def _pose_offsets(self):
+        """How far ahead of and aside from the photodiode each point
+        `body_pose` places sits, in its order: axle, centre, nose, LED, then
+        the outline's points and each wheel's."""
+
+        def offset(point: Point) -> tuple[float, float]:
+            return (self.photodiode.y - point.y, point.x - self.photodiode.x)
+
+        return (
+            offset(self.axle_midpoint),
+            offset(self.outline_centre),
+            offset(Point(self.photodiode.x, self.outline_bbox[1])),
+            offset(self.led),
+            tuple(offset(p) for p in self.outline_path),
+            tuple(tuple(offset(p) for p in wheel) for wheel in self.wheel_paths),
+        )
+
     def body_pose(
         self, sensor: Point, heading_deg: float, source: HeadingSource
     ) -> BodyPose:
         """The body around a photodiode fix at `sensor`, facing `heading_deg`."""
         theta = math.radians(heading_deg)
-        forward = (-math.sin(theta), math.cos(theta))
-        right = (-math.cos(theta), -math.sin(theta))
+        sin, cos = math.sin(theta), math.cos(theta)
+        x, y = sensor[0], sensor[1]
 
-        def place(point: Point) -> Point:
-            ahead = self.photodiode.y - point.y
-            aside = point.x - self.photodiode.x
-            return Point(
-                sensor[0] + ahead * forward[0] + aside * right[0],
-                sensor[1] + ahead * forward[1] + aside * right[1],
-            )
+        def place(offset: tuple[float, float]) -> Point:
+            ahead, aside = offset
+            return Point(x - ahead * sin - aside * cos, y + ahead * cos - aside * sin)
 
+        axle, centre, nose, led, outline, wheels = self._pose_offsets
         return BodyPose(
             heading_deg=heading_deg,
             heading_source=source,
-            photodiode=Point(sensor[0], sensor[1]),
-            axle=place(self.axle_midpoint),
-            centre=place(self.outline_centre),
-            nose=place(Point(self.photodiode.x, self.outline_bbox[1])),
-            led=place(self.led),
-            outline=tuple(place(p) for p in self.outline_path),
-            wheels=tuple(tuple(place(p) for p in wheel) for wheel in self.wheel_paths),
+            photodiode=Point(x, y),
+            axle=place(axle),
+            centre=place(centre),
+            nose=place(nose),
+            led=place(led),
+            outline=tuple(place(o) for o in outline),
+            wheels=tuple(tuple(place(o) for o in wheel) for wheel in wheels),
             reach_mm=self.reach_mm,
             core_mm=self.core_mm,
             envelope_mm=self.envelope_mm,

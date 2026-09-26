@@ -476,22 +476,25 @@ class DotBotPoseModel(BaseModel):
 
     @classmethod
     def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
+        # One validation of plain data: this runs on every advertisement
         def point(p):
-            return DotBotLH2Position(x=p.x, y=p.y)
+            return {"x": p.x, "y": p.y}
 
-        return cls(
-            heading_deg=pose.heading_deg,
-            heading_source=pose.heading_source.name.lower(),
-            photodiode=point(pose.photodiode),
-            axle=point(pose.axle),
-            centre=point(pose.centre),
-            nose=point(pose.nose),
-            led=point(pose.led),
-            outline=[point(p) for p in pose.outline],
-            wheels=[[point(p) for p in wheel] for wheel in pose.wheels],
-            reach_mm=pose.reach_mm,
-            core_mm=pose.core_mm,
-            envelope_mm=pose.envelope_mm,
+        return cls.model_validate(
+            {
+                "heading_deg": pose.heading_deg,
+                "heading_source": pose.heading_source.name.lower(),
+                "photodiode": point(pose.photodiode),
+                "axle": point(pose.axle),
+                "centre": point(pose.centre),
+                "nose": point(pose.nose),
+                "led": point(pose.led),
+                "outline": [point(p) for p in pose.outline],
+                "wheels": [[point(p) for p in wheel] for wheel in pose.wheels],
+                "reach_mm": pose.reach_mm,
+                "core_mm": pose.core_mm,
+                "envelope_mm": pose.envelope_mm,
+            }
         )
 
 
