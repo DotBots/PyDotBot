@@ -5,13 +5,13 @@ import math
 import queue
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 
-from dotbot import addr_to_hex
+from dotbot import DOTBOT_ADDRESS_DEFAULT, addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
     ADVERTISEMENT_TICKS,
@@ -139,6 +139,13 @@ def test_a_command_for_another_bot_is_ignored():
     _deliver(bot, _move_raw(0xDEADBEEF22222222))
     assert bot.pwm_left == 0
     assert bot.pwm_right == 0
+
+
+def test_a_broadcast_command_is_applied_like_the_apps_radio_callback():
+    bot = _bot("B0B0F00D33333333")
+    _deliver(bot, _move_raw(int(DOTBOT_ADDRESS_DEFAULT, 16)))
+    assert (bot.pwm_left, bot.pwm_right) == (62, 62)
+    assert bot.drive_mode == DriveMode.RAW
 
 
 def _wheel_velocity(bot: DotBotSimulator, left: int, right: int) -> Frame:
@@ -568,3 +575,50 @@ def test_a_mari_downlink_reaches_its_robot(tmp_path):
     for _ in range(20):
         interface.step()
     assert bot.drive_mode == DriveMode.RAW
+
+
+def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):
+    """A command addressed to one robot must not cost a parse per fleet
+    member - the O(N) fan-out this guards against made a round of commands
+    O(N^2) in fleet size."""
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {"address": "0000000000000001", "pos_x": 100, "pos_y": 100},
+            {"address": "0000000000000002", "pos_x": 100, "pos_y": 100},
+        ],
+    )
+    bot_a, bot_b = interface.dotbots
+    with patch.object(
+        Frame, "from_bytes", side_effect=Frame.from_bytes
+    ) as from_bytes:
+        interface.write(_move_raw(1).to_bytes())
+        assert from_bytes.call_count == 1
+    assert bot_a.queue.qsize() == 1
+    assert bot_b.queue.qsize() == 0
+    bot_a.receive()
+    bot_b.receive()
+    assert bot_a.drive_mode == DriveMode.RAW
+    assert bot_b.drive_mode == DriveMode.IDLE
+
+
+def test_write_to_broadcast_reaches_every_robot(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {"address": "0000000000000001", "pos_x": 100, "pos_y": 100},
+            {"address": "0000000000000002", "pos_x": 100, "pos_y": 100},
+        ],
+    )
+    interface.write(_move_raw(int(DOTBOT_ADDRESS_DEFAULT, 16)).to_bytes())
+    for bot in interface.dotbots:
+        bot.receive()
+    assert all(bot.drive_mode == DriveMode.RAW for bot in interface.dotbots)
+
+
+def test_write_to_an_unknown_address_reaches_nobody(tmp_path):
+    interface, _ = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}]
+    )
+    interface.write(_move_raw(0xDEADBEEF22222222).to_bytes())
+    assert interface.dotbots[0].queue.empty()

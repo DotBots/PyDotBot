@@ -27,6 +27,7 @@ from dotbot_utils.protocol import Frame, Header, Packet
 from pydantic import BaseModel, Field, model_validator
 
 from dotbot import (
+    DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     addr_to_hex,
@@ -703,10 +704,13 @@ class DotBotSimulator:
             )
 
     def receive(self):
-        """Apply the frames the gateway has queued for this robot."""
+        """Apply the frames the gateway has queued for this robot, as the
+        app's radio_callback() does: accept its own address or the broadcast
+        one, drop anything else."""
         while not self.queue.empty():
             frame = self.queue.get_nowait()
-            if self.address == addr_to_hex(int(frame.header.destination)):
+            destination = addr_to_hex(int(frame.header.destination))
+            if destination in (self.address, DOTBOT_ADDRESS_DEFAULT):
                 self.handle_payload(frame.payload_type, frame.packet.payload)
 
     def step(self, phase: int = 0):
@@ -762,11 +766,10 @@ class MariNetworkSimulator:
         self._enqueue(delay, lambda: self._on_frame_received(frame))
 
     def schedule_downlink(
-        self, bytes_: bytes, dotbot: "DotBotSimulator", dotbot_index: int
+        self, frame: Frame, dotbot: "DotBotSimulator", dotbot_index: int
     ):
         if random.randint(0, 100) > self._settings.downlink_pdr:
             return
-        frame = Frame.from_bytes(bytes_)
         # Downlink slots are in the second half of the frame — distinct from uplink slots
         delay = (
             self._slot_delay_s(dotbot_index, slot_shift=MARI_SLOTFRAME_SIZE // 2)
@@ -975,14 +978,23 @@ class DotBotSimulatorCommunicationInterface:
         self.on_frame_received(frame)
 
     def write(self, bytes_):
-        """Write bytes on the fake serial."""
-        for index, dotbot in enumerate(self.dotbots):
+        """Write bytes on the fake serial: parse once, then deliver to its
+        addressee - every robot for the broadcast address, as the firmware's
+        DB_FRAME_DST_BROADCAST check does, or only the matching one otherwise."""
+        frame = Frame.from_bytes(bytes_)
+        destination = addr_to_hex(int(frame.header.destination))
+        if destination == DOTBOT_ADDRESS_DEFAULT:
+            targets = list(enumerate(self.dotbots))
+        else:
+            index = self._address_to_index.get(destination)
+            targets = [(index, self.dotbots[index])] if index is not None else []
+        for index, dotbot in targets:
             if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
-                self._mari.schedule_downlink(bytes_, dotbot, index)
+                self._mari.schedule_downlink(frame, dotbot, index)
                 continue
             if not self._packet_delivered(self._network.pdr):
                 self.logger.debug(
                     f"Packet to DotBot {dotbot.address} lost in simulation"
                 )
                 continue
-            dotbot.queue.put_nowait(Frame.from_bytes(bytes_))
+            dotbot.queue.put_nowait(frame)
