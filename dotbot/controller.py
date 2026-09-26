@@ -230,6 +230,19 @@ def device_pose(device: str, position: DotBotLH2Position) -> Optional[DotBotPose
     return body_pose(model, position, DIRECTION_NONE)
 
 
+def is_lh2_fix(position: DotBotLH2Position, dotbot: DotBotModel) -> bool:
+    """Whether an advertised position is a real LH2 fix.
+
+    A robot advertises (0, 0) until its first fix, so (0, 0) counts only once
+    the robot has had a fix or its estimator tracks an axle position.
+    """
+    if position.x == 0xFFFFFFFF or position.y == 0xFFFFFFFF:
+        return False
+    if position.x == 0 and position.y == 0:
+        return dotbot.lh2_position is not None or dotbot.axle_position is not None
+    return True
+
+
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
     """Helper function that computes the distance between 2 LH2 positions."""
     return math.sqrt(((new.x - last.x) ** 2) + ((new.y - last.y) ** 2))
@@ -745,7 +758,7 @@ class Controller:
                     x=frame.packet.payload.pos_x,
                     y=frame.packet.payload.pos_y,
                 )
-                if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
+                if is_lh2_fix(new_position, dotbot):
                     dotbot.lh2_position = new_position
                     dotbot.pose = body_pose(
                         dotbot.model, new_position, frame.packet.payload.direction

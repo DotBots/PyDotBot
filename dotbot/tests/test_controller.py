@@ -855,6 +855,42 @@ async def test_a_new_robot_with_no_heading_is_tracked(controller):
 
 
 @pytest.mark.asyncio
+async def test_the_advertisement_before_the_first_fix_leaves_no_position(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=0, pos_y=0, report=True)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert [(p.x, p.y) for p in dotbot.position_history] == [(1000, 1000)]
+
+
+@pytest.mark.asyncio
+async def test_a_fix_at_the_origin_is_kept_once_the_robot_has_a_position(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=0, pos_y=0)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
+    assert [(p.x, p.y) for p in dotbot.position_history] == [(1000, 1000), (0, 0)]
+
+
+@pytest.mark.asyncio
+async def test_a_first_fix_at_the_origin_is_kept_while_the_axle_is_tracked(
+    controller,
+):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=0, pos_y=0, axle_x=0, axle_y=29, report=True)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
+
+
+@pytest.mark.asyncio
 async def test_an_advertisement_without_a_heading_clears_the_last_one(controller):
     """-1000 is the no-heading sentinel: a restarted robot has no heading."""
     controller.handle_received_frame(
