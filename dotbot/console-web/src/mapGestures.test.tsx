@@ -305,6 +305,17 @@ describe("a drag with the select modifier", () => {
     expectCamera(camera(), FRAME_CAMERA);
   });
 
+  it("ends the rectangle where the pointer is released, past its last move", () => {
+    const onSelect = vi.fn();
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} onSelect={onSelect} />);
+    const el = canvas();
+    const keys = held(MAP_MODIFIER.select);
+    fireEvent.pointerDown(el, { button: 0, clientX: 300, clientY: 200, ...keys });
+    fireEvent.pointerMove(el, { buttons: 1, clientX: 400, clientY: 250, ...keys });
+    fireEvent.pointerUp(el, { clientX: 500, clientY: 350, ...keys });
+    expect(onSelect).toHaveBeenLastCalledWith(["a"], "add");
+  });
+
   it("leaves the selection alone when it does not move", () => {
     const onSelect = vi.fn();
     render(<Harness bots={[bot("a", { x: 500, y: 500 })]} onSelect={onSelect} />);

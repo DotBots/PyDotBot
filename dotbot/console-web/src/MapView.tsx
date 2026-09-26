@@ -644,10 +644,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     dragRef.current = null;
     setDrag(null);
     if (!kind || !drag) return;
-    const x0 = Math.min(drag.x0, drag.x1);
-    const x1 = Math.max(drag.x0, drag.x1);
-    const y0 = Math.min(drag.y0, drag.y1);
-    const y1 = Math.max(drag.y0, drag.y1);
+    // The release point, not the last rendered rectangle: under load the
+    // final pointermove may not have rendered yet.
+    const x0 = Math.min(drag.x0, e.clientX);
+    const x1 = Math.max(drag.x0, e.clientX);
+    const y0 = Math.min(drag.y0, e.clientY);
+    const y1 = Math.max(drag.y0, e.clientY);
     const moved = x1 - x0 >= DRAG_MIN_PX || y1 - y0 >= DRAG_MIN_PX;
     if (kind === "select") {
       if (!moved) return;
