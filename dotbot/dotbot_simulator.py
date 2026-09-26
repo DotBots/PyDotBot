@@ -97,6 +97,7 @@ INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
 
 ADVERTISEMENT_INTERVAL_S = 0.5
+ADVERTISEMENT_TICKS = round(ADVERTISEMENT_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
 
 MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
@@ -654,14 +655,17 @@ class DotBotSimulator:
             report=True,
         )
 
+    def _advertisement_frame(self) -> Frame:
+        return Frame(
+            header=self.header, packet=Packet.from_payload(self.advertisement())
+        )
+
     def advertise(self):
         """Send an advertisement message to the gateway."""
         while self._stop_event.is_set() is False:
             with self._lock:
-                payload = self.advertisement()
-            self.tx_queue.put_nowait(
-                Frame(header=self.header, packet=Packet.from_payload(payload))
-            )
+                frame = self._advertisement_frame()
+            self.tx_queue.put_nowait(frame)
             if self._stop_event.wait(ADVERTISEMENT_INTERVAL_S):
                 break
 
@@ -731,6 +735,12 @@ class DotBotSimulator:
                 "Unhandled payload type", payload_type=f"0x{int(payload_type):02X}"
             )
 
+    def _rx(self, frame: Frame):
+        if self.address != addr_to_hex(int(frame.header.destination)):
+            return
+        with self._lock:
+            self.handle_payload(frame.payload_type, frame.packet.payload)
+
     def rx_frame(self):
         """Decode the serial input received from the gateway."""
 
@@ -738,10 +748,23 @@ class DotBotSimulator:
             frame = self.queue.get()
             if frame is None:
                 break
-            if self.address != addr_to_hex(int(frame.header.destination)):
-                continue
-            with self._lock:
-                self.handle_payload(frame.payload_type, frame.packet.payload)
+            self._rx(frame)
+
+    def step(self, phase: int = 0):
+        """One tick on the caller's thread, in place of start()'s threads:
+        the frames received since the last step, the tick, and the
+        advertisement when `phase` ticks past an advertising interval."""
+        while True:
+            try:
+                frame = self.queue.get_nowait()
+            except queue.Empty:
+                break
+            if frame is not None:
+                self._rx(frame)
+        with self._lock:
+            self.tick()
+            if (self.ticks + phase) % ADVERTISEMENT_TICKS == 0:
+                self.tx_queue.put_nowait(self._advertisement_frame())
 
     def stop(self):
         self.logger.info(f"Stopping DotBot {self.address} simulator...")
@@ -974,6 +997,23 @@ class DotBotSimulatorCommunicationInterface:
         if self._mari is not None:
             self._mari.stop()
         self.main_thread.join()
+
+    def step(self):
+        """Advance every robot one tick on the caller's thread, in place of
+        start(), and hand their advertisements over before returning.
+
+        Robots advertise out of phase with one another. A robot on the "mari"
+        network mode schedules on the wall clock, so needs start().
+        """
+        for index, dotbot in enumerate(self.dotbots):
+            dotbot.step(phase=index)
+        while True:
+            try:
+                frame = self.queue.get_nowait()
+            except queue.Empty:
+                break
+            if frame is not None:
+                self.handle_dotbot_frame(frame)
 
     def flush(self):
         """Flush fake serial output."""
