@@ -56,7 +56,9 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotSiteModel,
+    DotBotWaypointBatches,
     DotBotWaypoints,
+    DotBotWaypointsSent,
     DotBotWheelVelocityCommandModel,
     WSMessage,
     WSMoveRaw,
@@ -240,6 +242,92 @@ async def dotbots_waypoints(
 
     await _dotbots_waypoints(
         address=address, application=application, waypoints=waypoints
+    )
+
+
+def _split_known(addresses: List[str], strict: bool) -> List[str]:
+    """The addresses the controller knows, in request order.
+
+    Raises 404 when `strict` and any address is unknown, or when addresses
+    were named and none of them is known: a request that moved nothing is
+    not a success.
+    """
+    known = [a for a in addresses if a in api.controller.dotbots]
+    unknown = [a for a in addresses if a not in api.controller.dotbots]
+    if unknown and (strict or not known):
+        raise HTTPException(
+            status_code=404, detail=f"No matching dotbot found: {', '.join(unknown)}"
+        )
+    return known
+
+
+@api.put(
+    path="/controller/dotbots/waypoints",
+    summary="Set the waypoints of several DotBots at once",
+    tags=["dotbots"],
+)
+async def dotbots_waypoint_batches(
+    batches: DotBotWaypointBatches,
+    strict: bool = False,
+) -> DotBotWaypointsSent:
+    """Give each DotBot its own batch, keyed by address, under one set of
+    settings: the same as one PUT per robot on its own waypoints route.
+
+    ```
+    {"threshold": 60,
+     "dotbots": {"badcafe111111111": [{"x": 400, "y": 1600}],
+                 "deadbeef22222222": [{"x": 1600, "y": 400}]}}
+    ```
+
+    Every known DotBot gets its batch and unknown addresses are listed in
+    `unknown`. With `?strict=true` an unknown address refuses the whole
+    request, before anything is sent. When no address is known: 404.
+    """
+    addresses = list(batches.dotbots)
+    known = _split_known(addresses, strict)
+    for address in known:
+        await _dotbots_waypoints(
+            address=address,
+            application=api.controller.dotbots[address].application.value,
+            waypoints=batches.batch(address),
+        )
+    return DotBotWaypointsSent(
+        applied=known, unknown=[a for a in addresses if a not in known]
+    )
+
+
+@api.delete(
+    path="/controller/dotbots/waypoints",
+    summary="Clear the waypoints of several DotBots, or of all of them",
+    tags=["dotbots"],
+)
+async def dotbots_waypoints_clear(
+    address: Annotated[Optional[List[str]], Query()] = None,
+    strict: bool = False,
+) -> DotBotWaypointsSent:
+    """Stop the DotBots named by `?address=` (repeat it for several), or every
+    known DotBot without it, keeping only where each one stood.
+
+    Unknown addresses are listed in `unknown` and the rest are stopped. With
+    `?strict=true` an unknown address refuses the whole request, before
+    anything is sent. When no named address is known: 404.
+    """
+    if address is None:
+        addresses = list(api.controller.dotbots)
+    else:
+        addresses = list(dict.fromkeys(address))
+    known = _split_known(addresses, strict)
+    for each in known:
+        dotbot = api.controller.dotbots[each]
+        await _dotbots_waypoints(
+            address=each,
+            application=dotbot.application.value,
+            waypoints=DotBotWaypoints(
+                threshold=dotbot.waypoints_threshold or 0, waypoints=[]
+            ),
+        )
+    return DotBotWaypointsSent(
+        applied=known, unknown=[a for a in addresses if a not in known]
     )
 
 

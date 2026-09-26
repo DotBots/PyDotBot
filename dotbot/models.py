@@ -10,9 +10,9 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum
-from typing import Any, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
@@ -103,41 +103,80 @@ class DotBotLH2Waypoint(DotBotLH2Position):
         return None if value is None else value % 360.0
 
 
-class DotBotWaypoints(BaseModel):
+def _positions_as_waypoints(value):
+    # DotBotLH2Position is left out of the union so that a point whose
+    # heading is invalid is refused, not parsed as a point without one
+    if not isinstance(value, list):
+        return value
+    return [
+        (
+            DotBotLH2Waypoint(x=point.x, y=point.y)
+            if type(point) is DotBotLH2Position
+            else point
+        )
+        for point in value
+    ]
+
+
+# One robot's batch. DB_MAX_WAYPOINTS: the firmware drops the points beyond it.
+WaypointList = Annotated[
+    List[Union[DotBotLH2Waypoint, DotBotGPSPosition]],
+    Field(max_length=16),
+    BeforeValidator(_positions_as_waypoints),
+]
+
+
+class DotBotWaypointSettings(BaseModel):
+    """How a batch is driven, shared by every point in it.
+
+    The robot passes an intermediate point once its centre is within
+    `intermediate_threshold` mm of it, or past it along the leg, without
+    stopping, and stops at the last one within `threshold` mm; below 5 mm it
+    settles at rest until within it. At a point with a heading it stops within
+    `threshold`, turns to the heading within `heading_tolerance` degrees, then
+    goes on. None leaves the firmware's default.
+    """
+
+    threshold: int = Field(ge=0, le=65535)
+    intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
+    heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class DotBotWaypoints(DotBotWaypointSettings):
     """Waypoints model.
 
     Each point is a position for the robot's centre, the axle midpoint (the
     bare dotbot app steers its LH2 photodiode onto it instead). The robot
-    drives through the points in order. It passes an intermediate point once
-    its centre is within `intermediate_threshold` mm of it, or past it along
-    the leg, without stopping, and stops at the last one within `threshold`
-    mm; below 5 mm it settles at rest until within it. A point with a heading
-    is a pose: the robot stops there within `threshold`, turns to the heading
-    within `heading_tolerance` degrees, then goes on. None leaves the
-    firmware's default.
+    drives through the points in order; a point with a heading is a pose.
     """
 
-    threshold: int = Field(ge=0, le=65535)
-    # DB_MAX_WAYPOINTS: the firmware drops the points beyond it
-    waypoints: List[Union[DotBotLH2Waypoint, DotBotGPSPosition]] = Field(max_length=16)
-    intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
-    heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+    waypoints: WaypointList
 
-    @field_validator("waypoints", mode="before")
-    @classmethod
-    def _positions_as_waypoints(cls, value):
-        # DotBotLH2Position is left out of the union so that a point whose
-        # heading is invalid is refused, not parsed as a point without one
-        if not isinstance(value, list):
-            return value
-        return [
-            (
-                DotBotLH2Waypoint(x=point.x, y=point.y)
-                if type(point) is DotBotLH2Position
-                else point
-            )
-            for point in value
-        ]
+
+class DotBotWaypointBatches(DotBotWaypointSettings):
+    """One batch per DotBot, keyed by address, all under the same settings.
+
+    An empty list stops that robot and clears its batch.
+    """
+
+    dotbots: Dict[str, WaypointList]
+
+    def batch(self, address: str) -> DotBotWaypoints:
+        """The batch for one robot, as the single-robot route takes it."""
+        return DotBotWaypoints(
+            threshold=self.threshold,
+            intermediate_threshold=self.intermediate_threshold,
+            heading_tolerance=self.heading_tolerance,
+            waypoints=self.dotbots[address],
+        )
+
+
+class DotBotWaypointsSent(BaseModel):
+    """The DotBots a bulk waypoint request reached, and the addresses it
+    named that the controller does not know."""
+
+    applied: List[str]
+    unknown: List[str]
 
 
 class DotBotAreaModel(BaseModel):
