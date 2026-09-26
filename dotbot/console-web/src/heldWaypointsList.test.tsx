@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { putWaypoints } from "./api";
+import { clearWaypoints } from "./api";
 import type { Site, UnifiedBot } from "./types";
 
 const site: Site = {
@@ -84,7 +84,8 @@ vi.mock("./useMrta", () => ({
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
   fetchBuild: vi.fn(async () => null),
-  putWaypoints: vi.fn(async () => {}),
+  putWaypointBatches: vi.fn(async () => {}),
+  clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
@@ -123,7 +124,7 @@ afterEach(() => {
 
 const openMissions = (sel = "") =>
   window.history.replaceState({}, "", `/?rail=missions${sel ? `&sel=${sel}` : ""}`);
-const cleared = () => vi.mocked(putWaypoints).mock.calls.map(([id, , , points]) => [id, points]);
+const cleared = () => vi.mocked(clearWaypoints).mock.calls.map(([ids]) => ids);
 
 describe("the waypoints on the controller", () => {
   it("lists every robot holding a batch, whoever sent it, under way first", () => {
@@ -138,11 +139,11 @@ describe("the waypoints on the controller", () => {
     expect(within(list).getByText("900, 1200 @ 90°")).toBeInTheDocument();
   });
 
-  it("clears one robot with its own button, as an empty batch", () => {
+  it("clears one robot with its own button", () => {
     openMissions();
     render(<App />);
     fireEvent.click(screen.getByLabelText("Clear the waypoints of 2222"));
-    expect(cleared()).toEqual([[underWay.id, []]]);
+    expect(cleared()).toEqual([[underWay.id]]);
     expect(screen.getByText("Waypoints cleared · 1 bot")).toBeInTheDocument();
   });
 
@@ -150,17 +151,14 @@ describe("the waypoints on the controller", () => {
     openMissions();
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
-    expect(cleared()).toEqual([
-      [underWay.id, []],
-      [finished.id, []],
-    ]);
+    expect(cleared()).toEqual([[underWay.id, finished.id]]);
   });
 
   it("clears only the selection's", () => {
     openMissions("4444,1111");
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Clear selected (1)" }));
-    expect(cleared()).toEqual([[finished.id, []]]);
+    expect(cleared()).toEqual([[finished.id]]);
   });
 
   it("draws every robot's waypoints on the map on request, not only the selection's", () => {

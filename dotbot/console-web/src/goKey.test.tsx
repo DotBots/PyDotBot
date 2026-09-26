@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { putWaypoints } from "./api";
+import { clearWaypoints, putWaypointBatches } from "./api";
 import { ACTION_KEY, MAP_MODIFIER, Modifier } from "./shortcuts";
 import type { Site, UnifiedBot } from "./types";
 
@@ -78,7 +78,8 @@ vi.mock("./useMrta", () => ({
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
   fetchBuild: vi.fn(async () => null),
-  putWaypoints: vi.fn(async () => {}),
+  putWaypointBatches: vi.fn(async () => {}),
+  clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
@@ -143,10 +144,12 @@ describe("the go key", () => {
 
     press(ACTION_KEY.go.toLowerCase());
 
-    expect(putWaypoints).toHaveBeenCalledTimes(1);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
-      { x: expect.any(Number), y: expect.any(Number) },
-    ], { intermediate_threshold: 20 });
+    expect(putWaypointBatches).toHaveBeenCalledTimes(1);
+    expect(putWaypointBatches).toHaveBeenCalledWith(
+      expect.any(Number),
+      { [idle.id]: [{ x: expect.any(Number), y: expect.any(Number) }] },
+      { intermediate_threshold: 20 },
+    );
     expect(screen.getByText("1 waypoint sent to 1 bot")).toBeInTheDocument();
     expect(screen.queryByTestId(/^planned-/)).not.toBeInTheDocument();
   });
@@ -155,7 +158,7 @@ describe("the go key", () => {
     select("2222");
     render(<App />);
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(underWay.id, underWay.application, expect.any(Number), []);
+    expect(clearWaypoints).toHaveBeenCalledWith([underWay.id]);
     expect(screen.getByText("Navigation stopped")).toBeInTheDocument();
   });
 
@@ -163,7 +166,8 @@ describe("the go key", () => {
     render(<App />);
     press("g");
     expect(screen.getByText("Nothing selected")).toBeInTheDocument();
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
+    expect(clearWaypoints).not.toHaveBeenCalled();
   });
 
   it("says what to do with a selection that has nothing queued", () => {
@@ -171,7 +175,8 @@ describe("the go key", () => {
     render(<App />);
     press("g");
     expect(screen.getByText(/^No waypoints queued/)).toBeInTheDocument();
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
+    expect(clearWaypoints).not.toHaveBeenCalled();
   });
 
   it("says so for a selection that cannot be driven", () => {
@@ -179,7 +184,8 @@ describe("the go key", () => {
     render(<App />);
     press("g");
     expect(screen.getByText("Not drivable")).toBeInTheDocument();
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
+    expect(clearWaypoints).not.toHaveBeenCalled();
   });
 
   it("is left alone while typing, the zoom slider included, and under a modifier", () => {
@@ -190,7 +196,8 @@ describe("the go key", () => {
     press("g", slider);
     press("g", document.body, { metaKey: true });
     press("g", document.body, { ctrlKey: true });
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
+    expect(clearWaypoints).not.toHaveBeenCalled();
     expect(screen.queryByText("Navigation stopped")).not.toBeInTheDocument();
   });
 });

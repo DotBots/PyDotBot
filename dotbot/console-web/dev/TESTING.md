@@ -75,6 +75,22 @@ curl -X PUT localhost:8000/controller/dotbots/badcafe111111111/0/waypoints \
   -H 'Content-Type: application/json' \
   -d '{"threshold":60,"waypoints":[{"x":400,"y":1600},{"x":1600,"y":400}]}'
 
+# several bots in one request, each its own batch (what the console sends)
+curl -X PUT localhost:8000/controller/dotbots/waypoints \
+  -H 'Content-Type: application/json' \
+  -d '{"threshold":60,"dotbots":{"badcafe111111111":[{"x":400,"y":1600}],"deadbeef22222222":[{"x":1600,"y":400}]}}'
+# -> {"applied":["badcafe111111111","deadbeef22222222"],"unknown":[]}
+# an unknown address is skipped and listed in "unknown"; the console names it
+# in a notice. Every address unknown -> 404. Add ?strict=true to refuse the
+# whole request (404, nothing sent) if any address is unknown:
+curl -X PUT 'localhost:8000/controller/dotbots/waypoints?strict=true' \
+  -H 'Content-Type: application/json' \
+  -d '{"threshold":60,"dotbots":{"badcafe111111111":[{"x":400,"y":1600}],"0000000000000000":[]}}'
+
+# stop bots and clear their waypoints (no address = every bot; same
+# applied/unknown reply and ?strict=true as above)
+curl -X DELETE 'localhost:8000/controller/dotbots/waypoints?address=badcafe111111111&address=deadbeef22222222'
+
 # flash two bots (watch rail queue + console)
 curl -N -X POST localhost:8001/flash/stream -H 'Content-Type: application/json' \
   -d '{"firmware_b64":"ZmFrZQ==","devices":["badcafe111111111","deadbeef22222222"]}'

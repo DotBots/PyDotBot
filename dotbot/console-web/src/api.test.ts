@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   captureCalibrationPoint,
+  clearWaypoints,
   fetchCalibrationSession,
   parseSseChunk,
+  putWaypointBatches,
   saveCalibration,
   startCalibration,
 } from "./api";
@@ -60,6 +62,7 @@ function stubFetch(status: number, payload: unknown): Call[] {
       status,
       statusText: "",
       text: async () => JSON.stringify(payload),
+      json: async () => payload,
     };
   }) as unknown as typeof fetch;
   return calls;
@@ -97,5 +100,28 @@ describe("the calibration session", () => {
     // can act on.
     stubFetch(409, { detail: "no calibration session is open" });
     await expect(saveCalibration()).rejects.toThrow("no calibration session is open");
+  });
+});
+
+describe("the bulk waypoint routes", () => {
+  it("pass on the robots the controller did not know", async () => {
+    stubFetch(200, { applied: ["AAAA"], unknown: ["BBBB"] });
+    expect(await putWaypointBatches(60, { AAAA: [], BBBB: [] })).toEqual({
+      applied: ["AAAA"],
+      unknown: ["BBBB"],
+    });
+  });
+
+  it("read a 404 as every named robot unknown", async () => {
+    stubFetch(404, { detail: "No matching dotbot found: AAAA, BBBB" });
+    expect(await clearWaypoints(["AAAA", "BBBB"])).toEqual({
+      applied: [],
+      unknown: ["AAAA", "BBBB"],
+    });
+  });
+
+  it("refuse a malformed request as an error", async () => {
+    stubFetch(422, { detail: [] });
+    await expect(putWaypointBatches(60, { AAAA: [] })).rejects.toThrow("422");
   });
 });

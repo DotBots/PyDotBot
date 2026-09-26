@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { putWaypoints } from "./api";
+import { putWaypointBatches } from "./api";
 import { ACTION_KEY, MAP_MODIFIER, Modifier } from "./shortcuts";
 import { spreadColor } from "./spread";
 import type { Site, UnifiedBot } from "./types";
@@ -72,7 +72,8 @@ vi.mock("./useMrta", () => ({
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
   fetchBuild: vi.fn(async () => null),
-  putWaypoints: vi.fn(async () => {}),
+  putWaypointBatches: vi.fn(async () => {}),
+  clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
@@ -128,8 +129,13 @@ const queueWaypoint = (clientX = 450, clientY = 300) => {
   fireEvent.pointerUp(canvas(), at);
 };
 
+// Every robot's batch, across however many requests carried them.
 const sent = () =>
-  vi.mocked(putWaypoints).mock.calls.map(([id, , , points]) => ({ id, points }));
+  vi
+    .mocked(putWaypointBatches)
+    .mock.calls.flatMap(([, dotbots]) =>
+      Object.entries(dotbots).map(([id, points]) => ({ id, points })),
+    );
 
 describe("one target per robot", () => {
   it("is not offered for a single robot", () => {
@@ -150,7 +156,7 @@ describe("one target per robot", () => {
     expect(calls[1].points).toEqual(calls[0].points);
   });
 
-  it("sends each robot its own nearest target, one PUT each", () => {
+  it("sends each robot its own nearest target, in one request", () => {
     select("1111,4444");
     render(<App />);
     fireEvent.click(screen.getByRole("switch", { name: "One target per robot" }));
@@ -160,13 +166,14 @@ describe("one target per robot", () => {
     expect(screen.getByTestId(`spread-leg-${west.id}`)).toBeInTheDocument();
     expect(screen.queryByTestId("spread-warnings")).not.toBeInTheDocument();
     press(ACTION_KEY.go);
+    expect(putWaypointBatches).toHaveBeenCalledTimes(1);
     const calls = sent();
     expect(calls.map((c) => c.id).sort()).toEqual([west.id, east.id].sort());
     const to = Object.fromEntries(calls.map((c) => [c.id, c.points]));
     expect(to[west.id]).toHaveLength(1);
     expect(to[east.id]).toHaveLength(1);
     expect(to[west.id][0].x).toBeLessThan(to[east.id][0].x);
-    expect(vi.mocked(putWaypoints).mock.calls[0][4]).toEqual({ intermediate_threshold: 20 });
+    expect(vi.mocked(putWaypointBatches).mock.calls[0][2]).toEqual({ intermediate_threshold: 20 });
     expect(screen.getByText("2 robots sent to their own targets")).toBeInTheDocument();
     expect(screen.getByTestId("spread-run")).toBeInTheDocument();
   });
@@ -194,7 +201,7 @@ describe("one target per robot", () => {
     fireEvent.click(screen.getByRole("switch", { name: "One target per robot" }));
     queueWaypoint(375, 300);
     press(ACTION_KEY.go);
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
     expect(screen.getByText("Place one target per robot: 1 of 2")).toBeInTheDocument();
     queueWaypoint(525, 300);
     queueWaypoint(450, 300);
@@ -211,10 +218,10 @@ describe("one target per robot", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     press(ACTION_KEY.go);
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("closer than"));
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
     confirm.mockReturnValue(true);
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledTimes(2);
+    expect(sent()).toHaveLength(2);
     confirm.mockRestore();
   });
 

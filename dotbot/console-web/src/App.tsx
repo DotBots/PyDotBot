@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchBuild, fetchConnection, putWaypoints } from "./api";
+import { clearWaypoints, fetchBuild, fetchConnection, putWaypointBatches } from "./api";
+import type { WaypointsSent } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
 import {
   CameraOffset,
@@ -112,6 +113,13 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
   return [value, update] as const;
 }
 
+/** "3 robots not found: 1111, 2222, 3333", naming at most five. */
+function notFoundNotice(unknown: string[]): string {
+  const names = unknown.slice(0, 5).map((id) => id.slice(-4).toUpperCase());
+  const more = unknown.length > 5 ? ` and ${unknown.length - 5} more` : "";
+  return `${unknown.length} robot${unknown.length === 1 ? "" : "s"} not found: ${names.join(", ")}${more}`;
+}
+
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
@@ -135,6 +143,14 @@ export const App: React.FC = () => {
   }, []);
 
   const orch = useOrchestration(showToast);
+  // A bulk waypoint request moves every robot the controller knows; the ones
+  // it does not are named here, without holding anything up.
+  const reportUnknown = useCallback(
+    (sent: WaypointsSent | void) => {
+      if (sent && sent.unknown.length > 0) showToast(notFoundNotice(sent.unknown));
+    },
+    [showToast],
+  );
   const mrta = useMrta();
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
@@ -529,17 +545,14 @@ export const App: React.FC = () => {
         const lines = describeHazards(plan.hazards, plan.legs, plan.spacing);
         if (!window.confirm(`${lines.join("\n")}\n\nSend anyway?`)) return;
       }
-      const byId = new Map(robots.map((b) => [b.id, b]));
-      plan.order.forEach((id, t) => {
-        const b = byId.get(id)!;
-        putWaypoints(b.id, b.application, arrivalMm, [m.waypoints[t]], batchFields(wpSettings)).catch(() => {});
-      });
+      const batches = Object.fromEntries(plan.order.map((id, t) => [id, [m.waypoints[t]]]));
+      putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
       setSpreadRun({ order: plan.order, targets: m.waypoints });
       showToast(`${robots.length} robots sent to their own targets`);
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
       setSpread((prev) => ({ ...prev, [m.key]: null }));
     },
-    [bots, showToast, arrivalMm, wpSettings, spread, site],
+    [bots, showToast, reportUnknown, arrivalMm, wpSettings, spread, site],
   );
 
   const sendMission = useCallback(
@@ -549,9 +562,10 @@ export const App: React.FC = () => {
         return;
       }
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
-      targets.forEach((b) => {
-        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, batchFields(wpSettings)).catch(() => {});
-      });
+      if (targets.length > 0) {
+        const batches = Object.fromEntries(targets.map((b) => [b.id, m.waypoints]));
+        putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
+      }
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
           targets.length > 1 ? "s" : ""
@@ -559,7 +573,7 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast, arrivalMm, wpSettings, spread, sendSpread],
+    [bots, showToast, reportUnknown, arrivalMm, wpSettings, spread, sendSpread],
   );
 
   const onSpreadToggle = useCallback(
@@ -601,11 +615,9 @@ export const App: React.FC = () => {
   );
 
   const onStopNav = useCallback(() => {
-    drivableSelected.forEach((b) => {
-      putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {});
-    });
+    clearWaypoints(drivableSelected.map((b) => b.id)).then(reportUnknown, () => {});
     if (drivableSelected.length > 0) showToast("Navigation stopped");
-  }, [drivableSelected, showToast, arrivalMm]);
+  }, [drivableSelected, showToast, reportUnknown]);
 
   // Redo sends each bot the mission it last ran, which the controller still
   // holds after the bot arrived. Each bot gets its own list, so a selection
@@ -613,11 +625,10 @@ export const App: React.FC = () => {
   const onRedo = useCallback(() => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
-    again.forEach((b) => {
-      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), batchFields(wpSettings)).catch(() => {});
-    });
+    const batches = Object.fromEntries(again.map((b) => [b.id, lastMissionTargets(b)]));
+    putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast, arrivalMm, wpSettings]);
+  }, [selectedBots, showToast, reportUnknown, arrivalMm, wpSettings]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -711,12 +722,11 @@ export const App: React.FC = () => {
 
   const onStopMission = useCallback(
     (ids: string[]) => {
-      bots
-        .filter((b) => ids.includes(b.id) && b.drivable)
-        .forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
+      const stop = bots.filter((b) => ids.includes(b.id) && b.drivable).map((b) => b.id);
+      clearWaypoints(stop).then(reportUnknown, () => {});
       showToast("Mission interrupted");
     },
-    [bots, showToast, arrivalMm],
+    [bots, showToast, reportUnknown],
   );
 
   // Clearing a batch is an empty one: the robot stops and the controller
@@ -724,10 +734,10 @@ export const App: React.FC = () => {
   const onClearWaypoints = useCallback(
     (ids: string[]) => {
       const targets = bots.filter((b) => ids.includes(b.id) && b.link !== "unknown");
-      targets.forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
+      clearWaypoints(targets.map((b) => b.id)).then(reportUnknown, () => {});
       showToast(`Waypoints cleared · ${targets.length} bot${targets.length === 1 ? "" : "s"}`);
     },
-    [bots, showToast, arrivalMm],
+    [bots, showToast, reportUnknown],
   );
 
   const layerRows: { key: keyof Layers; label: string }[] = [

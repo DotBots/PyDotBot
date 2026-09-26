@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { putWaypoints } from "./api";
+import { putWaypointBatches } from "./api";
 import { ACTION_KEY, MAP_MODIFIER, Modifier, UNDO_KEY } from "./shortcuts";
 import type { Site, UnifiedBot } from "./types";
 
@@ -87,7 +87,8 @@ vi.mock("./useMrta", () => ({
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
   fetchBuild: vi.fn(async () => null),
-  putWaypoints: vi.fn(async () => {}),
+  putWaypointBatches: vi.fn(async () => {}),
+  clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
@@ -162,7 +163,7 @@ describe("a queued pose in the waypoint queue", () => {
     for (let i = 0; i < 17; i++) queueWaypoint();
     expect(screen.getByText(/at most 16 waypoints/)).toBeInTheDocument();
     press(ACTION_KEY.go);
-    expect((putWaypoints as ReturnType<typeof vi.fn>).mock.calls[0][3]).toHaveLength(16);
+    expect(vi.mocked(putWaypointBatches).mock.calls[0][1][idle.id]).toHaveLength(16);
   });
 
   it("is sent with its heading", () => {
@@ -170,9 +171,9 @@ describe("a queued pose in the waypoint queue", () => {
     render(<App />);
     queuePose();
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
+    expect(putWaypointBatches).toHaveBeenCalledWith(expect.any(Number), { [idle.id]: [
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 270 },
-    ], { intermediate_threshold: 20 });
+    ] }, { intermediate_threshold: 20 });
   });
 
   it("shows its heading as a number the keys step and clear", () => {
@@ -196,10 +197,10 @@ describe("a queued pose in the waypoint queue", () => {
     fireEvent.keyDown(field(0), { key: "Delete" });
     expect(field(0).value).toBe("");
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, expect.any(Number), [
+    expect(putWaypointBatches).toHaveBeenCalledWith(expect.any(Number), { [idle.id]: [
       { x: expect.any(Number), y: expect.any(Number) },
       { x: expect.any(Number), y: expect.any(Number), heading_deg: 90 },
-    ], { intermediate_threshold: 20 });
+    ] }, { intermediate_threshold: 20 });
   });
 });
 
@@ -266,7 +267,7 @@ describe("the waypoint settings", () => {
     expect(screen.getByTestId("arrival-10")).toHaveAttribute("aria-checked", "true");
     expect((screen.getByTestId("heading-tol") as HTMLInputElement).placeholder).toBe("3");
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 10, expect.any(Array), {
+    expect(putWaypointBatches).toHaveBeenCalledWith(10, { [idle.id]: expect.any(Array) }, {
       intermediate_threshold: 20,
     });
   });
@@ -284,7 +285,7 @@ describe("the waypoint settings", () => {
     typeInto("heading-tol", "0");
     expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual({ arrivalMm: 7, passMm: 500, headingTolDeg: 1 });
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenCalledWith(idle.id, idle.application, 7, expect.any(Array), {
+    expect(putWaypointBatches).toHaveBeenCalledWith(7, { [idle.id]: expect.any(Array) }, {
       intermediate_threshold: 500,
       heading_tolerance: 1,
     });
@@ -298,7 +299,7 @@ describe("the waypoint settings", () => {
     openQueue();
     typeInto("heading-tol", "");
     press(ACTION_KEY.go);
-    expect(putWaypoints).toHaveBeenLastCalledWith(idle.id, idle.application, 5, expect.any(Array), {
+    expect(putWaypointBatches).toHaveBeenLastCalledWith(5, { [idle.id]: expect.any(Array) }, {
       intermediate_threshold: 30,
     });
   });

@@ -112,18 +112,46 @@ export async function putRgbLed(
   });
 }
 
-export async function putWaypoints(
-  address: string,
-  application: number,
+/** What a bulk waypoint request reached, and the addresses it did not know. */
+export interface WaypointsSent {
+  applied: string[];
+  unknown: string[];
+}
+
+// The controller answers 404 when it knows none of the named robots.
+async function waypointsSent(res: Response, addresses: string[]): Promise<WaypointsSent> {
+  if (res.status === 404) return { applied: [], unknown: addresses };
+  if (!res.ok) throw new Error(`waypoints: HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Each robot its own batch, keyed by address, in one request; an empty list
+ * stops that robot. The controller applies what it can and lists the robots
+ * it does not know.
+ */
+export async function putWaypointBatches(
   threshold: number,
-  waypoints: Waypoint[],
+  dotbots: Record<string, Waypoint[]>,
   batch: { intermediate_threshold?: number; heading_tolerance?: number } = {},
-): Promise<void> {
-  await fetch(`${CONTROLLER}/dotbots/${address}/${application}/waypoints`, {
+): Promise<WaypointsSent> {
+  const res = await fetch(`${CONTROLLER}/dotbots/waypoints`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threshold, waypoints, ...batch }),
+    body: JSON.stringify({ threshold, ...batch, dotbots }),
   });
+  return waypointsSent(res, Object.keys(dotbots));
+}
+
+/**
+ * Stop these robots, keeping only where each one stood. The route without an
+ * address stops every robot, so an empty list sends nothing.
+ */
+export async function clearWaypoints(addresses: string[]): Promise<WaypointsSent> {
+  if (addresses.length === 0) return { applied: [], unknown: [] };
+  const query = addresses.map((a) => `address=${encodeURIComponent(a)}`).join("&");
+  const res = await fetch(`${CONTROLLER}/dotbots/waypoints?${query}`, { method: "DELETE" });
+  return waypointsSent(res, addresses);
 }
 
 // --- the calibration session ----------------------------------------------
