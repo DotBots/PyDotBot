@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import ControllerSettings, body_pose, device_pose
+from dotbot.controller import Controller, ControllerSettings, body_pose, device_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -60,6 +60,29 @@ def controller():
     api.controller.settings = MagicMock()
     api.controller.settings.gw_address = "0000"
     api.controller.settings.network_id = "0000"
+    # The robot state bookkeeping is the real one, over `dotbots`
+    api.controller.seq = 0
+    api.controller.records = {}
+    for name in (
+        "_record",
+        "_append_trail",
+        "update_dotbot",
+        "seed_trail",
+        "clear_trail",
+        "position_history",
+        "dotbot_with_history",
+    ):
+        setattr(api.controller, name, getattr(Controller, name).__get__(api.controller))
+
+
+def _serve(dotbots):
+    """Serve `dotbots`, each carrying its `position_history` as its trail."""
+    api.controller.dotbots = {
+        address: dotbot.model_copy(update={"position_history": []})
+        for address, dotbot in dotbots.items()
+    }
+    for address, dotbot in dotbots.items():
+        api.controller.seed_trail(address, dotbot.position_history)
 
 
 @pytest.mark.asyncio
@@ -540,7 +563,7 @@ async def test_get_dotbots(dotbots, result):
     ],
 )
 async def test_get_dotbot(dotbots, address, code, found, result):
-    api.controller.dotbots = dotbots
+    _serve(dotbots)
     response = await client.get(f"/controller/dotbots/{address}")
     assert response.status_code == code
     if found is True:
@@ -549,13 +572,15 @@ async def test_get_dotbot(dotbots, address, code, found, result):
 
 @pytest.mark.asyncio
 async def test_get_dotbot_keeps_newest_history():
-    api.controller.dotbots = {
-        "12345": DotBotModel(
-            address="12345",
-            last_seen=123.4,
-            position_history=[DotBotLH2Position(x=i, y=i) for i in range(5)],
-        )
-    }
+    _serve(
+        {
+            "12345": DotBotModel(
+                address="12345",
+                last_seen=123.4,
+                position_history=[DotBotLH2Position(x=i, y=i) for i in range(5)],
+            )
+        }
+    )
     response = await client.get("/controller/dotbots/12345?max_positions=2")
     assert response.status_code == 200
     history = response.json()["position_history"]
@@ -665,11 +690,11 @@ async def test_get_dotbot_keeps_newest_history():
     ],
 )
 async def test_clear_dotbot_position_history(dotbots, address, code, found):
-    api.controller.dotbots = dotbots
+    _serve(dotbots)
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert api.controller.dotbots[address].position_history == []
+        assert api.controller.position_history(address) == []
 
 
 @pytest.mark.asyncio

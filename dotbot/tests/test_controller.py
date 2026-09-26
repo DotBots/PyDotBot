@@ -98,10 +98,6 @@ def controller(monkeypatch):
                 status=DotBotStatus.ACTIVE,
                 battery=2.0,
                 lh2_position=DotBotLH2Position(x=1000, y=1000),
-                position_history=[
-                    DotBotLH2Position(x=900, y=900),
-                    DotBotLH2Position(x=800, y=800),
-                ],
             ),
             "0000000000000001": DotBotModel(
                 address="0000000000000001",
@@ -117,10 +113,6 @@ def controller(monkeypatch):
                 status=DotBotStatus.INACTIVE,
                 battery=1.0,
                 lh2_position=DotBotLH2Position(x=500, y=500),
-                position_history=[
-                    DotBotLH2Position(x=400, y=400),
-                    DotBotLH2Position(x=300, y=300),
-                ],
             ),
             "0000000000000003": DotBotModel(
                 address="0000000000000003",
@@ -129,9 +121,16 @@ def controller(monkeypatch):
                 status=DotBotStatus.LOST,
                 battery=1.0,
                 lh2_position=DotBotLH2Position(x=1000, y=1500),
-                position_history=[],
             ),
         }
+    )
+    _controller.seed_trail(
+        "0000000000000000",
+        [DotBotLH2Position(x=900, y=900), DotBotLH2Position(x=800, y=800)],
+    )
+    _controller.seed_trail(
+        "0000000000000002",
+        [DotBotLH2Position(x=400, y=400), DotBotLH2Position(x=300, y=300)],
     )
     _controller.adapter = SerialAdapter(settings.port, settings.baudrate)
     _controller.adapter.serial = SerialInterface(
@@ -250,13 +249,13 @@ def test_controller_get_dotbots_keeps_newest_history(
     controller, max_positions, expected
 ):
     """A capped history keeps the newest points, not the oldest."""
-    dotbot = controller.dotbots["0000000000000000"]
-    dotbot.position_history = [DotBotLH2Position(x=i, y=i) for i in range(10)]
+    address = "0000000000000003"
+    controller.seed_trail(address, [DotBotLH2Position(x=i, y=i) for i in range(10)])
     (result,) = controller.get_dotbots(
-        DotBotQueryModel(address=dotbot.address, max_positions=max_positions)
+        DotBotQueryModel(address=address, max_positions=max_positions)
     )
     assert [p.x for p in result.position_history] == expected
-    assert len(dotbot.position_history) == 10
+    assert len(controller.position_history(address)) == 10
 
 
 def test_controller_sailbot_simulator():
@@ -876,8 +875,8 @@ async def test_the_advertisement_before_the_first_fix_leaves_no_position(control
     controller.handle_received_frame(
         _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
     )
-    dotbot = controller.dotbots[addr_to_hex(BOT)]
-    assert [(p.x, p.y) for p in dotbot.position_history] == [(1000, 1000)]
+    history = controller.position_history(addr_to_hex(BOT))
+    assert [(p.x, p.y) for p in history] == [(1000, 1000)]
 
 
 @pytest.mark.asyncio
@@ -890,7 +889,8 @@ async def test_a_fix_at_the_origin_is_kept_once_the_robot_has_a_position(control
     )
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
-    assert [(p.x, p.y) for p in dotbot.position_history] == [(1000, 1000), (0, 0)]
+    history = controller.position_history(addr_to_hex(BOT))
+    assert [(p.x, p.y) for p in history] == [(1000, 1000), (0, 0)]
 
 
 @pytest.mark.asyncio

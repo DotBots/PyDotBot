@@ -529,15 +529,6 @@ class DotBotModel(BaseModel):
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
 
-    def with_recent_history(self, max_positions: int) -> "DotBotModel":
-        """A copy carrying only the newest `max_positions` points of history."""
-        history = self.position_history
-        recent = history[max(0, len(history) - max_positions) :]
-        return DotBotModel(
-            **self.model_dump(exclude={"position_history"}),
-            position_history=[position.model_dump() for position in recent],
-        )
-
 
 class DotBotNotificationCommand(IntEnum):
     """Notification command of a DotBot."""

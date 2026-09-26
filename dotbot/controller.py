@@ -16,8 +16,10 @@ import queue
 import random
 import time
 import webbrowser
+from collections import deque
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from itertools import islice
+from typing import Callable, Deque, Dict, List, Optional, Tuple, Union
 
 import serial
 import starlette
@@ -132,6 +134,23 @@ DIRECT_COMMANDS = (
     PayloadControlMode,
 )
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
+IGNORED_PAYLOAD_TYPES = (
+    PayloadType.CMD_MOVE_RAW,
+    PayloadType.CMD_RGB_LED,
+    PayloadType.CMD_WHEEL_VELOCITY,
+)
+ADVERTISEMENT_PAYLOAD_TYPES = (
+    PayloadType.ADVERTISEMENT,
+    PayloadType.DOTBOT_ADVERTISEMENT,
+)
+# What `Controller._waypoints_report` sets, as one change
+WAYPOINTS_REPORT_FIELDS = (
+    "waypoints_status",
+    "waypoints_reason",
+    "waypoint_index",
+    "max_speed",
+    "axle_position",
+)
 
 
 def load_calibration(spec: str, site: Optional[str] = None):
@@ -165,6 +184,23 @@ class PendingCommand:
     superseded: Callable[[PayloadDotBotAdvertisement], bool] = lambda _: False
     # Batch ids the robot may still show before this command reaches it
     batch_ids: frozenset = frozenset()
+
+
+@dataclass
+class RobotRecord:
+    """What the controller keeps about a robot beside its model.
+
+    `revs` maps a field of the model to the controller `seq` it last changed
+    at. `trail` is the position history, oldest first, each point with the
+    `seq` it was added at.
+    """
+
+    revs: Dict[str, int] = dataclasses.field(default_factory=dict)
+    trail: Deque[Tuple[int, Union[DotBotLH2Position, DotBotGPSPosition]]] = (
+        dataclasses.field(
+            default_factory=lambda: deque(maxlen=MAX_POSITION_HISTORY_SIZE)
+        )
+    )
 
 
 class ControllerException(Exception):
@@ -273,6 +309,9 @@ class Controller:
 
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
+        # Bumped on every change to the robots' state; starts at 0 per run
+        self.seq = 0
+        self.records: Dict[str, RobotRecord] = {}
         # self.dotbots: Dict[str, DotBotModel] = {
         #     "0000000000000001": DotBotModel(
         #         address="0000000000000001",
@@ -650,88 +689,126 @@ class Controller:
                 )
             await asyncio.sleep(1)
 
+    def _record(self, address: str) -> RobotRecord:
+        """The record kept beside `address`'s model, created on first use."""
+        record = self.records.get(address)
+        if record is None:
+            record = self.records[address] = RobotRecord()
+        return record
+
+    def _set(
+        self, dotbot: DotBotModel, record: RobotRecord, name: str, value, seq: int
+    ) -> None:
+        """Set one field of a robot, recording `seq` if its value changes."""
+        if getattr(dotbot, name) != value:
+            setattr(dotbot, name, value)
+            record.revs[name] = seq
+
+    def _append_trail(self, record: RobotRecord, point, seq: int) -> None:
+        record.trail.append((seq, point))
+        record.revs["position_history"] = seq
+
+    def update_dotbot(self, address: str, **fields) -> None:
+        """Set fields of a known robot as one change."""
+        dotbot, record = self.dotbots[address], self._record(address)
+        self.seq += 1
+        for name, value in fields.items():
+            setattr(dotbot, name, value)
+            record.revs[name] = self.seq
+
+    def seed_trail(self, address: str, points) -> None:
+        """Append `points` to a known robot's position history as one change."""
+        record = self._record(address)
+        self.seq += 1
+        for point in points:
+            self._append_trail(record, point, self.seq)
+
+    def clear_trail(self, address: str) -> None:
+        """Empty a known robot's position history."""
+        record = self._record(address)
+        self.seq += 1
+        record.trail.clear()
+        record.revs["position_history"] = self.seq
+
+    def position_history(self, address: str) -> List:
+        """A robot's position history, oldest first."""
+        record = self.records.get(address)
+        return [] if record is None else [point for _, point in record.trail]
+
+    def dotbot_with_history(self, address: str, max_positions: int) -> DotBotModel:
+        """A copy of a robot's model carrying the newest `max_positions`
+        points of its position history."""
+        record = self.records.get(address)
+        trail = () if record is None else record.trail
+        start = max(0, len(trail) - max_positions)
+        return self.dotbots[address].model_copy(
+            update={
+                "position_history": [point for _, point in islice(trail, start, None)]
+            }
+        )
+
     def handle_received_frame(
         self, frame: Frame
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
+        payload_type = frame.packet.payload_type
         # Controller is not interested by command messages received
-        if frame.packet.payload_type in [
-            PayloadType.CMD_MOVE_RAW,
-            PayloadType.CMD_RGB_LED,
-            PayloadType.CMD_WHEEL_VELOCITY,
-        ]:
+        if payload_type in IGNORED_PAYLOAD_TYPES:
             return
         source = addr_to_hex(int(frame.header.source))
-        logger = self.logger.bind(
-            source=source,
-            payload_type=PayloadType(frame.packet.payload_type).name,
-        )
         if source == GATEWAY_ADDRESS_DEFAULT:
-            logger.warning("Invalid source in payload")
-            return
-        dotbot = DotBotModel(
-            address=source,
-            last_seen=time.time(),
-        )
-        notification_cmd = DotBotNotificationCommand.NONE
-
-        if source not in self.dotbots and frame.packet.payload_type not in [
-            PayloadType.ADVERTISEMENT,
-            PayloadType.DOTBOT_ADVERTISEMENT,
-        ]:
-            logger.debug("Ignoring non advertised dotbot")
-            return
-
-        if source in self.dotbots:
-            dotbot.application = self.dotbots[source].application
-            dotbot.mode = self.dotbots[source].mode
-            dotbot.status = self.dotbots[source].status
-            dotbot.direction = self.dotbots[source].direction
-            dotbot.wind_angle = self.dotbots[source].wind_angle
-            dotbot.rudder_angle = self.dotbots[source].rudder_angle
-            dotbot.sail_angle = self.dotbots[source].sail_angle
-            dotbot.rgb_led = self.dotbots[source].rgb_led
-            dotbot.model = self.dotbots[source].model
-            dotbot.lh2_position = self.dotbots[source].lh2_position
-            dotbot.pose = self.dotbots[source].pose
-            dotbot.gps_position = self.dotbots[source].gps_position
-            dotbot.waypoints = self.dotbots[source].waypoints
-            dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
-            dotbot.waypoints_status = self.dotbots[source].waypoints_status
-            dotbot.waypoints_reason = self.dotbots[source].waypoints_reason
-            dotbot.waypoint_index = self.dotbots[source].waypoint_index
-            dotbot.max_speed = self.dotbots[source].max_speed
-            dotbot.axle_position = self.dotbots[source].axle_position
-            dotbot.position_history = self.dotbots[source].position_history
-            dotbot.battery = self.dotbots[source].battery
-            dotbot.calibrated = self.dotbots[source].calibrated
-        else:
-            # reload if a new dotbot comes in
-            logger.info("New DotBot")
-            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
-
-        if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
-            logger = logger.bind(
-                application=ApplicationType(frame.packet.payload.application).name,
+            self.logger.warning(
+                "Invalid source in payload",
+                source=source,
+                payload_type=PayloadType(payload_type).name,
             )
-            dotbot.application = ApplicationType(frame.packet.payload.application)
-            self.dotbots.update({dotbot.address: dotbot})
-            logger.debug("Advertisement received")
+            return
+        payload = frame.packet.payload
+        dotbot = self.dotbots.get(source)
+        if dotbot is None and payload_type not in ADVERTISEMENT_PAYLOAD_TYPES:
+            self.logger.debug("Ignoring non advertised dotbot", source=source)
+            return
 
-        if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
-            logger = logger.bind(application=ApplicationType.DotBot.name)
-            dotbot.calibrated = int(frame.packet.payload.calibrated)
+        seq = self.seq + 1
+        notification_cmd = DotBotNotificationCommand.NONE
+        if dotbot is None:
+            self.logger.info(
+                "New DotBot", source=source, payload_type=PayloadType(payload_type).name
+            )
+            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
+            dotbot = DotBotModel(address=source, last_seen=time.time())
+            self.dotbots[source] = dotbot
+        else:
+            dotbot.last_seen = time.time()
+        record = self._record(source)
+
+        if payload_type == PayloadType.ADVERTISEMENT:
+            self._set(
+                dotbot, record, "application", ApplicationType(payload.application), seq
+            )
+            self.logger.debug(
+                "Advertisement received",
+                source=source,
+                application=dotbot.application.name,
+            )
+
+        if payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
+            self._set(dotbot, record, "calibrated", int(payload.calibrated), seq)
             # Not dataclasses.asdict(): it deep-copies the field metadata
             dict_adv = {
-                field.name: getattr(frame.packet.payload, field.name)
-                for field in dataclasses.fields(frame.packet.payload)
+                field.name: getattr(payload, field.name)
+                for field in dataclasses.fields(payload)
                 if field.name != "metadata"
             }
-            logger.debug(
-                "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
+            self.logger.debug(
+                "Advertisement received",
+                source=source,
+                cal_hex=hex(dotbot.calibrated),
+                **dict_adv,
             )
-            # Send calibration to dotbot if it's not calibrated and the localization system has calibration
-            need_update = self._waypoints_report(dotbot, frame.packet.payload)
+            if self._waypoints_report(dotbot, payload):
+                for name in WAYPOINTS_REPORT_FIELDS:
+                    record.revs[name] = seq
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
@@ -739,7 +816,6 @@ class Controller:
             if is_fully_calibrated is False and self.lh2_calibration:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
-                self.dotbots.update({dotbot.address: dotbot})
                 for station in self.lh2_calibration:
                     matrix_bytes = homography_as_float32(station.homography)
                     self.logger.info(
@@ -747,139 +823,52 @@ class Controller:
                         index=station.index,
                         matrix=matrix_bytes,
                     )
-                    payload = PayloadLh2CalibrationHomography(
-                        index=station.index,
-                        homography_matrix=matrix_bytes,
+                    self.send_payload(
+                        int(source, 16),
+                        payload=PayloadLh2CalibrationHomography(
+                            index=station.index,
+                            homography_matrix=matrix_bytes,
+                        ),
                     )
-                    self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:
-                dotbot.direction = (
-                    None
-                    if frame.packet.payload.direction == DIRECTION_NONE
-                    else frame.packet.payload.direction
+                self._set(
+                    dotbot,
+                    record,
+                    "direction",
+                    None if payload.direction == DIRECTION_NONE else payload.direction,
+                    seq,
                 )
-                new_position = DotBotLH2Position(
-                    x=frame.packet.payload.pos_x,
-                    y=frame.packet.payload.pos_y,
-                )
+                new_position = DotBotLH2Position(x=payload.pos_x, y=payload.pos_y)
                 if is_lh2_fix(new_position, dotbot):
-                    dotbot.lh2_position = new_position
-                    dotbot.pose = body_pose(
-                        dotbot.model, new_position, frame.packet.payload.direction
-                    )
-                    if (
-                        dotbot.position_history
-                        and lh2_distance(dotbot.position_history[-1], new_position)
-                        < LH2_POSITION_DISTANCE_THRESHOLD
-                    ):
-                        # If the new position is too close from the last one, we consider it as noise and we don't add it to the position history
-                        logger.debug(
-                            "Discarding LH2 position update because it's too close from the last one",
-                            last_position=dotbot.position_history[-1].model_dump(),
-                            new_position=new_position.model_dump(),
-                            distance=lh2_distance(
-                                dotbot.position_history[-1], new_position
-                            ),
-                        )
-                    else:
-                        dotbot.position_history.append(new_position)
-                        if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                            dotbot.position_history.pop(0)
-                    twin = self._update_dotbot_twin(
-                        address=dotbot.address,
-                        pwm_left=frame.packet.payload.pwm_left,
-                        pwm_right=frame.packet.payload.pwm_right,
-                        init_pos_x=new_position.x,
-                        init_pos_y=new_position.y,
-                        init_direction=frame.packet.payload.direction,
-                        init_encoder_left=frame.packet.payload.encoder_left,
-                        init_encoder_right=frame.packet.payload.encoder_right,
-                    )
-                    if self.csv_data_logger is not None:
-                        real_log = CSVLog(
-                            pos_x=dotbot.lh2_position.x,
-                            pos_y=dotbot.lh2_position.y,
-                            direction=frame.packet.payload.direction,
-                            pwm_left=frame.packet.payload.pwm_left,
-                            pwm_right=frame.packet.payload.pwm_right,
-                            encoder_left=frame.packet.payload.encoder_left,
-                            encoder_right=frame.packet.payload.encoder_right,
-                        )
-                        sim_log = CSVLog(
-                            pos_x=int(twin.pos_x),
-                            pos_y=int(twin.pos_y),
-                            direction=int(twin.direction),
-                            pwm_left=int(twin.pwm_left),
-                            pwm_right=int(twin.pwm_right),
-                            encoder_left=twin._last_encoder_left,
-                            encoder_right=twin._last_encoder_right,
-                        )
-                        self.csv_data_logger.log(
-                            real_log=real_log,
-                            sim_log=sim_log,
-                            control_mode=ControlModeType(
-                                frame.packet.payload.mode
-                            ).value,
-                            waypoint_index=frame.packet.payload.waypoint_idx,
-                            waypoint_x=frame.packet.payload.waypoint_x,
-                            waypoint_y=frame.packet.payload.waypoint_y,
-                            battery_level=dotbot.battery,
-                            sim_battery_voltage=twin.battery_voltage / 1000.0,
-                            address=dotbot.address,
-                            pose=dotbot.pose,
-                        )
-                need_update = True
+                    self._lh2_fix(dotbot, record, payload, new_position, seq)
 
-            if dotbot.battery != frame.packet.payload.battery / 1000.0:
-                dotbot.battery = frame.packet.payload.battery / 1000.0  # mV to V
-                need_update = True
-
-            if dotbot.mode != ControlModeType(frame.packet.payload.mode):
-                dotbot.mode = ControlModeType(frame.packet.payload.mode)
-                need_update = True
-
+            self._set(dotbot, record, "battery", payload.battery / 1000.0, seq)  # mV
+            self._set(dotbot, record, "mode", ControlModeType(payload.mode), seq)
             self.logger.debug(
                 "Advertisement Data",
-                direction=frame.packet.payload.direction,
-                X=frame.packet.payload.pos_x,
-                Y=frame.packet.payload.pos_y,
-                battery=frame.packet.payload.battery,
-            )
-            if (
-                need_update is True
-                and notification_cmd != DotBotNotificationCommand.NEW_DOTBOT
-            ):
-                notification_cmd = DotBotNotificationCommand.UPDATE
-
-        if (
-            frame.packet.payload_type == PayloadType.SAILBOT_DATA
-            and -500 <= frame.packet.payload.direction <= 500
-        ):
-            dotbot.direction = frame.packet.payload.direction
-            logger = logger.bind(direction=dotbot.direction)
-
-        if frame.packet.payload_type in [PayloadType.SAILBOT_DATA]:
-            logger = logger.bind(
-                wind_angle=dotbot.wind_angle,
-                rudder_angle=dotbot.rudder_angle,
-                sail_angle=dotbot.sail_angle,
+                source=source,
+                direction=payload.direction,
+                X=payload.pos_x,
+                Y=payload.pos_y,
+                battery=payload.battery,
             )
 
-        if frame.packet.payload_type in [
-            PayloadType.GPS_POSITION,
-            PayloadType.SAILBOT_DATA,
-        ]:
+        if payload_type == PayloadType.SAILBOT_DATA and -500 <= payload.direction <= 500:
+            self._set(dotbot, record, "direction", payload.direction, seq)
+
+        if payload_type in (PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA):
             new_position = DotBotGPSPosition(
-                latitude=float(frame.packet.payload.latitude) / 1e6,
-                longitude=float(frame.packet.payload.longitude) / 1e6,
+                latitude=float(payload.latitude) / 1e6,
+                longitude=float(payload.longitude) / 1e6,
             )
-            dotbot.gps_position = new_position
+            self._set(dotbot, record, "gps_position", new_position, seq)
             # Read wind sensor measurements
-            dotbot.wind_angle = frame.packet.payload.wind_angle
-            dotbot.rudder_angle = frame.packet.payload.rudder_angle
-            dotbot.sail_angle = frame.packet.payload.sail_angle
-            logger.debug(
+            self._set(dotbot, record, "wind_angle", payload.wind_angle, seq)
+            self._set(dotbot, record, "rudder_angle", payload.rudder_angle, seq)
+            self._set(dotbot, record, "sail_angle", payload.sail_angle, seq)
+            self.logger.debug(
                 "gps",
+                source=source,
                 lat=new_position.latitude,
                 long=new_position.longitude,
                 wind_angle=dotbot.wind_angle,
@@ -887,40 +876,105 @@ class Controller:
                 sail_angle=dotbot.sail_angle,
             )
             if (
-                not dotbot.position_history
-                or gps_distance(dotbot.position_history[-1], new_position)
+                not record.trail
+                or gps_distance(record.trail[-1][1], new_position)
                 >= GPS_POSITION_DISTANCE_THRESHOLD
             ):
-                dotbot.position_history.append(new_position)
-            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                dotbot.position_history.pop(0)
+                self._append_trail(record, new_position, seq)
             if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
                 notification_cmd = DotBotNotificationCommand.UPDATE
 
-        if notification_cmd == DotBotNotificationCommand.UPDATE:
-            notification = DotBotNotificationModel(
-                cmd=notification_cmd.value,
-                data=DotBotNotificationUpdate(
-                    address=dotbot.address,
-                    direction=dotbot.direction,
-                    wind_angle=dotbot.wind_angle,
-                    rudder_angle=dotbot.rudder_angle,
-                    sail_angle=dotbot.sail_angle,
-                    lh2_position=dotbot.lh2_position,
-                    gps_position=dotbot.gps_position,
-                    battery=dotbot.battery,
-                ),
-            )
-        else:
-            notification = DotBotNotificationModel(cmd=notification_cmd.value)
+        if seq in record.revs.values():
+            self.seq = seq
+            if notification_cmd == DotBotNotificationCommand.NONE:
+                notification_cmd = DotBotNotificationCommand.UPDATE
 
         if self.settings.verbose is True:
             print(frame)
-        self.dotbots.update({dotbot.address: dotbot})
-        if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
-            notification.data = DotBotModel(**dotbot.model_dump(exclude_none=True))
-        if notification_cmd != DotBotNotificationCommand.NONE:
-            asyncio.create_task(self.notify_clients(notification))
+        if notification_cmd == DotBotNotificationCommand.UPDATE:
+            notification = DotBotNotificationModel(
+                cmd=notification_cmd.value,
+                data=self.dotbot_with_history(source, MAX_POSITION_HISTORY_SIZE),
+            )
+        elif notification_cmd == DotBotNotificationCommand.NEW_DOTBOT:
+            notification = DotBotNotificationModel(cmd=notification_cmd.value)
+        else:
+            return
+        asyncio.create_task(self.notify_clients(notification))
+
+    def _lh2_fix(
+        self,
+        dotbot: DotBotModel,
+        record: RobotRecord,
+        payload: PayloadDotBotAdvertisement,
+        new_position: DotBotLH2Position,
+        seq: int,
+    ) -> None:
+        """Take a lighthouse fix: position, body pose and position history."""
+        self._set(dotbot, record, "lh2_position", new_position, seq)
+        self._set(
+            dotbot,
+            record,
+            "pose",
+            body_pose(dotbot.model, new_position, payload.direction),
+            seq,
+        )
+        if (
+            record.trail
+            and lh2_distance(record.trail[-1][1], new_position)
+            < LH2_POSITION_DISTANCE_THRESHOLD
+        ):
+            # Too close to the last point: noise, kept out of the history
+            self.logger.debug(
+                "Discarding LH2 position update because it's too close from the last one",
+                source=dotbot.address,
+                last_position=record.trail[-1][1].model_dump(),
+                new_position=new_position.model_dump(),
+                distance=lh2_distance(record.trail[-1][1], new_position),
+            )
+        else:
+            self._append_trail(record, new_position, seq)
+        twin = self._update_dotbot_twin(
+            address=dotbot.address,
+            pwm_left=payload.pwm_left,
+            pwm_right=payload.pwm_right,
+            init_pos_x=new_position.x,
+            init_pos_y=new_position.y,
+            init_direction=payload.direction,
+            init_encoder_left=payload.encoder_left,
+            init_encoder_right=payload.encoder_right,
+        )
+        if self.csv_data_logger is not None:
+            real_log = CSVLog(
+                pos_x=dotbot.lh2_position.x,
+                pos_y=dotbot.lh2_position.y,
+                direction=payload.direction,
+                pwm_left=payload.pwm_left,
+                pwm_right=payload.pwm_right,
+                encoder_left=payload.encoder_left,
+                encoder_right=payload.encoder_right,
+            )
+            sim_log = CSVLog(
+                pos_x=int(twin.pos_x),
+                pos_y=int(twin.pos_y),
+                direction=int(twin.direction),
+                pwm_left=int(twin.pwm_left),
+                pwm_right=int(twin.pwm_right),
+                encoder_left=twin._last_encoder_left,
+                encoder_right=twin._last_encoder_right,
+            )
+            self.csv_data_logger.log(
+                real_log=real_log,
+                sim_log=sim_log,
+                control_mode=ControlModeType(payload.mode).value,
+                waypoint_index=payload.waypoint_idx,
+                waypoint_x=payload.waypoint_x,
+                waypoint_y=payload.waypoint_y,
+                battery_level=dotbot.battery,
+                sim_battery_voltage=twin.battery_voltage / 1000.0,
+                address=dotbot.address,
+                pose=dotbot.pose,
+            )
 
     async def _ws_send_safe(self, websocket: WebSocket, msg: str):
         """Safely send a message to a websocket client."""
@@ -1142,7 +1196,7 @@ class Controller:
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
         """Returns the list of dotbots matching the query."""
         dotbots: List[DotBotModel] = []
-        for dotbot in self.dotbots.values():
+        for address, dotbot in self.dotbots.items():
             if query.address is not None and dotbot.address != query.address:
                 continue
             if (
@@ -1190,7 +1244,7 @@ class Controller:
                 if query.max_positions is None
                 else query.max_positions
             )
-            dotbots.append(dotbot.with_recent_history(max_positions))
+            dotbots.append(self.dotbot_with_history(address, max_positions))
         dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
         if query.limit is not None:
             dotbots = dotbots[: query.limit]

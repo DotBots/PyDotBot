@@ -148,7 +148,7 @@ def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         right_y=command.right_y,
     )
     api.controller.send_payload(int(address, 16), payload)
-    api.controller.dotbots[address].move_raw = command
+    api.controller.update_dotbot(address, move_raw=command)
 
 
 @api.put(
@@ -213,7 +213,7 @@ async def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         red=command.red, green=command.green, blue=command.blue
     )
     api.controller.send_payload(int(address, 16), payload)
-    api.controller.dotbots[address].rgb_led = command
+    api.controller.update_dotbot(address, rgb_led=command)
     notification = DotBotNotificationModel(
         cmd=DotBotNotificationCommand.UPDATE,
         data=DotBotNotificationUpdate(address=address, rgb_led=command),
@@ -312,8 +312,9 @@ async def _dotbots_waypoints(
             lh2_waypoints=waypoints_list,
             waypoints_threshold=waypoints.threshold,
         )
-    api.controller.dotbots[address].waypoints = waypoints_list
-    api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
+    api.controller.update_dotbot(
+        address, waypoints=waypoints_list, waypoints_threshold=waypoints.threshold
+    )
     if isinstance(payload, PayloadLH2Waypoints):
         api.controller.send_waypoints(address, payload)
     else:
@@ -333,7 +334,7 @@ async def dotbot_positions_history_clear(address: str):
     """Clear the history of positions of a dotbot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    api.controller.dotbots[address].position_history = []
+    api.controller.clear_trail(address)
     await api.controller.notify_clients(
         DotBotNotificationModel(
             cmd=DotBotNotificationCommand.UPDATE,
@@ -353,7 +354,7 @@ async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
     """Dotbot HTTP GET handler."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    return api.controller.dotbots[address].with_recent_history(max_positions)
+    return api.controller.dotbot_with_history(address, max_positions)
 
 
 @api.get(
