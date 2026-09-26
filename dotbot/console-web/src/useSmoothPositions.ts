@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { LH2Position, UnifiedBot } from "./types";
 
@@ -77,45 +77,111 @@ export function animating(states: Iterable<PosState>, now: number): boolean {
   return false;
 }
 
-// Smoothed per-bot positions, keyed by bot id. Only bots with a known
-// position are present. Re-renders on every animation frame while at least
-// one bot is mid-transition; callers read from the returned map instead of
-// `bot.position` for the animated glyph, and keep using `bot.position`
-// directly for anything that should update instantly (trails, waypoints).
-export function useSmoothPositions(
-  bots: UnifiedBot[],
-  mapDiagonal: number,
-): Map<string, LH2Position> {
-  const statesRef = useRef<Map<string, PosState>>(new Map());
-  const [, tick] = useState(0);
+/** Where an element goes for a floor point: CSS left and top, in percent. */
+export type Place = (p: LH2Position) => { left: number; top: number };
 
-  useEffect(() => {
+/**
+ * Glides each robot's element to its latest position by writing its `left`
+ * and `top` directly, one animation frame at a time, so a moving fleet costs
+ * no React render at all. React owns everything else about the element and
+ * never sets those two properties.
+ */
+export class PositionAnimator {
+  private states = new Map<string, PosState>();
+  private elements = new Map<string, HTMLElement>();
+  // The robots mid-transition, the only ones a frame writes.
+  private moving = new Set<string>();
+  private raf: number | null = null;
+
+  constructor(private place: Place) {}
+
+  /** Folds in the fleet's latest positions; a robot seen first is placed at once. */
+  update(bots: { id: string; position: LH2Position | null }[], mapDiagonal: number): void {
     const now = performance.now();
+    const present = new Set<string>();
     for (const b of bots) {
       if (!b.position) continue;
-      const prev = statesRef.current.get(b.id);
-      statesRef.current.set(b.id, nextPosState(prev, b.position, now, mapDiagonal));
+      present.add(b.id);
+      const prev = this.states.get(b.id);
+      const next = nextPosState(prev, b.position, now, mapDiagonal);
+      if (next === prev) continue;
+      this.states.set(b.id, next);
+      if (next.duration > 0) this.moving.add(b.id);
+      else this.write(b.id, now);
     }
-  }, [bots, mapDiagonal]);
-
-  useEffect(() => {
-    let raf: number;
-    let wasAnimating = false;
-    const loop = () => {
-      const active = animating(statesRef.current.values(), performance.now());
-      // One frame past the last transition, so every glyph lands on its target.
-      if (active || wasAnimating) tick((n) => n + 1);
-      wasAnimating = active;
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const now = performance.now();
-  const result = new Map<string, LH2Position>();
-  for (const [id, state] of statesRef.current) {
-    result.set(id, positionAt(state, now));
+    for (const id of this.states.keys()) {
+      if (present.has(id)) continue;
+      this.states.delete(id);
+      this.moving.delete(id);
+    }
+    this.kick();
   }
-  return result;
+
+  /** A new mapping from floor to element, which moves every robot at once. */
+  setPlace(place: Place): void {
+    this.place = place;
+    const now = performance.now();
+    for (const id of this.elements.keys()) this.write(id, now);
+  }
+
+  /** The element drawing robot `id`, or null once it is gone. */
+  attach(id: string, el: HTMLElement | null): void {
+    if (!el) {
+      this.elements.delete(id);
+      return;
+    }
+    this.elements.set(id, el);
+    this.write(id, performance.now());
+  }
+
+  stop(): void {
+    if (this.raf !== null) cancelAnimationFrame(this.raf);
+    this.raf = null;
+  }
+
+  private kick(): void {
+    if (this.raf === null && this.moving.size > 0) {
+      this.raf = requestAnimationFrame(this.frame);
+    }
+  }
+
+  private frame = (): void => {
+    this.raf = null;
+    const now = performance.now();
+    for (const id of this.moving) {
+      // Written once more at or past its end, so it lands on its target.
+      this.write(id, now);
+      if (!animating([this.states.get(id)!], now)) this.moving.delete(id);
+    }
+    this.kick();
+  };
+
+  private write(id: string, now: number): void {
+    const el = this.elements.get(id);
+    const state = this.states.get(id);
+    if (!el || !state) return;
+    const { left, top } = this.place(positionAt(state, now));
+    el.style.left = `${left}%`;
+    el.style.top = `${top}%`;
+  }
+}
+
+/**
+ * One animator for the map's lifetime, fed every fleet update. `place` must
+ * keep its identity until the mapping it computes changes.
+ */
+export function usePositionAnimator(
+  bots: UnifiedBot[],
+  mapDiagonal: number,
+  place: Place,
+): PositionAnimator {
+  const ref = useRef<PositionAnimator | null>(null);
+  if (ref.current === null) ref.current = new PositionAnimator(place);
+  const animator = ref.current;
+  // Layout effects, so a robot's element is placed before it is first painted:
+  // they run after its marker has attached it.
+  useLayoutEffect(() => animator.setPlace(place), [animator, place]);
+  useLayoutEffect(() => animator.update(bots, mapDiagonal), [animator, bots, mapDiagonal]);
+  useEffect(() => () => animator.stop(), [animator]);
+  return animator;
 }

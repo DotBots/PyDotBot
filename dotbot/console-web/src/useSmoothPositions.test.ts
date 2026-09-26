@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MAX_DURATION_MS,
   MIN_DURATION_MS,
+  PositionAnimator,
   animating,
   lerpPos,
   nextPosState,
@@ -73,9 +74,84 @@ describe("animating", () => {
     expect(animating([state], 1100)).toBe(true);
   });
 
-  it("stops once every transition has ended, so an idle map stops re-rendering", () => {
+  it("stops once every transition has ended", () => {
     expect(animating([state], 1200)).toBe(false);
     expect(animating([{ ...state, duration: 0 }], 1000)).toBe(false);
     expect(animating([], 0)).toBe(false);
+  });
+});
+
+describe("PositionAnimator", () => {
+  // Floor millimetres straight to percent, so a position reads back as itself.
+  const place = (p: { x: number; y: number }) => ({ left: p.x, top: p.y });
+  let now = 0;
+  let frames: FrameRequestCallback[] = [];
+  const runFrame = (at: number) => {
+    now = at;
+    const due = frames;
+    frames = [];
+    due.forEach((f) => f(at));
+  };
+  const at = (el: HTMLElement) => [el.style.left, el.style.top];
+
+  beforeEach(() => {
+    now = 1000;
+    frames = [];
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (f: FrameRequestCallback) => frames.push(f));
+    vi.stubGlobal("cancelAnimationFrame", () => {
+      frames = [];
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("places a robot seen first at once, and asks for no frame", () => {
+    const animator = new PositionAnimator(place);
+    const el = document.createElement("div");
+    animator.attach("a", el);
+    animator.update([{ id: "a", position: { x: 10, y: 20 } }], MAP_DIAGONAL);
+    expect(at(el)).toEqual(["10%", "20%"]);
+    expect(frames).toHaveLength(0);
+  });
+
+  it("glides a moved robot frame by frame, lands on its target, then stops", () => {
+    const animator = new PositionAnimator(place);
+    const el = document.createElement("div");
+    animator.attach("a", el);
+    animator.update([{ id: "a", position: { x: 0, y: 0 } }], MAP_DIAGONAL);
+    now = 1100;
+    animator.update([{ id: "a", position: { x: 100, y: 0 } }], MAP_DIAGONAL);
+    expect(frames).toHaveLength(1);
+    runFrame(1150); // halfway through the 100 ms the last update took
+    expect(at(el)).toEqual(["50%", "0%"]);
+    runFrame(1250);
+    expect(at(el)).toEqual(["100%", "0%"]);
+    expect(frames).toHaveLength(0);
+  });
+
+  it("writes only what moved", () => {
+    const animator = new PositionAnimator(place);
+    const still = document.createElement("div");
+    animator.attach("still", still);
+    animator.update([{ id: "still", position: { x: 5, y: 5 } }, { id: "a", position: { x: 0, y: 0 } }], MAP_DIAGONAL);
+    const write = vi.spyOn(still.style, "left", "set");
+    now = 1100;
+    animator.update([{ id: "still", position: { x: 5, y: 5 } }, { id: "a", position: { x: 50, y: 0 } }], MAP_DIAGONAL);
+    runFrame(1150);
+    runFrame(1300);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("places an element attached after its robot was seen, and moves all on a new mapping", () => {
+    const animator = new PositionAnimator(place);
+    animator.update([{ id: "a", position: { x: 10, y: 20 } }], MAP_DIAGONAL);
+    const el = document.createElement("div");
+    animator.attach("a", el);
+    expect(at(el)).toEqual(["10%", "20%"]);
+    animator.setPlace((p) => ({ left: p.x / 2, top: p.y / 2 }));
+    expect(at(el)).toEqual(["5%", "10%"]);
   });
 });

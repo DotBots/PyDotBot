@@ -192,7 +192,7 @@ export const LedDot: React.FC<{ bot: UnifiedBot }> = ({ bot }) => (
 // quiet because a sandbox app's only way to exit is to stop feeding the
 // deadman - so a normal completion lands here and must not cry wolf.
 export const ResetBadge: React.FC<{
-  bot: UnifiedBot;
+  bot: Pick<UnifiedBot, "severity" | "resetCause">;
   size?: number;
 }> = ({ bot, size = 11 }) => {
   if (bot.severity === "normal") return null;

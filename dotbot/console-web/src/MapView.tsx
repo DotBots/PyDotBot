@@ -17,7 +17,7 @@ import {
   robotOpacityFor,
   spanMask,
 } from "./cameraLayer";
-import { areaToFraction, fractionToArea, headingToGlyphRotation } from "./frame";
+import { areaToFraction, fractionToArea } from "./frame";
 import {
   axisTicks,
   barLabel,
@@ -29,7 +29,8 @@ import {
   scaleBar,
   ticksInSite,
 } from "./grid";
-import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, hasHeading, robotDraw } from "./BotGlyph";
+import { hasHeading } from "./BotGlyph";
+import { BotMarker, WAYPOINT_MIN_PX, botDraw as drawBot } from "./BotMarker";
 import {
   ARM_PX,
   HOLD_MS,
@@ -52,7 +53,6 @@ import { DEFAULT_WAYPOINT_SETTINGS, WaypointSettings } from "./arrival";
 import { KNOB_R_PX, PoseMarker, axleReachMm, knobOffset, poseShape } from "./PoseMarker";
 import { DEFAULT_ROBOT_DRAWING, RobotDrawing } from "./robotDrawing";
 import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, activatable, holds, roleOf, typingIn } from "./shortcuts";
-import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
 
 import {
   Area,
@@ -65,7 +65,7 @@ import {
   UnifiedBot,
   Waypoint,
 } from "./types";
-import { useSmoothPositions } from "./useSmoothPositions";
+import { Place, usePositionAnimator } from "./useSmoothPositions";
 import {
   Camera,
   SITE_ZOOM,
@@ -205,14 +205,7 @@ const BOTTOM_LINE_PX =
 
 // How far a pointer travels before a press is a drag rather than a click.
 const DRAG_MIN_PX = 5;
-// The selection ring hugs the robot: its footprint plus this on every side.
-const SELECTION_PAD_PX = 3;
-// A waypoint diamond is a fraction of the body of the robot it belongs to,
-// held between a floor it can still be seen at and a cap that keeps it a
-// marker rather than an object: a waypoint is a point on the floor.
-export const WAYPOINT_OF_BODY = 0.3;
-export const WAYPOINT_MIN_PX = 7;
-export const WAYPOINT_MAX_PX = 14;
+export { WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./BotMarker";
 // Below this radius on screen a waypoint's footprint ring is not drawn.
 const WAYPOINT_RING_MIN_PX = 14;
 // How much of an area's colour washes its floor.
@@ -265,7 +258,12 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
-  const smoothPositions = useSmoothPositions(props.bots, mapDiagonal);
+  const { x: vx, y: vy, w: vw, h: vh } = props.viewport;
+  const place = useCallback<Place>((p) => {
+    const { fx, fy } = areaToFraction(p, { x: vx, y: vy, w: vw, h: vh });
+    return { left: fx * 100, top: fy * 100 };
+  }, [vx, vy, vw, vh]);
+  const animator = usePositionAnimator(props.bots, mapDiagonal, place);
 
   const [box, setBox] = useState(() => viewGeom(1000, 600, props.viewport));
   const onGeomRef = useRef(props.onGeom);
@@ -830,53 +828,44 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   );
 
   const drawing = props.robotDrawing ?? DEFAULT_ROBOT_DRAWING;
-  // The robot is an object on the floor, so it is drawn at the floor's own
-  // scale: zooming in tells the truth about how much room it takes. Zooming
-  // out floors it at a size that can still be seen and clicked.
-  const botDraw = (b: UnifiedBot) => {
-    let draw = robotDraw(b.pose, drawing, perMm, props.bots.length);
-    // The robot's own axle estimate places the body.
-    if (b.axle && b.pose && draw.shape.kind === "board") {
-      const dx = b.axle.x - b.pose.axle.x;
-      const dy = b.axle.y - b.pose.axle.y;
-      const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
-      const body = draw.shape.body;
-      draw = {
-        ...draw,
-        centre: move(draw.centre),
-        shape: {
-          ...draw.shape,
-          body: {
-            ...body,
-            outline: body.outline.map(move),
-            wheels: body.wheels.map((w) => w.map(move)),
-            centre: move(body.centre),
-            nose: move(body.nose),
-            axle: move(body.axle),
-          },
-        },
-      };
+  const botDraw = (b: UnifiedBot) => drawBot(b, drawing, perMm, props.bots.length);
+
+  // The markers take stable handlers, so a render that changes nothing about
+  // a robot leaves its marker alone; these read the latest props through a ref.
+  const attachBot = useCallback(
+    (id: string, el: HTMLElement | null) => animator.attach(id, el),
+    [animator],
+  );
+  const botPointerDown = (e: React.PointerEvent, id: string) => {
+    const role = roleOf(e);
+    // A zoom gesture is the floor's, wherever it starts.
+    if (role === "zoom") return;
+    e.stopPropagation();
+    if (role === "waypoint") {
+      if (e.button !== 0) return;
+      const b = props.bots.find((o) => o.id === id);
+      if (!b) return;
+      wrapRef.current?.setPointerCapture?.(e.pointerId);
+      beginGesture(e.clientX, e.clientY, b);
+      return;
     }
-    const { footprintPx } = draw;
-    return {
-      draw,
-      footprintPx,
-      // What sits around the robot - selection, badges, labels - is chrome,
-      // and keeps its size on screen whatever the camera does.
-      selectionPx: footprintPx + SELECTION_PAD_PX * 2,
-      // Sized from the body, never from the possible footprint's ring.
-      waypointPx: Math.min(
-        WAYPOINT_MAX_PX,
-        Math.max(
-          WAYPOINT_MIN_PX,
-          (draw.shape.kind === "sensor"
-            ? botFootprintPx(perMm, b.pose ? b.pose.envelope_mm : 0)
-            : footprintPx) * WAYPOINT_OF_BODY,
-        ),
-      ),
-      batteryPx: Math.max(14, Math.min(28, footprintPx)),
-    };
+    if (props.session && props.onPickCapturer) {
+      props.onPickCapturer(id);
+      props.onSelect([id], "replace");
+    } else if (role === "select") {
+      props.onSelect([id], "toggle");
+    } else if (props.selection.has(id) && props.selection.size === 1) {
+      props.onSelect([], "replace"); // click the sole selected bot again = deselect
+    } else {
+      props.onSelect([id], "replace");
+    }
   };
+  const botPointerDownRef = useRef(botPointerDown);
+  botPointerDownRef.current = botPointerDown;
+  const onBotPointerDown = useCallback(
+    (e: React.PointerEvent, id: string) => botPointerDownRef.current(e, id),
+    [],
+  );
 
   // What a waypoint asks of the robot, for its tooltip. `i` counts from the
   // robot's own start, which is entry 0 of an active mission's list.
@@ -1486,192 +1475,26 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           {props.layers.dotBots &&
             props.bots
               .filter((b) => b.position)
-              .map((b) => {
-                const at = smoothPositions.get(b.id) ?? b.position!;
-                const q = pctPos(at);
-                // Only the board fades, never what marks it out: a robot has
-                // to stay findable and clickable to be driven, and at a low
-                // opacity the ring and the chip are all there is to find.
-                const solid = robotOpacityAt(robotFades, at);
-                const selected = props.selection.has(b.id);
-                const hovered = hoverId === b.id;
-                const stc = stateColor(b.state);
-                const pct = batteryPct(b);
-                const blink = b.state === "Programming" || b.state === "Resetting";
-                // A robot drawn as a mark is one nobody reads per-robot detail
-                // on, so its own indicators go with the board: the selection
-                // ring and the reset badge stay, being how a robot is found
-                // rather than what it says.
-                const { draw, footprintPx, selectionPx, batteryPx } = botDraw(b);
-                // The board is drawn where the pose puts it, which is not
-                // where the photodiode is: the chrome goes with the board, so
-                // the ring and the label stay around the robot rather than
-                // around its sensor.
-                const bodyDx = draw.centre.x * perMm;
-                const bodyDy = draw.centre.y * perMm;
-                // A body built on the travel bearing is an estimate: it is
-                // right while the robot drives straight and wrong the rest of
-                // the time, so it is drawn as one.
-                const bodySolid = solid * (draw.estimate ? TRAVEL_BODY_OPACITY : 1);
-                // The board turns with the heading; the ring around it turns
-                // too, so it hugs the board whichever way the robot faces.
-                const turned = draw.turned;
-                const turn = turned
-                  ? headingToGlyphRotation(b.pose!.heading_deg)
-                  : 0;
-                // How far below the centre a turned box reaches, as a
-                // fraction of its half side.
-                const reach = turned
-                  ? Math.abs(Math.cos((turn * Math.PI) / 180)) +
-                    Math.abs(Math.sin((turn * Math.PI) / 180))
-                  : 1;
-                return (
-                  <div
-                    key={b.id}
-                    id={`bot-${b.id}`}
-                    onPointerDown={(e) => {
-                      const role = roleOf(e);
-                      // A zoom gesture is the floor's, wherever it starts.
-                      if (role === "zoom") return;
-                      e.stopPropagation();
-                      if (role === "waypoint") {
-                        if (e.button !== 0) return;
-                        wrapRef.current?.setPointerCapture?.(e.pointerId);
-                        beginGesture(e.clientX, e.clientY, b);
-                        return;
-                      }
-                      if (props.session && props.onPickCapturer) {
-                        props.onPickCapturer(b.id);
-                        props.onSelect([b.id], "replace");
-                      } else if (role === "select") {
-                        props.onSelect([b.id], "toggle");
-                      } else if (props.selection.has(b.id) && props.selection.size === 1) {
-                        props.onSelect([], "replace"); // click the sole selected bot again = deselect
-                      } else {
-                        props.onSelect([b.id], "replace");
-                      }
-                    }}
-                    onPointerEnter={() => setHoverId(b.id)}
-                    onPointerLeave={() => setHoverId((h) => (h === b.id ? null : h))}
-                    style={{
-                      position: "absolute",
-                      left: `${q.left}%`,
-                      top: `${q.top}%`,
-                      transform: `translate(-50%, -50%) scale(${chrome})`,
-                      cursor: "pointer",
-                      zIndex: selected ? 6 : 2,
-                      width: 0,
-                      height: 0,
-                    }}
-                  >
-                    {/* Everything that marks the robot out rides on its body,
-                        which is not where its sensor is. */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: bodyDx,
-                        top: bodyDy,
-                        width: 0,
-                        height: 0,
-                      }}
-                    >
-                    {/* last-reset warning, centred over the glyph body */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
-                        zIndex: 3,
-                      }}
-                    >
-                      <ResetBadge bot={b} size={13} />
-                    </div>
-                    {/* selection ring, hugging the board */}
-                    {selected && (
-                      <div
-                        data-testid={`selection-${b.id}`}
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: "50%",
-                          width: selectionPx,
-                          height: selectionPx,
-                          transform: `translate(-50%, -50%) rotate(${turn}deg)`,
-                          border: "1.5px solid var(--accent)",
-                          // Square around a board, round around anything round.
-                          borderRadius: turned ? 3 : "50%",
-                          boxShadow:
-                            "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)",
-                        }}
-                      />
-                    )}
-                    {/* battery bar */}
-                    {props.layers.batteryBars && draw.battery && (
-                      <div
-                        data-testid={`battery-${b.id}`}
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: -footprintPx / 2 - 11,
-                          transform: "translateX(-50%)",
-                          width: batteryPx,
-                          height: 3,
-                          background: "rgba(255,255,255,.2)",
-                          borderRadius: 2,
-                        }}
-                      >
-                        <div style={{ height: "100%", width: `${pct}%`, background: batteryColor(b), borderRadius: 2 }} />
-                      </div>
-                    )}
-                    {/* chip label: selected or hovered only */}
-                    {(selected || hovered) && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: ((selected ? selectionPx : footprintPx) / 2) * reach + 3,
-                          transform: "translateX(-50%)",
-                          font: "600 9px/1 var(--font-mono)",
-                          letterSpacing: ".5px",
-                          color: "var(--text)",
-                          background: "var(--elevated)",
-                          padding: "2px 5px",
-                          borderRadius: 3,
-                          whiteSpace: "nowrap",
-                          boxShadow: "0 1px 3px rgba(0,0,0,.4)",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {b.id.slice(-4).toUpperCase()}
-                      </div>
-                    )}
-                    </div>
-                    {/* The body, hung off the photodiode fix this container
-                        sits on: the pose puts it where it belongs. */}
-                    <div
-                      data-testid={`glyph-${b.id}`}
-                      data-shape={draw.shape.kind}
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
-                        opacity: bodySolid < 1 ? bodySolid : undefined,
-                        animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
-                      }}
-                    >
-                      <BotGlyph
-                        state={stc}
-                        led={b.led}
-                        shape={draw.shape}
-                        pxPerMm={perMm}
-                        footprintPx={footprintPx}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+              .map((b) => (
+                <BotMarker
+                  key={b.id}
+                  bot={b}
+                  selected={props.selection.has(b.id)}
+                  hovered={hoverId === b.id}
+                  // Only the board fades, never what marks it out: a robot has
+                  // to stay findable and clickable to be driven, and at a low
+                  // opacity the ring and the chip are all there is to find.
+                  solid={robotOpacityAt(robotFades, b.position!)}
+                  chrome={chrome}
+                  perMm={perMm}
+                  drawing={drawing}
+                  botCount={props.bots.length}
+                  batteryBars={props.layers.batteryBars}
+                  attach={attachBot}
+                  onPointerDown={onBotPointerDown}
+                  onHover={setHoverId}
+                />
+              ))}
         </div>
       </div>
 
