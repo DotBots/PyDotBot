@@ -19,8 +19,6 @@ import puppeteer from "puppeteer-core";
 
 const CONSOLE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const AREA_MM = 2000;
-// Spread mode sends one waypoint per robot and the console caps a batch at 16.
-const SPREAD_MAX = 16;
 
 function parseArgs(argv) {
   const opts = {
@@ -33,6 +31,8 @@ function parseArgs(argv) {
     port: 18100,
     profile: true,
     interactions: true,
+    // How many robots the one-target-per-robot pass selects, at most.
+    spread: 16,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -46,6 +46,7 @@ function parseArgs(argv) {
     else if (a === "--port") opts.port = Number(next());
     else if (a === "--no-profile") opts.profile = false;
     else if (a === "--no-interactions") opts.interactions = false;
+    else if (a === "--spread") opts.spread = Number(next());
     else throw new Error(`unknown argument ${a}`);
   }
   return opts;
@@ -507,7 +508,7 @@ async function timed(page, inputType, cond, action, timeoutMs = 15_000) {
   };
 }
 
-async function interactions(page, base, addresses) {
+async function interactions(page, base, addresses, spreadMax) {
   const out = {};
   const n = addresses.length;
   // The map canvas: the element holding the camera layer.
@@ -548,7 +549,7 @@ async function interactions(page, base, addresses) {
 
   // One target per robot for k robots: pick them, turn spread on, place k
   // targets, send.
-  const k = Math.min(n, SPREAD_MAX);
+  const k = Math.min(n, spreadMax);
   let picked = 0;
   for (const id of addresses) {
     if (picked === k) break;
@@ -676,7 +677,7 @@ async function runOne(opts, chrome, n, profileDir) {
     if (opts.interactions) {
       console.error(`[n=${n}] interactions`);
       await sleep(1500);
-      result.interactions = await interactions(page, base, addresses);
+      result.interactions = await interactions(page, base, addresses, opts.spread);
     }
     console.error(`[n=${n}] idle`);
     result.idle = await idleState(page, cdp, base, addresses, 10);
@@ -750,7 +751,7 @@ async function main() {
     date: new Date().toISOString(),
     host: { platform: os.platform(), cpus: os.cpus().length, cpuModel: os.cpus()[0]?.model, memGB: round(os.totalmem() / 2 ** 30) },
     chrome: chrome,
-    options: { robots: opts.robots, duration: opts.duration, warmup: opts.warmup },
+    options: { robots: opts.robots, duration: opts.duration, warmup: opts.warmup, spread: opts.spread },
     bundle: bundleSizes(),
     results,
   };

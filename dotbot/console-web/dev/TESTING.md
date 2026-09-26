@@ -117,6 +117,7 @@ It writes `<dir>/results.json` (load, frames, long tasks, main-thread time,
 WebSocket rates, heap growth, React commits, interaction latencies per fleet
 size, plus a React profiling-build pass naming the components that render per
 commit) and prints a table. `--no-profile` / `--no-interactions` skip passes;
+`--spread N` sets how many robots the one-target-per-robot pass sends (16);
 `--chrome` or `CHROME_PATH` picks the browser. With a snap-packaged Chrome,
 point `--out` outside `/tmp`, which it cannot write to.
 
