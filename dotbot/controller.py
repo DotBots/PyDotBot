@@ -677,32 +677,33 @@ class Controller:
     async def _dotbots_status_refresh(self):
         """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            needs_refresh = [False] * len(self.dotbots)
-            for idx, dotbot in enumerate(self.dotbots.values()):
-                previous_status = dotbot.status
-                if dotbot.last_seen + LOST_DELAY < time.time():
-                    dotbot.status = DotBotStatus.LOST
-                elif dotbot.last_seen + INACTIVE_DELAY < time.time():
-                    dotbot.status = DotBotStatus.INACTIVE
-                else:
-                    dotbot.status = DotBotStatus.ACTIVE
-                logger = self.logger.bind(
-                    source=dotbot.address,
-                    application=dotbot.application.name,
-                )
-                if len(needs_refresh) > idx:
-                    needs_refresh[idx] = bool(previous_status != dotbot.status)
-                    if needs_refresh[idx]:
-                        logger.info(
-                            "Dotbot status changed",
-                            previous_status=previous_status.name,
-                            status=dotbot.status.name,
-                        )
-            if any(needs_refresh) is True:
-                await self.notify_clients(
-                    DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-                )
+            await self._refresh_status(time.time())
             await asyncio.sleep(1)
+
+    async def _refresh_status(self, now: float):
+        """Mark each robot ACTIVE, INACTIVE or LOST by its silence at `now`;
+        a robot whose status changes gets an UPDATE carrying it."""
+        for dotbot in list(self.dotbots.values()):
+            if dotbot.last_seen + LOST_DELAY < now:
+                status = DotBotStatus.LOST
+            elif dotbot.last_seen + INACTIVE_DELAY < now:
+                status = DotBotStatus.INACTIVE
+            else:
+                status = DotBotStatus.ACTIVE
+            if status == dotbot.status:
+                continue
+            self.logger.info(
+                "Dotbot status changed",
+                source=dotbot.address,
+                application=dotbot.application.name,
+                previous_status=dotbot.status.name,
+                status=status.name,
+            )
+            self.update_dotbot(dotbot.address, status=status)
+            if self.websockets:
+                message = self._update_message(dotbot, self._record(dotbot.address))
+                if message is not None:
+                    await self._broadcast(message)
 
     def _record(self, address: str) -> RobotRecord:
         """The record kept beside `address`'s model, created on first use."""

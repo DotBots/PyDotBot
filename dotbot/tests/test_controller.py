@@ -16,6 +16,7 @@ from dotbot import addr_to_hex
 from dotbot.adapter import SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
+    INACTIVE_DELAY,
     PLACEHOLDER_HEADING_DEG,
     Controller,
     ControllerSettings,
@@ -1405,3 +1406,26 @@ async def test_a_new_robot_is_announced_without_data(controller):
         controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
     )
     assert message == {"cmd": 4}
+
+
+@pytest.mark.asyncio
+async def test_a_status_change_is_an_update_not_a_reload(controller):
+    controller.handle_received_frame(_advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    client = _StatusClient()
+    controller.websockets = [client]
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
+    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
+    await asyncio.sleep(0)
+    updates = [m for m in client.messages if m["data"]["address"] == addr_to_hex(BOT)]
+    assert updates == [
+        {
+            "cmd": 2,
+            "data": {
+                "address": addr_to_hex(BOT),
+                "last_seen": dotbot.last_seen,
+                "status": DotBotStatus.INACTIVE,
+            },
+        }
+    ]
+    assert all(m["cmd"] == 2 for m in client.messages)
