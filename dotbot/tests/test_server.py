@@ -1828,9 +1828,9 @@ async def test_set_dotbots_waypoints_poses_echo_their_heading():
     assert response.status_code == 200
     record = api.controller.records["4242"]
     assert record.revs["waypoints"] == api.controller.seq
-    echoed = api.controller.dotbots["4242"].model_dump(
-        mode="json", exclude_none=True
-    )["waypoints"]
+    echoed = api.controller.dotbots["4242"].model_dump(mode="json", exclude_none=True)[
+        "waypoints"
+    ]
     assert echoed == [
         {"x": 100, "y": 100},
         {"x": 500, "y": 100},
@@ -1998,7 +1998,8 @@ async def test_set_waypoint_batches_sends_each_robot_its_own():
     assert {p.pass_mm for p in sent.values()} == {20}
     assert api.controller.dotbots["4343"].waypoints[1].heading_deg == 90.0
     assert {
-        address for address, record in api.controller.records.items()
+        address
+        for address, record in api.controller.records.items()
         if "waypoints" in record.revs
     } == {"4242", "4343"}
 

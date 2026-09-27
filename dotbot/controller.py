@@ -100,8 +100,8 @@ from dotbot.robots import (
 )
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
-from dotbot.swarm_client import build_swarmit_client, conn_string
 from dotbot.stream import StreamHub
+from dotbot.swarm_client import build_swarmit_client, conn_string
 
 # from dotbot.models import (
 #     DotBotModel,

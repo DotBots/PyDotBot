@@ -308,7 +308,10 @@ async def test_a_moving_robot_appends_its_new_points_only(controller):
     advertise(controller, 0x42, x=1200, y=1000)
     await tick(controller.stream, 0.1)
     patch = client.of_type("delta")[0]["robots"][addr_to_hex(0x42)]
-    assert patch["trail_append"] == [{"x": 1100.0, "y": 1000.0}, {"x": 1200.0, "y": 1000.0}]
+    assert patch["trail_append"] == [
+        {"x": 1100.0, "y": 1000.0},
+        {"x": 1200.0, "y": 1000.0},
+    ]
     assert "trail_reset" not in patch
     await tick(controller.stream, 1.1)
     blind_patch = blind.of_type("delta")[0]["robots"][addr_to_hex(0x42)]
@@ -374,8 +377,12 @@ async def test_a_calibration_session_event_keeps_its_nulls(controller):
 
 @pytest.mark.asyncio
 async def test_a_late_client_is_sent_the_last_events_with_its_snapshot(controller):
-    controller.set_event("camera_detection/arena", "camera_detection", {"area": "arena"})
-    controller.set_event("camera_detection/arena", "camera_detection", {"area": "arena", "sequence": 2})
+    controller.set_event(
+        "camera_detection/arena", "camera_detection", {"area": "arena"}
+    )
+    controller.set_event(
+        "camera_detection/arena", "camera_detection", {"area": "arena", "sequence": 2}
+    )
     client = Client(controller.stream)
     await tick(controller.stream, 0)
     assert [f["type"] for f in client.frames] == ["snapshot", "event"]
@@ -579,9 +586,7 @@ async def test_since_resumes_with_a_delta_of_what_changed(controller):
     advertise(controller, 0x13)
     await controller._notify_calibration_session(None)
 
-    second = Client(
-        controller.stream, trail=5, since=seq, run=controller.run_id
-    )
+    second = Client(controller.stream, trail=5, since=seq, run=controller.run_id)
     second.fleet = fleet
     assert second.hello["resumed"] is True
     await tick(controller.stream, 1)
@@ -681,17 +686,24 @@ async def test_the_rest_list_is_the_model_serialised(controller):
     serialise the robot models it documents."""
     from dotbot.models import DotBotModel, DotBotQueryModel, DotBotWaypoints
 
-    advertise(controller, 0x42, axle_x=1000, axle_y=971, waypoints_status=3, report=True)
+    advertise(
+        controller, 0x42, axle_x=1000, axle_y=971, waypoints_status=3, report=True
+    )
     advertise(controller, 0x43, x=1500)
     controller.update_dotbot(
         addr_to_hex(0x43),
         waypoints=DotBotWaypoints(
-            threshold=10, waypoints=[{"x": 1, "y": 2}, {"x": 3, "y": 4, "heading_deg": 90}]
+            threshold=10,
+            waypoints=[{"x": 1, "y": 2}, {"x": 3, "y": 4, "heading_deg": 90}],
         ).waypoints,
     )
-    controller.seed_trail(addr_to_hex(0x42), [DotBotLH2Position(x=i, y=i) for i in range(5)])
+    controller.seed_trail(
+        addr_to_hex(0x42), [DotBotLH2Position(x=i, y=i) for i in range(5)]
+    )
     expected = [
-        DotBotModel.model_validate(m.model_dump()).model_dump(mode="json", exclude_none=True)
+        DotBotModel.model_validate(m.model_dump()).model_dump(
+            mode="json", exclude_none=True
+        )
         for m in controller.get_dotbots(DotBotQueryModel(trail=3))
     ]
     assert list((await rest_fleet(3)).values()) == expected

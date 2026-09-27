@@ -247,7 +247,9 @@ async def test_controller_get_dotbots_query(query, length, controller):
     assert len(dotbots) == length
 
 
-@pytest.mark.parametrize("trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))])
+@pytest.mark.parametrize(
+    "trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
+)
 def test_controller_get_dotbots_returns_the_newest_trail_points(
     controller, trail, expected
 ):
@@ -1307,9 +1309,9 @@ async def test_a_patch_carries_the_new_fix_and_no_trail(controller):
     controller.seed_trail(
         addr_to_hex(BOT), [DotBotLH2Position(x=i, y=i) for i in range(1000)]
     )
-    patch = _patches(
-        controller, _advertised(BOT, direction=0, pos_x=1500, pos_y=1000)
-    )[addr_to_hex(BOT)]
+    patch = _patches(controller, _advertised(BOT, direction=0, pos_x=1500, pos_y=1000))[
+        addr_to_hex(BOT)
+    ]
     assert "trail" not in patch and "trail_append" not in patch
     assert patch["lh2_position"] == {"x": 1500.0, "y": 1000.0}
     assert patch["pose"]["photodiode"] == {"x": 1500.0, "y": 1000.0}
@@ -1395,7 +1397,9 @@ async def test_a_report_that_stops_patches_its_fields_to_null(controller):
 
 @pytest.mark.asyncio
 async def test_a_new_robot_arrives_as_its_whole_object(controller):
-    patches = _patches(controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    patches = _patches(
+        controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
     body = patches[addr_to_hex(BOT)]
     assert body["address"] == addr_to_hex(BOT)
     assert body["lh2_position"] == {"x": 1000.0, "y": 1000.0}
@@ -1411,7 +1415,7 @@ async def test_a_status_change_is_a_patch_not_a_reload(controller):
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
-    (delta,) = [json.loads(t) for t in delta_frames(controller, since, 0)]
+    (delta,) = (json.loads(t) for t in delta_frames(controller, since, 0))
     assert delta["robots"][addr_to_hex(BOT)] == {
         "status": DotBotStatus.INACTIVE,
         "last_seen": dotbot.last_seen,
