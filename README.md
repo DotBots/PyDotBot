@@ -56,8 +56,7 @@ dotbot run simulator
 The console opens automatically; pass `--headless` to suppress it (it's still
 served). It is one map-first UI for both driving the fleet and orchestrating the
 testbed - firmware flashing, start/stop and live events - when a swarmit server
-is reachable. The classic UI remains at `/PyDotBot`; it is where the qrkey demo,
-the REST demo and the SailBot views live.
+is reachable.
 
 Drive the simulated DotBots from the console, or run a bundled demo in a
 second terminal:

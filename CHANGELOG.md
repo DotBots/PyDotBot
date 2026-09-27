@@ -61,11 +61,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   it from another machine pass `--controller-http-host 0.0.0.0`, set
   `[run.controller] http_host`, or `DOTBOT_RUN_CONTROLLER_HTTP_HOST`; binding
   beyond loopback logs a warning.
-- **`dotbot run controller` now opens the unified web console** at `/console`
-  instead of the classic dashboard at `/PyDotBot`. The classic UI is still
-  served and still carries the qrkey demo, the REST demo and the SailBot
-  views. If only one of the two is built, that one is opened; if neither is,
-  the controller serves the API and says so rather than opening a dead tab.
+- **`dotbot run controller` now opens the unified web console** at `/console`,
+  and `/` redirects there. If the console is not built, the controller serves
+  the API and says so rather than opening a dead tab.
 - **Device addresses are rendered uppercase everywhere**, through a single
   `dotbot.addr_to_hex()` helper, and are matched case-sensitively. The address
   is the join key between the control plane and swarmit, which already
@@ -96,6 +94,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- **The classic web UI** (`dotbot/frontend/`, served at `/PyDotBot`). The
+  console at `/console` is the only browser UI; `/PyDotBot` now answers 404,
+  so update bookmarks. Its classic-only views go with it: the REST demo page,
+  the SailBot map and the qrkey phone page. The phone page is retired pending
+  a qrkey mode in the console: `dotbot run demo qr` still relays the
+  controller's notifications to MQTT and shows the QR, but no phone page
+  reads what it relays yet.
 - `dotbot-qrkey` console script — use `python -m dotbot.examples.qrkey_demo`
   or `dotbot run demo qr` instead.
 - `dotbot-edge-gateway` console script — the referenced module

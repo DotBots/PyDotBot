@@ -11,7 +11,7 @@ dotbot run --help        # the full list
 
 | Subcommand | Launches |
 |---|---|
-| `controller` | Control plane: REST/WS API + web dashboard. The hub everything else talks to. |
+| `controller` | Control plane: REST/WS API + web console. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
 | `calibrate-lh2` | **Deprecated.** Cabled LH2 calibration on one board (capture / apply). Use [`swarm calibrate-lh2`](swarm.md) instead. |
@@ -24,9 +24,8 @@ dotbot run --help        # the full list
 
 Connect to a swarm and serve the console at `http://localhost:8000/console/`.
 The console is one map-first UI for driving the fleet and, when a swarmit server
-is reachable, orchestrating the testbed. The classic dashboard stays served at
-`/PyDotBot`, which is where the qrkey demo, the REST demo and the SailBot views
-live.
+is reachable, orchestrating the testbed. `http://localhost:8000/` redirects
+to it.
 `--conn` is one discriminated string: `mqtts://host:port`, a serial path, or
 `simulator`.
 
