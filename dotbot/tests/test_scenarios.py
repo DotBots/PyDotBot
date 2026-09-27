@@ -293,14 +293,11 @@ async def test_no_origin_point_is_recorded_before_the_first_fix(scenario):
     await s.run(2.0)
 
     origin = DotBotLH2Position(x=0, y=0)
-    dotbot = await s.get(A)
-    trail = [DotBotLH2Position(**p) for p in dotbot["position_history"]]
+    dotbot = (await s.client.get(f"/controller/dotbots/{A}?trail=1000")).json()
+    trail = [DotBotLH2Position(**p) for p in dotbot["trail"]]
     assert trail, "the robot was never localised"
     assert origin not in trail
     assert dotbot["lh2_position"] != {"x": 0, "y": 0}
-    pushed = [
-        message["data"].get("lh2_position")
-        for message in s.socket.messages
-        if message.get("data")
-    ]
+    pushed = [state.get("lh2_position") for state in s.socket.robot_states()]
+    assert any(pushed), "the stream carried no fix"
     assert {"x": 0.0, "y": 0.0} not in pushed

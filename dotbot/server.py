@@ -30,7 +30,7 @@ from dotbot.build import build_info
 from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    MAX_POSITION_HISTORY_SIZE,
+    MAX_TRAIL_SIZE,
     DotBotAreaModel,
     DotBotBackgroundMapModel,
     DotBotBuildModel,
@@ -49,9 +49,6 @@ from dotbot.models import (
     DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
-    DotBotNotificationCommand,
-    DotBotNotificationModel,
-    DotBotNotificationUpdate,
     DotBotPoseModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
@@ -77,6 +74,7 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadWaypointHeading,
 )
+from dotbot.stream import StreamOptions
 from dotbot.swarm_client import conn_string
 from dotbot.ws_clients import TransportScope
 
@@ -219,11 +217,6 @@ async def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
     )
     api.controller.send_payload(int(address, 16), payload)
     api.controller.update_dotbot(address, rgb_led=command)
-    notification = DotBotNotificationModel(
-        cmd=DotBotNotificationCommand.UPDATE,
-        data=DotBotNotificationUpdate(address=address, rgb_led=command),
-    )
-    await api.controller.notify_clients(notification)
 
 
 @api.put(
@@ -372,11 +365,6 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
-        update_data = DotBotNotificationUpdate(
-            address=address,
-            gps_waypoints=waypoints_list,
-            waypoints_threshold=waypoints.threshold,
-        )
     else:  # DotBot application
         start = _axle_position(api.controller.dotbots[address])
         if start is not None:
@@ -398,11 +386,6 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
-        update_data = DotBotNotificationUpdate(
-            address=address,
-            lh2_waypoints=waypoints_list,
-            waypoints_threshold=waypoints.threshold,
-        )
     api.controller.update_dotbot(
         address, waypoints=waypoints_list, waypoints_threshold=waypoints.threshold
     )
@@ -410,28 +393,18 @@ async def _dotbots_waypoints(
         api.controller.send_waypoints(address, payload)
     else:
         api.controller.send_payload(int(address, 16), payload)
-    notification = DotBotNotificationModel(
-        cmd=DotBotNotificationCommand.UPDATE, data=update_data
-    )
-    await api.controller.notify_clients(notification)
 
 
 @api.delete(
     path="/controller/dotbots/{address}/positions",
-    summary="Clear the history of positions of a DotBot",
+    summary="Clear the trail of a DotBot",
     tags=["dotbots"],
 )
-async def dotbot_positions_history_clear(address: str):
-    """Clear the history of positions of a dotbot."""
+async def dotbot_trail_clear(address: str):
+    """Clear the trail of a dotbot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     api.controller.clear_trail(address)
-    await api.controller.notify_clients(
-        DotBotNotificationModel(
-            cmd=DotBotNotificationCommand.UPDATE,
-            data=DotBotNotificationUpdate(address=address, position_history=[]),
-        )
-    )
 
 
 @api.get(
@@ -441,11 +414,11 @@ async def dotbot_positions_history_clear(address: str):
     summary="Return information about a dotbot given its address",
     tags=["dotbots"],
 )
-async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
+async def dotbot(address: str, max_positions: int = MAX_TRAIL_SIZE):
     """Dotbot HTTP GET handler."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    return api.controller.dotbot_with_history(address, max_positions)
+    return api.controller.dotbot_with_trail(address, max_positions)
 
 
 @api.get(
@@ -693,18 +666,27 @@ async def background_map():
     return DotBotBackgroundMapModel(data=encoded_string)
 
 
-@api.websocket("/controller/ws/status")
-async def websocket_endpoint(websocket: WebSocket):
-    """Websocket server endpoint."""
+@api.websocket("/controller/ws/stream")
+async def controller_stream(websocket: WebSocket):
+    """The controller stream: `hello`, a `snapshot`, then `delta` and
+    `event` frames, each answered with `{"ack": seq}`.
+
+    Query: `hz` (1-20, default 10; 1 until the first ack), `trail` (points
+    per robot, default 0), and `since` with `run` to resume from a seq.
+    """
+    hub = api.controller.stream
+    options = StreamOptions.from_query(websocket.query_params)
     await websocket.accept()
-    api.controller.add_websocket(websocket)
+    client = hub.client(websocket, options)
     try:
+        await websocket.send_text(hub.hello(client))
+        hub.add(client)
         while True:
-            _ = await websocket.receive_text()
+            hub.receive(websocket, await websocket.receive_text())
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
-        api.controller.remove_websocket(websocket)
+        hub.remove(websocket)
 
 
 @api.websocket("/controller/ws/dotbots")

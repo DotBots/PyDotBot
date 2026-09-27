@@ -46,6 +46,7 @@ from dotbot.protocol import (
 )
 from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
+from dotbot.stream import delta_frames
 
 # A measured site, which the package never ships.
 C405 = Site(
@@ -258,8 +259,8 @@ def test_controller_get_dotbots_keeps_newest_history(
     (result,) = controller.get_dotbots(
         DotBotQueryModel(address=address, max_positions=max_positions)
     )
-    assert [p.x for p in result.position_history] == expected
-    assert len(controller.position_history(address)) == 10
+    assert [p.x for p in result.trail] == expected
+    assert len(controller.trail(address)) == 10
 
 
 def test_controller_sailbot_simulator():
@@ -827,25 +828,14 @@ def test_a_log_an_old_sidecar_misdescribes_is_an_error_not_a_stop(
 
 
 @pytest.mark.asyncio
-async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
+async def test_a_calibration_event_keeps_the_session_s_nulls(controller):
     """A complete session reaches the client with `outstanding` null, not absent."""
-    import json
-    from unittest.mock import AsyncMock
-
-    websocket = MagicMock()
-    websocket.send_text = AsyncMock()
-    controller.add_websocket(websocket)
-
     await controller._notify_calibration_session({"outstanding": None, "total": 4})
+    seq, name, session = controller.events["calibration_session"]
+    assert (seq, name) == (controller.seq, "calibration_session")
+    assert "outstanding" in session and session["outstanding"] is None
     await controller._notify_calibration_session(None)
-    await asyncio.sleep(0.05)
-    controller.remove_websocket(websocket)
-
-    first, second = (json.loads(c.args[0]) for c in websocket.send_text.await_args_list)
-    assert first["cmd"] == 5
-    assert first["calibration_session"]["outstanding"] is None
-    assert "outstanding" in first["calibration_session"]
-    assert second == {"cmd": 5, "calibration_session": None}
+    assert controller.events["calibration_session"][2] is None
 
 
 # --- DotBot advertisements, through the bytes the gateway delivers ----------
@@ -881,7 +871,7 @@ async def test_the_advertisement_before_the_first_fix_leaves_no_position(control
     controller.handle_received_frame(
         _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
     )
-    history = controller.position_history(addr_to_hex(BOT))
+    history = controller.trail(addr_to_hex(BOT))
     assert [(p.x, p.y) for p in history] == [(1000, 1000)]
 
 
@@ -895,7 +885,7 @@ async def test_a_fix_at_the_origin_is_kept_once_the_robot_has_a_position(control
     )
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
-    history = controller.position_history(addr_to_hex(BOT))
+    history = controller.trail(addr_to_hex(BOT))
     assert [(p.x, p.y) for p in history] == [(1000, 1000), (0, 0)]
 
 
@@ -1301,79 +1291,82 @@ async def test_a_direct_command_cancels_a_pending_batch(controller, clock, comma
     assert not controller.pending_commands
 
 
-# --- the status notifications an advertisement produces ---------------------
+# --- what the stream sends for an advertisement -----------------------------
 
 
-class _StatusClient:
-    """A status WebSocket client that keeps what it is sent."""
-
-    def __init__(self):
-        self.messages = []
-
-    async def send_text(self, text):
-        self.messages.append(json.loads(text))
-
-
-async def _sent(controller, *frames):
-    """The messages a status client receives for `frames`, in order."""
-    client = _StatusClient()
-    controller.add_websocket(client)
+def _patches(controller, *frames, trail=0):
+    """The stream delta a caught-up client receives for `frames`, by address."""
+    since = controller.seq
     for frame in frames:
         controller.handle_received_frame(frame)
-        # The broadcast task, then the client's send
-        for _ in range(3):
-            await asyncio.sleep(0)
-    controller.remove_websocket(client)
-    return client.messages
+    sent = [json.loads(text) for text in delta_frames(controller, since, trail)]
+    return sent[0]["robots"] if sent else {}
 
 
 @pytest.mark.asyncio
-async def test_an_update_carries_the_new_fix_and_no_position_history(controller):
+async def test_a_patch_carries_the_new_fix_and_no_trail(controller):
     controller.handle_received_frame(
         _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
     )
     controller.seed_trail(
         addr_to_hex(BOT), [DotBotLH2Position(x=i, y=i) for i in range(1000)]
     )
-    (update,) = await _sent(
+    patch = _patches(
         controller, _advertised(BOT, direction=0, pos_x=1500, pos_y=1000)
-    )
-    assert update["cmd"] == 2
-    assert "position_history" not in update["data"]
-    assert update["data"]["lh2_position"] == {"x": 1500.0, "y": 1000.0}
-    assert update["data"]["pose"]["photodiode"] == {"x": 1500.0, "y": 1000.0}
-    assert len(controller.position_history(addr_to_hex(BOT))) == 1000
+    )[addr_to_hex(BOT)]
+    assert "trail" not in patch and "trail_append" not in patch
+    assert patch["lh2_position"] == {"x": 1500.0, "y": 1000.0}
+    assert patch["pose"]["photodiode"] == {"x": 1500.0, "y": 1000.0}
+    assert len(controller.trail(addr_to_hex(BOT))) == 1000
 
 
 @pytest.mark.asyncio
-async def test_an_update_carries_only_what_changed(controller):
+async def test_a_patch_carries_only_what_changed(controller):
     controller.handle_received_frame(
         _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=3000)
     )
-    (update,) = await _sent(
+    patches = _patches(
         controller,
         _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=2900),
     )
     dotbot = controller.dotbots[addr_to_hex(BOT)]
-    assert update == {
-        "cmd": 2,
-        "data": {
-            "address": addr_to_hex(BOT),
-            "last_seen": dotbot.last_seen,
-            "battery": 2.9,
-        },
+    assert patches == {
+        addr_to_hex(BOT): {"battery": 2.9, "last_seen": dotbot.last_seen}
     }
 
 
 @pytest.mark.asyncio
-async def test_an_unchanged_advertisement_sends_nothing(controller):
+async def test_an_unchanged_advertisement_changes_nothing(controller):
     frame = _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
     controller.handle_received_frame(frame)
-    assert await _sent(controller, frame) == []
+    seq = controller.seq
+    assert _patches(controller, frame) == {}
+    assert controller.seq == seq
 
 
 @pytest.mark.asyncio
-async def test_an_update_carries_the_waypoint_report_whole(controller):
+async def test_a_report_that_changes_one_field_patches_that_field(controller):
+    report = dict(
+        direction=0,
+        pos_x=1000,
+        pos_y=1000,
+        axle_x=1000,
+        axle_y=971,
+        waypoints_status=WaypointsStatus.IN_PROGRESS,
+        report=True,
+    )
+    controller.handle_received_frame(_advertised(BOT, waypoint_idx=0, **report))
+    patch = _patches(controller, _advertised(BOT, waypoint_idx=1, **report))[
+        addr_to_hex(BOT)
+    ]
+    assert patch == {
+        "waypoint_index": 1,
+        "last_seen": controller.dotbots[addr_to_hex(BOT)].last_seen,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_stops_patches_its_fields_to_null(controller):
     controller.handle_received_frame(
         _advertised(
             BOT,
@@ -1382,12 +1375,12 @@ async def test_an_update_carries_the_waypoint_report_whole(controller):
             pos_y=1000,
             axle_x=1000,
             axle_y=971,
-            waypoints_status=WaypointsStatus.IN_PROGRESS,
-            waypoint_idx=0,
+            waypoints_status=WaypointsStatus.FAILED,
+            waypoints_reason=1,
             report=True,
         )
     )
-    (update,) = await _sent(
+    patch = _patches(
         controller,
         _advertised(
             BOT,
@@ -1397,48 +1390,33 @@ async def test_an_update_carries_the_waypoint_report_whole(controller):
             axle_x=1000,
             axle_y=971,
             waypoints_status=WaypointsStatus.IN_PROGRESS,
-            waypoint_idx=1,
             report=True,
         ),
-    )
-    data = update["data"]
-    assert data["waypoint_index"] == 1
-    assert data["waypoints_status"] == WaypointsStatus.IN_PROGRESS
-    assert data["axle_position"] == {"x": 1000.0, "y": 971.0}
-    # The fix travels with the axle estimate the robot reports beside it
-    assert data["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+    )[addr_to_hex(BOT)]
+    assert patch["waypoints_status"] == WaypointsStatus.IN_PROGRESS
+    assert patch["waypoints_reason"] is None
 
 
 @pytest.mark.asyncio
-async def test_a_new_robot_is_announced_without_data(controller):
-    (message,) = await _sent(
-        controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
-    )
-    assert message == {"cmd": 4}
+async def test_a_new_robot_arrives_as_its_whole_object(controller):
+    patches = _patches(controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    body = patches[addr_to_hex(BOT)]
+    assert body["address"] == addr_to_hex(BOT)
+    assert body["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+    assert body["trail"] == []
 
 
 @pytest.mark.asyncio
-async def test_a_status_change_is_an_update_not_a_reload(controller):
+async def test_a_status_change_is_a_patch_not_a_reload(controller):
     controller.handle_received_frame(
         _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
     )
-    client = _StatusClient()
-    controller.add_websocket(client)
+    since = controller.seq
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
     await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
-    for _ in range(3):
-        await asyncio.sleep(0)
-    controller.remove_websocket(client)
-    updates = [m for m in client.messages if m["data"]["address"] == addr_to_hex(BOT)]
-    assert updates == [
-        {
-            "cmd": 2,
-            "data": {
-                "address": addr_to_hex(BOT),
-                "last_seen": dotbot.last_seen,
-                "status": DotBotStatus.INACTIVE,
-            },
-        }
-    ]
-    assert all(m["cmd"] == 2 for m in client.messages)
+    (delta,) = [json.loads(t) for t in delta_frames(controller, since, 0)]
+    assert delta["robots"][addr_to_hex(BOT)] == {
+        "status": DotBotStatus.INACTIVE,
+        "last_seen": dotbot.last_seen,
+    }

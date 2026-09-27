@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -50,39 +50,41 @@ client = AsyncClient(transport=ASGITransport(app=api), base_url="http://testserv
 @pytest.fixture(autouse=True)
 def controller():
     api.controller = MagicMock()
-    api.controller.websockets = []
     api.controller.header = MagicMock()
     api.controller.header.destination = MagicMock()
     api.controller.dotbots = MagicMock()
     api.controller.get_dotbots = MagicMock()
-    api.controller.notify_clients = AsyncMock()
     api.controller.send_payload = MagicMock()
     api.controller.settings = MagicMock()
     api.controller.settings.gw_address = "0000"
     api.controller.settings.network_id = "0000"
     # The robot state bookkeeping is the real one, over `dotbots`
     api.controller.seq = 0
+    api.controller.run_id = "0123456789ab"
     api.controller.records = {}
+    api.controller.changed = {}
+    api.controller.max_evicted = 0
     for name in (
         "_record",
         "_append_trail",
+        "_changed",
         "update_dotbot",
         "seed_trail",
         "clear_trail",
-        "position_history",
-        "dotbot_with_history",
+        "trail",
+        "dotbot_with_trail",
     ):
         setattr(api.controller, name, getattr(Controller, name).__get__(api.controller))
 
 
 def _serve(dotbots):
-    """Serve `dotbots`, each carrying its `position_history` as its trail."""
+    """Serve `dotbots`, each carrying its `trail` as its trail."""
     api.controller.dotbots = {
-        address: dotbot.model_copy(update={"position_history": []})
+        address: dotbot.model_copy(update={"trail": []})
         for address, dotbot in dotbots.items()
     }
     for address, dotbot in dotbots.items():
-        api.controller.seed_trail(address, dotbot.position_history)
+        api.controller.seed_trail(address, dotbot.trail)
 
 
 @pytest.mark.asyncio
@@ -577,14 +579,13 @@ async def test_get_dotbot_keeps_newest_history():
             "12345": DotBotModel(
                 address="12345",
                 last_seen=123.4,
-                position_history=[DotBotLH2Position(x=i, y=i) for i in range(5)],
+                trail=[DotBotLH2Position(x=i, y=i) for i in range(5)],
             )
         }
     )
     response = await client.get("/controller/dotbots/12345?max_positions=2")
     assert response.status_code == 200
-    history = response.json()["position_history"]
-    assert [p["x"] for p in history] == [3, 4]
+    assert [p["x"] for p in response.json()["trail"]] == [3, 4]
 
 
 @pytest.mark.asyncio
@@ -598,7 +599,7 @@ async def test_get_dotbot_keeps_newest_history():
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotLH2Position(x=0.0, y=0.5),
                         DotBotLH2Position(x=0.5, y=0.5),
                     ],
@@ -608,7 +609,7 @@ async def test_get_dotbot_keeps_newest_history():
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotLH2Position(x=0.5, y=0.5),
                         DotBotLH2Position(x=0.5, y=0.0),
                     ],
@@ -646,7 +647,7 @@ async def test_get_dotbot_keeps_newest_history():
                     application=ApplicationType.SailBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotGPSPosition(latitude=45.7597, longitude=4.8422),
                         DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
                     ],
@@ -656,7 +657,7 @@ async def test_get_dotbot_keeps_newest_history():
                     application=ApplicationType.SailBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotGPSPosition(latitude=51.509865, longitude=-0.118092),
                         DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
                     ],
@@ -689,24 +690,36 @@ async def test_get_dotbot_keeps_newest_history():
         ),
     ],
 )
-async def test_clear_dotbot_position_history(dotbots, address, code, found):
+async def test_clear_dotbot_trail(dotbots, address, code, found):
     _serve(dotbots)
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert api.controller.position_history(address) == []
+        assert api.controller.trail(address) == []
 
 
 @pytest.mark.asyncio
-async def test_ws_client():
-    with TestClient(api).websocket_connect("/controller/ws/status") as websocket:
+async def test_ws_stream_client():
+    api.controller.stream.hello.return_value = '{"type": "hello"}'
+    with TestClient(api).websocket_connect(
+        "/controller/ws/stream?hz=4&trail=7&since=12&run=abc"
+    ) as websocket:
+        assert websocket.receive_json() == {"type": "hello"}
+        websocket.send_text('{"ack": 3}')
         await asyncio.sleep(0.1)
-        api.controller.add_websocket.assert_called_once()
+        api.controller.stream.add.assert_called_once()
+        options = api.controller.stream.client.call_args.args[1]
+        assert (options.hz, options.trail, options.since, options.run) == (
+            4,
+            7,
+            12,
+            "abc",
+        )
         websocket.close()
         await asyncio.sleep(0.1)
-        api.controller.remove_websocket.assert_called_once_with(
-            api.controller.add_websocket.call_args.args[0]
-        )
+    socket = api.controller.stream.client.call_args.args[0]
+    api.controller.stream.receive.assert_called_once_with(socket, '{"ack": 3}')
+    api.controller.stream.remove.assert_called_once_with(socket)
 
 
 @pytest.mark.asyncio
@@ -1645,9 +1658,9 @@ def detecting(calibration, status="found"):
     controller = Controller.__new__(Controller)
     controller.settings = ControllerSettings()
     controller.cameras = [service]
-    controller.websockets = [MagicMock()]
     controller._camera_pushed = {}
-    controller.notify_clients = AsyncMock()
+    controller.seq = 0
+    controller.events = {}
     assert service.start()
     assert wait_for_detection(service) is not None
     try:
@@ -1658,16 +1671,11 @@ def detecting(calibration, status="found"):
 
 @pytest.mark.asyncio
 async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
-    """One notification per new warp, and none for a warp already pushed."""
-    from dotbot.models import DotBotNotificationCommand
-
+    """One event per new warp, and none for a warp already pushed."""
     with detecting(synthetic_camera) as controller:
         await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
-        notification = controller.notify_clients.await_args[0][0]
-        assert notification.cmd == DotBotNotificationCommand.CAMERA_DETECTION
-
-        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        seq, name, message = controller.events["camera_detection/dev-corner"]
+        assert (seq, name) == (controller.seq, "camera_detection")
         assert message["area"] == "dev-corner"
         assert message["camera_id"] == synthetic_camera.id
         assert message["status"] == "found"
@@ -1689,38 +1697,28 @@ async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
         assert pose["centre_mm"] == [1500.0, 500.0]
 
         await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
+        assert controller.seq == seq
 
 
 @pytest.mark.asyncio
 async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
     with detecting(synthetic_camera, status="none") as controller:
         await controller._push_camera_detections()
-        notification = controller.notify_clients.await_args[0][0]
-        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        _, _, message = controller.events["camera_detection/dev-corner"]
         assert message["status"] == "none"
         assert message["robots"] == []
 
 
 @pytest.mark.asyncio
-async def test_a_console_that_connects_late_is_told_the_last_frame(
+async def test_the_last_detection_is_kept_for_a_console_that_connects_late(
     synthetic_camera,
 ):
-    """Nothing is sent with no socket, and nothing is marked sent either.
-
-    A camera that has stopped delivering pushes no further frame, so a
-    console arriving afterwards would otherwise draw an empty floor.
-    """
+    """A camera that has stopped delivering pushes no further frame, so a
+    console arriving afterwards would otherwise draw an empty floor."""
     with detecting(synthetic_camera) as controller:
-        controller.websockets = []
         await controller._push_camera_detections()
-        controller.notify_clients.assert_not_awaited()
-        assert controller._camera_pushed == {}
-
-        controller.websockets = [MagicMock()]
-        await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
         assert controller._camera_pushed["dev-corner"] >= 1
+        assert "camera_detection/dev-corner" in controller.events
 
 
 @pytest.mark.asyncio
@@ -1810,8 +1808,11 @@ async def test_set_dotbots_waypoints_poses_echo_their_heading():
         },
     )
     assert response.status_code == 200
-    notification = api.controller.notify_clients.await_args[0][0]
-    echoed = notification.model_dump(exclude_none=True)["data"]["lh2_waypoints"]
+    record = api.controller.records["4242"]
+    assert record.revs["waypoints"] == api.controller.seq
+    echoed = api.controller.dotbots["4242"].model_dump(
+        mode="json", exclude_none=True
+    )["waypoints"]
     assert echoed == [
         {"x": 100, "y": 100},
         {"x": 500, "y": 100},
@@ -1978,7 +1979,10 @@ async def test_set_waypoint_batches_sends_each_robot_its_own():
     assert {p.threshold for p in sent.values()} == {40}
     assert {p.pass_mm for p in sent.values()} == {20}
     assert api.controller.dotbots["4343"].waypoints[1].heading_deg == 90.0
-    assert api.controller.notify_clients.await_count == 2
+    assert {
+        address for address, record in api.controller.records.items()
+        if "waypoints" in record.revs
+    } == {"4242", "4343"}
 
 
 @pytest.mark.asyncio

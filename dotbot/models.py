@@ -17,7 +17,8 @@ from pydantic import BaseModel, BeforeValidator, Field, field_validator
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
 
-MAX_POSITION_HISTORY_SIZE = 1000
+# Points of trail the controller keeps per robot
+MAX_TRAIL_SIZE = 1000
 
 
 class DotBotAddressModel(BaseModel):
@@ -567,56 +568,10 @@ class DotBotModel(BaseModel):
     )
     max_speed: Optional[int] = None  # cruise speed limit in force, mm/s
     axle_position: Optional[DotBotLH2Position] = None  # the robot's own estimate
-    position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    # Where the robot has been, oldest first
+    trail: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
-
-
-class DotBotNotificationCommand(IntEnum):
-    """Notification command of a DotBot."""
-
-    NONE: int = 0
-    RELOAD: int = 1
-    UPDATE: int = 2
-    PIN_CODE_UPDATE: int = 3
-    NEW_DOTBOT: int = 4
-    CALIBRATION_SESSION_UPDATE: int = 5
-    CAMERA_DETECTION: int = 6
-
-
-class DotBotNotificationUpdate(BaseModel):
-    """Update notification model."""
-
-    address: str
-    direction: Optional[int] = None
-    wind_angle: Optional[int] = None
-    rudder_angle: Optional[int] = None
-    sail_angle: Optional[int] = None
-    lh2_position: Optional[DotBotLH2Position] = None
-    gps_position: Optional[DotBotGPSPosition] = None
-    battery: Optional[float] = None
-    rgb_led: Optional[DotBotRgbLedCommandModel] = None
-    lh2_waypoints: Optional[List[Union[DotBotLH2Waypoint, DotBotLH2Position]]] = None
-    gps_waypoints: Optional[List[DotBotGPSPosition]] = None
-    waypoints_threshold: Optional[int] = None
-    waypoints_status: Optional[WaypointsStatus] = None
-    waypoints_reason: Optional[str] = None
-    waypoint_index: Optional[int] = None
-    max_speed: Optional[int] = None
-    axle_position: Optional[DotBotLH2Position] = None
-    position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
-
-
-class DotBotNotificationModel(BaseModel):
-    """Model class used to send controller notifications."""
-
-    cmd: DotBotNotificationCommand
-    data: Optional[Union[DotBotNotificationUpdate, DotBotModel]] = None
-    pin_code: Optional[int] = None
-    # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
-    calibration_session: Optional[DotBotCalibrationSessionModel] = None
-    # Carried by CAMERA_DETECTION, one message per camera per new warp.
-    camera_detection: Optional[DotBotCameraDetectionModel] = None
 
 
 class WSBase(BaseModel):

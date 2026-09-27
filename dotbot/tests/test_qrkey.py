@@ -40,7 +40,7 @@ def client(monkeypatch):
 
     async def recv_side_effect():
         await asyncio.sleep(0.1)  # simulate some delay in receiving messages
-        return json.dumps({"cmd": 2, "data": {"address": "test_bot"}})
+        return json.dumps({"type": "delta", "seq": 7, "robots": {}})
 
     websocket_mock.recv.side_effect = recv_side_effect
     monkeypatch.setattr(
@@ -67,3 +67,19 @@ async def test_qrkey_client_basic(client):
     """Test that the QrKeyClient can be instantiated and run without errors."""
     setup_logging(None, "debug", ["console"])
     await client.run()
+
+
+@pytest.mark.asyncio
+async def test_the_relay_forwards_stream_frames_and_acks_them(client, monkeypatch):
+    """Each stream frame reaches MQTT /notify verbatim and is acked."""
+    import dotbot.examples.qrkey_demo.client as module
+
+    websocket = module.connect()
+    client.qrkey = MagicMock()
+    task = asyncio.create_task(client.start_ws_client())
+    await asyncio.sleep(0.25)
+    task.cancel()
+    client.qrkey.publish.assert_any_call(
+        "/notify", {"type": "delta", "seq": 7, "robots": {}}
+    )
+    websocket.send.assert_any_await(json.dumps({"ack": 7}))

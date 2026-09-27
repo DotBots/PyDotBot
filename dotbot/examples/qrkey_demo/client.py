@@ -23,7 +23,6 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotAreaModel,
     DotBotMoveRawCommandModel,
-    DotBotNotificationModel,
     DotBotReplyModel,
     DotBotRequestModel,
     DotBotRequestType,
@@ -43,6 +42,11 @@ from dotbot.rest import RestClient
 # are read at QrkeyController.__init__ time).
 qrkey_settings.pin_code_refresh_interval = 2 * 60 * 60  # 2 hours
 qrkey_settings.pin_code_revoke_delay = 15 * 60  # 15 minutes
+
+# What the relay asks the controller stream for: MQTT carries every frame
+# to every phone, so the rate stays low; the trail is what the phone draws.
+STREAM_HZ = 2
+STREAM_TRAIL = 100
 
 
 @dataclass
@@ -227,7 +231,7 @@ class QrKeyClient:
             application=ApplicationType(int(application)).name,
         )
         logger.info("Notify clear command", address=address)
-        self.worker.run(self.client.clear_position_history(address))
+        self.worker.run(self.client.clear_trail(address))
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
@@ -299,9 +303,11 @@ class QrKeyClient:
             webbrowser.open(url)
 
     async def start_ws_client(self):
-        """Start the WebSocket client to receive commands from the frontend."""
+        """Relay the controller stream to MQTT `/notify`, frame by frame."""
         async with connect(
-            f"ws://{self.settings.http_host}:{self.settings.http_port}/controller/ws/status",
+            f"ws://{self.settings.http_host}:{self.settings.http_port}"
+            f"/controller/ws/stream?hz={STREAM_HZ}&trail={STREAM_TRAIL}",
+            max_size=None,
         ) as websocket:
             while True:
                 message = await websocket.recv()
@@ -312,12 +318,11 @@ class QrKeyClient:
                         "Received invalid JSON message", message=message
                     )
                     continue
-                if "cmd" not in payload:
+                if payload.get("type") == "hello":
                     continue
-                self.qrkey.publish(
-                    "/notify",
-                    DotBotNotificationModel(**payload).model_dump(exclude_none=True),
-                )
+                self.qrkey.publish("/notify", payload)
+                if "seq" in payload:
+                    await websocket.send(json.dumps({"ack": payload["seq"]}))
 
     async def run(self):
         """Launch the controller."""

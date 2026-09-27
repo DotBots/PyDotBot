@@ -9,12 +9,12 @@
 
 import asyncio
 import dataclasses
-import json
 import logging
 import math
 import os
 import queue
 import random
+import secrets
 import time
 import webbrowser
 from collections import deque
@@ -26,7 +26,6 @@ import serial
 import uvicorn
 from dotbot_utils.protocol import Frame, Payload
 from dotbot_utils.serial_interface import SerialInterfaceException
-from fastapi import WebSocket
 
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
@@ -66,14 +65,12 @@ from dotbot.csv_data_logger import (
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    MAX_POSITION_HISTORY_SIZE,
+    MAX_TRAIL_SIZE,
     DotBotCalibrationSessionModel,
     DotBotCameraDetectionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
-    DotBotNotificationCommand,
-    DotBotNotificationModel,
     DotBotPoseModel,
     DotBotQueryModel,
     DotBotStatus,
@@ -104,7 +101,7 @@ from dotbot.robots import (
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.swarm_client import build_swarmit_client, conn_string
-from dotbot.ws_clients import WsClient
+from dotbot.stream import StreamHub
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -150,19 +147,6 @@ WAYPOINTS_REPORT_FIELDS = (
     "max_speed",
     "axle_position",
 )
-# Fields an UPDATE carries together whenever one of them changed, because
-# its readers take them as a set: the waypoint report is read whole, and the
-# fix is read beside the axle estimate the robot may report instead of it.
-_POSE_FIELDS = ("lh2_position", "pose", "direction", "axle_position")
-UPDATE_FIELD_GROUPS = {
-    **{name: WAYPOINTS_REPORT_FIELDS for name in WAYPOINTS_REPORT_FIELDS},
-    **{name: _POSE_FIELDS for name in _POSE_FIELDS},
-    "axle_position": tuple(dict.fromkeys(_POSE_FIELDS + WAYPOINTS_REPORT_FIELDS)),
-}
-# Changes that alone send no UPDATE: clients extend their own trail from
-# lh2_position, and last_seen changes with every frame but rides on every
-# UPDATE sent
-UPDATE_EXCLUDED_FIELDS = {"position_history", "last_seen"}
 
 
 def load_calibration(spec: str, site: Optional[str] = None):
@@ -202,19 +186,20 @@ class PendingCommand:
 class RobotRecord:
     """What the controller keeps about a robot beside its model.
 
-    `revs` maps a field of the model to the controller `seq` it last changed
-    at. `trail` is the position history, oldest first, each point with the
-    `seq` it was added at. `notified` is the `seq` up to which the robot's
-    changes have been sent to status clients.
+    `revs` maps a field of the model, or "trail", to the controller `seq` it
+    last changed at. `trail` holds the points oldest first, each with the
+    `seq` it was added at. `created`, `trail_reset` and `evicted` are the seq
+    the robot appeared at, its trail was last cleared at, and of the newest
+    point dropped off the trail's full end.
     """
 
     revs: Dict[str, int] = dataclasses.field(default_factory=dict)
     trail: Deque[Tuple[int, Union[DotBotLH2Position, DotBotGPSPosition]]] = (
-        dataclasses.field(
-            default_factory=lambda: deque(maxlen=MAX_POSITION_HISTORY_SIZE)
-        )
+        dataclasses.field(default_factory=lambda: deque(maxlen=MAX_TRAIL_SIZE))
     )
-    notified: int = 0
+    created: int = 0
+    trail_reset: int = 0
+    evicted: int = 0
 
 
 class ControllerException(Exception):
@@ -323,9 +308,18 @@ class Controller:
 
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
-        # Bumped on every change to the robots' state; starts at 0 per run
+        # Bumped on every change to the state the stream serves; starts at 0
+        # per run, which `run_id` names
         self.seq = 0
+        self.run_id = secrets.token_hex(6)
         self.records: Dict[str, RobotRecord] = {}
+        # Each robot's address with the seq of its last change, oldest first
+        self.changed: Dict[str, int] = {}
+        # The seq of the newest trail point any robot dropped
+        self.max_evicted = 0
+        # State that is not a robot's, by key: (seq, event name, data)
+        self.events: Dict[str, Tuple[int, str, Optional[dict]]] = {}
+        self.stream = StreamHub(self)
         # self.dotbots: Dict[str, DotBotModel] = {
         #     "0000000000000001": DotBotModel(
         #         address="0000000000000001",
@@ -358,7 +352,6 @@ class Controller:
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
         self.advertised_batch_ids: Dict[str, int] = {}
-        self.websockets: Dict[WebSocket, WsClient] = {}
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
@@ -583,14 +576,8 @@ class Controller:
             await self._push_camera_detections()
 
     async def _push_camera_detections(self):
-        """One notification per camera that has detected on a newer warp.
-
-        A frame counts as pushed only once it has actually gone out, so a
-        console that connects after the camera has stopped delivering is
-        still told what the last frame showed.
-        """
-        if not self.websockets:
-            return
+        """One `camera_detection` event per camera that has detected on a
+        newer warp; a client connecting later is sent the last one."""
         for camera in self.cameras:
             if not camera.live:
                 continue
@@ -601,11 +588,12 @@ class Controller:
             if self._camera_pushed.get(camera.area.name) == sequence:
                 continue
             self._camera_pushed[camera.area.name] = sequence
-            await self.notify_clients(
-                DotBotNotificationModel(
-                    cmd=DotBotNotificationCommand.CAMERA_DETECTION,
-                    camera_detection=DotBotCameraDetectionModel(**record),
-                )
+            self.set_event(
+                f"camera_detection/{camera.area.name}",
+                "camera_detection",
+                DotBotCameraDetectionModel(**record).model_dump(
+                    mode="json", exclude_none=True
+                ),
             )
 
     def _update_dotbot_twin(
@@ -680,8 +668,7 @@ class Controller:
             await asyncio.sleep(1)
 
     async def _refresh_status(self, now: float):
-        """Mark each robot ACTIVE, INACTIVE or LOST by its silence at `now`;
-        a robot whose status changes gets an UPDATE carrying it."""
+        """Mark each robot ACTIVE, INACTIVE or LOST by its silence at `now`."""
         for dotbot in list(self.dotbots.values()):
             if dotbot.last_seen + LOST_DELAY < now:
                 status = DotBotStatus.LOST
@@ -699,10 +686,6 @@ class Controller:
                 status=status.name,
             )
             self.update_dotbot(dotbot.address, status=status)
-            if self.websockets:
-                message = self._update_message(dotbot, self._record(dotbot.address))
-                if message is not None:
-                    await self._broadcast(message)
 
     def _record(self, address: str) -> RobotRecord:
         """The record kept beside `address`'s model, created on first use."""
@@ -720,8 +703,16 @@ class Controller:
             record.revs[name] = seq
 
     def _append_trail(self, record: RobotRecord, point, seq: int) -> None:
+        if len(record.trail) == record.trail.maxlen:
+            record.evicted = record.trail[0][0]
+            self.max_evicted = max(self.max_evicted, record.evicted)
         record.trail.append((seq, point))
-        record.revs["position_history"] = seq
+        record.revs["trail"] = seq
+
+    def _changed(self, address: str) -> None:
+        """Record that `address` changed at the current seq."""
+        self.changed.pop(address, None)
+        self.changed[address] = self.seq
 
     def update_dotbot(self, address: str, **fields) -> None:
         """Set fields of a known robot as one change."""
@@ -730,36 +721,42 @@ class Controller:
         for name, value in fields.items():
             setattr(dotbot, name, value)
             record.revs[name] = self.seq
+        self._changed(address)
 
     def seed_trail(self, address: str, points) -> None:
-        """Append `points` to a known robot's position history as one change."""
+        """Append `points` to a known robot's trail as one change."""
         record = self._record(address)
         self.seq += 1
         for point in points:
             self._append_trail(record, point, self.seq)
+        self._changed(address)
 
     def clear_trail(self, address: str) -> None:
-        """Empty a known robot's position history."""
+        """Empty a known robot's trail."""
         record = self._record(address)
         self.seq += 1
         record.trail.clear()
-        record.revs["position_history"] = self.seq
+        record.trail_reset = record.revs["trail"] = self.seq
+        self._changed(address)
 
-    def position_history(self, address: str) -> List:
-        """A robot's position history, oldest first."""
+    def set_event(self, key: str, name: str, data: Optional[dict]) -> None:
+        """Set the state an event carries; stream clients get its latest."""
+        self.seq += 1
+        self.events[key] = (self.seq, name, data)
+
+    def trail(self, address: str) -> List:
+        """A robot's trail, oldest first."""
         record = self.records.get(address)
         return [] if record is None else [point for _, point in record.trail]
 
-    def dotbot_with_history(self, address: str, max_positions: int) -> DotBotModel:
-        """A copy of a robot's model carrying the newest `max_positions`
-        points of its position history."""
+    def dotbot_with_trail(self, address: str, trail: int) -> DotBotModel:
+        """A copy of a robot's model carrying the newest `trail` points of
+        its trail."""
         record = self.records.get(address)
-        trail = () if record is None else record.trail
-        start = max(0, len(trail) - max_positions)
+        points = () if record is None else record.trail
+        start = max(0, len(points) - trail)
         return self.dotbots[address].model_copy(
-            update={
-                "position_history": [point for _, point in islice(trail, start, None)]
-            }
+            update={"trail": [point for _, point in islice(points, start, None)]}
         )
 
     def handle_received_frame(
@@ -786,17 +783,18 @@ class Controller:
             return
 
         seq = self.seq + 1
-        notification_cmd = DotBotNotificationCommand.NONE
-        if dotbot is None:
+        created = dotbot is None
+        if created:
             self.logger.info(
                 "New DotBot", source=source, payload_type=PayloadType(payload_type).name
             )
-            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
             dotbot = DotBotModel(address=source, last_seen=time.time())
             self.dotbots[source] = dotbot
         else:
             dotbot.last_seen = time.time()
         record = self._record(source)
+        if created:
+            record.created = seq
 
         if payload_type == PayloadType.ADVERTISEMENT:
             self._set(
@@ -824,9 +822,8 @@ class Controller:
                     cal_hex=hex(dotbot.calibrated),
                     **dict_adv,
                 )
-            if self._waypoints_report(dotbot, payload):
-                for name in WAYPOINTS_REPORT_FIELDS:
-                    record.revs[name] = seq
+            for name in self._waypoints_report(dotbot, payload):
+                record.revs[name] = seq
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
@@ -904,49 +901,13 @@ class Controller:
                 >= GPS_POSITION_DISTANCE_THRESHOLD
             ):
                 self._append_trail(record, new_position, seq)
-            if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
-                notification_cmd = DotBotNotificationCommand.UPDATE
 
-        if seq in record.revs.values():
+        if created or seq in record.revs.values():
             self.seq = seq
-            if notification_cmd == DotBotNotificationCommand.NONE:
-                notification_cmd = DotBotNotificationCommand.UPDATE
+            self._changed(source)
 
         if self.settings.verbose is True:
             print(frame)
-        if notification_cmd == DotBotNotificationCommand.NONE:
-            return
-        if (
-            not self.websockets
-            or notification_cmd == DotBotNotificationCommand.NEW_DOTBOT
-        ):
-            record.notified = self.seq
-            if self.websockets:
-                asyncio.create_task(self._broadcast({"cmd": notification_cmd.value}))
-            return
-        message = self._update_message(dotbot, record)
-        if message is not None:
-            asyncio.create_task(self._broadcast(message))
-
-    def _update_message(self, dotbot: DotBotModel, record: RobotRecord):
-        """The UPDATE carrying what changed on a robot since the last one
-        sent, or None when nothing an UPDATE carries did."""
-        fields = set()
-        for name, rev in record.revs.items():
-            if rev > record.notified:
-                fields.update(UPDATE_FIELD_GROUPS.get(name, (name,)))
-        record.notified = self.seq
-        fields -= UPDATE_EXCLUDED_FIELDS
-        if not fields:
-            return None
-        return {
-            "cmd": DotBotNotificationCommand.UPDATE.value,
-            "data": {
-                "address": dotbot.address,
-                "last_seen": dotbot.last_seen,
-                **dotbot.model_dump(include=fields, exclude_none=True),
-            },
-        }
 
     def _lh2_fix(
         self,
@@ -1027,19 +988,6 @@ class Controller:
             pose=dotbot.pose,
         )
 
-    def add_websocket(self, websocket: WebSocket):
-        """Start delivering notifications to a connected websocket client."""
-        self.websockets[websocket] = WsClient(websocket, self._forget_websocket)
-
-    def remove_websocket(self, websocket: WebSocket):
-        """Stop delivering notifications to a websocket client."""
-        client = self.websockets.pop(websocket, None)
-        if client is not None:
-            client.close()
-
-    def _forget_websocket(self, websocket: WebSocket):
-        self.websockets.pop(websocket, None)
-
     def _swarmit_client(self, device: str = ""):
         """A swarmit client on the same connection the controller runs on.
 
@@ -1062,26 +1010,17 @@ class Controller:
         return None if point is None else point.mm
 
     async def _notify_calibration_session(self, state):
-        """One notification per calibration-session state change.
+        """A `calibration_session` event per session state change.
 
-        The session keeps its nulls, unlike `notify_clients`: `outstanding`
-        null is how a client learns every point is captured.
+        The session keeps its nulls: `outstanding` null is how a client
+        learns every point is captured, and a null session means none.
         """
-        cmd = DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE
-        self.logger.debug("notify", cmd=cmd.name)
-        session = DotBotCalibrationSessionModel(**state).model_dump() if state else None
-        await self._broadcast({"cmd": cmd.value, "calibration_session": session})
-
-    async def notify_clients(self, notification):
-        """Send a message to all clients connected."""
-        self.logger.debug("notify", cmd=notification.cmd.name)
-        await self._broadcast(notification.model_dump(exclude_none=True))
-
-    async def _broadcast(self, message: dict):
-        """Queue a message for every client; never waits on delivery."""
-        text = json.dumps(message)
-        for client in list(self.websockets.values()):
-            client.send(text)
+        session = (
+            DotBotCalibrationSessionModel(**state).model_dump(mode="json")
+            if state
+            else None
+        )
+        self.set_event("calibration_session", "calibration_session", session)
 
     def send_confirmed(
         self,
@@ -1171,12 +1110,12 @@ class Controller:
 
     def _waypoints_report(
         self, dotbot: DotBotModel, advert: PayloadDotBotAdvertisement
-    ) -> bool:
+    ) -> List[str]:
         """Take the waypoint report from an advertisement, resend what it
-        does not confirm, and return whether the robot's state changed."""
+        does not confirm, and return the fields of the robot it changed."""
         self._resend_pending(dotbot.address, advert)
         if not advert.has_report:
-            return False
+            return []
         self.advertised_batch_ids[dotbot.address] = advert.batch_id
         if (dotbot.address, PayloadLH2Waypoints.__name__) not in self.pending_commands:
             # Follow the robot's id, which another controller may have set, so
@@ -1200,20 +1139,11 @@ class Controller:
             else DotBotLH2Position(x=advert.axle_x, y=advert.axle_y)
         )
         report = (status, reason, advert.waypoint_idx, advert.max_speed_10mm * 10, axle)
-        changed = report != (
-            dotbot.waypoints_status,
-            dotbot.waypoints_reason,
-            dotbot.waypoint_index,
-            dotbot.max_speed,
-            dotbot.axle_position,
-        )
-        (
-            dotbot.waypoints_status,
-            dotbot.waypoints_reason,
-            dotbot.waypoint_index,
-            dotbot.max_speed,
-            dotbot.axle_position,
-        ) = report
+        changed = []
+        for name, value in zip(WAYPOINTS_REPORT_FIELDS, report):
+            if getattr(dotbot, name) != value:
+                setattr(dotbot, name, value)
+                changed.append(name)
         return changed
 
     def send_payload(self, destination: int, payload: Payload):
@@ -1288,11 +1218,9 @@ class Controller:
                     if query.min_position_y > dotbot.lh2_position.y:
                         continue
             max_positions = (
-                MAX_POSITION_HISTORY_SIZE
-                if query.max_positions is None
-                else query.max_positions
+                MAX_TRAIL_SIZE if query.max_positions is None else query.max_positions
             )
-            dotbots.append(self.dotbot_with_history(address, max_positions))
+            dotbots.append(self.dotbot_with_trail(address, max_positions))
         dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
         if query.limit is not None:
             dotbots = dotbots[: query.limit]
@@ -1313,9 +1241,13 @@ class Controller:
             host=host,
             port=self.settings.controller_http_port,
             log_level="critical",
-            # The status WebSocket stays open for as long as a browser tab is,
-            # so a graceful shutdown that waits for connections never returns.
+            # The stream stays open for as long as a browser tab is, so a
+            # graceful shutdown that waits for connections never returns.
             timeout_graceful_shutdown=0,
+            # A stream client that never acks is dropped by these once it
+            # stops reading.
+            ws_ping_interval=5,
+            ws_ping_timeout=5,
         )
         server = uvicorn.Server(config)
 

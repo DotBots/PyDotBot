@@ -32,6 +32,7 @@ from dotbot.dotbot_simulator import (
 from dotbot.protocol import ApplicationType
 from dotbot.server import api
 from dotbot.steering import SteeringState
+from dotbot.stream import HZ_MAX, StreamOptions
 
 DOTBOT = ApplicationType.DotBot.value
 # Longer than any braking run-on of the simulated wheels
@@ -39,13 +40,24 @@ RUN_ON_S = 0.5
 
 
 class RecordingSocket:
-    """A status WebSocket client that keeps every message pushed to it."""
+    """A stream client that keeps every frame sent to it, and acks each."""
 
-    def __init__(self):
+    def __init__(self, hub):
+        self.hub = hub
         self.messages: List[dict] = []
 
     async def send_text(self, text: str):
-        self.messages.append(json.loads(text))
+        message = json.loads(text)
+        self.messages.append(message)
+        self.hub.receive(self, json.dumps({"ack": message["seq"]}))
+
+    def robot_states(self):
+        """Every robot object and patch the frames carried, in order."""
+        for message in self.messages:
+            if message["type"] == "snapshot":
+                yield from message["robots"]
+            elif message["type"] == "delta":
+                yield from (p for p in message["robots"].values() if p)
 
 
 class Scenario:
@@ -78,8 +90,11 @@ class Scenario:
         adapter = DotBotSimulatorAdapter(str(world))
         adapter.simulator = self.sim
         self.controller.adapter = adapter
-        self.socket = RecordingSocket()
-        self.controller.add_websocket(self.socket)
+        # The stream is ticked on the scenario's clock, from `run`
+        hub = self.controller.stream
+        hub.autostart = False
+        self.socket = RecordingSocket(hub)
+        hub.add(hub.client(self.socket, StreamOptions(hz=HZ_MAX)))
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=api), base_url="http://scenario"
         )
@@ -113,7 +128,9 @@ class Scenario:
                     self.states[address].append(bot.steering.state)
             if each_tick is not None:
                 each_tick()
-            # Lets the notifications the frames scheduled go out
+            self.controller.stream.tick(self.seconds)
+            # Lets the stream frames the tick scheduled go out
+            await asyncio.sleep(0)
             await asyncio.sleep(0)
             if until is not None and until():
                 return True
