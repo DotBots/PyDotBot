@@ -25,15 +25,21 @@ This is the most active repo in the ecosystem (187 commits in last 90 days as of
 `dotbot/server.py` exposes robot state **two ways, and both are in use** - they
 are not layered alternatives, and consumers pick one.
 
-- **Pushed** - `/controller/ws/status`, server to client. Every advertisement
-  carrying a new position sets `notification_cmd = UPDATE` in
-  `dotbot/controller.py`, which fires `notify_clients()` and sends a
-  `DotBotNotificationModel` to every connected socket. Its `data` is the full
-  `DotBotModel`, so `lh2_position`, `mode`, `status` and battery all ride along.
-  A `RELOAD` goes out when a robot appears or its status changes. This is what
-  keeps the React UI live without polling.
+- **Pushed** - `/controller/ws/stream`, server to client (`dotbot/stream.py`).
+  A `hello`, a `snapshot` of the fleet in parts of 100 robots, then `delta`
+  frames whose per-robot patches are RFC 7396 merge patches over the REST
+  object (plus `trail_append` / `trail_reset`), and `event` frames
+  (`calibration_session`, `camera_detection`). The client answers each frame
+  with `{"ack": seq}`; one that never acks is served at 1 Hz, which keeps
+  `websocat` usable. Query: `hz` (1-20, default 10), `trail` (points per
+  robot, default 0), `since` + `run` to resume. Each client holds a cursor
+  into the controller's per-field revisions, not a message queue, so a slow
+  client gets fewer, larger frames; no ack for 15 s closes it. The console
+  runs on this.
 - **Polled** - `GET /controller/dotbots`. What the Python examples use when they
-  batch waypoints and wait for "done".
+  batch waypoints and wait for "done". `?trail=N` adds the newest N trail
+  points (default none), and `X-Controller-Seq` / `X-Controller-Run` name the
+  state the body reflects, so a stream client can resume from it.
 
 A second WebSocket runs the *other* way: **`/controller/ws/dotbots` is command
 ingress**, accepting RGB LED, `move_raw` and waypoint messages. One socket is
@@ -90,7 +96,8 @@ steering, so a green run says nothing about a real robot.
 
 `utils/perf/bench_controller.py` starts a real headless controller per fleet
 size (`-n`, default 1 10 50 100 200) and measures its CPU, RSS, event-loop
-lag, status-WebSocket rate and latency to K clients, and REST latency of
+lag, stream rate, bandwidth and update age at K acking clients, snapshot
+size, and REST latency and size of
 `GET /controller/dotbots` and `PUT .../waypoints`. Mode `sim` runs the
 simulator in the controller, as `dotbot run simulator` does; mode `synth`
 feeds 2 Hz advertisements per robot through a gateway adapter, so the
@@ -102,8 +109,9 @@ python utils/perf/bench_controller.py -n 10 100 --clients 1 --modes synth
 python utils/perf/bench_controller.py --modes synth --trail 1000  # full trails
 ```
 
-`--trail` starts each robot with that many points of history, the steady state
-of a fleet that has driven for a while; every status update carries it.
+`--trail` starts each robot with that many points of trail, the steady state
+of a fleet that has driven for a while. `--stall` adds a stream client that
+acks once then stops reading, and `--slow` one that takes 20 ms per frame.
 
 It records figures and applies no thresholds; each run is one flat JSON
 record, so a CI trend or a limit can be keyed on its fields.
