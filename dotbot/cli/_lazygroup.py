@@ -11,9 +11,9 @@ command/group to mount).
 
 Why lazy: importing e.g. `dotbot.controller_app` pulls in `dotbot.server`,
 which mounts FastAPI StaticFiles at module load. That's fine for the
-`controller` subcommand but `dotbot run --help` shouldn't pay the cost (or
-fail when the frontend bundle isn't built). The root group and the `run`
-group both use this so the laziness holds at every level of the tree.
+`controller` subcommand but `dotbot run --help` shouldn't pay the cost. The
+root group and the `run` group both use this so the laziness holds at every
+level of the tree.
 """
 
 import importlib

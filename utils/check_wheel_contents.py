@@ -20,8 +20,6 @@ REQUIRED = (
     "dotbot/calibration/app.tcss",
     # Default simulator scene, loaded when no state file is passed.
     "dotbot/simulator_init_state.toml",
-    # Built React frontend served by the controller's REST app.
-    "dotbot/frontend/build/index.html",
     # Built console served by the controller at /console. Its dist/ is
     # gitignored, so it only ships through the pyproject `artifacts` override.
     "dotbot/console-web/dist/index.html",

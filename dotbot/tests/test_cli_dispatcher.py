@@ -9,7 +9,6 @@ command. We're NOT testing the underlying subcommand behavior here — that
 lives in each subcommand's own test module (test_controller_app.py etc.).
 """
 
-import os
 import subprocess
 import sys
 
@@ -19,20 +18,6 @@ from click.testing import CliRunner
 from dotbot.cli import _lazy
 from dotbot.cli.main import _SUBCOMMANDS, cli
 from dotbot.cli.run import _RUN_SUBCOMMANDS
-
-# Importing dotbot.controller (transitively, dotbot.server) blows up at
-# module-import time if the React UI hasn't been built — FastAPI's
-# StaticFiles mount asserts the directory exists. That's a pre-existing
-# import-time side effect, not something the CLI scaffold introduced.
-# Skip the subcommands whose lazy import triggers it when the bundle
-# isn't built (typical for fresh editable installs).
-_FRONTEND_BUILD = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "frontend",
-    "build",
-)
-_FRONTEND_PRESENT = os.path.isdir(_FRONTEND_BUILD)
-
 
 # The top level is the four object-namespaces plus the read-only
 # management commands (config, deployment).
@@ -68,10 +53,8 @@ EXPECTED_RUN_SUBCOMMANDS = {
 _CROSS_PACKAGE_SUBS = {"swarm"}
 
 # `run` subcommands whose lazy import is hostile to an in-process headless
-# test: keyboard/joystick import pygame/pynput at module load;
-# controller/simulator trigger dotbot.server's StaticFiles import-time mount.
+# test: keyboard/joystick import pygame/pynput at module load.
 _TELEOP_SUBS = {"keyboard", "joystick"}
-_FRONTEND_DEPENDENT = {"controller", "simulator"}
 
 
 @pytest.fixture
@@ -155,14 +138,8 @@ def test_run_subcommand_help_works(runner, subcommand):
     """Every in-process `run` subcommand's --help runs cleanly.
 
     keyboard/joystick are excluded because they import pygame/pynput at
-    module load time (headless-CI hostile). controller/sim trigger
-    dotbot.server's StaticFiles import-time mount; skipped if the frontend
-    bundle hasn't been built.
+    module load time (headless-CI hostile).
     """
-    if subcommand in _FRONTEND_DEPENDENT and not _FRONTEND_PRESENT:
-        pytest.skip(
-            "frontend bundle missing; run `cd dotbot/frontend && npm run build`"
-        )
     result = runner.invoke(cli, ["run", subcommand, "--help"])
     assert result.exit_code == 0, result.output
 
