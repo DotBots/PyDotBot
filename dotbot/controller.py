@@ -74,7 +74,6 @@ from dotbot.models import (
     DotBotModel,
     DotBotNotificationCommand,
     DotBotNotificationModel,
-    DotBotNotificationUpdate,
     DotBotPoseModel,
     DotBotQueryModel,
     DotBotStatus,
@@ -873,7 +872,10 @@ class Controller:
                     battery=payload.battery,
                 )
 
-        if payload_type == PayloadType.SAILBOT_DATA and -500 <= payload.direction <= 500:
+        if (
+            payload_type == PayloadType.SAILBOT_DATA
+            and -500 <= payload.direction <= 500
+        ):
             self._set(dotbot, record, "direction", payload.direction, seq)
 
         if payload_type in (PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA):
@@ -914,7 +916,10 @@ class Controller:
             print(frame)
         if notification_cmd == DotBotNotificationCommand.NONE:
             return
-        if not self.websockets or notification_cmd == DotBotNotificationCommand.NEW_DOTBOT:
+        if (
+            not self.websockets
+            or notification_cmd == DotBotNotificationCommand.NEW_DOTBOT
+        ):
             record.notified = self.seq
             if self.websockets:
                 asyncio.create_task(self._broadcast({"cmd": notification_cmd.value}))

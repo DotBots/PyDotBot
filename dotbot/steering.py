@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, replace
 from enum import IntEnum
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence
 
 from dotbot.protocol import WAYPOINT_NO_HEADING, PayloadLH2Waypoints
 
@@ -96,7 +96,7 @@ class PathPoint:
 
 @dataclass
 class Path:
-    points: List[PathPoint] = field(default_factory=list)
+    points: list[PathPoint] = field(default_factory=list)
     threshold_mm: float = 0.0
     pass_mm: float = 0.0
     heading_tol_deg: float = 0.0
@@ -160,7 +160,7 @@ class SteeringConf:
     recover_mm: float = 60.0
     recover_mm_s: float = 120.0
     # x0, y0, x1, y1: the LH2 calibration's validity rectangle; all 0 for none
-    bounds_mm: Tuple[float, float, float, float] = (0.0, 0.0, 10000.0, 10000.0)
+    bounds_mm: tuple[float, float, float, float] = (0.0, 0.0, 10000.0, 10000.0)
     bounds_margin_mm: float = 100.0
 
 
@@ -173,12 +173,12 @@ def track_effective_mm(left: float, right: float) -> float:
     total = abs(right + left)
     if total >= TRACK_EFFECTIVE_ARC_RATIO * diff:
         return TRACK_EFFECTIVE_ARC_MM
-    return TRACK_EFFECTIVE_MM + (TRACK_EFFECTIVE_ARC_MM - TRACK_EFFECTIVE_MM) * total / (
-        TRACK_EFFECTIVE_ARC_RATIO * diff
-    )
+    return TRACK_EFFECTIVE_MM + (
+        TRACK_EFFECTIVE_ARC_MM - TRACK_EFFECTIVE_MM
+    ) * total / (TRACK_EFFECTIVE_ARC_RATIO * diff)
 
 
-def wheels_from_twist(v_mm_s: float, omega_deg_s: float) -> Tuple[float, float]:
+def wheels_from_twist(v_mm_s: float, omega_deg_s: float) -> tuple[float, float]:
     """drv/wheel_control db_wheel_control_from_twist(): clockwise speeds the
     left wheel up."""
     w = omega_deg_s * math.pi / 180.0
@@ -188,7 +188,7 @@ def wheels_from_twist(v_mm_s: float, omega_deg_s: float) -> Tuple[float, float]:
     return v_mm_s + w * track / 2.0, v_mm_s - w * track / 2.0
 
 
-def forward(heading_deg: float) -> Tuple[float, float]:
+def forward(heading_deg: float) -> tuple[float, float]:
     """Body-forward unit vector for a heading."""
     return -math.sin(heading_deg * DEG_TO_RAD), math.cos(heading_deg * DEG_TO_RAD)
 
@@ -218,7 +218,7 @@ def _sign(value: float) -> float:
     return -1.0 if value < 0 else 1.0
 
 
-def path_from_payload(payload: PayloadLH2Waypoints) -> Tuple[Path, int]:
+def path_from_payload(payload: PayloadLH2Waypoints) -> tuple[Path, int]:
     """A waypoint payload as a batch and its batch id, as
     db_steering_path_from_wire(); points past MAX_POINTS are dropped."""
     headings = payload.headings
@@ -413,7 +413,7 @@ class Steering:
     def _pass_mm(self) -> float:
         return self.path.pass_mm if self.path.pass_mm > 0 else self.conf.pass_mm
 
-    def _leg_start(self) -> Tuple[float, float]:
+    def _leg_start(self) -> tuple[float, float]:
         if self.index > 0:
             previous = self.path.points[self.index - 1]
             return previous.x_mm, previous.y_mm
@@ -430,11 +430,14 @@ class Steering:
         if nxt.has_heading or in_len < 1.0 or out_len < 1.0:
             return 0.0
         turn = (
-            math.acos(_clamp((in_x * out_x + in_y * out_y) / (in_len * out_len), -1.0, 1.0))
+            math.acos(
+                _clamp((in_x * out_x + in_y * out_y) / (in_len * out_len), -1.0, 1.0)
+            )
             * RAD_TO_DEG
         )
         return self.v_max_mm_s * _clamp(
-            (conf.align_enter_deg - turn) / (conf.align_enter_deg - conf.full_speed_deg),
+            (conf.align_enter_deg - turn)
+            / (conf.align_enter_deg - conf.full_speed_deg),
             0.0,
             1.0,
         )
@@ -689,7 +692,7 @@ class Steering:
         x_mm: float,
         y_mm: float,
         threshold_mm: float,
-        final_heading_deg: Optional[float] = None,
+        final_heading_deg: float | None = None,
     ):
         self.set_path(
             Path(
@@ -762,7 +765,9 @@ class Steering:
             done = wrap180(pose.heading_deg - self.nudge_heading_deg)
         else:
             fx, fy = forward(self.nudge_heading_deg)
-            done = (pose.x_mm - self.nudge_x_mm) * fx + (pose.y_mm - self.nudge_y_mm) * fy
+            done = (pose.x_mm - self.nudge_x_mm) * fx + (
+                pose.y_mm - self.nudge_y_mm
+            ) * fy
         self.nudge_rate = (done - self.nudge_done) * 1000.0 / TICK_MS
         self.nudge_done = done
         sign = _sign(self.nudge_goal)
@@ -808,7 +813,10 @@ class Steering:
                 self._enter(SteeringState.HOLD)
                 self._halt(True, out)
                 return
-            if self.state_ticks * TICK_MS / 1000.0 * conf.recover_mm_s >= conf.recover_mm:
+            if (
+                self.state_ticks * TICK_MS / 1000.0 * conf.recover_mm_s
+                >= conf.recover_mm
+            ):
                 self._fail(FailReason.HEADING_LOST)
                 self._halt(True, out)
                 return
@@ -872,9 +880,9 @@ class Steering:
 
 
 def path_points(
-    points: Sequence[Tuple[float, float]],
-    headings: Optional[Sequence[Optional[float]]] = None,
-) -> List[PathPoint]:
+    points: Sequence[tuple[float, float]],
+    headings: Sequence[float | None] | None = None,
+) -> list[PathPoint]:
     """PathPoints from (x, y) pairs and optional per-point headings."""
     headings = list(headings or [])
     headings += [None] * (len(points) - len(headings))

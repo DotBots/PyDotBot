@@ -246,7 +246,9 @@ async def test_controller_get_dotbots_query(query, length, controller):
     assert len(dotbots) == length
 
 
-@pytest.mark.parametrize("max_positions,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))])
+@pytest.mark.parametrize(
+    "max_positions,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
+)
 def test_controller_get_dotbots_keeps_newest_history(
     controller, max_positions, expected
 ):
@@ -902,7 +904,9 @@ async def test_a_first_fix_at_the_origin_is_kept_while_the_axle_is_tracked(
     controller,
 ):
     controller.handle_received_frame(
-        _advertised(BOT, direction=0, pos_x=0, pos_y=0, axle_x=0, axle_y=29, report=True)
+        _advertised(
+            BOT, direction=0, pos_x=0, pos_y=0, axle_x=0, axle_y=29, report=True
+        )
     )
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
@@ -1325,7 +1329,9 @@ async def _sent(controller, *frames):
 
 @pytest.mark.asyncio
 async def test_an_update_carries_the_new_fix_and_no_position_history(controller):
-    controller.handle_received_frame(_advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
     controller.seed_trail(
         addr_to_hex(BOT), [DotBotLH2Position(x=i, y=i) for i in range(1000)]
     )
@@ -1413,7 +1419,9 @@ async def test_a_new_robot_is_announced_without_data(controller):
 
 @pytest.mark.asyncio
 async def test_a_status_change_is_an_update_not_a_reload(controller):
-    controller.handle_received_frame(_advertised(BOT, direction=0, pos_x=1000, pos_y=1000))
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
     client = _StatusClient()
     controller.add_websocket(client)
     dotbot = controller.dotbots[addr_to_hex(BOT)]

@@ -103,9 +103,11 @@ def _waypoints(bot, points, threshold=10, batch_id=0, headings=None, pass_mm=0):
         batch_id=batch_id,
         pass_mm=pass_mm,
         headings=[
-            PayloadWaypointHeading()
-            if h is None
-            else PayloadWaypointHeading(heading_cdeg=round(h * 100))
+            (
+                PayloadWaypointHeading()
+                if h is None
+                else PayloadWaypointHeading(heading_cdeg=round(h * 100))
+            )
             for h in headings
         ],
     )
@@ -366,7 +368,10 @@ def test_max_speed_caps_the_cruise():
         (lambda bot: _move_raw(int(bot.address, 16)), WaypointsAbortReason.DIRECT),
         (lambda bot: _wheel_velocity(bot, 0, 0), WaypointsAbortReason.DIRECT),
         (lambda bot: _waypoints(bot, [], batch_id=9), WaypointsAbortReason.STOP),
-        (lambda bot: _frame(bot, PayloadControlMode()), WaypointsAbortReason.CONTROL_MODE),
+        (
+            lambda bot: _frame(bot, PayloadControlMode()),
+            WaypointsAbortReason.CONTROL_MODE,
+        ),
     ],
     ids=["raw", "velocity", "empty batch", "control mode"],
 )
@@ -550,8 +555,14 @@ def test_the_live_fleet_runs_on_one_thread_at_the_wall_clock(tmp_path):
 def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path):
     interface, received = _interface(
         tmp_path,
-        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100,
-          "network_mode": "mari"}],
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": "mari",
+            }
+        ],
     )
     slotframe_ticks = math.ceil(
         MARI_SLOTFRAME_SIZE * 1.236 / 1000 / SIMULATOR_STEP_DELTA_T
@@ -567,8 +578,14 @@ def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path)
 def test_a_mari_downlink_reaches_its_robot(tmp_path):
     interface, _ = _interface(
         tmp_path,
-        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100,
-          "network_mode": "mari"}],
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": "mari",
+            }
+        ],
     )
     bot = interface.dotbots[0]
     interface.write(_move_raw(1).to_bytes())
@@ -589,9 +606,7 @@ def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):
         ],
     )
     bot_a, bot_b = interface.dotbots
-    with patch.object(
-        Frame, "from_bytes", side_effect=Frame.from_bytes
-    ) as from_bytes:
+    with patch.object(Frame, "from_bytes", side_effect=Frame.from_bytes) as from_bytes:
         interface.write(_move_raw(1).to_bytes())
         assert from_bytes.call_count == 1
     assert bot_a.queue.qsize() == 1

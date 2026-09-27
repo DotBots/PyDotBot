@@ -295,9 +295,11 @@ def table(report):
     lines = [header]
     for run in report["runs"]:
         for s in run["scenarios"]:
-            name = f"{s['fast_clients']} fast" + (
-                " +stalled" if s["stalled_client"] else ""
-            ) + (" +slow" if s["slow_client"] else "")
+            name = (
+                f"{s['fast_clients']} fast"
+                + (" +stalled" if s["stalled_client"] else "")
+                + (" +slow" if s["slow_client"] else "")
+            )
             lat = s["latency_ms"]
             rss = s["controller_rss_mb"]
             drops = ", ".join(s["drops_logged"]) or "-"
@@ -322,9 +324,7 @@ def main():
     parser.add_argument("--port", type=int, default=18200)
     args = parser.parse_args()
     Path(args.out).mkdir(parents=True, exist_ok=True)
-    runs = [
-        asyncio.run(run_robots(args, int(n))) for n in args.robots.split(",") if n
-    ]
+    runs = [asyncio.run(run_robots(args, int(n))) for n in args.robots.split(",") if n]
     report = {
         "schema": 1,
         "date": time.strftime("%Y-%m-%dT%H:%M:%S%z"),

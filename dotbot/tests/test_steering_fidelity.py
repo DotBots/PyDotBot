@@ -25,7 +25,9 @@ from dotbot.steering import (
     TRACK_EFFECTIVE_MM,
     Completion,
     FailReason,
-    Path as SteeringPath,
+)
+from dotbot.steering import Path as SteeringPath
+from dotbot.steering import (
     Steering,
     SteeringConf,
     SteeringState,
@@ -258,7 +260,9 @@ SCENARIOS = {
     ),
     "batch with pass radius": dict(
         path=SteeringPath(
-            points=path_points([(1000, 1400), (1400, 1400), (1400, 1000), (1000, 1000)]),
+            points=path_points(
+                [(1000, 1400), (1400, 1400), (1400, 1000), (1000, 1000)]
+            ),
             threshold_mm=10,
             pass_mm=40,
         ),
@@ -348,9 +352,7 @@ def test_the_port_takes_the_c_states_and_ends_where_it_does(lib, name):
     assert outcome == (c_bot.steering.completion, c_bot.steering.fail)
     expected = SCENARIOS[name].get("completion", (Completion.ARRIVED, FailReason.NONE))
     assert outcome == expected
-    drift = max(
-        math.hypot(p[1] - c[1], p[2] - c[2]) for p, c in zip(py_trace, c_trace)
-    )
+    drift = max(math.hypot(p[1] - c[1], p[2] - c[2]) for p, c in zip(py_trace, c_trace))
     assert drift < 0.01
     assert abs(py_bot.heading_deg - c_bot.heading_deg) < 0.01
 
@@ -359,7 +361,10 @@ def test_the_port_takes_the_c_states_and_ends_where_it_does(lib, name):
     "name, expected",
     [
         ("target from rest, tracking", [SteeringState.ALIGN, SteeringState.DRIVE]),
-        ("target from rest, no heading", [SteeringState.NO_HEADING, SteeringState.ALIGN]),
+        (
+            "target from rest, no heading",
+            [SteeringState.NO_HEADING, SteeringState.ALIGN],
+        ),
         ("pose with final heading", [SteeringState.FINAL_TURN]),
         ("precise settle 2 mm", [SteeringState.SETTLE]),
         ("precise settle after a shove", [SteeringState.NUDGE]),
@@ -371,4 +376,3 @@ def test_each_scenario_exercises_its_states(lib, name, expected):
     _, trace = _scenario(Steering, name)
     states = _states(trace)
     assert all(state in states for state in expected), states
-
