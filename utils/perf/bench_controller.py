@@ -2,8 +2,9 @@
 
 For each fleet size, starts a real controller in a child process (headless,
 on a free loopback port, logging as `dotbot run controller` does) and loads
-it from this process: K status WebSocket clients, and REST requests on the
-hot endpoints. Two modes:
+it from this process: K acking stream clients, and REST requests on the hot
+endpoints. Optionally one more client that acks once then stops reading
+(`--stall`), and one that takes 20 ms per frame (`--slow`). Two modes:
 
 - `sim`: the controller runs the dotbot simulator in-process, as
   `dotbot run simulator` does, and every robot drives a waypoint batch.
@@ -19,10 +20,12 @@ its fields later) and prints a text table. Linux only: it reads /proc.
 
     python utils/perf/bench_controller.py --out results.json
     python utils/perf/bench_controller.py -n 1 10 50 --clients 1 --window 5
+    python utils/perf/bench_controller.py -n 200 --modes synth --stall --window 25
 """
 
 import argparse
 import asyncio
+import base64
 import json
 import math
 import os
@@ -44,6 +47,10 @@ PAGE = os.sysconf("SC_PAGE_SIZE")
 ADVERTISEMENT_S = 0.5
 AREA_MM = 9000  # robots are spread over this square, inside the steering bounds
 SIM_THREAD_TARGETS = ("run",)
+STREAM_HZ = 10
+SLOW_FRAME_S = 0.02
+# The trail a connecting client asks for when its snapshot is measured
+SNAPSHOT_TRAIL = 200
 
 
 # --- the child: the controller under test ----------------------------------
@@ -274,22 +281,120 @@ def _percentiles(samples) -> dict:
     }
 
 
-async def _status_client(url: str, stats: dict, stop: asyncio.Event):
-    from websockets.asyncio.client import connect
+def _stream_stats():
+    return {
+        "open": False,
+        "frames": 0,
+        "updates": 0,
+        "bytes": 0,
+        "snapshots": 0,
+        "age_ms": [],
+        "closed": False,
+    }
 
-    async with connect(url, max_size=None) as ws:
-        while not stop.is_set():
-            try:
-                text = await asyncio.wait_for(ws.recv(), timeout=0.2)
-            except asyncio.TimeoutError:
-                continue
-            now = time.time()
-            if not stats["open"]:
-                continue
-            stats["messages"] += 1
-            data = json.loads(text).get("data") or {}
-            if "last_seen" in data:
-                stats["latency_ms"].append((now - data["last_seen"]) * 1000)
+
+async def _stream_client(url: str, stats: dict, stop: asyncio.Event, delay_s=0.0):
+    """A stream client acking every frame; the age of an update is its
+    receipt time minus the robot's `last_seen`."""
+    from websockets.asyncio.client import connect
+    from websockets.exceptions import ConnectionClosed
+
+    try:
+        # A slow reader keeps a short queue, so its pace reaches the
+        # controller instead of piling up here
+        async with connect(url, max_size=None, max_queue=4 if delay_s else 16) as ws:
+            while not stop.is_set():
+                try:
+                    text = await asyncio.wait_for(ws.recv(), timeout=0.2)
+                except asyncio.TimeoutError:
+                    continue
+                now = time.time()
+                frame = json.loads(text)
+                if delay_s:
+                    await asyncio.sleep(delay_s)
+                if "seq" in frame:
+                    await ws.send(json.dumps({"ack": frame["seq"]}))
+                if not stats["open"]:
+                    continue
+                stats["frames"] += 1
+                stats["bytes"] += len(text)
+                if frame["type"] == "snapshot":
+                    stats["snapshots"] += frame["part"] == frame["parts"]
+                elif frame["type"] == "delta":
+                    for patch in frame["robots"].values():
+                        stats["updates"] += 1
+                        if patch and "last_seen" in patch:
+                            stats["age_ms"].append((now - patch["last_seen"]) * 1000)
+    except (ConnectionClosed, OSError):
+        stats["closed"] = True
+
+
+def _masked_text(text: str) -> bytes:
+    """One client-to-server WebSocket text frame."""
+    payload = text.encode()
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    return bytes([0x81, 0x80 | len(payload)]) + mask + masked
+
+
+class StalledClient:
+    """A stream client that acks its first frame, then never reads again,
+    as a frozen browser tab does; its TCP state says when the server let go."""
+
+    def __init__(self, port: int):
+        self.port = port
+        self.sock = None
+        self.local_port = None
+
+    def open(self):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        sock.connect(("127.0.0.1", self.port))
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock.sendall(
+            (
+                f"GET /controller/ws/stream?hz={STREAM_HZ} HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.port}\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            ).encode()
+        )
+        head = b""
+        while b"\r\n\r\n" not in head:
+            head += sock.recv(1)
+        assert b" 101 " in head.split(b"\r\n")[0], head
+        # The hello: a short unmasked text frame
+        header = sock.recv(2)
+        length = header[1] & 0x7F
+        if length == 126:
+            length = int.from_bytes(sock.recv(2), "big")
+        body = b""
+        while len(body) < length:
+            body += sock.recv(length - len(body))
+        seq = json.loads(body)["seq"]
+        # By now its snapshot has gone out, so the hello's seq is ackable
+        time.sleep(0.3)
+        sock.sendall(_masked_text(json.dumps({"ack": seq})))
+        self.sock = sock
+        self.local_port = sock.getsockname()[1]
+
+    def established(self) -> bool:
+        """Whether the server's end of the connection is still open.
+
+        Its FIN queues behind the data this client never read, so the
+        client's own socket would stay ESTABLISHED long after the server
+        closed or aborted it.
+        """
+        local, remote = f":{self.port:04X}", f":{self.local_port:04X}"
+        for line in Path("/proc/net/tcp").read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[1].endswith(local) and fields[2].endswith(remote):
+                return fields[3] == "01"  # ESTABLISHED
+        return False
+
+    def close(self):
+        if self.sock is not None:
+            self.sock.close()
 
 
 async def _rest_load(base: str, addresses, stats: dict, stop: asyncio.Event, rate_hz):
@@ -298,8 +403,9 @@ async def _rest_load(base: str, addresses, stats: dict, stop: asyncio.Event, rat
     async with httpx.AsyncClient(base_url=base, timeout=30) as client:
         while not stop.is_set():
             began = time.perf_counter()
-            await client.get("/controller/dotbots")
+            response = await client.get("/controller/dotbots")
             listed = (time.perf_counter() - began) * 1000
+            stats["list_bytes"] = len(response.content)
             address = random.choice(addresses)
             x, y = random.uniform(1000, 9000), random.uniform(1000, 9000)
             began = time.perf_counter()
@@ -343,7 +449,38 @@ async def _drive_all(base: str, addresses):
             )
 
 
-async def measure(mode, count, clients, warmup_s, window_s, rest_hz, trail, scratch):
+async def _snapshot_size(url: str) -> dict:
+    """What one client connecting with a trail is sent before its first delta."""
+    from websockets.asyncio.client import connect
+
+    began = time.perf_counter()
+    size = 0
+    async with connect(url, max_size=None) as ws:
+        while True:
+            text = await asyncio.wait_for(ws.recv(), timeout=60)
+            frame = json.loads(text)
+            if frame["type"] == "snapshot":
+                size += len(text)
+                if frame["part"] == frame["parts"]:
+                    break
+    return {
+        "snapshot_kb": round(size / 1024, 1),
+        "snapshot_ms": round((time.perf_counter() - began) * 1000, 1),
+    }
+
+
+async def measure(
+    mode,
+    count,
+    clients,
+    warmup_s,
+    window_s,
+    rest_hz,
+    trail,
+    scratch,
+    stall=False,
+    slow=False,
+):
     workdir = Path(tempfile.mkdtemp(prefix=f"{mode}-{count}-{clients}-", dir=scratch))
     port = _free_port()
     env = {**os.environ, "BROWSER": "true", "PYTHONPATH": str(REPO)}
@@ -366,19 +503,26 @@ async def measure(mode, count, clients, warmup_s, window_s, rest_hz, trail, scra
         )
     base = f"http://127.0.0.1:{port}"
     stop = asyncio.Event()
-    ws_stats = [
-        {"open": False, "messages": 0, "latency_ms": []} for _ in range(clients)
-    ]
-    rest_stats = {"open": False, "list_ms": [], "waypoints_ms": []}
+    ws_stats = [_stream_stats() for _ in range(clients)]
+    slow_stats = _stream_stats()
+    rest_stats = {"open": False, "list_ms": [], "waypoints_ms": [], "list_bytes": 0}
+    stalled = StalledClient(port) if stall else None
+    stall_view = {}
     tasks = []
     try:
         addresses = await _wait_for_fleet(base, count, timeout_s=60 + count / 10)
         if mode == "sim":
             await _drive_all(base, addresses)
-        url = f"ws://127.0.0.1:{port}/controller/ws/status"
+        url = f"ws://127.0.0.1:{port}/controller/ws/stream?hz={STREAM_HZ}"
         tasks = [
-            asyncio.create_task(_status_client(url, stats, stop)) for stats in ws_stats
+            asyncio.create_task(_stream_client(url, stats, stop)) for stats in ws_stats
         ]
+        if slow:
+            tasks.append(
+                asyncio.create_task(
+                    _stream_client(url, slow_stats, stop, delay_s=SLOW_FRAME_S)
+                )
+            )
         tasks.append(
             asyncio.create_task(_rest_load(base, addresses, rest_stats, stop, rest_hz))
         )
@@ -397,20 +541,33 @@ async def measure(mode, count, clients, warmup_s, window_s, rest_hz, trail, scra
         }
         cpu_before, threads_before = _cpu_s(process.pid), _thread_cpu(process.pid)
         wall_before = time.monotonic()
-        for stats in ws_stats:
+        for stats in [*ws_stats, slow_stats]:
             stats["open"] = True
         rest_stats["open"] = True
         rss_peak = 0.0
+        rss_start = _rss_mb(process.pid)
+        if stalled is not None:
+            await asyncio.to_thread(stalled.open)
+            stall_view["rss_start"] = _rss_mb(process.pid)
+            stall_began = time.monotonic()
         while time.monotonic() - wall_before < window_s:
             rss_peak = max(rss_peak, _rss_mb(process.pid))
+            if stalled is not None and "closed_s" not in stall_view:
+                if not stalled.established():
+                    stall_view["closed_s"] = round(time.monotonic() - stall_began, 1)
+                    stall_view["rss_at_close"] = _rss_mb(process.pid)
             await asyncio.sleep(0.5)
-        for stats in ws_stats:
+        rss_end = _rss_mb(process.pid)
+        for stats in [*ws_stats, slow_stats]:
             stats["open"] = False
         rest_stats["open"] = False
         wall = time.monotonic() - wall_before
         cpu = _cpu_s(process.pid) - cpu_before
         threads_after = _thread_cpu(process.pid)
+        snapshot = await _snapshot_size(f"{url}&trail={SNAPSHOT_TRAIL}")
     finally:
+        if stalled is not None:
+            stalled.close()
         stop.set()
         for task in tasks:
             task.cancel()
@@ -426,7 +583,7 @@ async def measure(mode, count, clients, warmup_s, window_s, rest_hz, trail, scra
         role = roles.get(tid, "other")
         by_role[role] = by_role.get(role, 0.0) + after - threads_before.get(tid, 0.0)
     view = json.loads((workdir / "child.json").read_text())
-    latencies = [x for stats in ws_stats for x in stats["latency_ms"]]
+    ages = [x for stats in ws_stats for x in stats["age_ms"]]
     record = {
         "mode": mode,
         "robots": count,
@@ -439,16 +596,34 @@ async def measure(mode, count, clients, warmup_s, window_s, rest_hz, trail, scra
         ),
         "cpu_pct_simulator_threads": round(100 * by_role.get("simulator", 0) / wall, 1),
         "rss_mb_peak": round(rss_peak, 1),
+        "rss_mb_growth_per_min": round((rss_end - rss_start) / wall * 60, 1),
         "loop_lag_ms": _percentiles(view["loop_lag_ms"]),
-        "ws_msgs_per_client_s": round(
-            statistics.mean(s["messages"] for s in ws_stats) / wall, 1
+        "ws_frames_per_client_s": round(
+            statistics.mean(s["frames"] for s in ws_stats) / wall, 1
         ),
-        # One UPDATE per advertisement, and one per waypoint request
-        "ws_expected_msgs_s": round(count / ADVERTISEMENT_S + rest_hz, 1),
-        "ws_latency_ms": _percentiles(latencies),
+        "ws_updates_per_client_s": round(
+            statistics.mean(s["updates"] for s in ws_stats) / wall, 1
+        ),
+        # One robot update per advertisement that changes something
+        "ws_expected_updates_s": round(count / ADVERTISEMENT_S, 1),
+        "ws_kb_per_client_s": round(
+            statistics.mean(s["bytes"] for s in ws_stats) / wall / 1024, 1
+        ),
+        "ws_clients_closed": sum(s["closed"] for s in ws_stats),
+        "ws_update_age_ms": _percentiles(ages),
+        **snapshot,
+        "rest_list_kb": round(rest_stats["list_bytes"] / 1024, 1),
         "rest_list_ms": _percentiles(rest_stats["list_ms"]),
         "rest_waypoints_ms": _percentiles(rest_stats["waypoints_ms"]),
     }
+    if stalled is not None:
+        closed_rss = stall_view.get("rss_at_close", rss_end)
+        record["stalled_closed_s"] = stall_view.get("closed_s")
+        record["stalled_rss_mb_growth"] = round(closed_rss - stall_view["rss_start"], 1)
+    if slow:
+        record["slow_frames_s"] = round(slow_stats["frames"] / wall, 1)
+        record["slow_snapshots"] = slow_stats["snapshots"]
+        record["slow_closed"] = slow_stats["closed"]
     if "sim_ticks_per_bot_s" in view:
         record["sim_ticks_per_bot_s"] = round(view["sim_ticks_per_bot_s"], 1)
         record["sim_realtime_factor"] = round(view["sim_ticks_per_bot_s"] / 100, 3)
@@ -491,9 +666,9 @@ def stepped_simulator_cost(count: int, seconds: float = 2.0) -> dict:
 def table(result: dict) -> str:
     head = (
         f"{'mode':5} {'N':>4} {'K':>2} {'cpu%':>6} {'ctl%':>6} {'sim%':>6} "
-        f"{'rssMB':>6} {'lag p99':>8} {'ws/s':>7} {'exp':>6} {'ws p50':>7} "
-        f"{'ws p99':>8} {'list p50':>8} {'list p99':>8} {'wp p50':>7} "
-        f"{'wp p99':>7} {'rt':>5}"
+        f"{'rssMB':>6} {'lag p99':>8} {'upd/s':>7} {'exp':>6} {'kB/s':>6} "
+        f"{'age p50':>7} {'age p99':>8} {'list p50':>8} {'list p99':>8} "
+        f"{'wp p50':>7} {'wp p99':>7} {'rt':>5}"
     )
     lines = [head, "-" * len(head)]
     for r in result["runs"]:
@@ -506,8 +681,10 @@ def table(result: dict) -> str:
             f"{r['mode']:5} {r['robots']:>4} {r['clients']:>2} {r['cpu_pct']:>6} "
             f"{r['cpu_pct_controller_thread']:>6} {r['cpu_pct_simulator_threads']:>6} "
             f"{r['rss_mb_peak']:>6} {_f(r['loop_lag_ms']['p99']):>8} "
-            f"{r['ws_msgs_per_client_s']:>7} {r['ws_expected_msgs_s']:>6} "
-            f"{_f(r['ws_latency_ms']['p50']):>7} {_f(r['ws_latency_ms']['p99']):>8} "
+            f"{r['ws_updates_per_client_s']:>7} {r['ws_expected_updates_s']:>6} "
+            f"{r['ws_kb_per_client_s']:>6} "
+            f"{_f(r['ws_update_age_ms']['p50']):>7} "
+            f"{_f(r['ws_update_age_ms']['p99']):>8} "
             f"{_f(r['rest_list_ms']['p50']):>8} {_f(r['rest_list_ms']['p99']):>8} "
             f"{_f(r['rest_waypoints_ms']['p50']):>7} "
             f"{_f(r['rest_waypoints_ms']['p99']):>7} "
@@ -579,6 +756,12 @@ def main():
     parser.add_argument(
         "--scratch", type=Path, default=Path(tempfile.gettempdir()) / "dotbot-perf"
     )
+    parser.add_argument(
+        "--stall", action="store_true", help="add a client that stops reading"
+    )
+    parser.add_argument(
+        "--slow", action="store_true", help="add a client taking 20 ms a frame"
+    )
     parser.add_argument("--out", type=Path, help="JSON result file")
     args = parser.parse_args()
     args.scratch.mkdir(parents=True, exist_ok=True)
@@ -602,6 +785,8 @@ def main():
                             args.rest_hz,
                             args.trail,
                             args.scratch,
+                            stall=args.stall,
+                            slow=args.slow,
                         )
                     )
                 except (

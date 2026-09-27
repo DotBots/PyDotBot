@@ -199,6 +199,7 @@ function pageInstrumentation() {
     commitMs: [],
     wsMsgs: 0,
     wsBytes: 0,
+    wsUpdates: 0,
     wsHandlerMs: 0,
     frames: null,
     longTasks: [],
@@ -259,6 +260,10 @@ function pageInstrumentation() {
       this.addEventListener("message", (e) => {
         perf.wsMsgs++;
         perf.wsBytes += typeof e.data === "string" ? e.data.length : 0;
+        // Robot updates inside the controller stream's delta frames
+        if (typeof e.data === "string" && e.data.startsWith('{"type":"delta"')) {
+          perf.wsUpdates += Object.keys(JSON.parse(e.data).robots).length;
+        }
       });
     }
     set onmessage(fn) {
@@ -300,6 +305,7 @@ function pageInstrumentation() {
     perf.components = {};
     perf.wsMsgs = 0;
     perf.wsBytes = 0;
+    perf.wsUpdates = 0;
     perf.wsHandlerMs = 0;
     perf.longTasks = [];
     perf.events = [];
@@ -438,7 +444,7 @@ async function steadyState(page, cdp, opts) {
   const seconds = (Date.now() - t0) / 1000;
   const raw = await page.evaluate(() => {
     const p = window.__perf;
-    return { frames: p.stopFrames(), commits: p.commits, wsMsgs: p.wsMsgs, wsBytes: p.wsBytes, wsHandlerMs: p.wsHandlerMs, longTasks: p.longTasks };
+    return { frames: p.stopFrames(), commits: p.commits, wsMsgs: p.wsMsgs, wsBytes: p.wsBytes, wsUpdates: p.wsUpdates, wsHandlerMs: p.wsHandlerMs, longTasks: p.longTasks };
   });
   const m1 = await cdpMetrics(cdp);
   const heapEnd = await heapAfterGc(cdp);
@@ -452,11 +458,12 @@ async function steadyState(page, cdp, opts) {
     mainThreadMsPerS: { task: busy("TaskDuration"), script: busy("ScriptDuration"), layout: busy("LayoutDuration"), style: busy("RecalcStyleDuration") },
     ws: {
       // Received by the network layer vs handled by the page: a gap means the
-      // main thread is too busy to take messages, and the controller will
-      // eventually drop the client.
+      // main thread is too busy to take frames, and it acks them late, so the
+      // controller sends it fewer, larger ones.
       framesPerS: round((page.__net.framesReceived - net0.framesReceived) / seconds),
       socketsOpened: page.__net.sockets - net0.sockets,
       msgsPerS: round(raw.wsMsgs / seconds),
+      robotUpdatesPerS: round(raw.wsUpdates / seconds),
       kBPerS: round(raw.wsBytes / 1024 / seconds),
       handlerMsPerMsg: raw.wsMsgs ? round(raw.wsHandlerMs / raw.wsMsgs, 3) : null,
     },
@@ -704,6 +711,7 @@ function table(results) {
     ["load: all drawn ms", (r) => r.load?.allRobotsDrawnMs],
     ["ws frames/s (network)", (r) => r.steady?.ws.framesPerS],
     ["ws msg/s (handled)", (r) => r.steady?.ws.msgsPerS],
+    ["ws robot updates/s", (r) => r.steady?.ws.robotUpdatesPerS],
     ["ws reconnects", (r) => r.steady?.ws.socketsOpened],
     ["fps", (r) => r.steady?.frames.fps],
     ["frame p50 ms", (r) => r.steady?.frames.p50Ms],

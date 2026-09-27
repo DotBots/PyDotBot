@@ -1,10 +1,11 @@
 """Load check of the controller's console notification path.
 
-Starts a simulator controller with N robots, subscribes K clients to
-/controller/ws/status and measures how late each update reaches them
+Starts a simulator controller with N robots, subscribes K acking clients to
+/controller/ws/stream and measures how late each robot update reaches them
 (receipt time minus the robot's `last_seen`), alone, alongside a client that
-never reads, and alongside one that reads too slowly. Also samples the
-controller's RSS. Writes <out>/ws_notify.json and prints a table.
+never reads (and never acks, so it is served at 1 Hz), and alongside one that
+reads too slowly. Also samples the controller's RSS. Writes
+<out>/ws_notify.json and prints a table.
 
     python perf/ws_notify_bench.py [--robots 10,100,200] [--seconds 20]
         [--out DIR] [--dotbot CMD] [--port 18200]
@@ -30,7 +31,8 @@ from pathlib import Path
 import websockets
 
 AREA_MM = 2000
-DROP_LINE = re.compile(r"Dropping websocket client.*?reason='([^']*)'")
+DROP_LINE = re.compile(r"Dropping stream client.*?reason='([^']*)'")
+STREAM_HZ = 10
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -121,13 +123,15 @@ def quantile(values, q):
 
 
 class Reader:
-    """A client that reads every update, optionally sleeping after each."""
+    """A client that reads and acks every frame, optionally sleeping after each."""
 
     def __init__(self, url: str, delay_s: float = 0.0):
         self.url = url
         self.delay_s = delay_s
         self.latencies_ms = []
         self.received = 0
+        self.updates = 0
+        self.snapshots = 0
         self.closed_at = None
 
     async def run(self, stop: asyncio.Event, t0: float):
@@ -143,17 +147,27 @@ class Reader:
                         continue
                     now = time.time()
                     self.received += 1
-                    data = json.loads(text).get("data") or {}
-                    if "last_seen" in data:
-                        self.latencies_ms.append((now - data["last_seen"]) * 1000)
+                    frame = json.loads(text)
+                    if frame["type"] == "snapshot":
+                        self.snapshots += frame["part"] == frame["parts"]
+                    elif frame["type"] == "delta":
+                        for patch in frame["robots"].values():
+                            self.updates += 1
+                            if patch and "last_seen" in patch:
+                                self.latencies_ms.append(
+                                    (now - patch["last_seen"]) * 1000
+                                )
                     if self.delay_s:
                         await asyncio.sleep(self.delay_s)
+                    if "seq" in frame:
+                        await ws.send(json.dumps({"ack": frame["seq"]}))
         except (websockets.ConnectionClosed, OSError):
             self.closed_at = time.monotonic() - t0
 
 
 class Stalled:
-    """A client that completes the handshake and then never reads a byte."""
+    """A client that completes the handshake and then never reads a byte, so
+    it never acks either."""
 
     def __init__(self, port: int):
         self.port = port
@@ -166,7 +180,7 @@ class Stalled:
         key = base64.b64encode(os.urandom(16)).decode()
         sock.sendall(
             (
-                "GET /controller/ws/status HTTP/1.1\r\n"
+                f"GET /controller/ws/stream?hz={STREAM_HZ} HTTP/1.1\r\n"
                 f"Host: 127.0.0.1:{self.port}\r\n"
                 "Upgrade: websocket\r\nConnection: Upgrade\r\n"
                 f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
@@ -200,7 +214,7 @@ def drops_in_log(log: Path, since: int):
 
 
 async def scenario(args, proc, folder, fast: int, stalled: bool, slow: bool):
-    url = f"ws://127.0.0.1:{args.port}/controller/ws/status"
+    url = f"ws://127.0.0.1:{args.port}/controller/ws/stream?hz={STREAM_HZ}"
     log = folder / "controller.log"
     # The previous scenario's clients disconnecting log as drops too.
     await asyncio.sleep(2)
@@ -238,6 +252,9 @@ async def scenario(args, proc, folder, fast: int, stalled: bool, slow: bool):
         "fast_msgs_per_s_each": round(
             statistics.mean(r.received for r in readers) / elapsed, 1
         ),
+        "fast_updates_per_s_each": round(
+            statistics.mean(r.updates for r in readers) / elapsed, 1
+        ),
         "fast_clients_closed": sum(r.closed_at is not None for r in readers),
         "latency_ms": {
             "p50": round(quantile(latencies, 0.5), 2),
@@ -261,6 +278,7 @@ async def scenario(args, proc, folder, fast: int, stalled: bool, slow: bool):
         result["stalled_closed_by_server"] = stall.closed_by_server()
     if slow_reader:
         result["slow_received"] = slow_reader.received
+        result["slow_snapshots"] = slow_reader.snapshots
         result["slow_closed_at_s"] = (
             round(slow_reader.closed_at, 1) if slow_reader.closed_at else None
         )
@@ -291,7 +309,7 @@ async def run_robots(args, robots: int):
 
 
 def table(report):
-    header = f"{'robots':>6} {'clients':<14} {'msg/s':>7} {'p50 ms':>7} {'p95 ms':>7} {'p99 ms':>7} {'max ms':>7} {'cpu':>5} {'rss MB start/max/end':>21}  drops"
+    header = f"{'robots':>6} {'clients':<14} {'upd/s':>7} {'p50 ms':>7} {'p95 ms':>7} {'p99 ms':>7} {'max ms':>7} {'cpu':>5} {'rss MB start/max/end':>21}  drops"
     lines = [header]
     for run in report["runs"]:
         for s in run["scenarios"]:
@@ -306,7 +324,7 @@ def table(report):
             if s["first_drop_s"] is not None:
                 drops += f" (first at {s['first_drop_s']} s)"
             lines.append(
-                f"{run['robots']:>6} {name:<14} {s['fast_msgs_per_s_each']:>7} {lat['p50']:>7} {lat['p95']:>7} {lat['p99']:>7} {lat['max']:>7} {s['controller_cpu_cores']:>5} "
+                f"{run['robots']:>6} {name:<14} {s['fast_updates_per_s_each']:>7} {lat['p50']:>7} {lat['p95']:>7} {lat['p99']:>7} {lat['max']:>7} {s['controller_cpu_cores']:>5} "
                 f"{rss['start']:>7}/{rss['max']}/{rss['end']:<7}  {drops}"
             )
     return "\n".join(lines)
