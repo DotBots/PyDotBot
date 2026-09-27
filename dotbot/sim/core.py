@@ -278,9 +278,7 @@ class ControlCore:
         (indices, packets): one row of ADVERTISEMENT_BYTES per index, type
         byte first. `battery` holds one level per robot. Starts those robots'
         encoder deltas over."""
-        self._memory.write(
-            self._store, battery.astype("<u2").tobytes(), self._battery
-        )
+        self._memory.write(self._store, battery.astype("<u2").tobytes(), self._battery)
         n = self._call("fleet_advertisements", self._battery, self._advertisements)
         if n == 0:
             return np.zeros(0, np.uint32), np.zeros((0, ADVERTISEMENT_BYTES), np.uint8)
