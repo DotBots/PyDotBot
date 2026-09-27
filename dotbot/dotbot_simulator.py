@@ -32,20 +32,13 @@ from dotbot import (
     GATEWAY_ADDRESS_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     addr_to_hex,
-    kinematics,
 )
 from dotbot.area import Area
 from dotbot.logger import LOGGER
-from dotbot.protocol import (
-    DIRECTION_NONE,
-    ControlModeType,
-    PayloadCommandWheelVelocity,
-    PayloadControlMode,
-)
+from dotbot.protocol import DIRECTION_NONE, ControlModeType
 from dotbot.sim import core as control
 from dotbot.sim.plant import (
     INITIAL_BATTERY_VOLTAGE,
-    WHEEL_TAU_S,
     FleetPlant,
     battery_discharge_model,
 )
@@ -57,14 +50,6 @@ ADVERTISEMENT_INTERVAL_S = 0.5
 # How far the live clock may fall behind the wall before it stops catching up
 MAX_LAG_TICKS = 10
 ADVERTISEMENT_TICKS = round(ADVERTISEMENT_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
-
-# Robots the world file gives a heading acquire it before the clock starts,
-# driving straight out and back
-PREROLL_SPEED_MM_S = 100
-PREROLL_MAX_TICKS = 300
-PREROLL_SETTLE_TICKS = 60
-# Direct driving stops without a command for ~0.5 s, so it is repeated sooner
-COMMAND_REPEAT_TICKS = 20
 
 # Version, type, destination and source
 FRAME_HEADER_BYTES = 18
@@ -123,8 +108,8 @@ class SimulatedDotBotSettings(BaseModel):
     `pos_x` / `pos_y` are the axle midpoint in frame millimetres. Leaving them
     out asks for a placement inside the active site instead - see
     `place_dotbots`. A `direction` is the robot's heading, which its
-    estimator acquires before the clock starts; without one the robot faces
-    +y and starts with no heading, as a real robot does from boot.
+    estimator starts out tracking; without one the robot faces +y and starts
+    with no heading, as a real robot does from boot.
     """
 
     address: str = Field(default_factory=_random_address)
@@ -394,10 +379,6 @@ class SimulatedDotBot:
         return ControlModeType(int(self.report["control_mode"]))
 
 
-def _command(payload) -> bytes:
-    return bytes(Packet.from_payload(payload).to_bytes())
-
-
 class DotBotSimulatorCommunicationInterface:
     """Bidirectional serial interface to control simulated robots.
 
@@ -533,8 +514,10 @@ class DotBotSimulatorCommunicationInterface:
         self._models_update()
         if self._mari is not None:
             self._mari.now = self.ticks * SIMULATOR_STEP_DELTA_T
-        for index in np.flatnonzero(outputs["advertise"]):
-            self._advertise(int(index))
+        if outputs["advertise"].any():
+            indices, packets = self.core.advertisements(self.battery)
+            for index, packet in zip(indices.tolist(), packets):
+                self._advertise(index, bytearray(packet))
         if self._mari is not None:
             self._mari.deliver()
 
@@ -563,71 +546,16 @@ class DotBotSimulatorCommunicationInterface:
 
     def _boot(self, headed: np.ndarray):
         """Before the clock starts: spread the robots' advertising phases, as
-        robots switched on one by one have, and let each robot the world file
-        gives a heading acquire it."""
+        robots switched on one by one have, and seed each robot the world file
+        gives a heading with its pose."""
         count = self.plant.count
         self._inputs["elapsed_ticks"] = 1 + np.arange(count) % ADVERTISEMENT_TICKS
         self._tick(np.zeros(count, dtype=bool))
         self._inputs["elapsed_ticks"] = 1
-        if headed.any():
-            self._acquire_headings(np.flatnonzero(headed))
-        for index in range(count):
-            self.core.advertisement(index, 0)
-        self._counts[:] = 0
-
-    def _acquire_headings(self, robots: np.ndarray):
-        """Drive `robots` straight out until their estimators track, then back
-        to where they started. Only they get fixes meanwhile."""
-        fixes = np.zeros(self.plant.count, dtype=bool)
-        fixes[robots] = True
-        out = _command(
-            PayloadCommandWheelVelocity(
-                left_mm_s=PREROLL_SPEED_MM_S, right_mm_s=PREROLL_SPEED_MM_S
-            )
-        )
-        back = _command(
-            PayloadCommandWheelVelocity(
-                left_mm_s=-PREROLL_SPEED_MM_S, right_mm_s=-PREROLL_SPEED_MM_S
-            )
-        )
-        stop = _command(PayloadControlMode())
         plant = self.plant
-        start_x, start_y = plant.x[robots].copy(), plant.y[robots].copy()
-        fx, fy = kinematics.forward(plant.heading_deg[robots])
-
-        def tracking():
-            status = self.reports()["estimator_status"][robots]
-            return status == control.PoseStatus.TRACKING
-
-        for tick in range(PREROLL_MAX_TICKS):
-            if tracking().all():
-                break
-            if tick % COMMAND_REPEAT_TICKS == 0:
-                for index in robots:
-                    self.core.rx(int(index), out)
-            self._tick(fixes)
-        # Each one brakes once its braking run-on would end it at its start
-        moving = np.ones(len(robots), dtype=bool)
-        for tick in range(2 * PREROLL_MAX_TICKS):
-            if not moving.any():
-                break
-            if tick % COMMAND_REPEAT_TICKS == 0:
-                for index in robots[moving]:
-                    self.core.rx(int(index), back)
-            self._tick(fixes)
-            speed = plant.speed[:, robots].mean(axis=0)
-            ahead = (plant.x[robots] - start_x) * fx + (plant.y[robots] - start_y) * fy
-            arrived = moving & (ahead + speed * WHEEL_TAU_S <= 0)
-            for index in robots[arrived]:
-                self.core.rx(int(index), stop)
-            moving &= ~arrived
-        for _ in range(PREROLL_SETTLE_TICKS):
-            self._tick(fixes)
-        missed = robots[~tracking()]
-        if missed.size:
-            self.logger.warning(
-                "Simulated robots started without a heading",
-                addresses=[self.addresses[i] for i in missed],
+        for index in np.flatnonzero(headed).tolist():
+            self.core.seed(
+                index, plant.x[index], plant.y[index], plant.heading_deg[index]
             )
 
     # --- models ---------------------------------------------------------
@@ -700,9 +628,8 @@ class DotBotSimulatorCommunicationInterface:
 
     # --- radio ----------------------------------------------------------
 
-    def _advertise(self, index: int):
-        """Send robot `index`'s advertisement, as its firmware encodes it."""
-        packet = self.core.advertisement(index, int(self.battery[index]))
+    def _advertise(self, index: int, packet: bytearray):
+        """Send robot `index`'s advertisement, as its firmware encoded it."""
         # The calibration bitmask is the node's, not the control core's
         packet[1] = self._calibrated[index]
         self._counts[:, index] = 0
