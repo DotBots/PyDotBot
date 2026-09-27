@@ -30,13 +30,14 @@ class StuckWebSocket:
 class BackloggedWebSocket(StuckWebSocket):
     """A client that stopped reading: its close frame never gets through."""
 
-    def __init__(self, write_buffer=0):
+    def __init__(self, write_buffer=0, closing=True):
         async def close():
             await asyncio.Event().wait()
 
         self.close = AsyncMock(side_effect=close)
         self.transport = MagicMock()
         self.transport.get_write_buffer_size.return_value = write_buffer
+        self.transport.is_closing.return_value = closing
         self.scope = {TRANSPORT_KEY: self.transport}
 
 
@@ -93,7 +94,7 @@ def test_the_write_buffer_is_read_from_the_transport():
 
 @pytest.mark.asyncio
 async def test_a_close_that_stalls_is_aborted():
-    websocket = BackloggedWebSocket()
+    websocket = BackloggedWebSocket(closing=False)
     await close_websocket(websocket, timeout=0.05)
     websocket.transport.abort.assert_called_once()
 
@@ -104,6 +105,14 @@ async def test_a_close_behind_a_backlog_is_aborted():
     websocket.close = AsyncMock()
     await close_websocket(websocket, timeout=0.05)
     websocket.close.assert_awaited()
+    websocket.transport.abort.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_close_the_client_never_answers_is_aborted():
+    websocket = BackloggedWebSocket(closing=False)
+    websocket.close = AsyncMock()
+    await close_websocket(websocket, timeout=0.1)
     websocket.transport.abort.assert_called_once()
 
 

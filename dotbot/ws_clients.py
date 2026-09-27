@@ -55,16 +55,25 @@ def abort_transport(websocket: WebSocket) -> bool:
 
 
 async def close_websocket(websocket: WebSocket, timeout: float = CLOSE_TIMEOUT):
-    """Close a client's websocket, aborting the connection when the close
-    frame cannot get through.
+    """Close a client's websocket, aborting the connection unless the client
+    answers the close within `timeout` with nothing left unsent.
 
-    The close frame queues behind whatever is still unsent, so a client that
-    stopped reading never sees it; aborting is what makes it reconnect.
+    The close frame queues behind whatever is still unsent, and the server
+    keeps the connection until the client answers it, so a client that
+    stopped reading would hold both forever; aborting frees them.
     """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     try:
         await asyncio.wait_for(websocket.close(), timeout)
-        closed = write_buffer_size(websocket) == 0
     except Exception:  # pylint:disable=broad-exception-caught
-        closed = False
-    if not closed and abort_transport(websocket):
-        LOGGER.bind(context=__name__).info("Aborted websocket client connection")
+        pass
+    transport = _transport(websocket)
+    if transport is None:
+        return
+    while not transport.is_closing() and loop.time() < deadline:
+        await asyncio.sleep(0.05)
+    if transport.is_closing() and write_buffer_size(websocket) == 0:
+        return
+    transport.abort()
+    LOGGER.bind(context=__name__).info("Aborted websocket client connection")
