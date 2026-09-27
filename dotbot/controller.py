@@ -12,7 +12,6 @@ import dataclasses
 import logging
 import math
 import os
-import queue
 import random
 import secrets
 import time
@@ -60,7 +59,6 @@ from dotbot.csv_data_logger import (
     CSVLog,
     camera_log_path,
 )
-from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotBodyModel,
@@ -96,6 +94,7 @@ from dotbot.site import Site
 from dotbot.stream import StreamHub
 from dotbot.swarm_client import build_swarmit_client, conn_string
 from dotbot.trail import Trail
+from dotbot.twin import DotBotTwin
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -365,7 +364,7 @@ class Controller:
             self.csv_data_logger = CSVDataLogger(settings.csv_data_output)
         else:
             self.csv_data_logger = None
-        self._dotbot_twins: Dict[str, DotBotSimulator] = {}
+        self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
 
@@ -581,7 +580,7 @@ class Controller:
         init_direction: int = 0,
         init_encoder_left: int = 0,
         init_encoder_right: int = 0,
-    ) -> DotBotSimulator:
+    ) -> DotBotTwin:
         """Create (if needed) and advance the kinematic twin for *address*.
 
         The init_* parameters are only used on first contact to seed the twin's
@@ -590,15 +589,7 @@ class Controller:
         twin = self._dotbot_twins.get(address)
         now = time.time()
         if twin is None:
-            twin = DotBotSimulator(
-                SimulatedDotBotSettings(
-                    address=address,
-                    pos_x=init_pos_x,
-                    pos_y=init_pos_y,
-                    direction=init_direction,
-                ),
-                queue.Queue(),
-            )
+            twin = DotBotTwin(init_pos_x, init_pos_y, init_direction)
             twin.encoder_left_acc = init_encoder_left
             twin.encoder_right_acc = init_encoder_right
             self._dotbot_twins[address] = twin
@@ -607,7 +598,7 @@ class Controller:
         twin.pwm_right = pwm_right
         dt = now - self._dotbot_twin_timestamps[address]
         self._dotbot_twin_timestamps[address] = now
-        twin.diff_drive_model_update(dt)
+        twin.update(dt)
         twin._last_encoder_left = int(twin.encoder_left_acc)
         twin._last_encoder_right = int(twin.encoder_right_acc)
         twin.encoder_left_acc = 0.0
