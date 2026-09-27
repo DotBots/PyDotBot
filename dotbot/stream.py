@@ -114,16 +114,7 @@ def robot_object(controller, address: str, trail: int, upto: int) -> dict:
     dotbot = controller.dotbots[address]
     body = {**_dump(controller, address), "last_seen": dotbot.last_seen}
     record = controller.records.get(address)
-    points = []
-    if record is not None and trail:
-        for seq, point in reversed(record.trail):
-            if seq > upto:
-                continue
-            points.append(point.model_dump(mode="json"))
-            if len(points) == trail:
-                break
-        points.reverse()
-    body["trail"] = points
+    body["trail"] = record.trail.json(trail, upto) if record and trail else []
     return body
 
 
@@ -142,13 +133,8 @@ def robot_patch(controller, address: str, since: int, trail: int) -> dict:
     if trail and record.revs.get("trail", 0) > since:
         if record.trail_reset > since:
             patch["trail_reset"] = True
-        points = []
-        for seq, point in reversed(record.trail):
-            if seq <= since or len(points) == trail:
-                break
-            points.append(point.model_dump(mode="json"))
+        points = record.trail.json(trail, after=since)
         if points:
-            points.reverse()
             patch["trail_append"] = points
     return patch
 

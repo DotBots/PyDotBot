@@ -17,10 +17,8 @@ import random
 import secrets
 import time
 import webbrowser
-from collections import deque
 from dataclasses import dataclass
-from itertools import islice
-from typing import Callable, Deque, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple
 
 import serial
 import uvicorn
@@ -65,7 +63,6 @@ from dotbot.csv_data_logger import (
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    MAX_TRAIL_SIZE,
     DotBotCalibrationSessionModel,
     DotBotCameraDetectionModel,
     DotBotGPSPosition,
@@ -102,6 +99,7 @@ from dotbot.server import api, default_ui_path
 from dotbot.site import Site
 from dotbot.stream import StreamHub
 from dotbot.swarm_client import build_swarmit_client, conn_string
+from dotbot.trail import Trail
 
 # from dotbot.models import (
 #     DotBotModel,
@@ -187,16 +185,14 @@ class RobotRecord:
     """What the controller keeps about a robot beside its model.
 
     `revs` maps a field of the model, or "trail", to the controller `seq` it
-    last changed at. `trail` holds the points oldest first, each with the
-    `seq` it was added at. `created`, `trail_reset` and `evicted` are the seq
+    last changed at. `trail` holds the points, each with the `seq` it was
+    added at. `created`, `trail_reset` and `evicted` are the seq
     the robot appeared at, its trail was last cleared at, and of the newest
     point dropped off the trail's full end.
     """
 
     revs: Dict[str, int] = dataclasses.field(default_factory=dict)
-    trail: Deque[Tuple[int, Union[DotBotLH2Position, DotBotGPSPosition]]] = (
-        dataclasses.field(default_factory=lambda: deque(maxlen=MAX_TRAIL_SIZE))
-    )
+    trail: Trail = dataclasses.field(default_factory=Trail)
     created: int = 0
     trail_reset: int = 0
     evicted: int = 0
@@ -706,10 +702,10 @@ class Controller:
             record.revs[name] = seq
 
     def _append_trail(self, record: RobotRecord, point, seq: int) -> None:
-        if len(record.trail) == record.trail.maxlen:
-            record.evicted = record.trail[0][0]
-            self.max_evicted = max(self.max_evicted, record.evicted)
-        record.trail.append((seq, point))
+        evicted = record.trail.append(seq, point)
+        if evicted is not None:
+            record.evicted = evicted
+            self.max_evicted = max(self.max_evicted, evicted)
         record.revs["trail"] = seq
 
     def _changed(self, address: str) -> None:
@@ -750,17 +746,14 @@ class Controller:
     def trail(self, address: str) -> List:
         """A robot's trail, oldest first."""
         record = self.records.get(address)
-        return [] if record is None else [point for _, point in record.trail]
+        return [] if record is None else record.trail.models()
 
     def dotbot_with_trail(self, address: str, trail: int) -> DotBotModel:
         """A copy of a robot's model carrying the newest `trail` points of
         its trail."""
         record = self.records.get(address)
-        points = () if record is None else record.trail
-        start = max(0, len(points) - trail)
-        return self.dotbots[address].model_copy(
-            update={"trail": [point for _, point in islice(points, start, None)]}
-        )
+        points = [] if record is None else record.trail.models(trail)
+        return self.dotbots[address].model_copy(update={"trail": points})
 
     def handle_received_frame(
         self, frame: Frame
@@ -898,10 +891,10 @@ class Controller:
                     rudder_angle=dotbot.rudder_angle,
                     sail_angle=dotbot.sail_angle,
                 )
+            last = record.trail.last()
             if (
-                not record.trail
-                or gps_distance(record.trail[-1][1], new_position)
-                >= GPS_POSITION_DISTANCE_THRESHOLD
+                last is None
+                or gps_distance(last, new_position) >= GPS_POSITION_DISTANCE_THRESHOLD
             ):
                 self._append_trail(record, new_position, seq)
 
@@ -931,19 +924,19 @@ class Controller:
         ):
             dotbot.pose = body_pose(dotbot.model, new_position, payload.direction)
             record.revs["pose"] = seq
+        last = record.trail.last()
         if (
-            record.trail
-            and lh2_distance(record.trail[-1][1], new_position)
-            < LH2_POSITION_DISTANCE_THRESHOLD
+            last is not None
+            and lh2_distance(last, new_position) < LH2_POSITION_DISTANCE_THRESHOLD
         ):
             # Too close to the last point: noise, kept out of the history
             if debug:
                 self.logger.debug(
                     "Discarding LH2 position update because it's too close from the last one",
                     source=dotbot.address,
-                    last_position=record.trail[-1][1].model_dump(),
+                    last_position=last.model_dump(),
                     new_position=new_position.model_dump(),
-                    distance=lh2_distance(record.trail[-1][1], new_position),
+                    distance=lh2_distance(last, new_position),
                 )
         else:
             self._append_trail(record, new_position, seq)
