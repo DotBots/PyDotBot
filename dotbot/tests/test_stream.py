@@ -145,6 +145,15 @@ async def rest_fleet(trail):
     return {robot["address"]: robot for robot in response.json()}
 
 
+def _differences(held, rest):
+    return {
+        (address, key): (held.get(address, {}).get(key), robot.get(key))
+        for address, robot in rest.items()
+        for key in set(robot) | set(held.get(address, {}))
+        if held.get(address, {}).get(key) != robot.get(key)
+    }
+
+
 def without_last_seen(fleet):
     return {
         address: {k: v for k, v in robot.items() if k != "last_seen"}
@@ -281,9 +290,9 @@ async def test_deltas_are_merge_patches_over_the_rest_object(controller):
             await controller._refresh_status(time.time() + INACTIVE_DELAY + 1)
         now += 0.05
         await tick(controller.stream, now)
-        assert without_last_seen(client.fleet) == without_last_seen(
-            await rest_fleet(8)
-        ), f"step {step}"
+        rest = without_last_seen(await rest_fleet(8))
+        held = without_last_seen(client.fleet)
+        assert held == rest, (step, _differences(held, rest))
     now += 1
     await tick(controller.stream, now)
     assert without_last_seen(quiet.fleet) == without_last_seen(await rest_fleet(0))
@@ -331,6 +340,18 @@ async def test_caught_up_clients_share_one_encoding(controller):
     await tick(controller.stream, 0)
     advertise(controller, 0x42, battery=2800)
     await tick(controller.stream, 0.1)
+    assert first.texts[-1] is second.texts[-1]
+
+
+@pytest.mark.asyncio
+async def test_clients_connecting_apart_are_served_together(controller):
+    advertise(controller, 0x42)
+    first = Client(controller.stream, hz=10)
+    await tick(controller.stream, 0.0)
+    second = Client(controller.stream, hz=10)
+    for step in range(1, 11):
+        advertise(controller, 0x42, battery=3000 - step)
+        await tick(controller.stream, step * 0.05)
     assert first.texts[-1] is second.texts[-1]
 
 
@@ -386,6 +407,19 @@ async def test_the_first_ack_switches_a_client_to_its_rate(controller):
         advertise(controller, 0x42, battery=3000 - step)
         await tick(controller.stream, step * 0.05)
     assert 9 <= len(client.of_type("delta")) <= 11
+
+
+@pytest.mark.asyncio
+async def test_jittery_ticks_never_exceed_the_rate(controller):
+    rng = random.Random(1)
+    advertise(controller, 0x42)
+    client = Client(controller.stream, hz=10)
+    now = 0.0
+    while now < 5:
+        now += 0.05 + rng.uniform(-0.02, 0.02)
+        advertise(controller, 0x42, battery=3000 - int(now * 100))
+        await tick(controller.stream, now)
+    assert 45 <= len(client.of_type("delta")) <= 50
 
 
 @pytest.mark.asyncio
@@ -639,3 +673,25 @@ def test_the_old_status_endpoint_is_gone(controller):
     with pytest.raises(WebSocketDisconnect):
         with TestClient(api).websocket_connect("/controller/ws/status") as websocket:
             websocket.receive_text()
+
+
+@pytest.mark.asyncio
+async def test_the_rest_list_is_the_model_serialised(controller):
+    """The list built from the stream's cached dumps reads as FastAPI would
+    serialise the robot models it documents."""
+    from dotbot.models import DotBotModel, DotBotQueryModel, DotBotWaypoints
+
+    advertise(controller, 0x42, axle_x=1000, axle_y=971, waypoints_status=3, report=True)
+    advertise(controller, 0x43, x=1500)
+    controller.update_dotbot(
+        addr_to_hex(0x43),
+        waypoints=DotBotWaypoints(
+            threshold=10, waypoints=[{"x": 1, "y": 2}, {"x": 3, "y": 4, "heading_deg": 90}]
+        ).waypoints,
+    )
+    controller.seed_trail(addr_to_hex(0x42), [DotBotLH2Position(x=i, y=i) for i in range(5)])
+    expected = [
+        DotBotModel.model_validate(m.model_dump()).model_dump(mode="json", exclude_none=True)
+        for m in controller.get_dotbots(DotBotQueryModel(trail=3))
+    ]
+    assert list((await rest_fleet(3)).values()) == expected

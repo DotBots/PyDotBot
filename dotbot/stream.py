@@ -50,6 +50,11 @@ TICK_S = 1 / HZ_MAX
 _encode = json.JSONEncoder(separators=(",", ":")).encode
 
 
+def encode(value) -> str:
+    """Compact JSON, as every stream frame is encoded."""
+    return _encode(value)
+
+
 def _clamp(value: Optional[str], default: int, low: int, high: int) -> int:
     try:
         number = int(value) if value is not None else default
@@ -85,11 +90,29 @@ class StreamOptions:
 # --- frames, built from the controller's state -------------------------------
 
 
+def _dump(controller, address: str) -> dict:
+    """A robot's fields as JSON values, without its trail or its null fields.
+
+    Cached on its record until the robot next changes, so a tick dumps a
+    moving robot once however many clients it is sent to. `last_seen`
+    changes without a change being recorded, so it is read fresh.
+    """
+    dotbot = controller.dotbots[address]
+    record = controller.records.get(address)
+    key = controller.changed.get(address)
+    if record is not None and key is not None and record.dump_seq == key:
+        return record.dump
+    body = dotbot.model_dump(mode="json", exclude_none=True, exclude={"trail"})
+    if record is not None and key is not None:
+        record.dump_seq, record.dump = key, body
+    return body
+
+
 def robot_object(controller, address: str, trail: int, upto: int) -> dict:
     """A robot as the REST list returns it, with its newest `trail` points
     no newer than seq `upto`."""
     dotbot = controller.dotbots[address]
-    body = dotbot.model_dump(mode="json", exclude_none=True, exclude={"trail"})
+    body = {**_dump(controller, address), "last_seen": dotbot.last_seen}
     record = controller.records.get(address)
     points = []
     if record is not None and trail:
@@ -109,14 +132,13 @@ def robot_patch(controller, address: str, since: int, trail: int) -> dict:
     record = controller.records.get(address)
     if record is None or record.created > since:
         return robot_object(controller, address, trail, controller.seq)
-    dotbot = controller.dotbots[address]
-    fields = {
-        name for name, rev in record.revs.items() if rev > since and name != "trail"
+    dump = _dump(controller, address)
+    patch = {
+        name: dump.get(name)
+        for name, rev in record.revs.items()
+        if rev > since and name != "trail"
     }
-    patch = dotbot.model_dump(mode="json", include=fields, exclude_none=True)
-    for name in fields - patch.keys():
-        patch[name] = None
-    patch["last_seen"] = dotbot.last_seen
+    patch["last_seen"] = controller.dotbots[address].last_seen
     if trail and record.revs.get("trail", 0) > since:
         if record.trail_reset > since:
             patch["trail_reset"] = True
@@ -340,7 +362,8 @@ class StreamHub:
             if pending:
                 client.held_since = client.held_since or now
             return
-        if not pending or now < client.due:
+        # Half a tick early still counts: ticks jitter around the grid
+        if not pending or now < client.due - TICK_S / 2:
             return
         if self._needs_snapshot(client, now):
             if not client.snapshot_pending and (
@@ -362,7 +385,9 @@ class StreamHub:
                 )
         client.sent_seq = seq
         client.held_since = None
-        client.due = now + client.interval
+        # The grid point after the one this tick stands for, so clients at one
+        # rate are served on the same ticks and share their frames
+        client.due = (round(now / client.interval) + 1) * client.interval
         if client.acking:
             client.unacked.append((seq, now))
         client.sending_since = now

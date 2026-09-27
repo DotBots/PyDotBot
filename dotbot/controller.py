@@ -200,6 +200,9 @@ class RobotRecord:
     created: int = 0
     trail_reset: int = 0
     evicted: int = 0
+    # The robot's fields as the stream last dumped them, at `changed` seq
+    dump_seq: int = -1
+    dump: Dict[str, object] = dataclasses.field(default_factory=dict)
 
 
 class ControllerException(Exception):
