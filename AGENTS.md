@@ -134,14 +134,14 @@ acks once then stops reading, and `--slow` one that takes 20 ms per frame.
 It records figures and applies no thresholds; each run is one flat JSON
 record, so a CI trend or a limit can be keyed on its fields.
 
-CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Windows (Py 3.11/3.12, Node 18/20). Also a CMake build of `utils/control_loop` against `DotBots/DotBot-libs`.
+CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Windows (Py 3.11/3.12, Node 18/20).
 
 ## Cross-repo dependencies
 
 - **`qrkey`** — `pyproject.toml`; `dotbot/examples/qrkey_demo/`
 - **`marilib`** — `pyproject.toml:48` (`marilib-pkg`); imported in `dotbot/adapter.py` (MarilibCloud, MarilibEdge, MQTT/Serial adapters, MariFrame). **Tight coupling.**
 - **`PyDotBot-utils`** — `pyproject.toml`
-- **`DotBot-libs`** — checked out in CI to build `utils/control_loop` C library
+- **`DotBot-libs`** — `dotbot/sim/dotbot_control.wasm` is its `drv/dotbot_control` built with `make wasm`, pinned by commit and sha256 in `dotbot/sim/dotbot_control.json`
 - **`DotBot-firmware`** — referenced only in README (flashing instructions); no code dep
 - **`swarmit`** — sibling package, a core dependency (`pyproject.toml`);
   imported lazily inside `dotbot/cli/swarm.py`, which bridges the unified

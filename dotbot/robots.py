@@ -7,8 +7,7 @@ board revision.
 Every point in a record is a coordinate in that revision's KiCad board frame:
 millimetres, x to the robot's right, y toward the rear, nose at low y, origin
 off the robot. The C copy of the drivetrain constants and the lever arm lives
-in DotBot-libs `drv/geometry.h` and is pinned to this one by
-`dotbot/tests/test_control_loop_geometry.py`.
+in DotBot-libs `drv/geometry.h`; keep the two in step.
 """
 
 from __future__ import annotations
