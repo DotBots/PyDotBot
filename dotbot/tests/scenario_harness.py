@@ -26,12 +26,12 @@ from dotbot.adapter import DotBotSimulatorAdapter
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.dotbot_simulator import (
     SIMULATOR_STEP_DELTA_T,
-    DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
+    SimulatedDotBot,
 )
 from dotbot.protocol import ApplicationType
 from dotbot.server import api
-from dotbot.steering import SteeringState
+from dotbot.sim.core import SteeringState
 from dotbot.stream import HZ_MAX, StreamOptions
 
 DOTBOT = ApplicationType.DotBot.value
@@ -98,12 +98,12 @@ class Scenario:
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=api), base_url="http://scenario"
         )
-        self.robots: Dict[str, DotBotSimulator] = {
+        self.robots: Dict[str, SimulatedDotBot] = {
             bot.address: bot for bot in self.sim.dotbots
         }
         # Each robot's steering states in the order it went through them
         self.states: Dict[str, List[SteeringState]] = {
-            address: [bot.steering.state] for address, bot in self.robots.items()
+            address: [bot.steering_state] for address, bot in self.robots.items()
         }
 
     async def close(self):
@@ -124,8 +124,8 @@ class Scenario:
             self.sim.step()
             self.seconds += SIMULATOR_STEP_DELTA_T
             for address, bot in self.robots.items():
-                if bot.steering.state != self.states[address][-1]:
-                    self.states[address].append(bot.steering.state)
+                if bot.steering_state != self.states[address][-1]:
+                    self.states[address].append(bot.steering_state)
             if each_tick is not None:
                 each_tick()
             self.controller.stream.tick(self.seconds)
@@ -200,7 +200,7 @@ class Scenario:
         return self.controller.batch_ids[address]
 
 
-def axle_error_mm(bot: DotBotSimulator, x: float, y: float) -> float:
+def axle_error_mm(bot: SimulatedDotBot, x: float, y: float) -> float:
     return math.hypot(bot.pos_x - x, bot.pos_y - y)
 
 
@@ -208,5 +208,5 @@ def heading_error_deg(actual: float, wanted: float) -> float:
     return abs((actual - wanted + 180.0) % 360.0 - 180.0)
 
 
-def speed_mm_s(bot: DotBotSimulator) -> float:
+def speed_mm_s(bot: SimulatedDotBot) -> float:
     return (bot.v_left + bot.v_right) / 2.0

@@ -45,6 +45,7 @@ from dotbot.protocol import (
     WaypointsFailReason,
     WaypointsStatus,
 )
+from dotbot.sim import core as control
 from dotbot.site import Site
 from dotbot.steering import SteeringState
 
@@ -591,7 +592,7 @@ def test_a_mari_downlink_reaches_its_robot(tmp_path):
     interface.write(_move_raw(1).to_bytes())
     for _ in range(20):
         interface.step()
-    assert bot.drive_mode == DriveMode.RAW
+    assert bot.drive_mode == control.DriveMode.RAW
 
 
 def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):
@@ -606,15 +607,14 @@ def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):
         ],
     )
     bot_a, bot_b = interface.dotbots
-    with patch.object(Frame, "from_bytes", side_effect=Frame.from_bytes) as from_bytes:
+    with patch.object(
+        Header, "from_bytes", autospec=True, side_effect=Header.from_bytes
+    ) as from_bytes:
         interface.write(_move_raw(1).to_bytes())
         assert from_bytes.call_count == 1
-    assert bot_a.queue.qsize() == 1
-    assert bot_b.queue.qsize() == 0
-    bot_a.receive()
-    bot_b.receive()
-    assert bot_a.drive_mode == DriveMode.RAW
-    assert bot_b.drive_mode == DriveMode.IDLE
+    interface.step()
+    assert bot_a.drive_mode == control.DriveMode.RAW
+    assert bot_b.drive_mode == control.DriveMode.IDLE
 
 
 def test_write_to_broadcast_reaches_every_robot(tmp_path):
@@ -626,9 +626,8 @@ def test_write_to_broadcast_reaches_every_robot(tmp_path):
         ],
     )
     interface.write(_move_raw(int(DOTBOT_ADDRESS_DEFAULT, 16)).to_bytes())
-    for bot in interface.dotbots:
-        bot.receive()
-    assert all(bot.drive_mode == DriveMode.RAW for bot in interface.dotbots)
+    interface.step()
+    assert all(bot.drive_mode == control.DriveMode.RAW for bot in interface.dotbots)
 
 
 def test_write_to_an_unknown_address_reaches_nobody(tmp_path):
@@ -636,4 +635,152 @@ def test_write_to_an_unknown_address_reaches_nobody(tmp_path):
         tmp_path, [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}]
     )
     interface.write(_move_raw(0xDEADBEEF22222222).to_bytes())
-    assert interface.dotbots[0].queue.empty()
+    interface.step()
+    assert interface.dotbots[0].drive_mode == control.DriveMode.IDLE
+
+
+# --- The fleet on the firmware's control core ---------------------------------
+
+
+def _step(interface, seconds: float):
+    for _ in range(round(seconds / SIMULATOR_STEP_DELTA_T)):
+        interface.step()
+
+
+def _adverts(received) -> list:
+    return [
+        PayloadDotBotAdvertisement().from_bytes(frame.packet.payload.to_bytes())
+        for frame in received
+    ]
+
+
+def test_a_robot_given_a_heading_starts_tracking_it_where_it_was_put(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 1000,
+                "pos_y": 1000,
+                "direction": 90,
+            }
+        ],
+    )
+    bot = interface.dotbots[0]
+    assert bot.estimator_status == control.PoseStatus.TRACKING
+    assert math.hypot(bot.pos_x - 1000, bot.pos_y - 1000) < 3
+    assert bot.heading_deg == pytest.approx(90, abs=1)
+    _step(interface, 0.5)
+    (advert,) = _adverts(received)
+    assert advert.direction == pytest.approx(90, abs=1)
+    assert math.hypot(advert.axle_x - 1000, advert.axle_y - 1000) < 3
+    # The LH2 position is the photodiode, a lever arm ahead of the axle
+    assert math.hypot(advert.pos_x - 949, advert.pos_y - 1000) < 3
+    assert (advert.encoder_left, advert.encoder_right) == (0, 0)
+
+
+def test_a_robot_without_a_heading_starts_with_none_and_no_position(tmp_path):
+    interface, received = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000}]
+    )
+    assert interface.dotbots[0].estimator_status == control.PoseStatus.SEEDING
+    interface.dotbots[0].lh2_visible = False
+    _step(interface, 0.5)
+    (advert,) = _adverts(received)
+    assert advert.direction == DIRECTION_NONE
+    assert (advert.axle_x, advert.axle_y) == (AXLE_UNKNOWN, AXLE_UNKNOWN)
+    assert (advert.pos_x, advert.pos_y) == (0, 0)
+
+
+def test_advertisements_carry_the_battery_and_the_calibration(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "calibrated": 0x03,
+            }
+        ],
+    )
+    _step(interface, 1.0)
+    adverts = _adverts(received)
+    assert len(adverts) == 2
+    assert all(a.has_report and a.calibrated == 0x03 for a in adverts)
+    assert adverts[-1].battery == pytest.approx(3000, abs=2)
+    assert adverts[-1].max_speed_10mm == 30
+
+
+def test_robots_advertise_out_of_phase(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [{"address": f"{i + 1:016X}", "pos_x": 100, "pos_y": 100} for i in range(50)],
+    )
+    per_tick = []
+    for _ in range(ADVERTISEMENT_TICKS):
+        before = len(received)
+        interface.step()
+        per_tick.append(len(received) - before)
+    assert sum(per_tick) == 50
+    assert max(per_tick) == 1
+
+
+def test_wheel_speeds_hold_through_a_motor_error(tmp_path):
+    """The firmware's wheel loop closes on the encoders, so a weak motor
+    neither slows its wheel nor turns the robot."""
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 1000,
+                "pos_y": 1000,
+                "direction": 0,
+                "motor_left_error": 0.3,
+            }
+        ],
+    )
+    bot = interface.dotbots[0]
+    for _ in range(5):
+        interface.write(_wheel_velocity(bot, 200, 200).to_bytes())
+        _step(interface, 0.2)
+    assert bot.drive_mode == control.DriveMode.VELOCITY
+    assert bot.v_left == pytest.approx(200, abs=25)
+    assert bot.v_right == pytest.approx(200, abs=25)
+    assert abs(bot.heading_deg) < 5
+
+
+def test_the_wheels_stop_when_commands_stop_arriving(tmp_path):
+    interface, _ = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000}]
+    )
+    bot = interface.dotbots[0]
+    interface.write(_wheel_velocity(bot, 300, -300).to_bytes())
+    _step(interface, 0.3)
+    assert abs(bot.v_left) > 100
+    _step(interface, 1.0)
+    assert bot.drive_mode == control.DriveMode.IDLE
+    assert (bot.v_left, bot.v_right) == (0, 0)
+
+
+def test_a_waypoint_batch_is_driven_by_the_firmware(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000, "direction": 0}],
+    )
+    bot = interface.dotbots[0]
+    interface.write(
+        _waypoints(bot, [(1000, 1500)], threshold=20, batch_id=4).to_bytes()
+    )
+    for _ in range(1000):
+        interface.step()
+        if bot.steering_state == control.SteeringState.ARRIVED:
+            break
+    assert bot.steering_state == control.SteeringState.ARRIVED
+    _step(interface, 0.6)
+    assert math.hypot(bot.pos_x - 1000, bot.pos_y - 1500) <= 20
+    advert = _adverts(received)[-1]
+    assert advert.waypoints_status == WaypointsStatus.ARRIVED
+    assert (advert.batch_id, advert.waypoint_idx) == (4, 1)
+    assert advert.mode == ControlModeType.MANUAL

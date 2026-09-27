@@ -5,6 +5,7 @@ simulator and the controller together, on a stepped clock, and say nothing
 about how a real robot behaves.
 """
 
+import collections
 import itertools
 import math
 
@@ -13,7 +14,7 @@ import pytest_asyncio
 
 from dotbot.models import DotBotLH2Position
 from dotbot.protocol import WaypointsStatus
-from dotbot.steering import PoseStatus, SteeringState
+from dotbot.sim.core import PoseStatus, SteeringState
 from dotbot.tests.scenario_harness import (
     Scenario,
     axle_error_mm,
@@ -25,6 +26,13 @@ pytestmark = [pytest.mark.scenario, pytest.mark.asyncio]
 
 A = "BADCAFE111111111"
 B = "DEADBEEF22222222"
+
+# DB_STEERING_FINAL_TOL_DEG, how far off its heading a final turn may stop
+FINAL_TOL_DEG = 3.0
+
+# Longer than the wheels must stand before a jump of the fixes is a kidnap,
+# DB_POSE_ESTIMATOR_KIDNAP_SETTLE_TICKS
+KIDNAP_SETTLE_S = 0.7
 
 # The v3 body reaches 79 mm from its axle midpoint, so two bodies whose axles
 # are 160 mm apart cannot touch
@@ -77,12 +85,12 @@ async def test_per_point_headings_are_honoured(scenario):
     headings_at_advance = []
 
     def watch():
-        if robot.steering.index == 1 and not headings_at_advance:
+        if robot.waypoint_index == 1 and not headings_at_advance:
             headings_at_advance.append(robot.heading_deg)
 
     assert await s.run_until_reported([A], "ARRIVED", seconds=20, each_tick=watch)
 
-    tolerance = robot.steering.conf.final_tol_deg + 1
+    tolerance = FINAL_TOL_DEG + 1
     assert heading_error_deg(headings_at_advance[0], 90) <= tolerance
     assert heading_error_deg(robot.heading_deg, 180) <= tolerance
     assert axle_error_mm(robot, 1000, 1000) <= 20
@@ -146,15 +154,42 @@ async def test_lh2_returning_during_hold_resumes_the_batch(scenario):
     await s.run(1.5)
     robot = s.robots[A]
     robot.lh2_visible = False
-    assert await s.run(5, until=lambda: robot.steering.state == SteeringState.HOLD)
+    assert await s.run(5, until=lambda: robot.steering_state == SteeringState.HOLD)
     robot.lh2_visible = True
 
     assert await s.run_until_reported([A], "ARRIVED", seconds=15)
     assert axle_error_mm(robot, 500, 1500) <= 20
 
 
+async def _pick_up_and_move(s, robot, dx_mm: float, turn_deg: float):
+    """Grab a driving robot, hold it until its wheels have stood, and put it
+    down elsewhere; still held once its estimator has taken it as a kidnap."""
+    robot.held = True
+    await s.run(KIDNAP_SETTLE_S)
+    robot.kidnap(robot.pos_x + dx_mm, robot.pos_y, robot.heading_deg + turn_deg)
+    assert await s.run(
+        1.0, until=lambda: robot.estimator_status == PoseStatus.SEEDING
+    ), "the estimator did not take the move as a kidnap"
+
+
 async def test_a_robot_moved_by_hand_mid_drive_recovers(scenario):
-    """Guards RECOVER: a lost heading while moving is re-acquired by driving on."""
+    """Guards RECOVER: a heading lost while driving is re-acquired by driving on."""
+    s = scenario([_bot(direction=0)])
+    await s.run(1.0)
+    await s.waypoints(A, [(500, 1800)])
+    await s.run(1.5)
+    robot = s.robots[A]
+    await _pick_up_and_move(s, robot, 100, 30)
+    robot.held = False
+
+    assert await s.run_until_reported([A], "ARRIVED", seconds=20)
+    assert SteeringState.RECOVER in s.states[A]
+    assert axle_error_mm(robot, 500, 1800) <= 20
+
+
+async def test_a_robot_moved_while_its_wheels_turn_holds_then_fails(scenario):
+    """Guards the other side of the kidnap rule: a jump the wheels did not
+    stand through is not a kidnap, so the robot holds on a lost pose."""
     s = scenario([_bot(direction=0)])
     await s.run(1.0)
     await s.waypoints(A, [(500, 1800)])
@@ -162,9 +197,10 @@ async def test_a_robot_moved_by_hand_mid_drive_recovers(scenario):
     robot = s.robots[A]
     robot.kidnap(robot.pos_x + 100, robot.pos_y, robot.heading_deg + 30)
 
-    assert await s.run_until_reported([A], "ARRIVED", seconds=20)
-    assert SteeringState.RECOVER in s.states[A]
-    assert axle_error_mm(robot, 500, 1800) <= 20
+    assert await s.run_until_reported([A], "FAILED", seconds=10)
+    assert SteeringState.HOLD in s.states[A]
+    assert SteeringState.RECOVER not in s.states[A]
+    assert s.dotbot(A).waypoints_reason == "HOLD"
 
 
 async def test_recovering_without_lh2_fails_heading_lost(scenario):
@@ -174,8 +210,9 @@ async def test_recovering_without_lh2_fails_heading_lost(scenario):
     await s.waypoints(A, [(500, 1800)])
     await s.run(1.5)
     robot = s.robots[A]
+    await _pick_up_and_move(s, robot, 100, 0)
     robot.lh2_visible = False
-    robot.kidnap(robot.pos_x, robot.pos_y, robot.heading_deg)
+    robot.held = False
 
     assert await s.run_until_reported([A], "FAILED", seconds=10)
     assert SteeringState.RECOVER in s.states[A]
@@ -191,17 +228,23 @@ async def test_the_max_speed_command_caps_the_cruise_speed(scenario):
     assert s.dotbot(A).max_speed == 100
     assert s.dotbot(B).max_speed == 300  # the firmware default, untouched
 
+    # The wheel loop kicks a standing wheel and closes on whole counts, so
+    # single ticks overshoot; the cap holds for the speed over half a second
     peak = {A: 0.0, B: 0.0}
+    recent = {address: collections.deque(maxlen=50) for address in peak}
 
     def watch():
         for address in peak:
-            peak[address] = max(peak[address], abs(speed_mm_s(s.robots[address])))
+            recent[address].append(abs(speed_mm_s(s.robots[address])))
+            window = recent[address]
+            if len(window) == window.maxlen:
+                peak[address] = max(peak[address], sum(window) / len(window))
 
     await s.waypoints(A, [(500, 1800)])
     await s.waypoints(B, [(1500, 1800)])
     assert await s.run_until_reported(peak, "ARRIVED", seconds=30, each_tick=watch)
 
-    assert peak[A] <= 100 * 1.02
+    assert peak[A] <= 100 * 1.05
     assert peak[B] > 250  # the cap is what held A back, not the path
 
 

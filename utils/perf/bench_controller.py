@@ -233,14 +233,19 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
     lags = []
     window = {}
 
+    def simulator():
+        return getattr(controller.adapter, "simulator", None)
+
     def robots():
-        simulator = getattr(controller.adapter, "simulator", None)
-        return simulator.dotbots if simulator is not None else []
+        return simulator().dotbots if simulator() is not None else []
+
+    def robot_ticks():
+        return simulator().ticks * len(robots()) if simulator() is not None else 0
 
     def open_window():
         lags.clear()
         window["start"] = time.monotonic()
-        window["ticks"] = sum(bot.ticks for bot in robots())
+        window["ticks"] = robot_ticks()
         window["threads"] = {
             thread.native_id: _role(thread) for thread in threading.enumerate()
         }
@@ -248,7 +253,7 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
 
     def close_window():
         elapsed = time.monotonic() - window.get("start", time.monotonic())
-        ticks = sum(bot.ticks for bot in robots()) - window.get("ticks", 0)
+        ticks = robot_ticks() - window.get("ticks", 0)
         result = {"window_s": elapsed, "loop_lag_ms": lags}
         if robots():
             result["sim_ticks_per_bot_s"] = ticks / len(robots()) / elapsed
@@ -683,8 +688,10 @@ def stepped_simulator_cost(count: int, seconds: float = 2.0) -> dict:
     import logging
 
     import structlog
+    from dotbot_utils.protocol import Frame, Header, Packet
 
     from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
+    from dotbot.protocol import PayloadLH2Location, PayloadLH2Waypoints
 
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING)
@@ -694,8 +701,16 @@ def stepped_simulator_cost(count: int, seconds: float = 2.0) -> dict:
         _world(count, world)
         sim = DotBotSimulatorCommunicationInterface(lambda frame: None, str(world))
         for bot in sim.dotbots:
-            bot.steering.set_target(bot.pos_x, bot.pos_y + 3000, 50)
-            bot.drive_mode = 3  # WAYPOINT: the steering runs every tick
+            waypoint = PayloadLH2Location(
+                pos_x=int(bot.pos_x), pos_y=int(bot.pos_y) + 3000
+            )
+            batch = PayloadLH2Waypoints(
+                threshold=50, count=1, waypoints=[waypoint], batch_id=1
+            )
+            header = Header(destination=int(bot.address, 16), source=0)
+            sim.write(
+                Frame(header=header, packet=Packet.from_payload(batch)).to_bytes()
+            )
         steps = 0
         began = time.process_time()
         while time.process_time() - began < seconds:
