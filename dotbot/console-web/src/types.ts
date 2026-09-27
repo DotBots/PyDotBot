@@ -57,10 +57,20 @@ export interface RgbLed {
 // placeholder and its body must not be drawn.
 export type HeadingSource = "none" | "travel" | "ekf";
 
-// The robot's body, as the controller expands one photodiode fix into it. Every
-// point is frame millimetres, the same frame as an LH2 position: `centre` is
-// the board outline's centre, `nose` the middle of its front edge, and
-// `outline` the board path itself, already rotated to the heading.
+// Where the controller places a robot: its axle midpoint in frame millimetres
+// and its heading. With `heading_source` "none" both the heading and the axle
+// are placeholders. `bodyOf` in body.ts turns it into the body drawn.
+export interface RobotPose {
+  x: number;
+  y: number;
+  heading_deg: number;
+  heading_source: HeadingSource;
+}
+
+// The robot's body, expanded from a pose. Every point is frame millimetres,
+// the same frame as an LH2 position: `centre` is the board outline's centre,
+// `nose` the middle of its front edge, and `outline` the board path itself,
+// already rotated to the heading.
 export interface BotPose {
   heading_deg: number;
   heading_source: HeadingSource;
@@ -88,7 +98,9 @@ export interface PyDotBot {
   mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
   direction?: number;
   lh2_position?: LH2Position;
-  pose?: BotPose;
+  // The geometry record's key, which names the shape `pose` places
+  model?: string;
+  pose?: RobotPose;
   // The axle midpoint as the robot itself estimates it; null from apps that
   // do not report it, or with no heading yet.
   axle_position?: LH2Position | null;

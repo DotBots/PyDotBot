@@ -8,6 +8,7 @@ import {
   fetchSite,
   fetchSwarmitStatus,
 } from "./api";
+import { robotBody, RobotShapes } from "./body";
 import { connectStream, FleetStream, StreamEvent } from "./stream";
 import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
@@ -72,16 +73,18 @@ function poseAt(pose: BotPose, at: LH2Position): BotPose {
 }
 
 // The controller's pose while it hears the app running, else swarmit's
-// position if it has located the bot, else the controller's last pose. Out of
-// its app a robot computes no heading, so it is placed headingless: from
-// swarmit, sized by the pose the host gave its device type, or a bare point
-// for a type the host has no record of. swarmit reports (0, 0) for a bot it
-// has never located.
+// position if it has located the bot, else the controller's last pose, each
+// drawn as the body of the robot's model from `shapes`. Out of its app a
+// robot computes no heading, so it is placed headingless: from swarmit, sized
+// by the pose the host gave its device type, or a bare point for a type the
+// host has no record of. swarmit reports (0, 0) for a bot it has never
+// located.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
   devicePoses: Record<string, BotPose> = {},
+  shapes: RobotShapes = {},
 ): {
   position: LH2Position | null;
   heading: number | null;
@@ -90,7 +93,7 @@ export function derivePose(
   const inApp = !sw || sw.status === "Running";
   const pyHeading =
     py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
-  const pyPose = py?.pose ?? null;
+  const pyPose = py?.pose ? robotBody(py.pose, py.model, shapes) : null;
   if (inApp && link === "active" && py?.lh2_position) {
     return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
@@ -113,6 +116,7 @@ export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
   devicePoses: Record<string, BotPose> = {},
+  shapes: RobotShapes = {},
 ): UnifiedBot[] {
   const ids = new Set([...Object.keys(pyBots), ...Object.keys(swNodes)]);
   const out: UnifiedBot[] = [];
@@ -121,7 +125,7 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
-    const { position, heading, pose } = derivePose(py, sw, link, devicePoses);
+    const { position, heading, pose } = derivePose(py, sw, link, devicePoses, shapes);
     out.push({
       id,
       state,
@@ -176,6 +180,7 @@ export function useFleet(): {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
   const devicePosesRef = useRef<Record<string, BotPose>>({});
+  const shapesRef = useRef<RobotShapes>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
@@ -186,7 +191,7 @@ export function useFleet(): {
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
-    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current));
+    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current, shapesRef.current));
   }, []);
 
   // Telemetry arrives per robot, so a fleet sends hundreds of updates a
@@ -231,7 +236,10 @@ export function useFleet(): {
   useEffect(() => {
     const fleet = new FleetStream(TRAIL_MAX);
     const onEvent = (event: StreamEvent) => {
-      if (event.event === "calibration_session") {
+      if (event.event === "robot_models") {
+        shapesRef.current = (event.data as RobotShapes | null) ?? {};
+        rebuildNextFrame();
+      } else if (event.event === "calibration_session") {
         setSession((event.data as CalibrationSession | null) ?? null);
       } else if (event.event === "camera_detection" && event.data) {
         const detection = event.data as CameraDetection;

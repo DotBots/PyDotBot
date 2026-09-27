@@ -32,6 +32,8 @@ Map + selection
 - [ ] Click bot: red rectangle + id chip; hover another bot: chip appears
 - [ ] Zoom +/-/recenter; arena keeps margins when rail opens or window resizes
 - [ ] Layers panel: Battery Bars / Waypoints / DotBots / Real-scale / Trails toggle live
+- [ ] Real-scale: each board outline turns with its robot and sits on its lighthouse
+      dot; after a reload the bodies come back (the `robot_models` event)
 
 Footer (bottom strip)
 - [ ] Nothing selected: N/1000 + per-state rollup; click a state row selects those bots
