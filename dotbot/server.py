@@ -74,7 +74,7 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadWaypointHeading,
 )
-from dotbot.stream import StreamOptions
+from dotbot.stream import StreamOptions, encode, robot_object
 from dotbot.swarm_client import conn_string
 from dotbot.ws_clients import TransportScope
 
@@ -408,11 +408,21 @@ async def dotbot_trail_clear(address: str):
     api.controller.clear_trail(address)
 
 
-def _snapshot_headers(response: Response) -> None:
-    """Say which seq of which controller run a snapshot reflects, so a
-    stream client can resume from it with `?since=&run=`."""
-    response.headers["X-Controller-Seq"] = str(api.controller.seq)
-    response.headers["X-Controller-Run"] = api.controller.run_id
+def _snapshot(body) -> Response:
+    """A REST snapshot, saying which seq of which controller run it reflects
+    so a stream client can resume from it with `?since=&run=`.
+
+    Built from the dumps the stream caches, so a fleet listing does not
+    validate and serialise every robot model again.
+    """
+    return Response(
+        content=encode(body),
+        media_type="application/json",
+        headers={
+            "X-Controller-Seq": str(api.controller.seq),
+            "X-Controller-Run": api.controller.run_id,
+        },
+    )
 
 
 @api.get(
@@ -424,15 +434,14 @@ def _snapshot_headers(response: Response) -> None:
 )
 async def dotbot(
     address: str,
-    response: Response,
     trail: Annotated[int, Query(ge=0, le=MAX_TRAIL_SIZE)] = 0,
 ):
     """Dotbot HTTP GET handler; `trail` is how many of its newest trail
     points to return."""
-    if address not in api.controller.dotbots:
+    controller = api.controller
+    if address not in controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    _snapshot_headers(response)
-    return api.controller.dotbot_with_trail(address, trail)
+    return _snapshot(robot_object(controller, address, trail, controller.seq))
 
 
 @api.get(
@@ -442,10 +451,15 @@ async def dotbot(
     summary="Return the list of available dotbots",
     tags=["dotbots"],
 )
-async def dotbots(query: Annotated[DotBotQueryModel, Query()], response: Response):
+async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
     """Dotbots HTTP GET handler."""
-    _snapshot_headers(response)
-    return api.controller.get_dotbots(query)
+    controller = api.controller
+    return _snapshot(
+        [
+            robot_object(controller, address, query.trail, controller.seq)
+            for address in controller.matching(query)
+        ]
+    )
 
 
 @api.get(

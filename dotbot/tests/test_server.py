@@ -53,7 +53,6 @@ def controller():
     api.controller.header = MagicMock()
     api.controller.header.destination = MagicMock()
     api.controller.dotbots = MagicMock()
-    api.controller.get_dotbots = MagicMock()
     api.controller.send_payload = MagicMock()
     api.controller.settings = MagicMock()
     api.controller.settings.gw_address = "0000"
@@ -73,6 +72,7 @@ def controller():
         "clear_trail",
         "trail",
         "dotbot_with_trail",
+        "matching",
     ):
         setattr(api.controller, name, getattr(Controller, name).__get__(api.controller))
 
@@ -503,9 +503,7 @@ async def test_set_dotbots_waypoints(
     ],
 )
 async def test_get_dotbots(dotbots, result):
-    api.controller.get_dotbots.return_value = list(
-        sorted(dotbots.values(), key=lambda dotbot: dotbot.address)
-    )
+    _serve(dotbots)
     response = await client.get("/controller/dotbots")
     assert response.status_code == 200
     assert response.json() == result
@@ -593,7 +591,6 @@ async def test_get_dotbot_returns_the_newest_trail_points(query, expected):
 @pytest.mark.parametrize("path", ["/controller/dotbots", "/controller/dotbots/12345"])
 async def test_a_rest_snapshot_names_its_seq_and_run(path):
     _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
-    api.controller.get_dotbots.return_value = list(api.controller.dotbots.values())
     response = await client.get(path)
     assert response.status_code == 200
     assert response.headers["X-Controller-Seq"] == str(api.controller.seq)

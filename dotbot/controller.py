@@ -1176,7 +1176,14 @@ class Controller:
 
     def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
         """Returns the list of dotbots matching the query."""
-        dotbots: List[DotBotModel] = []
+        return [
+            self.dotbot_with_trail(address, query.trail)
+            for address in self.matching(query)
+        ]
+
+    def matching(self, query: DotBotQueryModel) -> List[str]:
+        """The addresses of the dotbots matching the query, in order."""
+        addresses: List[str] = []
         for address, dotbot in self.dotbots.items():
             if query.address is not None and dotbot.address != query.address:
                 continue
@@ -1218,11 +1225,11 @@ class Controller:
                 if query.min_position_y is not None:
                     if query.min_position_y > dotbot.lh2_position.y:
                         continue
-            dotbots.append(self.dotbot_with_trail(address, query.trail))
-        dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
+            addresses.append(address)
+        addresses.sort()
         if query.limit is not None:
-            dotbots = dotbots[: query.limit]
-        return dotbots
+            addresses = addresses[: query.limit]
+        return addresses
 
     async def web(self):
         """Starts the web server application."""
