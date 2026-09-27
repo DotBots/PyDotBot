@@ -122,6 +122,7 @@ api.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Controller-Seq", "X-Controller-Run"],
 )
 api.add_middleware(ReverseProxyMiddleware)
 # Last, so it is the outermost: see TransportScope.
@@ -407,6 +408,13 @@ async def dotbot_trail_clear(address: str):
     api.controller.clear_trail(address)
 
 
+def _snapshot_headers(response: Response) -> None:
+    """Say which seq of which controller run a snapshot reflects, so a
+    stream client can resume from it with `?since=&run=`."""
+    response.headers["X-Controller-Seq"] = str(api.controller.seq)
+    response.headers["X-Controller-Run"] = api.controller.run_id
+
+
 @api.get(
     path="/controller/dotbots/{address}",
     response_model=DotBotModel,
@@ -414,11 +422,17 @@ async def dotbot_trail_clear(address: str):
     summary="Return information about a dotbot given its address",
     tags=["dotbots"],
 )
-async def dotbot(address: str, max_positions: int = MAX_TRAIL_SIZE):
-    """Dotbot HTTP GET handler."""
+async def dotbot(
+    address: str,
+    response: Response,
+    trail: Annotated[int, Query(ge=0, le=MAX_TRAIL_SIZE)] = 0,
+):
+    """Dotbot HTTP GET handler; `trail` is how many of its newest trail
+    points to return."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    return api.controller.dotbot_with_trail(address, max_positions)
+    _snapshot_headers(response)
+    return api.controller.dotbot_with_trail(address, trail)
 
 
 @api.get(
@@ -428,8 +442,9 @@ async def dotbot(address: str, max_positions: int = MAX_TRAIL_SIZE):
     summary="Return the list of available dotbots",
     tags=["dotbots"],
 )
-async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
+async def dotbots(query: Annotated[DotBotQueryModel, Query()], response: Response):
     """Dotbots HTTP GET handler."""
+    _snapshot_headers(response)
     return api.controller.get_dotbots(query)
 
 

@@ -573,7 +573,8 @@ async def test_get_dotbot(dotbots, address, code, found, result):
 
 
 @pytest.mark.asyncio
-async def test_get_dotbot_keeps_newest_history():
+@pytest.mark.parametrize("query,expected", [("", []), ("?trail=2", [3, 4])])
+async def test_get_dotbot_returns_the_newest_trail_points(query, expected):
     _serve(
         {
             "12345": DotBotModel(
@@ -583,9 +584,29 @@ async def test_get_dotbot_keeps_newest_history():
             )
         }
     )
-    response = await client.get("/controller/dotbots/12345?max_positions=2")
+    response = await client.get(f"/controller/dotbots/12345{query}")
     assert response.status_code == 200
-    assert [p["x"] for p in response.json()["trail"]] == [3, 4]
+    assert [p["x"] for p in response.json()["trail"]] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/controller/dotbots", "/controller/dotbots/12345"])
+async def test_a_rest_snapshot_names_its_seq_and_run(path):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    api.controller.get_dotbots.return_value = list(api.controller.dotbots.values())
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert response.headers["X-Controller-Seq"] == str(api.controller.seq)
+    assert response.headers["X-Controller-Run"] == "0123456789ab"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trail", ["-1", "1001"])
+async def test_a_trail_out_of_range_is_refused(trail):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    for path in ("/controller/dotbots", "/controller/dotbots/12345"):
+        response = await client.get(f"{path}?trail={trail}")
+        assert response.status_code == 422
 
 
 @pytest.mark.asyncio

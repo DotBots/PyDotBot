@@ -463,7 +463,8 @@ class DotBotQueryModel(BaseModel):
     status: Optional[DotBotStatus] = None
     max_battery: Optional[float] = None
     min_battery: Optional[float] = None
-    max_positions: int = None
+    # The newest points of each robot's trail to return
+    trail: int = Field(default=0, ge=0, le=MAX_TRAIL_SIZE)
     max_position_x: Optional[float] = None
     min_position_x: Optional[float] = None
     max_position_y: Optional[float] = None

@@ -141,7 +141,7 @@ async def rest_fleet(trail):
     async with AsyncClient(
         transport=ASGITransport(app=api), base_url="http://test"
     ) as client:
-        response = await client.get(f"/controller/dotbots?max_positions={trail}")
+        response = await client.get(f"/controller/dotbots?trail={trail}")
     return {robot["address"]: robot for robot in response.json()}
 
 
@@ -554,6 +554,23 @@ async def test_since_resumes_with_a_delta_of_what_changed(controller):
     assert [f["type"] for f in second.frames] == ["delta", "event"]
     assert set(second.frames[0]["robots"]) == {addr_to_hex(0x10), addr_to_hex(0x13)}
     assert second.fleet == await rest_fleet(5)
+
+
+@pytest.mark.asyncio
+async def test_a_seq_from_the_rest_snapshot_resumes_the_stream(controller):
+    advertise(controller, 0x42)
+    async with AsyncClient(
+        transport=ASGITransport(app=api), base_url="http://test"
+    ) as http:
+        response = await http.get("/controller/dotbots")
+    seq = int(response.headers["X-Controller-Seq"])
+    run = response.headers["X-Controller-Run"]
+    advertise(controller, 0x42, battery=2500)
+    client = Client(controller.stream, since=seq, run=run)
+    client.fleet = {r["address"]: r for r in response.json()}
+    await tick(controller.stream, 0)
+    assert [f["type"] for f in client.frames] == ["delta"]
+    assert client.fleet == await rest_fleet(0)
 
 
 @pytest.mark.parametrize(

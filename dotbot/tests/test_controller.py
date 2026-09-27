@@ -230,9 +230,9 @@ async def test_controller_dont_send(controller):
             id="by min position y",
         ),
         pytest.param(
-            DotBotQueryModel(max_positions=1),
-            3,
-            id="by max positions",
+            DotBotQueryModel(trail=1),
+            4,
+            id="a trail does not filter",
         ),
         pytest.param(
             DotBotQueryModel(limit=2),
@@ -247,18 +247,14 @@ async def test_controller_get_dotbots_query(query, length, controller):
     assert len(dotbots) == length
 
 
-@pytest.mark.parametrize(
-    "max_positions,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
-)
-def test_controller_get_dotbots_keeps_newest_history(
-    controller, max_positions, expected
+@pytest.mark.parametrize("trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))])
+def test_controller_get_dotbots_returns_the_newest_trail_points(
+    controller, trail, expected
 ):
-    """A capped history keeps the newest points, not the oldest."""
+    """A capped trail keeps the newest points, not the oldest."""
     address = "0000000000000003"
     controller.seed_trail(address, [DotBotLH2Position(x=i, y=i) for i in range(10)])
-    (result,) = controller.get_dotbots(
-        DotBotQueryModel(address=address, max_positions=max_positions)
-    )
+    (result,) = controller.get_dotbots(DotBotQueryModel(address=address, trail=trail))
     assert [p.x for p in result.trail] == expected
     assert len(controller.trail(address)) == 10
 

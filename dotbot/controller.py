@@ -1202,8 +1202,6 @@ class Controller:
                 and dotbot.lh2_position is None
             ):
                 continue
-            if dotbot.lh2_position is None and query.max_positions is not None:
-                continue
             if dotbot.lh2_position is not None:
                 if query.max_position_x is not None:
                     if query.max_position_x < dotbot.lh2_position.x:
@@ -1217,10 +1215,7 @@ class Controller:
                 if query.min_position_y is not None:
                     if query.min_position_y > dotbot.lh2_position.y:
                         continue
-            max_positions = (
-                MAX_TRAIL_SIZE if query.max_positions is None else query.max_positions
-            )
-            dotbots.append(self.dotbot_with_trail(address, max_positions))
+            dotbots.append(self.dotbot_with_trail(address, query.trail))
         dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
         if query.limit is not None:
             dotbots = dotbots[: query.limit]

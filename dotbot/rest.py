@@ -48,7 +48,7 @@ class RestClient:
         try:
             url = f"{self.base_url}/dotbots"
             if query is not None:
-                url += f"?{urllib.parse.urlencode(query.model_dump(exclude_none=True))}"
+                url += f"?{urllib.parse.urlencode(query.model_dump(exclude_defaults=True))}"
             response = await self._client.get(
                 url,
                 headers={
