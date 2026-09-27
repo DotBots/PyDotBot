@@ -107,9 +107,7 @@ def _dump(controller, address: str) -> dict:
     key = controller.changed.get(address)
     if record is not None and key is not None and record.dump_seq == key:
         return record.dump
-    body = dotbot.model_dump(
-        mode="json", exclude_none=True, exclude={"trail", "body"}
-    )
+    body = dotbot.model_dump(mode="json", exclude_none=True, exclude={"trail", "body"})
     if record is not None and key is not None:
         record.dump_seq, record.dump = key, body
     return body

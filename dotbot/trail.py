@@ -81,9 +81,7 @@ class Trail:
             return {"latitude": self._a[i], "longitude": self._b[i]}
         return {"x": self._a[i], "y": self._b[i]}
 
-    def _pick(
-        self, count: Optional[int], upto: Optional[int], after: int
-    ) -> List[int]:
+    def _pick(self, count: Optional[int], upto: Optional[int], after: int) -> List[int]:
         """The indices of the newest `count` points with a seq in
         (`after`, `upto`], oldest first."""
         picked = []

@@ -63,15 +63,16 @@ from dotbot.csv_data_logger import (
 from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
 from dotbot.logger import LOGGER
 from dotbot.models import (
+    DotBotBodyModel,
     DotBotCalibrationSessionModel,
     DotBotCameraDetectionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
-    DotBotBodyModel,
     DotBotModel,
     DotBotQueryModel,
     DotBotStatus,
 )
+from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
 from dotbot.protocol import (
     AXLE_UNKNOWN,
     DIRECTION_NONE,
@@ -89,7 +90,6 @@ from dotbot.protocol import (
     WaypointsFailReason,
     WaypointsStatus,
 )
-from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
 from dotbot.robots import SWARMIT_DEVICE_MODELS, robot_geometry
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
@@ -290,7 +290,10 @@ class Controller:
         self.set_event(
             "robot_models",
             "robot_models",
-            {name: body.model_dump(mode="json") for name, body in robot_models().items()},
+            {
+                name: body.model_dump(mode="json")
+                for name, body in robot_models().items()
+            },
         )
         # self.dotbots: Dict[str, DotBotModel] = {
         #     "0000000000000001": DotBotModel(

@@ -10,7 +10,6 @@ from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
 from dotbot.controller import Controller, ControllerSettings
-from dotbot.poses import device_pose, robot_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -24,6 +23,7 @@ from dotbot.models import (
     WSRgbLed,
     WSWaypoints,
 )
+from dotbot.poses import device_pose, robot_pose
 from dotbot.protocol import (
     DIRECTION_NONE,
     WAYPOINT_NO_HEADING,
