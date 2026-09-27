@@ -10,7 +10,9 @@ endpoints. Optionally one more client that acks once then stops reading
   `dotbot run simulator` does, and every robot drives a waypoint batch.
 - `synth`: no simulator. A gateway adapter replays advertisements at the
   firmware's 2 Hz per robot through the same thread-to-loop queue the Mari
-  edge adapter uses, so the controller's cost is measured alone.
+  edge adapter uses, so the controller's cost is measured alone. The frames
+  are built in a feeder process (`--feeder thread` builds them on the
+  gateway thread instead, inside the controller's process and its GIL).
 
 A third, in-process figure is the simulator's own cost per robot tick on a
 stepped clock, with no controller.
@@ -56,55 +58,94 @@ SNAPSHOT_TRAIL = 200
 # --- the child: the controller under test ----------------------------------
 
 
-class SyntheticGatewayAdapter:
-    """Advertisements from `count` robots, 2 Hz each, out of phase, parsed
-    from bytes on a gateway thread and handed to the loop through a queue."""
+def _advertisements(count: int):
+    """Advertisement frames from `count` robots, 2 Hz each, out of phase, as
+    wire bytes, each yielded at the time it is due."""
+    from dotbot_utils.protocol import Frame, Header, Packet
 
-    def __init__(self, count: int):
+    from dotbot import GATEWAY_ADDRESS_DEFAULT
+    from dotbot.protocol import PayloadDotBotAdvertisement
+
+    positions = _grid(count)
+    start = time.monotonic()
+    beat = 0
+    while True:
+        due = start + beat * ADVERTISEMENT_S / count
+        delay = due - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        index = beat % count
+        x, y = positions[index]
+        angle = beat * 0.05
+        payload = PayloadDotBotAdvertisement(
+            calibrated=0xFF,
+            direction=int(math.degrees(angle)) % 360 - 180,
+            pos_x=int(x + 60 * math.cos(angle)),
+            pos_y=int(y + 60 * math.sin(angle)),
+            battery=2900,
+            mode=1,
+            waypoints_status=1,
+            batch_id=1,
+            max_speed_10mm=30,
+            axle_x=int(x),
+            axle_y=int(y),
+            report=True,
+        )
+        yield Frame(
+            header=Header(
+                destination=int(GATEWAY_ADDRESS_DEFAULT, 16), source=0x1000 + index
+            ),
+            packet=Packet.from_payload(payload),
+        ).to_bytes()
+        beat += 1
+
+
+def feeder(count: int):
+    """Write `_advertisements` to stdout, each behind its 2-byte length."""
+    out = sys.stdout.buffer
+    for wire in _advertisements(count):
+        out.write(len(wire).to_bytes(2, "big") + wire)
+        out.flush()
+
+
+class SyntheticGatewayAdapter:
+    """Advertisements from `count` robots handed to the loop through a queue
+    from a gateway thread, as the Mari edge adapter does.
+
+    With `feeder="process"` the frames are built in a separate process and
+    the gateway thread only parses them, as a real gateway thread only
+    decodes what the serial port gives it; with "thread" the gateway thread
+    builds them too, which holds the GIL against the controller's loop.
+    """
+
+    def __init__(self, count: int, feeder: str = "process"):
         self.count = count
+        self.feeder = feeder
         self.sent = 0
-        self._stop = threading.Event()
+        self._process = None
+
+    def _built(self):
+        yield from _advertisements(self.count)
+
+    def _piped(self):
+        self._process = subprocess.Popen(
+            [sys.executable, __file__, "--feeder", str(self.count)],
+            stdout=subprocess.PIPE,
+            env={**os.environ, "PYTHONPATH": str(REPO)},
+        )
+        pipe = self._process.stdout
+        while True:
+            head = pipe.read(2)
+            if len(head) < 2:
+                return
+            yield pipe.read(int.from_bytes(head, "big"))
 
     def _frames(self, loop, frames: asyncio.Queue):
-        from dotbot_utils.protocol import Frame, Header, Packet
+        from dotbot_utils.protocol import Frame
 
-        from dotbot import GATEWAY_ADDRESS_DEFAULT
-        from dotbot.protocol import PayloadDotBotAdvertisement
-
-        positions = _grid(self.count)
-        start = time.monotonic()
-        beat = 0
-        while not self._stop.is_set():
-            slot_s = ADVERTISEMENT_S / self.count
-            due = start + beat * slot_s
-            delay = due - time.monotonic()
-            if delay > 0:
-                time.sleep(delay)
-            index = beat % self.count
-            x, y = positions[index]
-            angle = beat * 0.05
-            payload = PayloadDotBotAdvertisement(
-                calibrated=0xFF,
-                direction=int(math.degrees(angle)) % 360 - 180,
-                pos_x=int(x + 60 * math.cos(angle)),
-                pos_y=int(y + 60 * math.sin(angle)),
-                battery=2900,
-                mode=1,
-                waypoints_status=1,
-                batch_id=1,
-                max_speed_10mm=30,
-                axle_x=int(x),
-                axle_y=int(y),
-                report=True,
-            )
-            wire = Frame(
-                header=Header(
-                    destination=int(GATEWAY_ADDRESS_DEFAULT, 16), source=0x1000 + index
-                ),
-                packet=Packet.from_payload(payload),
-            ).to_bytes()
+        wires = self._piped() if self.feeder == "process" else self._built()
+        for wire in wires:
             loop.call_soon_threadsafe(frames.put_nowait, Frame.from_bytes(wire))
-            beat += 1
 
     async def start(self, on_frame_received):
         frames = asyncio.Queue()
@@ -114,7 +155,8 @@ class SyntheticGatewayAdapter:
             on_frame_received(await frames.get())
 
     def close(self):
-        self._stop.set()
+        if self._process is not None:
+            self._process.kill()
 
     def send_payload(self, destination, payload):
         self.sent += 1
@@ -144,7 +186,7 @@ def _world(count: int, path: Path):
     path.write_text(toml.dumps({"dotbots": dotbots}))
 
 
-def child(mode: str, count: int, port: int, workdir: Path, trail: int):
+def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: str):
     """Run the controller until SIGTERM; SIGUSR1 opens the measured window,
     and SIGTERM writes this process's view of it to `workdir/child.json`.
 
@@ -180,7 +222,7 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int):
 
         controller.handle_received_frame = handle_with_trail
     if mode == "synth":
-        synthetic = SyntheticGatewayAdapter(count)
+        synthetic = SyntheticGatewayAdapter(count, feeder)
 
         async def start_adapter():
             controller.adapter = synthetic
@@ -211,6 +253,8 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int):
         if robots():
             result["sim_ticks_per_bot_s"] = ticks / len(robots()) / elapsed
         (workdir / "child.json").write_text(json.dumps(result))
+        if isinstance(controller.adapter, SyntheticGatewayAdapter):
+            controller.adapter.close()
         os._exit(0)
 
     async def lag_monitor():
@@ -480,6 +524,7 @@ async def measure(
     scratch,
     stall=False,
     slow=False,
+    feeder="process",
 ):
     workdir = Path(tempfile.mkdtemp(prefix=f"{mode}-{count}-{clients}-", dir=scratch))
     port = _free_port()
@@ -495,6 +540,7 @@ async def measure(
                 str(port),
                 str(workdir),
                 str(trail),
+                feeder,
             ],
             env=env,
             stdout=subprocess.DEVNULL,
@@ -589,6 +635,7 @@ async def measure(
         "robots": count,
         "clients": clients,
         "trail": trail,
+        "feeder": feeder if mode == "synth" else None,
         "window_s": round(wall, 2),
         "cpu_pct": round(100 * cpu / wall, 1),
         "cpu_pct_controller_thread": round(
@@ -729,8 +776,11 @@ def _meta() -> dict:
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--child":
-        _, _, mode, count, port, workdir, trail = sys.argv
-        child(mode, int(count), int(port), Path(workdir), int(trail))
+        _, _, mode, count, port, workdir, trail, feed = sys.argv
+        child(mode, int(count), int(port), Path(workdir), int(trail), feed)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "--feeder":
+        feeder(int(sys.argv[2]))
         return
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -762,6 +812,13 @@ def main():
     parser.add_argument(
         "--slow", action="store_true", help="add a client taking 20 ms a frame"
     )
+    parser.add_argument(
+        "--feeder",
+        choices=["process", "thread"],
+        default="process",
+        help="synth: build the advertisements in their own process, or on the "
+        "gateway thread, which contends with the controller for the GIL",
+    )
     parser.add_argument("--out", type=Path, help="JSON result file")
     args = parser.parse_args()
     args.scratch.mkdir(parents=True, exist_ok=True)
@@ -787,6 +844,7 @@ def main():
                             args.scratch,
                             stall=args.stall,
                             slow=args.slow,
+                            feeder=args.feeder,
                         )
                     )
                 except (
