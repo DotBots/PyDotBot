@@ -2,23 +2,23 @@
 
 ## Purpose
 
-Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web UI provides joystick/map/lighthouse-position visualization. Ships a unified `dotbot` CLI whose top level is four object-namespaces: `fw` (firmware artifacts: build/fetch/list/make), `device` (one cabled device: flash/info), `swarm` (the fleet over the air), and `run` (host-side processes you launch — `dotbot run controller`, `run gateway`, `run simulator`, `run calibrate-lh2`, `run demo`, `run keyboard`, `run joystick`), plus DotBot/SailBot simulators. The `dotbot` dispatcher is the only console script — there are no per-command `dotbot-*` binaries.
+Python control plane for DotBots. Serial / cloud / edge adapters talk to a DotBot gateway (often via Mari → marilib); a FastAPI REST + WebSocket server exposes state; a React web console (`dotbot/console-web/`, served at `/console`) is the one browser UI: map, joystick, waypoints and swarmit orchestration. Ships a unified `dotbot` CLI whose top level is four object-namespaces: `fw` (firmware artifacts: build/fetch/list/make), `device` (one cabled device: flash/info), `swarm` (the fleet over the air), and `run` (host-side processes you launch — `dotbot run controller`, `run gateway`, `run simulator`, `run calibrate-lh2`, `run demo`, `run keyboard`, `run joystick`), plus DotBot/SailBot simulators. The `dotbot` dispatcher is the only console script — there are no per-command `dotbot-*` binaries.
 
 This is the most active repo in the ecosystem (187 commits in last 90 days as of 2026-05-05).
 
 ## Tech stack
 
 - **Backend**: Python ≥3.7, FastAPI + uvicorn, click, gmqtt + qrkey for MQTT, pyserial, structlog, pygame, pynput, numpy
-- **Frontend**: React 18 + TypeScript, Vite, Bootstrap 5, react-leaflet, MQTT.js, vitest + @testing-library
-- **Build**: `hatchling` (PEP 517) with custom sdist hook that bundles the frontend; `tox` for orchestration; `pre-commit`; `ruff` / `isort` / `black`
-- **Package**: pip (PyPI as `pydotbot`); npm for frontend
+- **Frontend**: React 18 + TypeScript, Vite, vitest + @testing-library (`dotbot/console-web/`)
+- **Build**: `hatchling` (PEP 517) with custom sdist hook that builds and bundles the console; `tox` for orchestration; `pre-commit`; `ruff` / `isort` / `black`
+- **Package**: pip (PyPI as `pydotbot`); npm for the console
 
 ## Entry points
 
 - `dotbot/cli/main.py` — unified `dotbot` Click group (lazy subcommand loader)
 - `dotbot/controller_app.py` — `dotbot run controller` subcommand backend; wires adapters and settings
 - `dotbot/controller.py:1` — 737-line `Controller` class; central object
-- `dotbot/frontend/src/App.tsx` — React UI root
+- `dotbot/console-web/src/App.tsx` — console UI root
 
 ## Controller surface (REST + WebSocket)
 
@@ -59,22 +59,22 @@ dotbot run calibrate-lh2 --help  # LH2 calibration (optional: pip install pydotb
 dotbot run demo --list           # built-in research demos
 
 # Tests / lint / build
-tox                                          # envs: tests, check, cli, web=npm run lint, doc
+tox                                          # envs: tests, check, cli, web=console npm run lint, doc
 
-# Frontend
-cd dotbot/frontend && npm install
+# Console
+cd dotbot/console-web && npm install
 npm start                                    # dev
 npm run build
-npm test                                     # vitest — NOT currently run in CI
+npm test                                     # vitest, run in CI with lint, typecheck, build
 ```
 
 CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Windows (Py 3.11/3.12, Node 18/20). Also a CMake build of `utils/control_loop` against `DotBots/DotBot-libs`.
 
 ## Cross-repo dependencies
 
-- **`qrkey`** — `pyproject.toml:42`; `dotbot/qrkey.py`; frontend `package.json` (`qrkey ^0.12.0`)
+- **`qrkey`** — `pyproject.toml`; `dotbot/examples/qrkey_demo/`
 - **`marilib`** — `pyproject.toml:48` (`marilib-pkg`); imported in `dotbot/adapter.py` (MarilibCloud, MarilibEdge, MQTT/Serial adapters, MariFrame). **Tight coupling.**
-- **`PyDotBot-utils`** — `pyproject.toml:49`; used by `utils/hooks/sdist.py:build_frontend`
+- **`PyDotBot-utils`** — `pyproject.toml`
 - **`DotBot-libs`** — checked out in CI to build `utils/control_loop` C library
 - **`DotBot-firmware`** — referenced only in README (flashing instructions); no code dep
 - **`swarmit`** — sibling package, a core dependency (`pyproject.toml`);
@@ -104,7 +104,6 @@ CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Wind
 - **`dotbot/examples/`** (`charging_station`, `work_and_charge`, `minimum_naming_game`, `labyrinth`, `motions`) is a research-experiment dumping ground shipped inside the package; most TODOs live here. Good candidate to extract or prune.
 - **`tox.ini` references `dotbot/pin_code_ui`** (env `pin_code`) but that directory does not exist — dead config.
 - **`.env` file is committed** (only `.env.example` should be) — audit for secrets.
-- **Frontend has parallel `*.test.tsx` files** for every component, but CI only runs `npm run lint` (not `vitest`) — frontend tests are written but not executed.
 - Maintainer (`aabadie`) is leaving summer 2026 — onboarding ergonomics matter here.
 
 ## Branch policy
@@ -115,7 +114,6 @@ CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Wind
 
 ## Agent-task ideas
 
-- **Wire vitest into CI** (the tests already exist; the wiring is missing).
 - **Audit `.env` for secrets** and replace with `.env.example`. Add `.env` to `.gitignore`.
 - **Remove dead `pin_code` tox env** and the missing `dotbot/pin_code_ui` reference.
 - **Investigate stale LH2 branches** (`#132`, `#141`): are they worth rebasing or are they superseded?
@@ -127,6 +125,6 @@ CI: `.github/workflows/continuous-integration.yml` — `tox` on Linux/macOS/Wind
 ## Don't
 
 - **Don't push to `main` without a PR** — this is the hottest repo and traceability matters.
-- **Don't break the FastAPI REST/WebSocket contract** without bumping the major version — external scripts and the React UI depend on the surface.
+- **Don't break the FastAPI REST/WebSocket contract** without bumping the major version — external scripts and the console depend on the surface.
 - **Don't refactor `dotbot/adapter.py`** in isolation; coordinate with `marilib` and `qrkey`.
 - **Don't bump `marilib-pkg` or `qrkey`** without verifying the adapter still works end-to-end.
