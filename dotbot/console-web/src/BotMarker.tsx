@@ -1,10 +1,11 @@
 import React, { useCallback } from "react";
 
+import { BodyColorMode, bodyColorFor } from "./bodyColor";
 import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
 import { headingToGlyphRotation } from "./frame";
 import type { RobotDrawing } from "./robotDrawing";
 import type { BotPose, LH2Position, RgbLed, UnifiedBot } from "./types";
-import { ResetBadge, batteryColor, batteryPct, stateColor } from "./viewChrome";
+import { ResetBadge, batteryColor, batteryPct } from "./viewChrome";
 
 // The selection ring hugs the robot: its footprint plus this on every side.
 const SELECTION_PAD_PX = 3;
@@ -139,6 +140,8 @@ export interface BotMarkerProps {
   drawing: RobotDrawing;
   botCount: number;
   batteryBars: boolean;
+  /** What the body is filled with: the swarmit state, or the LED colour. */
+  colorMode: BodyColorMode;
   attach: (id: string, el: HTMLElement | null) => void;
   onPointerDown: (e: React.PointerEvent, id: string) => void;
   onHover: React.Dispatch<React.SetStateAction<string | null>>;
@@ -159,12 +162,13 @@ export const BotMarker = React.memo(function BotMarker({
   drawing,
   botCount,
   batteryBars,
+  colorMode,
   attach,
   onPointerDown,
   onHover,
 }: BotMarkerProps) {
   const ref = useCallback((el: HTMLDivElement | null) => attach(b.id, el), [attach, b.id]);
-  const stc = stateColor(b.state);
+  const stc = bodyColorFor(b, colorMode);
   const pct = batteryPct(b);
   const blink = b.state === "Programming" || b.state === "Resetting";
   // A robot drawn as a mark is one nobody reads per-robot detail on, so its
@@ -291,7 +295,14 @@ export const BotMarker = React.memo(function BotMarker({
           animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
         }}
       >
-        <BotGlyph state={stc} led={b.led} shape={draw.shape} pxPerMm={perMm} footprintPx={footprintPx} />
+        <BotGlyph
+          state={stc}
+          led={b.led}
+          shape={draw.shape}
+          pxPerMm={perMm}
+          footprintPx={footprintPx}
+          ledOutline={colorMode === "led"}
+        />
       </div>
     </div>
   );
@@ -307,6 +318,7 @@ function sameMarkerProps(a: BotMarkerProps, b: BotMarkerProps): boolean {
     a.drawing === b.drawing &&
     a.botCount === b.botCount &&
     a.batteryBars === b.batteryBars &&
+    a.colorMode === b.colorMode &&
     a.attach === b.attach &&
     a.onPointerDown === b.onPointerDown &&
     a.onHover === b.onHover &&

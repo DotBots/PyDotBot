@@ -4,8 +4,9 @@ import type { RobotDrawing } from "./robotDrawing";
 import type { BotPose, LH2Position, RgbLed } from "./types";
 
 // The map marker. One colour rule holds at every level: the robot's fill is
-// its swarmit state, a known heading is a white bar, and the LED colour is one
-// sensor mark on the photodiode - hollow when the colour is unknown.
+// its body colour - swarmit state or LED, the caller's choice, see
+// bodyColor.ts - a known heading is a white bar, and the LED colour is also
+// always its own sensor mark on the photodiode - hollow when it is unknown.
 //
 // The robot's shape is not authored here. The controller expands each
 // photodiode fix into a body pose against its own geometry record and ships
@@ -249,7 +250,7 @@ function reachMm(body: BotBody): number {
 }
 
 interface BotGlyphProps {
-  /** The swarmit state colour: the robot's fill at every level. */
+  /** The robot's fill at every level: its state or its LED, the caller's call. */
   state: string;
   /** The LED colour the controller commanded, or null when it is unknown. */
   led: RgbLed | null;
@@ -263,6 +264,12 @@ interface BotGlyphProps {
    */
   ghost?: boolean;
   outlineColor?: string;
+  /**
+   * A dark-then-light halo around the fill, so a body coloured by an
+   * arbitrary LED value - as dark as off, as light as white - still has an
+   * edge on both themes. The fixed status palette does not need it.
+   */
+  ledOutline?: boolean;
 }
 
 const Frame: React.FC<{ half: number; children: React.ReactNode; filter?: boolean }> = ({
@@ -348,7 +355,8 @@ const SensorPoint: React.FC<{
   corePx: number | null;
   crowded: boolean;
   bar: HeadingBarShape | null;
-}> = ({ state, led, ringPx, corePx, crowded, bar }) => {
+  ledOutline?: boolean;
+}> = ({ state, led, ringPx, corePx, crowded, bar, ledOutline = false }) => {
   const pointR = SENSOR_POINT_PX / 2;
   return (
     <Frame half={Math.max(pointR + 2, ringPx ?? 0, bar?.lengthPx ?? 0)} filter={false}>
@@ -411,7 +419,22 @@ const SensorPoint: React.FC<{
       {/* the point the lighthouse reported: the sensor mark, rimmed in the
           state colour */}
       <g style={{ filter: SHADOW }}>
-        <circle data-layer="sensor" r={pointR} fill={state} />
+        {ledOutline && (
+          <circle
+            data-layer="sensor-outline-casing"
+            r={pointR}
+            fill="none"
+            stroke={DARK}
+            strokeWidth={Math.max(1.4, pointR / 2.5)}
+          />
+        )}
+        <circle
+          data-layer="sensor"
+          r={pointR}
+          fill={state}
+          stroke={ledOutline ? WHITE : undefined}
+          strokeWidth={ledOutline ? Math.max(0.8, pointR / 5) : undefined}
+        />
         <SensorMark r={pointR / 2} led={led} />
       </g>
     </Frame>
@@ -430,8 +453,10 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
   footprintPx,
   ghost = false,
   outlineColor = "rgba(0,0,0,.45)",
+  ledOutline = false,
 }) => {
-  if (shape.kind === "sensor") return <SensorPoint state={state} led={led} {...shape} />;
+  if (shape.kind === "sensor")
+    return <SensorPoint state={state} led={led} ledOutline={ledOutline} {...shape} />;
   const body = shape.body;
   const px = (p: LH2Position): LH2Position => ({
     x: p.x * pxPerMm,
@@ -448,7 +473,26 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
     const markR = shape.kind === "disc" ? Math.max(2, Math.min(7, r * 0.2)) : Math.max(1.1, r * 0.16);
     return (
       <Frame half={offset + r}>
-        <circle data-layer={shape.kind} cx={centre.x} cy={centre.y} r={r} fill={state} />
+        {ledOutline && (
+          <circle
+            data-layer={`${shape.kind}-outline-casing`}
+            cx={centre.x}
+            cy={centre.y}
+            r={r}
+            fill="none"
+            stroke={DARK}
+            strokeWidth={Math.max(1.6, r / 6)}
+          />
+        )}
+        <circle
+          data-layer={shape.kind}
+          cx={centre.x}
+          cy={centre.y}
+          r={r}
+          fill={state}
+          stroke={ledOutline ? WHITE : undefined}
+          strokeWidth={ledOutline ? Math.max(1, r / 10) : undefined}
+        />
         <HeadingBar layer="heading" from={centre} dir={dir} length={r - 0.5} width={barW} />
         <SensorMark r={markR} led={led} />
       </Frame>
@@ -470,13 +514,22 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
           strokeWidth={stroke}
         />
       ))}
+      {ledOutline && (
+        <polygon
+          data-layer="board-outline-casing"
+          points={body.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
+          fill="none"
+          stroke={DARK}
+          strokeWidth={stroke + 1.8}
+        />
+      )}
       <polygon
         data-layer="board"
         points={body.outline.map((p) => `${p.x * pxPerMm},${p.y * pxPerMm}`).join(" ")}
         fill={state}
         fillOpacity={ghost ? 0.3 : undefined}
-        stroke={outlineColor}
-        strokeWidth={ghost ? Math.max(1.5, stroke) : stroke}
+        stroke={ledOutline ? WHITE : outlineColor}
+        strokeWidth={ghost ? Math.max(1.5, stroke) : ledOutline ? Math.max(1, stroke) : stroke}
         strokeDasharray={ghost ? `${4 * Math.max(1, stroke)} ${3 * Math.max(1, stroke)}` : undefined}
       />
       <circle

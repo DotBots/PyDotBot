@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { clearWaypoints, fetchBuild, fetchConnection, putWaypointBatches } from "./api";
 import type { WaypointsSent } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import { BodyColorMode, loadBodyColorMode, saveBodyColorMode } from "./bodyColor";
 import {
   CameraOffset,
   CameraOpacity,
@@ -271,6 +272,17 @@ export const App: React.FC = () => {
   const onRobotDrawing = useCallback(
     (next: RobotDrawing) => updateRobotDrawing(() => next),
     [updateRobotDrawing],
+  );
+
+  // What a robot's body is filled with on the map: its swarmit state, or its
+  // LED colour, per browser.
+  const [bodyColorMode, updateBodyColorMode] = usePersisted<BodyColorMode>(
+    loadBodyColorMode,
+    saveBodyColorMode,
+  );
+  const onBodyColorMode = useCallback(
+    (next: BodyColorMode) => updateBodyColorMode(() => next),
+    [updateBodyColorMode],
   );
 
   // The rail's action opens the tab that sets a session up; the session
@@ -987,6 +999,7 @@ export const App: React.FC = () => {
               selection={selection}
               layers={layers}
               robotDrawing={robotDrawing}
+              colorMode={bodyColorMode}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
@@ -1111,6 +1124,8 @@ export const App: React.FC = () => {
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
           robotDrawing={robotDrawing}
           onRobotDrawing={onRobotDrawing}
+          bodyColorMode={bodyColorMode}
+          onBodyColorMode={onBodyColorMode}
           cameras={cameras}
           cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}

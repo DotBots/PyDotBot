@@ -31,6 +31,7 @@ import {
 } from "./grid";
 import { hasHeading } from "./BotGlyph";
 import { BotMarker, WAYPOINT_MIN_PX, botDraw as drawBot } from "./BotMarker";
+import { BodyColorMode, DEFAULT_BODY_COLOR_MODE } from "./bodyColor";
 import {
   ARM_PX,
   HOLD_MS,
@@ -139,6 +140,8 @@ interface MapViewProps {
   layers: Layers;
   // Whether robots are drawn as their bodies or their sensor points.
   robotDrawing?: RobotDrawing;
+  // What a robot's body is filled with: its swarmit state, or its LED colour.
+  colorMode?: BodyColorMode;
   // Local queues, not yet sent: the robots each is bound to, and its points.
   plannedMissions: {
     key: string;
@@ -828,6 +831,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   );
 
   const drawing = props.robotDrawing ?? DEFAULT_ROBOT_DRAWING;
+  const colorMode = props.colorMode ?? DEFAULT_BODY_COLOR_MODE;
   const botDraw = (b: UnifiedBot) => drawBot(b, drawing, perMm, props.bots.length);
 
   // The markers take stable handlers, so a render that changes nothing about
@@ -1490,6 +1494,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   drawing={drawing}
                   botCount={props.bots.length}
                   batteryBars={props.layers.batteryBars}
+                  colorMode={colorMode}
                   attach={attachBot}
                   onPointerDown={onBotPointerDown}
                   onHover={setHoverId}

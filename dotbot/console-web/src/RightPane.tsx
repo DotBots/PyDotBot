@@ -1,6 +1,7 @@
 import React from "react";
 
 import { areaColor } from "./areaColor";
+import { BodyColorMode } from "./bodyColor";
 import {
   CameraOffset,
   CameraOpacity,
@@ -25,7 +26,9 @@ import type {
   Site,
   UnifiedBot,
 } from "./types";
+import { STATE_ORDER } from "./types";
 import type { Calibration } from "./useCalibration";
+import { stateColor } from "./viewChrome";
 
 // The right pane: always present, collapsible like the rail.
 //
@@ -194,6 +197,96 @@ const RobotDrawingControl: React.FC<{
     >
       {DRAWING_HINT[value.mode][value.footprint ? 1 : 0]}
     </div>
+  </div>
+);
+
+const BODY_COLOR_MODES: { value: BodyColorMode; text: string }[] = [
+  { value: "status", text: "SwarmIT status" },
+  { value: "led", text: "LED" },
+];
+
+const BODY_COLOR_HINT: Record<BodyColorMode, string> = {
+  status: "Body colour is each robot's sandbox state; grey is no sandbox.",
+  led: "Body colour is each robot's LED; grey is unset or off.",
+};
+
+// The status palette, compact: a swatch and its label per swarmit state, plus
+// the grey a bot with no sandbox draws. Shown only in status mode, since LED
+// has no fixed palette to key.
+const StatusLegend: React.FC = () => (
+  <div
+    data-testid="status-legend"
+    style={{ display: "flex", flexWrap: "wrap", gap: "3px 10px", padding: "5px 4px 0" }}
+  >
+    {[...STATE_ORDER, null].map((s) => (
+      <span
+        key={s ?? "none"}
+        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--muted)" }}
+      >
+        <span
+          aria-hidden
+          style={{ width: 8, height: 8, borderRadius: "50%", background: stateColor(s), flex: "none" }}
+        />
+        {s ?? "No sandbox"}
+      </span>
+    ))}
+  </div>
+);
+
+// SwarmIT status or LED: what a robot's body fill shows on the map.
+const BodyColorControl: React.FC<{
+  value: BodyColorMode;
+  onChange: (next: BodyColorMode) => void;
+}> = ({ value, onChange }) => (
+  <div style={{ margin: "8px 0 2px" }}>
+    <div
+      role="radiogroup"
+      aria-label="Body colour"
+      style={{
+        display: "flex",
+        background: "var(--elevated)",
+        borderRadius: 7,
+        padding: 2,
+        gap: 2,
+        border: "1px solid var(--hairline)",
+      }}
+    >
+      {BODY_COLOR_MODES.map((m) => (
+        <div
+          key={m.value}
+          role="radio"
+          aria-checked={value === m.value}
+          tabIndex={0}
+          onClick={() => onChange(m.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onChange(m.value);
+            }
+          }}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "4px 0",
+            borderRadius: 5,
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: "pointer",
+            background: value === m.value ? "var(--accent)" : "transparent",
+            color: value === m.value ? "#fff" : "var(--muted)",
+          }}
+        >
+          {m.text}
+        </div>
+      ))}
+    </div>
+    <div
+      data-testid="body-color-hint"
+      style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4, padding: "4px 4px 0" }}
+    >
+      {BODY_COLOR_HINT[value]}
+    </div>
+    {value === "status" && <StatusLegend />}
   </div>
 );
 
@@ -407,6 +500,8 @@ interface RightPaneProps {
   onLayerToggle: (key: keyof Layers) => void;
   robotDrawing?: RobotDrawing;
   onRobotDrawing?: (next: RobotDrawing) => void;
+  bodyColorMode?: BodyColorMode;
+  onBodyColorMode?: (next: BodyColorMode) => void;
   // The cameras the controller warps. None registered, no Camera heading.
   cameras?: RegisteredCamera[];
   // What each camera's detector last made of its own area, keyed by area.
@@ -539,6 +634,9 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                 onToggle={() => props.onLayerToggle(row.key)}
               />
             ))}
+            {props.bodyColorMode && props.onBodyColorMode && (
+              <BodyColorControl value={props.bodyColorMode} onChange={props.onBodyColorMode} />
+            )}
             {props.robotDrawing && props.onRobotDrawing && (
               <RobotDrawingControl
                 value={props.robotDrawing}

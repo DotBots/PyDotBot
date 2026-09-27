@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { BodyColorMode } from "./bodyColor";
 import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
 import { MapView, WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./MapView";
@@ -96,6 +97,7 @@ interface HarnessProps {
   from?: Camera;
   planned?: { key: string; ids: string[]; waypoints: LH2Position[]; led: string | null }[];
   robotDrawing?: RobotDrawing;
+  colorMode?: BodyColorMode;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -104,6 +106,7 @@ const Harness: React.FC<HarnessProps> = ({
   from = FRAME_CAMERA,
   planned = [],
   robotDrawing,
+  colorMode,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -124,6 +127,7 @@ const Harness: React.FC<HarnessProps> = ({
         allWaypoints: false,
       }}
       robotDrawing={robotDrawing}
+      colorMode={colorMode}
       plannedMissions={planned}
       cam={cam}
       setCam={setCam}
@@ -342,6 +346,51 @@ describe("what the map draws a robot from", () => {
   it("keeps the battery bar on a sensor point", () => {
     render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={near} />);
     expect(screen.getByTestId("battery-a")).toBeInTheDocument();
+  });
+});
+
+describe("the body colour mode", () => {
+  const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+  const fill = (id: string) => glyph(id).querySelector('[data-layer="board"]')!.getAttribute("fill");
+  const near: Camera = { scale: 20, tx: 0, ty: 0 };
+  const RED = { red: 255, green: 0, blue: 0 };
+
+  it("defaults to the state colour, unchanged from before the toggle existed", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} />);
+    expect(fill("a")).toBe("var(--s-Running)");
+  });
+
+  it("fills the body from the LED once switched to led mode", () => {
+    render(
+      <Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} colorMode="led" />,
+    );
+    expect(fill("a")).toBe("rgb(255,0,0)");
+  });
+
+  it("falls back to grey in led mode for an unset or all-off LED", () => {
+    for (const led of [null, { red: 0, green: 0, blue: 0 }]) {
+      render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led })]} from={near} colorMode="led" />);
+      expect(fill("a")).toBe("var(--muted)");
+      cleanup();
+    }
+  });
+
+  it("draws a dark-then-light halo around the body only in led mode", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} />);
+    expect(glyph("a").querySelector('[data-layer="board-outline-casing"]')).toBeNull();
+    cleanup();
+    render(
+      <Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} colorMode="led" />,
+    );
+    expect(glyph("a").querySelector('[data-layer="board-outline-casing"]')).not.toBeNull();
+  });
+
+  it("repaints an unchanged robot when only the mode toggles", () => {
+    const fleet = [bot("a", { x: 500, y: 500 }, { led: RED })];
+    const { rerender } = render(<Harness bots={fleet} from={near} colorMode="status" />);
+    expect(fill("a")).toBe("var(--s-Running)");
+    rerender(<Harness bots={fleet} from={near} colorMode="led" />);
+    expect(fill("a")).toBe("rgb(255,0,0)");
   });
 });
 
