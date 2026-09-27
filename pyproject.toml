@@ -62,10 +62,10 @@ dependencies = [
     "swarmit        >= 0.10.0",
     "toml           >= 0.10.2",
     "tomlkit        >= 0.13.0",
-    # Runs the simulator's firmware control core. Majors ship monthly and may
-    # change the API, so this admits only the one the loader is tested on.
+    # Runs the simulator's firmware control core. Majors ship monthly; this
+    # admits the range the loader is tested against.
     # No wheels for 32-bit ARM, where the simulator is unavailable.
-    "wasmtime       >= 49.0.0, < 50; platform_machine != 'armv7l'",
+    "wasmtime       >= 49.0.0, < 55; platform_machine != 'armv7l'",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
