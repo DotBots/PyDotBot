@@ -55,6 +55,66 @@ SLOW_FRAME_S = 0.02
 SNAPSHOT_TRAIL = 200
 
 
+class Histogram:
+    """Millisecond samples counted in log-spaced bins 1% wide.
+
+    Its size depends on the spread of the values, never on how many there
+    are, so a long window does not measure the bench's own growth. Quantiles
+    are within 1% of the exact ones; the count and max are exact.
+    """
+
+    FLOOR_MS = 0.01
+    RATIO = 1.01
+
+    def __init__(self):
+        self.clear()
+
+    def clear(self) -> None:
+        self.bins = {}
+        self.count = 0
+        self.max = None
+
+    def add(self, ms: float) -> None:
+        self.count += 1
+        self.max = ms if self.max is None else max(self.max, ms)
+        index = (
+            0
+            if ms <= self.FLOOR_MS
+            else 1 + int(math.log(ms / self.FLOOR_MS) / math.log(self.RATIO))
+        )
+        self.bins[index] = self.bins.get(index, 0) + 1
+
+    def merge(self, other: "Histogram") -> "Histogram":
+        for index, n in other.bins.items():
+            self.bins[index] = self.bins.get(index, 0) + n
+        self.count += other.count
+        if other.max is not None:
+            self.max = other.max if self.max is None else max(self.max, other.max)
+        return self
+
+    def _quantile(self, q: float) -> float:
+        rank = min(self.count - 1, int(q * self.count))
+        seen = 0
+        for index in sorted(self.bins):
+            seen += self.bins[index]
+            if seen > rank:
+                if index == 0:
+                    return 0.0
+                # The bin's geometric middle
+                return min(self.max, self.FLOOR_MS * self.RATIO ** (index - 0.5))
+        return self.max
+
+    def summary(self) -> dict:
+        if not self.count:
+            return {"p50": None, "p99": None, "max": None, "count": 0}
+        return {
+            "p50": round(self._quantile(0.5), 2),
+            "p99": round(self._quantile(0.99), 2),
+            "max": round(self.max, 2),
+            "count": self.count,
+        }
+
+
 # --- the child: the controller under test ----------------------------------
 
 
@@ -230,7 +290,7 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
 
         controller._start_adapter = start_adapter
 
-    lags = []
+    lags = Histogram()
     window = {}
 
     def simulator():
@@ -257,7 +317,7 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
     def close_window():
         elapsed = time.monotonic() - window.get("start", time.monotonic())
         ticks = robot_ticks() - window.get("ticks", 0)
-        result = {"window_s": elapsed, "loop_lag_ms": lags}
+        result = {"window_s": elapsed, "loop_lag_ms": lags.summary()}
         inbox = getattr(controller.adapter, "inbox", None)
         if inbox is not None:
             result["frames_coalesced"] = inbox.coalesced - window.get("coalesced", 0)
@@ -274,7 +334,7 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
         while True:
             before = time.monotonic()
             await asyncio.sleep(period)
-            lags.append((time.monotonic() - before - period) * 1000)
+            lags.add((time.monotonic() - before - period) * 1000)
 
     # Plain handlers, not the loop's, so a saturated loop still answers
     signal.signal(signal.SIGUSR1, lambda *_: open_window())
@@ -325,16 +385,8 @@ def _thread_cpu(pid: int) -> dict:
     return cpu
 
 
-def _percentiles(samples) -> dict:
-    if not samples:
-        return {"p50": None, "p99": None, "max": None, "count": 0}
-    ordered = sorted(samples)
-    return {
-        "p50": round(statistics.median(ordered), 2),
-        "p99": round(ordered[min(len(ordered) - 1, int(0.99 * len(ordered)))], 2),
-        "max": round(ordered[-1], 2),
-        "count": len(ordered),
-    }
+def _percentiles(samples: "Histogram") -> dict:
+    return samples.summary()
 
 
 def _stream_stats():
@@ -344,7 +396,7 @@ def _stream_stats():
         "updates": 0,
         "bytes": 0,
         "snapshots": 0,
-        "age_ms": [],
+        "age_ms": Histogram(),
         "closed": False,
     }
 
@@ -380,7 +432,7 @@ async def _stream_client(url: str, stats: dict, stop: asyncio.Event, delay_s=0.0
                     for patch in frame["robots"].values():
                         stats["updates"] += 1
                         if patch and "last_seen" in patch:
-                            stats["age_ms"].append((now - patch["last_seen"]) * 1000)
+                            stats["age_ms"].add((now - patch["last_seen"]) * 1000)
     except (ConnectionClosed, OSError):
         stats["closed"] = True
 
@@ -471,8 +523,8 @@ async def _rest_load(base: str, addresses, stats: dict, stop: asyncio.Event, rat
             )
             posted = (time.perf_counter() - began) * 1000
             if stats["open"]:
-                stats["list_ms"].append(listed)
-                stats["waypoints_ms"].append(posted)
+                stats["list_ms"].add(listed)
+                stats["waypoints_ms"].add(posted)
             await asyncio.sleep(max(0.0, 1 / rate_hz - (listed + posted) / 1000))
 
 
@@ -563,7 +615,12 @@ async def measure(
     stop = asyncio.Event()
     ws_stats = [_stream_stats() for _ in range(clients)]
     slow_stats = _stream_stats()
-    rest_stats = {"open": False, "list_ms": [], "waypoints_ms": [], "list_bytes": 0}
+    rest_stats = {
+        "open": False,
+        "list_ms": Histogram(),
+        "waypoints_ms": Histogram(),
+        "list_bytes": 0,
+    }
     stalled = StalledClient(port) if stall else None
     stall_view = {}
     tasks = []
@@ -641,7 +698,9 @@ async def measure(
         role = roles.get(tid, "other")
         by_role[role] = by_role.get(role, 0.0) + after - threads_before.get(tid, 0.0)
     view = json.loads((workdir / "child.json").read_text())
-    ages = [x for stats in ws_stats for x in stats["age_ms"]]
+    ages = Histogram()
+    for stats in ws_stats:
+        ages.merge(stats["age_ms"])
     record = {
         "mode": mode,
         "robots": count,
@@ -656,7 +715,7 @@ async def measure(
         "cpu_pct_simulator_threads": round(100 * by_role.get("simulator", 0) / wall, 1),
         "rss_mb_peak": round(rss_peak, 1),
         "rss_mb_growth_per_min": round((rss_end - rss_start) / wall * 60, 1),
-        "loop_lag_ms": _percentiles(view["loop_lag_ms"]),
+        "loop_lag_ms": view["loop_lag_ms"],
         "ws_frames_per_client_s": round(
             statistics.mean(s["frames"] for s in ws_stats) / wall, 1
         ),
