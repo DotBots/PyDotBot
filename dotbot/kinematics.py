@@ -11,7 +11,8 @@ function takes floats or numpy arrays.
 import numpy as np
 
 # The effective track and lever arm of DotBot-libs drv/geometry.h (v3), what
-# the robot's odometry and estimator use; keep them in step.
+# the robot's odometry and estimator use; dotbot/tests/test_sim_geometry.py
+# pins them to it.
 TRACK_EFFECTIVE_MM = 81.0
 TRACK_EFFECTIVE_ARC_MM = 85.0
 TRACK_EFFECTIVE_ARC_RATIO = 2.35
