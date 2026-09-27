@@ -1,12 +1,15 @@
 import asyncio
 import ssl
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from dotbot_utils.hdlc import hdlc_encode
 from dotbot_utils.protocol import Frame, Header, Packet
+from marilib.mari_protocol import Header as MariHeader
 from marilib.mari_protocol import NextProto
+from marilib.model import EdgeEvent
 
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -55,9 +58,19 @@ async def test_serial_adapter(_):
         adapter.serial.stop.assert_called_once()
 
 
+def _mari_data(mari, packet):
+    """Deliver `packet` through the callback the adapter gave marilib, as
+    marilib's own thread does."""
+    on_event = mari.call_args.args[0]
+    header = MariHeader(source=0x1234, next_proto=NextProto.DOTBOT_APP)
+    on_event(
+        EdgeEvent.NODE_DATA, SimpleNamespace(header=header, payload=packet.to_bytes())
+    )
+
+
 @pytest.mark.asyncio
 @patch("dotbot.adapter.MarilibEdge")
-async def test_marilib_edge_adapter(_):
+async def test_marilib_edge_adapter(mari):
     adapter = MarilibEdgeAdapter(port="p", baudrate=1)
     frames = []
 
@@ -67,34 +80,25 @@ async def test_marilib_edge_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    mock_queue = asyncio.Queue()
-    with patch("asyncio.Queue", return_value=mock_queue):
+    asyncio.create_task(adapter.start(on_frame_received))
+    await asyncio.sleep(3.1)
+    await asyncio.to_thread(_mari_data, mari, frame.packet)
+    await asyncio.sleep(0.05)
+    assert [f.packet for f in frames] == [frame.packet]
 
-        async def start_task():
-            await adapter.start(on_frame_received)
-
-        asyncio.create_task(start_task())
-        await asyncio.sleep(3.1)
-
-        event_loop = asyncio.get_event_loop()
-        event_loop.call_soon(adapter.on_frame_received, frame)
-
-        await asyncio.sleep(0.01)
-        assert frames == [frame]
-
-        adapter.send_payload(frame.header.destination, payload)
-        adapter.mari.send_frame.assert_called_once_with(
-            dst=frame.header.destination,
-            payload=frame.packet.to_bytes(),
-            next_proto=NextProto.DOTBOT_APP,
-        )
-        adapter.close()
-        adapter.mari.close.assert_called_once()
+    adapter.send_payload(frame.header.destination, payload)
+    adapter.mari.send_frame.assert_called_once_with(
+        dst=frame.header.destination,
+        payload=frame.packet.to_bytes(),
+        next_proto=NextProto.DOTBOT_APP,
+    )
+    adapter.close()
+    adapter.mari.close.assert_called_once()
 
 
 @pytest.mark.asyncio
 @patch("dotbot.adapter.MarilibCloud")
-async def test_marilib_cloud_adapter(_):
+async def test_marilib_cloud_adapter(mari):
     adapter = MarilibCloudAdapter(host="h", port=1, use_tls=False, network_id=2)
     frames = []
 
@@ -104,28 +108,19 @@ async def test_marilib_cloud_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    mock_queue = asyncio.Queue()
-    with patch("asyncio.Queue", return_value=mock_queue):
+    asyncio.create_task(adapter.start(on_frame_received))
+    await asyncio.sleep(3.1)
+    await asyncio.to_thread(_mari_data, mari, frame.packet)
+    await asyncio.sleep(0.05)
+    assert [f.packet for f in frames] == [frame.packet]
 
-        async def start_task():
-            await adapter.start(on_frame_received)
-
-        asyncio.create_task(start_task())
-        await asyncio.sleep(3.1)
-
-        event_loop = asyncio.get_event_loop()
-        event_loop.call_soon(adapter.on_frame_received, frame)
-
-        await asyncio.sleep(0.01)
-        assert frames == [frame]
-
-        adapter.send_payload(frame.header.destination, payload)
-        adapter.mari.send_frame.assert_called_once_with(
-            dst=frame.header.destination,
-            payload=frame.packet.to_bytes(),
-            next_proto=NextProto.DOTBOT_APP,
-        )
-        adapter.close()
+    adapter.send_payload(frame.header.destination, payload)
+    adapter.mari.send_frame.assert_called_once_with(
+        dst=frame.header.destination,
+        payload=frame.packet.to_bytes(),
+        next_proto=NextProto.DOTBOT_APP,
+    )
+    adapter.close()
 
 
 @pytest.mark.asyncio
@@ -151,7 +146,7 @@ async def test_a_broker_failing_verification_names_the_way_past_it(cloud):
 
 @pytest.mark.asyncio
 @patch("dotbot.adapter.DotBotSimulatorCommunicationInterface")
-async def test_dotbot_simulator_adapter(_):
+async def test_dotbot_simulator_adapter(simulator):
     adapter = DotBotSimulatorAdapter()
     frames = []
 
@@ -161,31 +156,23 @@ async def test_dotbot_simulator_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    async def feed_frame(queue):
-        await queue.put(frame.to_bytes())
-        await asyncio.sleep(0.05)
+    asyncio.create_task(adapter.start(on_frame_received))
+    await asyncio.sleep(0.01)
+    # What the simulator thread hands back, as it would from its own thread
+    received = simulator.call_args.args[0]
+    await asyncio.to_thread(received, frame)
+    await asyncio.sleep(0.05)
+    assert frames == [frame]
 
-    mock_queue = asyncio.Queue()
-    with patch("asyncio.Queue", return_value=mock_queue):
-
-        async def start_task():
-            await adapter.start(on_frame_received)
-
-        asyncio.create_task(name="test_serial_adapter_start", coro=start_task())
-        await feed_frame(mock_queue)
-
-        await asyncio.sleep(0.1)
-        assert frames == [frame.to_bytes()]
-
-        adapter.send_payload(frame.header.destination, payload)
-        adapter.simulator.write.assert_called_once_with(frame.to_bytes())
-        adapter.close()
-        adapter.simulator.stop.assert_called_once()
+    adapter.send_payload(frame.header.destination, payload)
+    adapter.simulator.write.assert_called_once_with(frame.to_bytes())
+    adapter.close()
+    adapter.simulator.stop.assert_called_once()
 
 
 @pytest.mark.asyncio
 @patch("dotbot.adapter.SailBotSimulatorCommunicationInterface")
-async def test_sailbot_simulator_adapter(_):
+async def test_sailbot_simulator_adapter(simulator):
     adapter = SailBotSimulatorAdapter()
     frames = []
 
@@ -195,26 +182,18 @@ async def test_sailbot_simulator_adapter(_):
     payload = PayloadAdvertisement()
     frame = Frame(header=Header(), packet=Packet().from_payload(payload))
 
-    async def feed_frame(queue):
-        await queue.put(frame.to_bytes())
-        await asyncio.sleep(0.05)
+    asyncio.create_task(adapter.start(on_frame_received))
+    await asyncio.sleep(0.01)
+    # What the simulator thread hands back, as it would from its own thread
+    received = simulator.call_args.args[0]
+    await asyncio.to_thread(received, frame)
+    await asyncio.sleep(0.05)
+    assert frames == [frame]
 
-    mock_queue = asyncio.Queue()
-    with patch("asyncio.Queue", return_value=mock_queue):
-
-        async def start_task():
-            await adapter.start(on_frame_received)
-
-        asyncio.create_task(name="test_serial_adapter_start", coro=start_task())
-        await feed_frame(mock_queue)
-
-        await asyncio.sleep(0.1)
-        assert frames == [frame.to_bytes()]
-
-        adapter.send_payload(frame.header.destination, payload)
-        adapter.simulator.write.assert_called_once_with(frame.to_bytes())
-        adapter.close()
-        adapter.simulator.stop.assert_called_once()
+    adapter.send_payload(frame.header.destination, payload)
+    adapter.simulator.write.assert_called_once_with(frame.to_bytes())
+    adapter.close()
+    adapter.simulator.stop.assert_called_once()
 
 
 def test_simulator_adapter_close_before_start_is_noop():

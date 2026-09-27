@@ -9,7 +9,7 @@ endpoints. Optionally one more client that acks once then stops reading
 - `sim`: the controller runs the dotbot simulator in-process, as
   `dotbot run simulator` does, and every robot drives a waypoint batch.
 - `synth`: no simulator. A gateway adapter replays advertisements at the
-  firmware's 2 Hz per robot through the same thread-to-loop queue the Mari
+  firmware's 2 Hz per robot through the same thread-to-loop inbox the Mari
   edge adapter uses, so the controller's cost is measured alone. The frames
   are built in a feeder process (`--feeder thread` builds them on the
   gateway thread instead, inside the controller's process and its GIL).
@@ -109,7 +109,7 @@ def feeder(count: int):
 
 
 class SyntheticGatewayAdapter:
-    """Advertisements from `count` robots handed to the loop through a queue
+    """Advertisements from `count` robots handed to the loop through an inbox
     from a gateway thread, as the Mari edge adapter does.
 
     With `feeder="process"` the frames are built in a separate process and
@@ -140,19 +140,19 @@ class SyntheticGatewayAdapter:
                 return
             yield pipe.read(int.from_bytes(head, "big"))
 
-    def _frames(self, loop, frames: asyncio.Queue):
+    def _frames(self):
         from dotbot_utils.protocol import Frame
 
         wires = self._piped() if self.feeder == "process" else self._built()
         for wire in wires:
-            loop.call_soon_threadsafe(frames.put_nowait, Frame.from_bytes(wire))
+            self.inbox.put(Frame.from_bytes(wire))
 
     async def start(self, on_frame_received):
-        frames = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-        threading.Thread(target=self._frames, args=(loop, frames), daemon=True).start()
-        while True:
-            on_frame_received(await frames.get())
+        from dotbot.inbox import FrameInbox
+
+        self.inbox = FrameInbox(asyncio.get_running_loop())
+        threading.Thread(target=self._frames, daemon=True).start()
+        await self.inbox.run(on_frame_received)
 
     def close(self):
         if self._process is not None:
@@ -246,6 +246,9 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
         lags.clear()
         window["start"] = time.monotonic()
         window["ticks"] = robot_ticks()
+        inbox = getattr(controller.adapter, "inbox", None)
+        if inbox is not None:
+            window["coalesced"], window["dropped"] = inbox.coalesced, inbox.dropped
         window["threads"] = {
             thread.native_id: _role(thread) for thread in threading.enumerate()
         }
@@ -255,6 +258,10 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
         elapsed = time.monotonic() - window.get("start", time.monotonic())
         ticks = robot_ticks() - window.get("ticks", 0)
         result = {"window_s": elapsed, "loop_lag_ms": lags}
+        inbox = getattr(controller.adapter, "inbox", None)
+        if inbox is not None:
+            result["frames_coalesced"] = inbox.coalesced - window.get("coalesced", 0)
+            result["frames_dropped"] = inbox.dropped - window.get("dropped", 0)
         if robots():
             result["sim_ticks_per_bot_s"] = ticks / len(robots()) / elapsed
         (workdir / "child.json").write_text(json.dumps(result))
@@ -676,6 +683,9 @@ async def measure(
         record["slow_frames_s"] = round(slow_stats["frames"] / wall, 1)
         record["slow_snapshots"] = slow_stats["snapshots"]
         record["slow_closed"] = slow_stats["closed"]
+    for key in ("frames_coalesced", "frames_dropped"):
+        if key in view:
+            record[key] = view[key]
     if "sim_ticks_per_bot_s" in view:
         record["sim_ticks_per_bot_s"] = round(view["sim_ticks_per_bot_s"], 1)
         record["sim_realtime_factor"] = round(view["sim_ticks_per_bot_s"] / 100, 3)
