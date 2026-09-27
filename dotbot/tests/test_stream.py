@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import math
 import random
 import time
 from unittest.mock import AsyncMock, MagicMock
@@ -50,6 +51,7 @@ class Client:
         self.frames = []
         self.texts = []
         self.fleet = {}
+        self.models = None
         self._parts = []
         self.seq = None
         self.transport = MagicMock()
@@ -65,7 +67,11 @@ class Client:
     async def send_text(self, text):
         self.texts.append(text)
         message = json.loads(text)
-        self.frames.append(message)
+        if message.get("event") == "robot_models":
+            # Sent with every snapshot; kept apart so frames count the rest
+            self.models = message["data"]
+        else:
+            self.frames.append(message)
         self.apply(message)
         if self.acks:
             self.hub.receive(self, json.dumps({"ack": message["seq"]}))
@@ -93,6 +99,42 @@ class Client:
 
     def of_type(self, kind):
         return [f for f in self.frames if f["type"] == kind]
+
+    def body(self, address):
+        """A robot's body as a UI draws it: its model's shape turned by the
+        pose's heading about the origin, then moved onto the pose's axle."""
+        robot = self.fleet[address]
+        return expand(self.models[robot["model"]], robot["pose"])
+
+
+def expand(shape, pose):
+    theta = math.radians(pose["heading_deg"])
+    cos, sin = math.cos(theta), math.sin(theta)
+
+    def place(point):
+        x, y = point["x"], point["y"]
+        return {"x": pose["x"] + x * cos - y * sin, "y": pose["y"] + x * sin + y * cos}
+
+    return {
+        **shape,
+        "heading_deg": pose["heading_deg"],
+        "heading_source": pose["heading_source"],
+        **{
+            name: place(shape[name])
+            for name in ("photodiode", "axle", "centre", "nose", "led")
+        },
+        "outline": [place(p) for p in shape["outline"]],
+        "wheels": [[place(p) for p in wheel] for wheel in shape["wheels"]],
+    }
+
+
+def _flat(value):
+    """Every number in a JSON value, in order."""
+    if isinstance(value, dict):
+        return [n for key in sorted(value) for n in _flat(value[key])]
+    if isinstance(value, list):
+        return [n for item in value for n in _flat(item)]
+    return [value]
 
 
 async def settle():
@@ -137,11 +179,13 @@ def advertise(controller, source, x=1000, y=1000, **fields):
     controller.handle_received_frame(_advertised(source, pos_x=x, pos_y=y, **fields))
 
 
-async def rest_fleet(trail):
+async def rest_fleet(trail, body=False):
     async with AsyncClient(
         transport=ASGITransport(app=api), base_url="http://test"
     ) as client:
-        response = await client.get(f"/controller/dotbots?trail={trail}")
+        response = await client.get(
+            f"/controller/dotbots?trail={trail}" + ("&body=1" if body else "")
+        )
     return {robot["address"]: robot for robot in response.json()}
 
 
@@ -209,6 +253,7 @@ async def test_an_empty_fleet_is_one_empty_snapshot(controller):
     await tick(controller.stream, 0)
     (snapshot,) = client.frames
     assert (snapshot["part"], snapshot["parts"], snapshot["robots"]) == (1, 1, [])
+    assert list(client.models) == ["dotbot-v3"]
 
 
 # --- deltas -----------------------------------------------------------------
@@ -293,6 +338,10 @@ async def test_deltas_are_merge_patches_over_the_rest_object(controller):
         rest = without_last_seen(await rest_fleet(8))
         held = without_last_seen(client.fleet)
         assert held == rest, (step, _differences(held, rest))
+        for address, robot in (await rest_fleet(0, body=True)).items():
+            # The axle is sent to 0.1 mm, so the drawn body is within 0.05
+            drawn = client.body(address)
+            assert _flat(drawn) == pytest.approx(_flat(robot["body"]), abs=0.06)
     now += 1
     await tick(controller.stream, now)
     assert without_last_seen(quiet.fleet) == without_last_seen(await rest_fleet(0))

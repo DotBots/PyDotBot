@@ -17,10 +17,8 @@ from dotbot.adapter import SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
     INACTIVE_DELAY,
-    PLACEHOLDER_HEADING_DEG,
     Controller,
     ControllerSettings,
-    device_pose,
     gps_distance,
     lh2_distance,
 )
@@ -31,6 +29,7 @@ from dotbot.models import (
     DotBotQueryModel,
     DotBotStatus,
 )
+from dotbot.poses import PLACEHOLDER_HEADING_DEG, device_pose, robot_body
 from dotbot.protocol import (
     DIRECTION_NONE,
     ApplicationType,
@@ -926,7 +925,8 @@ async def test_the_advertisement_debug_log_reports_y(controller):
 
 @pytest.mark.asyncio
 async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller):
-    """The centre is 29 mm behind the photodiode, along (-sin, +cos)."""
+    """The axle is 53.5 mm and the centre 29 mm behind the photodiode, along
+    (-sin, +cos)."""
     controller.handle_received_frame(
         _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
     )
@@ -934,9 +934,10 @@ async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
     assert dotbot.pose.heading_source == "travel"
     assert dotbot.pose.heading_deg == 90
-    assert (dotbot.pose.centre.x, dotbot.pose.centre.y) == pytest.approx(
-        (1029.0, 1000.0)
-    )
+    assert (dotbot.pose.x, dotbot.pose.y) == (1053.5, 1000.0)
+    body = robot_body(dotbot.model, dotbot.pose)
+    assert (body.centre.x, body.centre.y) == pytest.approx((1029.0, 1000.0))
+    assert (body.photodiode.x, body.photodiode.y) == pytest.approx((1000.0, 1000.0))
 
 
 @pytest.mark.asyncio
@@ -947,8 +948,10 @@ async def test_no_heading_gives_a_placeholder_pose_that_says_so(controller):
     pose = controller.dotbots[addr_to_hex(BOT)].pose
     assert pose.heading_source == "none"
     assert pose.heading_deg == PLACEHOLDER_HEADING_DEG
-    assert pose.reach_mm == pytest.approx(88.91, abs=0.01)
-    assert pose.core_mm == pytest.approx(18.5)
+    body = robot_body("dotbot-v3", pose)
+    assert body.heading_source == "none"
+    assert body.reach_mm == pytest.approx(88.91, abs=0.01)
+    assert body.core_mm == pytest.approx(18.5)
 
 
 @pytest.mark.asyncio
@@ -966,18 +969,27 @@ async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
             transport=ASGITransport(app=api), base_url="http://testserver"
         ) as client:
             response = await client.get("/controller/dotbots")
+            full = await client.get(f"/controller/dotbots/{addr_to_hex(BOT)}?body=1")
     finally:
         api.controller = previous
     (bot,) = (b for b in response.json() if b["address"] == addr_to_hex(BOT))
     assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
     assert bot["model"] == "dotbot-v3"
-    assert bot["pose"]["photodiode"] == {"x": 1000.0, "y": 1000.0}
-    assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
-    assert bot["pose"]["heading_source"] == "travel"
-    assert len(bot["pose"]["outline"]) == 14
-    assert bot["pose"]["reach_mm"] == pytest.approx(88.91, abs=0.01)
-    assert bot["pose"]["core_mm"] == pytest.approx(18.5)
-    assert bot["pose"]["envelope_mm"] == 95.0
+    assert bot["pose"] == {
+        "x": 1000.0,
+        "y": 946.5,
+        "heading_deg": 0.0,
+        "heading_source": "travel",
+    }
+    assert "body" not in bot
+    body = full.json()["body"]
+    assert body["photodiode"] == pytest.approx({"x": 1000.0, "y": 1000.0})
+    assert body["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
+    assert body["heading_source"] == "travel"
+    assert len(body["outline"]) == 14
+    assert body["reach_mm"] == pytest.approx(88.91, abs=0.01)
+    assert body["core_mm"] == pytest.approx(18.5)
+    assert body["envelope_mm"] == 95.0
 
 
 @pytest.mark.asyncio
@@ -1314,8 +1326,25 @@ async def test_a_patch_carries_the_new_fix_and_no_trail(controller):
     ]
     assert "trail" not in patch and "trail_append" not in patch
     assert patch["lh2_position"] == {"x": 1500.0, "y": 1000.0}
-    assert patch["pose"]["photodiode"] == {"x": 1500.0, "y": 1000.0}
+    assert patch["pose"] == {
+        "x": 1500.0,
+        "y": 946.5,
+        "heading_deg": 0.0,
+        "heading_source": "travel",
+    }
     assert len(controller.trail(addr_to_hex(BOT))) == 1000
+
+
+@pytest.mark.asyncio
+async def test_a_moving_robots_patch_is_its_fix_and_pose(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=10, pos_x=1000, pos_y=1000)
+    )
+    patch = _patches(
+        controller, _advertised(BOT, direction=12, pos_x=1234, pos_y=5678)
+    )[addr_to_hex(BOT)]
+    assert set(patch) == {"direction", "lh2_position", "pose", "last_seen"}
+    assert len(json.dumps(patch, separators=(",", ":"))) < 200
 
 
 @pytest.mark.asyncio

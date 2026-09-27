@@ -13,6 +13,10 @@ A delta patch is an RFC 7396 merge patch over the REST object: each changed
 field with its whole value (null once it has none), `last_seen`, and the
 trail as `trail_append` (new points, oldest first) and `trail_reset`. A new
 robot arrives as its whole REST object.
+
+A robot's `pose` is its axle and heading only. The body drawn around it is
+its `model`'s shape, which the `robot_models` event carries with every
+snapshot: turned by the heading about the origin, then moved onto the axle.
 """
 
 import asyncio
@@ -26,6 +30,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from dotbot.logger import LOGGER
 from dotbot.models import MAX_TRAIL_SIZE
+from dotbot.poses import robot_body
 from dotbot.ws_clients import close_websocket, write_buffer_size
 
 PROTOCOL = 1
@@ -102,20 +107,26 @@ def _dump(controller, address: str) -> dict:
     key = controller.changed.get(address)
     if record is not None and key is not None and record.dump_seq == key:
         return record.dump
-    body = dotbot.model_dump(mode="json", exclude_none=True, exclude={"trail"})
+    body = dotbot.model_dump(
+        mode="json", exclude_none=True, exclude={"trail", "body"}
+    )
     if record is not None and key is not None:
         record.dump_seq, record.dump = key, body
     return body
 
 
-def robot_object(controller, address: str, trail: int, upto: int) -> dict:
+def robot_object(
+    controller, address: str, trail: int, upto: int, body: bool = False
+) -> dict:
     """A robot as the REST list returns it, with its newest `trail` points
-    no newer than seq `upto`."""
+    no newer than seq `upto`, and with `body` the body its pose places."""
     dotbot = controller.dotbots[address]
-    body = {**_dump(controller, address), "last_seen": dotbot.last_seen}
+    fields = {**_dump(controller, address), "last_seen": dotbot.last_seen}
+    if body and dotbot.pose is not None:
+        fields["body"] = robot_body(dotbot.model, dotbot.pose).model_dump(mode="json")
     record = controller.records.get(address)
-    body["trail"] = record.trail.json(trail, upto) if record and trail else []
-    return body
+    fields["trail"] = record.trail.json(trail, upto) if record and trail else []
+    return fields
 
 
 def robot_patch(controller, address: str, since: int, trail: int) -> dict:

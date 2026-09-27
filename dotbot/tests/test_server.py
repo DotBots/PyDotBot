@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import Controller, ControllerSettings, body_pose, device_pose
+from dotbot.controller import Controller, ControllerSettings
+from dotbot.poses import device_pose, robot_pose
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -1214,6 +1215,18 @@ async def test_get_device_poses():
 
 
 @pytest.mark.asyncio
+async def test_get_robot_models():
+    """A client draws a pose's body from its model's shape, axle at the origin."""
+    response = await client.get("/controller/robot_models")
+    assert response.status_code == 200
+    shape = response.json()["dotbot-v3"]
+    assert shape["axle"] == {"x": 0.0, "y": 0.0}
+    assert shape["photodiode"] == pytest.approx({"x": 0.0, "y": 53.5})
+    assert shape["heading_deg"] == 0.0
+    assert len(shape["outline"]) == 14
+
+
+@pytest.mark.asyncio
 async def test_get_controller_site():
     """The console draws the whole site, so it needs the extent and the areas."""
     api.controller.site = Site(
@@ -1887,12 +1900,13 @@ async def test_waypoints_start_from_the_axle():
         application=ApplicationType.DotBot,
         last_seen=123.4,
         lh2_position=photodiode,
-        pose=body_pose(ROBOT_DEFAULT, photodiode, 90),
+        pose=robot_pose(ROBOT_DEFAULT, photodiode, 90),
     )
     api.controller.dotbots = {"4242": robot}
     body = {"threshold": 10, "waypoints": [{"x": 500, "y": 100}]}
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
-    assert robot.waypoints[0] == robot.pose.axle != photodiode
+    axle = DotBotLH2Position(x=robot.pose.x, y=robot.pose.y)
+    assert robot.waypoints[0] == axle != photodiode
 
     robot.axle_position = DotBotLH2Position(x=1001, y=949)
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
@@ -1943,7 +1957,7 @@ async def test_waypoints_start_from_the_fix_without_a_heading():
         application=ApplicationType.DotBot,
         last_seen=123.4,
         lh2_position=photodiode,
-        pose=body_pose(ROBOT_DEFAULT, photodiode, DIRECTION_NONE),
+        pose=robot_pose(ROBOT_DEFAULT, photodiode, DIRECTION_NONE),
     )
     assert robot.pose.heading_source == "none"
     api.controller.dotbots = {"4242": robot}

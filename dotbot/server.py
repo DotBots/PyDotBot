@@ -49,7 +49,7 @@ from dotbot.models import (
     DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
-    DotBotPoseModel,
+    DotBotBodyModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotSiteModel,
@@ -62,6 +62,7 @@ from dotbot.models import (
     WSRgbLed,
     WSWaypoints,
 )
+from dotbot.poses import robot_models as robot_model_shapes
 from dotbot.protocol import (
     WAYPOINT_NO_HEADING,
     ApplicationType,
@@ -331,7 +332,7 @@ def _axle_position(dotbot: DotBotModel) -> Optional[DotBotLH2Position]:
     if dotbot.axle_position is not None:
         return dotbot.axle_position
     if dotbot.pose is not None and dotbot.pose.heading_source != "none":
-        return dotbot.pose.axle
+        return DotBotLH2Position(x=dotbot.pose.x, y=dotbot.pose.y)
     return dotbot.lh2_position
 
 
@@ -435,13 +436,16 @@ def _snapshot(body) -> Response:
 async def dotbot(
     address: str,
     trail: Annotated[int, Query(ge=0, le=MAX_TRAIL_SIZE)] = 0,
+    body: bool = False,
 ):
     """Dotbot HTTP GET handler; `trail` is how many of its newest trail
-    points to return."""
+    points to return, and `body` adds the body its pose places."""
     controller = api.controller
     if address not in controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    return _snapshot(robot_object(controller, address, trail, controller.seq))
+    return _snapshot(
+        robot_object(controller, address, trail, controller.seq, body=body)
+    )
 
 
 @api.get(
@@ -456,15 +460,28 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
     controller = api.controller
     return _snapshot(
         [
-            robot_object(controller, address, query.trail, controller.seq)
+            robot_object(
+                controller, address, query.trail, controller.seq, body=query.body
+            )
             for address in controller.matching(query)
         ]
     )
 
 
 @api.get(
+    path="/controller/robot_models",
+    response_model=Dict[str, DotBotBodyModel],
+    summary="Return each robot model's body, axle at the origin, facing 0 degrees",
+    tags=["controller"],
+)
+async def robot_models():
+    """Robot models HTTP GET handler; the stream's `robot_models` event."""
+    return robot_model_shapes()
+
+
+@api.get(
     path="/controller/device_poses",
-    response_model=Dict[str, DotBotPoseModel],
+    response_model=Dict[str, DotBotBodyModel],
     summary="Return the headingless pose of each swarmit device type, at the origin",
     tags=["controller"],
 )

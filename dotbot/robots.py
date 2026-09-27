@@ -282,6 +282,39 @@ class RobotGeometry:
             envelope_mm=self.envelope_mm,
         )
 
+    def axle_at(self, sensor: Point, heading_deg: float) -> Point:
+        """The axle midpoint of a robot whose photodiode is at `sensor`,
+        facing `heading_deg`."""
+        ahead, aside = self._pose_offsets[0]
+        theta = math.radians(heading_deg)
+        sin, cos = math.sin(theta), math.cos(theta)
+        return Point(
+            sensor[0] - ahead * sin - aside * cos,
+            sensor[1] + ahead * cos - aside * sin,
+        )
+
+    def body_at_axle(
+        self, axle: Point, heading_deg: float, source: HeadingSource
+    ) -> BodyPose:
+        """The body whose axle midpoint is at `axle`, facing `heading_deg`."""
+        ahead, aside = self._pose_offsets[0]
+        theta = math.radians(heading_deg)
+        sin, cos = math.sin(theta), math.cos(theta)
+        sensor = Point(
+            axle[0] + ahead * sin + aside * cos,
+            axle[1] - ahead * cos + aside * sin,
+        )
+        return self.body_pose(sensor, heading_deg, source)
+
+    @cached_property
+    def shape(self) -> BodyPose:
+        """The body with its axle midpoint at the origin, facing 0 degrees.
+
+        Any other pose's body is this one rotated by its heading about the
+        origin, `(x cos - y sin, x sin + y cos)`, then moved onto its axle.
+        """
+        return self.body_at_axle(Point(0.0, 0.0), 0.0, HeadingSource.NONE)
+
     def clearance_mm(self, edge: str) -> float:
         """Distance from the photodiode to the body edge facing `edge`.
 

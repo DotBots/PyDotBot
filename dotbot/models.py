@@ -465,6 +465,8 @@ class DotBotQueryModel(BaseModel):
     min_battery: Optional[float] = None
     # The newest points of each robot's trail to return
     trail: int = Field(default=0, ge=0, le=MAX_TRAIL_SIZE)
+    # Add each robot's `body`, its pose expanded into the drawn body
+    body: bool = False
     max_position_x: Optional[float] = None
     min_position_x: Optional[float] = None
     max_position_y: Optional[float] = None
@@ -492,16 +494,33 @@ class DotBotReplyModel(BaseModel):
     data: Any
 
 
+HeadingSourceName = Literal["none", "travel", "ekf"]
+
+
 class DotBotPoseModel(BaseModel):
-    """A robot's body in the arena frame, expanded from its photodiode fix.
+    """Where a robot stands: its axle midpoint in mm and its heading.
 
     `heading_source` says how `heading_deg` was made: "travel" is the bearing
     between fixes, "ekf" the robot's own estimate, and "none" means there was
-    no heading and `heading_deg` is a placeholder.
+    no heading, `heading_deg` is a placeholder and so is the axle, placed
+    from the photodiode as if the robot faced it. The body drawn around the
+    axle is the robot model's shape turned by `heading_deg`.
+    """
+
+    x: float
+    y: float
+    heading_deg: float
+    heading_source: HeadingSourceName
+
+
+class DotBotBodyModel(BaseModel):
+    """A robot's body in the arena frame, expanded from its pose.
+
+    `heading_source` is the pose's.
     """
 
     heading_deg: float
-    heading_source: Literal["none", "travel", "ekf"]
+    heading_source: HeadingSourceName
     photodiode: DotBotLH2Position  # where the pose places the LH2 photodiode
     axle: DotBotLH2Position
     centre: DotBotLH2Position
@@ -516,7 +535,7 @@ class DotBotPoseModel(BaseModel):
     envelope_mm: float
 
     @classmethod
-    def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
+    def from_body_pose(cls, pose: BodyPose) -> "DotBotBodyModel":
         # One validation of plain data: this runs on every advertisement
         def point(p):
             return {"x": p.x, "y": p.y}
@@ -555,9 +574,11 @@ class DotBotModel(BaseModel):
     move_raw: Optional[DotBotMoveRawCommandModel] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
     model: str = ROBOT_DEFAULT  # the geometry record's key
-    # The LH2 photodiode, not a body point; `pose` is the body.
+    # The LH2 photodiode, not a body point; `pose` places the body.
     lh2_position: Optional[DotBotLH2Position] = None
     pose: Optional[DotBotPoseModel] = None
+    # Only when asked for: the body the pose places, in frame millimetres
+    body: Optional[DotBotBodyModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 100  # in mm
