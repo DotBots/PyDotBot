@@ -29,7 +29,7 @@ are not layered alternatives, and consumers pick one.
   A `hello`, a `snapshot` of the fleet in parts of 100 robots, then `delta`
   frames whose per-robot patches are RFC 7396 merge patches over the REST
   object (plus `trail_append` / `trail_reset`), and `event` frames
-  (`calibration_session`, `camera_detection`). The client answers each frame
+  (`robot_models`, `calibration_session`, `camera_detection`). The client answers each frame
   with `{"ack": seq}`; one that never acks is served at 1 Hz, which keeps
   `websocat` usable. Query: `hz` (1-20, default 10), `trail` (points per
   robot, default 0), `since` + `run` to resume. Each client holds a cursor
@@ -40,6 +40,21 @@ are not layered alternatives, and consumers pick one.
   batch waypoints and wait for "done". `?trail=N` adds the newest N trail
   points (default none), and `X-Controller-Seq` / `X-Controller-Run` name the
   state the body reflects, so a stream client can resume from it.
+
+**A robot's `pose` is four numbers, not its body**: `x`, `y` (the axle
+midpoint, to 0.1 mm), `heading_deg` and `heading_source`. The body is the
+same for every robot of one `model`, so it is sent once: the `robot_models`
+event (with every snapshot) and `GET /controller/robot_models` give each
+model's shape with its axle at the origin facing 0 degrees, and a client
+draws a robot by turning that shape by `heading_deg`, `(x cos - y sin,
+x sin + y cos)`, then adding the axle. That is what keeps a moving robot's
+patch near 160 bytes. For a human with curl, `?body=1` on
+`GET /controller/dotbots[/{address}]` adds each robot's expanded `body`.
+`/controller/device_poses` is separate: a headingless body per swarmit
+device type, photodiode at the origin, for robots only swarmit has located.
+
+Trails live in `dotbot/trail.py` as per-robot arrays (seq, x, y), not
+models; models and JSON values are built only when a trail is read.
 
 A second WebSocket runs the *other* way: **`/controller/ws/dotbots` is command
 ingress**, accepting RGB LED, `move_raw` and waypoint messages. One socket is
@@ -102,6 +117,9 @@ size, and REST latency and size of
 simulator in the controller, as `dotbot run simulator` does; mode `synth`
 feeds 2 Hz advertisements per robot through a gateway adapter, so the
 controller is measured without the simulator. Linux only; about 20 s a run.
+The synthetic advertisements are built in a separate feeder process, so the
+controller's process only parses them; `--feeder thread` builds them inside
+it, where they contend with the event loop for the GIL.
 
 ```bash
 python utils/perf/bench_controller.py --out perf.json            # full sweep
