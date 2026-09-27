@@ -98,14 +98,16 @@ ten-robot choreography, and the pre-fix (0, 0) guard. They are marked
 `scenario` and deselected by default, so `pytest` and `tox` skip them:
 
 ```bash
-pytest -m scenario --no-cov        # about a second; add -k to pick one
+pytest -m scenario --no-cov        # a few seconds; add -k to pick one
 ```
 
 They run on a stepped clock (`DotBotSimulatorCommunicationInterface.step()`,
 harness in `dotbot/tests/scenario_harness.py`): fixed seeds, no sleeps, no
 browser, no network port. They validate the simulator and the controller
-together, **not hardware**: the simulator runs a Python port of the firmware
-steering, so a green run says nothing about a real robot.
+together, **not hardware**: the simulator runs the firmware's control core
+(`dotbot/sim/`, DotBot-libs `drv/dotbot_control` built to WebAssembly) on a
+modelled body, so a green run says nothing about a real robot's motors or
+lighthouse.
 
 ### Backend benchmark
 

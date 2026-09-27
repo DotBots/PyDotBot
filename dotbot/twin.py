@@ -8,21 +8,12 @@ import math
 from dotbot import kinematics
 from dotbot.protocol import DIRECTION_NONE
 from dotbot.robots import robot_geometry
+from dotbot.sim.plant import INITIAL_BATTERY_VOLTAGE, battery_discharge_model
 
 _GEOMETRY = robot_geometry()
 
 # Motor speed constant, RPM per volt
 KV = 700
-
-# Battery: a linear discharge over three hours
-INITIAL_BATTERY_VOLTAGE = 3000  # mV
-MAX_BATTERY_DURATION_S = 60 * 60 * 3
-
-
-def battery_discharge_model(time_elapsed_s: float) -> int:
-    """Linear discharge over MAX_BATTERY_DURATION_S (supercapacitor idle model)."""
-    t = min(time_elapsed_s / MAX_BATTERY_DURATION_S, 1.0)
-    return max(0, int(INITIAL_BATTERY_VOLTAGE * (1 - t)))
 
 
 def wheel_speed_from_pwm(pwm: float) -> float:

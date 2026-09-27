@@ -30,6 +30,16 @@ FIX_AGE_TICKS = 2
 # LH2 fixes are unsigned millimetres
 FIX_MAX_MM = 0xFFFFFFFF
 
+# Battery: a linear discharge over three hours
+INITIAL_BATTERY_VOLTAGE = 3000  # mV
+MAX_BATTERY_DURATION_S = 60 * 60 * 3
+
+
+def battery_discharge_model(time_elapsed_s: float) -> int:
+    """Linear discharge over MAX_BATTERY_DURATION_S (supercapacitor idle model)."""
+    t = min(time_elapsed_s / MAX_BATTERY_DURATION_S, 1.0)
+    return max(0, int(INITIAL_BATTERY_VOLTAGE * (1 - t)))
+
 
 class FleetPlant:
     """Truth for `count` robots: axle midpoint, heading and wheel speeds."""
