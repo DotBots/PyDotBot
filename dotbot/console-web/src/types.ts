@@ -92,7 +92,8 @@ export interface PyDotBot {
   // The axle midpoint as the robot itself estimates it; null from apps that
   // do not report it, or with no heading yet.
   axle_position?: LH2Position | null;
-  position_history?: LH2Position[];
+  // Where the robot has been, oldest first: as many points as were asked for.
+  trail?: LH2Position[];
   waypoints?: Waypoint[];
   waypoints_threshold?: number;
   // The robot's own report on its last waypoint batch, from apps that send
@@ -105,16 +106,6 @@ export interface PyDotBot {
   calibrated?: number;
 }
 
-export interface WsNotification {
-  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE,
-  // 6 CAMERA_DETECTION
-  cmd: number;
-  data?: Partial<PyDotBot> & {
-    lh2_waypoints?: Waypoint[];
-  };
-  calibration_session?: CalibrationSession | null;
-  camera_detection?: CameraDetection;
-}
 
 // --- what a camera sees on its own area ------------------------------------
 //

@@ -6,7 +6,6 @@ import {
   CalibrationSession,
   ControllerBuild,
   ControllerConnection,
-  PyDotBot,
   RegisteredCamera,
   RgbLed,
   Site,
@@ -19,11 +18,6 @@ import { MRTA_UNAVAILABLE, MrtaStatus, parseStatus } from "./mrta";
 const CONTROLLER = "/controller";
 const SWARMIT = "/swarmit";
 const MRTA = "/mrta";
-
-export async function fetchDotBots(): Promise<PyDotBot[]> {
-  const res = await fetch(`${CONTROLLER}/dotbots`);
-  return res.json();
-}
 
 export async function fetchSite(): Promise<Site> {
   const res = await fetch(`${CONTROLLER}/site`);
@@ -232,9 +226,10 @@ export async function abandonCalibration(): Promise<void> {
   await controllerJson(SESSION, { method: "DELETE" });
 }
 
-export function controllerWsUrl(): string {
+/** The controller stream, asking for `trail` points per robot at `hz`. */
+export function controllerStreamUrl(trail: number, hz: number): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}${CONTROLLER}/ws/status`;
+  return `${proto}://${window.location.host}${CONTROLLER}/ws/stream?trail=${trail}&hz=${hz}`;
 }
 
 // --- SwarmIT orchestration (write path; same contract as the real server) ---
