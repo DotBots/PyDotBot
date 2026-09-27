@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-ABI_VERSION = 1
+ABI_VERSION = 2
 WASM_PATH = Path(__file__).with_name("dotbot_control.wasm")
 MANIFEST_PATH = Path(__file__).with_name("dotbot_control.json")
 
@@ -80,6 +80,25 @@ REPORT = np.dtype(
     ]
 )
 ADVERTISEMENT_BYTES = 42
+# fleet_geometry_t: drv/geometry.h as the core was built, mm and degrees
+GEOMETRY = np.dtype(
+    [
+        (name, "<f4")
+        for name in (
+            "wheel_diameter_mm",
+            "track_mm",
+            "encoder_cpr",
+            "gear_ratio",
+            "mm_per_count",
+            "lever_arm_mm",
+            "lever_angle_deg",
+            "lever_arm_effective_mm",
+            "track_effective_mm",
+            "track_effective_arc_mm",
+            "track_effective_arc_ratio",
+        )
+    ]
+)
 
 
 class DriveMode(IntEnum):
@@ -185,6 +204,8 @@ class ControlCore:
         self._reports = self._call("fleet_report_buffer")
         self._rx_buffer = self._call("fleet_rx_buffer")
         self._advertisement = self._call("fleet_advertisement_buffer")
+        self._battery = self._call("fleet_battery_buffer")
+        self._advertisements = self._call("fleet_advertisements_buffer")
         self._rx_max = self._call("rx_max_bytes")
 
     def _call(self, name: str, *args):
@@ -197,6 +218,7 @@ class ControlCore:
             "sizeof_output": OUTPUT.itemsize,
             "sizeof_report": REPORT.itemsize,
             "advertisement_bytes": ADVERTISEMENT_BYTES,
+            "sizeof_geometry": GEOMETRY.itemsize,
         }
         for name, value in expected.items():
             actual = self._call(name)
@@ -204,6 +226,17 @@ class ControlCore:
                 raise ControlCoreError(
                     f"{WASM_PATH.name}: {name}() is {actual}, expected {value}"
                 )
+
+    def geometry(self) -> np.void:
+        """The GEOMETRY record the core was built with."""
+        address = self._call("geometry")
+        data = self._memory.read(self._store, address, address + GEOMETRY.itemsize)
+        return np.frombuffer(data, GEOMETRY)[0]
+
+    def seed(self, index: int, x_mm: float, y_mm: float, heading_deg: float):
+        """Set robot `index`'s axle midpoint and heading outright, its
+        estimator tracking them, as though it had acquired them."""
+        self._call("fleet_seed", index, x_mm, y_mm, heading_deg)
 
     def rx(self, index: int, packet: bytes):
         """Hand robot `index` one command: the type byte, then the payload.
@@ -239,3 +272,25 @@ class ControlCore:
         return self._memory.read(
             self._store, self._advertisement, self._advertisement + length
         )
+
+    def advertisements(self, battery: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The advertisement of every robot the last step asked one of, as
+        (indices, packets): one row of ADVERTISEMENT_BYTES per index, type
+        byte first. `battery` holds one level per robot. Starts those robots'
+        encoder deltas over."""
+        self._memory.write(
+            self._store, battery.astype("<u2").tobytes(), self._battery
+        )
+        n = self._call("fleet_advertisements", self._battery, self._advertisements)
+        if n == 0:
+            return np.zeros(0, np.uint32), np.zeros((0, ADVERTISEMENT_BYTES), np.uint8)
+        data = self._memory.read(
+            self._store,
+            self._advertisements,
+            self._advertisements + n * (4 + ADVERTISEMENT_BYTES),
+        )
+        indices = np.frombuffer(data, "<u4", count=n)
+        packets = np.frombuffer(data, np.uint8, offset=4 * n).reshape(
+            n, ADVERTISEMENT_BYTES
+        )
+        return indices, packets
