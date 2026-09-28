@@ -334,7 +334,11 @@ class StreamHub:
         self.now = now
         shared: Dict[Tuple[int, int], List[str]] = {}
         for client in list(self.clients.values()):
-            self._serve(client, now, shared)
+            try:
+                self._serve(client, now, shared)
+            except Exception as exc:  # pylint:disable=broad-exception-caught
+                self.logger.exception("Stream client failed", error=str(exc))
+                self.drop(client, f"serve failed: {exc}")
 
     def _serve(self, client: StreamClient, now: float, shared) -> None:
         if client.closed:

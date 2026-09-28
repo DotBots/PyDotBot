@@ -575,6 +575,62 @@ async def test_a_slow_snapshot_that_keeps_sending_is_not_dropped(controller, sec
 
 
 @pytest.mark.asyncio
+async def test_a_failing_client_is_dropped_and_the_others_still_served(
+    controller, monkeypatch
+):
+    advertise(controller, 0x42)
+    hub = controller.stream
+    broken = Client(hub)
+    reader = Client(hub)
+    await tick(hub, 0)
+    serve = hub._serve
+
+    def failing(client, now, shared):
+        if client is broken.client:
+            raise RuntimeError("boom")
+        serve(client, now, shared)
+
+    monkeypatch.setattr(hub, "_serve", failing)
+    for step in range(1, 5):
+        advertise(controller, 0x42, battery=3000 - step)
+        await tick(hub, step * 0.05)
+    assert broken not in hub.clients
+    broken.close.assert_awaited()
+    assert reader in hub.clients
+    assert len(reader.of_type("delta")) == 4
+
+
+@pytest.mark.asyncio
+async def test_the_tick_task_survives_a_failing_client(controller, monkeypatch):
+    advertise(controller, 0x42)
+    hub = controller.stream
+    hub.autostart = True
+    monkeypatch.setattr(stream, "TICK_S", 0.001)
+    serve = hub._serve
+    calls = {"n": 0}
+
+    def failing_once(client, now, shared):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        serve(client, now, shared)
+
+    monkeypatch.setattr(hub, "_serve", failing_once)
+    broken = Client(hub)
+    reader = Client(hub)
+    for _ in range(200):
+        await asyncio.sleep(0.001)
+        if reader.frames:
+            break
+    assert reader.of_type("snapshot")
+    assert not hub._task.done()
+    for client in list(hub.clients.values()):
+        hub.remove(client.websocket)
+    await asyncio.sleep(0.01)
+    assert broken not in hub.clients
+
+
+@pytest.mark.asyncio
 async def test_a_non_acking_client_that_stops_reading_is_bounded_and_closed(
     controller,
 ):
