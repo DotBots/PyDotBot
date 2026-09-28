@@ -36,3 +36,4 @@ Submodules
    dotbot.stream
    dotbot.trail
    dotbot.twin
+   dotbot.ws_clients

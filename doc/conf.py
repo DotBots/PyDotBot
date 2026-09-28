@@ -55,7 +55,6 @@ nitpick_ignore_regex = [
     ("py:class", r"_ctypes.Structure"),
     ("py:class", r"pathlib._local.Path"),
     ("py:class", r"pathlib.Path"),
-    ("py:class", r"fastapi\..*"),
     ("py:class", r"annotated_types\..*"),
     ("py:class", r"annotation=.*"),
     ("py:class", r"required=.*"),

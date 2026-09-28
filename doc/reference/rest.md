@@ -46,13 +46,17 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `PUT` | `/controller/dotbots/{address}/{application}/wheel_velocity` | Set each wheel's speed: `left_mm_s` / `right_mm_s`, in mm/s, within ±700. Only the sandbox `dotbot` firmware app acts on it (other apps ignore it), and it stops the wheels about 500 ms after the last command, so resend faster than 2 Hz |
 | `PUT` | `/controller/dotbots/{address}/{application}/rgb_led` | Set the RGB LED |
 | `PUT` | `/controller/dotbots/{address}/{application}/waypoints` | Set navigation waypoints |
-| `DELETE` | `/controller/dotbots/{address}/positions` | Clear position history |
+| `PUT` | `/controller/dotbots/waypoints` | Set several DotBots' waypoints at once, one batch per address |
+| `DELETE` | `/controller/dotbots/waypoints` | Stop the DotBots named by `?address=`, or all of them |
+| `DELETE` | `/controller/dotbots/{address}/positions` | Clear the trail |
+| `GET` | `/controller/robot_models` | Each robot model's body, axle at the origin, facing 0 degrees |
 | `GET` | `/controller/cameras` | Registered overhead cameras currently serving a layer |
 | `GET` | `/controller/cameras/{area}/stream` | That area's camera, warped into its raster, as `multipart/x-mixed-replace` JPEG |
 
-Two WebSocket endpoints push live updates: `/controller/ws/status` (state
-stream) and `/controller/ws/dotbots` (send `move_raw` / `rgb_led` / `waypoints`
-as JSON).
+Two WebSocket endpoints: `/controller/ws/stream` pushes the fleet's state (a
+snapshot, then merge-patch deltas, each answered with `{"ack": seq}`), and
+`/controller/ws/dotbots` takes `move_raw` / `rgb_led` / `waypoints` commands as
+JSON.
 
 ## Quick examples
 
