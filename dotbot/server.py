@@ -311,14 +311,14 @@ async def dotbots_waypoint_batches(
     """Give each DotBot its own batch, keyed by address, under one set of
     settings: the same as one PUT per robot on its own waypoints route.
 
-    ```
-    {"threshold": 60,
-     "dotbots": {"badcafe111111111": [{"x": 400, "y": 1600}],
-                 "deadbeef22222222": [{"x": 1600, "y": 400}]}}
-    ```
+    ::
+
+        {"threshold": 60,
+         "dotbots": {"badcafe111111111": [{"x": 400, "y": 1600}],
+                     "deadbeef22222222": [{"x": 1600, "y": 400}]}}
 
     Every known DotBot gets its batch and unknown addresses are listed in
-    `unknown`. With `?strict=true` an unknown address refuses the whole
+    ``unknown``. With ``?strict=true`` an unknown address refuses the whole
     request, before anything is sent. When no address is known: 404. A batch
     whose points are not of the kind its robot drives to (x/y for a DotBot,
     latitude/longitude for a SailBot) refuses the whole request: 422.
