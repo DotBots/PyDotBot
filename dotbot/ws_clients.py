@@ -13,11 +13,11 @@ TRANSPORT_KEY = "dotbot.transport"
 
 
 class TransportScope:
-    """ASGI middleware putting a websocket's server transport in its scope.
+    """ASGI middleware putting a websocket's server transport in its scope,
+    where `write_buffer_size` and `close_websocket` read it.
 
-    ASGI has no way to abort a connection, and the server's own close waits
-    for everything already buffered to be sent first. Must be the outermost
-    user middleware: only there is `send` still the server's bound method.
+    Must be the outermost user middleware: only there is `send` still the
+    server's bound method.
     """
 
     def __init__(self, app):
@@ -47,12 +47,7 @@ def write_buffer_size(websocket: WebSocket) -> int:
 
 async def close_websocket(websocket: WebSocket, timeout: float = CLOSE_TIMEOUT):
     """Close a client's websocket, aborting the connection unless the client
-    answers the close within `timeout` with nothing left unsent.
-
-    The close frame queues behind whatever is still unsent, and the server
-    keeps the connection until the client answers it, so a client that
-    stopped reading would hold both forever; aborting frees them.
-    """
+    answers the close within `timeout` with nothing left unsent."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     try:
