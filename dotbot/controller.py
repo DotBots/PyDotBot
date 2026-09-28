@@ -600,10 +600,6 @@ class Controller:
         dt = now - self._dotbot_twin_timestamps[address]
         self._dotbot_twin_timestamps[address] = now
         twin.update(dt)
-        twin._last_encoder_left = int(twin.encoder_left_acc)
-        twin._last_encoder_right = int(twin.encoder_right_acc)
-        twin.encoder_left_acc = 0.0
-        twin.encoder_right_acc = 0.0
         return twin
 
     async def _open_webbrowser(self):
@@ -923,8 +919,8 @@ class Controller:
             direction=int(twin.direction),
             pwm_left=int(twin.pwm_left),
             pwm_right=int(twin.pwm_right),
-            encoder_left=twin._last_encoder_left,
-            encoder_right=twin._last_encoder_right,
+            encoder_left=twin.encoder_left,
+            encoder_right=twin.encoder_right,
         )
         self.csv_data_logger.log(
             real_log=real_log,

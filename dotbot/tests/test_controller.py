@@ -1057,12 +1057,12 @@ def test_the_twin_counts_its_wheels_travel_in_encoder_counts(controller, monkeyp
     now = [1000.0]
     monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
     twin = controller._update_dotbot_twin("AA", 60, -60, init_pos_x=1500)
-    assert (twin._last_encoder_left, twin._last_encoder_right) == (0, 0)
+    assert (twin.encoder_left, twin.encoder_right) == (0, 0)
     now[0] += 0.5
     twin = controller._update_dotbot_twin("AA", 60, -60)
     counts = wheel_speed_from_pwm(60) * 0.5 / robot_geometry().mm_per_count
-    assert twin._last_encoder_left == int(counts) > 0
-    assert twin._last_encoder_right == -int(counts)
+    assert twin.encoder_left == int(counts) > 0
+    assert twin.encoder_right == -int(counts)
     assert twin.encoder_left_acc == 0.0
 
 
