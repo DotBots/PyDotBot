@@ -82,8 +82,8 @@ describe("animating", () => {
 });
 
 describe("PositionAnimator", () => {
-  // Floor millimetres straight to percent, so a position reads back as itself.
-  const place = (p: { x: number; y: number }) => ({ left: p.x, top: p.y });
+  // Floor millimetres straight to pixels, so a position reads back as itself.
+  const place = (p: { x: number; y: number }) => ({ x: p.x, y: p.y });
   let now = 0;
   let frames: FrameRequestCallback[] = [];
   const runFrame = (at: number) => {
@@ -92,7 +92,7 @@ describe("PositionAnimator", () => {
     frames = [];
     due.forEach((f) => f(at));
   };
-  const at = (el: HTMLElement) => [el.style.left, el.style.top];
+  const at = (el: HTMLElement) => el.style.translate;
 
   beforeEach(() => {
     now = 1000;
@@ -113,8 +113,18 @@ describe("PositionAnimator", () => {
     const el = document.createElement("div");
     animator.attach("a", el);
     animator.update([{ id: "a", position: { x: 10, y: 20 } }], MAP_DIAGONAL);
-    expect(at(el)).toEqual(["10%", "20%"]);
+    expect(at(el)).toEqual("10px 20px");
     expect(frames).toHaveLength(0);
+  });
+
+  it("writes a fractional position unrounded, as a translate rather than left and top", () => {
+    const animator = new PositionAnimator(place);
+    const el = document.createElement("div");
+    animator.attach("a", el);
+    animator.update([{ id: "a", position: { x: 4.36, y: 8.725 } }], MAP_DIAGONAL);
+    expect(at(el)).toEqual("4.36px 8.725px");
+    expect(el.style.left).toBe("");
+    expect(el.style.top).toBe("");
   });
 
   it("glides a moved robot frame by frame, lands on its target, then stops", () => {
@@ -126,9 +136,9 @@ describe("PositionAnimator", () => {
     animator.update([{ id: "a", position: { x: 100, y: 0 } }], MAP_DIAGONAL);
     expect(frames).toHaveLength(1);
     runFrame(1150); // halfway through the 100 ms the last update took
-    expect(at(el)).toEqual(["50%", "0%"]);
+    expect(at(el)).toEqual("50px 0px");
     runFrame(1250);
-    expect(at(el)).toEqual(["100%", "0%"]);
+    expect(at(el)).toEqual("100px 0px");
     expect(frames).toHaveLength(0);
   });
 
@@ -137,7 +147,7 @@ describe("PositionAnimator", () => {
     const still = document.createElement("div");
     animator.attach("still", still);
     animator.update([{ id: "still", position: { x: 5, y: 5 } }, { id: "a", position: { x: 0, y: 0 } }], MAP_DIAGONAL);
-    const write = vi.spyOn(still.style, "left", "set");
+    const write = vi.spyOn(still.style, "translate", "set");
     now = 1100;
     animator.update([{ id: "still", position: { x: 5, y: 5 } }, { id: "a", position: { x: 50, y: 0 } }], MAP_DIAGONAL);
     runFrame(1150);
@@ -150,8 +160,8 @@ describe("PositionAnimator", () => {
     animator.update([{ id: "a", position: { x: 10, y: 20 } }], MAP_DIAGONAL);
     const el = document.createElement("div");
     animator.attach("a", el);
-    expect(at(el)).toEqual(["10%", "20%"]);
-    animator.setPlace((p) => ({ left: p.x / 2, top: p.y / 2 }));
-    expect(at(el)).toEqual(["5%", "10%"]);
+    expect(at(el)).toEqual("10px 20px");
+    animator.setPlace((p) => ({ x: p.x / 2, y: p.y / 2 }));
+    expect(at(el)).toEqual("5px 10px");
   });
 });

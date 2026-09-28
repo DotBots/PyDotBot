@@ -77,14 +77,21 @@ export function animating(states: Iterable<PosState>, now: number): boolean {
   return false;
 }
 
-/** Where an element goes for a floor point: CSS left and top, in percent. */
-export type Place = (p: LH2Position) => { left: number; top: number };
+/** Where an element goes for a floor point, in px from its containing block's corner. */
+export type Place = (p: LH2Position) => { x: number; y: number };
+
+/** A point as the CSS `translate` that carries a box at the origin to it. */
+export const translateTo = (q: { x: number; y: number }): string => `${q.x}px ${q.y}px`;
 
 /**
- * Glides each robot's element to its latest position by writing its `left`
- * and `top` directly, one animation frame at a time, so a moving fleet costs
+ * Glides each robot's element to its latest position by writing its CSS
+ * `translate` directly, one animation frame at a time, so a moving fleet costs
  * no React render at all. React owns everything else about the element and
- * never sets those two properties.
+ * never sets that property.
+ *
+ * A translate, not `left`/`top`: the browser snaps a transformed box's layout
+ * offset to a whole pixel before the camera scales it, which spreads an even
+ * grid of robots into uneven gaps once zoomed.
  */
 export class PositionAnimator {
   private states = new Map<string, PosState>();
@@ -160,9 +167,7 @@ export class PositionAnimator {
     const el = this.elements.get(id);
     const state = this.states.get(id);
     if (!el || !state) return;
-    const { left, top } = this.place(positionAt(state, now));
-    el.style.left = `${left}%`;
-    el.style.top = `${top}%`;
+    el.style.translate = translateTo(this.place(positionAt(state, now)));
   }
 }
 

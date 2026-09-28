@@ -193,6 +193,24 @@ describe("waypoints on the map", () => {
   });
 });
 
+describe("where things are placed on the map", () => {
+  // The drawn box's own pixels for a floor point, unrounded.
+  const px = (p: LH2Position) =>
+    `${((p.x - VIEWPORT.x) / VIEWPORT.w) * GEOM.boxW}px ${((p.y - VIEWPORT.y) / VIEWPORT.h) * GEOM.boxH}px`;
+
+  it("carries a robot and its waypoint to their sub-pixel point by a translate", () => {
+    const at = { x: 507.3, y: 511.9 };
+    const target = { x: 613.7, y: 598.1 };
+    render(<Harness bots={[bot("a", at, { waypoints: [target] })]} selection={new Set(["a"])} />);
+    const marker = document.getElementById("bot-a")!;
+    expect(marker.style.translate).toBe(px(at));
+    expect(marker.style.left).toBe("0px");
+    const waypoint = screen.getByTestId("waypoint-a-0");
+    expect(waypoint.style.translate).toBe(px(target));
+    expect(waypoint.style.left).toBe("0px");
+  });
+});
+
 describe("what is drawn around a robot", () => {
   // At the whole-site zoom a robot here is the 8 px floor, a dot; at this
   // scale it is more than a hundred pixels, a board.

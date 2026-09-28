@@ -206,8 +206,12 @@ export const BotMarker = React.memo(function BotMarker({
       onPointerEnter={() => onHover(b.id)}
       onPointerLeave={() => onHover((h) => (h === b.id ? null : h))}
       style={{
+        // At the box's corner; the animator carries it to the robot with a
+        // CSS translate.
         position: "absolute",
-        transform: `translate(-50%, -50%) scale(var(${MARKER_SCALE_VAR}, 1))`,
+        left: 0,
+        top: 0,
+        transform: `scale(var(${MARKER_SCALE_VAR}, 1))`,
         cursor: "pointer",
         zIndex: selected ? 6 : 2,
         width: 0,

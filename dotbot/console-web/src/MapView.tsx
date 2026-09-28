@@ -67,7 +67,7 @@ import {
   UnifiedBot,
   Waypoint,
 } from "./types";
-import { Place, usePositionAnimator } from "./useSmoothPositions";
+import { Place, translateTo, usePositionAnimator } from "./useSmoothPositions";
 import {
   Camera,
   SITE_ZOOM,
@@ -262,14 +262,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const geomRef = useRef<ViewGeom>(viewGeom(1000, 600, props.viewport));
 
   const mapDiagonal = Math.hypot(props.viewport.w, props.viewport.h);
+  const [box, setBox] = useState(() => viewGeom(1000, 600, props.viewport));
   const { x: vx, y: vy, w: vw, h: vh } = props.viewport;
+  const { boxW: bw, boxH: bh } = box;
+  // A floor point in the drawn box's own pixels, where everything on the
+  // floor is placed by a CSS translate.
   const place = useCallback<Place>((p) => {
     const { fx, fy } = areaToFraction(p, { x: vx, y: vy, w: vw, h: vh });
-    return { left: fx * 100, top: fy * 100 };
-  }, [vx, vy, vw, vh]);
+    return { x: fx * bw, y: fy * bh };
+  }, [vx, vy, vw, vh, bw, bh]);
   const animator = usePositionAnimator(props.bots, mapDiagonal, place);
 
-  const [box, setBox] = useState(() => viewGeom(1000, 600, props.viewport));
   const onGeomRef = useRef(props.onGeom);
   onGeomRef.current = props.onGeom;
   const setCamRef = useRef(setCam);
@@ -313,10 +316,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const boxW = box.boxW;
   const boxH = box.boxH;
 
-  const pctPos = (p: LH2Position) => {
-    const { fx, fy } = areaToFraction(p, props.viewport);
-    return { left: fx * 100, top: fy * 100 };
-  };
+  // A box at the drawn box's corner, carried to a floor point.
+  const at = (p: LH2Position) => ({ left: 0, top: 0, translate: translateTo(place(p)) });
 
   // One area as a percentage box of the viewport, so it lands in the same
   // coordinate space as the bots.
@@ -889,10 +890,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // centre, and, with a body to size it from and room to read it, a faint
   // ring holding the whole robot whichever way it ends up facing.
   const centreMarks = (
-    q: { left: number; top: number },
+    p: LH2Position | null,
     template: BotPose | null,
     color: string,
-    here = false,
   ) => {
     const ringPx = template ? axleReachMm(template) * perMm : 0;
     return (
@@ -900,8 +900,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         data-layer="waypoint-centre"
         style={{
           position: "absolute",
-          left: here ? 0 : `${q.left}%`,
-          top: here ? 0 : `${q.top}%`,
+          ...(p ? at(p) : { left: 0, top: 0 }),
           width: 0,
           height: 0,
           transform: `scale(${chrome})`,
@@ -1232,7 +1231,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               const { waypointPx } = botDraw(b);
               const template = silhouetteTemplate(props.bots, [b.id]);
               return b.waypoints.map((w, i) => {
-                const q = pctPos(w);
                 if (isPose(w)) {
                   return (
                     <div
@@ -1240,8 +1238,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       title={describeWaypoint(w, i, b.waypoints.length)}
                       style={{
                         position: "absolute",
-                        left: `${q.left}%`,
-                        top: `${q.top}%`,
+                        ...at(w),
                         transform: `scale(${chrome})`,
                         pointerEvents: "none",
                       }}
@@ -1261,14 +1258,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 }
                 return (
                   <React.Fragment key={`${b.id}-wp-${i}`}>
-                  {centreMarks(q, template, led)}
+                  {centreMarks(w, template, led)}
                   <div
                     data-testid={`waypoint-${b.id}-${i}`}
                     title={describeWaypoint(w, i, b.waypoints.length)}
                     style={{
                       position: "absolute",
-                      left: `${q.left}%`,
-                      top: `${q.top}%`,
+                      ...at(w),
                       width: waypointPx,
                       height: waypointPx,
                       transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
@@ -1292,7 +1288,6 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   : WAYPOINT_MIN_PX;
                 const template = silhouetteTemplate(props.bots, m.ids);
                 return m.waypoints.map((p, i) => {
-                  const q = pctPos(p);
                   const led = m.colors?.[i] ?? m.led ?? "var(--accent)";
                   if (isPose(p)) {
                     const hovered = hoverPose?.key === m.key && hoverPose.index === i;
@@ -1307,8 +1302,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         key={`pend-${m.key}-${i}`}
                         style={{
                           position: "absolute",
-                          left: `${q.left}%`,
-                          top: `${q.top}%`,
+                          ...at(p),
                           transform: `scale(${chrome})`,
                           // Beneath the robots, so a pose over one never takes its clicks
                           zIndex: 1,
@@ -1357,14 +1351,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   }
                   return (
                     <React.Fragment key={`pend-${m.key}-${i}`}>
-                    {centreMarks(q, template, led)}
+                    {centreMarks(p, template, led)}
                     <div
                       data-testid={`planned-${m.key}-${i}`}
                       title={describeWaypoint(p, i + 1, m.waypoints.length + 1)}
                       style={{
                         position: "absolute",
-                        left: `${q.left}%`,
-                        top: `${q.top}%`,
+                        ...at(p),
                         width: waypointPx,
                         height: waypointPx,
                         transform: `translate(-50%, -50%) rotate(45deg) scale(${chrome})`,
@@ -1437,15 +1430,14 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             const owner = selectedBots()[0];
             const diamondPx = owner ? botDraw(owner).waypointPx : WAYPOINT_MIN_PX;
             const led = owner ? ledCss(owner) : "var(--accent)";
-            const q = pctPos(g.phase === "pressing" ? g.at : g.poseAt);
+            const here = g.phase === "pressing" ? g.at : g.poseAt;
             return (
               <div
                 data-testid="placing"
                 data-phase={g.phase}
                 style={{
                   position: "absolute",
-                  left: `${q.left}%`,
-                  top: `${q.top}%`,
+                  ...at(here),
                   transform: `scale(${chrome})`,
                   pointerEvents: "none",
                   zIndex: 8,
@@ -1453,7 +1445,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               >
                 {g.phase === "pressing" ? (
                   <>
-                  {centreMarks({ left: 0, top: 0 }, template, led, true)}
+                  {centreMarks(null, template, led)}
                   <div
                     style={{
                       position: "absolute",
