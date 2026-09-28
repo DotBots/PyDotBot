@@ -146,6 +146,11 @@ class MariNetworkSimulator:
         # Downlinks are scheduled from the controller's thread
         self._lock = threading.Lock()
 
+    @property
+    def min_tx_interval_us(self) -> int:
+        """A joined node's minimum TX interval: the slotframe's duration."""
+        return round(MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms * 1000)
+
     def _slot_delay_s(self, dotbot_index: int, slot_shift: int = 0) -> float:
         slotframe_duration_s = (
             MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms / 1000
@@ -442,6 +447,11 @@ class DotBotSimulatorCommunicationInterface:
         self._mari = None
         if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):
             self._mari = MariNetworkSimulator(self._network, self.on_frame_received)
+            # Mari robots are joined from boot, and advertise at the rate
+            # their firmware derives from the node's TX interval
+            for index, mode in enumerate(self._dotbot_modes):
+                if mode == SimulatedNetworkMode.MARI:
+                    self.core.set_min_tx_interval(index, self._mari.min_tx_interval_us)
         # Commands for the robots, (index, packet), from the controller's thread
         self._inbound = queue.SimpleQueue()
 

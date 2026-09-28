@@ -39,6 +39,10 @@ from dotbot.sim import core as control
 from dotbot.site import Site
 
 
+# The firmware advertises every twice its node's minimum TX interval, the
+# slotframe, once joined: 2 x 126 ms
+MARI_ADVERTISEMENT_TICKS = 25
+
 def _frame(bot_or_address, payload) -> Frame:
     address = getattr(bot_or_address, "address", bot_or_address)
     return Frame(
@@ -257,12 +261,35 @@ def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path)
     slotframe_ticks = math.ceil(
         MARI_SLOTFRAME_SIZE * 1.236 / 1000 / SIMULATOR_STEP_DELTA_T
     )
-    for _ in range(ADVERTISEMENT_TICKS - 1):
+    for _ in range(MARI_ADVERTISEMENT_TICKS - 1):
         interface.step()
     assert not received
     for _ in range(slotframe_ticks + 1):
         interface.step()
     assert len(received) == 1
+
+
+@pytest.mark.parametrize(
+    "network_mode,ticks", [("default", ADVERTISEMENT_TICKS), ("mari", None)]
+)
+def test_a_robot_advertises_at_its_firmware_rate(tmp_path, network_mode, ticks):
+    """A joined Mari robot advertises at the rate its firmware derives from
+    the slotframe, an unjoined one at the firmware's default."""
+    ticks = ticks or MARI_ADVERTISEMENT_TICKS
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": network_mode,
+            }
+        ],
+    )
+    for _ in range(1000):
+        interface.step()
+    assert abs(len(received) - 1000 / ticks) <= 1
 
 
 def test_a_mari_downlink_reaches_its_robot(tmp_path):
