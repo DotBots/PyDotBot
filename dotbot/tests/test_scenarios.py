@@ -187,20 +187,31 @@ async def test_a_robot_moved_by_hand_mid_drive_recovers(scenario):
     assert axle_error_mm(robot, 500, 1800) <= 20
 
 
-async def test_a_robot_moved_while_its_wheels_turn_holds_then_fails(scenario):
-    """Guards the other side of the kidnap rule: a jump the wheels did not
-    stand through is not a kidnap, so the robot holds on a lost pose."""
+async def test_a_robot_moved_while_its_wheels_turn_reseeds_and_arrives(scenario):
+    """Guards the LOST re-anchor: a jump the wheels did not stand through is
+    not a kidnap, so the robot holds on a lost pose, then reseeds once it has
+    stood and spins for a heading before finishing the batch."""
     s = scenario([_bot(direction=0)])
     await s.run(1.0)
     await s.waypoints(A, [(500, 1800)])
     await s.run(1.5)
     robot = s.robots[A]
     robot.kidnap(robot.pos_x + 100, robot.pos_y, robot.heading_deg + 30)
+    statuses = []
 
-    assert await s.run_until_reported([A], "FAILED", seconds=10)
-    assert SteeringState.HOLD in s.states[A]
-    assert SteeringState.RECOVER not in s.states[A]
-    assert s.dotbot(A).waypoints_reason == "HOLD"
+    def watch():
+        if not statuses or statuses[-1] != robot.estimator_status:
+            statuses.append(robot.estimator_status)
+
+    assert await s.run_until_reported([A], "ARRIVED", seconds=20, each_tick=watch)
+
+    assert statuses.index(PoseStatus.LOST) < statuses.index(PoseStatus.SEEDING)
+    states = s.states[A]
+    hold = states.index(SteeringState.HOLD)
+    assert SteeringState.NO_HEADING in states[hold:]
+    assert SteeringState.RECOVER not in states
+    assert s.dotbot(A).waypoints_reason is None
+    assert axle_error_mm(robot, 500, 1800) <= 20
 
 
 async def test_recovering_without_lh2_fails_heading_lost(scenario):
