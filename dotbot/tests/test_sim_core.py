@@ -84,7 +84,9 @@ def test_a_field_offset_the_build_does_not_have_is_refused(monkeypatch):
             for struct, dtype in control.LAYOUT
         ),
     )
-    with pytest.raises(control.ControlCoreError, match="axle_x at offset 46, expected 45"):
+    with pytest.raises(
+        control.ControlCoreError, match="axle_x at offset 46, expected 45"
+    ):
         control.ControlCore(1)
 
 

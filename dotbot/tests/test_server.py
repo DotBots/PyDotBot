@@ -733,9 +733,9 @@ async def test_clear_dotbot_trail(dotbots, address, code, found):
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert robot_object(api.controller, address, 10, api.controller.seq)[
-            "trail"
-        ] == []
+        assert (
+            robot_object(api.controller, address, 10, api.controller.seq)["trail"] == []
+        )
 
 
 @pytest.mark.asyncio

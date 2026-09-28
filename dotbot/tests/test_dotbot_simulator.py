@@ -38,10 +38,10 @@ from dotbot.protocol import (
 from dotbot.sim import core as control
 from dotbot.site import Site
 
-
 # The firmware advertises every twice its node's minimum TX interval, the
 # slotframe, once joined: 2 x 126 ms
 MARI_ADVERTISEMENT_TICKS = 25
+
 
 def _frame(bot_or_address, payload) -> Frame:
     address = getattr(bot_or_address, "address", bot_or_address)

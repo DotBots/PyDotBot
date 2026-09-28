@@ -341,7 +341,9 @@ class QrKeyClient:
                             ):
                                 seq = payload["seq"]
             except websockets_exceptions.ConnectionClosed as exc:
-                self.logger.warning("Controller stream lost, reconnecting", error=str(exc))
+                self.logger.warning(
+                    "Controller stream lost, reconnecting", error=str(exc)
+                )
             except OSError as exc:
                 self.logger.warning("Controller unreachable, retrying", error=str(exc))
             await asyncio.sleep(delay)

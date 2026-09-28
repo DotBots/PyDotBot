@@ -23,8 +23,8 @@ from dotbot.controller import (
     lh2_distance,
 )
 from dotbot.models import (
-    DotBotGPSPosition,
     MAX_TRAIL_SIZE,
+    DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
@@ -260,9 +260,7 @@ async def test_controller_matching_query(query, length, controller):
 @pytest.mark.parametrize(
     "trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
 )
-def test_a_robot_object_returns_the_newest_trail_points(
-    controller, trail, expected
-):
+def test_a_robot_object_returns_the_newest_trail_points(controller, trail, expected):
     """A capped trail keeps the newest points, not the oldest."""
     address = "0000000000000003"
     controller.seed_trail(address, [DotBotLH2Position(x=i, y=i) for i in range(10)])
@@ -1055,7 +1053,6 @@ def test_the_twin_measures_its_first_heading_from_where_it_was_created(
     assert twin.direction == 90
 
 
-
 def test_the_twin_counts_its_wheels_travel_in_encoder_counts(controller, monkeypatch):
     now = [1000.0]
     monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
@@ -1067,6 +1064,7 @@ def test_the_twin_counts_its_wheels_travel_in_encoder_counts(controller, monkeyp
     assert twin._last_encoder_left == int(counts) > 0
     assert twin._last_encoder_right == -int(counts)
     assert twin.encoder_left_acc == 0.0
+
 
 # --- The waypoint report and the commands it confirms ------------------------
 
