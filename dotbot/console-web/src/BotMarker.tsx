@@ -179,9 +179,6 @@ export const BotMarker = React.memo(function BotMarker({
   const stc = bodyColorFor(b, colorMode);
   const pct = batteryPct(b);
   const blink = b.state === "Programming" || b.state === "Resetting";
-  // A robot drawn as a mark is one nobody reads per-robot detail on, so its
-  // own indicators go with the board: the selection ring and the reset badge
-  // stay, being how a robot is found rather than what it says.
   const { draw, footprintPx, selectionPx, batteryPx } = botDraw(b, drawing, perMm, botCount);
   // The board is drawn where the pose puts it, which is not where the
   // photodiode is: the chrome goes with the board, so the ring and the label
