@@ -33,6 +33,7 @@ nitpick_ignore_regex = [
     ("py:class", r"pynput.*"),
     ("py:class", r"threading.*"),
     ("py:class", r"starlette.*"),
+    ("py:class", r"fastapi.*"),
     ("py:class", r"ConfigDict"),
     ("py:class", r"DotenvType"),
     ("py:class", r"FieldInfo"),

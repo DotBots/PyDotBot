@@ -281,7 +281,7 @@ class QrKeyClient:
                 writer.close()
                 break
         url = (
-            f"http://{self.settings.http_host}:{self.settings.http_port}/PyDotBot?"
+            f"{qrkey_settings.frontend_base_url}?"
             f"use_qrkey=true&"
             f"pin={self.qrkey.pin_code}&"
             f"mqtt_host={qrkey_settings.mqtt_host}&"

@@ -19,7 +19,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 from starlette.background import BackgroundTask
@@ -76,10 +76,6 @@ from dotbot.protocol import (
     PayloadWaypointHeading,
 )
 from dotbot.swarm_client import conn_string
-
-PYDOTBOT_FRONTEND_BASE_URL = os.getenv(
-    "PYDOTBOT_FRONTEND_BASE_URL", "https://dotbots.github.io/PyDotBot"
-)
 
 ws_adapter = TypeAdapter(WSMessage)
 
@@ -757,27 +753,26 @@ async def mrta_proxy(path: str, request: Request):
     )
 
 
-# Mount static files after all routes are defined
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "build")
-if os.path.isdir(FRONTEND_DIR):
-    api.mount(
-        "/PyDotBot", StaticFiles(directory=FRONTEND_DIR, html=True), name="PyDotBot"
-    )
-else:
-    LOGGER.warning(
-        "Frontend build not found at %s; the web UI will be unavailable. "
-        "Install the published wheel (pip install --pre pydotbot) or build the "
-        "frontend: cd dotbot/frontend && npm install && npm run build",
-        FRONTEND_DIR,
-    )
+async def root():
+    """Send a browser landing on the bare host to the console."""
+    return RedirectResponse(url="/console/")
 
-# The unified console (map-first PyDotBot + swarmit UI). This is the UI the
-# controller opens; the classic frontend stays mounted at /PyDotBot, which is
-# where the qrkey demo, the REST demo and the SailBot views live.
+
+# The console is the web UI. Mounted after all routes so they take precedence.
 CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
-if os.path.isdir(CONSOLE_DIR):
-    api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
-else:
+
+
+def mount_console(app: FastAPI, directory: str) -> bool:
+    """Serve the console built in `directory` at /console, and redirect / to
+    it; neither route exists without the build. False if it is missing."""
+    if not os.path.isdir(directory):
+        return False
+    app.mount("/console", StaticFiles(directory=directory, html=True), name="console")
+    app.add_api_route("/", root, include_in_schema=False)
+    return True
+
+
+if not mount_console(api, CONSOLE_DIR):
     LOGGER.warning(
         "Console build not found at %s; /console will be unavailable. "
         "Build it with: cd dotbot/console-web && npm install && npm run build",
@@ -789,6 +784,4 @@ def default_ui_path() -> str | None:
     """Path the controller opens on start, or None when no UI is built."""
     if os.path.isdir(CONSOLE_DIR):
         return "/console"
-    if os.path.isdir(FRONTEND_DIR):
-        return "/PyDotBot"
     return None

@@ -1057,20 +1057,49 @@ async def test_connection_reports_the_non_mqtt_adapters(adapter, expected):
 
 
 def test_the_controller_opens_the_console_when_it_is_built(tmp_path, monkeypatch):
-    """The console is the default UI; the classic frontend is the fallback."""
+    """No UI path when the console is not built; /console when it is."""
     import dotbot.server as server
 
-    console, classic = tmp_path / "console", tmp_path / "classic"
-
+    console = tmp_path / "console"
     monkeypatch.setattr(server, "CONSOLE_DIR", str(console))
-    monkeypatch.setattr(server, "FRONTEND_DIR", str(classic))
     assert server.default_ui_path() is None
-
-    classic.mkdir()
-    assert server.default_ui_path() == "/PyDotBot"
 
     console.mkdir()
     assert server.default_ui_path() == "/console"
+
+
+@pytest.mark.asyncio
+async def test_the_root_redirects_to_a_built_console(tmp_path):
+    from fastapi import FastAPI
+
+    from dotbot.server import mount_console
+
+    (tmp_path / "index.html").write_text("<html></html>")
+    app = FastAPI()
+    assert mount_console(app, str(tmp_path))
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as http:
+        result = await http.get("/", follow_redirects=False)
+        console = await http.get("/console/")
+    assert result.status_code == 307
+    assert result.headers["location"] == "/console/"
+    assert console.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_without_a_console_build_the_root_is_not_found(tmp_path):
+    from fastapi import FastAPI
+
+    from dotbot.server import mount_console
+
+    app = FastAPI()
+    assert not mount_console(app, str(tmp_path / "missing"))
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as http:
+        result = await http.get("/", follow_redirects=False)
+    assert result.status_code == 404
 
 
 def test_the_api_binds_loopback_unless_asked_otherwise():

@@ -11,7 +11,7 @@ you write against the simulator runs unchanged against real DotBots.
 dotbot run simulator
 ```
 
-This opens the web UI at <http://localhost:8000/PyDotBot/> driving a simulated
+This opens the web console at <http://localhost:8000/console/> driving a simulated
 swarm. `dotbot run simulator` is shorthand for
 `dotbot run controller --conn simulator`, so everything in the
 [controller + web UI guide](controller.md) applies. Drive the DotBots from the

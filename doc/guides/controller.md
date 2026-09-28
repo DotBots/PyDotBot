@@ -22,9 +22,10 @@ dotbot run controller --conn simulator
 `--conn` takes one string: a serial device path (`/dev/ttyACM0`, `COM3` on
 Windows), an MQTT broker (`mqtts://host:port`), or `simulator`.
 
-The dashboard opens in a browser tab automatically. Pass `--headless` to
+The web console opens in a browser tab automatically. Pass `--headless` to
 suppress that (it's still served); browse to
-<http://localhost:8000/PyDotBot> yourself.
+<http://localhost:8000/console/> yourself (<http://localhost:8000/> redirects
+there).
 
 | Flag | What it does |
 |---|---|
@@ -62,11 +63,11 @@ discovered and the full schema.
 
 ## The web UI
 
-At <http://localhost:8000/PyDotBot> the page lists every DotBot the controller
+At <http://localhost:8000/console/> a map shows every DotBot the controller
 sees. Select one to control it:
 
 - **Joystick** - a virtual joystick drives the selected DotBot.
-- **RGB LED** - pick a color and the DotBot's LED follows.
+- **Waypoints** - set waypoints on the map for the selected DotBots to drive to.
 - If you flashed Lighthouse 2 localization, DotBots report their `(x, y)` position
   on the map (see [LH2 calibration](lh2-calibration.md)).
 
