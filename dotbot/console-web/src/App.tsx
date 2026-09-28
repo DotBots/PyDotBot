@@ -153,6 +153,13 @@ export const App: React.FC = () => {
     },
     [showToast],
   );
+  // A failed waypoint request says so and names what failed; the toast it
+  // replaces had said it was sent.
+  const reportFailure = useCallback(
+    (what: string) => (err: unknown) =>
+      showToast(`${what} failed: ${err instanceof Error ? err.message : String(err)}`),
+    [showToast],
+  );
   const mrta = useMrta();
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
@@ -545,6 +552,12 @@ export const App: React.FC = () => {
     [drivableSelected, planned, selection, showToast, spread],
   );
 
+  // A mission whose request failed goes back to the plan, unless one was
+  // planned under its key meanwhile.
+  const restoreMission = useCallback((m: PlannedMission) => {
+    setPlanned((prev) => (prev.some((x) => x.key === m.key) ? prev : [...prev, m]));
+  }, []);
+
   // Each robot its own single-target batch; the hazards are hints, so they
   // only ask before sending.
   const sendSpread = useCallback(
@@ -560,13 +573,20 @@ export const App: React.FC = () => {
         if (!window.confirm(`${lines.join("\n")}\n\nSend anyway?`)) return;
       }
       const batches = Object.fromEntries(plan.order.map((id, t) => [id, [m.waypoints[t]]]));
-      putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
-      setSpreadRun({ order: plan.order, targets: m.waypoints });
+      const order = spread[m.key];
+      const run = { order: plan.order, targets: m.waypoints };
+      putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, (err) => {
+        reportFailure("Send")(err);
+        restoreMission(m);
+        setSpread((prev) => ({ ...prev, [m.key]: order }));
+        setSpreadRun((prev) => (prev === run ? null : prev));
+      });
+      setSpreadRun(run);
       showToast(`${robots.length} robots sent to their own targets`);
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
       setSpread((prev) => ({ ...prev, [m.key]: null }));
     },
-    [bots, showToast, reportUnknown, arrivalMm, wpSettings, spread, site],
+    [bots, showToast, reportUnknown, reportFailure, restoreMission, arrivalMm, wpSettings, spread, site],
   );
 
   const sendMission = useCallback(
@@ -578,7 +598,10 @@ export const App: React.FC = () => {
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
       if (targets.length > 0) {
         const batches = Object.fromEntries(targets.map((b) => [b.id, m.waypoints]));
-        putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
+        putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, (err) => {
+          reportFailure("Send")(err);
+          restoreMission(m);
+        });
       }
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
@@ -587,7 +610,7 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast, reportUnknown, arrivalMm, wpSettings, spread, sendSpread],
+    [bots, showToast, reportUnknown, reportFailure, restoreMission, arrivalMm, wpSettings, spread, sendSpread],
   );
 
   const onSpreadToggle = useCallback(
@@ -631,9 +654,9 @@ export const App: React.FC = () => {
   );
 
   const onStopNav = useCallback(() => {
-    clearWaypoints(drivableSelected.map((b) => b.id)).then(reportUnknown, () => {});
+    clearWaypoints(drivableSelected.map((b) => b.id)).then(reportUnknown, reportFailure("Stop"));
     if (drivableSelected.length > 0) showToast("Navigation stopped");
-  }, [drivableSelected, showToast, reportUnknown]);
+  }, [drivableSelected, showToast, reportUnknown, reportFailure]);
 
   // Redo sends each bot the mission it last ran, which the controller still
   // holds after the bot arrived. Each bot gets its own list, so a selection
@@ -642,9 +665,9 @@ export const App: React.FC = () => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
     const batches = Object.fromEntries(again.map((b) => [b.id, lastMissionTargets(b)]));
-    putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, () => {});
+    putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportUnknown, reportFailure("Redo"));
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast, reportUnknown, arrivalMm, wpSettings]);
+  }, [selectedBots, showToast, reportUnknown, reportFailure, arrivalMm, wpSettings]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -739,10 +762,10 @@ export const App: React.FC = () => {
   const onStopMission = useCallback(
     (ids: string[]) => {
       const stop = bots.filter((b) => ids.includes(b.id) && b.drivable).map((b) => b.id);
-      clearWaypoints(stop).then(reportUnknown, () => {});
+      clearWaypoints(stop).then(reportUnknown, reportFailure("Interrupt"));
       showToast("Mission interrupted");
     },
-    [bots, showToast, reportUnknown],
+    [bots, showToast, reportUnknown, reportFailure],
   );
 
   // Clearing a batch is an empty one: the robot stops and the controller
@@ -750,10 +773,10 @@ export const App: React.FC = () => {
   const onClearWaypoints = useCallback(
     (ids: string[]) => {
       const targets = bots.filter((b) => ids.includes(b.id) && b.link !== "unknown");
-      clearWaypoints(targets.map((b) => b.id)).then(reportUnknown, () => {});
+      clearWaypoints(targets.map((b) => b.id)).then(reportUnknown, reportFailure("Clear"));
       showToast(`Waypoints cleared · ${targets.length} bot${targets.length === 1 ? "" : "s"}`);
     },
-    [bots, showToast, reportUnknown],
+    [bots, showToast, reportUnknown, reportFailure],
   );
 
   const layerRows: { key: keyof Layers; label: string }[] = [

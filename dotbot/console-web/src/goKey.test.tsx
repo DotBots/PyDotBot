@@ -200,4 +200,22 @@ describe("the go key", () => {
     expect(clearWaypoints).not.toHaveBeenCalled();
     expect(screen.queryByText("Navigation stopped")).not.toBeInTheDocument();
   });
+
+  it("puts the mission back and says so when the send fails", async () => {
+    vi.mocked(putWaypointBatches).mockRejectedValueOnce(new Error("waypoints: HTTP 422"));
+    select("1111");
+    render(<App />);
+    queueWaypoint();
+    press(ACTION_KEY.go.toLowerCase());
+    expect(await screen.findByText("Send failed: waypoints: HTTP 422")).toBeInTheDocument();
+    expect(screen.getByTestId(/^planned-/)).toBeInTheDocument();
+  });
+
+  it("says so when a stop fails", async () => {
+    vi.mocked(clearWaypoints).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    select("2222");
+    render(<App />);
+    press(ACTION_KEY.go);
+    expect(await screen.findByText("Stop failed: Failed to fetch")).toBeInTheDocument();
+  });
 });
