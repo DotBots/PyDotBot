@@ -209,7 +209,6 @@ const BOTTOM_LINE_PX =
 
 // How far a pointer travels before a press is a drag rather than a click.
 const DRAG_MIN_PX = 5;
-export { WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./BotMarker";
 // Below this radius on screen a waypoint's footprint ring is not drawn.
 const WAYPOINT_RING_MIN_PX = 14;
 // How much of an area's colour washes its floor.
@@ -1381,12 +1380,8 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
             >
               {props.spreadLegs.map((l, i) => {
-                const px = (p: LH2Position) => {
-                  const { fx, fy } = areaToFraction(p, props.viewport);
-                  return { x: fx * boxW, y: fy * boxH };
-                };
-                const b = px(l.to);
-                const a = l.from ? px(l.from) : null;
+                const b = place(l.to);
+                const a = l.from ? place(l.from) : null;
                 const ring = (l.ringMm * boxW) / props.viewport.w;
                 return (
                   <g key={`${l.id}-${i}`} data-testid={`spread-leg-${l.id}`} data-crossing={l.crossing}>
@@ -1410,7 +1405,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                         cx={b.x}
                         cy={b.y}
                         r={ring}
-                        fill="rgba(239,68,68,.08)"
+                        fill="color-mix(in srgb, var(--s-Stopping) 8%, transparent)"
                         stroke="var(--s-Stopping)"
                         strokeWidth={1.5 * chrome}
                         strokeDasharray={`${4 * chrome} ${3 * chrome}`}
