@@ -141,3 +141,54 @@ async def test_the_transport_is_found_from_the_server_send():
     protocol = Protocol()
     await TransportScope(app)({"type": "websocket"}, None, protocol.send)
     assert seen[TRANSPORT_KEY] is protocol.transport
+
+
+def test_transport_scope_is_the_outermost_middleware():
+    assert api.user_middleware[0].cls is TransportScope
+
+
+@pytest.mark.asyncio
+async def test_uvicorn_hands_transport_scope_the_real_transport():
+    """Against a real uvicorn server, a websocket's scope carries the
+    connection's transport, so a server release that stops exposing it
+    fails here rather than leaving write_buffer_size() silently at 0."""
+    import socket
+
+    import uvicorn
+    from fastapi import FastAPI, WebSocket
+    from websockets.asyncio.client import connect
+
+    app = FastAPI()
+    app.add_middleware(TransportScope)
+    seen = {}
+
+    @app.websocket("/ws")
+    async def endpoint(websocket: WebSocket):
+        await websocket.accept()
+        seen["transport"] = websocket.scope.get(TRANSPORT_KEY)
+        seen["buffered"] = write_buffer_size(websocket)
+        await websocket.send_text("ok")
+        await websocket.close()
+
+    sock = socket.socket()
+    try:
+        sock.bind(("127.0.0.1", 0))
+    except OSError as exc:
+        sock.close()
+        pytest.skip(f"cannot bind a loopback port: {exc}")
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(app, log_level="critical", timeout_graceful_shutdown=0)
+    )
+    task = asyncio.create_task(server.serve(sockets=[sock]))
+    try:
+        while not server.started:
+            await asyncio.sleep(0.01)
+        async with connect(f"ws://127.0.0.1:{port}/ws") as websocket:
+            assert await websocket.recv() == "ok"
+    finally:
+        server.should_exit = True
+        await task
+        sock.close()
+    assert isinstance(seen["transport"], asyncio.Transport)
+    assert seen["buffered"] == 0
