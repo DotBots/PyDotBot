@@ -824,7 +824,7 @@ def test_the_old_status_endpoint_is_gone(controller):
 async def test_the_rest_list_is_the_model_serialised(controller):
     """The list built from the stream's cached dumps reads as FastAPI would
     serialise the robot models it documents."""
-    from dotbot.models import DotBotModel, DotBotQueryModel, DotBotWaypoints
+    from dotbot.models import DotBotModel, DotBotWaypoints
 
     advertise(
         controller, 0x42, axle_x=1000, axle_y=971, waypoints_status=3, report=True
@@ -841,9 +841,10 @@ async def test_the_rest_list_is_the_model_serialised(controller):
         addr_to_hex(0x42), [DotBotLH2Position(x=i, y=i) for i in range(5)]
     )
     expected = [
-        DotBotModel.model_validate(m.model_dump()).model_dump(
-            mode="json", exclude_none=True
-        )
-        for m in controller.get_dotbots(DotBotQueryModel(trail=3))
+        DotBotModel.model_validate(
+            dotbot.model_dump()
+            | {"trail": controller.records[address].trail.models(3)}
+        ).model_dump(mode="json", exclude_none=True)
+        for address, dotbot in controller.dotbots.items()
     ]
     assert list((await rest_fleet(3)).values()) == expected

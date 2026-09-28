@@ -178,16 +178,14 @@ class RobotRecord:
 
     `revs` maps a field of the model, or "trail", to the controller `seq` it
     last changed at. `trail` holds the points, each with the `seq` it was
-    added at. `created`, `trail_reset` and `evicted` are the seq
-    the robot appeared at, its trail was last cleared at, and of the newest
-    point dropped off the trail's full end.
+    added at. `created` and `trail_reset` are the seq the robot appeared at
+    and its trail was last cleared at.
     """
 
     revs: Dict[str, int] = dataclasses.field(default_factory=dict)
     trail: Trail = dataclasses.field(default_factory=Trail)
     created: int = 0
     trail_reset: int = 0
-    evicted: int = 0
     # The robot's fields as the stream last dumped them, at `changed` seq
     dump_seq: int = -1
     dump: Dict[str, object] = dataclasses.field(default_factory=dict)
@@ -671,7 +669,6 @@ class Controller:
     def _append_trail(self, record: RobotRecord, point, seq: int) -> None:
         evicted = record.trail.append(seq, point)
         if evicted is not None:
-            record.evicted = evicted
             self.max_evicted = max(self.max_evicted, evicted)
         record.revs["trail"] = seq
 
@@ -709,18 +706,6 @@ class Controller:
         """Set the state an event carries; stream clients get its latest."""
         self.seq += 1
         self.events[key] = (self.seq, name, data)
-
-    def trail(self, address: str) -> List:
-        """A robot's trail, oldest first."""
-        record = self.records.get(address)
-        return [] if record is None else record.trail.models()
-
-    def dotbot_with_trail(self, address: str, trail: int) -> DotBotModel:
-        """A copy of a robot's model carrying the newest `trail` points of
-        its trail."""
-        record = self.records.get(address)
-        points = [] if record is None else record.trail.models(trail)
-        return self.dotbots[address].model_copy(update={"trail": points})
 
     def handle_received_frame(
         self, frame: Frame
@@ -1133,13 +1118,6 @@ class Controller:
         geometry record for, with its photodiode at the origin."""
         origin = DotBotLH2Position(x=0, y=0)
         return {device: device_pose(device, origin) for device in SWARMIT_DEVICE_MODELS}
-
-    def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
-        """Returns the list of dotbots matching the query."""
-        return [
-            self.dotbot_with_trail(address, query.trail)
-            for address in self.matching(query)
-        ]
 
     def matching(self, query: DotBotQueryModel) -> List[str]:
         """The addresses of the dotbots matching the query, in order."""

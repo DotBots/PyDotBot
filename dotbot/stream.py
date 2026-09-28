@@ -226,7 +226,6 @@ class StreamClient:
     websocket: WebSocket
     options: StreamOptions
     sent_seq: int = 0
-    acked_seq: int = 0
     acking: bool = False
     # (seq, sent at) of each frame batch not yet acked, oldest first
     unacked: Deque[Tuple[int, float]] = field(default_factory=deque)
@@ -252,7 +251,6 @@ class StreamClient:
         if not self.acking:
             self.acking = True
             self.due = 0.0
-        self.acked_seq = max(self.acked_seq, seq)
         while self.unacked and self.unacked[0][0] <= seq:
             self.unacked.popleft()
 
@@ -296,7 +294,7 @@ class StreamHub:
         """A client for `websocket`, resumed from `options.since` when it can be."""
         client = StreamClient(websocket, options)
         if resumable(self.controller, options.since, options.run, options.trail):
-            client.sent_seq = client.acked_seq = options.since
+            client.sent_seq = options.since
             client.snapshot_pending = False
         return client
 

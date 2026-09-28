@@ -45,15 +45,6 @@ def write_buffer_size(websocket: WebSocket) -> int:
         return 0
 
 
-def abort_transport(websocket: WebSocket) -> bool:
-    """Drop the connection now, discarding unsent data; False if unknown."""
-    transport = _transport(websocket)
-    if transport is None:
-        return False
-    transport.abort()
-    return True
-
-
 async def close_websocket(websocket: WebSocket, timeout: float = CLOSE_TIMEOUT):
     """Close a client's websocket, aborting the connection unless the client
     answers the close within `timeout` with nothing left unsent.

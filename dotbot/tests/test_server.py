@@ -39,6 +39,7 @@ from dotbot.protocol import (
 from dotbot.robots import ROBOT_DEFAULT
 from dotbot.server import api
 from dotbot.site import Site
+from dotbot.stream import robot_object
 from dotbot.tests.camera_fixtures import (
     DEV_CORNER,
     delivering,
@@ -71,8 +72,6 @@ def controller():
         "update_dotbot",
         "seed_trail",
         "clear_trail",
-        "trail",
-        "dotbot_with_trail",
         "matching",
     ):
         setattr(api.controller, name, getattr(Controller, name).__get__(api.controller))
@@ -734,7 +733,9 @@ async def test_clear_dotbot_trail(dotbots, address, code, found):
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert api.controller.trail(address) == []
+        assert robot_object(api.controller, address, 10, api.controller.seq)[
+            "trail"
+        ] == []
 
 
 @pytest.mark.asyncio

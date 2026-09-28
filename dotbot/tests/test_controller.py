@@ -24,6 +24,7 @@ from dotbot.controller import (
 )
 from dotbot.models import (
     DotBotGPSPosition,
+    MAX_TRAIL_SIZE,
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
@@ -45,7 +46,7 @@ from dotbot.protocol import (
 )
 from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
-from dotbot.stream import delta_frames
+from dotbot.stream import delta_frames, robot_object
 from dotbot.twin import wheel_speed_from_pwm
 
 # A measured site, which the package never ships.
@@ -61,6 +62,16 @@ C405 = Site(
 
 # The 1 x 1 m patch a camera is registered over, in C405's frame.
 DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
+
+
+def _trail(controller, address):
+    """A robot's whole trail, oldest first, as REST returns it."""
+    return [
+        DotBotLH2Position(x=p["x"], y=p["y"])
+        for p in robot_object(controller, address, MAX_TRAIL_SIZE, controller.seq)[
+            "trail"
+        ]
+    ]
 
 
 @pytest.fixture
@@ -241,24 +252,23 @@ async def test_controller_dont_send(controller):
         ),
     ],
 )
-async def test_controller_get_dotbots_query(query, length, controller):
-    """Check controller get_dotbots query."""
-    dotbots = controller.get_dotbots(query=query)
-    assert len(dotbots) == length
+async def test_controller_matching_query(query, length, controller):
+    """Check the controller's query matching."""
+    assert len(controller.matching(query)) == length
 
 
 @pytest.mark.parametrize(
     "trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
 )
-def test_controller_get_dotbots_returns_the_newest_trail_points(
+def test_a_robot_object_returns_the_newest_trail_points(
     controller, trail, expected
 ):
     """A capped trail keeps the newest points, not the oldest."""
     address = "0000000000000003"
     controller.seed_trail(address, [DotBotLH2Position(x=i, y=i) for i in range(10)])
-    (result,) = controller.get_dotbots(DotBotQueryModel(address=address, trail=trail))
-    assert [p.x for p in result.trail] == expected
-    assert len(controller.trail(address)) == 10
+    result = robot_object(controller, address, trail, controller.seq)
+    assert [p["x"] for p in result["trail"]] == expected
+    assert len(_trail(controller, address)) == 10
 
 
 def test_controller_sailbot_simulator():
@@ -869,7 +879,7 @@ async def test_the_advertisement_before_the_first_fix_leaves_no_position(control
     controller.handle_received_frame(
         _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
     )
-    history = controller.trail(addr_to_hex(BOT))
+    history = _trail(controller, addr_to_hex(BOT))
     assert [(p.x, p.y) for p in history] == [(1000, 1000)]
 
 
@@ -883,7 +893,7 @@ async def test_a_fix_at_the_origin_is_kept_once_the_robot_has_a_position(control
     )
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
-    history = controller.trail(addr_to_hex(BOT))
+    history = _trail(controller, addr_to_hex(BOT))
     assert [(p.x, p.y) for p in history] == [(1000, 1000), (0, 0)]
 
 
@@ -1346,7 +1356,7 @@ async def test_a_patch_carries_the_new_fix_and_no_trail(controller):
         "heading_deg": 0.0,
         "heading_source": "travel",
     }
-    assert len(controller.trail(addr_to_hex(BOT))) == 1000
+    assert len(_trail(controller, addr_to_hex(BOT))) == 1000
 
 
 @pytest.mark.asyncio
