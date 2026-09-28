@@ -34,7 +34,7 @@ export type RobotPatch = Record<string, unknown> & {
 export interface StreamDelta {
   type: "delta";
   seq: number;
-  robots: Record<string, RobotPatch | null>;
+  robots: Record<string, RobotPatch>;
 }
 
 export interface StreamEvent {
@@ -83,6 +83,8 @@ export class FleetStream {
   seq: number | null = null;
   run: string | null = null;
   private parts: PyDotBot[] = [];
+  /** The run a hello announced, taken as `run` with the snapshot that follows. */
+  private pendingRun: string | null = null;
 
   constructor(readonly trail: number) {}
 
@@ -100,7 +102,12 @@ export class FleetStream {
   apply(frame: StreamFrame): { ack: number | null; robots: boolean } {
     switch (frame.type) {
       case "hello":
-        this.run = frame.run;
+        if (!frame.resumed || frame.run !== this.run) {
+          // A snapshot follows; until it completes there is nothing to resume from
+          this.seq = null;
+          this.run = null;
+        }
+        this.pendingRun = frame.run;
         return { ack: null, robots: false };
       case "snapshot":
         if (frame.part === 1) this.parts = [];
@@ -109,12 +116,11 @@ export class FleetStream {
         this.robots = Object.fromEntries(this.parts.map((r) => [r.address, r]));
         this.parts = [];
         this.seq = frame.seq;
+        this.run = this.pendingRun;
         return { ack: frame.seq, robots: true };
       case "delta":
         for (const [address, patch] of Object.entries(frame.robots)) {
-          if (patch === null) {
-            delete this.robots[address];
-          } else if (this.robots[address] === undefined || "address" in patch) {
+          if (this.robots[address] === undefined || "address" in patch) {
             // A robot new to this client arrives as its whole object
             this.robots[address] = { ...(patch as unknown as PyDotBot) };
           } else {
@@ -136,9 +142,19 @@ export interface StreamHandlers {
   onUp: (up: boolean) => void;
 }
 
+/** Reconnect delays: doubling from the first, capped, with up to half again as jitter. */
+export const RECONNECT_MIN_MS = 1000;
+export const RECONNECT_MAX_MS = 30000;
+
+export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
+  const base = Math.min(RECONNECT_MAX_MS, RECONNECT_MIN_MS * 2 ** attempt);
+  return base + base * 0.5 * random();
+}
+
 /**
- * Keep a stream open to `baseUrl`, reconnecting a second after it closes and
- * resuming from the last applied seq. Returns the function that stops it.
+ * Keep a stream open to `baseUrl`, reconnecting with capped exponential
+ * backoff after it closes and resuming from the last applied seq. Returns the
+ * function that stops it.
  */
 export function connectStream(
   baseUrl: string,
@@ -147,15 +163,28 @@ export function connectStream(
 ): () => void {
   let ws: WebSocket | null = null;
   let closed = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
   const connect = () => {
-    ws = new WebSocket(`${baseUrl}${fleet.resumeQuery()}`);
-    ws.onopen = () => handlers.onUp(true);
-    ws.onclose = () => {
-      handlers.onUp(false);
-      if (!closed) setTimeout(connect, 1000);
+    timer = null;
+    if (closed) return;
+    const socket = new WebSocket(`${baseUrl}${fleet.resumeQuery()}`);
+    ws = socket;
+    socket.onopen = () => {
+      if (closed || ws !== socket) return;
+      attempt = 0;
+      handlers.onUp(true);
     };
-    ws.onerror = () => ws?.close();
-    ws.onmessage = (ev) => {
+    socket.onclose = () => {
+      if (ws !== socket) return;
+      ws = null;
+      if (closed) return;
+      handlers.onUp(false);
+      timer = setTimeout(connect, reconnectDelay(attempt++));
+    };
+    socket.onerror = () => socket.close();
+    socket.onmessage = (ev) => {
+      if (closed || ws !== socket) return;
       let frame: StreamFrame;
       try {
         frame = JSON.parse(ev.data);
@@ -165,14 +194,18 @@ export function connectStream(
       const { ack, robots } = fleet.apply(frame);
       if (robots) handlers.onRobots(fleet.robots);
       if (frame.type === "event") handlers.onEvent(frame);
-      if (ack !== null && ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ ack }));
+      if (ack !== null && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ ack }));
       }
     };
   };
   connect();
   return () => {
     closed = true;
-    ws?.close();
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    const socket = ws;
+    ws = null;
+    socket?.close();
   };
 }
