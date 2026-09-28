@@ -52,12 +52,8 @@ STALL_S = 15.0
 WRITE_BUFFER_LIMIT = 256 * 1024
 TICK_S = 1 / HZ_MAX
 
-_encode = json.JSONEncoder(separators=(",", ":")).encode
-
-
-def encode(value) -> str:
-    """Compact JSON, as every stream frame is encoded."""
-    return _encode(value)
+# Compact JSON, as every stream frame is encoded
+encode = json.JSONEncoder(separators=(",", ":")).encode
 
 
 def _clamp(value: Optional[str], default: int, low: int, high: int) -> int:
@@ -160,14 +156,14 @@ def delta_frames(controller, since: int, trail: int) -> List[str]:
         robots[address] = robot_patch(controller, address, since, trail)
     frames = []
     if robots:
-        frames.append(_encode({"type": "delta", "seq": seq, "robots": robots}))
+        frames.append(encode({"type": "delta", "seq": seq, "robots": robots}))
     frames.extend(event_frames(controller, since, seq))
     return frames
 
 
 def event_frames(controller, since: int, seq: int) -> List[str]:
     return [
-        _encode({"type": "event", "seq": seq, "event": name, "data": data})
+        encode({"type": "event", "seq": seq, "event": name, "data": data})
         for event_seq, name, data in list(controller.events.values())
         if event_seq > since
     ]
@@ -192,7 +188,7 @@ def snapshot_frames(controller, trail: int) -> Tuple[int, Iterator[str]]:
                 for address in chunk
                 if address in controller.dotbots
             ]
-            yield _encode(
+            yield encode(
                 {
                     "type": "snapshot",
                     "seq": seq,
@@ -275,7 +271,7 @@ class StreamHub:
         self.logger = LOGGER.bind(context=__name__)
 
     def hello(self, client: StreamClient) -> str:
-        return _encode(
+        return encode(
             {
                 "type": "hello",
                 "protocol": PROTOCOL,
