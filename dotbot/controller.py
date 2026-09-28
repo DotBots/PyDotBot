@@ -224,7 +224,7 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
-    swarmit_url: str = SWARMIT_URL_DEFAULT
+    swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: str = MRTA_URL_DEFAULT
 
 

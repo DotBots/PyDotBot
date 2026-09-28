@@ -318,7 +318,8 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     type=str,
     help=(
         "Base URL of the swarmit server the controller proxies /swarmit/* "
-        f"requests to (for the web console). Defaults to '{SWARMIT_URL_DEFAULT}'."
+        f"requests to (for the web console). Defaults to '{SWARMIT_URL_DEFAULT}', "
+        "or to none for a simulator."
     ),
 )
 @click.option(
@@ -473,6 +474,10 @@ def main(
     data = {k: v for k, v in file_data.items() if k not in dropped}
     data.update(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
+    if data.get("adapter", "").endswith("simulator") and "swarmit_url" not in data:
+        # The default swarmit server is the one serving the real robots
+        data["swarmit_url"] = None
+        print("Swarmit server: none (a simulator uses one only with --swarmit-url)")
 
     controller_settings = ControllerSettings(**data)
 

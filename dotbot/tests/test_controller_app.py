@@ -92,7 +92,7 @@ def test_run_controller_swarmit_url_from_unified_config(
     controller, _asyncio_run, tmp_path
 ):
     """`[run.controller] swarmit_url` in dotbot.toml reaches the settings;
-    without it the built-in default applies."""
+    without it a simulator has no swarmit server."""
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
@@ -112,6 +112,20 @@ swarmit_url = "http://lab:9001"
     assert settings.swarmit_url == "http://lab:9001"
 
     result = runner.invoke(main, ["--conn", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.swarmit_url is None
+    assert "Swarmit server: none" in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_a_testbed_connection_keeps_the_default_swarmit_server(
+    controller, _asyncio_run
+):
+    runner = CliRunner()
+    result = runner.invoke(main, ["--conn", "mqtts://argus:8883", "--swarm-id", "A001"])
     assert result.exit_code == 0, result.output
     settings = controller.call_args.args[0]
     assert settings.swarmit_url == "http://localhost:8001"

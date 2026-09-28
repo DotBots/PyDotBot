@@ -897,6 +897,16 @@ async def test_swarmit_proxy_unreachable(monkeypatch):
     assert b"swarmit server unreachable" in response.content
 
 
+def test_swarmit_proxy_without_a_server_is_404_and_reaches_nothing(monkeypatch):
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", MagicMock())
+    api.controller.settings.swarmit_url = None
+    response = TestClient(api).get("/swarmit/status")
+    assert response.status_code == 404
+    server_module.httpx.AsyncClient.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 

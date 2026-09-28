@@ -872,6 +872,8 @@ SWARMIT_PROXY_TIMEOUT = httpx.Timeout(5.0, read=None)
 async def swarmit_proxy(path: str, request: Request):
     """Forward /swarmit/* to the configured swarmit server (same-origin for
     the web console; the streaming body keeps SSE responses live)."""
+    if api.controller.settings.swarmit_url is None:
+        return Response(status_code=404, content=b"no swarmit server configured")
     base = api.controller.settings.swarmit_url.rstrip("/")
     client = httpx.AsyncClient(timeout=SWARMIT_PROXY_TIMEOUT)
     upstream_request = client.build_request(
