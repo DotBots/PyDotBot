@@ -113,9 +113,12 @@ def test_a_fix_is_due_once_per_ten_ticks():
     core = control.ControlCore(2)
     inputs = np.zeros(2, control.INPUT)
     inputs["elapsed_ticks"] = 1
+    core.step(inputs)
     due = []
     for _ in range(40):
+        left = core.next_fix_due()
         due.append(core.fix_due(1))
+        assert (left == due[-1]).all()
         core.step(inputs)
     due = np.array(due)
     assert due.sum(axis=0).tolist() == [4, 4]

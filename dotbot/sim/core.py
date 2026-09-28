@@ -288,6 +288,11 @@ class ControlCore:
     def fix_due(self, elapsed_ticks: int = 1) -> np.ndarray:
         """Per robot, whether the next step, `elapsed_ticks` on, reads its fix."""
         self._call("fleet_fix_due", elapsed_ticks, self._fix_due)
+        return self.next_fix_due()
+
+    def next_fix_due(self) -> np.ndarray:
+        """Per robot, whether a next step of one tick reads its fix, as the
+        last step left it, without a call into the core."""
         data = self._memory.read(self._store, self._fix_due, self._fix_due + self.count)
         return np.frombuffer(data, np.uint8).astype(bool)
 

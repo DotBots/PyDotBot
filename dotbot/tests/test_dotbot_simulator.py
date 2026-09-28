@@ -473,3 +473,17 @@ def test_a_waypoint_batch_is_driven_by_the_firmware(tmp_path):
     assert advert.waypoints_status == WaypointsStatus.ARRIVED
     assert (advert.batch_id, advert.waypoint_idx) == (4, 1)
     assert advert.mode == ControlModeType.MANUAL
+
+
+def test_a_visible_robot_gets_a_fix_only_when_its_firmware_reads_one(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}],
+    )
+    before = int(interface.plant.fix_sequence[0])
+    for _ in range(100):
+        interface.step()
+    assert int(interface.plant.fix_sequence[0]) - before == 10
+    assert int(interface.reports()[0]["fix_sequence"]) == int(
+        interface.plant.fix_sequence[0]
+    )

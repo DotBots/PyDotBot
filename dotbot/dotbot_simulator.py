@@ -508,7 +508,8 @@ class DotBotSimulatorCommunicationInterface:
             except queue.Empty:
                 break
             self.core.rx(index, packet)
-        outputs = self._tick(self.visible)
+        # Fixes only for the robots whose firmware reads one this tick
+        outputs = self._tick(self.visible & self.core.next_fix_due())
         self.ticks += 1
         self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
         self._models_update()
