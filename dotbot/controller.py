@@ -95,7 +95,6 @@ from dotbot.swarm_client import build_swarmit_client, conn_string
 from dotbot.trail import Trail
 from dotbot.twin import DotBotTwin
 
-
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
 # A robot silent this long no longer names what a camera sees.
