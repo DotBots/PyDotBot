@@ -337,21 +337,13 @@ export function swarmitEventsUrl(): string {
 
 export interface MrtaPoll {
   status: MrtaStatus;
-  /** Whether the controller proxies to an MRTA server at all (`--mrta-url`
-   * set). False is the default - MRTA is opt-in - and is when the console
-   * must not render the toggle at all, rather than show it as unavailable. */
+  /** Whether the controller proxies to an MRTA server at all (`--mrta-url`). */
   configured: boolean;
 }
 
-// MRTA mode lives behind the controller's /mrta proxy. The proxy answers 404
-// immediately, without touching any network, when the controller has no
-// `mrta_url` configured (the default) - and a controller too old to know the
-// route 404s the same way - so 404 is read as "not configured" here. A
-// reachable-but-erroring proxy (502, a genuine timeout) means MRTA *was*
-// asked for but is not up right now, which collapses into MRTA_UNAVAILABLE
-// same as before, with the toggle still shown. A request that fails outright
-// (the controller itself unreachable) defaults to "not configured" too, same
-// as every other never-confirmed state here: hidden until proven otherwise.
+// MRTA mode lives behind the controller's /mrta proxy, which answers 404 when
+// no MRTA server is configured. Any other failure is a configured server that
+// is not up; an unreachable controller counts as not configured.
 export async function fetchMrtaStatus(): Promise<MrtaPoll> {
   try {
     const res = await fetch(`${MRTA}/status`);

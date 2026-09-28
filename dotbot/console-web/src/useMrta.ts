@@ -14,10 +14,7 @@ const POLL_MS = 1500;
 // there for as long as nothing answers - the honest reading before the first
 // response, and the permanent one when no MRTA server is running.
 //
-// `configured` starts false (the controller default) and only flips true once
-// a poll confirms `--mrta-url` is actually set - that is the gate App.tsx uses
-// to render the MrtaToggle at all, since MRTA is opt-in and hidden by default
-// rather than shown greyed out.
+// `configured` is false until a poll shows the controller proxies to one.
 export function useMrta() {
   const [status, setStatus] = useState<MrtaStatus>(MRTA_UNAVAILABLE);
   const [configured, setConfigured] = useState(false);
