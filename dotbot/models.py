@@ -173,11 +173,13 @@ class DotBotWaypointBatches(DotBotWaypointSettings):
 
 
 class DotBotWaypointsSent(BaseModel):
-    """The DotBots a bulk waypoint request reached, and the addresses it
-    named that the controller does not know."""
+    """The DotBots a bulk waypoint request reached, the addresses it named
+    that the controller does not know, and the known ones it could not send
+    to."""
 
     applied: List[str]
     unknown: List[str]
+    failed: List[str] = []
 
 
 class DotBotAreaModel(BaseModel):

@@ -236,15 +236,24 @@ async def dotbots_waypoints(
     """Set the waypoints of a DotBot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    _check_waypoints_kind(address, application, waypoints.waypoints)
-    await _dotbots_waypoints(
+    _check_waypoints(address, application, waypoints.waypoints)
+    if not await _dotbots_waypoints(
         address=address, application=application, waypoints=waypoints
-    )
+    ):
+        raise HTTPException(
+            status_code=500,
+            detail=f"{address}: waypoints not sent, see the controller log",
+        )
 
 
-def _check_waypoints_kind(address: str, application: int, waypoints) -> None:
+# PayloadLH2Location carries each coordinate as an unsigned 32-bit mm count
+WAYPOINT_MAX_MM = 0xFFFFFFFF
+
+
+def _check_waypoints(address: str, application: int, waypoints) -> None:
     """Raises 422 unless every point is of the kind `application` drives
-    to: latitude/longitude for a SailBot, x/y for a DotBot."""
+    to (latitude/longitude for a SailBot, x/y for a DotBot) and every x/y
+    point lies inside the site, or on the wire's range without a site extent."""
     kind = (
         DotBotGPSPosition
         if application == ApplicationType.SailBot.value
@@ -255,6 +264,23 @@ def _check_waypoints_kind(address: str, application: int, waypoints) -> None:
         raise HTTPException(
             status_code=422, detail=f"{address}: waypoints must be {wanted} points"
         )
+    if kind is not DotBotLH2Waypoint:
+        return
+    site = api.controller.settings.site
+    extent = site.extent_mm if site is not None else None
+    width, height = extent or (WAYPOINT_MAX_MM, WAYPOINT_MAX_MM)
+    for waypoint in waypoints:
+        if 0 <= waypoint.x <= width and 0 <= waypoint.y <= height:
+            continue
+        where = f"{address}: waypoint ({waypoint.x:g}, {waypoint.y:g}) mm"
+        if extent is not None:
+            detail = (
+                f"{where} is outside site '{site.name}', "
+                f"0 to {width} x 0 to {height} mm"
+            )
+        else:
+            detail = f"{where} cannot be sent: x and y must be 0 to {width} mm"
+        raise HTTPException(status_code=422, detail=detail)
 
 
 def _split_known(addresses: List[str], strict: bool) -> List[str]:
@@ -300,19 +326,24 @@ async def dotbots_waypoint_batches(
     addresses = list(batches.dotbots)
     known = _split_known(addresses, strict)
     for address in known:
-        _check_waypoints_kind(
+        _check_waypoints(
             address,
             api.controller.dotbots[address].application.value,
             batches.dotbots[address],
         )
-    for address in known:
-        await _dotbots_waypoints(
+    sent = [
+        address
+        for address in known
+        if await _dotbots_waypoints(
             address=address,
             application=api.controller.dotbots[address].application.value,
             waypoints=batches.batch(address),
         )
+    ]
     return DotBotWaypointsSent(
-        applied=known, unknown=[a for a in addresses if a not in known]
+        applied=sent,
+        unknown=[a for a in addresses if a not in known],
+        failed=[a for a in known if a not in sent],
     )
 
 
@@ -337,17 +368,22 @@ async def dotbots_waypoints_clear(
     else:
         addresses = list(dict.fromkeys(address))
     known = _split_known(addresses, strict)
-    for each in known:
-        dotbot = api.controller.dotbots[each]
-        await _dotbots_waypoints(
+    sent = [
+        each
+        for each in known
+        if await _dotbots_waypoints(
             address=each,
-            application=dotbot.application.value,
+            application=api.controller.dotbots[each].application.value,
             waypoints=DotBotWaypoints(
-                threshold=dotbot.waypoints_threshold or 0, waypoints=[]
+                threshold=api.controller.dotbots[each].waypoints_threshold or 0,
+                waypoints=[],
             ),
         )
+    ]
     return DotBotWaypointsSent(
-        applied=known, unknown=[a for a in addresses if a not in known]
+        applied=sent,
+        unknown=[a for a in addresses if a not in known],
+        failed=[a for a in known if a not in sent],
     )
 
 
@@ -374,7 +410,9 @@ async def _dotbots_waypoints(
     address: str,
     application: int,
     waypoints: DotBotWaypoints,
-):
+) -> bool:
+    """Send a validated batch; False when it was not sent, and the robot's
+    waypoints are then left as they were."""
     waypoints_list = waypoints.waypoints
     if application == ApplicationType.SailBot.value:
         if api.controller.dotbots[address].gps_position is not None:
@@ -413,13 +451,16 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
+    if isinstance(payload, PayloadLH2Waypoints):
+        sent = api.controller.send_waypoints(address, payload)
+    else:
+        sent = api.controller.send_payload(int(address, 16), payload)
+    if not sent:
+        return False
     api.controller.update_dotbot(
         address, waypoints=waypoints_list, waypoints_threshold=waypoints.threshold
     )
-    if isinstance(payload, PayloadLH2Waypoints):
-        api.controller.send_waypoints(address, payload)
-    else:
-        api.controller.send_payload(int(address, 16), payload)
+    return True
 
 
 @api.delete(
@@ -802,9 +843,7 @@ async def ws_dotbots(websocket: WebSocket):
                 )
             elif isinstance(msg, WSWaypoints):
                 try:
-                    _check_waypoints_kind(
-                        msg.address, msg.application, msg.data.waypoints
-                    )
+                    _check_waypoints(msg.address, msg.application, msg.data.waypoints)
                 except HTTPException as exc:
                     await websocket.send_json(
                         {"error": "invalid_message", "details": exc.detail}
