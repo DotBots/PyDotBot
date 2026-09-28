@@ -7,7 +7,7 @@
 
 import base64
 import os
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import (
@@ -287,8 +287,7 @@ def _split_known(addresses: List[str], strict: bool) -> List[str]:
     """The addresses the controller knows, in request order.
 
     Raises 404 when `strict` and any address is unknown, or when addresses
-    were named and none of them is known: a request that moved nothing is
-    not a success.
+    were named and none of them is known.
     """
     known = [a for a in addresses if a in api.controller.dotbots]
     unknown = [a for a in addresses if a not in api.controller.dotbots]
@@ -331,20 +330,7 @@ async def dotbots_waypoint_batches(
             api.controller.dotbots[address].application.value,
             batches.dotbots[address],
         )
-    sent = [
-        address
-        for address in known
-        if await _dotbots_waypoints(
-            address=address,
-            application=api.controller.dotbots[address].application.value,
-            waypoints=batches.batch(address),
-        )
-    ]
-    return DotBotWaypointsSent(
-        applied=sent,
-        unknown=[a for a in addresses if a not in known],
-        failed=[a for a in known if a not in sent],
-    )
+    return await _send_each(addresses, known, batches.batch)
 
 
 @api.delete(
@@ -368,16 +354,29 @@ async def dotbots_waypoints_clear(
     else:
         addresses = list(dict.fromkeys(address))
     known = _split_known(addresses, strict)
+    return await _send_each(
+        addresses,
+        known,
+        lambda each: DotBotWaypoints(
+            threshold=api.controller.dotbots[each].waypoints_threshold or 0,
+            waypoints=[],
+        ),
+    )
+
+
+async def _send_each(
+    addresses: List[str],
+    known: List[str],
+    batch_of: Callable[[str], DotBotWaypoints],
+) -> DotBotWaypointsSent:
+    """Send each known robot its `batch_of(address)`, and report the outcome."""
     sent = [
-        each
-        for each in known
+        address
+        for address in known
         if await _dotbots_waypoints(
-            address=each,
-            application=api.controller.dotbots[each].application.value,
-            waypoints=DotBotWaypoints(
-                threshold=api.controller.dotbots[each].waypoints_threshold or 0,
-                waypoints=[],
-            ),
+            address=address,
+            application=api.controller.dotbots[address].application.value,
+            waypoints=batch_of(address),
         )
     ]
     return DotBotWaypointsSent(
@@ -476,12 +475,10 @@ async def dotbot_trail_clear(address: str):
 
 
 def _snapshot(body, resumable: bool = False) -> Response:
-    """A REST response built from the dumps the stream caches, so a fleet
-    listing does not validate and serialise every robot model again.
+    """A REST response of `body`, JSON built from the stream's cached dumps.
 
-    A `resumable` one is the whole fleet, and says which seq of which
-    controller run it reflects, so a stream client can resume from it with
-    `?since=&run=`.
+    A `resumable` one carries the seq and run it reflects, which a stream
+    client resumes from with `?since=&run=`.
     """
     headers = {}
     if resumable:
@@ -528,8 +525,7 @@ async def dotbot(
 )
 async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
     """Dotbots HTTP GET handler. Only the unfiltered list carries
-    `X-Controller-Seq` and `X-Controller-Run`: a stream resumed from part of
-    the fleet would never be sent the rest."""
+    `X-Controller-Seq` and `X-Controller-Run`."""
     controller = api.controller
     return _snapshot(
         [
@@ -910,14 +906,10 @@ async def swarmit_proxy(path: str, request: Request):
     )
 
 
-# The MRTA mode server (dotbot-logistics) is opt-in: `mrta_url` is unset by
-# default, and this route then answers 404 without proxying anywhere, exactly
-# like `/swarmit/*` with no swarmit server. That 404 is also how the console
-# knows to hide the MRTA button entirely rather than show it as unavailable -
-# see console-web's fetchMrtaStatus(). A plain short timeout for the proxied
-# case: the console reads any other failure - a 502, a timeout - as "MRTA
-# N/A" but still shows the control, since the operator asked for one. No
-# streaming: /mrta/status and /mrta/mode are small JSON.
+# The MRTA mode server (dotbot-logistics) is opt-in: with no `mrta_url` this
+# route answers 404, as `/swarmit/*` does with no swarmit server; the console
+# hides its MRTA control on that 404. /mrta/* is small JSON, so a short
+# timeout and no streaming.
 MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 
 
