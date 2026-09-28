@@ -2,11 +2,9 @@ import { store } from "./persisted";
 import { stateColor } from "./viewChrome";
 import type { BotState, RgbLed } from "./types";
 
-// What a robot's body is filled with on the map: its SwarmIT sandbox state
-// (the console's default, and what it has always drawn), or the LED colour
-// the controller last commanded it. The two are independent axes - see
-// types.ts - and this is a browser-only way of looking at one of them, not
-// a change to what data the console holds.
+// What a robot's body is filled with on the map: its SwarmIT sandbox state,
+// or the LED colour the controller last commanded it. A per-browser view
+// setting only.
 export type BodyColorMode = "status" | "led";
 
 export const DEFAULT_BODY_COLOR_MODE: BodyColorMode = "status";
