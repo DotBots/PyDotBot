@@ -55,10 +55,70 @@ def test_a_file_that_does_not_match_its_manifest_is_refused(
         control.ControlCore(1)
 
 
-def test_an_abi_the_loader_does_not_speak_is_refused(monkeypatch, uncached):
+def test_a_manifest_abi_the_loader_does_not_speak_is_refused(monkeypatch, uncached):
     monkeypatch.setattr(control, "ABI_VERSION", control.ABI_VERSION + 1)
     with pytest.raises(control.ControlCoreError, match="ABI version"):
         control.ControlCore(1)
+
+
+def test_a_struct_size_the_build_does_not_have_is_refused(monkeypatch):
+    grown = np.dtype(control.INPUT.descr + [("extra", "<u4")])
+    monkeypatch.setattr(control, "INPUT", grown)
+    with pytest.raises(control.ControlCoreError, match="sizeof_input"):
+        control.ControlCore(1)
+
+
+def test_a_field_offset_the_build_does_not_have_is_refused(monkeypatch):
+    names = list(control.REPORT.names)
+    fields = [(n, control.REPORT.fields[n][0]) for n in names]
+    # Same size, a 2-byte and a 1-byte field swapped
+    i, j = names.index("direction"), names.index("pwm_left")
+    fields[i], fields[j] = fields[j], fields[i]
+    swapped = np.dtype(fields)
+    monkeypatch.setattr(control, "REPORT", swapped)
+    monkeypatch.setattr(
+        control,
+        "LAYOUT",
+        tuple(
+            (struct, swapped if struct == "db_control_report_t" else dtype)
+            for struct, dtype in control.LAYOUT
+        ),
+    )
+    with pytest.raises(control.ControlCoreError, match="axle_x at offset 46, expected 45"):
+        control.ControlCore(1)
+
+
+@pytest.mark.parametrize(
+    "inputs,error",
+    [
+        (np.zeros(2, control.INPUT), ValueError),
+        (np.zeros(3, np.int32), TypeError),
+        ([0, 0, 0], TypeError),
+    ],
+    ids=["length", "dtype", "list"],
+)
+def test_a_step_refuses_inputs_that_are_not_one_record_per_robot(inputs, error):
+    core = control.ControlCore(3)
+    with pytest.raises(error):
+        core.step(inputs)
+
+
+def test_the_advertisements_refuse_a_battery_per_robot_short():
+    core = control.ControlCore(3)
+    with pytest.raises(ValueError):
+        core.advertisements(np.zeros(2))
+
+
+def test_a_fix_is_due_once_per_ten_ticks():
+    core = control.ControlCore(2)
+    inputs = np.zeros(2, control.INPUT)
+    inputs["elapsed_ticks"] = 1
+    due = []
+    for _ in range(40):
+        due.append(core.fix_due(1))
+        core.step(inputs)
+    due = np.array(due)
+    assert due.sum(axis=0).tolist() == [4, 4]
 
 
 def test_without_wasmtime_the_core_says_what_to_install(monkeypatch, uncached):

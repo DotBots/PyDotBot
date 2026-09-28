@@ -6,8 +6,10 @@
 `dotbot_control.wasm` is DotBot-libs `drv/dotbot_control` built with
 `make wasm`: the wheel loop, the pose estimator, the waypoint steering, the
 command handling and the advertisement encoder the robot runs. Its source
-commit, ABI version and sha256 are in `dotbot_control.json`, and all three
-are checked when it loads. The structs below mirror `drv/dotbot_control.h`.
+commit, ABI version and sha256 are in `dotbot_control.json`: the sha256 and
+the ABI version are checked when it loads, and the commit is logged. The
+structs below mirror `drv/dotbot_control.h`, and their sizes and every field
+offset are checked against the build's own when it loads.
 """
 
 import atexit
@@ -99,6 +101,22 @@ GEOMETRY = np.dtype(
         )
     ]
 )
+
+
+# The structs in the order the build's layout_offsets() lists their fields
+LAYOUT = (
+    ("db_control_input_t", INPUT),
+    ("db_control_output_t", OUTPUT),
+    ("db_control_report_t", REPORT),
+    ("fleet_geometry_t", GEOMETRY),
+)
+
+
+def _check_array(name: str, array: np.ndarray, dtype: np.dtype, count: int):
+    if not isinstance(array, np.ndarray) or array.dtype != dtype:
+        raise TypeError(f"{name} must be a numpy array of the core's {dtype} records")
+    if array.shape != (count,):
+        raise ValueError(f"{name} has shape {array.shape}, expected ({count},)")
 
 
 class DriveMode(IntEnum):
@@ -207,6 +225,7 @@ class ControlCore:
         self._battery = self._call("fleet_battery_buffer")
         self._advertisements = self._call("fleet_advertisements_buffer")
         self._rx_max = self._call("rx_max_bytes")
+        self._fix_due = self._call("fleet_fix_due_buffer")
 
     def _call(self, name: str, *args):
         return self._fn[name](self._store, *args)
@@ -225,6 +244,26 @@ class ControlCore:
             if actual != value:
                 raise ControlCoreError(
                     f"{WASM_PATH.name}: {name}() is {actual}, expected {value}"
+                )
+        fields = [
+            (dtype_name, name, dtype.fields[name][1])
+            for dtype_name, dtype in LAYOUT
+            for name in dtype.names
+        ]
+        count = self._call("layout_field_count")
+        address = self._call("layout_offsets")
+        offsets = np.frombuffer(
+            self._memory.read(self._store, address, address + 4 * count), "<u4"
+        ).tolist()
+        if len(offsets) != len(fields):
+            raise ControlCoreError(
+                f"{WASM_PATH.name}: {len(offsets)} struct fields, expected {len(fields)}"
+            )
+        for (dtype_name, name, expected_offset), actual in zip(fields, offsets):
+            if actual != expected_offset:
+                raise ControlCoreError(
+                    f"{WASM_PATH.name}: {dtype_name}.{name} at offset {actual}, "
+                    f"expected {expected_offset}"
                 )
 
     def geometry(self) -> np.void:
@@ -246,8 +285,20 @@ class ControlCore:
         self._memory.write(self._store, packet, self._rx_buffer)
         self._call("fleet_rx", index, self._rx_buffer, len(packet))
 
+    def fix_due(self, elapsed_ticks: int = 1) -> np.ndarray:
+        """Per robot, whether the next step, `elapsed_ticks` on, reads its fix."""
+        self._call("fleet_fix_due", elapsed_ticks, self._fix_due)
+        data = self._memory.read(self._store, self._fix_due, self._fix_due + self.count)
+        return np.frombuffer(data, np.uint8).astype(bool)
+
+    def set_min_tx_interval(self, index: int, min_tx_interval_us: int):
+        """Robot `index`'s advertisement period from its node's minimum TX
+        interval, as the robot sets it; 0 while not joined."""
+        self._call("fleet_set_min_tx_interval", index, min_tx_interval_us)
+
     def step(self, inputs: np.ndarray) -> np.ndarray:
         """One tick of every robot; `inputs` holds one INPUT per robot."""
+        _check_array("inputs", inputs, INPUT, self.count)
         self._memory.write(self._store, inputs.tobytes(), self._inputs)
         self._call("fleet_step", self._inputs, self._outputs)
         data = self._memory.read(
@@ -278,6 +329,11 @@ class ControlCore:
         (indices, packets): one row of ADVERTISEMENT_BYTES per index, type
         byte first. `battery` holds one level per robot. Starts those robots'
         encoder deltas over."""
+        battery = np.asarray(battery)
+        if battery.shape != (self.count,):
+            raise ValueError(
+                f"battery has shape {battery.shape}, expected ({self.count},)"
+            )
         self._memory.write(self._store, battery.astype("<u2").tobytes(), self._battery)
         n = self._call("fleet_advertisements", self._battery, self._advertisements)
         if n == 0:
