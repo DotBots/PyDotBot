@@ -1069,11 +1069,37 @@ def test_the_controller_opens_the_console_when_it_is_built(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_the_root_redirects_to_the_console():
-    result = await client.get("/", follow_redirects=False)
+async def test_the_root_redirects_to_a_built_console(tmp_path):
+    from fastapi import FastAPI
 
+    from dotbot.server import mount_console
+
+    (tmp_path / "index.html").write_text("<html></html>")
+    app = FastAPI()
+    assert mount_console(app, str(tmp_path))
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as http:
+        result = await http.get("/", follow_redirects=False)
+        console = await http.get("/console/")
     assert result.status_code == 307
     assert result.headers["location"] == "/console/"
+    assert console.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_without_a_console_build_the_root_is_not_found(tmp_path):
+    from fastapi import FastAPI
+
+    from dotbot.server import mount_console
+
+    app = FastAPI()
+    assert not mount_console(app, str(tmp_path / "missing"))
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as http:
+        result = await http.get("/", follow_redirects=False)
+    assert result.status_code == 404
 
 
 def test_the_api_binds_loopback_unless_asked_otherwise():

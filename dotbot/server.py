@@ -753,7 +753,6 @@ async def mrta_proxy(path: str, request: Request):
     )
 
 
-@api.get("/", include_in_schema=False)
 async def root():
     """Send a browser landing on the bare host to the console."""
     return RedirectResponse(url="/console/")
@@ -761,9 +760,19 @@ async def root():
 
 # The console is the web UI. Mounted after all routes so they take precedence.
 CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
-if os.path.isdir(CONSOLE_DIR):
-    api.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
-else:
+
+
+def mount_console(app: FastAPI, directory: str) -> bool:
+    """Serve the console built in `directory` at /console, and redirect / to
+    it; neither route exists without the build. False if it is missing."""
+    if not os.path.isdir(directory):
+        return False
+    app.mount("/console", StaticFiles(directory=directory, html=True), name="console")
+    app.add_api_route("/", root, include_in_schema=False)
+    return True
+
+
+if not mount_console(api, CONSOLE_DIR):
     LOGGER.warning(
         "Console build not found at %s; /console will be unavailable. "
         "Build it with: cd dotbot/console-web && npm install && npm run build",
