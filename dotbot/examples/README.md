@@ -12,6 +12,7 @@ Each scenario has its own folder with dedicated instructions, initial states, an
 - `charging_station/`: queue-and-charge scenario
 - `labyrinth/`: two-robot labyrinth navigation
 - `motions/`: move a single DotBot through predefined shapes or speed profiles
+- `simulator_500/`: 500 simulated robots on a 20 x 30 m site
 
 We also provide a stop.py helper script to halt the simulator (without needing to stop robots via SwarmIT).
 

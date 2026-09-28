@@ -1,0 +1,3002 @@
+[network]
+pdr = 100
+
+[[dotbots]]
+address = "DE00000000000000"
+pos_x = 2320
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000001"
+pos_x = 2960
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000002"
+pos_x = 3600
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000003"
+pos_x = 4240
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000004"
+pos_x = 4880
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000005"
+pos_x = 5520
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000006"
+pos_x = 6160
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000007"
+pos_x = 6800
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000008"
+pos_x = 7440
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000009"
+pos_x = 8080
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000A"
+pos_x = 8720
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000B"
+pos_x = 9360
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000C"
+pos_x = 10000
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000D"
+pos_x = 10640
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000E"
+pos_x = 11280
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000000F"
+pos_x = 11920
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000010"
+pos_x = 12560
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000011"
+pos_x = 13200
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000012"
+pos_x = 13840
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000013"
+pos_x = 14480
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000014"
+pos_x = 15120
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000015"
+pos_x = 15760
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000016"
+pos_x = 16400
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000017"
+pos_x = 17040
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000018"
+pos_x = 17680
+pos_y = 10400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000019"
+pos_x = 2320
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001A"
+pos_x = 2960
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001B"
+pos_x = 3600
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001C"
+pos_x = 4240
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001D"
+pos_x = 4880
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001E"
+pos_x = 5520
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000001F"
+pos_x = 6160
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000020"
+pos_x = 6800
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000021"
+pos_x = 7440
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000022"
+pos_x = 8080
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000023"
+pos_x = 8720
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000024"
+pos_x = 9360
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000025"
+pos_x = 10000
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000026"
+pos_x = 10640
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000027"
+pos_x = 11280
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000028"
+pos_x = 11920
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000029"
+pos_x = 12560
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002A"
+pos_x = 13200
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002B"
+pos_x = 13840
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002C"
+pos_x = 14480
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002D"
+pos_x = 15120
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002E"
+pos_x = 15760
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000002F"
+pos_x = 16400
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000030"
+pos_x = 17040
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000031"
+pos_x = 17680
+pos_y = 11200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000032"
+pos_x = 2320
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000033"
+pos_x = 2960
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000034"
+pos_x = 3600
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000035"
+pos_x = 4240
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000036"
+pos_x = 4880
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000037"
+pos_x = 5520
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000038"
+pos_x = 6160
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000039"
+pos_x = 6800
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003A"
+pos_x = 7440
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003B"
+pos_x = 8080
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003C"
+pos_x = 8720
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003D"
+pos_x = 9360
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003E"
+pos_x = 10000
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000003F"
+pos_x = 10640
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000040"
+pos_x = 11280
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000041"
+pos_x = 11920
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000042"
+pos_x = 12560
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000043"
+pos_x = 13200
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000044"
+pos_x = 13840
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000045"
+pos_x = 14480
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000046"
+pos_x = 15120
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000047"
+pos_x = 15760
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000048"
+pos_x = 16400
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000049"
+pos_x = 17040
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004A"
+pos_x = 17680
+pos_y = 12000
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004B"
+pos_x = 2320
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004C"
+pos_x = 2960
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004D"
+pos_x = 3600
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004E"
+pos_x = 4240
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000004F"
+pos_x = 4880
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000050"
+pos_x = 5520
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000051"
+pos_x = 6160
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000052"
+pos_x = 6800
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000053"
+pos_x = 7440
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000054"
+pos_x = 8080
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000055"
+pos_x = 8720
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000056"
+pos_x = 9360
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000057"
+pos_x = 10000
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000058"
+pos_x = 10640
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000059"
+pos_x = 11280
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005A"
+pos_x = 11920
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005B"
+pos_x = 12560
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005C"
+pos_x = 13200
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005D"
+pos_x = 13840
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005E"
+pos_x = 14480
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000005F"
+pos_x = 15120
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000060"
+pos_x = 15760
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000061"
+pos_x = 16400
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000062"
+pos_x = 17040
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000063"
+pos_x = 17680
+pos_y = 12800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000064"
+pos_x = 2320
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000065"
+pos_x = 2960
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000066"
+pos_x = 3600
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000067"
+pos_x = 4240
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000068"
+pos_x = 4880
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000069"
+pos_x = 5520
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006A"
+pos_x = 6160
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006B"
+pos_x = 6800
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006C"
+pos_x = 7440
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006D"
+pos_x = 8080
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006E"
+pos_x = 8720
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000006F"
+pos_x = 9360
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000070"
+pos_x = 10000
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000071"
+pos_x = 10640
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000072"
+pos_x = 11280
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000073"
+pos_x = 11920
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000074"
+pos_x = 12560
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000075"
+pos_x = 13200
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000076"
+pos_x = 13840
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000077"
+pos_x = 14480
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000078"
+pos_x = 15120
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000079"
+pos_x = 15760
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007A"
+pos_x = 16400
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007B"
+pos_x = 17040
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007C"
+pos_x = 17680
+pos_y = 13600
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007D"
+pos_x = 2320
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007E"
+pos_x = 2960
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000007F"
+pos_x = 3600
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000080"
+pos_x = 4240
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000081"
+pos_x = 4880
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000082"
+pos_x = 5520
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000083"
+pos_x = 6160
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000084"
+pos_x = 6800
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000085"
+pos_x = 7440
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000086"
+pos_x = 8080
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000087"
+pos_x = 8720
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000088"
+pos_x = 9360
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000089"
+pos_x = 10000
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008A"
+pos_x = 10640
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008B"
+pos_x = 11280
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008C"
+pos_x = 11920
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008D"
+pos_x = 12560
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008E"
+pos_x = 13200
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000008F"
+pos_x = 13840
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000090"
+pos_x = 14480
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000091"
+pos_x = 15120
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000092"
+pos_x = 15760
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000093"
+pos_x = 16400
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000094"
+pos_x = 17040
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000095"
+pos_x = 17680
+pos_y = 14400
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000096"
+pos_x = 2320
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000097"
+pos_x = 2960
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000098"
+pos_x = 3600
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000099"
+pos_x = 4240
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009A"
+pos_x = 4880
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009B"
+pos_x = 5520
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009C"
+pos_x = 6160
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009D"
+pos_x = 6800
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009E"
+pos_x = 7440
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE0000000000009F"
+pos_x = 8080
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A0"
+pos_x = 8720
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A1"
+pos_x = 9360
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A2"
+pos_x = 10000
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A3"
+pos_x = 10640
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A4"
+pos_x = 11280
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A5"
+pos_x = 11920
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A6"
+pos_x = 12560
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A7"
+pos_x = 13200
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A8"
+pos_x = 13840
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000A9"
+pos_x = 14480
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AA"
+pos_x = 15120
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AB"
+pos_x = 15760
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AC"
+pos_x = 16400
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AD"
+pos_x = 17040
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AE"
+pos_x = 17680
+pos_y = 15200
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000AF"
+pos_x = 2320
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B0"
+pos_x = 2960
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B1"
+pos_x = 3600
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B2"
+pos_x = 4240
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B3"
+pos_x = 4880
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B4"
+pos_x = 5520
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B5"
+pos_x = 6160
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B6"
+pos_x = 6800
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B7"
+pos_x = 7440
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B8"
+pos_x = 8080
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000B9"
+pos_x = 8720
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BA"
+pos_x = 9360
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BB"
+pos_x = 10000
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BC"
+pos_x = 10640
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BD"
+pos_x = 11280
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BE"
+pos_x = 11920
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000BF"
+pos_x = 12560
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C0"
+pos_x = 13200
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C1"
+pos_x = 13840
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C2"
+pos_x = 14480
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C3"
+pos_x = 15120
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C4"
+pos_x = 15760
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C5"
+pos_x = 16400
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C6"
+pos_x = 17040
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C7"
+pos_x = 17680
+pos_y = 16000
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C8"
+pos_x = 2320
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000C9"
+pos_x = 2960
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CA"
+pos_x = 3600
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CB"
+pos_x = 4240
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CC"
+pos_x = 4880
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CD"
+pos_x = 5520
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CE"
+pos_x = 6160
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000CF"
+pos_x = 6800
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D0"
+pos_x = 7440
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D1"
+pos_x = 8080
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D2"
+pos_x = 8720
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D3"
+pos_x = 9360
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D4"
+pos_x = 10000
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D5"
+pos_x = 10640
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D6"
+pos_x = 11280
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D7"
+pos_x = 11920
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D8"
+pos_x = 12560
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000D9"
+pos_x = 13200
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DA"
+pos_x = 13840
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DB"
+pos_x = 14480
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DC"
+pos_x = 15120
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DD"
+pos_x = 15760
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DE"
+pos_x = 16400
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000DF"
+pos_x = 17040
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E0"
+pos_x = 17680
+pos_y = 16800
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E1"
+pos_x = 2320
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E2"
+pos_x = 2960
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E3"
+pos_x = 3600
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E4"
+pos_x = 4240
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E5"
+pos_x = 4880
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E6"
+pos_x = 5520
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E7"
+pos_x = 6160
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E8"
+pos_x = 6800
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000E9"
+pos_x = 7440
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000EA"
+pos_x = 8080
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000EB"
+pos_x = 8720
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000EC"
+pos_x = 9360
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000ED"
+pos_x = 10000
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000EE"
+pos_x = 10640
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000EF"
+pos_x = 11280
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F0"
+pos_x = 11920
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F1"
+pos_x = 12560
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F2"
+pos_x = 13200
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F3"
+pos_x = 13840
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F4"
+pos_x = 14480
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F5"
+pos_x = 15120
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F6"
+pos_x = 15760
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F7"
+pos_x = 16400
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F8"
+pos_x = 17040
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000F9"
+pos_x = 17680
+pos_y = 17600
+direction = 180
+
+[[dotbots]]
+address = "DE000000000000FA"
+pos_x = 2320
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE000000000000FB"
+pos_x = 2960
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE000000000000FC"
+pos_x = 3600
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE000000000000FD"
+pos_x = 4240
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE000000000000FE"
+pos_x = 4880
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE000000000000FF"
+pos_x = 5520
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000100"
+pos_x = 6160
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000101"
+pos_x = 6800
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000102"
+pos_x = 7440
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000103"
+pos_x = 8080
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000104"
+pos_x = 8720
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000105"
+pos_x = 9360
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000106"
+pos_x = 10000
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000107"
+pos_x = 10640
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000108"
+pos_x = 11280
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000109"
+pos_x = 11920
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010A"
+pos_x = 12560
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010B"
+pos_x = 13200
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010C"
+pos_x = 13840
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010D"
+pos_x = 14480
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010E"
+pos_x = 15120
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000010F"
+pos_x = 15760
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000110"
+pos_x = 16400
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000111"
+pos_x = 17040
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000112"
+pos_x = 17680
+pos_y = 18400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000113"
+pos_x = 2320
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000114"
+pos_x = 2960
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000115"
+pos_x = 3600
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000116"
+pos_x = 4240
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000117"
+pos_x = 4880
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000118"
+pos_x = 5520
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000119"
+pos_x = 6160
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011A"
+pos_x = 6800
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011B"
+pos_x = 7440
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011C"
+pos_x = 8080
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011D"
+pos_x = 8720
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011E"
+pos_x = 9360
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000011F"
+pos_x = 10000
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000120"
+pos_x = 10640
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000121"
+pos_x = 11280
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000122"
+pos_x = 11920
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000123"
+pos_x = 12560
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000124"
+pos_x = 13200
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000125"
+pos_x = 13840
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000126"
+pos_x = 14480
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000127"
+pos_x = 15120
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000128"
+pos_x = 15760
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000129"
+pos_x = 16400
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012A"
+pos_x = 17040
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012B"
+pos_x = 17680
+pos_y = 19200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012C"
+pos_x = 2320
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012D"
+pos_x = 2960
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012E"
+pos_x = 3600
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000012F"
+pos_x = 4240
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000130"
+pos_x = 4880
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000131"
+pos_x = 5520
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000132"
+pos_x = 6160
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000133"
+pos_x = 6800
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000134"
+pos_x = 7440
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000135"
+pos_x = 8080
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000136"
+pos_x = 8720
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000137"
+pos_x = 9360
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000138"
+pos_x = 10000
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000139"
+pos_x = 10640
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013A"
+pos_x = 11280
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013B"
+pos_x = 11920
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013C"
+pos_x = 12560
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013D"
+pos_x = 13200
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013E"
+pos_x = 13840
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000013F"
+pos_x = 14480
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000140"
+pos_x = 15120
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000141"
+pos_x = 15760
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000142"
+pos_x = 16400
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000143"
+pos_x = 17040
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000144"
+pos_x = 17680
+pos_y = 20000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000145"
+pos_x = 2320
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000146"
+pos_x = 2960
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000147"
+pos_x = 3600
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000148"
+pos_x = 4240
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000149"
+pos_x = 4880
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014A"
+pos_x = 5520
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014B"
+pos_x = 6160
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014C"
+pos_x = 6800
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014D"
+pos_x = 7440
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014E"
+pos_x = 8080
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000014F"
+pos_x = 8720
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000150"
+pos_x = 9360
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000151"
+pos_x = 10000
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000152"
+pos_x = 10640
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000153"
+pos_x = 11280
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000154"
+pos_x = 11920
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000155"
+pos_x = 12560
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000156"
+pos_x = 13200
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000157"
+pos_x = 13840
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000158"
+pos_x = 14480
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000159"
+pos_x = 15120
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015A"
+pos_x = 15760
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015B"
+pos_x = 16400
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015C"
+pos_x = 17040
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015D"
+pos_x = 17680
+pos_y = 20800
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015E"
+pos_x = 2320
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000015F"
+pos_x = 2960
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000160"
+pos_x = 3600
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000161"
+pos_x = 4240
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000162"
+pos_x = 4880
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000163"
+pos_x = 5520
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000164"
+pos_x = 6160
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000165"
+pos_x = 6800
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000166"
+pos_x = 7440
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000167"
+pos_x = 8080
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000168"
+pos_x = 8720
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000169"
+pos_x = 9360
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016A"
+pos_x = 10000
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016B"
+pos_x = 10640
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016C"
+pos_x = 11280
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016D"
+pos_x = 11920
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016E"
+pos_x = 12560
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000016F"
+pos_x = 13200
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000170"
+pos_x = 13840
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000171"
+pos_x = 14480
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000172"
+pos_x = 15120
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000173"
+pos_x = 15760
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000174"
+pos_x = 16400
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000175"
+pos_x = 17040
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000176"
+pos_x = 17680
+pos_y = 21600
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000177"
+pos_x = 2320
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000178"
+pos_x = 2960
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000179"
+pos_x = 3600
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017A"
+pos_x = 4240
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017B"
+pos_x = 4880
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017C"
+pos_x = 5520
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017D"
+pos_x = 6160
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017E"
+pos_x = 6800
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000017F"
+pos_x = 7440
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000180"
+pos_x = 8080
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000181"
+pos_x = 8720
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000182"
+pos_x = 9360
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000183"
+pos_x = 10000
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000184"
+pos_x = 10640
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000185"
+pos_x = 11280
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000186"
+pos_x = 11920
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000187"
+pos_x = 12560
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000188"
+pos_x = 13200
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000189"
+pos_x = 13840
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018A"
+pos_x = 14480
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018B"
+pos_x = 15120
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018C"
+pos_x = 15760
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018D"
+pos_x = 16400
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018E"
+pos_x = 17040
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000018F"
+pos_x = 17680
+pos_y = 22400
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000190"
+pos_x = 2320
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000191"
+pos_x = 2960
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000192"
+pos_x = 3600
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000193"
+pos_x = 4240
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000194"
+pos_x = 4880
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000195"
+pos_x = 5520
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000196"
+pos_x = 6160
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000197"
+pos_x = 6800
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000198"
+pos_x = 7440
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000199"
+pos_x = 8080
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019A"
+pos_x = 8720
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019B"
+pos_x = 9360
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019C"
+pos_x = 10000
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019D"
+pos_x = 10640
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019E"
+pos_x = 11280
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE0000000000019F"
+pos_x = 11920
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A0"
+pos_x = 12560
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A1"
+pos_x = 13200
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A2"
+pos_x = 13840
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A3"
+pos_x = 14480
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A4"
+pos_x = 15120
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A5"
+pos_x = 15760
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A6"
+pos_x = 16400
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A7"
+pos_x = 17040
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A8"
+pos_x = 17680
+pos_y = 23200
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001A9"
+pos_x = 2320
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AA"
+pos_x = 2960
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AB"
+pos_x = 3600
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AC"
+pos_x = 4240
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AD"
+pos_x = 4880
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AE"
+pos_x = 5520
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001AF"
+pos_x = 6160
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B0"
+pos_x = 6800
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B1"
+pos_x = 7440
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B2"
+pos_x = 8080
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B3"
+pos_x = 8720
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B4"
+pos_x = 9360
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B5"
+pos_x = 10000
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B6"
+pos_x = 10640
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B7"
+pos_x = 11280
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B8"
+pos_x = 11920
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001B9"
+pos_x = 12560
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BA"
+pos_x = 13200
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BB"
+pos_x = 13840
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BC"
+pos_x = 14480
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BD"
+pos_x = 15120
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BE"
+pos_x = 15760
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001BF"
+pos_x = 16400
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C0"
+pos_x = 17040
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C1"
+pos_x = 17680
+pos_y = 24000
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C2"
+pos_x = 2320
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C3"
+pos_x = 2960
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C4"
+pos_x = 3600
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C5"
+pos_x = 4240
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C6"
+pos_x = 4880
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C7"
+pos_x = 5520
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C8"
+pos_x = 6160
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001C9"
+pos_x = 6800
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CA"
+pos_x = 7440
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CB"
+pos_x = 8080
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CC"
+pos_x = 8720
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CD"
+pos_x = 9360
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CE"
+pos_x = 10000
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001CF"
+pos_x = 10640
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D0"
+pos_x = 11280
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D1"
+pos_x = 11920
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D2"
+pos_x = 12560
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D3"
+pos_x = 13200
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D4"
+pos_x = 13840
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D5"
+pos_x = 14480
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D6"
+pos_x = 15120
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D7"
+pos_x = 15760
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D8"
+pos_x = 16400
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001D9"
+pos_x = 17040
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DA"
+pos_x = 17680
+pos_y = 24800
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DB"
+pos_x = 2320
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DC"
+pos_x = 2960
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DD"
+pos_x = 3600
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DE"
+pos_x = 4240
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001DF"
+pos_x = 4880
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E0"
+pos_x = 5520
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E1"
+pos_x = 6160
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E2"
+pos_x = 6800
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E3"
+pos_x = 7440
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E4"
+pos_x = 8080
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E5"
+pos_x = 8720
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E6"
+pos_x = 9360
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E7"
+pos_x = 10000
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E8"
+pos_x = 10640
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001E9"
+pos_x = 11280
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001EA"
+pos_x = 11920
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001EB"
+pos_x = 12560
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001EC"
+pos_x = 13200
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001ED"
+pos_x = 13840
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001EE"
+pos_x = 14480
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001EF"
+pos_x = 15120
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001F0"
+pos_x = 15760
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001F1"
+pos_x = 16400
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001F2"
+pos_x = 17040
+pos_y = 25600
+direction = 0
+
+[[dotbots]]
+address = "DE000000000001F3"
+pos_x = 17680
+pos_y = 25600
+direction = 0
