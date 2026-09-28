@@ -292,6 +292,8 @@ export const BotMarker = React.memo(function BotMarker({
           top: "50%",
           transform: "translate(-50%, -50%)",
           opacity: bodySolid < 1 ? bodySolid : undefined,
+          // A dot takes the pointer on its own target only, not on this box.
+          pointerEvents: draw.shape.kind === "dot" ? "none" : undefined,
           animation: blink ? "dbBlink 1.1s ease-in-out infinite" : undefined,
         }}
       >

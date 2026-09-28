@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BOT_MIN_PX,
   BotGlyph,
+  DOT_HIT_PX,
   FOOTPRINT_MIN_PX,
   LED_OFF,
   GLYPH_CROWD_BOTS,
   GLYPH_DETAIL_PX,
+  GLYPH_MARK_PX,
   SENSOR_POINT_PX,
   botBody,
   botFootprintPx,
@@ -157,7 +159,14 @@ describe("how big a bot is drawn", () => {
 describe("how much of a bot is drawn", () => {
   it("is whatever its on-screen size can carry", () => {
     expect(glyphLevel(GLYPH_DETAIL_PX, 1)).toBe("detail");
-    expect(glyphLevel(GLYPH_DETAIL_PX - 1, 1)).toBe("dot");
+    expect(glyphLevel(GLYPH_DETAIL_PX - 1, 1)).toBe("mark");
+    expect(glyphLevel(GLYPH_MARK_PX, 1)).toBe("mark");
+    expect(glyphLevel(GLYPH_MARK_PX - 0.1, 1)).toBe("dot");
+  });
+
+  it("is a dot below the mark's size, however few robots there are", () => {
+    expect(glyphLevel(BOT_MIN_PX, 1)).toBe("dot");
+    expect(glyphLevel(BOT_MIN_PX, GLYPH_CROWD_BOTS + 1)).toBe("dot");
   });
 
   it("draws the board from the size the outline was judged legible at", () => {
@@ -165,13 +174,13 @@ describe("how much of a bot is drawn", () => {
     // hardest to make out: the stepped board and a tyre still show at 17 px,
     // and are a coloured blob at 11.
     expect(glyphLevel(17, 1)).toBe("detail");
-    expect(glyphLevel(11, 1)).toBe("dot");
+    expect(glyphLevel(11, 1)).toBe("mark");
   });
 
   it("drops the board to a mark in a crowd, where detail is lost anyway", () => {
     const many = GLYPH_CROWD_BOTS + 1;
-    expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("dot");
-    expect(glyphLevel(200, many)).toBe("dot");
+    expect(glyphLevel(GLYPH_DETAIL_PX, many)).toBe("mark");
+    expect(glyphLevel(200, many)).toBe("mark");
   });
 
   it("bottoms out at the dot however crowded the map gets", () => {
@@ -234,7 +243,7 @@ describe("what a robot is drawn as", () => {
 
   it("rings the sensor point with the host's reach and core", () => {
     const { shape, footprintPx } = robotDraw(pose(), SENSOR_MODE, NEAR, 1);
-    expect(shape).toMatchObject({ kind: "sensor", ringPx: 89.33, corePx: 18.5, crowded: false });
+    expect(shape).toMatchObject({ kind: "sensor", pointPx: SENSOR_POINT_PX, ringPx: 89.33, corePx: 18.5, crowded: false });
     expect(footprintPx).toBeCloseTo(2 * 89.33, 6);
   });
 
@@ -242,7 +251,7 @@ describe("what a robot is drawn as", () => {
     const scale = (FOOTPRINT_MIN_PX - 1) / (2 * 89.33);
     const { shape, footprintPx } = robotDraw(pose(), SENSOR_MODE, scale, 1);
     expect(shape).toMatchObject({ ringPx: null, corePx: null });
-    expect(footprintPx).toBe(SENSOR_POINT_PX);
+    expect(footprintPx).toBe(shape.kind === "sensor" && shape.pointPx);
   });
 
   it("draws the core only when it is visibly larger than the point", () => {
@@ -281,9 +290,40 @@ describe("what a robot is drawn as", () => {
   });
 
   it("keeps the bar past the point when the ring is too small to draw", () => {
-    const { shape } = robotDraw(pose(), SENSOR_MODE, 0.01, 1);
+    const { shape } = robotDraw(pose(), SENSOR_MODE, 0.1, 1);
     expect(shape).toMatchObject({ ringPx: null });
-    expect(shape.kind === "sensor" && shape.bar!.lengthPx).toBe(SENSOR_POINT_PX);
+    expect(shape.kind === "sensor" && shape.bar!.lengthPx).toBe(shape.kind === "sensor" && shape.pointPx);
+  });
+
+  it("shrinks the sensor point with the robot once the robot is smaller on screen", () => {
+    const scale = 10 / 95;
+    const d = robotDraw(pose(), SENSOR_MODE, scale, 1);
+    expect(d.shape.kind === "sensor" && d.shape.pointPx).toBeCloseTo(10, 6);
+    const near = robotDraw(pose(), SENSOR_MODE, NEAR, 1).shape;
+    expect(near.kind === "sensor" && near.pointPx).toBe(SENSOR_POINT_PX);
+  });
+
+  it("is a dot at the robot's true size once too small for a mark, in either mode", () => {
+    const scale = 5 / 95;
+    for (const d of [
+      robotDraw(pose(), BODY, scale, 1),
+      robotDraw(pose(), SENSOR_MODE, scale, 1),
+      robotDraw(pose(0, { heading_source: "none" }), BODY, scale, 1),
+    ]) {
+      expect(d.shape.kind).toBe("dot");
+      expect(d.footprintPx).toBeCloseTo(5, 6);
+      expect(d.battery).toBe(false);
+    }
+    expect(robotDraw(pose(), BODY, 0.0001, 1).footprintPx).toBe(BOT_MIN_PX);
+  });
+
+  it("centres a body's dot on the board and a sensor's on the photodiode", () => {
+    expect(robotDraw(pose(), BODY, 5 / 95, 1).centre).toEqual({ x: 0, y: -29 });
+    expect(robotDraw(pose(), SENSOR_MODE, 5 / 95, 1).centre).toEqual({ x: 0, y: 0 });
+  });
+
+  it("keeps the sensor point for a robot with no pose, which has no size to shrink to", () => {
+    expect(robotDraw(null, SENSOR_MODE, 0.0001, 1).shape.kind).toBe("sensor");
   });
 
   it("marks the ring as crowded past the crowd size", () => {
@@ -379,7 +419,7 @@ describe("the glyph a shape draws", () => {
     for (const pxPerMm of [0.05, 2]) {
       const el = svg({
         state: "red", led: null,
-        shape: { kind: "sensor", ringPx: null, corePx: null, crowded: false, bar: null },
+        shape: { kind: "sensor", pointPx: SENSOR_POINT_PX, ringPx: null, corePx: null, crowded: false, bar: null },
         pxPerMm,
         footprintPx: BOT_MIN_PX,
       });
@@ -393,7 +433,7 @@ describe("the glyph a shape draws", () => {
   it("draws the ring dashed and the core solid around the point", () => {
     const el = svg({
       state: "red", led: null,
-      shape: { kind: "sensor", ringPx: 60, corePx: 12, crowded: false, bar: null },
+      shape: { kind: "sensor", pointPx: SENSOR_POINT_PX, ringPx: 60, corePx: 12, crowded: false, bar: null },
       pxPerMm: 1,
       footprintPx: 120,
     });
@@ -407,6 +447,7 @@ describe("the glyph a shape draws", () => {
       state: "red", led: null,
       shape: {
         kind: "sensor",
+        pointPx: SENSOR_POINT_PX,
         ringPx: 60,
         corePx: null,
         crowded: false,
@@ -426,7 +467,7 @@ describe("the glyph a shape draws", () => {
   it("draws no bar on a point whose heading is unknown", () => {
     const el = svg({
       state: "red", led: null,
-      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false, bar: null },
+      shape: { kind: "sensor", pointPx: SENSOR_POINT_PX, ringPx: 60, corePx: null, crowded: false, bar: null },
       pxPerMm: 1,
       footprintPx: 120,
     });
@@ -436,7 +477,7 @@ describe("the glyph a shape draws", () => {
   it("lays the dashed ring over a solid casing of the same radius", () => {
     const el = svg({
       state: "red", led: null,
-      shape: { kind: "sensor", ringPx: 60, corePx: null, crowded: false, bar: null },
+      shape: { kind: "sensor", pointPx: SENSOR_POINT_PX, ringPx: 60, corePx: null, crowded: false, bar: null },
       pxPerMm: 1,
       footprintPx: 120,
     });
@@ -455,6 +496,32 @@ describe("the glyph a shape draws", () => {
   });
 });
 
+describe("the dot", () => {
+  const dot = (r: number) =>
+    render(
+      <BotGlyph state="red" led={null} shape={{ kind: "dot", centre: { x: 0, y: -29 } }} pxPerMm={0.05} footprintPx={2 * r} />,
+    ).container.querySelector("svg")!;
+
+  it("is a plain circle in the body colour, with no shadow", () => {
+    const el = dot(2);
+    const c = el.querySelector('[data-layer="dot"]')!;
+    expect(c.getAttribute("fill")).toBe("red");
+    expect(parseFloat(c.getAttribute("r")!)).toBe(2);
+    expect(parseFloat(c.getAttribute("cy")!)).toBeCloseTo(-29 * 0.05, 6);
+    expect(el.style.filter).toBe("");
+  });
+
+  it("takes the pointer on a target at least DOT_HIT_PX across, and nowhere else", () => {
+    const el = dot(1.5);
+    expect(el.style.pointerEvents).toBe("none");
+    const hit = el.querySelector('[data-layer="dot-hit"]')!;
+    expect(hit.getAttribute("pointer-events")).toBe("all");
+    expect(2 * parseFloat(hit.getAttribute("r")!)).toBe(DOT_HIT_PX);
+    cleanup();
+    expect(parseFloat(dot(5).querySelector('[data-layer="dot-hit"]')!.getAttribute("r")!)).toBe(5);
+  });
+});
+
 describe("the colour rule, the same at every level", () => {
   const STATE = "#22c55e";
   const RED = { red: 255, green: 0, blue: 0 };
@@ -464,6 +531,7 @@ describe("the colour rule, the same at every level", () => {
   const sensor = (bar: boolean) =>
     ({
       kind: "sensor",
+      pointPx: SENSOR_POINT_PX,
       ringPx: 60,
       corePx: null,
       crowded: false,

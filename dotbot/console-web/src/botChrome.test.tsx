@@ -401,8 +401,12 @@ describe("the fallback for a board that cannot be drawn", () => {
   const crowd = () =>
     Array.from({ length: 201 }, (_, i) => bot(`c${i}`, { x: 100 + i * 5, y: 500 }));
 
+  // A scale where the 95 mm board is about 11 px: too small to read, big
+  // enough for a mark. At the whole-site zoom it is 7 px, a dot.
+  const far: Camera = { scale: 1.5, tx: 0, ty: 0 };
+
   it("is the disc with a heading bar where the board is too small", () => {
-    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={far} />);
     expect(shape("a")).toBe("mark");
     expect(glyph("a").querySelector("rect")).toBeNull();
     expect(glyph("a").querySelector('circle[data-layer="mark"]')).not.toBeNull();
@@ -420,8 +424,20 @@ describe("the fallback for a board that cannot be drawn", () => {
   });
 
   it("is still the mark in a crowd where the board would be too small anyway", () => {
-    render(<Harness bots={crowd()} from={FRAME_CAMERA} />);
+    render(<Harness bots={crowd()} from={far} />);
     expect(shape("c0")).toBe("mark");
+  });
+
+  it("is a plain dot at its true size where even the mark would not read", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    expect(shape("a")).toBe("dot");
+    const dot = glyph("a").querySelector('[data-layer="dot"]')!;
+    const perMm = pxPerMm("x", VIEWPORT, GEOM, FRAME_CAMERA);
+    expect(2 * parseFloat(dot.getAttribute("r")!)).toBeCloseTo(95 * perMm, 3);
+    expect(glyph("a").querySelector('[data-layer="heading"]')).toBeNull();
+    expect(glyph("a").querySelector('[data-layer="sensor-mark"]')).toBeNull();
+    // Only the dot's own target takes the pointer, never the box round it.
+    expect(glyph("a").style.pointerEvents).toBe("none");
   });
 });
 
@@ -466,8 +482,8 @@ describe("the possible footprint", () => {
   });
 
   it("is hidden where the ring would be too small to read", () => {
-    // At the whole-site zoom the ring is about 12 px across.
-    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    // Here the ring is about 20 px across.
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={{ scale: 1.5, tx: 0, ty: 0 }} />);
     expect(layer("a", "reach")).toBeNull();
     expect(layer("a", "core")).toBeNull();
     expect(layer("a", "sensor")).not.toBeNull();

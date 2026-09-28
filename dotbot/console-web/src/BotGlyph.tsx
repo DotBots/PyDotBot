@@ -19,8 +19,21 @@ import type { BotPose, LH2Position, RgbLed } from "./types";
 // take: the reach and the core radii the controller ships with the pose,
 // which hold whichever way the robot faces.
 
-/** Screen pixels a bot is drawn at however far the map zooms out. */
-export const BOT_MIN_PX = 8;
+/** Screen pixels a bot is drawn at however far the map zooms out: a dot. */
+export const BOT_MIN_PX = 3;
+
+/**
+ * Screen pixels of footprint below which a bot is a plain dot in its body
+ * colour: the heading bar and the sensor mark need this much to read.
+ */
+export const GLYPH_MARK_PX = 8;
+
+/**
+ * The smallest a dot's pointer target is, in screen pixels across: no more
+ * than the 200 mm pitch of a packed fleet at the whole-site zoom, so a click
+ * on a robot never lands on its neighbour's target.
+ */
+export const DOT_HIT_PX = 4;
 
 /**
  * Screen pixels of footprint the board outline needs before it reads. Judged
@@ -57,17 +70,18 @@ export const LED_OFF = "#161616";
 const SHADOW =
   "drop-shadow(0 0 .9px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(0,0,0,.45))";
 
-/** How much of the robot is drawn: the board, or a mark. */
-export type GlyphLevel = "detail" | "dot";
+/** How much of the robot is drawn: the board, a mark, or a dot. */
+export type GlyphLevel = "detail" | "mark" | "dot";
 
 /**
  * Which glyph a bot of this on-screen size gets. Zoom decides it; a crowded
  * map is marks at any zoom, since detail nobody can pick apart only costs
- * legibility.
+ * legibility, and a bot too small for a mark is a dot however few there are.
  */
 export function glyphLevel(footprintPx: number, botCount: number): GlyphLevel {
-  if (botCount > GLYPH_CROWD_BOTS) return "dot";
-  return footprintPx >= GLYPH_DETAIL_PX ? "detail" : "dot";
+  if (footprintPx < GLYPH_MARK_PX) return "dot";
+  if (botCount > GLYPH_CROWD_BOTS) return "mark";
+  return footprintPx >= GLYPH_DETAIL_PX ? "detail" : "mark";
 }
 
 /**
@@ -143,15 +157,19 @@ export function botFootprintPx(pxPerMm: number, spanMm: number): number {
  * What one robot is drawn as. `board` is the full glyph; `mark` a disc with
  * a heading bar and no rim, for a board too small to read; `disc` the real-size
  * envelope with its heading, for a board big enough but lost in a crowd;
- * `sensor` the photodiode point with the possible footprint around it, whose
- * radii are in screen pixels and null where they are not drawn.
+ * `dot` a plain circle `footprintPx` across at `centre` (mm from the
+ * photodiode), for a robot too small for a mark; `sensor` the photodiode point
+ * `pointPx` across with the possible footprint around it, whose radii are in
+ * screen pixels and null where they are not drawn.
  */
 export type RobotShape =
   | { kind: "board"; body: BotBody }
+  | { kind: "dot"; centre: LH2Position }
   | { kind: "mark"; body: BotBody }
   | { kind: "disc"; body: BotBody; radiusPx: number }
   | {
       kind: "sensor";
+      pointPx: number;
       ringPx: number | null;
       corePx: number | null;
       crowded: boolean;
@@ -189,7 +207,11 @@ export function robotDraw(
   if (body) {
     const footprintPx = botFootprintPx(pxPerMm, body.spanMm);
     const flat = { centre: body.centre, turned: false, estimate: false };
-    if (glyphLevel(footprintPx, botCount) === "detail") {
+    const level = glyphLevel(footprintPx, botCount);
+    if (level === "dot") {
+      return { ...flat, shape: { kind: "dot", centre: body.centre }, footprintPx, battery: false };
+    }
+    if (level === "detail") {
       return {
         shape: { kind: "board", body },
         centre: body.centre,
@@ -214,19 +236,34 @@ export function robotDraw(
 
   const reachPx = pose ? pose.reach_mm * pxPerMm : 0;
   const corePx = pose ? pose.core_mm * pxPerMm : 0;
-  const ring = drawing.footprint && 2 * reachPx >= FOOTPRINT_MIN_PX;
-  const core = drawing.footprint && 2 * corePx >= SENSOR_POINT_PX + 4;
   const envelopePx = botFootprintPx(pxPerMm, pose ? pose.envelope_mm : 0);
+  // The point keeps its size until the robot itself is smaller on screen; a
+  // robot with no pose has no size to shrink to.
+  const pointPx = pose ? Math.min(SENSOR_POINT_PX, envelopePx) : SENSOR_POINT_PX;
+  if (glyphLevel(pointPx, botCount) === "dot") {
+    const origin = { x: 0, y: 0 };
+    return {
+      shape: { kind: "dot", centre: origin },
+      centre: origin,
+      footprintPx: pointPx,
+      turned: false,
+      estimate: false,
+      battery: false,
+    };
+  }
+  const ring = drawing.footprint && 2 * reachPx >= FOOTPRINT_MIN_PX;
+  const core = drawing.footprint && 2 * corePx >= pointPx + 4;
   return {
     shape: {
       kind: "sensor",
+      pointPx,
       ringPx: ring ? reachPx : null,
       corePx: core ? corePx : null,
       crowded: botCount > GLYPH_CROWD_BOTS,
-      bar: headingBar(pose, Math.max(SENSOR_POINT_PX, reachPx)),
+      bar: headingBar(pose, Math.max(pointPx, reachPx)),
     },
     centre: { x: 0, y: 0 },
-    footprintPx: ring ? 2 * reachPx : SENSOR_POINT_PX,
+    footprintPx: ring ? 2 * reachPx : pointPx,
     turned: false,
     estimate: false,
     battery: glyphLevel(envelopePx, botCount) === "detail",
@@ -351,13 +388,14 @@ const unit = (from: LH2Position, to: LH2Position): LH2Position => {
 const SensorPoint: React.FC<{
   state: string;
   led: RgbLed | null;
+  pointPx: number;
   ringPx: number | null;
   corePx: number | null;
   crowded: boolean;
   bar: HeadingBarShape | null;
   ledOutline?: boolean;
-}> = ({ state, led, ringPx, corePx, crowded, bar, ledOutline = false }) => {
-  const pointR = SENSOR_POINT_PX / 2;
+}> = ({ state, led, pointPx, ringPx, corePx, crowded, bar, ledOutline = false }) => {
+  const pointR = pointPx / 2;
   return (
     <Frame half={Math.max(pointR + 2, ringPx ?? 0, bar?.lengthPx ?? 0)} filter={false}>
       {ringPx !== null && (
@@ -442,6 +480,41 @@ const SensorPoint: React.FC<{
 };
 
 /**
+ * A robot too small to read anything off: a plain disc in its body colour,
+ * with no shadow, so a crowd of them stays cheap to paint. Only a pointer
+ * target at least `DOT_HIT_PX` across takes the pointer, not the frame round
+ * it, so a dot never takes a click aimed at its neighbour.
+ */
+const Dot: React.FC<{ state: string; centre: LH2Position; r: number; ledOutline: boolean }> = ({
+  state,
+  centre,
+  r,
+  ledOutline,
+}) => {
+  const hitR = Math.max(r, DOT_HIT_PX / 2);
+  const half = Math.hypot(centre.x, centre.y) + hitR;
+  return (
+    <svg
+      viewBox={`${-half} ${-half} ${2 * half} ${2 * half}`}
+      width={2 * half}
+      height={2 * half}
+      style={{ display: "block", overflow: "visible", pointerEvents: "none" }}
+    >
+      <circle data-layer="dot-hit" cx={centre.x} cy={centre.y} r={hitR} fill="transparent" pointerEvents="all" />
+      <circle
+        data-layer="dot"
+        cx={centre.x}
+        cy={centre.y}
+        r={r}
+        fill={state}
+        stroke={ledOutline ? DARK : undefined}
+        strokeWidth={ledOutline ? 0.75 : undefined}
+      />
+    </svg>
+  );
+};
+
+/**
  * The bot as one SVG whose origin is the pose's photodiode, so the caller places
  * it at the point it already has and the body falls where the pose puts it.
  */
@@ -455,13 +528,15 @@ export const BotGlyph: React.FC<BotGlyphProps> = ({
   outlineColor = "rgba(0,0,0,.45)",
   ledOutline = false,
 }) => {
-  if (shape.kind === "sensor")
-    return <SensorPoint state={state} led={led} ledOutline={ledOutline} {...shape} />;
-  const body = shape.body;
   const px = (p: LH2Position): LH2Position => ({
     x: p.x * pxPerMm,
     y: p.y * pxPerMm,
   });
+  if (shape.kind === "sensor")
+    return <SensorPoint state={state} led={led} ledOutline={ledOutline} {...shape} />;
+  if (shape.kind === "dot")
+    return <Dot state={state} centre={px(shape.centre)} r={footprintPx / 2} ledOutline={ledOutline} />;
+  const body = shape.body;
   const centre = px(body.centre);
   const dir = unit(centre, px(body.nose));
   const offset = Math.hypot(centre.x, centre.y);

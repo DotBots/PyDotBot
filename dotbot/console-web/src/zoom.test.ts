@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GLYPH_DETAIL_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
+import { GLYPH_DETAIL_PX, GLYPH_MARK_PX, botFootprintPx, glyphLevel } from "./BotGlyph";
 import { PAN_MARGIN_MM, areaToFraction, siteView, siteViewport } from "./frame";
 import { frameMm, pxPerMm } from "./grid";
 import {
@@ -426,7 +426,7 @@ describe("how far in the glyph ladder reaches", () => {
     [plain, withPen].forEach((site) => {
       footprints(site).forEach((px) => {
         expect(glyphLevel(px, 1)).toBe(
-          px >= GLYPH_DETAIL_PX ? "detail" : "dot",
+          px >= GLYPH_DETAIL_PX ? "detail" : px >= GLYPH_MARK_PX ? "mark" : "dot",
         );
       });
     });
