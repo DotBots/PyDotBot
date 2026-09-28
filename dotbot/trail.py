@@ -102,7 +102,3 @@ class Trail:
         """The newest `count` points added after seq `after` and no later
         than `upto`, oldest first, as JSON values."""
         return [self._json(i) for i in self._pick(count, upto, after)]
-
-    def models(self, count: Optional[int] = None) -> List[Point]:
-        """The newest `count` points, oldest first, as models."""
-        return [self._model(i) for i in self._pick(count, None, -1)]

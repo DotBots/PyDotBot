@@ -842,7 +842,7 @@ async def test_the_rest_list_is_the_model_serialised(controller):
     )
     expected = [
         DotBotModel.model_validate(
-            dotbot.model_dump() | {"trail": controller.records[address].trail.models(3)}
+            dotbot.model_dump() | {"trail": controller.records[address].trail.json(3)}
         ).model_dump(mode="json", exclude_none=True)
         for address, dotbot in controller.dotbots.items()
     ]

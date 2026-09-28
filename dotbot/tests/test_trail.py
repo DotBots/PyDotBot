@@ -14,7 +14,7 @@ def test_trail_keeps_the_newest_points_and_names_the_evicted_seq():
     trail, evicted = _filled(6)
     assert evicted == [None, None, None, None, 0, 1]
     assert len(trail) == 4
-    assert [p.x for p in trail.models()] == [2, 3, 4, 5]
+    assert [p["x"] for p in trail.json()] == [2, 3, 4, 5]
     assert trail.last() == DotBotLH2Position(x=5, y=-5)
 
 
@@ -26,7 +26,6 @@ def test_trail_json_filters_by_count_and_seq():
     assert [p["x"] for p in trail.json(after=4)] == [5, 6]
     assert [p["x"] for p in trail.json(1, after=4)] == [6]
     assert trail.json(0) == []
-    assert trail.models(0) == []
 
 
 def test_trail_clear_and_gps_points():
@@ -35,4 +34,4 @@ def test_trail_clear_and_gps_points():
     assert len(trail) == 0 and trail.last() is None and trail.json() == []
     trail.append(9, DotBotGPSPosition(latitude=48.8, longitude=2.3))
     assert trail.json() == [{"latitude": 48.8, "longitude": 2.3}]
-    assert trail.models() == [DotBotGPSPosition(latitude=48.8, longitude=2.3)]
+    assert trail.last() == DotBotGPSPosition(latitude=48.8, longitude=2.3)
