@@ -15,6 +15,11 @@ const SELECTION_PAD_PX = 3;
 export const WAYPOINT_OF_BODY = 0.3;
 export const WAYPOINT_MIN_PX = 7;
 export const WAYPOINT_MAX_PX = 14;
+/**
+ * The CSS variable a marker scales itself by: the camera's inverse scale,
+ * times the zoom it is drawn at over the zoom it was laid out for.
+ */
+export const MARKER_SCALE_VAR = "--marker-scale";
 // Two poses this close, in mm, draw the same body.
 const SAME_MM = 1e-6;
 
@@ -134,8 +139,11 @@ export interface BotMarkerProps {
   hovered: boolean;
   /** How solid the board is drawn, from the camera layers under the robot. */
   solid: number;
-  /** The camera's inverse scale: chrome keeps its size on screen. */
-  chrome: number;
+  /**
+   * The screen pixels a millimetre spans at the zoom the marker is laid out
+   * for. The camera layer's `--marker-scale` carries the marker from there to
+   * the camera's own scale, so a zoom need not re-render it.
+   */
   perMm: number;
   drawing: RobotDrawing;
   botCount: number;
@@ -157,7 +165,6 @@ export const BotMarker = React.memo(function BotMarker({
   selected,
   hovered,
   solid,
-  chrome,
   perMm,
   drawing,
   botCount,
@@ -200,7 +207,7 @@ export const BotMarker = React.memo(function BotMarker({
       onPointerLeave={() => onHover((h) => (h === b.id ? null : h))}
       style={{
         position: "absolute",
-        transform: `translate(-50%, -50%) scale(${chrome})`,
+        transform: `translate(-50%, -50%) scale(var(${MARKER_SCALE_VAR}, 1))`,
         cursor: "pointer",
         zIndex: selected ? 6 : 2,
         width: 0,
@@ -315,7 +322,6 @@ function sameMarkerProps(a: BotMarkerProps, b: BotMarkerProps): boolean {
     a.selected === b.selected &&
     a.hovered === b.hovered &&
     a.solid === b.solid &&
-    a.chrome === b.chrome &&
     a.perMm === b.perMm &&
     a.drawing === b.drawing &&
     a.botCount === b.botCount &&

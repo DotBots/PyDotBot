@@ -30,7 +30,8 @@ import {
   ticksInSite,
 } from "./grid";
 import { hasHeading } from "./BotGlyph";
-import { BotMarker, WAYPOINT_MIN_PX, botDraw as drawBot } from "./BotMarker";
+import { BotMarker, MARKER_SCALE_VAR, WAYPOINT_MIN_PX, botDraw as drawBot } from "./BotMarker";
+import { useMarkerPerMm } from "./markerScale";
 import { BodyColorMode, DEFAULT_BODY_COLOR_MODE } from "./bodyColor";
 import {
   ARM_PX,
@@ -733,6 +734,10 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // screen pixel wide whatever the camera does.
   const geomNow = geomRef.current;
   const perMm = pxPerMm("x", props.viewport, geomNow, cam);
+  // The robot markers are laid out at their own scale and carried to the
+  // camera's by a CSS variable, so a zoom gesture re-renders none of them.
+  const markerPerMm = useMarkerPerMm(perMm);
+  const markerScale = markerPerMm > 0 ? (chrome * perMm) / markerPerMm : chrome;
   const gridStepMm = useMemo(() => pickGridStep(perMm), [perMm]);
   const subStepMm = useMemo(() => pickSubStep(perMm), [perMm]);
 
@@ -988,6 +993,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           inset: 0,
           transform: `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.scale})`,
           transformOrigin: "50% 50%",
+          [MARKER_SCALE_VAR as string]: markerScale,
         }}
       >
         {/* the drawn frame: the site plus its margin, which draws nothing */}
@@ -1489,8 +1495,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   // to stay findable and clickable to be driven, and at a low
                   // opacity the ring and the chip are all there is to find.
                   solid={robotOpacityAt(robotFades, b.position!)}
-                  chrome={chrome}
-                  perMm={perMm}
+                  perMm={markerPerMm}
                   drawing={drawing}
                   botCount={props.bots.length}
                   batteryBars={props.layers.batteryBars}
