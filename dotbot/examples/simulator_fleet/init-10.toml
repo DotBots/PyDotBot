@@ -1,0 +1,62 @@
+[network]
+pdr = 100
+
+[[dotbots]]
+address = "DE00000000000000"
+pos_x = 9700
+pos_y = 17800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000001"
+pos_x = 9900
+pos_y = 17800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000002"
+pos_x = 10100
+pos_y = 17800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000003"
+pos_x = 10300
+pos_y = 17800
+direction = 180
+
+[[dotbots]]
+address = "DE00000000000004"
+pos_x = 9700
+pos_y = 18000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000005"
+pos_x = 9900
+pos_y = 18000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000006"
+pos_x = 10100
+pos_y = 18000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000007"
+pos_x = 10300
+pos_y = 18000
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000008"
+pos_x = 9900
+pos_y = 18200
+direction = 0
+
+[[dotbots]]
+address = "DE00000000000009"
+pos_x = 10100
+pos_y = 18200
+direction = 0
