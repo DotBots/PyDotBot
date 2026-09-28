@@ -195,13 +195,13 @@ def test_reads_with_swapped_sweeps_are_ordered_before_averaging():
 # --- the file ---------------------------------------------------------------
 
 
-def _saved(monkeypatch, tmp_path, **kwargs):
+def _saved(monkeypatch, tmp_path, tag=None, **kwargs):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
     placement = _consistent_placement(corners, reads=3)
     manager = LighthouseManager(placements=[placement], **kwargs)
     manager.solve()
-    return manager, manager.save_calibration(tag=kwargs.pop("tag", None))
+    return manager, manager.save_calibration(tag=tag)
 
 
 def test_save_writes_schema_2_into_the_site_directory(monkeypatch, tmp_path):
@@ -350,6 +350,66 @@ def test_an_id_prefix_resolves_only_under_the_named_site(monkeypatch, tmp_path):
 def test_resolve_prefers_an_actual_path(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
     assert resolve_calibration_path(str(path)) == path
+
+
+def test_resolve_by_exact_tag(monkeypatch, tmp_path):
+    _, path = _saved(
+        monkeypatch, tmp_path, tag="arena-relay", valid_mm=(0, 0, 1000, 1000)
+    )
+    root = tmp_path / "calibrations"
+
+    assert resolve_calibration_path("arena-relay", root) == path
+    assert resolve_calibration_path("ARENA-RELAY", root) == path
+    with pytest.raises(ValueError, match="no calibration matches"):
+        resolve_calibration_path("no-such-tag", root)
+
+
+def test_resolve_by_tag_accepts_the_stored_slug(monkeypatch, tmp_path):
+    """A tag typed with spaces/punctuation still resolves by its stored slug."""
+    _, path = _saved(
+        monkeypatch, tmp_path, tag="Arena Relay!", valid_mm=(0, 0, 1000, 1000)
+    )
+    root = tmp_path / "calibrations"
+    calibration = read_calibration_file(path)
+    assert calibration.tag == "Arena-Relay"
+
+    assert resolve_calibration_path("Arena Relay!", root) == path
+    assert resolve_calibration_path("arena relay!", root) == path
+
+
+def test_an_ambiguous_tag_lists_every_match(monkeypatch, tmp_path):
+    _, first = _saved(monkeypatch, tmp_path, tag="shared", valid_mm=(0, 0, 1000, 1000))
+    _, second = _saved(monkeypatch, tmp_path, tag="shared", valid_mm=(0, 0, 2000, 2000))
+    root = tmp_path / "calibrations"
+
+    with pytest.raises(
+        ValueError, match="calibration tag 'shared' matches several"
+    ) as exc:
+        resolve_calibration_path("shared", root)
+    message = str(exc.value)
+    first_cal, second_cal = read_calibration_file(first), read_calibration_file(second)
+    for calibration, path in ((first_cal, first), (second_cal, second)):
+        assert calibration.id in message
+        assert calibration.created_at in message
+        assert str(path) in message
+
+
+def test_a_tag_wins_over_an_id_prefix_only_on_an_exact_match(monkeypatch, tmp_path):
+    """A spec that reads as both resolves the tag, exactly; otherwise the prefix."""
+    _, tagged = _saved(
+        monkeypatch, tmp_path, tag="deadbeef", valid_mm=(0, 0, 1000, 1000)
+    )
+    _, other = _saved(monkeypatch, tmp_path, valid_mm=(0, 0, 2000, 2000))
+    root = tmp_path / "calibrations"
+    other_id = read_calibration_file(other).id
+
+    # "deadbeef" is both `tagged`'s tag and (by construction) not `other`'s id
+    # prefix, so the exact tag match wins.
+    assert resolve_calibration_path("deadbeef", root) == tagged
+
+    # The other file's own id prefix is not anyone's tag, so it falls through
+    # to the id-prefix branch and still resolves.
+    assert resolve_calibration_path(other_id[:8], root) == other
 
 
 # --- points and areas ------------------------------------------------------
@@ -524,12 +584,12 @@ def test_a_site_extent_is_the_plausibility_fence():
 
 
 def test_slug_tag_rules():
-    assert lighthouse2._slug_tag("office-2x2m") == "office-2x2m"
-    assert lighthouse2._slug_tag("  a  b  ") == "a-b"
-    assert lighthouse2._slug_tag("a/b\\c:d") == "a-b-c-d"
-    assert lighthouse2._slug_tag("--keep_me.v2--") == "keep_me.v2"
-    assert lighthouse2._slug_tag("..") == ""
-    assert lighthouse2._slug_tag("***") == ""
+    assert lighthouse2.slug_tag("office-2x2m") == "office-2x2m"
+    assert lighthouse2.slug_tag("  a  b  ") == "a-b"
+    assert lighthouse2.slug_tag("a/b\\c:d") == "a-b-c-d"
+    assert lighthouse2.slug_tag("--keep_me.v2--") == "keep_me.v2"
+    assert lighthouse2.slug_tag("..") == ""
+    assert lighthouse2.slug_tag("***") == ""
 
 
 # The same schema 2 fixture swarmit's test_helpers.py carries, so the two

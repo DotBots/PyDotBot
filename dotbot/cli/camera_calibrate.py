@@ -177,6 +177,15 @@ def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
         "the mode it was solved in; another mode means collecting again."
     ),
 )
+@click.option(
+    "--tag",
+    default=None,
+    help=(
+        'Optional label (e.g. "arena-overhead") recorded in the file, so a '
+        "registration can be selected by name later with --camera-calibration "
+        "instead of its id prefix."
+    ),
+)
 @click.pass_context
 def collect(
     ctx: click.Context,
@@ -185,6 +194,7 @@ def collect(
     camera_spec: str | None,
     reads: int | None,
     lens: str,
+    tag: str | None,
 ) -> None:
     """Capture the sheets through the camera and solve the homography."""
     try:
@@ -238,6 +248,7 @@ def collect(
         probe_result=chosen,
         reads=tally.target,
         lens=lens,
+        tag=tag,
     )
     path = write_camera_calibration(calibration)
     written = str(path)
@@ -249,12 +260,14 @@ def collect(
     click.echo(
         f"residual {solution.residual_mm:.1f} mm over {4 * len(layout)} "
         f"corners, id {calibration.id}, site {site.name}"
+        + (f", tag {calibration.tag!r}" if calibration.tag else "")
     )
     if calibration.controls:
         click.echo(f"colour controls recorded: {controls_string(calibration.controls)}")
     click.echo(
         "To draw it on the console map:\n"
-        f"  dotbot run controller --camera-calibration {calibration.id8}"
+        "  dotbot run controller --camera-calibration "
+        f"{calibration.tag or calibration.id8}"
     )
 
 

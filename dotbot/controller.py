@@ -336,6 +336,7 @@ class Controller:
                 path=str(self.calibration.path),
                 site=self.calibration.site.name,
                 calibration_id=self.calibration.id,
+                tag=self.calibration.tag,
                 stations=len(self.lh2_calibration),
             )
         else:
@@ -397,6 +398,7 @@ class Controller:
             site=calibration.site.name,
             area=area.name,
             camera_id=calibration.id,
+            tag=calibration.tag,
             residual_mm=round(calibration.residual_mm, 2),
         )
         if not self.settings.camera_detect:

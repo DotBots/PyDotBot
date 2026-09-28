@@ -244,19 +244,21 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     "--lh2-calibration",
     type=str,
     help=(
-        "The LH2 calibration this session runs on: a file path or the id "
-        "prefix of a file under ~/.dotbot/calibrations/<site>/. With none "
-        "given, no calibration is loaded and robots keep whatever they hold."
+        "The LH2 calibration this session runs on: a file path, the exact "
+        "--tag it was collected with, or the id prefix of a file under "
+        "~/.dotbot/calibrations/<site>/. With none given, no calibration is "
+        "loaded and robots keep whatever they hold."
     ),
 )
 @click.option(
     "--camera-calibration",
     type=str,
     help=(
-        "The overhead-camera registration to draw on the map: a file path or "
-        "the id prefix of a file under ~/.dotbot/calibrations/<site>/. Write "
-        "one with `dotbot run calibrate-camera collect`. With none given, "
-        "the map carries no camera layer."
+        "The overhead-camera registration to draw on the map: a file path, "
+        "the exact --tag it was collected with, or the id prefix of a file "
+        "under ~/.dotbot/calibrations/<site>/. Write one with "
+        "`dotbot run calibrate-camera collect`. With none given, the map "
+        "carries no camera layer."
     ),
 )
 @click.option(
