@@ -46,7 +46,9 @@ from dotbot.models import (
     DotBotCameraDetectionModel,
     DotBotCameraModel,
     DotBotConnectionModel,
+    DotBotGPSPosition,
     DotBotLH2Position,
+    DotBotLH2Waypoint,
     DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
@@ -234,10 +236,25 @@ async def dotbots_waypoints(
     """Set the waypoints of a DotBot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-
+    _check_waypoints_kind(address, application, waypoints.waypoints)
     await _dotbots_waypoints(
         address=address, application=application, waypoints=waypoints
     )
+
+
+def _check_waypoints_kind(address: str, application: int, waypoints) -> None:
+    """Raises 422 unless every point is of the kind `application` drives
+    to: latitude/longitude for a SailBot, x/y for a DotBot."""
+    kind = (
+        DotBotGPSPosition
+        if application == ApplicationType.SailBot.value
+        else DotBotLH2Waypoint
+    )
+    if not all(isinstance(waypoint, kind) for waypoint in waypoints):
+        wanted = "latitude/longitude" if kind is DotBotGPSPosition else "x/y"
+        raise HTTPException(
+            status_code=422, detail=f"{address}: waypoints must be {wanted} points"
+        )
 
 
 def _split_known(addresses: List[str], strict: bool) -> List[str]:
@@ -276,10 +293,18 @@ async def dotbots_waypoint_batches(
 
     Every known DotBot gets its batch and unknown addresses are listed in
     `unknown`. With `?strict=true` an unknown address refuses the whole
-    request, before anything is sent. When no address is known: 404.
+    request, before anything is sent. When no address is known: 404. A batch
+    whose points are not of the kind its robot drives to (x/y for a DotBot,
+    latitude/longitude for a SailBot) refuses the whole request: 422.
     """
     addresses = list(batches.dotbots)
     known = _split_known(addresses, strict)
+    for address in known:
+        _check_waypoints_kind(
+            address,
+            api.controller.dotbots[address].application.value,
+            batches.dotbots[address],
+        )
     for address in known:
         await _dotbots_waypoints(
             address=address,
@@ -768,6 +793,15 @@ async def ws_dotbots(websocket: WebSocket):
                     command=msg.data,
                 )
             elif isinstance(msg, WSWaypoints):
+                try:
+                    _check_waypoints_kind(
+                        msg.address, msg.application, msg.data.waypoints
+                    )
+                except HTTPException as exc:
+                    await websocket.send_json(
+                        {"error": "invalid_message", "details": exc.detail}
+                    )
+                    continue
                 await _dotbots_waypoints(
                     address=msg.address,
                     application=msg.application,

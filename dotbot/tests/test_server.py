@@ -2155,6 +2155,52 @@ async def test_set_waypoint_batches_validation_refuses_everything(query):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["", "?strict=true"])
+async def test_set_waypoint_batches_of_the_wrong_kind_send_nothing(query):
+    """A GPS batch for a DotBot refuses the whole request, including the
+    robots listed before it."""
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    api.controller.send_payload = MagicMock()
+    response = await client.put(
+        f"/controller/dotbots/waypoints{query}",
+        json={
+            "threshold": 40,
+            "dotbots": {
+                "4242": [{"x": 1, "y": 2}],
+                "4343": [{"latitude": 48.8, "longitude": 2.3}],
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert "4343" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+    api.controller.send_payload.assert_not_called()
+    assert api.controller.dotbots["4242"].waypoints == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "application,point",
+    [
+        (ApplicationType.DotBot.value, {"latitude": 48.8, "longitude": 2.3}),
+        (ApplicationType.SailBot.value, {"x": 1, "y": 2}),
+    ],
+)
+async def test_set_dotbot_waypoints_of_the_wrong_kind_is_422(application, point):
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    api.controller.send_payload = MagicMock()
+    response = await client.put(
+        f"/controller/dotbots/4242/{application}/waypoints",
+        json={"threshold": 40, "waypoints": [point]},
+    )
+    assert response.status_code == 422
+    api.controller.send_waypoints.assert_not_called()
+    api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_clear_waypoints_of_named_robots():
     api.controller.dotbots = _two_dotbots()
     api.controller.dotbots["4242"].waypoints = [
