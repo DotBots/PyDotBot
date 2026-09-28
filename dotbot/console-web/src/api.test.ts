@@ -120,6 +120,12 @@ describe("the bulk waypoint routes", () => {
     });
   });
 
+  it("refuse a waypoint the controller cannot send with its own sentence", async () => {
+    const detail = "AAAA: waypoint (-100, 500) mm is outside site 'c405', 0 to 3000 x 0 to 2000 mm";
+    stubFetch(422, { detail });
+    await expect(putWaypointBatches(60, { AAAA: [{ x: -100, y: 500 }] })).rejects.toThrow(detail);
+  });
+
   it("refuse a malformed request as an error", async () => {
     stubFetch(422, { detail: [] });
     await expect(putWaypointBatches(60, { AAAA: [] })).rejects.toThrow("422");

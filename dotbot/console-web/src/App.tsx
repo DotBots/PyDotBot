@@ -116,10 +116,10 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
 }
 
 /** "3 robots not found: 1111, 2222, 3333", naming at most five. */
-function notFoundNotice(unknown: string[]): string {
-  const names = unknown.slice(0, 5).map((id) => id.slice(-4).toUpperCase());
-  const more = unknown.length > 5 ? ` and ${unknown.length - 5} more` : "";
-  return `${unknown.length} robot${unknown.length === 1 ? "" : "s"} not found: ${names.join(", ")}${more}`;
+function robotsNotice(ids: string[], what: string): string {
+  const names = ids.slice(0, 5).map((id) => id.slice(-4).toUpperCase());
+  const more = ids.length > 5 ? ` and ${ids.length - 5} more` : "";
+  return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
 }
 
 export const App: React.FC = () => {
@@ -146,10 +146,15 @@ export const App: React.FC = () => {
 
   const orch = useOrchestration(showToast);
   // A bulk waypoint request moves every robot the controller knows; the ones
-  // it does not are named here, without holding anything up.
+  // it does not, or could not send to, are named here, without holding
+  // anything up.
   const reportUnknown = useCallback(
     (sent: WaypointsSent | void) => {
-      if (sent && sent.unknown.length > 0) showToast(notFoundNotice(sent.unknown));
+      if (!sent) return;
+      const notices = [];
+      if (sent.unknown.length > 0) notices.push(robotsNotice(sent.unknown, "not found"));
+      if (sent.failed?.length) notices.push(robotsNotice(sent.failed, "not sent"));
+      if (notices.length > 0) showToast(notices.join("; "));
     },
     [showToast],
   );

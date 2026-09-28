@@ -137,6 +137,22 @@ describe("robots the controller does not know", () => {
     expect(await screen.findByText("1 robot not found: 3333")).toBeInTheDocument();
   });
 
+  it("are named with the robots the controller could not send to", async () => {
+    vi.mocked(putWaypointBatches).mockResolvedValue({
+      applied: [],
+      unknown: ["DEADBEEF22222222"],
+      failed: ["BADCAFE111111111"],
+    });
+    select("1111,2222");
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("redo-mission"));
+
+    expect(
+      await screen.findByText("1 robot not found: 2222; 1 robot not sent: 1111"),
+    ).toBeInTheDocument();
+  });
+
   it("leave the usual message alone when every robot is known", async () => {
     vi.mocked(putWaypointBatches).mockResolvedValue({
       applied: ["BADCAFE111111111", "DEADBEEF22222222"],

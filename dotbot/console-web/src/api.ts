@@ -106,16 +106,27 @@ export async function putRgbLed(
   });
 }
 
-/** What a bulk waypoint request reached, and the addresses it did not know. */
+/**
+ * What a bulk waypoint request reached, the addresses it did not know, and
+ * the known ones it could not send to.
+ */
 export interface WaypointsSent {
   applied: string[];
   unknown: string[];
+  failed?: string[];
 }
 
-// The controller answers 404 when it knows none of the named robots.
+// The controller answers 404 when it knows none of the named robots, and
+// explains a refusal in a sentence when it can.
 async function waypointsSent(res: Response, addresses: string[]): Promise<WaypointsSent> {
   if (res.status === 404) return { applied: [], unknown: addresses };
-  if (!res.ok) throw new Error(`waypoints: HTTP ${res.status}`);
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((body) => body?.detail)
+      .catch(() => undefined);
+    throw new Error(typeof detail === "string" ? detail : `waypoints: HTTP ${res.status}`);
+  }
   return res.json();
 }
 
