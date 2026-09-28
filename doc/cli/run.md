@@ -45,7 +45,7 @@ dotbot run controller --conn /dev/ttyACM0
 | `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run calibrate-camera collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
 | `--camera-detect` / `--no-camera-detect` | run the robot detector on that camera's frames (default on). Off serves the layer as a picture only: nothing detected, drawn, pushed or logged. Also `[run.controller] camera_detect` in dotbot.toml. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
-| `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*` (default `http://localhost:8002`). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. Absent server -> the toggle just reads "MRTA N/A". |
+| `--mrta-url` | MRTA mode server (dotbot-logistics) behind the console's MRTA toggle, proxied at `/mrta/*`. Unset by default - the console shows no MRTA control at all until this is set (typically `http://localhost:8002`, dotbot-logistics' own default port). Also `[run.controller] mrta_url` in dotbot.toml, or `DOTBOT_MRTA_URL`. |
 
 Full options and the dashboard tour live in
 [the controller guide](../guides/controller.md). See `dotbot run controller --help`.

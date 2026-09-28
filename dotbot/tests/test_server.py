@@ -908,6 +908,74 @@ def test_swarmit_proxy_without_a_server_is_404_and_reaches_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mrta_proxy_forwards(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://mrta-host:9002/status")
+        return httpx.Response(
+            status_code=200,
+            stream=_MockByteStream([b'{"state": "off", "bots": null, "detail": null}']),
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.mrta_url = "http://mrta-host:9002"
+
+    client = TestClient(api)
+    response = client.get("/mrta/status")
+
+    assert response.status_code == 200
+    assert response.content == b'{"state": "off", "bots": null, "detail": null}'
+
+
+@pytest.mark.asyncio
+async def test_mrta_proxy_unreachable(monkeypatch):
+
+    async def mock_send_failed(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    transport = httpx.MockTransport(mock_send_failed)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.mrta_url = "http://mrta-host:9002"
+
+    client = TestClient(api)
+    response = client.get("/mrta/status")
+
+    assert response.status_code == 502
+    assert b"MRTA mode server unreachable" in response.content
+
+
+def test_mrta_proxy_without_a_server_is_404_and_reaches_nothing(monkeypatch):
+    """`mrta_url` is unset by default: the proxy answers 404 without ever
+    touching the network, which is also the signal the console uses to hide
+    the MRTA control entirely rather than show it as unavailable."""
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", MagicMock())
+    api.controller.settings.mrta_url = None
+    response = TestClient(api).get("/mrta/status")
+    assert response.status_code == 404
+    server_module.httpx.AsyncClient.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
     async def mock_send_failed(*args, **kwargs):

@@ -327,8 +327,9 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     type=str,
     help=(
         "Base URL of the MRTA mode server (dotbot-logistics) the controller "
-        "proxies /mrta/* requests to (for the web console's MRTA toggle). "
-        f"Defaults to '{MRTA_URL_DEFAULT}'."
+        "proxies /mrta/* requests to. Unset by default - the console shows no "
+        "MRTA control at all until this is set. When set, "
+        f"typically '{MRTA_URL_DEFAULT}' (dotbot-logistics' own default port)."
     ),
 )
 @click.pass_context

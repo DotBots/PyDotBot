@@ -31,7 +31,6 @@ from dotbot import (
     GATEWAY_ADDRESS_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
-    MRTA_URL_DEFAULT,
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
@@ -225,7 +224,7 @@ class ControllerSettings:
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
-    mrta_url: str = MRTA_URL_DEFAULT
+    mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
 
 def is_lh2_fix(position: DotBotLH2Position, dotbot: DotBotModel) -> bool:

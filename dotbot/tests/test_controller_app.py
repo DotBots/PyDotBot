@@ -131,6 +131,58 @@ def test_a_testbed_connection_keeps_the_default_swarmit_server(
     assert settings.swarmit_url == "http://localhost:8001"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_mrta_url_is_unset_by_default(controller, _asyncio_run):
+    """No `--mrta-url` -> `mrta_url` is None, unlike `swarmit_url` which keeps
+    a default. MRTA is opt-in: the console shows no control until this is set."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--conn", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_mrta_url_flag(controller, _asyncio_run):
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["--conn", "simulator", "--mrta-url", "http://lab:9002"]
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url == "http://lab:9002"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_mrta_url_from_unified_config(
+    controller, _asyncio_run, tmp_path
+):
+    """`[run.controller] mrta_url` in dotbot.toml reaches the settings."""
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(
+        """
+conn = "simulator"
+
+[run.controller]
+mrta_url = "http://lab:9002"
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url == "http://lab:9002"
+
+
 def test_main_without_conn_errors():
     """No `--conn` → a clear error listing the connection forms."""
     runner = CliRunner()

@@ -910,9 +910,13 @@ async def swarmit_proxy(path: str, request: Request):
     )
 
 
-# The MRTA mode server (dotbot-logistics) is optional and usually absent, so
-# a plain short timeout: the console reads any failure - a 404 on a
-# controller without this route, a 502 here, a timeout - as "MRTA N/A". No
+# The MRTA mode server (dotbot-logistics) is opt-in: `mrta_url` is unset by
+# default, and this route then answers 404 without proxying anywhere, exactly
+# like `/swarmit/*` with no swarmit server. That 404 is also how the console
+# knows to hide the MRTA button entirely rather than show it as unavailable -
+# see console-web's fetchMrtaStatus(). A plain short timeout for the proxied
+# case: the console reads any other failure - a 502, a timeout - as "MRTA
+# N/A" but still shows the control, since the operator asked for one. No
 # streaming: /mrta/status and /mrta/mode are small JSON.
 MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 
@@ -925,6 +929,8 @@ MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 async def mrta_proxy(path: str, request: Request):
     """Forward /mrta/* to the configured MRTA mode server (same-origin for
     the web console, exactly like ``/swarmit/*``). The /mrta prefix is dropped."""
+    if api.controller.settings.mrta_url is None:
+        return Response(status_code=404, content=b"no MRTA server configured")
     base = api.controller.settings.mrta_url.rstrip("/")
     async with httpx.AsyncClient(timeout=MRTA_PROXY_TIMEOUT) as client:
         try:
