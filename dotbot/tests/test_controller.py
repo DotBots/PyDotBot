@@ -46,6 +46,7 @@ from dotbot.protocol import (
 from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
 from dotbot.stream import delta_frames
+from dotbot.twin import wheel_speed_from_pwm
 
 # A measured site, which the package never ships.
 C405 = Site(
@@ -1043,6 +1044,19 @@ def test_the_twin_measures_its_first_heading_from_where_it_was_created(
     assert twin.pos_y == pytest.approx(1500)
     assert twin.direction == 90
 
+
+
+def test_the_twin_counts_its_wheels_travel_in_encoder_counts(controller, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
+    twin = controller._update_dotbot_twin("AA", 60, -60, init_pos_x=1500)
+    assert (twin._last_encoder_left, twin._last_encoder_right) == (0, 0)
+    now[0] += 0.5
+    twin = controller._update_dotbot_twin("AA", 60, -60)
+    counts = wheel_speed_from_pwm(60) * 0.5 / robot_geometry().mm_per_count
+    assert twin._last_encoder_left == int(counts) > 0
+    assert twin._last_encoder_right == -int(counts)
+    assert twin.encoder_left_acc == 0.0
 
 # --- The waypoint report and the commands it confirms ------------------------
 

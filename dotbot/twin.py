@@ -37,6 +37,9 @@ class DotBotTwin:
         # Encoder counts not yet logged
         self.encoder_left_acc = 0.0
         self.encoder_right_acc = 0.0
+        # Counts of the last update, as the CSV log reads them
+        self._last_encoder_left = 0
+        self._last_encoder_right = 0
         self.time_elapsed_s = 0.0
         self.battery_voltage = float(INITIAL_BATTERY_VOLTAGE)
 
@@ -52,13 +55,13 @@ class DotBotTwin:
 
     def update(self, dt: float):
         """Move for `dt` seconds on the current duties."""
+        travel_left = wheel_speed_from_pwm(self.pwm_left) * dt
+        travel_right = wheel_speed_from_pwm(self.pwm_right) * dt
         x, y, heading = kinematics.move(
-            self.pos_x,
-            self.pos_y,
-            self.heading_deg,
-            wheel_speed_from_pwm(self.pwm_left) * dt,
-            wheel_speed_from_pwm(self.pwm_right) * dt,
+            self.pos_x, self.pos_y, self.heading_deg, travel_left, travel_right
         )
+        self.encoder_left_acc += travel_left / _GEOMETRY.mm_per_count
+        self.encoder_right_acc += travel_right / _GEOMETRY.mm_per_count
         self.pos_x, self.pos_y, self.heading_deg = float(x), float(y), float(heading)
         self.time_elapsed_s += dt
         self.battery_voltage = battery_discharge_model(self.time_elapsed_s)
