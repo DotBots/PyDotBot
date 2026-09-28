@@ -55,6 +55,7 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { TestbedControls } from "./TestbedControls";
 import { TestbedAction, targetsOf } from "./testbed";
+import { useTestbedConfirm } from "./testbedConfirm";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   canRedoMission,
@@ -484,8 +485,10 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts]);
 
-  // Start and Stop act on the selection, or with none on the whole fleet. The
-  // stop key works with the shortcuts panel open: it is the safety action.
+  // Start and Stop act on the selection at once. With none they act on the
+  // whole fleet, on a second press of the same key or button, or Enter; Esc
+  // or a new selection drops it. The stop key works with the shortcuts panel
+  // open: it is the safety action.
   const testbed = useCallback(
     (action: TestbedAction) => {
       const ids = selection.size ? [...selection] : undefined;
@@ -493,17 +496,29 @@ export const App: React.FC = () => {
     },
     [orch.act, selection, bots],
   );
+  const fleetWide = useCallback(
+    (action: TestbedAction) => selection.size === 0 && targetsOf(action, bots).eligible.length > 0,
+    [selection, bots],
+  );
+  const fleetConfirm = useTestbedConfirm(testbed, fleetWide);
+  const { request: requestTestbed, confirm: confirmTestbed, cancel: cancelTestbed } = fleetConfirm;
+  useEffect(() => {
+    cancelTestbed();
+  }, [selection, cancelTestbed]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || typingIn(e.target)) return;
-      if (pressed(e, ACTION_KEY.stop)) testbed("stop");
-      else if (!shortcuts && pressed(e, ACTION_KEY.start)) testbed("start");
+      if (pressed(e, ACTION_KEY.stop)) requestTestbed("stop");
+      else if (!shortcuts && pressed(e, ACTION_KEY.start)) requestTestbed("start");
+      // Enter confirms whatever holds the focus, so it never also presses it.
+      else if (e.key === "Enter" && confirmTestbed()) e.stopImmediatePropagation();
+      else if (e.key === CLOSE_KEY && cancelTestbed()) e.stopImmediatePropagation();
       else return;
       e.preventDefault();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [shortcuts, testbed]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [shortcuts, requestTestbed, confirmTestbed, cancelTestbed]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -934,8 +949,10 @@ export const App: React.FC = () => {
           selected={selection.size}
           busy={orch.busy}
           outcome={orch.outcome}
-          onStart={() => testbed("start")}
-          onStop={() => testbed("stop")}
+          armed={fleetConfirm.armed}
+          armedCount={fleetConfirm.armed ? targetsOf(fleetConfirm.armed, bots).eligible.length : 0}
+          onStart={() => requestTestbed("start")}
+          onStop={() => requestTestbed("stop")}
           onSelectIds={(ids) => onSelect(ids, "replace")}
         />
         <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />

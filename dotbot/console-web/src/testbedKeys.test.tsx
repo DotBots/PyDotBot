@@ -1,8 +1,9 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act as reactAct, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTION_KEY, SHORTCUTS_KEY } from "./shortcuts";
+import { CONFIRM_MS } from "./testbedConfirm";
 import type { Site, UnifiedBot } from "./types";
 
 const site: Site = {
@@ -113,17 +114,24 @@ const press = (key: string, target: Element = document.body) =>
   fireEvent.keyDown(target, { key });
 
 describe("the testbed controls", () => {
-  it("start and stop the whole fleet from the top bar, naming their keys", () => {
+  it("start and stop the whole fleet from the top bar on a second click, naming their keys", () => {
     render(<App />);
     const bar = screen.getByLabelText("Testbed controls");
     const start = within(bar).getByRole("button", { name: /Start/ });
     const stop = within(bar).getByRole("button", { name: /Stop/ });
     expect(stop).toHaveAttribute("title", `Stop the sandbox app on the whole fleet (${ACTION_KEY.stop})`);
     fireEvent.click(start);
+    expect(act).not.toHaveBeenCalled();
+    expect(start).toHaveTextContent("Start all 1?");
+    fireEvent.click(start);
     expect(act).toHaveBeenLastCalledWith("start", undefined, {
       eligible: ["BADCAFE111111111"],
       skipped: ["DEADBEEF22222222"],
     });
+    expect(start).not.toHaveTextContent("?");
+    fireEvent.click(stop);
+    expect(act).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveTextContent("Stop all 1?");
     fireEvent.click(stop);
     expect(act).toHaveBeenLastCalledWith("stop", undefined, {
       eligible: ["DEADBEEF22222222"],
@@ -141,12 +149,71 @@ describe("the testbed controls", () => {
     });
   });
 
-  it("fire from their keys, once per press", () => {
+  it("act on the selection from the buttons at once", () => {
+    window.history.replaceState({}, "", "/?sel=2222");
+    render(<App />);
+    const bar = screen.getByLabelText("Testbed controls");
+    fireEvent.click(within(bar).getByRole("button", { name: /Stop/ }));
+    fireEvent.click(within(bar).getByRole("button", { name: /Start/ }));
+    expect(act.mock.calls.map((c) => [c[0], c[1]])).toEqual([
+      ["stop", ["DEADBEEF22222222"]],
+      ["start", ["DEADBEEF22222222"]],
+    ]);
+    expect(screen.queryByTestId("testbed-confirm")).not.toBeInTheDocument();
+  });
+
+  it("fire on the whole fleet from their keys pressed twice, a held key counting once", () => {
     render(<App />);
     press(ACTION_KEY.start);
     fireEvent.keyDown(document.body, { key: ACTION_KEY.start, repeat: true });
+    expect(act).not.toHaveBeenCalled();
+    expect(screen.getByTestId("testbed-confirm")).toHaveTextContent(`${ACTION_KEY.start} again or Enter`);
+    press(ACTION_KEY.start);
+    press(ACTION_KEY.stop.toLowerCase());
     press(ACTION_KEY.stop.toLowerCase());
     expect(act.mock.calls.map((c) => c[0])).toEqual(["start", "stop"]);
+  });
+
+  it("confirm with Enter without pressing the focused button, and cancel with Esc", () => {
+    render(<App />);
+    const bar = screen.getByLabelText("Testbed controls");
+    const start = within(bar).getByRole("button", { name: /Start/ });
+    start.focus();
+    press(ACTION_KEY.stop);
+    const enter = fireEvent.keyDown(start, { key: "Enter" });
+    expect(enter).toBe(false);
+    expect(act.mock.calls.map((c) => c[0])).toEqual(["stop"]);
+    expect(screen.queryByTestId("testbed-confirm")).not.toBeInTheDocument();
+    press(ACTION_KEY.start);
+    press("Escape");
+    expect(screen.queryByTestId("testbed-confirm")).not.toBeInTheDocument();
+    press(ACTION_KEY.start);
+    expect(act.mock.calls.map((c) => c[0])).toEqual(["stop"]);
+  });
+
+  it("let a stop take over from a start waiting to be confirmed", () => {
+    render(<App />);
+    press(ACTION_KEY.start);
+    press(ACTION_KEY.stop);
+    press(ACTION_KEY.stop);
+    expect(act.mock.calls.map((c) => c[0])).toEqual(["stop"]);
+  });
+
+  it("forget an unconfirmed press after a few seconds", () => {
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      press(ACTION_KEY.stop);
+      expect(screen.getByTestId("testbed-confirm")).toBeInTheDocument();
+      reactAct(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      expect(screen.queryByTestId("testbed-confirm")).not.toBeInTheDocument();
+      press(ACTION_KEY.stop);
+      expect(act).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("leave a key typed into a field or held with Ctrl alone", () => {
@@ -164,6 +231,8 @@ describe("the testbed controls", () => {
     press(SHORTCUTS_KEY);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     press(ACTION_KEY.start);
+    press(ACTION_KEY.start);
+    press(ACTION_KEY.stop);
     press(ACTION_KEY.stop);
     expect(act.mock.calls.map((c) => c[0])).toEqual(["stop"]);
   });

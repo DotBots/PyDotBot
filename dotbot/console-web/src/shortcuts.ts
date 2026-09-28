@@ -184,11 +184,11 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     rows: [
       {
         keys: [ACTION_KEY.start],
-        does: "Start the sandbox app on the selected robots, or the whole fleet",
+        does: "Start the sandbox app on the selected robots, or pressed twice on the whole fleet",
       },
       {
         keys: [ACTION_KEY.stop],
-        does: "Stop the sandbox app on the selected robots, or the whole fleet",
+        does: "Stop the sandbox app on the selected robots, or pressed twice on the whole fleet",
       },
     ],
   },

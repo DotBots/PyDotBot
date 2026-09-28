@@ -5,8 +5,10 @@ import { ACTION_KEY } from "./shortcuts";
 import { TestbedAction, TestbedOutcome, summarize, toneOf } from "./testbed";
 
 // Start and Stop of the testbed, in the top bar so they stay in reach whatever
-// view or panel is open. Stop is never disabled and never asks: it is the
-// safety action.
+// view or panel is open. Stop is never disabled. On the whole fleet either one
+// asks once, in place: the button itself turns into the question and a second
+// press of it, its key or Enter answers, so a stop costs one press more and
+// nothing can cover it.
 
 const TONE = {
   ok: "var(--s-Running)",
@@ -31,6 +33,11 @@ const btn = (danger: boolean, disabled = false): React.CSSProperties => ({
   userSelect: "none",
 });
 
+// A button waiting for its second press.
+const armedRing: React.CSSProperties = {
+  boxShadow: "0 0 0 2px var(--canvas), 0 0 0 4px var(--accent)",
+};
+
 const kbd: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
   fontSize: 9,
@@ -44,34 +51,50 @@ export const TestbedControls: React.FC<{
   selected: number;
   busy: TestbedAction | null;
   outcome: TestbedOutcome | null;
+  /** The fleet-wide action waiting for its second press, or null. */
+  armed?: TestbedAction | null;
+  /** How many robots the armed action would reach. */
+  armedCount?: number;
   onStart: () => void;
   onStop: () => void;
   onSelectIds: (ids: string[]) => void;
-}> = ({ selected, busy, outcome, onStart, onStop, onSelectIds }) => {
+}> = ({ selected, busy, outcome, armed = null, armedCount = 0, onStart, onStop, onSelectIds }) => {
   const target = selected ? `${selected} selected` : "whole fleet";
   const tone = outcome ? toneOf(outcome) : null;
+  const label = (action: TestbedAction, idle: string, working: string) =>
+    armed === action ? `${idle} all ${armedCount}?` : busy === action ? working : idle;
   return (
     <div role="group" style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="Testbed controls">
-      <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
-        Testbed&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{target}</span>
+      <span role="status" style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+        {armed ? (
+          <span data-testid="testbed-confirm" style={{ color: "var(--text)" }}>
+            Whole fleet? {ACTION_KEY[armed]} again or Enter &middot; Esc cancels
+          </span>
+        ) : (
+          <>
+            Testbed&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{target}</span>
+          </>
+        )}
       </span>
       <button
         type="button"
-        onClick={busy === "start" ? undefined : onStart}
+        onClick={busy === "start" && armed !== "start" ? undefined : onStart}
         aria-busy={busy === "start"}
+        aria-pressed={armed === "start" ? true : undefined}
         title={`Start the sandbox app on the ${target} (${ACTION_KEY.start})`}
-        style={btn(false, busy === "start")}
+        style={{ ...btn(false, busy === "start"), ...(armed === "start" ? armedRing : null) }}
       >
-        &#9654; {busy === "start" ? "Starting…" : "Start"} <span style={kbd}>{ACTION_KEY.start}</span>
+        &#9654; {label("start", "Start", "Starting…")} <span style={kbd}>{ACTION_KEY.start}</span>
       </button>
       <button
         type="button"
         onClick={onStop}
         aria-busy={busy === "stop"}
+        aria-pressed={armed === "stop" ? true : undefined}
         title={`Stop the sandbox app on the ${target} (${ACTION_KEY.stop})`}
-        style={btn(true)}
+        style={{ ...btn(true), ...(armed === "stop" ? armedRing : null) }}
       >
-        &#9632; {busy === "stop" ? "Stopping…" : "Stop"} <span style={kbd}>{ACTION_KEY.stop}</span>
+        &#9632; {label("stop", "Stop", "Stopping…")} <span style={kbd}>{ACTION_KEY.stop}</span>
       </button>
       {outcome && tone && (
         <span
