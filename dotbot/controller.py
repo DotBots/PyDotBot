@@ -95,13 +95,6 @@ from dotbot.swarm_client import build_swarmit_client, conn_string
 from dotbot.trail import Trail
 from dotbot.twin import DotBotTwin
 
-# from dotbot.models import (
-#     DotBotModel,
-#     DotBotGPSPosition,
-#     DotBotLH2Position,
-#     DotBotRgbLedCommandModel,
-# )
-
 
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
@@ -293,32 +286,6 @@ class Controller:
                 for name, body in robot_models().items()
             },
         )
-        # self.dotbots: Dict[str, DotBotModel] = {
-        #     "0000000000000001": DotBotModel(
-        #         address="0000000000000001",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-        #     ),
-        #     "0000000000000002": DotBotModel(
-        #         address="0000000000000002",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
-        #     ),
-        #     "0000000000000003": DotBotModel(
-        #         address="0000000000000003",
-        #         last_seen=time.time(),
-        #     ),
-        #     "0000000000000004": DotBotModel(
-        #         address="0000000000000004",
-        #         application=ApplicationType.SailBot,
-        #         last_seen=time.time(),
-        #         wind_angle=135,
-        #         rotation=49,
-        #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
-        #     ),
-        # }
         self.logger = LOGGER.bind(context=__name__)
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
@@ -865,7 +832,7 @@ class Controller:
         seq: int,
         debug: bool,
     ) -> None:
-        """Take a lighthouse fix: position, body pose and position history."""
+        """Take a lighthouse fix: position, pose and trail."""
         self._set(dotbot, record, "lh2_position", new_position, seq)
         # The pose follows from the fix and the direction alone
         if (
@@ -880,7 +847,7 @@ class Controller:
             last is not None
             and lh2_distance(last, new_position) < LH2_POSITION_DISTANCE_THRESHOLD
         ):
-            # Too close to the last point: noise, kept out of the history
+            # Too close to the last point: noise, kept out of the trail
             if debug:
                 self.logger.debug(
                     "Discarding LH2 position update because it's too close from the last one",
@@ -1095,12 +1062,9 @@ class Controller:
         return changed
 
     def send_payload(self, destination: int, payload: Payload) -> bool:
-        """Send a command to one robot through the adapter.
-
-        False when it was not sent. A payload that fails to encode or send is
-        logged and dropped, with any resend pending for it, so one robot's
-        command never stops the controller.
-        """
+        """Send a command to one robot through the adapter; False when it was
+        not sent. A failed send is logged and dropped, with any resend pending
+        for it."""
         if self.adapter is None:
             self.logger.warning("Adapter not started")
             return False
