@@ -536,7 +536,7 @@ class DotBotBodyModel(BaseModel):
 
     @classmethod
     def from_body_pose(cls, pose: BodyPose) -> "DotBotBodyModel":
-        # One validation of plain data: this runs on every advertisement
+        # One validation of plain data, rather than one per nested point
         def point(p):
             return {"x": p.x, "y": p.y}
 
