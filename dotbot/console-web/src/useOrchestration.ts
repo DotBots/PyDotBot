@@ -79,6 +79,8 @@ export function useOrchestration(onToast: (msg: string) => void) {
   const [busy, setBusy] = useState<TestbedAction | null>(null);
   const [outcome, setOutcome] = useState<TestbedOutcome | null>(null);
   const busyRef = useRef<TestbedAction | null>(null);
+  // Tracked apart from `busy`, which a stop sent meanwhile takes over
+  const startInFlight = useRef(false);
 
   // `targets` is what the caller saw of the fleet when it acted; without it
   // the devices themselves are what the command is judged on. A start with
@@ -102,7 +104,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
         note(toneOf(o), line);
         onToast(line);
       };
-      if (action === "start" && busyRef.current === "start") {
+      if (action === "start" && startInFlight.current) {
         onToast("A start is already in progress");
         return;
       }
@@ -111,6 +113,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
         return;
       }
       busyRef.current = action;
+      if (action === "start") startInFlight.current = true;
       setBusy(action);
       onToast(`${VERB[action]} sent · ${base.selected === null ? "whole fleet" : `${base.selected} selected`}`);
       swarmitAction(action, devices)
@@ -125,6 +128,7 @@ export function useOrchestration(onToast: (msg: string) => void) {
         })
         .catch((e: Error) => finish({ ...base, error: e.message ?? String(e), at: Date.now() }))
         .finally(() => {
+          if (action === "start") startInFlight.current = false;
           if (busyRef.current === action) {
             busyRef.current = null;
             setBusy(null);

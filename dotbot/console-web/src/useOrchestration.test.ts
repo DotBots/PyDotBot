@@ -72,6 +72,23 @@ describe("the testbed actions", () => {
     await act(async () => release());
   });
 
+  it("refuse a second start while one is in flight, even after a stop went out", async () => {
+    let release = () => {};
+    vi.mocked(swarmitAction).mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
+    const toast = vi.fn();
+    const { result } = renderHook(() => useOrchestration(toast));
+    act(() => result.current.act("start", undefined, { eligible: ["A"], skipped: [] }));
+    act(() => result.current.act("stop", undefined, { eligible: ["A"], skipped: [] }));
+    await waitFor(() => expect(result.current.busy).toBeNull());
+    act(() => result.current.act("start", undefined, { eligible: ["A"], skipped: [] }));
+    expect(toast).toHaveBeenLastCalledWith("A start is already in progress");
+    expect(swarmitAction).toHaveBeenCalledTimes(2);
+    await act(async () => release());
+    act(() => result.current.act("start", undefined, { eligible: ["A"], skipped: [] }));
+    expect(swarmitAction).toHaveBeenCalledTimes(3);
+    await waitFor(() => expect(result.current.busy).toBeNull());
+  });
+
   it("report a refused command as a failure", async () => {
     vi.mocked(swarmitAction).mockRejectedValue(new Error("start refused: 502 swarmit server unreachable"));
     const { result } = renderHook(() => useOrchestration(vi.fn()));
