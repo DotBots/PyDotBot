@@ -46,7 +46,7 @@ SNAPSHOT_CHUNK = 100
 BEHIND_S = 5.0
 # A client needing a second snapshot within this long of its last is closed
 SNAPSHOT_INTERVAL_S = 10.0
-# No ack, no completed send, or no drained write buffer for this long: closed
+# No ack, no progress sending, or no drained write buffer for this long: closed
 STALL_S = 15.0
 # Bytes waiting in a client's transport beyond which it is sent nothing more
 WRITE_BUFFER_LIMIT = 256 * 1024
@@ -235,7 +235,9 @@ class StreamClient:
     # Since when the client has had changes pending that it could not be sent
     held_since: Optional[float] = None
     blocked_since: Optional[float] = None
+    # Set while a send is in flight: when it started or last sent a frame
     sending_since: Optional[float] = None
+    sending_snapshot: bool = False
     task: Optional[asyncio.Task] = None
     due: float = 0.0
     closed: bool = False
@@ -270,6 +272,8 @@ class StreamHub:
         # False leaves ticking to the caller, as a stepped clock does
         self.autostart = True
         self._task: Optional[asyncio.Task] = None
+        # The time of the last tick, on the clock the ticks are given
+        self.now = 0.0
         self.logger = LOGGER.bind(context=__name__)
 
     def hello(self, client: StreamClient) -> str:
@@ -327,6 +331,7 @@ class StreamHub:
             self.tick(time.monotonic())
 
     def tick(self, now: float) -> None:
+        self.now = now
         shared: Dict[Tuple[int, int], List[str]] = {}
         for client in list(self.clients.values()):
             self._serve(client, now, shared)
@@ -338,7 +343,7 @@ class StreamHub:
         if client.sending_since is not None:
             if now - client.sending_since > STALL_S:
                 self.drop(client, "send stalled")
-            elif pending:
+            elif pending and not client.sending_snapshot:
                 client.held_since = client.held_since or now
             return
         if client.unacked and now - client.unacked[0][1] > STALL_S:
@@ -370,6 +375,7 @@ class StreamHub:
             seq, frames = snapshot_frames(self.controller, client.options.trail)
             client.snapshot_pending = False
             client.last_snapshot = now
+            client.sending_snapshot = True
         else:
             seq = self.controller.seq
             key = (client.sent_seq, client.options.trail)
@@ -403,8 +409,12 @@ class StreamHub:
                 if client.closed:
                     return
                 await client.websocket.send_text(text)
+                client.sending_since = self.now
                 # A snapshot's parts are built one per turn of the loop
                 await asyncio.sleep(0)
+            # The ack is awaited from when the batch was sent, not queued
+            if client.unacked:
+                client.unacked[-1] = (client.unacked[-1][0], self.now)
         except asyncio.CancelledError:
             raise
         except WebSocketDisconnect as exc:
@@ -414,6 +424,7 @@ class StreamHub:
             self.drop(client, f"send failed: {exc}")
         finally:
             client.sending_since = None
+            client.sending_snapshot = False
 
     def drop(self, client: StreamClient, reason: str) -> None:
         """Stop serving a client and close its websocket, so it reconnects."""

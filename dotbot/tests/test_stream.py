@@ -539,6 +539,41 @@ async def test_a_stuck_send_is_closed_at_15_s_and_starves_nobody(controller):
     assert len(reader.of_type("delta")) > 250
 
 
+@pytest.mark.parametrize("seconds", [6, 16])
+@pytest.mark.asyncio
+async def test_a_slow_snapshot_that_keeps_sending_is_not_dropped(controller, seconds):
+    for source in range(1, 3 * SNAPSHOT_CHUNK + 1):
+        advertise(controller, source)
+    hub = controller.stream
+    slow = Client(hub)
+    reader = Client(hub)
+    parts = 3
+    fast_send = Client.send_text.__get__(slow)
+    sent_at = []
+
+    async def send_text(text):
+        # Each snapshot part takes its share of `seconds` to go out
+        if json.loads(text)["type"] == "snapshot":
+            target = hub.now + seconds / parts
+            while hub.now < target:
+                await asyncio.sleep(0)
+        sent_at.append(hub.now)
+        await fast_send(text)
+
+    slow.send_text = send_text
+    now = 0.0
+    while now < seconds + STALL_S + 1:
+        now += 0.05
+        advertise(controller, 1, battery=3000 - int(now * 20) % 500)
+        await tick(hub, now)
+    assert slow in hub.clients
+    assert len(slow.of_type("snapshot")) == parts
+    assert sent_at[parts - 1] >= seconds - 0.1
+    # Caught up with deltas after its snapshot, never snapshotted again
+    assert len(slow.of_type("delta")) > 100
+    assert reader in hub.clients
+
+
 @pytest.mark.asyncio
 async def test_a_non_acking_client_that_stops_reading_is_bounded_and_closed(
     controller,
