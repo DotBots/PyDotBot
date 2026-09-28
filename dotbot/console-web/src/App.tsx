@@ -955,7 +955,7 @@ export const App: React.FC = () => {
           onStop={() => requestTestbed("stop")}
           onSelectIds={(ids) => onSelect(ids, "replace")}
         />
-        <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />
+        {mrta.configured && <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />}
         {/* theme: Dark | Light segmented (v1) */}
         <div
           style={{

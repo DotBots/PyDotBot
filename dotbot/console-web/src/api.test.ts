@@ -4,6 +4,7 @@ import {
   captureCalibrationPoint,
   clearWaypoints,
   fetchCalibrationSession,
+  fetchMrtaStatus,
   parseSseChunk,
   putWaypointBatches,
   saveCalibration,
@@ -70,6 +71,38 @@ function stubFetch(status: number, payload: unknown): Call[] {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("fetchMrtaStatus", () => {
+  it("reads a 404 as 'not configured' - the controller has no --mrta-url set", async () => {
+    stubFetch(404, { detail: "no MRTA server configured" });
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(false);
+    expect(poll.status.state).toBe("unavailable");
+  });
+
+  it("reads a reachable proxy as configured, whatever state it reports", async () => {
+    stubFetch(200, { state: "off", bots: null, detail: null });
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(true);
+    expect(poll.status.state).toBe("off");
+  });
+
+  it("reads a 502 (mrta_url set but the server is down) as configured but unavailable", async () => {
+    stubFetch(502, {});
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(true);
+    expect(poll.status.state).toBe("unavailable");
+  });
+
+  it("defaults to hidden when the request fails outright", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(false);
+    expect(poll.status.state).toBe("unavailable");
+  });
 });
 
 describe("the calibration session", () => {
