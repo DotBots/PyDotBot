@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from dotbot.controller import Controller, ControllerSettings
 from dotbot.models import ApplicationType, DotBotModel, DotBotStatus
 from dotbot.server import api
-from dotbot.stream import StreamOptions
+from dotbot.stream import STALL_S, StreamOptions
 from dotbot.ws_clients import (
     TRANSPORT_KEY,
     TransportScope,
@@ -74,17 +74,22 @@ def controller(monkeypatch):
 async def test_a_put_returns_while_a_stream_client_never_reads(controller):
     """A stuck console never delays a REST command."""
     stuck = StuckWebSocket()
-    controller.stream.add(controller.stream.client(stuck, StreamOptions()))
+    stream_client = controller.stream.client(stuck, StreamOptions())
+    controller.stream.add(stream_client)
     client = AsyncClient(transport=ASGITransport(app=api), base_url="http://test")
-    await asyncio.sleep(0.1)
+    while stream_client.sending_since is None:
+        await asyncio.sleep(0.01)
     for _ in range(3):
-        start = time.monotonic()
-        response = await client.put(
-            "/controller/dotbots/4242/0/waypoints",
-            json={"threshold": 100, "waypoints": [{"x": 500, "y": 100}]},
+        # A PUT held behind the stuck send would wait for the STALL_S drop
+        response = await asyncio.wait_for(
+            client.put(
+                "/controller/dotbots/4242/0/waypoints",
+                json={"threshold": 100, "waypoints": [{"x": 500, "y": 100}]},
+            ),
+            timeout=STALL_S / 5,
         )
         assert response.status_code == 200
-        assert time.monotonic() - start < 0.1
+        assert stream_client.sending_since is not None
 
 
 def test_the_write_buffer_is_read_from_the_transport():
