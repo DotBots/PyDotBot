@@ -32,7 +32,7 @@ path = "utils/hooks/sdist.py"
 
 [project]
 name = "pydotbot"
-version = "0.30.0"
+version = "0.31.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
