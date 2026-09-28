@@ -8,7 +8,7 @@ import {
   lerpPos,
   nextPosState,
   positionAt,
-} from "./useSmoothPositions";
+} from "./usePositionAnimator";
 
 const MAP_DIAGONAL = Math.hypot(2000, 2000);
 

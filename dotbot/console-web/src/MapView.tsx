@@ -67,7 +67,7 @@ import {
   UnifiedBot,
   Waypoint,
 } from "./types";
-import { Place, translateTo, usePositionAnimator } from "./useSmoothPositions";
+import { Place, translateTo, usePositionAnimator } from "./usePositionAnimator";
 import {
   Camera,
   SITE_ZOOM,
