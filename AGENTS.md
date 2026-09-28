@@ -117,9 +117,11 @@ size (`-n`, default 1 10 50 100 200) and measures its CPU, RSS, event-loop
 lag, stream rate, bandwidth and update age at K acking clients, snapshot
 size, and REST latency and size of
 `GET /controller/dotbots` and `PUT .../waypoints`. Mode `sim` runs the
-simulator in the controller, as `dotbot run simulator` does; mode `synth`
-feeds 2 Hz advertisements per robot through a gateway adapter, so the
-controller is measured without the simulator. Linux only; about 20 s a run.
+simulator in the controller, as `dotbot run simulator` does, and mode `mari`
+the same with every robot joined to the simulated Mari network, advertising
+at its firmware's joined rate; mode `synth` feeds 2 Hz advertisements per
+robot through a gateway adapter, so the controller is measured without the
+simulator. Linux only; about 20 s a run.
 The synthetic advertisements are built in a separate feeder process, so the
 controller's process only parses them; `--feeder thread` builds them inside
 it, where they contend with the event loop for the GIL.

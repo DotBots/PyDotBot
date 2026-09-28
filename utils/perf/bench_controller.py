@@ -4,10 +4,12 @@ For each fleet size, starts a real controller in a child process (headless,
 on a free loopback port, logging as `dotbot run controller` does) and loads
 it from this process: K acking stream clients, and REST requests on the hot
 endpoints. Optionally one more client that acks once then stops reading
-(`--stall`), and one that takes 20 ms per frame (`--slow`). Two modes:
+(`--stall`), and one that takes 20 ms per frame (`--slow`). Three modes:
 
 - `sim`: the controller runs the dotbot simulator in-process, as
   `dotbot run simulator` does, and every robot drives a waypoint batch.
+- `mari`: as `sim`, with every robot on the simulated Mari network, joined,
+  so it advertises at the rate its firmware derives from the slotframe.
 - `synth`: no simulator. A gateway adapter replays advertisements at the
   firmware's 2 Hz per robot through the same thread-to-loop inbox the Mari
   edge adapter uses, so the controller's cost is measured alone. The frames
@@ -231,7 +233,7 @@ def _grid(count: int):
     ]
 
 
-def _world(count: int, path: Path):
+def _world(count: int, path: Path, network: str = "default"):
     import toml
 
     dotbots = [
@@ -240,6 +242,7 @@ def _world(count: int, path: Path):
             "pos_x": int(x),
             "pos_y": int(y),
             "direction": 0,
+            "network_mode": network,
         }
         for i, (x, y) in enumerate(_grid(count))
     ]
@@ -261,9 +264,9 @@ def child(mode: str, count: int, port: int, workdir: Path, trail: int, feeder: s
         headless=True,
         log_output=str(workdir / "pydotbot.log"),
     )
-    if mode == "sim":
+    if mode in ("sim", "mari"):
         world = workdir / "world.toml"
-        _world(count, world)
+        _world(count, world, "mari" if mode == "mari" else "default")
         settings.simulator_init_state = str(world)
     setup_logging(settings.log_output, settings.log_level, ["console", "file"])
     controller = Controller(settings)
@@ -626,7 +629,7 @@ async def measure(
     tasks = []
     try:
         addresses = await _wait_for_fleet(base, count, timeout_s=60 + count / 10)
-        if mode == "sim":
+        if mode in ("sim", "mari"):
             await _drive_all(base, addresses)
         url = f"ws://127.0.0.1:{port}/controller/ws/stream?hz={STREAM_HZ}"
         tasks = [
@@ -722,8 +725,11 @@ async def measure(
         "ws_updates_per_client_s": round(
             statistics.mean(s["updates"] for s in ws_stats) / wall, 1
         ),
-        # One robot update per advertisement that changes something
-        "ws_expected_updates_s": round(count / ADVERTISEMENT_S, 1),
+        # One robot update per advertisement that changes something; a
+        # Mari robot's rate is its firmware's, from the slotframe
+        "ws_expected_updates_s": (
+            None if mode == "mari" else round(count / ADVERTISEMENT_S, 1)
+        ),
         "ws_kb_per_client_s": round(
             statistics.mean(s["bytes"] for s in ws_stats) / wall / 1024, 1
         ),
@@ -812,7 +818,7 @@ def table(result: dict) -> str:
             f"{r['mode']:5} {r['robots']:>4} {r['clients']:>2} {r['cpu_pct']:>6} "
             f"{r['cpu_pct_controller_thread']:>6} {r['cpu_pct_simulator_threads']:>6} "
             f"{r['rss_mb_peak']:>6} {_f(r['loop_lag_ms']['p99']):>8} "
-            f"{r['ws_updates_per_client_s']:>7} {r['ws_expected_updates_s']:>6} "
+            f"{r['ws_updates_per_client_s']:>7} {_f(r['ws_expected_updates_s']):>6} "
             f"{r['ws_kb_per_client_s']:>6} "
             f"{_f(r['ws_update_age_ms']['p50']):>7} "
             f"{_f(r['ws_update_age_ms']['p99']):>8} "
@@ -872,7 +878,10 @@ def main():
     )
     parser.add_argument("--clients", type=int, nargs="+", default=[1, 5])
     parser.add_argument(
-        "--modes", nargs="+", default=["synth", "sim"], choices=["synth", "sim"]
+        "--modes",
+        nargs="+",
+        default=["synth", "sim"],
+        choices=["synth", "sim", "mari"],
     )
     parser.add_argument(
         "--warmup", type=float, default=3.0, help="seconds before measuring"
