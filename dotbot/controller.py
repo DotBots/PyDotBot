@@ -976,21 +976,22 @@ class Controller:
         payload: Payload,
         confirmed: Callable[[PayloadDotBotAdvertisement], bool],
         **pending,
-    ):
+    ) -> bool:
         """Send a command, and resend it until an advertisement confirms it.
 
         Robots whose advertisement carries no waypoint report cannot confirm,
-        so for them the command is sent once.
+        so for them the command is sent once. False when it was not sent.
         """
         key = (address, type(payload).__name__)
         self.pending_commands[key] = PendingCommand(
             payload=payload, confirmed=confirmed, sent=time.monotonic(), **pending
         )
-        self.send_payload(int(address, 16), payload)
+        return self.send_payload(int(address, 16), payload)
 
-    def send_waypoints(self, address: str, payload: PayloadLH2Waypoints):
+    def send_waypoints(self, address: str, payload: PayloadLH2Waypoints) -> bool:
         """Send a waypoint batch under a new batch id, resent until the
-        robot advertises that id or another controller's newer batch."""
+        robot advertises that id or another controller's newer batch. False
+        when it was not sent."""
         advertised = self.advertised_batch_ids.get(address)
         last = self.batch_ids.get(address, random.randrange(255))
         payload.batch_id = last % 255 + 1
@@ -999,7 +1000,7 @@ class Controller:
         previous = self.pending_commands.get((address, PayloadLH2Waypoints.__name__))
         earlier = previous.batch_ids if previous is not None else frozenset({last})
         expected = earlier | {advertised, batch_id}
-        self.send_confirmed(
+        return self.send_confirmed(
             address,
             payload,
             lambda adv: adv.batch_id == batch_id,
@@ -1094,24 +1095,39 @@ class Controller:
                 changed.append(name)
         return changed
 
-    def send_payload(self, destination: int, payload: Payload):
-        """Sends a command in an HDLC frame over serial."""
+    def send_payload(self, destination: int, payload: Payload) -> bool:
+        """Send a command to one robot through the adapter.
+
+        False when it was not sent. A payload that fails to encode or send is
+        logged and dropped, with any resend pending for it, so one robot's
+        command never stops the controller.
+        """
         if self.adapter is None:
             self.logger.warning("Adapter not started")
-            return
+            return False
         dest_str = addr_to_hex(destination)
         if dest_str not in self.dotbots:
-            return
+            return False
         if isinstance(payload, DIRECT_COMMANDS):
             # The robot drops its batch on these, so a resend would restart it
             self.pending_commands.pop((dest_str, PayloadLH2Waypoints.__name__), None)
-        self.adapter.send_payload(destination, payload=payload)
+        try:
+            self.adapter.send_payload(destination, payload=payload)
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.pending_commands.pop((dest_str, type(payload).__name__), None)
+            self.logger.exception(
+                "Payload not sent",
+                destination=dest_str,
+                payload=type(payload).__name__,
+            )
+            return False
         self.logger.debug(
             "Payload sent",
             application=self.dotbots[dest_str].application.name,
             destination=dest_str,
             payload=payload,
         )
+        return True
 
     def device_poses(self) -> Dict[str, DotBotBodyModel]:
         """The headingless pose of each swarmit device type the host has a

@@ -92,12 +92,16 @@ class FrameInbox:
         return frames
 
     async def run(self, handler: Callable) -> None:
-        """Call `handler` with every frame, in order, forever."""
+        """Call `handler` with every frame, in order, forever; a frame the
+        handler raises on is logged and skipped."""
         while True:
             await self._ready.wait()
             self._ready.clear()
             for frame in self._take():
-                handler(frame)
+                try:
+                    handler(frame)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    LOGGER.exception("Frame not handled", frame=repr(frame)[:200])
             self._log_losses()
             # A full inbox would otherwise keep the loop to itself
             await asyncio.sleep(0)

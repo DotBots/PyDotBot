@@ -13,7 +13,7 @@ from dotbot_utils.serial_interface import SerialInterface
 from structlog.testing import capture_logs
 
 from dotbot import addr_to_hex
-from dotbot.adapter import SerialAdapter
+from dotbot.adapter import DotBotSimulatorAdapter, SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
     INACTIVE_DELAY,
@@ -1471,3 +1471,51 @@ async def test_a_status_change_is_a_patch_not_a_reload(controller):
         "status": DotBotStatus.INACTIVE,
         "last_seen": dotbot.last_seen,
     }
+
+
+# --- A payload that fails to encode or send ----------------------------------
+
+
+def _simulated(controller) -> MagicMock:
+    """Route the controller's commands through a simulator adapter, so they
+    are encoded for real."""
+    controller.adapter = DotBotSimulatorAdapter()
+    controller.adapter.simulator = MagicMock()
+    return controller.adapter.simulator
+
+
+def _unencodable() -> PayloadLH2Waypoints:
+    return PayloadLH2Waypoints(
+        threshold=5, count=1, waypoints=[PayloadLH2Location(pos_x=-100, pos_y=500)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_that_cannot_be_encoded_is_not_sent_and_not_resent(
+    controller, clock
+):
+    simulator = _simulated(controller)
+    controller.handle_received_frame(_report(batch_id=3))
+    address = addr_to_hex(BOT)
+    with capture_logs() as logs:
+        assert controller.send_waypoints(address, _unencodable()) is False
+    assert any(log["event"] == "Payload not sent" for log in logs)
+    assert not controller.pending_commands
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=3))
+    simulator.write.assert_not_called()
+    assert controller.send_waypoints(address, _batch()) is True
+    simulator.write.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_resend_that_fails_drops_the_command(controller, clock):
+    """The resend runs on the adapter's task: raising there would stop it."""
+    simulator = _simulated(controller)
+    controller.handle_received_frame(_report(batch_id=3))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    simulator.write.side_effect = ConnectionError("gateway gone")
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=3))
+    assert simulator.write.call_count == 2
+    assert not controller.pending_commands

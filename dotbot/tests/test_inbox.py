@@ -119,3 +119,22 @@ async def test_put_from_many_threads_loses_no_wakeup():
     await asyncio.to_thread(lambda: [t.join() for t in threads])
     await _drain(task, inbox)
     assert len(handled) == 8000
+
+
+@pytest.mark.asyncio
+async def test_a_frame_the_handler_raises_on_does_not_stop_the_rest():
+    inbox = FrameInbox(asyncio.get_running_loop())
+    handled = []
+
+    def handler(frame):
+        if frame.packet.payload.mode == 1:
+            raise OverflowError("can't convert negative int to unsigned")
+        handled.append(frame)
+
+    task = asyncio.create_task(inbox.run(handler))
+    for n in range(4):
+        inbox.put(_event(1, n))
+    await asyncio.sleep(0.05)
+    assert not task.done()
+    task.cancel()
+    assert [f.packet.payload.mode for f in handled] == [0, 0]
