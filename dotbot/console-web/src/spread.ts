@@ -1,4 +1,4 @@
-import { Area, BotPose, LH2Position, UnifiedBot, Waypoint } from "./types";
+import { Area, RobotBody, LH2Position, UnifiedBot, Waypoint } from "./types";
 
 // Spread: N selected robots, N targets, one each. The assignment is the one
 // with the least total straight-line distance unless the operator swaps it;
@@ -135,7 +135,7 @@ export function segmentsCross(a: LH2Position, b: LH2Position, c: LH2Position, d:
 }
 
 /** The farthest point of the body, tyres included, from the axle a waypoint places. */
-export function bodyRadiusMm(pose: BotPose | null): number | null {
+export function bodyRadiusMm(pose: RobotBody | null): number | null {
   if (!pose) return null;
   const points = [...pose.outline, ...pose.wheels.flat()];
   if (points.length === 0) return null;

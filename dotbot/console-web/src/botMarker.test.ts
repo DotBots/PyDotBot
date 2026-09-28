@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { MarkerBot, sameMarkerBot } from "./BotMarker";
-import type { BotPose, LH2Position } from "./types";
+import type { RobotBody, LH2Position } from "./types";
 
 const shift = (p: LH2Position, dx: number): LH2Position => ({ x: p.x + dx, y: p.y });
 
-const pose = (dx = 0, heading = 0): BotPose => ({
+const pose = (dx = 0, heading = 0): RobotBody => ({
   heading_deg: heading,
   heading_source: "ekf",
   photodiode: shift({ x: 0, y: 0 }, dx),

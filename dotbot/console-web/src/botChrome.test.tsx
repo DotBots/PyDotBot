@@ -7,7 +7,7 @@ import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
 import { MapView, WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./MapView";
 import type { RobotDrawing } from "./robotDrawing";
-import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
+import type { Area, RobotBody, LH2Position, Site, UnifiedBot } from "./types";
 import { Camera, FRAME_CAMERA, viewGeom } from "./zoom";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
@@ -44,7 +44,7 @@ const V3_SPAN_MM = 95;
 
 // The body of a bot standing at `at` facing `heading`, rotated the way the
 // controller rotates it.
-const bodyPose = (at: LH2Position, heading = 45): BotPose => {
+const bodyPose = (at: LH2Position, heading = 45): RobotBody => {
   const theta = (heading * Math.PI) / 180;
   const place = (p: LH2Position): LH2Position => ({
     x: at.x + p.x * Math.cos(theta) - p.y * Math.sin(theta),

@@ -2,7 +2,7 @@ import React from "react";
 
 import { BotBody, BotGlyph, botBody } from "./BotGlyph";
 import { poseAt } from "./poseGesture";
-import type { BotPose, LH2Position } from "./types";
+import type { RobotBody, LH2Position } from "./types";
 
 // A pose waypoint on the map: the robot's own silhouette with its axle on the
 // waypoint, or, with no body to borrow or too small to read, a diamond with a
@@ -16,7 +16,7 @@ export const KNOB_R_PX = 5;
 export type PoseLook = "unarmed" | "aiming" | "queued" | "active";
 
 export type PoseShape =
-  | { kind: "board"; pose: BotPose; body: BotBody; footprintPx: number }
+  | { kind: "board"; pose: RobotBody; body: BotBody; footprintPx: number }
   | { kind: "arrow" };
 
 /** Screen pixels of footprint a pose needs before it is drawn as the robot. */
@@ -28,7 +28,7 @@ export const POSE_BOARD_MIN_PX = 12;
  * otherwise.
  */
 export function poseShape(
-  template: BotPose | null,
+  template: RobotBody | null,
   anchor: LH2Position,
   heading: number,
   pxPerMm: number,
@@ -42,7 +42,7 @@ export function poseShape(
 }
 
 /** How far from its axle the robot reaches, board and tyres, in mm. */
-export function axleReachMm(pose: BotPose): number {
+export function axleReachMm(pose: RobotBody): number {
   const points = [...pose.outline, ...pose.wheels.flat()];
   return Math.max(0, ...points.map((p) => Math.hypot(p.x - pose.axle.x, p.y - pose.axle.y)));
 }
@@ -65,7 +65,7 @@ export function knobOffset(shape: PoseShape, heading: number, pxPerMm: number, t
 }
 
 interface PoseMarkerProps {
-  template: BotPose | null;
+  template: RobotBody | null;
   anchor: LH2Position;
   heading: number;
   pxPerMm: number;

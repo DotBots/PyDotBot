@@ -13,7 +13,7 @@ import {
   spacingMm,
   swap,
 } from "./spread";
-import type { BotPose, UnifiedBot } from "./types";
+import type { RobotBody, UnifiedBot } from "./types";
 
 const bot = (id: string, x: number | null, y = 0, extra: Partial<UnifiedBot> = {}) =>
   ({ id, position: x === null ? null : { x, y }, axle: null, pose: null, ...extra }) as UnifiedBot;
@@ -120,7 +120,7 @@ describe("spacing", () => {
       { x: 30, y: 40 },
     ],
     wheels: [[{ x: 60, y: 0 }]],
-  } as unknown as BotPose;
+  } as unknown as RobotBody;
 
   it("is twice the farthest body point from the axle", () => {
     expect(bodyRadiusMm(pose)).toBe(60);

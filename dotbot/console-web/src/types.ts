@@ -71,7 +71,7 @@ export interface RobotPose {
 // the same frame as an LH2 position: `centre` is the board outline's centre,
 // `nose` the middle of its front edge, and `outline` the board path itself,
 // already rotated to the heading.
-export interface BotPose {
+export interface RobotBody {
   heading_deg: number;
   heading_source: HeadingSource;
   /** Where the pose places the LH2 photodiode. */
@@ -117,7 +117,6 @@ export interface PyDotBot {
   battery?: number; // volts
   calibrated?: number;
 }
-
 
 // --- what a camera sees on its own area ------------------------------------
 //
@@ -311,7 +310,7 @@ export interface UnifiedBot {
   // The body around that photodiode fix, as the controller expanded it. Null
   // for a bot with no fix, and for one whose position comes from swarmit,
   // which reports a point and no heading.
-  pose: BotPose | null;
+  pose: RobotBody | null;
   battery: number; // volts
   led: RgbLed | null;
   deviceType: string;

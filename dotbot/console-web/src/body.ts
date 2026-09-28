@@ -2,13 +2,13 @@
 // `robot_models` event gives it (axle at the origin, facing 0 degrees),
 // turned by the pose's heading about the origin and moved onto its axle.
 
-import { BotPose, LH2Position, RobotPose } from "./types";
+import { RobotBody, LH2Position, RobotPose } from "./types";
 
-export type RobotShapes = Record<string, BotPose>;
+export type RobotShapes = Record<string, RobotBody>;
 
 export const ROBOT_MODEL_DEFAULT = "dotbot-v3";
 
-export function bodyOf(shape: BotPose, pose: RobotPose): BotPose {
+export function bodyOf(shape: RobotBody, pose: RobotPose): RobotBody {
   const theta = (pose.heading_deg * Math.PI) / 180;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
@@ -34,14 +34,14 @@ export function bodyOf(shape: BotPose, pose: RobotPose): BotPose {
 
 // A pose object is replaced, never mutated, when the robot moves, so its body
 // is built once per pose and shared by every rebuild until the next one.
-const bodies = new WeakMap<RobotPose, { shape: BotPose; body: BotPose }>();
+const bodies = new WeakMap<RobotPose, { shape: RobotBody; body: RobotBody }>();
 
 /** The body `pose` places for a robot of `model`, or null with no shape for it. */
 export function robotBody(
   pose: RobotPose,
   model: string | undefined,
   shapes: RobotShapes,
-): BotPose | null {
+): RobotBody | null {
   const shape = shapes[model ?? ROBOT_MODEL_DEFAULT];
   if (!shape) return null;
   const cached = bodies.get(pose);

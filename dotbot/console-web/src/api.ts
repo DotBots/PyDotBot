@@ -1,5 +1,5 @@
 import {
-  BotPose,
+  RobotBody,
   CalibrationPreview,
   CalibrationPushed,
   CalibrationSaved,
@@ -26,7 +26,7 @@ export async function fetchSite(): Promise<Site> {
 
 // The headingless pose of each swarmit device type, photodiode at the origin.
 // A controller too old to know the route has none to give.
-export async function fetchDevicePoses(): Promise<Record<string, BotPose>> {
+export async function fetchDevicePoses(): Promise<Record<string, RobotBody>> {
   try {
     const res = await fetch(`${CONTROLLER}/device_poses`);
     if (!res.ok) return {};

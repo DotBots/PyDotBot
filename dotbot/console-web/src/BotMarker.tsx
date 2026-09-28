@@ -4,7 +4,7 @@ import { BodyColorMode, bodyColorFor } from "./bodyColor";
 import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
 import { headingToGlyphRotation } from "./frame";
 import type { RobotDrawing } from "./robotDrawing";
-import type { BotPose, LH2Position, RgbLed, UnifiedBot } from "./types";
+import type { RobotBody, LH2Position, RgbLed, UnifiedBot } from "./types";
 import { ResetBadge, batteryColor, batteryPct } from "./viewChrome";
 
 // The selection ring hugs the robot: its footprint plus this on every side.
@@ -88,7 +88,7 @@ const near = (a: LH2Position, b: LH2Position, da: LH2Position, db: LH2Position) 
   Math.abs(a.x - da.x - (b.x - db.x)) < SAME_MM && Math.abs(a.y - da.y - (b.y - db.y)) < SAME_MM;
 
 /** Whether two poses draw the same body about their photodiode, wherever it is. */
-function sameBody(a: BotPose | null, b: BotPose | null): boolean {
+function sameBody(a: RobotBody | null, b: RobotBody | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   if (
@@ -104,7 +104,7 @@ function sameBody(a: BotPose | null, b: BotPose | null): boolean {
   }
   const pa = a.photodiode;
   const pb = b.photodiode;
-  const points = (p: BotPose) => [p.axle, p.centre, p.nose, p.led, ...p.outline, ...p.wheels.flat()];
+  const points = (p: RobotBody) => [p.axle, p.centre, p.nose, p.led, ...p.outline, ...p.wheels.flat()];
   const qa = points(a);
   const qb = points(b);
   return qa.length === qb.length && qa.every((q, i) => near(q, qb[i], pa, pb));

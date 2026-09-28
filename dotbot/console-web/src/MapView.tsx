@@ -58,7 +58,7 @@ import { ACTION_KEY, MAP_MODIFIER, SHORTCUTS_KEY, activatable, holds, roleOf, ty
 
 import {
   Area,
-  BotPose,
+  RobotBody,
   CalibrationSession,
   CameraDetection,
   LH2Position,
@@ -891,7 +891,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   // ring holding the whole robot whichever way it ends up facing.
   const centreMarks = (
     p: LH2Position | null,
-    template: BotPose | null,
+    template: RobotBody | null,
     color: string,
   ) => {
     const ringPx = template ? axleReachMm(template) * perMm : 0;

@@ -19,7 +19,7 @@ import {
   robotDraw,
 } from "./BotGlyph";
 import type { RobotDrawing } from "./robotDrawing";
-import type { BotPose, LH2Position } from "./types";
+import type { RobotBody, LH2Position } from "./types";
 
 afterEach(cleanup);
 
@@ -66,7 +66,7 @@ const SENSOR: LH2Position = { x: 1000, y: 1000 };
 // The pose of a bot standing on SENSOR facing `heading`. The board turns with
 // the robot, which is what the controller sends: the heading is a label on an
 // already-rotated path, never an instruction to rotate one.
-const pose = (heading = 0, over: Partial<BotPose> = {}): BotPose => {
+const pose = (heading = 0, over: Partial<RobotBody> = {}): RobotBody => {
   const theta = (heading * Math.PI) / 180;
   const place = (p: LH2Position): LH2Position => ({
     x: SENSOR.x + p.x * Math.cos(theta) - p.y * Math.sin(theta),

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { bodyOf, robotBody } from "./body";
-import { BotPose, RobotPose } from "./types";
+import { RobotBody, RobotPose } from "./types";
 
 // dotbot-v3's shape as the controller sends it, cut down to what is checked.
-const SHAPE: BotPose = {
+const SHAPE: RobotBody = {
   heading_deg: 0,
   heading_source: "none",
   photodiode: { x: 0, y: 53.5 },

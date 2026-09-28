@@ -1,7 +1,7 @@
 import React from "react";
 
 import type { RobotDrawing } from "./robotDrawing";
-import type { BotPose, LH2Position, RgbLed } from "./types";
+import type { RobotBody, LH2Position, RgbLed } from "./types";
 
 // The map marker. One colour rule holds at every level: the robot's fill is
 // its body colour - swarmit state or LED, the caller's choice, see
@@ -103,11 +103,11 @@ export interface BotBody {
   spanMm: number;
   /** The robot's plan-view size, from the pose. */
   envelopeMm: number;
-  source: BotPose["heading_source"];
+  source: RobotBody["heading_source"];
 }
 
 /** Whether a pose says enough about the robot's orientation to draw a body. */
-export function hasHeading(pose: BotPose | null | undefined): boolean {
+export function hasHeading(pose: RobotBody | null | undefined): boolean {
   return !!pose && pose.heading_source !== "none";
 }
 
@@ -116,7 +116,7 @@ export function hasHeading(pose: BotPose | null | undefined): boolean {
  * nothing to draw one from: no pose, no heading, or an outline too short to
  * be a polygon.
  */
-export function botBody(pose: BotPose | null | undefined): BotBody | null {
+export function botBody(pose: RobotBody | null | undefined): BotBody | null {
   if (!pose || !hasHeading(pose)) return null;
   if (pose.outline.length < 3) return null;
   const sensor = pose.photodiode;
@@ -198,7 +198,7 @@ export interface RobotDraw {
 
 /** How a robot with this pose is drawn at this zoom, in a fleet of `botCount`. */
 export function robotDraw(
-  pose: BotPose | null | undefined,
+  pose: RobotBody | null | undefined,
   drawing: RobotDrawing,
   pxPerMm: number,
   botCount: number,
@@ -271,7 +271,7 @@ export function robotDraw(
 }
 
 /** The pose's heading as a bar `lengthPx` long, or null when it has none. */
-function headingBar(pose: BotPose | null | undefined, lengthPx: number): HeadingBarShape | null {
+function headingBar(pose: RobotBody | null | undefined, lengthPx: number): HeadingBarShape | null {
   if (!pose || !hasHeading(pose)) return null;
   const dx = pose.nose.x - pose.centre.x;
   const dy = pose.nose.y - pose.centre.y;

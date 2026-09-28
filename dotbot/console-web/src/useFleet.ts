@@ -13,7 +13,7 @@ import { connectStream, FleetStream, StreamEvent } from "./stream";
 import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
   Area,
-  BotPose,
+  RobotBody,
   BotState,
   CalibrationSession,
   LH2Position,
@@ -56,7 +56,7 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
 }
 
 // A device type's pose moved onto `at`, which is where its photodiode goes.
-function poseAt(pose: BotPose, at: LH2Position): BotPose {
+function poseAt(pose: RobotBody, at: LH2Position): RobotBody {
   const dx = at.x - pose.photodiode.x;
   const dy = at.y - pose.photodiode.y;
   const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
@@ -83,12 +83,12 @@ export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
-  devicePoses: Record<string, BotPose> = {},
+  devicePoses: Record<string, RobotBody> = {},
   shapes: RobotShapes = {},
 ): {
   position: LH2Position | null;
   heading: number | null;
-  pose: BotPose | null;
+  pose: RobotBody | null;
 } {
   const inApp = !sw || sw.status === "Running";
   const pyHeading =
@@ -115,7 +115,7 @@ export function derivePose(
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
-  devicePoses: Record<string, BotPose> = {},
+  devicePoses: Record<string, RobotBody> = {},
   shapes: RobotShapes = {},
 ): UnifiedBot[] {
   const ids = new Set([...Object.keys(pyBots), ...Object.keys(swNodes)]);
@@ -179,7 +179,7 @@ export function useFleet(): {
 } {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
-  const devicePosesRef = useRef<Record<string, BotPose>>({});
+  const devicePosesRef = useRef<Record<string, RobotBody>>({});
   const shapesRef = useRef<RobotShapes>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);

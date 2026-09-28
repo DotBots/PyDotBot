@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { bodyOf } from "./body";
-import { BotPose, CameraDetection, PyDotBot, RobotPose, SwarmitNode } from "./types";
+import { RobotBody, CameraDetection, PyDotBot, RobotPose, SwarmitNode } from "./types";
 import {
   deriveLink,
   derivePose,
@@ -11,7 +11,7 @@ import {
   withDetection,
 } from "./useFleet";
 
-const pose = (over: Partial<BotPose> = {}): BotPose => ({
+const pose = (over: Partial<RobotBody> = {}): RobotBody => ({
   heading_deg: 90,
   heading_source: "travel",
   photodiode: { x: 0, y: 0 },

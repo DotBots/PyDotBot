@@ -6,7 +6,7 @@ import { areaToFraction } from "./frame";
 import { frameMm } from "./grid";
 import { MapView } from "./MapView";
 import { MAP_MODIFIER, Modifier } from "./shortcuts";
-import type { Area, BotPose, LH2Position, Site, UnifiedBot, Waypoint } from "./types";
+import type { Area, RobotBody, LH2Position, Site, UnifiedBot, Waypoint } from "./types";
 import { HOLD_MS } from "./poseGesture";
 import {
   Camera,
@@ -436,7 +436,7 @@ describe("a panel toggle", () => {
 // --- placing a waypoint, and a pose -------------------------------------------
 
 // A v3-sized body facing down the map, axle at (500, 500), photodiode ahead.
-const POSE: BotPose = {
+const POSE: RobotBody = {
   heading_deg: 0,
   heading_source: "ekf",
   photodiode: { x: 500, y: 553.5 },
@@ -787,7 +787,7 @@ describe("a robot reporting its own axle", () => {
 describe("a queued pose on a robot with no heading", () => {
   // What the controller sends for a robot whose direction reads -1000: the
   // body expanded on a placeholder heading, marked "none".
-  const STILL: BotPose = { ...POSE, heading_source: "none", heading_deg: 0 };
+  const STILL: RobotBody = { ...POSE, heading_source: "none", heading_deg: 0 };
   const planned = [{ key: "a", ids: ["a"], waypoints: [{ x: 800, y: 800, heading_deg: 120 }], led: null }];
 
   it("is still the robot's silhouette, at the pose's own heading", () => {
