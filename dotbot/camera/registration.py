@@ -28,6 +28,7 @@ from dotbot.calibration.lighthouse2 import (
     calibration_root,
     compute_homography_matrix,
     reprojection_residual_mm,
+    resolve_calibration_spec,
     site_dir,
     slug_tag,
     toml_escape,
@@ -324,57 +325,16 @@ def resolve_camera_calibration_path(
     root: Path | None = None,
     site: str | None = None,
 ) -> Path:
-    """The camera file `spec` names: a path, an exact tag, or an id prefix.
-
-    Same three-tier rule as the lighthouse's `resolve_calibration_path`: a
-    readable path first, then `spec` as an exact, case-insensitive match
-    against a file's `tag` (as typed or as its stored slug), then as the id
-    prefix of a file under a site directory. A tag or an id prefix matching
-    several files is an error listing each match's id, created and path
-    rather than picking one; a `spec` that could be both resolves as the
-    tag only on an exact match, otherwise falls through to the id prefix.
-    The glob is `camera-*.toml`, so neither a camera tag nor a camera id
-    prefix can ever resolve to a lighthouse file sitting in the same
-    directory.
-    """
-    candidate = Path(spec).expanduser()
-    if candidate.is_file():
-        return candidate
-
-    root = root or calibration_root()
-    files = sorted(root.glob(f"{site or '*'}/{CAMERA_TOML_GLOB}"))
-
-    spec_lower = spec.lower()
-    spec_slug = slug_tag(spec).lower()
-    tags = {path: _camera_file_tag(path) for path in files}
-    tag_matches = [
-        path
-        for path, tag in tags.items()
-        if tag and tag.lower() in (spec_lower, spec_slug)
-    ]
-    if len(tag_matches) == 1:
-        return tag_matches[0]
-    if len(tag_matches) > 1:
-        raise ValueError(
-            f"camera calibration tag {spec!r} matches several files:\n"
-            + _describe_camera_matches(tag_matches)
-        )
-
-    id_matches = [
-        path for path in files if _camera_file_id(path).startswith(spec_lower)
-    ]
-    if len(id_matches) == 1:
-        return id_matches[0]
-    if len(id_matches) > 1:
-        raise ValueError(
-            f"camera calibration id prefix {spec!r} matches several files:\n"
-            + _describe_camera_matches(id_matches)
-        )
-
-    raise ValueError(
-        f"no camera calibration matches {spec!r}: it is neither a readable "
-        f"file, an exact tag, nor the id prefix of a file under "
-        f"{root / (site or '*')}"
+    """The camera file `spec` names, as `resolve_calibration_spec` finds it
+    among `camera-*.toml` files only."""
+    return resolve_calibration_spec(
+        spec,
+        root or calibration_root(),
+        site,
+        glob=CAMERA_TOML_GLOB,
+        metadata=_camera_file_data,
+        what="camera calibration",
+        created_key="created",
     )
 
 
@@ -385,25 +345,6 @@ def _camera_file_data(path: Path) -> dict:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
         return {}
-
-
-def _camera_file_id(path: Path) -> str:
-    """The id a file declares, read without solving anything."""
-    return str(_camera_file_data(path).get("id", "")).lower()
-
-
-def _camera_file_tag(path: Path) -> str:
-    """The tag a file declares, read without solving anything."""
-    return str(_camera_file_data(path).get("tag", ""))
-
-
-def _describe_camera_matches(paths: list[Path]) -> str:
-    """One line per ambiguous match: its id, created timestamp and filename."""
-    lines = []
-    for path in paths:
-        data = _camera_file_data(path)
-        lines.append(f"  {data.get('id', '?')}  {data.get('created', '?')}  {path}")
-    return "\n".join(lines)
 
 
 def load_camera_calibration(
