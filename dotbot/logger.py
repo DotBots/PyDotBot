@@ -17,6 +17,10 @@ LOG_LEVEL_MAP = {
     "error": logging.ERROR,
 }
 
+# Worst case on disk is (1 + LOG_FILE_BACKUP_COUNT) * LOG_FILE_MAX_BYTES.
+LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
+LOG_FILE_BACKUP_COUNT = 5
+
 SUPPORTED_HANDLERS_DEFAULT = {
     "console": {
         "formatter": "rich",
@@ -27,6 +31,8 @@ SUPPORTED_HANDLERS_DEFAULT = {
         "class": "logging.handlers.RotatingFileHandler",
         "formatter": "logfmt",
         "encoding": "utf-8",
+        "maxBytes": LOG_FILE_MAX_BYTES,
+        "backupCount": LOG_FILE_BACKUP_COUNT,
     },
 }
 
