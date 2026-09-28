@@ -124,8 +124,6 @@ commit) and prints a table. `--no-profile` / `--no-interactions` skip passes;
 point `--out` outside `/tmp`, which it cannot write to.
 
 The controller side of the same path, K WebSocket clients (alone, beside one
-that never reads, beside one that reads too slowly) at N robots:
-
-```bash
-python dotbot/console-web/perf/ws_notify_bench.py --robots 10,100,200 --out <dir>
-```
+that never reads, beside one that reads too slowly) at N robots, is
+`utils/perf/bench_controller.py --stall --slow`, described in the repo's
+`AGENTS.md`.

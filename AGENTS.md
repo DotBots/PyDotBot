@@ -135,7 +135,8 @@ python utils/perf/bench_controller.py --modes synth --trail 1000  # full trails
 
 `--trail` starts each robot with that many points of trail, the steady state
 of a fleet that has driven for a while. `--stall` adds a stream client that
-acks once then stops reading, and `--slow` one that takes 20 ms per frame.
+acks once then stops reading, and `--slow` one that takes 20 ms per frame;
+`ws_drops` records the controller's logged reason for each client it drops.
 
 It records figures and applies no thresholds; each run is one flat JSON
 record, so a CI trend or a limit can be keyed on its fields.

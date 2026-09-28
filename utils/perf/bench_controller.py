@@ -35,6 +35,7 @@ import math
 import os
 import platform
 import random
+import re
 import signal
 import socket
 import statistics
@@ -55,6 +56,8 @@ STREAM_HZ = 10
 SLOW_FRAME_S = 0.02
 # The trail a connecting client asks for when its snapshot is measured
 SNAPSHOT_TRAIL = 200
+# The controller's log line for a stream client it lets go, and why
+STREAM_DROP = re.compile(r'event="Dropping stream client".*?reason=("[^"]*"|\S+)')
 
 
 class Histogram:
@@ -662,6 +665,8 @@ async def measure(
         for stats in [*ws_stats, slow_stats]:
             stats["open"] = True
         rest_stats["open"] = True
+        log = workdir / "pydotbot.log"
+        log_mark = log.stat().st_size if log.exists() else 0
         rss_peak = 0.0
         rss_start = _rss_mb(process.pid)
         if stalled is not None:
@@ -676,6 +681,14 @@ async def measure(
                     stall_view["rss_at_close"] = _rss_mb(process.pid)
             await asyncio.sleep(0.5)
         rss_end = _rss_mb(process.pid)
+        with open(log, "rb") as logged:
+            logged.seek(log_mark)
+            drops = [
+                reason.strip('"')
+                for reason in STREAM_DROP.findall(
+                    logged.read().decode(errors="replace")
+                )
+            ]
         for stats in [*ws_stats, slow_stats]:
             stats["open"] = False
         rest_stats["open"] = False
@@ -734,6 +747,8 @@ async def measure(
             statistics.mean(s["bytes"] for s in ws_stats) / wall / 1024, 1
         ),
         "ws_clients_closed": sum(s["closed"] for s in ws_stats),
+        # Why the controller let each dropped client go, from its log
+        "ws_drops": drops,
         "ws_update_age_ms": _percentiles(ages),
         **snapshot,
         "rest_list_kb": round(rest_stats["list_bytes"] / 1024, 1),
