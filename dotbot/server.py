@@ -434,21 +434,26 @@ async def dotbot_trail_clear(address: str):
     api.controller.clear_trail(address)
 
 
-def _snapshot(body) -> Response:
-    """A REST snapshot, saying which seq of which controller run it reflects
-    so a stream client can resume from it with `?since=&run=`.
+def _snapshot(body, resumable: bool = False) -> Response:
+    """A REST response built from the dumps the stream caches, so a fleet
+    listing does not validate and serialise every robot model again.
 
-    Built from the dumps the stream caches, so a fleet listing does not
-    validate and serialise every robot model again.
+    A `resumable` one is the whole fleet, and says which seq of which
+    controller run it reflects, so a stream client can resume from it with
+    `?since=&run=`.
     """
-    return Response(
-        content=encode(body),
-        media_type="application/json",
-        headers={
+    headers = {}
+    if resumable:
+        headers = {
             "X-Controller-Seq": str(api.controller.seq),
             "X-Controller-Run": api.controller.run_id,
-        },
+        }
+    return Response(
+        content=encode(body), media_type="application/json", headers=headers
     )
+
+
+_QUERY_FILTERS = set(DotBotQueryModel.model_fields) - {"trail", "body"}
 
 
 @api.get(
@@ -481,7 +486,9 @@ async def dotbot(
     tags=["dotbots"],
 )
 async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
-    """Dotbots HTTP GET handler."""
+    """Dotbots HTTP GET handler. Only the unfiltered list carries
+    `X-Controller-Seq` and `X-Controller-Run`: a stream resumed from part of
+    the fleet would never be sent the rest."""
     controller = api.controller
     return _snapshot(
         [
@@ -489,7 +496,8 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
                 controller, address, query.trail, controller.seq, body=query.body
             )
             for address in controller.matching(query)
-        ]
+        ],
+        resumable=all(getattr(query, name) is None for name in _QUERY_FILTERS),
     )
 
 

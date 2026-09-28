@@ -589,13 +589,33 @@ async def test_get_dotbot_returns_the_newest_trail_points(query, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["/controller/dotbots", "/controller/dotbots/12345"])
-async def test_a_rest_snapshot_names_its_seq_and_run(path):
+@pytest.mark.parametrize(
+    "path", ["/controller/dotbots", "/controller/dotbots?trail=5&body=1"]
+)
+async def test_the_whole_fleet_names_its_seq_and_run(path):
     _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
     response = await client.get(path)
     assert response.status_code == 200
     assert response.headers["X-Controller-Seq"] == str(api.controller.seq)
     assert response.headers["X-Controller-Run"] == "0123456789ab"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/controller/dotbots/12345",
+        "/controller/dotbots?address=12345",
+        "/controller/dotbots?limit=1",
+        "/controller/dotbots?min_battery=1",
+    ],
+)
+async def test_part_of_the_fleet_names_no_seq_to_resume_from(path):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert "X-Controller-Seq" not in response.headers
+    assert "X-Controller-Run" not in response.headers
 
 
 @pytest.mark.asyncio

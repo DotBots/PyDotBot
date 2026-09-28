@@ -38,8 +38,9 @@ are not layered alternatives, and consumers pick one.
   runs on this.
 - **Polled** - `GET /controller/dotbots`. What the Python examples use when they
   batch waypoints and wait for "done". `?trail=N` adds the newest N trail
-  points (default none), and `X-Controller-Seq` / `X-Controller-Run` name the
-  state the body reflects, so a stream client can resume from it.
+  points (default none). On the unfiltered list, `X-Controller-Seq` /
+  `X-Controller-Run` name the state the body reflects, so a stream client can
+  resume from it; a single robot or a filtered list carries neither.
 
 **A robot's `pose` is four numbers, not its body**: `x`, `y` (the axle
 midpoint, to 0.1 mm), `heading_deg` and `heading_source`. The body is the
