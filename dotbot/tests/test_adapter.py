@@ -224,3 +224,9 @@ def test_resolve_init_state_path_falls_back_to_packaged(tmp_path, monkeypatch):
 
     # An explicit, missing path is returned unchanged (caller gets the error).
     assert resolve_init_state_path("nope/missing.toml") == "nope/missing.toml"
+
+
+def test_a_simulator_adapter_given_robots_generates_them_over_its_file():
+    adapter = DotBotSimulatorAdapter("absent.toml", robots=12)
+    simulator = adapter.create_simulator(lambda frame: None)
+    assert len(simulator.dotbots) == 12

@@ -158,6 +158,55 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     click.echo(f"Created {target} — edit it to customize the simulated swarm.")
 
 
+def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulator):
+    """Check `--robots` against the fleet's site and the other flags.
+
+    Returns the robot count left for the simulator to generate and the
+    init-state path to run from: with `--write-init-state`, the count is
+    None and the path is the file just written.
+    """
+    if robots is None:
+        if write_init_state is not None:
+            raise click.UsageError("--write-init-state needs --robots.")
+        return None, init_state
+    if not dotbot_simulator:
+        raise click.UsageError("--robots needs a DotBot simulator connection.")
+    if init_state is not None:
+        raise click.UsageError(
+            "--robots and --simulator-init-state each give the whole fleet; "
+            "pass one of them."
+        )
+    from dotbot.dotbot_simulator import (
+        FLEET_AREA_DEFAULT,
+        FLEET_PITCH_MM,
+        FleetDoesNotFit,
+        fleet_init_state,
+        init_state_toml,
+        placement_area,
+    )
+
+    try:
+        fleet = fleet_init_state(robots, site)
+    except FleetDoesNotFit as exc:
+        raise click.ClickException(str(exc)) from exc
+    area = placement_area(site, FLEET_AREA_DEFAULT)
+    print(
+        f"Simulated fleet: {robots} robots {FLEET_PITCH_MM} mm apart in "
+        f"{area.name or 'the default area'} ({area.w} x {area.h} mm)"
+    )
+    if write_init_state is None:
+        return robots, None
+    target = Path(write_init_state)
+    if target.exists():
+        raise click.ClickException(
+            f"{target} already exists: run it with --simulator-init-state "
+            f"{target}, or name a new file."
+        )
+    target.write_text(init_state_toml(fleet))
+    print(f"Wrote the fleet to {target}; reuse it with --simulator-init-state.")
+    return None, str(target)
+
+
 @click.command()
 @click.option(
     "-n",
@@ -306,6 +355,23 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     help=f"Path to the simulator initial state .toml file. Defaults to '{SIMULATOR_INIT_STATE_DEFAULT}'.",
 )
 @click.option(
+    "--robots",
+    type=click.IntRange(min=1),
+    help=(
+        "With a simulator: start this many robots, 200 mm apart in a "
+        "near-square grid centred in the site's `field` area (else its first "
+        "area, else its extent). Not with --simulator-init-state."
+    ),
+)
+@click.option(
+    "--write-init-state",
+    type=click.Path(dir_okay=False),
+    help=(
+        "With --robots: write the generated fleet to this new file, to edit "
+        "and reuse with --simulator-init-state, and run from it."
+    ),
+)
+@click.option(
     "--controller-http-host",
     type=str,
     help=(
@@ -351,6 +417,8 @@ def main(
     camera_detect_share,
     background_map,
     simulator_init_state,
+    robots,
+    write_init_state,
     swarmit_url,
     mrta_url,
     headless,
@@ -441,11 +509,19 @@ def main(
     # implementation detail — the CLI never exposes it.
     conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
 
+    robots, simulator_init_state = _generated_fleet(
+        robots,
+        write_init_state,
+        simulator_init_state,
+        site,
+        conn_settings.get("adapter") == "dotbot-simulator",
+    )
+
     # For a simulator connection with no init-state set (CLI default is
     # None, so fold in any config value), offer to scaffold an editable
     # world file in the cwd. resolve_init_state_path then picks up the
     # freshly-written file (or the packaged world if declined/non-tty).
-    if conn_settings.get("adapter", "").endswith("simulator"):
+    if robots is None and conn_settings.get("adapter", "").endswith("simulator"):
         _maybe_scaffold_sim_state(
             simulator_init_state or file_data.get("simulator_init_state")
         )
@@ -462,6 +538,7 @@ def main(
         "camera_detect_share": camera_detect_share,
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
+        "simulator_robots": robots,
         "swarmit_url": swarmit_url,
         "mrta_url": mrta_url,
         "headless": True if headless else None,

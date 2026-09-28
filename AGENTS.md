@@ -77,6 +77,7 @@ dotbot device --help             # one cabled device: flash an app/role, read in
 dotbot swarm --help              # the fleet over the air (swarmit; in the base install)
 dotbot run --help                # host-side processes (controller, gateway, simulator, ...)
 dotbot run controller --help     # start the controller
+dotbot run simulator --robots 500 # a generated fleet; see dotbot/examples/simulator_fleet/
 dotbot run calibrate-lh2 --help  # LH2 calibration (optional: pip install pydotbot[calibrate])
 dotbot run demo --list           # built-in research demos
 

@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `dotbot run simulator --robots N` generates a fleet of N robots 200 mm
+  apart, centred in the site's `field` area; `--write-init-state FILE` saves
+  it as an init-state file to edit and reuse with `--simulator-init-state`.
 - Unified `dotbot` CLI dispatcher that mounts every workflow (controller,
   simulator, testbed ops, calibration, demos, keyboard/joystick) under one
   command. Subcommand modules are loaded lazily so `dotbot --help` stays

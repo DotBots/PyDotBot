@@ -223,6 +223,8 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
+    # A generated fleet of this many robots, in place of the init-state file
+    simulator_robots: Optional[int] = None
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
@@ -1239,6 +1241,7 @@ class Controller:
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
                 self.site,
+                robots=self.settings.simulator_robots,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

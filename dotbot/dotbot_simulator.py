@@ -61,6 +61,11 @@ MARI_SLOTFRAME_SIZE = (
 # Where a world file's unpositioned robots go. `arena` is the area name the
 # rest of the CLI already defaults to (`--points` resolves `arena:corners`).
 PLACEMENT_AREA_DEFAULT = "arena"
+# Where `--robots N` puts a generated fleet, and how far apart
+FLEET_AREA_DEFAULT = "field"
+FLEET_PITCH_MM = 200
+# Headings of a generated fleet's two halves, 0 facing +y (down)
+FLEET_FACING_UP, FLEET_FACING_DOWN = 180, 0
 # The square a site that measures neither an extent nor an area falls back to.
 PLACEMENT_EXTENT_DEFAULT_MM = 2000
 
@@ -214,15 +219,17 @@ def resolve_init_state_path(path: str) -> str:
     return path
 
 
-def placement_area(site: Optional[Site] = None) -> Area:
-    """The rectangle a world file's unpositioned robots are spread over.
+def placement_area(
+    site: Optional[Site] = None, preferred: str = PLACEMENT_AREA_DEFAULT
+) -> Area:
+    """The rectangle a fleet is spread over.
 
-    The site's `arena` area, else its first declared area, else its whole
+    The site's `preferred` area, else its first declared area, else its whole
     extent, else a 2 x 2 m square at the frame origin for a site that
     measures neither.
     """
     if site is not None:
-        area = site.areas.get(PLACEMENT_AREA_DEFAULT)
+        area = site.areas.get(preferred)
         if area is not None:
             return area
         for first in site.areas.values():
@@ -278,6 +285,78 @@ def place_dotbots(
             }
         )
     return placed
+
+
+class FleetDoesNotFit(ValueError):
+    """A generated fleet larger than its area holds at the fleet pitch."""
+
+
+def _fleet_grid(count: int) -> Tuple[int, int]:
+    """Columns and rows of the near-square grid `count` robots fill."""
+    columns = ceil(sqrt(count))
+    return columns, ceil(count / columns)
+
+
+def fleet_capacity(area: Area, pitch_mm: int = FLEET_PITCH_MM) -> int:
+    """The most robots `fleet_init_state` fits in `area`."""
+    max_columns, max_rows = area.w // pitch_mm, area.h // pitch_mm
+    best = 0
+    for columns in range(1, max_columns + 1):
+        count = min(columns * columns, columns * max_rows)
+        if count > (columns - 1) ** 2:
+            best = count
+    return best
+
+
+def fleet_init_state(
+    count: int, site: Optional[Site] = None, pitch_mm: int = FLEET_PITCH_MM
+) -> InitStateToml:
+    """`count` robots in a near-square grid `pitch_mm` apart, centred in the
+    site's `field` area (see `placement_area`).
+
+    Rows fill left to right and a short last row is centred under the
+    others. The top half of the rows face up (-y), the rest down (+y).
+    Raises `FleetDoesNotFit` when the grid, with half a pitch of margin all
+    round, is larger than the area.
+    """
+    area = placement_area(site, FLEET_AREA_DEFAULT)
+    columns, rows = _fleet_grid(count)
+    if columns * pitch_mm > area.w or rows * pitch_mm > area.h:
+        where = f"{area.name} " if area.name else ""
+        raise FleetDoesNotFit(
+            f"{count} robots do not fit in the {where}area ({area.w} x "
+            f"{area.h} mm) at {pitch_mm} mm apart; at most "
+            f"{fleet_capacity(area, pitch_mm)} do."
+        )
+    left = area.x + (area.w - (columns - 1) * pitch_mm) // 2
+    top = area.y + (area.h - (rows - 1) * pitch_mm) // 2
+    dotbots = []
+    for index in range(count):
+        row, column = divmod(index, columns)
+        shift = (columns - min(columns, count - row * columns)) * pitch_mm // 2
+        dotbots.append(
+            SimulatedDotBotSettings(
+                address=f"DE{index:014X}",
+                pos_x=left + shift + column * pitch_mm,
+                pos_y=top + row * pitch_mm,
+                direction=FLEET_FACING_UP if row < rows // 2 else FLEET_FACING_DOWN,
+            )
+        )
+    return InitStateToml(dotbots=dotbots)
+
+
+def init_state_toml(init_state: InitStateToml) -> str:
+    """`init_state` as a world file, each robot with its address, position
+    and heading."""
+    return toml.dumps(
+        {
+            "network": {"pdr": init_state.network.pdr},
+            "dotbots": [
+                bot.model_dump(include={"address", "pos_x", "pos_y", "direction"})
+                for bot in init_state.dotbots
+            ],
+        }
+    )
 
 
 def _load_torch_model(path: Path, what: str, logger):
@@ -397,7 +476,7 @@ class DotBotSimulatorCommunicationInterface:
     def __init__(
         self,
         on_frame_received: Callable,
-        simulator_init_state: str,
+        simulator_init_state: "str | InitStateToml",
         site: Optional[Site] = None,
     ):
         self.on_frame_received = on_frame_received
@@ -406,8 +485,12 @@ class DotBotSimulatorCommunicationInterface:
         self._stop_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
         self.logger = LOGGER.bind(context=__name__)
-        init_state = InitStateToml(
-            **toml.load(resolve_init_state_path(simulator_init_state))
+        init_state = (
+            simulator_init_state
+            if isinstance(simulator_init_state, InitStateToml)
+            else InitStateToml(
+                **toml.load(resolve_init_state_path(simulator_init_state))
+            )
         )
         self._network = init_state.network
         settings = place_dotbots(init_state.dotbots, site)

@@ -71,7 +71,16 @@ so it shares the controller's flags and serves the same console.
 
 ```bash
 dotbot run simulator
+dotbot run simulator --robots 500                  # a generated fleet
+dotbot run simulator --robots 500 --write-init-state fleet.toml
+dotbot run simulator --simulator-init-state fleet.toml
 ```
+
+`--robots N` places N robots 200 mm apart in a near-square grid centred in the
+site's `field` area (else its first area, else its extent, else a 2 x 2 m
+square), the top half of the rows facing up and the rest down, and refuses a
+count that does not fit. `--write-init-state` saves that fleet as a file to
+edit and reuse with `--simulator-init-state`.
 
 ## `calibrate-lh2` - capture & apply (cabled, deprecated)
 

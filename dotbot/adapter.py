@@ -23,7 +23,10 @@ from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
-from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
+from dotbot.dotbot_simulator import (
+    DotBotSimulatorCommunicationInterface,
+    fleet_init_state,
+)
 from dotbot.inbox import FrameInbox
 from dotbot.logger import LOGGER
 from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker
@@ -290,13 +293,20 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         self,
         simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
         site: Optional[Site] = None,
+        robots: Optional[int] = None,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
+        self.robots = robots
 
     def create_simulator(self, on_frame_received: callable):
+        init_state = (
+            self.simulator_init_state
+            if self.robots is None
+            else fleet_init_state(self.robots, self.site)
+        )
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, self.simulator_init_state, self.site
+            on_frame_received, init_state, self.site
         )
 
 
