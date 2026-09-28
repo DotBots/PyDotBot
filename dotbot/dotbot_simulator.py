@@ -35,7 +35,7 @@ from dotbot import (
 )
 from dotbot.area import Area
 from dotbot.logger import LOGGER
-from dotbot.protocol import DIRECTION_NONE, ControlModeType
+from dotbot.protocol import DIRECTION_NONE
 from dotbot.sim import core as control
 from dotbot.sim.plant import (
     INITIAL_BATTERY_VOLTAGE,
@@ -240,6 +240,12 @@ def placement_area(
     return Area(0, 0, side, side)
 
 
+def _grid_shape(count: int) -> Tuple[int, int]:
+    """Columns and rows of the near-square grid `count` points fill."""
+    columns = ceil(sqrt(count))
+    return columns, ceil(count / columns)
+
+
 def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
     """`count` points on the cell centres of a grid covering `area`, row-major.
 
@@ -248,8 +254,7 @@ def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
     """
     if count <= 0:
         return []
-    cols = ceil(sqrt(count))
-    rows = ceil(count / cols)
+    cols, rows = _grid_shape(count)
     return [
         (
             int(area.x + (index % cols + 0.5) * area.w / cols),
@@ -291,12 +296,6 @@ class FleetDoesNotFit(ValueError):
     """A generated fleet larger than its area holds at the fleet pitch."""
 
 
-def _fleet_grid(count: int) -> Tuple[int, int]:
-    """Columns and rows of the near-square grid `count` robots fill."""
-    columns = ceil(sqrt(count))
-    return columns, ceil(count / columns)
-
-
 def fleet_capacity(area: Area, pitch_mm: int = FLEET_PITCH_MM) -> int:
     """The most robots `fleet_init_state` fits in `area`."""
     max_columns, max_rows = area.w // pitch_mm, area.h // pitch_mm
@@ -320,7 +319,7 @@ def fleet_init_state(
     round, is larger than the area.
     """
     area = placement_area(site, FLEET_AREA_DEFAULT)
-    columns, rows = _fleet_grid(count)
+    columns, rows = _grid_shape(count)
     if columns * pitch_mm > area.w or rows * pitch_mm > area.h:
         where = f"{area.name} " if area.name else ""
         raise FleetDoesNotFit(
@@ -457,10 +456,6 @@ class SimulatedDotBot:
     def direction(self) -> int:
         """The advertised heading, DIRECTION_NONE while the estimator has none."""
         return int(self.report["direction"])
-
-    @property
-    def controller_mode(self) -> ControlModeType:
-        return ControlModeType(int(self.report["control_mode"]))
 
 
 class DotBotSimulatorCommunicationInterface:
