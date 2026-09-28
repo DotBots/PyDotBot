@@ -99,8 +99,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   so update bookmarks. Its classic-only views go with it: the REST demo page,
   the SailBot map and the qrkey phone page. The phone page is retired pending
   a qrkey mode in the console: `dotbot run demo qr` still relays the
-  controller's notifications to MQTT and shows the QR, but no phone page
-  reads what it relays yet.
+  controller stream to MQTT and shows the QR, but no phone page reads what it
+  relays yet.
 - `dotbot-qrkey` console script — use `python -m dotbot.examples.qrkey_demo`
   or `dotbot run demo qr` instead.
 - `dotbot-edge-gateway` console script — the referenced module
