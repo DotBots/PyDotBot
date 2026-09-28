@@ -1,5 +1,6 @@
 import React from "react";
 
+import { pressable } from "./pressable";
 import { ACTION_KEY } from "./shortcuts";
 import { TestbedAction, TestbedOutcome, summarize, toneOf } from "./testbed";
 
@@ -50,7 +51,7 @@ export const TestbedControls: React.FC<{
   const target = selected ? `${selected} selected` : "whole fleet";
   const tone = outcome ? toneOf(outcome) : null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="Testbed controls">
+    <div role="group" style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="Testbed controls">
       <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
         Testbed&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{target}</span>
       </span>
@@ -74,12 +75,12 @@ export const TestbedControls: React.FC<{
       </button>
       {outcome && tone && (
         <span
-          role="status"
           data-tone={tone}
           title={
             summarize(outcome) + (outcome.silent.length ? " - click to select the robots that did not answer" : "")
           }
-          onClick={outcome.silent.length ? () => onSelectIds(outcome.silent) : undefined}
+          {...(outcome.silent.length ? pressable(() => onSelectIds(outcome.silent)) : {})}
+          role="status"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10,

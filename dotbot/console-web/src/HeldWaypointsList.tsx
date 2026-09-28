@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import { pressable } from "./pressable";
 import { HeldRow, describePoint, heldAmong } from "./heldWaypoints";
 import { UnifiedBot } from "./types";
 
@@ -44,12 +45,12 @@ export const HeldWaypointsList: React.FC<{
         <span style={label10}>On the controller &middot; {rows.length}</span>
         <div style={{ flex: 1 }} />
         {selected.length > 0 && (
-          <span role="button" onClick={() => onClear(selected.map((r) => r.id))} style={link}>
+          <span {...pressable(() => onClear(selected.map((r) => r.id)))} style={link}>
             Clear selected ({selected.length})
           </span>
         )}
         {rows.length > 0 && (
-          <span role="button" onClick={() => onClear(rows.map((r) => r.id))} style={link}>
+          <span {...pressable(() => onClear(rows.map((r) => r.id)))} style={link}>
             Clear all
           </span>
         )}
@@ -70,25 +71,24 @@ export const HeldWaypointsList: React.FC<{
         <div key={r.id} data-testid={`held-${r.id}`} style={{ marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", borderRadius: 6, background: selection.has(r.id) ? "var(--elevated)" : "transparent" }}>
             <span
-              onClick={() => toggle(r.id)}
+              {...pressable(() => toggle(r.id))}
               aria-label={`${open.has(r.id) ? "Hide" : "Show"} the points of ${short(r.id)}`}
-              role="button"
+              aria-expanded={open.has(r.id)}
               style={{ cursor: "pointer", color: "var(--muted)", width: 10, fontSize: 10 }}
             >
               {open.has(r.id) ? "▾" : "▸"}
             </span>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: ledCss(byId.get(r.id)), flex: "none" }} />
-            <span onClick={() => onSelectIds([r.id])} style={{ ...mono, fontWeight: 600, cursor: "pointer" }}>
+            <span {...pressable(() => onSelectIds([r.id]))} title="Select" style={{ ...mono, fontWeight: 600, cursor: "pointer" }}>
               {short(r.id)}
             </span>
             <span style={{ fontSize: 11, color: TONE[r.tone] }}>{r.status}</span>
             <div style={{ flex: 1 }} />
             <span style={{ ...mono, fontSize: 11, color: "var(--muted)" }}>&#9678; {r.targets.length}</span>
             <span
-              role="button"
+              {...pressable(() => onClear([r.id]))}
               aria-label={`Clear the waypoints of ${short(r.id)}`}
               title={r.active ? "Clear, which stops it where it is" : "Clear"}
-              onClick={() => onClear([r.id])}
               style={{ cursor: "pointer", color: "var(--muted)", fontSize: 15, lineHeight: 1 }}
             >
               &times;

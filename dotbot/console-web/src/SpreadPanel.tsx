@@ -1,5 +1,6 @@
 import React from "react";
 
+import { pressable } from "./pressable";
 import { SpreadPlan, describeHazards, spreadColor } from "./spread";
 import { UnifiedBot, Waypoint } from "./types";
 
@@ -111,7 +112,7 @@ export const SpreadPanel: React.FC<{
             </div>
           )}
           {plan.swapped && (
-            <span onClick={onShortest} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
+            <span {...pressable(onShortest)} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>
               Back to the shortest assignment
             </span>
           )}
