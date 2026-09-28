@@ -8,6 +8,7 @@ import {
   RegisteredCamera,
   Site,
   UnifiedBot,
+  shortId,
 } from "./types";
 import { FirmwareSection } from "./FirmwareSection";
 import { PanelToggle } from "./PanelToggle";
@@ -71,7 +72,6 @@ interface TestbedRailProps {
 
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
-const short = (id: string) => id.slice(-4).toUpperCase();
 const label10 = { fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)" } as const;
 
 const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -107,7 +107,7 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
     missions.push({
       key: m.key,
       ids: m.ids,
-      label: bs.length === 1 ? short(bs[0].id) : `${bs.length} bots`,
+      label: bs.length === 1 ? shortId(bs[0].id) : `${bs.length} bots`,
       count: bs.length,
       n: m.waypoints.length,
       phase: "planned",
@@ -133,7 +133,7 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
     missions.push({
       key: `active-${sig}`,
       ids: bs.map((b) => b.id),
-      label: bs.length === 1 ? short(bs[0].id) : `${bs.length} bots`,
+      label: bs.length === 1 ? shortId(bs[0].id) : `${bs.length} bots`,
       count: bs.length,
       n: Math.max(...bs.map((b) => targetsOf(b).length)),
       phase: "active",
@@ -377,7 +377,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                       return (
                         <div key={j.addr} style={{ marginBottom: 10 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 11, marginBottom: 3 }}>
-                            <span>{short(j.addr)}</span>
+                            <span>{shortId(j.addr)}</span>
                             <span style={{ color: j.done ? "var(--s-Running)" : "var(--s-Programming)" }}>
                               {j.done ? "done" : `${pct}%`}
                             </span>

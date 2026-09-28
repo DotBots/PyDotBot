@@ -383,6 +383,9 @@ export function lastMissionTargets(bot: UnifiedBot): Waypoint[] {
   return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
 }
 
+/** The short name a robot goes by on screen: its address's last four hex digits. */
+export const shortId = (id: string): string => id.slice(-4).toUpperCase();
+
 // A bot under way is already running its last mission, so it is left alone.
 export function canRedoMission(bot: UnifiedBot): boolean {
   return bot.drivable && bot.nav !== "auto" && lastMissionTargets(bot).length > 0;

@@ -2,12 +2,11 @@ import React, { useState } from "react";
 
 import { pressable } from "./pressable";
 import { HeldRow, describePoint, heldAmong } from "./heldWaypoints";
-import { UnifiedBot } from "./types";
+import { UnifiedBot, shortId } from "./types";
 
 // Every waypoint batch the controller holds, whoever sent it. Clearing a
 // robot's batch stops it where it is: one click, no confirmation.
 
-const short = (id: string) => id.slice(-4).toUpperCase();
 const mono = { fontFamily: "var(--font-mono)" } as const;
 const label10 = { fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)" } as const;
 const TONE: Record<HeldRow["tone"], string> = {
@@ -72,7 +71,7 @@ export const HeldWaypointsList: React.FC<{
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", borderRadius: 6, background: selection.has(r.id) ? "var(--elevated)" : "transparent" }}>
             <span
               {...pressable(() => toggle(r.id))}
-              aria-label={`${open.has(r.id) ? "Hide" : "Show"} the points of ${short(r.id)}`}
+              aria-label={`${open.has(r.id) ? "Hide" : "Show"} the points of ${shortId(r.id)}`}
               aria-expanded={open.has(r.id)}
               style={{ cursor: "pointer", color: "var(--muted)", width: 10, fontSize: 10 }}
             >
@@ -80,14 +79,14 @@ export const HeldWaypointsList: React.FC<{
             </span>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: ledCss(byId.get(r.id)), flex: "none" }} />
             <span {...pressable(() => onSelectIds([r.id]))} title="Select" style={{ ...mono, fontWeight: 600, cursor: "pointer" }}>
-              {short(r.id)}
+              {shortId(r.id)}
             </span>
             <span style={{ fontSize: 11, color: TONE[r.tone] }}>{r.status}</span>
             <div style={{ flex: 1 }} />
             <span style={{ ...mono, fontSize: 11, color: "var(--muted)" }}>&#9678; {r.targets.length}</span>
             <span
               {...pressable(() => onClear([r.id]))}
-              aria-label={`Clear the waypoints of ${short(r.id)}`}
+              aria-label={`Clear the waypoints of ${shortId(r.id)}`}
               title={r.active ? "Clear, which stops it where it is" : "Clear"}
               style={{ cursor: "pointer", color: "var(--muted)", fontSize: 15, lineHeight: 1 }}
             >

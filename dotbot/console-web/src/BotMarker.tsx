@@ -4,6 +4,7 @@ import { BodyColorMode, bodyColorFor } from "./bodyColor";
 import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
 import { headingToGlyphRotation } from "./frame";
 import type { RobotDrawing } from "./robotDrawing";
+import { shortId } from "./types";
 import type { RobotBody, LH2Position, RgbLed, UnifiedBot } from "./types";
 import { ResetBadge, batteryColor, batteryPct } from "./viewChrome";
 
@@ -288,7 +289,7 @@ export const BotMarker = React.memo(function BotMarker({
               pointerEvents: "none",
             }}
           >
-            {b.id.slice(-4).toUpperCase()}
+            {shortId(b.id)}
           </div>
         )}
       </div>

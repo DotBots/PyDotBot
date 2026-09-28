@@ -63,6 +63,7 @@ import {
   ControllerConnection,
   lastMissionTargets,
   PlannedMission,
+  shortId,
   Waypoint,
 } from "./types";
 import { useCalibration, useCapturer } from "./useCalibration";
@@ -118,7 +119,7 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
 
 /** "3 robots not found: 1111, 2222, 3333", naming at most five. */
 function robotsNotice(ids: string[], what: string): string {
-  const names = ids.slice(0, 5).map((id) => id.slice(-4).toUpperCase());
+  const names = ids.slice(0, 5).map(shortId);
   const more = ids.length > 5 ? ` and ${ids.length - 5} more` : "";
   return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
 }
@@ -773,7 +774,7 @@ export const App: React.FC = () => {
     if (arrived.length) {
       const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       setDoneMissions((d) =>
-        [...arrived.map((b) => ({ key: `${b.id}-${Date.now()}`, id: b.id.slice(-4).toUpperCase(), t })), ...d].slice(0, 8),
+        [...arrived.map((b) => ({ key: `${b.id}-${Date.now()}`, id: shortId(b.id), t })), ...d].slice(0, 8),
       );
     }
     prevNavRef.current = Object.fromEntries(bots.map((b) => [b.id, b.nav]));

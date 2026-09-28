@@ -1,4 +1,4 @@
-import { BotState, SwarmitNode, UnifiedBot } from "./types";
+import { BotState, SwarmitNode, UnifiedBot, shortId } from "./types";
 
 // The testbed lifecycle commands the console sends, and how their outcome is
 // judged from the sandbox states swarmit reports.
@@ -75,10 +75,8 @@ export function judge(
   return { responded, silent };
 }
 
-const short = (id: string) => id.slice(-4).toUpperCase();
-
 function listed(ids: string[], max = 4): string {
-  const head = ids.slice(0, max).map(short).join(", ");
+  const head = ids.slice(0, max).map(shortId).join(", ");
   return ids.length > max ? `${head} +${ids.length - max}` : head;
 }
 

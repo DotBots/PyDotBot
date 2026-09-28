@@ -17,7 +17,7 @@ import {
 } from "./arrival";
 import { isPose, normDeg } from "./poseGesture";
 import { ACTION_KEY } from "./shortcuts";
-import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint } from "./types";
+import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint, shortId } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -41,7 +41,6 @@ const gateOff = { opacity: 0.32, pointerEvents: "none" as const, filter: "graysc
 
 const ledCss = (b: UnifiedBot | undefined) =>
   b?.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
-const short = (id: string) => id.slice(-4).toUpperCase();
 
 interface FooterProps {
   bots: UnifiedBot[];
@@ -723,7 +722,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
                     boxShadow: `0 0 0 1px rgba(0,0,0,.45), 0 0 12px ${ledCss(one)}`,
                   }}
                 />
-                <span style={{ ...mono, fontWeight: 600, fontSize: 20, lineHeight: 1.05 }}>{short(one.id)}</span>
+                <span style={{ ...mono, fontWeight: 600, fontSize: 20, lineHeight: 1.05 }}>{shortId(one.id)}</span>
               </div>
               <span style={{ ...mono, fontSize: 10, color: "var(--muted)" }}>{one.id.toUpperCase()}</span>
               <span style={{ fontSize: 11, color: "var(--muted)" }}>{one.deviceType}</span>

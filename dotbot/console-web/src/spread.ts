@@ -1,4 +1,4 @@
-import { Area, RobotBody, LH2Position, UnifiedBot, Waypoint } from "./types";
+import { Area, RobotBody, LH2Position, UnifiedBot, Waypoint, shortId } from "./types";
 
 // Spread: N selected robots, N targets, one each. The assignment is the one
 // with the least total straight-line distance unless the operator swaps it;
@@ -200,16 +200,14 @@ export function hazardsOf(legs: SpreadLeg[], spacing: number, extent: Area | nul
 export const hazardCount = (h: SpreadHazards) =>
   h.crossings.length + h.tooClose.length + h.outside.length + h.unplaced.length;
 
-const short = (id: string) => id.slice(-4).toUpperCase();
-
 /** The hazards, one line each, targets numbered from 1. */
 export function describeHazards(h: SpreadHazards, legs: SpreadLeg[], spacing: number): string[] {
-  const who = (t: number) => short(legs[t]?.id ?? "");
+  const who = (t: number) => shortId(legs[t]?.id ?? "");
   return [
     ...h.crossings.map(([a, b]) => `${who(a)} and ${who(b)}: paths cross`),
     ...h.tooClose.map(([a, b]) => `targets ${a + 1} and ${b + 1}: closer than ${Math.round(spacing)} mm`),
     ...h.outside.map((t) => `target ${t + 1}: outside the site`),
-    ...h.unplaced.map((id) => `${short(id)}: no position, path unknown`),
+    ...h.unplaced.map((id) => `${shortId(id)}: no position, path unknown`),
   ];
 }
 

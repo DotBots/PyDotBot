@@ -2,13 +2,12 @@ import React from "react";
 
 import { pressable } from "./pressable";
 import { SpreadPlan, describeHazards, spreadColor } from "./spread";
-import { UnifiedBot, Waypoint } from "./types";
+import { UnifiedBot, Waypoint, shortId } from "./types";
 
 // The spread card: one target per selected robot. Off, a multi-robot queue is
 // one route every robot drives, as ever; on, the queued points are targets
 // and each robot gets the one the plan assigns.
 
-const short = (id: string) => id.slice(-4).toUpperCase();
 const mono = { fontFamily: "var(--font-mono)" } as const;
 
 export interface SpreadRun {
@@ -96,7 +95,7 @@ export const SpreadPanel: React.FC<{
               >
                 {bots.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {short(b.id)}
+                    {shortId(b.id)}
                   </option>
                 ))}
               </select>
@@ -108,7 +107,7 @@ export const SpreadPanel: React.FC<{
           ))}
           {waiting.length > 0 && placed > 0 && (
             <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              Waiting for a target: {waiting.map((b) => short(b.id)).join(", ")}
+              Waiting for a target: {waiting.map((b) => shortId(b.id)).join(", ")}
             </div>
           )}
           {plan.swapped && (
@@ -136,7 +135,7 @@ export const SpreadPanel: React.FC<{
             return (
               <div key={id} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: spreadColor(t) }} />
-                <span style={mono}>{short(id)}</span>
+                <span style={mono}>{shortId(id)}</span>
                 <span style={{ color: p.tone }}>{p.label}</span>
               </div>
             );
