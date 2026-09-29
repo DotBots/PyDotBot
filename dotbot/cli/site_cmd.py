@@ -119,6 +119,35 @@ def _check_pack(folder: Path, name: str) -> None:
         raise click.ClickException(str(exc)) from exc
 
 
+def _install(folder: Path, target: Path) -> None:
+    """Copy the pack in `folder` to `target`, replacing any pack there.
+
+    The copy lands in a hidden sibling of `target` first and is renamed into
+    place, so a failure leaves whatever was at `target` as it was.
+    """
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=parent))
+    aside = None
+    try:
+        shutil.copy2(folder / PACK_FILE, staging / PACK_FILE)
+        calibrations = folder / PACK_CALIBRATIONS
+        if calibrations.is_dir():
+            shutil.copytree(calibrations, staging / PACK_CALIBRATIONS)
+        if target.exists():
+            old = staging.with_name(f"{staging.name}-old")
+            target.rename(old)
+            aside = old
+        staging.rename(target)
+    except BaseException:
+        if aside is not None and not target.exists():
+            aside.rename(target)
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    if aside is not None:
+        shutil.rmtree(aside, ignore_errors=True)
+
+
 @cmd.command()
 @click.argument("source")
 @click.option("--force", "-f", is_flag=True, help="Replace a pack of the same name.")
@@ -132,17 +161,11 @@ def add(source, force):
         folder, name = _fetch(source, Path(scratch))
         _check_pack(folder, name)
         target = user_sites_dir() / name
-        if target.exists():
-            if not force:
-                raise click.ClickException(
-                    f"{target} already exists. Pass --force to replace it."
-                )
-            shutil.rmtree(target)
-        target.mkdir(parents=True)
-        shutil.copy2(folder / PACK_FILE, target / PACK_FILE)
-        calibrations = folder / PACK_CALIBRATIONS
-        if calibrations.is_dir():
-            shutil.copytree(calibrations, target / PACK_CALIBRATIONS)
+        if target.exists() and not force:
+            raise click.ClickException(
+                f"{target} already exists. Pass --force to replace it."
+            )
+        _install(folder, target)
     count = len(list((target / PACK_CALIBRATIONS).glob("*.toml")))
     click.echo(f"Added site {name} to {target} ({count} calibration files)")
     click.echo(f'Work in it with `site = "{name}"` in your config, or --site {name}.')

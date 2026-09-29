@@ -77,6 +77,8 @@ def find_packs(folders: list[Path]) -> dict[str, Path]:
         if not folder.is_dir():
             continue
         for candidate in sorted(folder.iterdir()):
+            if candidate.name.startswith("."):
+                continue
             if (candidate / PACK_FILE).is_file():
                 packs.setdefault(candidate.name, candidate)
     return packs

@@ -14,6 +14,7 @@ from click.testing import CliRunner
 from dotbot import site_packs
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import load_calibration, resolve_calibration_path
+from dotbot.cli import site_cmd
 from dotbot.cli.main import cli
 from dotbot.config import ConfigError, load_config, load_config_text
 from dotbot.site import Site
@@ -259,6 +260,26 @@ def test_add_a_pack_folder_and_a_git_repository(runner, tmp_path, home):
     assert result.exit_code == 0, result.output
     added = home / ".dotbot" / "sites" / "aio"
     assert (added / "site.toml").is_file() and not (added / ".git").exists()
+
+
+def test_a_failed_forced_add_keeps_the_old_pack(runner, tmp_path, home, monkeypatch):
+    runner.invoke(cli, ["site", "add", str(_pack(tmp_path / "v1", "lab"))])
+    sites = home / ".dotbot" / "sites"
+    newer = _pack(tmp_path / "v2", "lab", anchor="moved", calibration=True)
+
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(site_cmd.shutil, "copytree", fail)
+    result = runner.invoke(cli, ["site", "add", str(newer), "--force"])
+    assert result.exit_code != 0
+    assert ANCHOR in (sites / "lab" / "site.toml").read_text()
+    assert [path.name for path in sites.iterdir()] == ["lab"]
+
+
+def test_a_hidden_folder_is_not_a_pack(tmp_path):
+    _pack(tmp_path, ".lab-x1y2")
+    assert find_packs([tmp_path]) == {}
 
 
 def test_add_refuses_what_is_not_a_pack(runner, tmp_path, home):
