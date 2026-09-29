@@ -165,32 +165,31 @@ is in the [`swarm` reference][swarm-doc].
 ### Calibrate positions (optional)
 
 Give the DotBots real-world `(x, y)` with Lighthouse 2. It's a two-step flow:
-**collect** a calibration from one DotBot over the air, then **push** it to the
-whole fleet - a single DotBot's capture calibrates the shared arena. This needs
-the `[calibrate]` extra (opencv, for the homography solve):
+**collect** a calibration by placing one DotBot on the four corners of your
+site's field, then **push** it to the whole fleet - one capture calibrates the
+whole site. This needs the `[calibrate]` extra (opencv, for the homography
+solve):
 
 ```bash
 pip install 'pydotbot[calibrate]'
 ```
 
-First, collect from one DotBot. Get its address from `dotbot swarm status` (the
-**Device Addr** column):
+First, flash the `calibrate` app and collect. Each corner is captured when you
+press the DotBot's button:
 
 ```bash
-dotbot swarm status                                           # pick one Device Addr, e.g., BDF2B04BC00D2725
-dotbot swarm stop                                             # DotBots must be idle to capture
-dotbot swarm calibrate-lh2 collect --device <addr> -d 500     # capture + solve + save
+dotbot swarm flash calibrate -ys          # the app that captures on a button press
+dotbot swarm calibrate-lh2 collect        # the field's four corners -> solve -> save
 ```
 
-`-d` is your reference square's side, in mm. This saves a
-`~/.dotbot/calibrations/calibration-<UTC>.toml`. Then push that file to the
-whole fleet:
+This saves the calibration under `~/.dotbot/calibrations/<site>/` and prints
+its id. Then push it to the whole fleet:
 
 ```bash
-dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml
+dotbot swarm calibrate-lh2 push <id>
 ```
 
-Full walkthrough - arena sizing and the cabled alternative - is in the
+Full walkthrough - choosing the points and the cabled alternative - is in the
 [LH2 calibration guide][lh2-doc].
 
 ## Going further

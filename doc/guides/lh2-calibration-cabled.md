@@ -9,16 +9,15 @@ swap.
 > **Deprecated.** The cabled path is kept for bench work before a swarm
 > exists. The supported path is [over the air](lh2-calibration.md).
 
-What LH2 calibration is, and the arena geometry (the `-d` square sizing), are
-covered in the [main guide](lh2-calibration.md); this page is just the cabled
-capture path.
+The [main guide](lh2-calibration.md) explains what LH2 calibration is; this
+page is just the cabled capture path.
 
 ## Prerequisites
 
 - A DotBot v3 you can cable to your machine over USB-C (no external probe - the
   v3 flashes over its on-board programmer).
-- Two LH2 base stations facing the arena, and a square marked on the floor (see
-  [Sizing `-d`](lh2-calibration.md) in the main guide).
+- Two LH2 base stations facing the floor, and a square of known side marked on
+  it.
 - The `[calibrate]` extra:
 
 ```bash
