@@ -19,7 +19,7 @@ pip install pyyaml
 ### 1. Start the controller in simulator mode
 
 ```bash
-dotbot-controller -a dotbot-simulator \
+dotbot run simulator \
     --simulator-init-state dotbot/examples/work_and_charge/init_state.toml
 ```
 

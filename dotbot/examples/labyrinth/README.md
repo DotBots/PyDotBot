@@ -12,7 +12,7 @@ and Robot 2 (red) at (600, 200).
 ### 1. Start the controller
 
 ```bash
-dotbot-controller -a dotbot-simulator \
+dotbot run simulator \
     --simulator-init-state dotbot/examples/labyrinth/init_simulator_state.toml \
     --background-map dotbot/examples/labyrinth/labyrinth-2000x2000.png
 ```

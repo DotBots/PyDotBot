@@ -18,8 +18,8 @@ Motions available:
 Requirements:
     pip install websockets httpx
 
-The dotbot-controller must be running:
-    dotbot-controller --port <SERIAL_PORT>
+A controller must be running, e.g.:
+    dotbot run simulator
 """
 
 import asyncio
