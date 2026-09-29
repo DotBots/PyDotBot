@@ -323,6 +323,7 @@ class Controller:
                 "No calibration selected: robots keep whatever they hold. "
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
+        self._solved_stations = {station.index for station in self.lh2_calibration}
         # (robot, station) pairs already warned about, so each is warned once
         self._unsolved_warned: set[tuple[str, int]] = set()
         self.cameras: List[CameraService] = []
@@ -367,8 +368,7 @@ class Controller:
         """Warn once per robot and station about a homography the loaded
         calibration does not solve: that robot's positions from the station
         come from some other calibration."""
-        solved = {station.index for station in self.lh2_calibration}
-        for index in sorted(_held_stations(calibrated) - solved):
+        for index in sorted(_held_stations(calibrated) - self._solved_stations):
             if (address, index) in self._unsolved_warned:
                 continue
             self._unsolved_warned.add((address, index))
@@ -377,7 +377,7 @@ class Controller:
                 address=address,
                 station=index,
                 calibration_id=self.calibration.id,
-                solved=sorted(solved),
+                solved=sorted(self._solved_stations),
             )
 
     def _start_camera(self, spec: str) -> None:
