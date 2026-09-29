@@ -154,6 +154,22 @@ describe("Layers > Areas", () => {
     expect(outline("arena")).not.toBe(outline("annex"));
   });
 
+  it("tags each row with its role", () => {
+    render(<Harness />);
+    const pane = screen.getByTestId("pane");
+    expect(within(pane).getByTestId("tag-dev-corner")).toHaveTextContent("corner");
+    expect(within(pane).queryByTestId("tag-arena")).not.toBeInTheDocument();
+  });
+
+  it("draws a corner heavier than the other outlines", () => {
+    render(<Harness />);
+    fireEvent.click(within(screen.getByTestId("pane")).getByText("dev-corner"));
+    const map = screen.getByTestId("map");
+    const width = (name: string) =>
+      Number(within(map).getByRole("img", { name }).getAttribute("stroke-width"));
+    expect(width("dev-corner")).toBeGreaterThan(width("arena"));
+  });
+
   it("keeps an area's colour when another is hidden", () => {
     render(<Harness />);
     const map = screen.getByTestId("map");

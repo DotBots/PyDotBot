@@ -364,8 +364,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   const drawnAreas = props.siteAreas.filter(
     (a) => !props.hiddenAreas.has(a.name ?? ""),
   );
-  const colorOf = (a: Area) =>
-    areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
+  const colorOf = (a: Area) => areaColor(a, props.siteAreas);
 
   // A camera is drawn on the area it covers, so one the site does not define
   // has nowhere to land and is left out.
@@ -1170,8 +1169,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           />
 
           {/* The outlines: the site as the one outer silhouette, then one
-              dashed rectangle per area in the area's own colour, ticked under
-              Layers > Areas, where the colour is named. Strokes rather than
+              dashed rectangle per area in its role's colour, ticked under
+              Layers > Areas, where the role is named. A corner lies over
+              another area, so its line is heavier and finer-dashed. Strokes rather than
               borders, because a CSS border under a pixel wide is rounded back
               up to one and then multiplied by the camera; a stroke keeps the
               width it is given, so counter-scaling it holds the hairline at
@@ -1197,9 +1197,13 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 fill={colorOf(a)}
                 fillOpacity={AREA_TINT}
                 stroke={colorOf(a)}
-                strokeOpacity={0.85}
-                strokeWidth={chrome}
-                strokeDasharray={`${5 * chrome} ${4 * chrome}`}
+                strokeOpacity={a.role === "corner" ? 1 : 0.85}
+                strokeWidth={a.role === "corner" ? 2 * chrome : chrome}
+                strokeDasharray={
+                  a.role === "corner"
+                    ? `${2 * chrome} ${2 * chrome}`
+                    : `${5 * chrome} ${4 * chrome}`
+                }
                 style={{ pointerEvents: "stroke" }}
               >
                 <title>{a.name}</title>

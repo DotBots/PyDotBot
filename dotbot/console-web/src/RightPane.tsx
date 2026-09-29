@@ -68,9 +68,11 @@ export const CheckRow: React.FC<{
   onToggle?: () => void;
   // A colour the row stands for, drawn as a swatch before its label.
   swatch?: string;
+  // A short word after the label, such as an area's role.
+  tag?: string;
   // Anything the row carries besides its tick, between the label and it.
   trailing?: React.ReactNode;
-}> = ({ label, on, disabled = false, hint, onToggle, swatch, trailing }) => (
+}> = ({ label, on, disabled = false, hint, onToggle, swatch, tag, trailing }) => (
   <div
     onClick={() => !disabled && onToggle?.()}
     title={hint}
@@ -101,7 +103,24 @@ export const CheckRow: React.FC<{
         }}
       />
     )}
-    <span style={{ flex: 1, color: on ? "var(--text)" : "var(--muted)" }}>{label}</span>
+    <span style={{ flex: 1, color: on ? "var(--text)" : "var(--muted)" }}>
+      {label}
+      {tag && (
+        <span
+          data-testid={`tag-${label}`}
+          style={{
+            marginLeft: 6,
+            padding: "0 5px",
+            border: "1px solid var(--hairline)",
+            borderRadius: 4,
+            fontSize: 10,
+            color: "var(--muted)",
+          }}
+        >
+          {tag}
+        </span>
+      )}
+    </span>
     {trailing}
     <span
       style={{
@@ -656,7 +675,8 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
                 label={a.name ?? ""}
                 on={!props.hiddenAreas.has(a.name ?? "")}
                 onToggle={() => props.onAreaToggle(a.name ?? "")}
-                swatch={areaColor(a.name ?? "", siteAreas.map((o) => o.name))}
+                swatch={areaColor(a, siteAreas)}
+                tag={a.role ?? undefined}
                 trailing={
                   props.onZoom && (
                     <button
@@ -685,8 +705,8 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
             ))}
             {siteAreas.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-                Checked = its outline is drawn on the map in its colour, in this
-                browser only. ◎ zooms to it.
+                Checked = its outline is drawn on the map in its role's colour,
+                in this browser only. ◎ zooms to it.
               </div>
             )}
 
