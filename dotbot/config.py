@@ -19,6 +19,7 @@ default_deployment = "inria"
 site     = "default"
 conn     = "mqtts://broker.local:8883"   # shared; sections/deployments override
 swarm_id = "0001"
+site_dirs = ["sites", "~/.dotbot/sites"]    # where site packs are found, in order
 
 [deployment.inria]                          # a named deployment - select, don't edit
 conn = "mqtts://broker.inria.fr:8883"

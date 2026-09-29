@@ -41,7 +41,8 @@ dotbot run controller --conn /dev/ttyACM0
 | `--controller-http-host` | interface the API binds to (default `127.0.0.1`, loopback). Pass `0.0.0.0` to reach it from another machine - the API is unauthenticated and `/swarmit/*` reaches the swarmit server through it, so only on a network you trust. |
 | `--headless` | don't open the console in a browser (it's still served) |
 | `--csv-data-output` | record DotBot data to a CSV file. A registered camera also writes `<name>-camera.csv` beside it, with a `<name>-camera.toml` sidecar saying what the columns mean. |
-| `--lh2-calibration` | lighthouse calibration the controller runs on: a file path or an id prefix. Also `[run.controller] lh2_calibration`. |
+| `--site` | the site the session works in: its frame, its areas and where its calibrations are looked up. Also `site` in dotbot.toml, or `DOTBOT_SITE`. |
+| `--lh2-calibration` | lighthouse calibration the controller runs on: a file path, a `--tag` or an id prefix. Refused when it was made in another site. Also `[run.controller] lh2_calibration`; `[run.controller] lh2_calibration_max_age_days` (default 30) warns when it is older. |
 | `--camera-calibration` | overhead camera to draw on the map: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. Register one with `run calibrate-camera collect`. Also `[run.controller] camera_calibration` in dotbot.toml. |
 | `--camera-detect` / `--no-camera-detect` | run the robot detector on that camera's frames (default on). Off serves the layer as a picture only: nothing detected, drawn, pushed or logged. Also `[run.controller] camera_detect` in dotbot.toml. |
 | `--swarmit-url` | swarmit server behind the console's orchestration panel (default `http://localhost:8001`, matching `swarmit serve`). Also `[run.controller] swarmit_url` in dotbot.toml, or `DOTBOT_SWARMIT_URL`. |
@@ -81,8 +82,9 @@ dotbot run simulator --simulator-init-state fleet.toml
 like and centred in `--area`, and refuses a count that does not fit: an area
 holds one robot per 200 mm square. `--area` takes a name from the site's
 areas, `x,y,w,h` in mm or a `+`-joined composite, and defaults to the site's
-`field` (else its first area, else its extent, else a 2 x 2 m square); it
-also places the robots a `--simulator-init-state` file gives no position.
+[field](../reference/configuration.md#area-roles) (a 2 x 2 m square when the
+site declares nothing); it also places the robots a `--simulator-init-state`
+file gives no position.
 `[run.controller] simulator_area` sets it from the config.
 `--write-init-state` saves that fleet as a file to edit and reuse with
 `--simulator-init-state`.

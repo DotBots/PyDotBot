@@ -47,10 +47,22 @@ Every command and flag is documented in the [CLI reference][cli-doc].
 
 See the whole thing run with nothing but Python!
 
-The command below will run a simulated swarm, which you can observe in the web console at http://localhost:8000/console/ :
+First, in an empty folder, write a config:
 
 ```bash
-dotbot run simulator
+dotbot config init
+```
+
+This writes `./dotbot.toml` with a site named `default`: a 2 x 2 m **field**,
+where experiments happen, and a **staging** strip below it, where robots park.
+`--field 1.5m` or `--field 2x3m` sizes the field, and the rest follows from it.
+Commands run from this folder read the file, and it is yours to edit once you
+measure a real room.
+
+Then run a simulated swarm, which you can observe in the web console at http://localhost:8000/console/ :
+
+```bash
+dotbot run simulator --robots 20
 ```
 
 The console opens automatically; pass `--headless` to suppress it (it's still

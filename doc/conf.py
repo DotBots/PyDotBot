@@ -67,6 +67,8 @@ nitpick_ignore_regex = [
     ("py:class", r"MaxLen"),
     ("py:class", r"NoneType"),
     ("py:class", r"dotbot\.models\._positions_as_waypoints"),
+    # dotbot.config has no API page; its schema is the configuration reference
+    ("py:class", r"dotbot\.config\..*"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
