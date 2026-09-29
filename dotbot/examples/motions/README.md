@@ -18,11 +18,18 @@ This example moves a single DotBot through a predefined motion: either a geometr
 
 ## How to run (default: simulator)
 
-### 1. Start the controller
+### 1. Start the simulator
+
+In an empty folder, write a config holding a default site (a 2 x 2 m field),
+then start the simulator from that folder; it opens the console in your
+browser:
 
 ```bash
-dotbot-controller --config-path config_sample.toml -a dotbot-simulator
+dotbot config init
+dotbot run simulator
 ```
+
+`dotbot.example.toml`, in the repository root, is the same file.
 
 ### 2. Run a motion
 

@@ -248,3 +248,10 @@ def test_config_init_global_writes_the_default_site(runner, tmp_path, monkeypatc
         _init(runner, "--global")
     assert "default" in load_config(user).sites
 
+
+def test_example_config_is_what_init_writes(runner):
+    """The example config in the repository root is what `config init` writes."""
+    example = Path(__file__).parents[2] / "dotbot.example.toml"
+    with runner.isolated_filesystem():
+        _init(runner)
+        assert example.read_text() == Path("dotbot.toml").read_text()
