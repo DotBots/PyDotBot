@@ -14,7 +14,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
-from dotbot.area import Area
+from dotbot.area import Area, Role
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
 from dotbot.site import Site
@@ -192,7 +192,7 @@ class DotBotAreaModel(BaseModel):
     w: int
     h: int
     name: str = ""
-    role: Optional[Literal["field", "staging", "corner"]] = None
+    role: Optional[Role] = None
 
 
 class DotBotPlacementSpanModel(BaseModel):

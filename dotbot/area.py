@@ -17,13 +17,13 @@ named after a role has it unless it declares another.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, get_args
 
 Role = Literal["field", "staging", "corner"]
-ROLES: tuple[str, ...] = ("field", "staging", "corner")
+ROLES: tuple[str, ...] = get_args(Role)
 
 
-def area_role(name: str, role: str | None = None) -> str | None:
+def area_role(name: str, role: Role | None = None) -> Role | None:
     """The role an area has: the one it declares, else the one its name is."""
     if role is not None:
         return role
@@ -43,7 +43,7 @@ class Area:
     w: int
     h: int
     name: str = ""
-    role: str | None = None
+    role: Role | None = None
 
     @property
     def x_max(self) -> int:
