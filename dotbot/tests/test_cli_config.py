@@ -1,13 +1,17 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Phase-2 wiring: the root `-c/--config` + `--deployment` flags, and the
-`fw`/`device` `--config` -> `--build-config` rename. Headless (CliRunner)."""
+"""Phase-2 wiring: the root `-c/--config` + `--deployment` flags, the
+`fw`/`device` `--config` -> `--build-config` rename, and the site `config init`
+writes. Headless (CliRunner)."""
+
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from dotbot.cli.main import cli
+from dotbot.config import load_config
 
 
 @pytest.fixture
@@ -108,3 +112,139 @@ def test_device_flash_uses_build_config(runner):
     result = runner.invoke(cli, ["device", "flash", "--help"])
     assert result.exit_code == 0
     assert "--build-config" in result.output
+
+
+# --- config init: the default site ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "spec, size",
+    [
+        ("1000x1000", (1000, 1000)),
+        ("1000", (1000, 1000)),
+        ("1000mm", (1000, 1000)),
+        ("1m", (1000, 1000)),
+        ("1.5m", (1500, 1500)),
+        ("1500", (1500, 1500)),
+        ("1.5x2m", (1500, 2000)),
+        ("2000x3000", (2000, 3000)),
+        ("1.5mx2000mm", (1500, 2000)),
+        ("2M", (2000, 2000)),
+    ],
+)
+def test_parse_field_size(spec, size):
+    from dotbot.cli.config_cmd import parse_field_size
+
+    assert parse_field_size(spec) == size
+
+
+@pytest.mark.parametrize(
+    "spec, error",
+    [
+        ("1.5", "a 1.5 mm field is too small; did you mean 1.5m?"),
+        ("1.5x2", "did you mean 1.5x2m?"),
+        ("1.5mm", "did you mean 1.5m?"),
+        ("50", "a 50 mm field is too small"),
+        ("2000m", "a 2000 m field is too large; did you mean 2000mm?"),
+        ("150cm", "units are mm or m, not cm"),
+        ("1500.5", "whole numbers"),
+        ("2x3x4", "WxH"),
+        ("big", "a size is a number"),
+    ],
+)
+def test_parse_field_size_refuses(spec, error):
+    import click
+
+    from dotbot.cli.config_cmd import parse_field_size
+
+    with pytest.raises(click.BadParameter, match=error.replace("?", r"\?")):
+        parse_field_size(spec)
+
+
+def _init(runner, *args):
+    result = runner.invoke(cli, ["config", "init", "--force", *args])
+    assert result.exit_code == 0, result.output
+    return result
+
+
+def test_config_init_writes_the_default_site(runner):
+    from dotbot.site import site_from_config
+
+    with runner.isolated_filesystem():
+        _init(runner)
+        loaded = load_config("dotbot.toml")
+    assert loaded.site == "default"
+    site = site_from_config(loaded, "default")
+    assert site.extent_mm == (5000, 5000)
+    assert site.field.as_dict() == {
+        "x": 1500,
+        "y": 1500,
+        "w": 2000,
+        "h": 2000,
+        "name": "field",
+        "role": "field",
+    }
+    staging = site.areas["staging"]
+    assert (staging.x, staging.y, staging.w, staging.h) == (1500, 3500, 2000, 600)
+    assert staging.role == "staging"
+
+
+@pytest.mark.parametrize(
+    "field, extent, area",
+    [
+        ("1000x1000", (4000, 4000), (1500, 1500, 1000, 1000)),
+        ("1m", (4000, 4000), (1500, 1500, 1000, 1000)),
+        ("1.5x2m", (4500, 5000), (1500, 1500, 1500, 2000)),
+    ],
+)
+def test_config_init_field_sizes_the_site(runner, field, extent, area):
+    from dotbot.site import site_from_config
+
+    with runner.isolated_filesystem():
+        _init(runner, "--field", field)
+        site = site_from_config(load_config("dotbot.toml"), "default")
+    assert site.extent_mm == extent
+    f = site.field
+    assert (f.x, f.y, f.w, f.h) == area
+    staging = site.areas["staging"]
+    assert (staging.y, staging.w) == (f.y_max, f.w)
+
+
+def test_config_init_warns_about_coverage_only_on_a_large_field(runner):
+    with runner.isolated_filesystem():
+        assert "Warning" not in _init(runner, "--field", "5m").output
+        assert "one LH2 base station" in _init(runner, "--field", "6000x6000").output
+
+
+def test_config_init_refuses_a_bare_metre_value(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--field", "1.5"])
+        assert result.exit_code != 0
+        assert "did you mean 1.5m?" in result.output
+        assert not Path("dotbot.toml").exists()
+
+
+def test_config_init_names_the_site(runner):
+    with runner.isolated_filesystem():
+        _init(runner, "--site", "demo-dcoss-2026")
+        loaded = load_config("dotbot.toml")
+    assert loaded.site == "demo-dcoss-2026"
+    assert set(loaded.sites) == {"demo-dcoss-2026"}
+
+
+def test_config_init_refuses_a_site_name_toml_cannot_hold(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--site", "my lab"])
+        assert result.exit_code != 0
+        assert "--site" in result.output
+
+
+def test_config_init_global_writes_the_default_site(runner, tmp_path, monkeypatch):
+    import dotbot.cli.config_cmd as ccmd
+
+    user = tmp_path / "home" / ".dotbot" / "config.toml"
+    monkeypatch.setattr(ccmd, "USER_CONFIG_PATH", user)
+    with runner.isolated_filesystem():
+        _init(runner, "--global")
+    assert "default" in load_config(user).sites
+

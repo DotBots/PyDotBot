@@ -228,10 +228,10 @@ def test_config_init_writes_valid_starter(runner):
         assert result.exit_code == 0, result.output
         written = Path("dotbot.toml")
         assert written.is_file()
-        # The starter is all-commented, so it loads as a valid empty config.
         loaded = cfg.load_config(written)
         assert loaded.conn is None
         assert loaded.deployment == {}
+        assert loaded.site == "default"
 
 
 def test_config_init_refuses_overwrite_without_force(runner):
