@@ -18,6 +18,7 @@ from typing import Any
 import click
 import tomlkit
 
+from dotbot.cli._site import resolve_site_name
 from dotbot.config import USER_CONFIG_PATH, ConfigError
 from dotbot.site import SITE_DEFAULT, check_site_name
 from dotbot.site_packs import site_catalog
@@ -267,6 +268,24 @@ def _prune(value: Any) -> Any:
     return value
 
 
+def _echo_areas(entry) -> None:
+    """One line per area of a site: its name and its role, saying when the
+    role is implied by the name."""
+    declared = entry.table.areas
+    areas = entry.site().areas
+    if not areas:
+        return
+    width = max(len(name) for name in areas)
+    for name, area in areas.items():
+        if area.role is None:
+            role = "no role"
+        elif declared[name].role is None:
+            role = f"{area.role} (from its name)"
+        else:
+            role = area.role
+        click.echo(f"    {name:<{width}}  {role}")
+
+
 @cmd.command()
 @click.pass_context
 def show(ctx):
@@ -281,19 +300,27 @@ def show(ctx):
     deployment_name = obj.get("deployment_name")
 
     source = (
-        str(config_path) if config_path is not None else "(none; built-in defaults)"
+        str(config_path)
+        if config_path is not None
+        else "(none; built-in defaults. Create one with: dotbot config init)"
     )
     click.echo(f"source:  {source}")
     click.echo(f"deployment: {deployment_name or '(none)'}")
+    site_name, site_source = resolve_site_name(
+        config=config, deployment=obj.get("deployment")
+    )
     try:
         catalog = site_catalog(config, config_path)
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
+    known = "" if site_name in catalog else ", which no config or pack defines"
+    click.echo(f"site:    {site_name} (from {site_source}{known})")
     if catalog:
         click.echo("sites:")
         width = max(len(name) for name in catalog)
         for name, entry in catalog.items():
             click.echo(f"  {name:<{width}}  {entry.source}")
+            _echo_areas(entry)
     click.echo("")
 
     if config is None:
@@ -305,9 +332,7 @@ def show(ctx):
     # so the output is real, round-trippable TOML.
     data = _prune(config.model_dump())
     if not data:
-        if config_path is None:
-            click.echo("No config file found. Create one with:  dotbot config init")
-        else:
+        if config_path is not None:
             click.echo("(the file sets nothing yet; all built-in defaults)")
         return
     click.echo(tomlkit.dumps(data).rstrip())

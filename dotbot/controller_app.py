@@ -380,7 +380,7 @@ def _generated_fleet(
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
     help=(
-        "Path to a background map image file in png format. The image should"
+        "Path to a background map image file in png format. The image should "
         "be a top-down view of the environment, with 1024 pixels width and a "
         "height proportional to the site extent (2 x 2 m when the site has "
         "none)."

@@ -213,7 +213,7 @@ def test_export_an_inline_site_with_its_calibrations_then_add_it(
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "1 calibration files" in result.output
+    assert "and 1 calibration file\n" in result.output
     with zipfile.ZipFile(archive) as opened:
         assert sorted(opened.namelist()) == [
             f"c405-arena/calibrations/{CALIBRATION_NAME}",
@@ -297,6 +297,8 @@ def test_add_reads_a_zip_from_stdin_named_by_its_top_folder(runner, tmp_path, ho
     assert result.exit_code == 0, result.output
     added = home / ".dotbot" / "sites" / "lab"
     assert (added / "calibrations" / CALIBRATION_NAME).is_file()
+    # It writes a pack and reads no config, so it says nothing about one
+    assert "config file" not in result.output
 
     again = runner.invoke(cli, ["site", "add", "-"], input=_zipped(pack, pack.parent))
     assert again.exit_code != 0 and "--force" in again.output

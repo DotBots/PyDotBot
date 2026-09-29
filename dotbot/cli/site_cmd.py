@@ -204,8 +204,12 @@ def add(source, force):
             )
         _install(folder, target)
     count = len(list((target / PACK_CALIBRATIONS).glob("*.toml")))
-    click.echo(f"Added site {name} to {target} ({count} calibration files)")
+    click.echo(f"Added site {name} to {target} ({_files(count)})")
     click.echo(f'Work in it with `site = "{name}"` in your config, or --site {name}.')
+
+
+def _files(count: int) -> str:
+    return f"{count} calibration file{'' if count == 1 else 's'}"
 
 
 def _site_toml(table) -> str:
@@ -288,5 +292,5 @@ def export(ctx, name, out_path, with_calibrations, force):
             archive.write(path, f"{name}/{PACK_CALIBRATIONS}/{file_name}")
     click.echo(
         f"Wrote {target}: site {name}"
-        + (f" and {len(calibrations)} calibration files" if with_calibrations else "")
+        + (f" and {_files(len(calibrations))}" if with_calibrations else "")
     )
