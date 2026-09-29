@@ -1,6 +1,7 @@
 import math
 import random
 
+from dotbot.area import Area
 from dotbot.examples.common.sct import SCT
 from dotbot.examples.minimum_naming_game.walk_avoid import walk_avoid
 from dotbot.models import (
@@ -26,11 +27,11 @@ class Controller:
         address: str,
         path: str,
         max_speed: float,
-        arena_limits: tuple[float, float],
+        area: Area,
     ):
         self.address = address
         self.max_speed = max_speed
-        self.arena_limits = arena_limits
+        self.area = area
 
         self.position = DotBotLH2Position(x=0.0, y=0.0)  # initial position
         self.direction = 0.0  # initial orientation
@@ -80,7 +81,7 @@ class Controller:
             self.direction,
             self.neighbors,
             self.max_speed,
-            self.arena_limits,
+            self.area,
         )
         # print(f'DotBot {self.address} Walk Vector: {self.vector}')
 

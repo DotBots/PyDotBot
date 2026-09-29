@@ -19,6 +19,7 @@ from dotbot.models import (
 )
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
+from dotbot.site import field_or_fallback
 from dotbot.websocket import DotBotWsClient
 
 COMM_RANGE = 250
@@ -27,9 +28,6 @@ THRESHOLD = 0
 # TODO: Measure these values for real dotbots
 BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
 MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
-
-ARENA_SIZE_X = 2000  # Width of the arena in mm
-ARENA_SIZE_Y = 2000  # Height of the arena in mm
 
 dotbot_controllers = dict()
 
@@ -49,6 +47,7 @@ async def main() -> None:
     )
 
     async with rest_client(url, port, use_https) as client:
+        field = field_or_fallback(await client.fetch_site())
         dotbots = await fetch_active_dotbots(client)
 
         # print(len(dotbots), "dotbots connected.")
@@ -61,7 +60,7 @@ async def main() -> None:
                 dotbot.address,
                 sct_path,
                 0.9 * MAX_SPEED,
-                arena_limits=(ARENA_SIZE_X, ARENA_SIZE_Y),
+                area=field,
             )
             dotbot_controllers[dotbot.address] = controller
             # print(f'type of controller: {type(controller)} for DotBot {dotbot.address}')

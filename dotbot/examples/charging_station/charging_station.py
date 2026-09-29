@@ -1,6 +1,11 @@
+"""Queue robots on the border between the field and staging, charge them one
+at a time at a charger on staging's far edge, then park them along the field's
+opposite edge. Every position comes from the controller's site."""
+
 import asyncio
 import math
 import os
+from dataclasses import dataclass
 from typing import Dict, List
 
 from dotbot.examples.common.orca import (
@@ -22,6 +27,7 @@ from dotbot.models import (
 )
 from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient, rest_client
+from dotbot.site import Site
 from dotbot.websocket import DotBotWsClient
 
 THRESHOLD = 100  # Acceptable distance error to consider a waypoint reached
@@ -31,21 +37,59 @@ DT = 0.2  # Control loop period (seconds)
 BOT_RADIUS = 60  # Physical radius of a DotBot (unit), used for collision avoidance
 MAX_SPEED = 300  # Maximum allowed linear speed of a bot (mm/s)
 
-CHARGER_X, CHARGER_Y = (
-    500,
-    500,
-)
+QUEUE_HEAD_INSET = 500  # From staging's left edge to the queue head and charger
+CHARGER_INSET = 100  # From staging's far edge to the charger
+QUEUE_SPACING = 300  # Between consecutive bots in the queue, along x
+PARK_INSET = 300  # From the field's edges to the first parking slot
+PARK_SPACING = 300  # Between parked bots, along x
+DISENGAGE_DISTANCE = 400  # How far a charged bot reverses off the charger
 
-QUEUE_HEAD_X, QUEUE_HEAD_Y = (
-    500,
-    1500,
-)  # World-frame (X, Y) position of the charging queue head
-QUEUE_SPACING = (
-    300  # Spacing between consecutive bots in the charging queue (along X axis)
-)
 
-PARK_X, PARK_Y = (1700, 500)  # World-frame (X, Y) position of the parking area origin
-PARK_SPACING = 300  # Spacing between parked bots (along Y axis)
+@dataclass(frozen=True)
+class ChargingLayout:
+    """Where the queue, the charger and the parking row are, in frame mm.
+
+    `away` is the sign of y a bot reverses along to leave the charger.
+    """
+
+    charger_x: int
+    charger_y: int
+    queue_head_x: int
+    queue_head_y: int
+    park_x: int
+    park_y: int
+    away: int
+
+
+def layout_from_site(site: Site) -> ChargingLayout:
+    """The layout for a site with a field and a staging area above or below it."""
+    field, staging = site.field, site.staging
+    if field is None or staging is None:
+        raise ValueError(
+            f"site {site.name!r} needs a field and a staging area; "
+            "`dotbot config init` writes a site with both"
+        )
+    below = staging.centre[1] >= field.centre[1]
+    head_x = staging.x + min(QUEUE_HEAD_INSET, staging.w // 4)
+    if below:
+        return ChargingLayout(
+            charger_x=head_x,
+            charger_y=staging.y_max - CHARGER_INSET,
+            queue_head_x=head_x,
+            queue_head_y=staging.y,
+            park_x=field.x + PARK_INSET,
+            park_y=field.y + PARK_INSET,
+            away=-1,
+        )
+    return ChargingLayout(
+        charger_x=head_x,
+        charger_y=staging.y + CHARGER_INSET,
+        queue_head_x=head_x,
+        queue_head_y=staging.y_max,
+        park_x=field.x + PARK_INSET,
+        park_y=field.y_max - PARK_INSET,
+        away=1,
+    )
 
 
 async def queue_robots(
@@ -53,9 +97,12 @@ async def queue_robots(
     ws: DotBotWsClient,
     dotbots: List[DotBotModel],
     params: OrcaParams,
+    layout: ChargingLayout,
 ) -> None:
-    sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
-    goals = assign_queue_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
+    sorted_bots = order_bots(dotbots, layout.queue_head_x, layout.queue_head_y)
+    goals = assign_queue_goals(
+        sorted_bots, layout.queue_head_x, layout.queue_head_y, QUEUE_SPACING
+    )
     await send_to_goal(client, ws, goals, params)
 
 
@@ -69,9 +116,10 @@ async def charge_robots(
     client: RestClient,
     ws: DotBotWsClient,
     params: OrcaParams,
+    layout: ChargingLayout,
 ) -> None:
     dotbots = await fetch_active_dotbots(client)
-    remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
+    remaining = order_bots(dotbots, layout.queue_head_x, layout.queue_head_y)
     total_count = len(dotbots)
     # The head of the remaining should park
     # Except on the first loop, where it should just queue.
@@ -82,17 +130,15 @@ async def charge_robots(
         dotbots = await fetch_active_dotbots(client)
 
         dotbots = [b for b in dotbots if b.address in {r.address for r in remaining}]
-        remaining = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
+        remaining = order_bots(dotbots, layout.queue_head_x, layout.queue_head_y)
 
         # Assign charging + shift goals
-        goals = assign_charge_goals(
-            remaining, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING
-        )
+        goals = assign_charge_goals(remaining, layout)
 
         if park_dotbot is not None:
             goals[park_dotbot.address] = {
-                "x": PARK_X,
-                "y": PARK_Y + parked_count * PARK_SPACING,
+                "x": layout.park_x + parked_count * PARK_SPACING,
+                "y": layout.park_y,
             }
         await send_to_goal(client, ws, goals, params)
 
@@ -117,7 +163,7 @@ async def charge_robots(
             await asyncio.sleep(10 * DT)
 
         # Reverse slightly to disengage the robot from the charging station
-        await disengage_from_charger(client, head.address)
+        await disengage_from_charger(client, head.address, layout.away)
 
         parked_count = total_count - len(remaining)
 
@@ -127,23 +173,22 @@ async def charge_robots(
         remaining = remaining[1:]
 
 
-async def disengage_from_charger(client: RestClient, dotbot_address: str):
+async def disengage_from_charger(client: RestClient, dotbot_address: str, away: int):
+    """Reverse `DISENGAGE_DISTANCE` along `away` (a sign of y), then nudge forward."""
     bots = await client.fetch_dotbots(query=DotBotQueryModel(address=dotbot_address))
     if not bots:
         return
     dotbot = bots[0]
     initial_y = dotbot.lh2_position.y
 
-    # reverse until 400 units below initial position
-    y_after_reverse = initial_y + 400
-    # forward a bit to recover direction
-    y_after_forward = y_after_reverse - 10
+    def travelled(bot: DotBotModel) -> float:
+        return (bot.lh2_position.y - initial_y) * away
 
     while True:
         bots = await client.fetch_dotbots(
             query=DotBotQueryModel(address=dotbot_address)
         )
-        if not bots or bots[0].lh2_position.y >= y_after_reverse:
+        if not bots or travelled(bots[0]) >= DISENGAGE_DISTANCE:
             break
         await client.send_move_raw_command(
             address=dotbot_address,
@@ -158,7 +203,7 @@ async def disengage_from_charger(client: RestClient, dotbot_address: str):
         bots = await client.fetch_dotbots(
             query=DotBotQueryModel(address=dotbot_address)
         )
-        if not bots or bots[0].lh2_position.y <= y_after_forward:
+        if not bots or travelled(bots[0]) <= DISENGAGE_DISTANCE - 10:
             break
         await client.send_move_raw_command(
             address=dotbot_address,
@@ -268,10 +313,7 @@ def assign_queue_goals(
 
 
 def assign_charge_goals(
-    ordered: List[DotBotModel],
-    base_x: int,
-    base_y: int,
-    spacing: int,
+    ordered: List[DotBotModel], layout: ChargingLayout
 ) -> Dict[str, dict]:
     if len(ordered) == 0:
         return {}
@@ -280,15 +322,15 @@ def assign_charge_goals(
     # Send the first one to the charger
     head = ordered[0]
     goals[head.address] = {
-        "x": CHARGER_X,
-        "y": CHARGER_Y,
+        "x": layout.charger_x,
+        "y": layout.charger_y,
     }
 
     # Remaining bots shift left in the queue
     for i, bot in enumerate(ordered[1:]):
         goals[bot.address] = {
-            "x": base_x + i * spacing,
-            "y": base_y,
+            "x": layout.queue_head_x + i * QUEUE_SPACING,
+            "y": layout.queue_head_y,
         }
     return goals
 
@@ -344,6 +386,10 @@ async def main() -> None:
     port = os.getenv("DOTBOT_CONTROLLER_PORT", "8000")
     use_https = os.getenv("DOTBOT_CONTROLLER_USE_HTTPS", False)
     async with rest_client(url, port, use_https) as client:
+        try:
+            layout = layout_from_site(await client.fetch_site())
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         dotbots = await fetch_active_dotbots(client)
 
         ws = DotBotWsClient(url, port)
@@ -365,10 +411,10 @@ async def main() -> None:
                 )
 
             # Phase 1: initial queue
-            await queue_robots(client, ws, dotbots, params)
+            await queue_robots(client, ws, dotbots, params, layout)
 
             # Phase 2: charging loop
-            await charge_robots(client, ws, params)
+            await charge_robots(client, ws, params, layout)
         except (asyncio.CancelledError, KeyboardInterrupt):
             active_dotbots = await fetch_active_dotbots(client)
             for dotbot in active_dotbots:

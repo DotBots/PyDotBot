@@ -30,6 +30,7 @@ from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
 
+from dotbot.area import Area
 from dotbot.models import (
     DotBotLH2Position,
     DotBotMoveRawCommandModel,
@@ -40,6 +41,7 @@ from dotbot.models import (
 )
 from dotbot.protocol import ApplicationType, ControlModeType
 from dotbot.rest import rest_client
+from dotbot.site import Site, field_or_fallback
 from dotbot.websocket import DotBotWsClient
 
 # ---------------------------------------------------------------------------
@@ -52,9 +54,6 @@ APPLICATION = ApplicationType.DotBot
 
 MAX_WAYPOINTS = 12  # maximum number of waypoints per batch (hardware limit)
 NUM_POINTS_DEFAULT = 12  # default number of waypoints for circle/infinity shapes (can be overridden via CLI)
-
-# Arena size in mm
-ARENA_SIZE_DEFAULT = 2000
 
 # Shape parameters (all distances in mm, matching the controller's coordinate space)
 SHAPE_SCALE_DEFAULT = 400  # radius / half-size in mm for all shapes
@@ -219,14 +218,14 @@ async def stop(ws: DotBotWsClient, address: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _center(arena_size: int) -> tuple[int, int]:
-    """Return the arena center coordinates."""
-    return arena_size // 2, arena_size // 2
+def _center(area: Area) -> tuple[float, float]:
+    """Return the centre of the area the shapes are drawn in."""
+    return area.centre
 
 
-def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
-    """Return the 4 corners of a square centered in the arena, closed back to the start."""
-    cx, cy = _center(arena_size)
+def square_waypoints(scale: float, area: Area, _) -> list[dict]:
+    """Return the 4 corners of a square centred in the area, closed back to the start."""
+    cx, cy = _center(area)
     h = scale / 2
     return [
         {"x": round(cx + h), "y": round(cy - h)},
@@ -237,9 +236,9 @@ def square_waypoints(scale: float, arena_size: int, _) -> list[dict]:
     ]
 
 
-def triangle_waypoints(scale: float, arena_size: int, _) -> list[dict]:
-    """Return the 3 vertices of an equilateral triangle centered in the arena."""
-    cx, cy = _center(arena_size)
+def triangle_waypoints(scale: float, area: Area, _) -> list[dict]:
+    """Return the 3 vertices of an equilateral triangle centred in the area."""
+    cx, cy = _center(area)
     r = scale
     points = []
     for i in range(3):
@@ -255,9 +254,9 @@ def triangle_waypoints(scale: float, arena_size: int, _) -> list[dict]:
     return points
 
 
-def circle_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]:
-    """Approximate a circle with n_points waypoints centered in the arena."""
-    cx, cy = _center(arena_size)
+def circle_waypoints(scale: float, area: Area, n_points: int) -> list[dict]:
+    """Approximate a circle with n_points waypoints centred in the area."""
+    cx, cy = _center(area)
     r = scale / 2
     points = []
     for i in range(n_points + 1):
@@ -271,11 +270,11 @@ def circle_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]
     return points
 
 
-def sawtooth_waypoints(scale: float, arena_size: int, _) -> list[dict]:
+def sawtooth_waypoints(scale: float, area: Area, _) -> list[dict]:
     """
-    Boustrophedon sawtooth sweep centered in the arena.
+    Boustrophedon sawtooth sweep centred in the area.
 
-    The robot sweeps left→right across 80% of the arena width with 4 teeth,
+    The robot sweeps left→right across 80% of the area's width with 4 teeth,
     then takes a single vertical step at the right edge, then sweeps right→left
     with teeth interleaved with the forward sweep.  `scale` sets the
     peak-to-valley height of each tooth.
@@ -295,8 +294,8 @@ def sawtooth_waypoints(scale: float, arena_size: int, _) -> list[dict]:
                          V   V   V   V   V   (y_low,  x = 4t, 3t, 2t, t, 0)
     """
     N_TEETH = 4
-    cx, cy = _center(arena_size)
-    width = 0.8 * arena_size
+    cx, cy = _center(area)
+    width = 0.8 * area.w
     left_x = round(cx - width / 2)
     right_x = round(cx + width / 2)
     tooth_w = width / N_TEETH
@@ -328,15 +327,15 @@ def sawtooth_waypoints(scale: float, arena_size: int, _) -> list[dict]:
     return points
 
 
-def infinity_waypoints(scale: float, arena_size: int, n_points: int) -> list[dict]:
+def infinity_waypoints(scale: float, area: Area, n_points: int) -> list[dict]:
     """
-    Approximate a lemniscate of Bernoulli (infinity symbol) centered in the arena.
+    Approximate a lemniscate of Bernoulli (infinity symbol) centred in the area.
     Parametric form:
         x(t) = a * cos(t) / (1 + sin²(t))
         y(t) = a * sin(t) * cos(t) / (1 + sin²(t))
     n_points is kept low to avoid threshold-area overlaps near the crossing point.
     """
-    cx, cy = _center(arena_size)
+    cx, cy = _center(area)
     a = scale / 2  # scale is the total width of the shape
     points = []
     for i in range(n_points + 1):
@@ -475,7 +474,7 @@ async def run_motion(
     address: str,
     motion_name: str,
     scale: float,
-    arena_size: int,
+    area: Area,
     num_points: int,
     waypoint_threshold: int = WAYPOINT_THRESHOLD_DEFAULT,
     duration: float = SPEED_PROFILE_DURATION_DEFAULT,
@@ -492,7 +491,7 @@ async def run_motion(
     await ws.connect()
     try:
         if kind == "waypoints":
-            waypoints = fn(scale, arena_size, num_points)
+            waypoints = fn(scale, area, num_points)
             if reverse:
                 waypoints = list(reversed(waypoints))
             table = Table(
@@ -514,6 +513,16 @@ async def run_motion(
         await ws.close()
 
 
+def motion_area(site: Site, spec: str | None = None) -> Area:
+    """The area shapes are centred in: `spec` resolved in the site, else its field."""
+    if spec is None:
+        return field_or_fallback(site)
+    try:
+        return site.registry().resolve(spec)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="'--area'") from exc
+
+
 async def run_async(
     host,
     port,
@@ -521,24 +530,32 @@ async def run_async(
     motion,
     repeat,
     scale,
-    arena_size,
+    area_spec,
     num_points,
     waypoint_threshold,
     duration,
     interval,
     reverse,
 ):
-    if address is None:
-        rprint("[yellow]No address provided — fetching available DotBots ...[/yellow]")
-        async with rest_client(host, port, False) as client:
-            dotbots = await client.fetch_dotbots()
-        if not dotbots:
+    async with rest_client(host, port, False) as client:
+        site = await client.fetch_site()
+        if address is None:
             rprint(
-                "[bold red]ERROR:[/bold red] No DotBots found. Is the controller running?"
+                "[yellow]No address provided — fetching available DotBots ...[/yellow]"
             )
-            return
-        address = dotbots[0].address
-        rprint(f"  Using first available DotBot: [bold cyan]{address}[/bold cyan]")
+            dotbots = await client.fetch_dotbots()
+            if not dotbots:
+                rprint(
+                    "[bold red]ERROR:[/bold red] No DotBots found. Is the controller running?"
+                )
+                return
+            address = dotbots[0].address
+            rprint(f"  Using first available DotBot: [bold cyan]{address}[/bold cyan]")
+    area = motion_area(site, area_spec)
+    rprint(
+        f"  Shapes centred in [bold]{area.name or 'the site'}[/bold] "
+        f"({area.w} x {area.h} mm at {area.x}, {area.y})"
+    )
     for i in range(repeat):
         if repeat > 1:
             rprint(f"\n  [bold]Iteration {i + 1}/{repeat}[/bold]")
@@ -548,7 +565,7 @@ async def run_async(
             address,
             motion,
             scale,
-            arena_size,
+            area,
             num_points,
             waypoint_threshold,
             duration,
@@ -607,11 +624,12 @@ async def run_async(
     help="Number of times to replay the motion.",
 )
 @click.option(
-    "--arena-size",
-    type=int,
-    default=ARENA_SIZE_DEFAULT,
-    show_default=True,
-    help="Arena size in mm (square arena).",
+    "--area",
+    "area_spec",
+    type=str,
+    default=None,
+    help="Area to centre the shapes in: a name, a `+`-joined composite or "
+    "x,y,w,h in mm. Defaults to the controller's field.",
 )
 @click.option(
     "--num-points",
@@ -654,7 +672,7 @@ def main(
     motion,
     repeat,
     scale,
-    arena_size,
+    area_spec,
     num_points,
     waypoint_threshold,
     duration,
@@ -670,7 +688,7 @@ def main(
             motion,
             repeat,
             scale,
-            arena_size,
+            area_spec,
             num_points,
             waypoint_threshold,
             duration,

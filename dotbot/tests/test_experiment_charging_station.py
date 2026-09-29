@@ -5,15 +5,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from dotbot.area import Area
 from dotbot.examples.charging_station.charging_station import (
     DT,
     PARK_SPACING,
-    PARK_X,
-    PARK_Y,
-    QUEUE_HEAD_X,
-    QUEUE_HEAD_Y,
     QUEUE_SPACING,
     charge_robots,
+    layout_from_site,
     queue_robots,
 )
 from dotbot.examples.common.orca import OrcaParams
@@ -27,8 +25,45 @@ from dotbot.models import (
     WSMessage,
 )
 from dotbot.protocol import ApplicationType
+from dotbot.site import Site
 
 MOVE_RAW_SCALE = 10  # displacement per raw move step
+
+# A 2 x 2 m field with a 2 x 2 m staging area below it.
+C405 = Site(
+    name="c405",
+    areas={
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+    },
+)
+LAYOUT = layout_from_site(C405)
+QUEUE_HEAD_X, QUEUE_HEAD_Y = LAYOUT.queue_head_x, LAYOUT.queue_head_y
+
+
+def test_layout_queues_on_the_border_and_charges_on_the_far_edge():
+    assert (LAYOUT.queue_head_x, LAYOUT.queue_head_y) == (500, 2000)
+    assert (LAYOUT.charger_x, LAYOUT.charger_y) == (500, 3900)
+    assert (LAYOUT.park_x, LAYOUT.park_y) == (300, 300)
+    assert LAYOUT.away == -1
+
+
+def test_layout_with_staging_above_the_field():
+    site = Site(
+        areas={
+            "staging": Area(0, 0, 4000, 1000, "staging", "staging"),
+            "field": Area(0, 1000, 4000, 3000, "field", "field"),
+        }
+    )
+    layout = layout_from_site(site)
+    assert (layout.queue_head_y, layout.charger_y, layout.park_y) == (1000, 100, 3700)
+    assert layout.away == 1
+
+
+def test_layout_needs_a_staging_area():
+    site = Site(name="bare", areas={"field": Area(0, 0, 10, 10, "field", "field")})
+    with pytest.raises(ValueError, match="config init"):
+        layout_from_site(site)
 
 
 class FakeRestClient:
@@ -208,7 +243,7 @@ async def test_queue_robots_converges_to_queue_positions(_):
     await ws.connect()
     params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
-    await queue_robots(client, ws, bots, params)
+    await queue_robots(client, ws, bots, params, LAYOUT)
 
     # Bots should be ordered A, B, C along the queue
     expected = {
@@ -243,22 +278,21 @@ async def test_charge_robots_moves_all_bots_to_parking(_):
     await ws.connect()
     params = OrcaParams(time_horizon=5 * DT, time_step=DT)
 
-    await charge_robots(client, ws, params)
+    await charge_robots(client, ws, params, LAYOUT)
 
     # --- Assertions: all bots parked ---
     # Bots should be ordered A, B, C along the park slots
     expected = {
-        "A": PARK_Y + 0 * PARK_SPACING,
-        "B": PARK_Y + 1 * PARK_SPACING,
-        "C": PARK_Y + 2 * PARK_SPACING,
+        "A": LAYOUT.park_x + 0 * PARK_SPACING,
+        "B": LAYOUT.park_x + 1 * PARK_SPACING,
+        "C": LAYOUT.park_x + 2 * PARK_SPACING,
     }
 
-    for address, expected_y in expected.items():
+    for address, expected_x in expected.items():
         bot = client._dotbots[address]
 
-        # X, Y coordinate matches queue spacing
-        assert math.isclose(bot.lh2_position.x, PARK_X, abs_tol=100)
-        assert math.isclose(bot.lh2_position.y, expected_y, abs_tol=100)
+        assert math.isclose(bot.lh2_position.x, expected_x, abs_tol=100)
+        assert math.isclose(bot.lh2_position.y, LAYOUT.park_y, abs_tol=100)
 
     # LEDs were used during charging
     assert len(client.rgb_commands) >= 2 * len(bots)
