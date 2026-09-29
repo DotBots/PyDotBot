@@ -566,7 +566,11 @@ def main(
         ["console", "file"],
     )
     try:
+        # A calibration that cannot be found, or belongs to another site
         controller = Controller(controller_settings)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    try:
         asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")

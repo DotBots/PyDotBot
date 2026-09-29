@@ -23,7 +23,7 @@ import struct
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence, Union
 
 import numpy as np
 
@@ -693,13 +693,12 @@ def read_calibration_file(path: Path) -> Calibration:
 def resolve_calibration_path(
     spec: str,
     root: Optional[Path] = None,
-    site: Optional[str] = None,
+    site: Union[Site, str, None] = None,
 ) -> Path:
     """The file `spec` names: see `resolve_calibration_spec`."""
     return resolve_calibration_spec(
         spec,
-        root or calibration_root(),
-        site,
+        calibration_folders(site, root or calibration_root()),
         glob=CALIBRATION_TOML_GLOB,
         metadata=_file_metadata,
         what="calibration",
@@ -707,10 +706,25 @@ def resolve_calibration_path(
     )
 
 
+def calibration_folders(
+    site: Union[Site, str, None], root: Path
+) -> list[tuple[Path, str]]:
+    """Where a site's calibration files are looked for, in order, as (folder,
+    pattern prefix): its pack's `calibrations/`, then `root/<site>/`. No site
+    searches every site under `root`."""
+    if site is None:
+        return [(root, "*/")]
+    if isinstance(site, str):
+        return [(root / site, "")]
+    folders = [(root / site.name, "")]
+    if site.pack_calibrations is not None:
+        folders.insert(0, (site.pack_calibrations, ""))
+    return folders
+
+
 def resolve_calibration_spec(
     spec: str,
-    root: Path,
-    site: Optional[str],
+    folders: Sequence[tuple[Path, str]],
     glob: str,
     metadata: Callable[[Path], dict],
     what: str,
@@ -718,54 +732,80 @@ def resolve_calibration_spec(
 ) -> Path:
     """The file `spec` names, tried in order: a readable path; an exact,
     case-insensitive `tag` (as typed or as its stored slug); an id prefix of
-    a `glob` file under `root`, limited to `site` when given.
+    a `glob` file. Each (folder, prefix) of `folders` is searched in turn,
+    and the first with a match wins.
 
     Raises ValueError when nothing matches, or when a tag or an id prefix
-    matches several files, listing each one's id, `created_key` and path.
+    matches several files in one folder, listing each one's id,
+    `created_key` and path.
     """
     candidate = Path(spec).expanduser()
     if candidate.is_file():
         return candidate
 
-    files = {
-        path: metadata(path) for path in sorted(root.glob(f"{site or '*'}/{glob}"))
-    }
     spec_lower = spec.lower()
     spec_slug = slug_tag(spec).lower()
 
-    def unique(kind: str, matches: list) -> Optional[Path]:
-        if len(matches) > 1:
-            lines = [
-                f"  {files[path].get('id', '?')}  "
-                f"{files[path].get(created_key, '?')}  {path}"
-                for path in matches
-            ]
-            raise ValueError(
-                f"{what} {kind} {spec!r} matches several files:\n" + "\n".join(lines)
-            )
-        return matches[0] if matches else None
+    for folder, prefix in folders:
+        files = {path: metadata(path) for path in sorted(folder.glob(prefix + glob))}
 
-    found = unique(
-        "tag",
-        [
-            path
-            for path, data in files.items()
-            if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
-        ],
-    ) or unique(
-        "id prefix",
-        [
-            path
-            for path, data in files.items()
-            if str(data.get("id", "")).lower().startswith(spec_lower)
-        ],
+        def unique(kind: str, matches: list) -> Optional[Path]:
+            if len(matches) > 1:
+                lines = [
+                    f"  {files[path].get('id', '?')}  "
+                    f"{files[path].get(created_key, '?')}  {path}"
+                    for path in matches
+                ]
+                raise ValueError(
+                    f"{what} {kind} {spec!r} matches several files:\n"
+                    + "\n".join(lines)
+                )
+            return matches[0] if matches else None
+
+        found = unique(
+            "tag",
+            [
+                path
+                for path, data in files.items()
+                if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
+            ],
+        ) or unique(
+            "id prefix",
+            [
+                path
+                for path, data in files.items()
+                if str(data.get("id", "")).lower().startswith(spec_lower)
+            ],
+        )
+        if found is not None:
+            return found
+    searched = " or ".join(
+        str(folder / prefix.rstrip("/")) for folder, prefix in folders
     )
-    if found is not None:
-        return found
     raise ValueError(
         f"no {what} matches {spec!r}: it is neither a readable file, an "
-        f"exact tag, nor the id prefix of a file under {root / (site or '*')}"
+        f"exact tag, nor the id prefix of a file under {searched}"
     )
+
+
+def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) -> None:
+    """Refuse a calibration made in another site, or against another anchor.
+
+    Anchors are compared only when both are recorded.
+    """
+    where = path or "the calibration"
+    if file_site.name != site.name:
+        raise ValueError(
+            f"{where} was made in site {file_site.name!r}, not {site.name!r}; "
+            f"select site {file_site.name!r} (--site or DOTBOT_SITE) or pick a "
+            f"calibration of {site.name!r}"
+        )
+    if file_site.anchor and site.anchor and file_site.anchor != site.anchor:
+        raise ValueError(
+            f"{where} records the anchor {file_site.anchor!r}, but site "
+            f"{site.name!r} has {site.anchor!r}: its frame is another one, so "
+            "recalibrate or correct the site's anchor"
+        )
 
 
 def _file_metadata(path: Path) -> dict:
@@ -780,10 +820,14 @@ def _file_metadata(path: Path) -> dict:
 def load_calibration(
     spec: str,
     root: Optional[Path] = None,
-    site: Optional[str] = None,
+    site: Union[Site, str, None] = None,
 ) -> Calibration:
-    """Read the calibration `spec` names."""
-    return read_calibration_file(resolve_calibration_path(spec, root, site))
+    """Read the calibration `spec` names; given a `Site`, refuse one made in
+    another (`check_calibration_site`)."""
+    calibration = read_calibration_file(resolve_calibration_path(spec, root, site))
+    if isinstance(site, Site):
+        check_calibration_site(calibration.site, site, calibration.path)
+    return calibration
 
 
 # --- Manager ----------------------------------------------------------------

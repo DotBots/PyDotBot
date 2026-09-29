@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Site packs: discovery and the inline-wins rule. Every folder is a
-temporary one."""
+"""Site packs: discovery, the inline-wins rule and pack-first calibration
+lookup. Every folder is a temporary one."""
 
 from pathlib import Path
 
@@ -10,8 +10,10 @@ import pytest
 from click.testing import CliRunner
 
 from dotbot.calibration import lighthouse2
+from dotbot.calibration.lighthouse2 import load_calibration, resolve_calibration_path
 from dotbot.cli.main import cli
 from dotbot.config import ConfigError, load_config, load_config_text
+from dotbot.site import Site
 from dotbot.site_packs import (
     find_packs,
     resolve_site_entry,
@@ -138,3 +140,39 @@ def test_the_active_site_comes_from_a_pack_with_a_notice_when_shadowed(
     Ctx.obj = {"config": load_config(config), "config_path": config}
     site, _ = site_from_context(Ctx())
     assert site.anchor == "elsewhere" and site.pack is None
+
+
+# --- calibrations -----------------------------------------------------------
+
+
+def test_a_calibration_is_looked_for_in_the_pack_first(tmp_path, home):
+    pack = _pack(tmp_path / "sites", "c405-arena", calibration=True)
+    home_copy = home / ".dotbot" / "calibrations" / "c405-arena" / CALIBRATION_NAME
+    home_copy.parent.mkdir(parents=True)
+    home_copy.write_text(FIXTURE_TOML)
+    site = Site(name="c405-arena", anchor=ANCHOR, pack=pack)
+
+    in_pack = pack / "calibrations" / CALIBRATION_NAME
+    assert resolve_calibration_path(FIXTURE_ID[:8], site=site) == in_pack
+    assert resolve_calibration_path("arena-relay", site=site) == in_pack
+    # By name alone, only the home folder is searched.
+    assert resolve_calibration_path(FIXTURE_ID[:8], site="c405-arena") == home_copy
+    # Without the pack's copy, the home one is found.
+    in_pack.unlink()
+    assert resolve_calibration_path(FIXTURE_ID[:8], site=site) == home_copy
+
+
+def test_a_calibration_from_another_site_or_anchor_is_refused(tmp_path, home):
+    pack = _pack(tmp_path / "sites", "c405-arena", calibration=True)
+    site = Site(name="c405-arena", anchor=ANCHOR, pack=pack)
+    assert load_calibration(FIXTURE_ID[:8], site=site).id == FIXTURE_ID
+
+    moved = Site(name="c405-arena", anchor="the window wall", pack=pack)
+    with pytest.raises(ValueError, match="records the anchor"):
+        load_calibration(FIXTURE_ID[:8], site=moved)
+
+    path = str(pack / "calibrations" / CALIBRATION_NAME)
+    with pytest.raises(ValueError, match="made in site 'c405-arena', not 'aio'"):
+        load_calibration(path, site=Site(name="aio"))
+    # A site with no recorded anchor does not compare anchors.
+    assert load_calibration(path, site=Site(name="c405-arena")).id == FIXTURE_ID

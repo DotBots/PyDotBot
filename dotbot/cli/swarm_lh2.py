@@ -443,7 +443,7 @@ def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
 
     site, _ = site_from_context(ctx, site_name)
     try:
-        path = resolve_calibration_path(calibration, site=site.name)
+        path = resolve_calibration_path(calibration, site=site)
         loaded = read_calibration_file(path)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc

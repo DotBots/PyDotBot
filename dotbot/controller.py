@@ -16,7 +16,7 @@ import secrets
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import serial
 import uvicorn
@@ -129,19 +129,20 @@ WAYPOINTS_REPORT_FIELDS = (
 )
 
 
-def load_calibration(spec: str, site: Optional[str] = None):
-    """The schema 2 calibration `spec` names: a file path or an id prefix.
+def load_calibration(spec: str, site: Union[Site, str, None] = None):
+    """The schema 2 calibration `spec` names: a file path, a tag or an id prefix.
 
     Never the newest file on disk: a controller runs on the calibration it
     was told to run on, so that two bots reporting the same id are known to
-    carry the same numbers. An id prefix resolves under `site` only.
+    carry the same numbers. A tag or an id prefix resolves under `site` only,
+    and a `Site` refuses a file made in another.
     """
     from dotbot.calibration.lighthouse2 import load_calibration as _load
 
     return _load(spec, site=site)
 
 
-def load_camera_calibration(spec: str, site: Optional[str] = None):
+def load_camera_calibration(spec: str, site: Union[Site, str, None] = None):
     """The camera registration `spec` names: a file path or an id prefix."""
     from dotbot.camera.registration import load_camera_calibration as _load
 
@@ -295,7 +296,7 @@ class Controller:
         self.lh2_calibration = []
         if settings.lh2_calibration:
             self.calibration = load_calibration(
-                settings.lh2_calibration, site=self.site.name
+                settings.lh2_calibration, site=self.site
             )
             self.lh2_calibration = self.calibration.stations
             self.logger.info(
@@ -340,7 +341,7 @@ class Controller:
         controller without a camera is a missing layer, not a broken console.
         """
         try:
-            calibration = load_camera_calibration(spec, site=self.site.name)
+            calibration = load_camera_calibration(spec, site=self.site)
         except (ValueError, OSError) as exc:
             self.logger.warning(
                 "Camera calibration not loaded, so no camera layer is served",
