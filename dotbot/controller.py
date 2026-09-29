@@ -9,7 +9,6 @@
 
 import asyncio
 import dataclasses
-import logging
 import math
 import os
 import random
@@ -58,7 +57,7 @@ from dotbot.csv_data_logger import (
     CSVLog,
     camera_log_path,
 )
-from dotbot.logger import LOGGER
+from dotbot.logger import LOGGER, debug_enabled
 from dotbot.models import (
     DotBotBodyModel,
     DotBotCalibrationSessionModel,
@@ -689,7 +688,7 @@ class Controller:
             )
             return
         payload = frame.packet.payload
-        debug = self.logger.is_enabled_for(logging.DEBUG)
+        debug = debug_enabled(self.logger)
         dotbot = self.dotbots.get(source)
         if dotbot is None and payload_type not in ADVERTISEMENT_PAYLOAD_TYPES:
             self.logger.debug("Ignoring non advertised dotbot", source=source)

@@ -922,6 +922,52 @@ async def test_an_advertisement_without_a_heading_clears_the_last_one(controller
     assert dotbot.pose.heading_source == "none"
 
 
+class _StdlibLogger:
+    """structlog's stdlib BoundLogger before 26.1: `isEnabledFor` only."""
+
+    def __init__(self):
+        self.events = []
+
+    def isEnabledFor(self, level):  # pylint:disable=invalid-name
+        return True
+
+    def debug(self, event, **kw):
+        self.events.append(event)
+
+    info = warning = debug
+
+
+class _NativeLogger(_StdlibLogger):
+    """structlog's native filtering logger from 25.1: `is_enabled_for` only."""
+
+    isEnabledFor = None
+
+    def is_enabled_for(self, level):
+        return True
+
+
+class _OldNativeLogger(_StdlibLogger):
+    """structlog's native filtering logger before 25.1: no level check."""
+
+    isEnabledFor = None
+
+
+@pytest.mark.parametrize(
+    "logger_class", [_StdlibLogger, _NativeLogger, _OldNativeLogger]
+)
+@pytest.mark.asyncio
+async def test_a_frame_is_handled_whatever_the_structlog_logger(
+    controller, logger_class
+):
+    """Guards the structlog floor: the level check exists under every logger."""
+    controller.logger = logger_class()
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=2000)
+    )
+    assert addr_to_hex(BOT) in controller.dotbots
+    assert "Advertisement Data" in controller.logger.events
+
+
 @pytest.mark.asyncio
 async def test_the_advertisement_debug_log_reports_y(controller):
     with capture_logs() as logs:
