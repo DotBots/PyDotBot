@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from dotbot import site_packs
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import load_calibration, resolve_calibration_path
 from dotbot.cli.main import cli
@@ -52,6 +53,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", home / ".dotbot")
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", home / ".dotbot" / "sites")
     monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "nope.toml")
     return home
 

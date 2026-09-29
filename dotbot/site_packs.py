@@ -23,12 +23,15 @@ from dotbot.config import ConfigError, SiteSection
 from dotbot.site import Site, site_from_table
 
 PACK_FILE = "site.toml"
-SITE_DIRS_DEFAULT = ("sites", "~/.dotbot/sites")
+# Where `dotbot site add` puts packs, searched last when `site_dirs` is unset
+USER_SITES_DIR = Path.home() / ".dotbot" / "sites"
+# Searched first when `site_dirs` is unset, from the config file's folder
+PROJECT_SITES_DIR = "sites"
 
 
 def user_sites_dir() -> Path:
     """Where `dotbot site add` puts packs."""
-    return Path.home() / ".dotbot" / "sites"
+    return USER_SITES_DIR
 
 
 @dataclass(frozen=True)
@@ -57,9 +60,9 @@ class SiteEntry:
 def site_dirs(config: Any, config_path: Path | None) -> list[Path]:
     """The folders searched for packs; relative ones from the config's folder."""
     entries = getattr(config, "site_dirs", None)
-    if entries is None:
-        entries = SITE_DIRS_DEFAULT
     base = config_path.parent if config_path is not None else Path.cwd()
+    if entries is None:
+        return [base / PROJECT_SITES_DIR, user_sites_dir()]
     folders = []
     for entry in entries:
         folder = Path(entry).expanduser()
