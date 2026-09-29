@@ -72,6 +72,20 @@ def _resolve_controller_key(key, flag, config, default):
     return ([default] if isinstance(default, str) else default), "the default"
 
 
+def _max_age_days(raw, source: str) -> int:
+    """`lh2_calibration_max_age_days` as a count of days, 0 or more."""
+    try:
+        days = int(raw)
+    except ValueError:
+        days = -1
+    if days < 0:
+        raise click.ClickException(
+            f"lh2_calibration_max_age_days from {source} is {raw!r}; give a "
+            "whole number of days, or 0 to never warn"
+        )
+    return days
+
+
 def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
     """Map `--conn` + `--swarm-id` into internal ControllerSettings fields.
 
@@ -479,9 +493,10 @@ def main(
     camera_detect_share, _ = _resolve_controller_key(
         "camera_detect_share", camera_detect_share, unified, DETECT_SHARE
     )
-    max_age_days, _ = _resolve_controller_key(
+    raw_max_age, max_age_source = _resolve_controller_key(
         "lh2_calibration_max_age_days", None, unified, LH2_CALIBRATION_MAX_AGE_DAYS
     )
+    max_age_days = _max_age_days(raw_max_age, max_age_source)
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -538,7 +553,7 @@ def main(
         "controller_http_host": controller_http_host,
         "site": site,
         "lh2_calibration": lh2_calibration,
-        "lh2_calibration_max_age_days": int(max_age_days),
+        "lh2_calibration_max_age_days": max_age_days,
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
         "camera_max_robots": camera_max_robots,

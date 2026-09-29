@@ -476,3 +476,13 @@ def test_robots_needs_a_dotbot_simulator():
     )
     assert result.exit_code == 2
     assert "needs a DotBot simulator" in result.output
+
+
+@pytest.mark.parametrize("value", ["abc", "-3", "1.5"])
+@patch("dotbot.controller.Controller.run")
+def test_main_refuses_a_bad_calibration_max_age(run, value, monkeypatch):
+    monkeypatch.setenv("DOTBOT_RUN_CONTROLLER_LH2_CALIBRATION_MAX_AGE_DAYS", value)
+    result = CliRunner().invoke(main, ["--conn", "simulator"])
+    assert result.exit_code != 0
+    assert "whole number of days" in result.output
+    run.assert_not_called()

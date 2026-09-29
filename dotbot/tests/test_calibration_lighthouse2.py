@@ -903,3 +903,23 @@ def test_typed_points_are_recorded_as_points():
     specs = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
     assert collect_points(ROLED, specs) == (specs, None, "")
     assert points_from_specs(specs, ROLED) == "points"
+
+
+@pytest.mark.parametrize(
+    "created_at, age",
+    [
+        ("2026-09-10T09:00:00Z", 2.0),
+        ("2026-09-10T11:00:00+02:00", 2.0),
+        ("2026-09-10T09:00:00", 2.0),
+        ("", None),
+        ("last tuesday", None),
+    ],
+)
+def test_calibration_age_reads_any_iso_zone(created_at, age):
+    import datetime
+
+    from dotbot.calibration.lighthouse2 import Calibration, calibration_age_days
+
+    now = datetime.datetime(2026, 9, 12, 9, tzinfo=datetime.timezone.utc)
+    calibration = Calibration(created_at=created_at)
+    assert calibration_age_days(calibration, now) == age
