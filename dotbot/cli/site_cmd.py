@@ -40,14 +40,46 @@ def _is_git_url(source: str) -> bool:
     )
 
 
-def _pack_in(folder: Path, name: str) -> tuple[Path, str]:
-    """The pack in an unpacked folder: the folder itself, or its one sub-folder."""
-    if (folder / PACK_FILE).is_file():
-        return folder, name
+def _pack_in(folder: Path, name: str | None) -> tuple[Path, str]:
+    """The pack in an unpacked folder: the folder itself, or its one sub-folder.
+
+    With no `name`, as for a zip read from stdin, only the sub-folder can
+    name the site.
+    """
     children = [child for child in folder.iterdir() if child.is_dir()]
+    if (folder / PACK_FILE).is_file():
+        if name is None:
+            raise click.ClickException(
+                f"the zip on stdin holds {PACK_FILE} at its root, so nothing "
+                f"names its site: zip the pack folder itself, as `site export` does"
+            )
+        return folder, name
     if len(children) == 1 and (children[0] / PACK_FILE).is_file():
         return children[0], children[0].name
-    raise click.ClickException(f"no {PACK_FILE} found in {name}")
+    raise click.ClickException(f"no {PACK_FILE} found in {name or 'the zip on stdin'}")
+
+
+def _unzip(path: Path, scratch: Path, name: str | None) -> tuple[Path, str]:
+    target = scratch / "unzipped"
+    with zipfile.ZipFile(path) as archive:
+        archive.extractall(target)
+    return _pack_in(target, name)
+
+
+def _read_stdin(scratch: Path) -> Path:
+    """The zip piped to stdin, saved under `scratch`."""
+    stdin = click.get_binary_stream("stdin")
+    if stdin.isatty():
+        raise click.ClickException(
+            "`site add -` reads a zip from stdin, and stdin is a terminal; "
+            "pipe one in: curl -L <url> | dotbot site add -"
+        )
+    path = scratch / "stdin.zip"
+    with open(path, "wb") as handle:
+        shutil.copyfileobj(stdin, handle)
+    if not zipfile.is_zipfile(path):
+        raise click.ClickException("what came in on stdin is not a zip file")
+    return path
 
 
 def _git_clone(url: str, target: Path) -> None:
@@ -75,20 +107,24 @@ def _git_clone(url: str, target: Path) -> None:
 
 def _fetch(source: str, scratch: Path) -> tuple[Path, str]:
     """The pack folder SOURCE names, and its site name."""
+    if source == "-":
+        return _unzip(_read_stdin(scratch), scratch, None)
     if _is_git_url(source):
         url = source.removeprefix("git+")
         target = scratch / "clone"
         _git_clone(url, target)
         name = re.split(r"[/:]", url.rstrip("/"))[-1].removesuffix(".git")
         return _pack_in(target, name)
+    if source.startswith(("https://", "http://")):
+        raise click.ClickException(
+            f"{source} is a zip on the web: download it first, or pipe it: "
+            f"curl -L {source} | dotbot site add -"
+        )
     path = Path(source).expanduser()
     if path.is_dir():
         return _pack_in(path, path.resolve().name)
     if path.is_file() and zipfile.is_zipfile(path):
-        target = scratch / "unzipped"
-        with zipfile.ZipFile(path) as archive:
-            archive.extractall(target)
-        return _pack_in(target, path.stem)
+        return _unzip(path, scratch, path.stem)
     raise click.ClickException(
         f"{source} is neither a folder, a zip file nor a git URL"
     )
@@ -154,8 +190,9 @@ def _install(folder: Path, target: Path) -> None:
 def add(source, force):
     """Copy the site pack SOURCE into ~/.dotbot/sites/.
 
-    SOURCE is a pack folder, a zip of one (as `site export` writes) or a git
-    URL whose repository is one. The folder's name is the site's name.
+    SOURCE is a pack folder, a zip of one (as `site export` writes), `-` for
+    such a zip on stdin, or a git URL whose repository is one. The folder's
+    name is the site's name.
     """
     with tempfile.TemporaryDirectory() as scratch:
         folder, name = _fetch(source, Path(scratch))

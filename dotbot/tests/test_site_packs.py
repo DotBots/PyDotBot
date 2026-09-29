@@ -282,6 +282,50 @@ def test_a_hidden_folder_is_not_a_pack(tmp_path):
     assert find_packs([tmp_path]) == {}
 
 
+def _zipped(pack: Path, root: Path) -> bytes:
+    archive = pack.parent / "pack.zip"
+    with zipfile.ZipFile(archive, "w") as opened:
+        for path in pack.rglob("*"):
+            if path.is_file():
+                opened.write(path, path.relative_to(root).as_posix())
+    return archive.read_bytes()
+
+
+def test_add_reads_a_zip_from_stdin_named_by_its_top_folder(runner, tmp_path, home):
+    pack = _pack(tmp_path / "v1", "lab", calibration=True)
+    result = runner.invoke(cli, ["site", "add", "-"], input=_zipped(pack, pack.parent))
+    assert result.exit_code == 0, result.output
+    added = home / ".dotbot" / "sites" / "lab"
+    assert (added / "calibrations" / CALIBRATION_NAME).is_file()
+
+    again = runner.invoke(cli, ["site", "add", "-"], input=_zipped(pack, pack.parent))
+    assert again.exit_code != 0 and "--force" in again.output
+
+    bare = runner.invoke(cli, ["site", "add", "-"], input=_zipped(pack, pack))
+    assert bare.exit_code != 0 and "nothing names its site" in bare.output
+
+    junk = runner.invoke(cli, ["site", "add", "-"], input=b"not a zip")
+    assert junk.exit_code != 0 and "not a zip file" in junk.output
+
+
+def test_add_from_a_terminal_stdin_says_to_pipe_a_zip(runner, home, monkeypatch):
+    class Terminal:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(site_cmd.click, "get_binary_stream", lambda name: Terminal())
+    result = runner.invoke(cli, ["site", "add", "-"])
+    assert result.exit_code != 0
+    assert "curl -L <url> | dotbot site add -" in result.output
+
+
+def test_add_of_a_zip_url_says_to_download_or_pipe_it(runner, home):
+    url = "https://example.org/lab.zip"
+    result = runner.invoke(cli, ["site", "add", url])
+    assert result.exit_code != 0
+    assert f"curl -L {url} | dotbot site add -" in result.output
+
+
 def test_add_refuses_what_is_not_a_pack(runner, tmp_path, home):
     (tmp_path / "empty").mkdir()
     result = runner.invoke(cli, ["site", "add", str(tmp_path / "empty")])
