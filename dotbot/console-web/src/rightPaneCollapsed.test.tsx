@@ -83,6 +83,7 @@ const Harness: React.FC<{ session?: CalibrationSession | null }> = ({
           trails: false,
           crashedOnly: false,
           allWaypoints: false,
+          calibratedSpan: true,
         }}
         layerRows={[]}
         onLayerToggle={() => {}}

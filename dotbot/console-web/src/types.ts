@@ -435,6 +435,17 @@ export interface Site {
   extent_mm: [number, number] | null;
   areas: Area[];
   field?: string | null;
+  calibration?: SiteCalibration | null;
+}
+
+// The LH2 calibration the controller loaded: each placement's points in
+// frame mm, which span the part of the site it was fitted over, and how they
+// were chosen (`field`, `over <area>`, `square <mm>` or `points`).
+export interface SiteCalibration {
+  id: string;
+  tag: string;
+  created_at: string;
+  placements: { points_mm: [number, number][]; points_from: string }[];
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

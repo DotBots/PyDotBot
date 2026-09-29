@@ -690,6 +690,21 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               </div>
             )}
 
+            {props.site?.calibration && (
+              <>
+                <div style={{ ...label10, margin: "14px 0 4px" }}>Calibration</div>
+                <CheckRow
+                  label="Calibrated span"
+                  on={props.layers.calibratedSpan}
+                  onToggle={() => props.onLayerToggle("calibratedSpan")}
+                />
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Outlined where the loaded LH2 calibration was fitted; positions
+                  in the hatched rest of the site are extrapolated.
+                </div>
+              </>
+            )}
+
             {cameras.length > 0 && (
               <>
                 <div style={{ ...label10, margin: "14px 0 4px" }}>Camera</div>

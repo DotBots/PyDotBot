@@ -212,6 +212,7 @@ export const App: React.FC = () => {
     trails: false,
     crashedOnly: false,
     allWaypoints: false,
+    calibratedSpan: true,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
