@@ -50,6 +50,7 @@ def home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", home / ".dotbot")
     monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "nope.toml")
     return home
