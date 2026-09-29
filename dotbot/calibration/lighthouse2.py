@@ -156,11 +156,14 @@ class Placement:
 
     `at` records what the operator typed and nothing reads it back;
     `points_mm` is resolved once, at capture, and is the only solver input.
+    `points_from` says how the points were chosen: `field`, `over <area>`,
+    `square <mm>` or `points`.
     """
 
     index: int
     points_mm: list[tuple[float, float]]
     at: str = ""
+    points_from: str = ""
     captured_at: str = ""
     samples: list[Sample] = field(default_factory=list)
 
@@ -477,7 +480,7 @@ def canonical_serialisation(calibration: Calibration) -> str:
     One `key=value` line per hashed field, sorted, newline-joined. The rule
     that decides membership: if changing a field cannot change any computed
     position, it is not here. So the site's `anchor`, `created_at`, `tag`,
-    the robot model and a placement's `at` note are all outside it, and a
+    the robot model and a placement's `at` and `points_from` are all outside it, and a
     typo fix in a sentence no code reads cannot make a fleet look stale.
 
     Zero is the site's anchor by definition, so there is no origin offset to
@@ -583,6 +586,10 @@ def render_calibration(calibration: Calibration) -> str:
             f"index = {placement.index}",
             f'at = "{toml_escape(placement.at)}"',
             f"points_mm = {toml_points(placement.points_mm)}",
+        ]
+        if placement.points_from:
+            out.append(f'points_from = "{toml_escape(placement.points_from)}"')
+        out += [
             f'captured_at = "{placement.captured_at}"',
             "samples = [",
         ]
@@ -652,6 +659,7 @@ def read_calibration_file(path: Path) -> Calibration:
                 index=int(raw["index"]),
                 points_mm=[(float(p[0]), float(p[1])) for p in raw["points_mm"]],
                 at=raw.get("at", ""),
+                points_from=raw.get("points_from", ""),
                 captured_at=raw.get("captured_at", ""),
                 samples=samples,
             )

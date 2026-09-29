@@ -27,7 +27,15 @@ from dotbot.calibration.lighthouse2 import (
     render_calibration,
     resolve_calibration_path,
 )
-from dotbot.calibration.points import collect_header, point_prompt, resolve_points
+from dotbot.calibration.points import (
+    centred_square,
+    collect_header,
+    collect_points,
+    field_corners,
+    point_prompt,
+    points_from_specs,
+    resolve_points,
+)
 from dotbot.site import Site
 
 # A plausible wall-mounted station: the magnitude of perspective row real
@@ -256,6 +264,19 @@ def test_schema_2_round_trips_and_re_solves_to_the_same_matrices_and_id(
     assert f'id = "{loaded.id}"' in written_again
 
 
+def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    placement = replace(_consistent_placement(corners), points_from="over dev-corner")
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    manager = LighthouseManager(placements=[placement])
+    manager.solve()
+    path = manager.save_calibration()
+
+    parsed = tomllib.loads(path.read_text())
+    assert parsed["placement"][0]["points_from"] == "over dev-corner"
+    assert read_calibration_file(path).placements[0].points_from == "over dev-corner"
+
+
 def test_schema_1_file_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
@@ -284,6 +305,7 @@ def test_calibration_id_ignores_the_descriptive_fields(monkeypatch, tmp_path):
     original.tag = "another-session"
     original.robot = "dotbot-v9"
     original.placements[0].at = "typed by hand"
+    original.placements[0].points_from = "square 500"
     assert original.id == before
 
 
@@ -816,3 +838,68 @@ def _five_point_placement():
         counts = counts_for_camera_point(camera[0] + 0.002 * index, camera[1], 0)
         samples.append(Sample(0, index, [round(counts.count1)], [round(counts.count2)]))
     return Placement(index=0, points_mm=points, samples=samples)
+
+
+# --- where collect calibrates by default ------------------------------------
+
+ROLED = Site(
+    name="c405-arena",
+    extent_mm=(2000, 4000),
+    areas={
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "dev-corner": Area(1000, 0, 1000, 1000, "dev-corner", "corner"),
+    },
+)
+
+
+def test_collect_defaults_to_the_fields_corners():
+    assert field_corners(ROLED) == "field:corners"
+    assert collect_points(ROLED, []) == (["field:corners"], None, "")
+    assert points_from_specs(["field:corners"], ROLED) == "field"
+
+
+def test_a_site_with_only_an_extent_calibrates_over_the_extent():
+    site = Site(name="hall", extent_mm=(5000, 4000))
+    assert field_corners(site) == "0,0,5000,4000:corners"
+    assert points_from_specs([field_corners(site)], site) == "field"
+    assert resolve_points(field_corners(site), site.registry())[3].mm == (
+        5000 - 47.0,
+        4000 - 18.5,
+    )
+
+
+def test_a_site_with_no_field_names_the_fix():
+    with pytest.raises(ValueError, match=r"no field.*\[sites.default.areas.field\]"):
+        field_corners(Site())
+
+
+def test_over_calibrates_another_areas_corners():
+    assert collect_points(ROLED, [], over="dev-corner") == (
+        ["dev-corner:corners"],
+        "over dev-corner",
+        "",
+    )
+    assert points_from_specs(["dev-corner:corners"], ROLED) == "over dev-corner"
+    with pytest.raises(ValueError, match="unknown area 'nowhere'"):
+        collect_points(ROLED, [], over="nowhere")
+
+
+def test_square_calibrates_a_centred_square_and_says_the_rest_is_extrapolated():
+    specs, how, note = collect_points(ROLED, [], square=500)
+    assert specs == ["750,750,500,500:corners"]
+    assert how == "square 500"
+    assert "the rest of the 2000 x 2000 mm field is extrapolated" in note
+    assert points_from_specs(specs, ROLED) == "points"
+
+
+@pytest.mark.parametrize("side", [0, -5, 2001])
+def test_a_square_that_is_empty_or_does_not_fit_is_refused(side):
+    with pytest.raises(ValueError):
+        centred_square(ROLED.areas["field"], side)
+
+
+def test_typed_points_are_recorded_as_points():
+    specs = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
+    assert collect_points(ROLED, specs) == (specs, None, "")
+    assert points_from_specs(specs, ROLED) == "points"

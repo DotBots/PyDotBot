@@ -622,9 +622,8 @@ async def camera_stream(area: str):
 )
 async def calibration_session_start(request: DotBotCalibrationStartModel):
     """Calibration-session HTTP POST handler."""
-    specs = (
-        [request.points] if isinstance(request.points, str) else list(request.points)
-    )
+    points = request.points
+    specs = ([points] if points else []) if isinstance(points, str) else list(points)
     return await _calibration(
         api.controller.calibration_session.start(
             specs, request.device, request.area, request.reads

@@ -391,12 +391,12 @@ class DotBotCalibrationSessionModel(BaseModel):
 class DotBotCalibrationStartModel(BaseModel):
     """Where this session's points are, in `--points` form.
 
-    `area` names the area the expected error is evaluated over; empty means
-    none chosen. `reads` is captures averaged per point; None takes the
-    session's own default.
+    Empty `points` means the site's field corners. `area` names the area the
+    expected error is evaluated over; empty means none chosen. `reads` is
+    captures averaged per point; None takes the session's own default.
     """
 
-    points: Union[str, List[str]] = "arena:corners"
+    points: Union[str, List[str]] = []
     device: str = ""
     area: str = ""
     reads: Optional[int] = None

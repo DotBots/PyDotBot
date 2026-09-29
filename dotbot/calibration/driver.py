@@ -21,7 +21,7 @@ import asyncio
 from typing import Any, Callable, Sequence
 
 from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
-from dotbot.calibration.points import resolve_placement_points
+from dotbot.calibration.points import field_corners, resolve_placement_points
 from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
     CalibrationSession,
@@ -92,7 +92,8 @@ class SessionDriver:
         Same resolver as `start`, so the points a client shows before
         committing are the points it then captures.
         """
-        placements = resolve_placement_points(list(specs), self.site.registry())
+        specs = list(specs) or [field_corners(self.site)]
+        placements = resolve_placement_points(specs, self.site.registry())
         return {
             "points": [
                 placement_dict(index, placement)

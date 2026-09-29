@@ -21,7 +21,11 @@ import pytest
 from dotbot.area import Area
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.driver import SessionDriver
-from dotbot.calibration.lighthouse2 import LH2_CALIBRATION_MESSAGE_BYTES, message_site
+from dotbot.calibration.lighthouse2 import (
+    LH2_CALIBRATION_MESSAGE_BYTES,
+    message_site,
+    read_calibration_file,
+)
 from dotbot.calibration.ota import (
     ButtonCapture,
     CaptureSession,
@@ -196,6 +200,33 @@ def test_a_point_carries_the_same_placement_text_collect_prints():
         p.where for p in printed
     ]
     assert [p["how"] for p in session.as_dict()["points"]] == [p.how for p in printed]
+
+
+def test_a_session_given_no_points_opens_on_the_fields_corners():
+    site = Site(
+        name="c405-arena",
+        areas={
+            "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+            "field": Area(0, 0, 2000, 2000, "field", "field"),
+        },
+    )
+    session = CalibrationSession.resolve([], site=site)
+    assert session.at == "field:corners"
+    assert session.points_from == "field"
+    assert [p.mm for p in session.points][1] == (1953, 18.5)
+    assert session.placement().points_from == "field"
+
+
+def test_a_session_records_how_its_points_were_chosen():
+    assert CalibrationSession.resolve(["annex:corners"], site=C405).points_from == (
+        "over annex"
+    )
+    typed = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
+    assert CalibrationSession.resolve(typed, site=C405).points_from == "points"
+    square = CalibrationSession.resolve(
+        ["750,750,500,500:corners"], site=C405, points_from="square 500"
+    )
+    assert square.points_from == "square 500"
 
 
 def test_fewer_than_four_points_is_refused_with_the_span_rule():
@@ -703,6 +734,14 @@ async def test_the_routes_walk_a_session_from_start_to_push(
 
 
 @pytest.mark.asyncio
+async def test_a_start_with_no_points_opens_on_the_sites_field(rest):
+    http, _, _ = rest
+    body = (await http.post("/controller/calibration/session", json={})).json()
+    assert body["at"] == "arena:corners"
+    assert body["points"][0]["where"] == "top-left corner of arena"
+
+
+@pytest.mark.asyncio
 async def test_a_route_that_needs_a_session_refuses_without_one(rest):
     http, _, _ = rest
     for path in ("capture", "redo", "save", "push"):
@@ -1025,6 +1064,83 @@ def test_collect_with_a_device_still_takes_another_robot_s_button(
     assert "received from FEED as point 0" in result.output
     assert client.triggers == 3
     assert client.pushed_to == ["ABCD", "FEED"]
+
+
+ROLED = Site(
+    name="c405-arena",
+    extent_mm=(2000, 4000),
+    areas={
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "dev-corner": Area(1000, 0, 1000, 1000, "dev-corner", "corner"),
+    },
+)
+
+
+def _collect_in(monkeypatch, tmp_path, site, *args):
+    """`collect` over `site` with its own point flags, captured on Enter."""
+    from click.testing import CliRunner
+
+    from dotbot.cli import swarm_lh2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a: _CollectClient())
+    monkeypatch.setattr(
+        swarm_lh2, "site_from_context", lambda ctx, flag=None: (site, "the test")
+    )
+    return CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["collect", "--device=ABCD", "--reads=1", "--timeout=2", "--retries=0", *args],
+        input="\n" * 4,
+    )
+
+
+def _saved_points_from(tmp_path) -> str:
+    (path,) = (tmp_path / "calibrations" / "c405-arena").glob("*.toml")
+    return read_calibration_file(path).placements[0].points_from
+
+
+def test_collect_with_no_point_flag_calibrates_over_the_field(monkeypatch, tmp_path):
+    result = _collect_in(monkeypatch, tmp_path, ROLED)
+
+    assert result.exit_code == 0, result.output
+    assert "Points: field:corners (field)." in result.output
+    assert "top-left corner of field" in result.output
+    assert _saved_points_from(tmp_path) == "field"
+
+
+def test_collect_over_an_area_takes_its_corners(monkeypatch, tmp_path):
+    result = _collect_in(monkeypatch, tmp_path, ROLED, "--over", "dev-corner")
+
+    assert result.exit_code == 0, result.output
+    assert "top-left corner of dev-corner" in result.output
+    assert _saved_points_from(tmp_path) == "over dev-corner"
+
+
+def test_collect_square_says_the_rest_of_the_field_is_extrapolated(
+    monkeypatch, tmp_path
+):
+    result = _collect_in(monkeypatch, tmp_path, ROLED, "--square", "500")
+
+    assert result.exit_code == 0, result.output
+    assert "Points: 750,750,500,500:corners (square 500)." in result.output
+    assert "rest of the 2000 x 2000 mm field is extrapolated" in result.output
+    assert _saved_points_from(tmp_path) == "square 500"
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--over", "dev-corner", "--square", "500"],
+        ["--points", "field:corners", "--over", "dev-corner"],
+        ["--points", "field:corners", "--square", "500"],
+    ],
+)
+def test_collect_takes_one_way_of_choosing_the_points(monkeypatch, tmp_path, flags):
+    result = _collect_in(monkeypatch, tmp_path, ROLED, *flags)
+
+    assert result.exit_code == 2
+    assert "each choose the points; pass one" in result.output
 
 
 def test_collect_help_marks_the_enter_capture_deprecated():

@@ -163,7 +163,30 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "`<rectangle>:<corner>`, or `<rectangle>:corners` for all four in "
         "capture order. A corner mark is where the photodiode lands with the "
         "robot inside the rectangle, PCB edges on its lines, nose toward the "
-        "nearest top or bottom edge. Defaults to `arena:corners`."
+        "nearest top or bottom edge. Without --points, --over or --square, "
+        "the four corners of the site's field."
+    ),
+)
+@click.option(
+    "--over",
+    "over",
+    default=None,
+    metavar="AREA",
+    help=(
+        "Calibrate over another area's four corners instead of the field's, "
+        "e.g. `--over dev-corner` for bench work."
+    ),
+)
+@click.option(
+    "--square",
+    "square",
+    default=None,
+    type=int,
+    metavar="MM",
+    help=(
+        "Calibrate over the four corners of a square this many mm wide, "
+        "centred in the field. Quicker to tape; the rest of the field is "
+        "extrapolated."
     ),
 )
 @click.option(
@@ -220,6 +243,8 @@ def _collect(
     conn,
     swarm_id,
     points,
+    over,
+    square,
     site_name,
     reads,
     timeout,
@@ -236,7 +261,11 @@ def _collect(
             CAPTURE_TIMEOUT_DEFAULT,
             CaptureSession,
         )
-        from dotbot.calibration.points import collect_header, point_prompt
+        from dotbot.calibration.points import (
+            collect_header,
+            collect_points,
+            point_prompt,
+        )
         from dotbot.calibration.session import CalibrationSession, SessionError
     except ImportError as exc:
         click.echo(
@@ -248,12 +277,20 @@ def _collect(
         click.echo(f"(import error was: {exc})", err=True)
         sys.exit(1)
 
-    specs = list(points) or ["arena:corners"]
+    chosen = [flag for flag, v in (("--points", points), ("--over", over)) if v]
+    if square is not None:
+        chosen.append("--square")
+    if len(chosen) > 1:
+        raise click.UsageError(
+            f"{' and '.join(chosen)} each choose the points; pass one."
+        )
     site, site_source = site_from_context(ctx, site_name)
     try:
+        specs, how, note = collect_points(site, list(points), over, square)
         session = CalibrationSession.resolve(
             specs,
             site=site,
+            points_from=how,
             device=device or "",
             reads=reads if reads is not None else CAPTURE_READS_DEFAULT,
             timeout=timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT,
@@ -292,6 +329,9 @@ def _collect(
                     site, site_source, len(session.points), session.reads, device or ""
                 )
             )
+            click.echo(f"Points: {session.at} ({session.points_from}).")
+            if note:
+                click.echo(note)
             trigger = "the robot's button"
             if device:
                 trigger = "Enter"

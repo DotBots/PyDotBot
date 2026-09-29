@@ -144,6 +144,84 @@ def resolve_placement_points(
     return points
 
 
+def _field(site: Site) -> Area:
+    field = site.field
+    if field is None:
+        raise ValueError(
+            f"site {site.name!r} declares no areas and no extent, so it has no "
+            f"field to calibrate over. Add a [sites.{site.name}.areas.field] "
+            "table to your dotbot config, or give the points with --points"
+        )
+    return field
+
+
+def field_corners(site: Site) -> str:
+    """The `--points` specification of the site's field corners, the default."""
+    return f"{_field(site).name}:corners"
+
+
+def centred_square(area: Area, side_mm: int) -> Area:
+    """The `side_mm` square centred in `area`, named as its `x,y,w,h` literal."""
+    if side_mm <= 0:
+        raise ValueError(f"a square side is a positive number of mm, not {side_mm}")
+    if side_mm > min(area.w, area.h):
+        raise ValueError(
+            f"a {side_mm} mm square does not fit in {area.name} "
+            f"({area.w} x {area.h} mm)"
+        )
+    x = area.x + (area.w - side_mm) // 2
+    y = area.y + (area.h - side_mm) // 2
+    return Area(x, y, side_mm, side_mm, f"{x},{y},{side_mm},{side_mm}")
+
+
+def collect_points(
+    site: Site,
+    points: list[str],
+    over: str | None = None,
+    square: int | None = None,
+) -> tuple[list[str], str | None, str]:
+    """The specification `collect` captures, how it was chosen, and a note.
+
+    One of `points`, `over` and `square` at most; none means the field's
+    corners. The chosen-how is None when `points_from_specs` can read it off
+    the specification. The note is the extrapolation warning a square gets,
+    else empty.
+    """
+    if points:
+        return points, None, ""
+    if over is not None:
+        area = site.registry().resolve(over)
+        return [f"{area.name}:corners"], f"over {area.name}", ""
+    if square is None:
+        return [field_corners(site)], None, ""
+    field = _field(site)
+    square_area = centred_square(field, square)
+    note = (
+        f"Only the {square} x {square} mm square is calibrated: the rest of the "
+        f"{field.w} x {field.h} mm field is extrapolated, and the error grows "
+        "toward its corners."
+    )
+    return [f"{square_area.name}:corners"], f"square {square}", note
+
+
+def points_from_specs(specs: list[str] | tuple[str, ...], site: Site) -> str:
+    """How a placement's points were chosen, as its calibration file records it.
+
+    `field` for the field's corners, `over <area>` for another named area's
+    corners, `points` for anything else. `square <mm>` is recorded by the
+    caller that built the square, since its literal rectangle says nothing
+    of where it came from.
+    """
+    if len(specs) == 1 and specs[0].strip().endswith(":corners"):
+        name = specs[0].strip()[: -len(":corners")]
+        field = site.field
+        if field is not None and name == field.name:
+            return "field"
+        if name in site.areas:
+            return f"over {name}"
+    return "points"
+
+
 def _centre(area: Area) -> PointPlacement:
     """A rectangle's centre, which constrains no pose."""
     return PointPlacement(mm=area.centre, area=area.name)
