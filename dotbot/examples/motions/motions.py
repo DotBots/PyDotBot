@@ -541,7 +541,7 @@ async def run_async(
         site = await client.fetch_site()
         if address is None:
             rprint(
-                "[yellow]No address provided — fetching available DotBots ...[/yellow]"
+                "[yellow]No address provided, fetching available DotBots ...[/yellow]"
             )
             dotbots = await client.fetch_dotbots()
             if not dotbots:
