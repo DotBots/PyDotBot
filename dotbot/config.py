@@ -209,6 +209,7 @@ class ControllerSection(_Strict):
     headless: bool | None = None
     gw_address: str | None = None
     simulator_init_state: str | None = None
+    simulator_area: str | None = None
     swarmit_url: str | None = None
     mrta_url: str | None = None
 

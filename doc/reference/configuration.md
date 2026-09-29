@@ -132,6 +132,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] headless` | Stay headless - don't open the web UI in a browser on start (default false; it's still served). |
 | `[run.controller] gw_address` | Gateway address. |
 | `[run.controller] simulator_init_state` | Initial simulator state. |
+| `[run.controller] simulator_area` | Where a simulator places its robots (`--area`): an area name, a `+`-joined composite or `x,y,w,h` in mm. Defaults to the site's field. |
 | `[run.controller] swarmit_url` | swarmit server the console's orchestration panel talks to, proxied at `/swarmit/*` (default `http://localhost:8001`, which matches `swarmit serve`). |
 | `[run.controller] mrta_url` | MRTA mode server (dotbot-logistics) the console's MRTA toggle talks to, proxied at `/mrta/*`. Unset by default (no default URL) - the console shows no MRTA control until this is set (typically `http://localhost:8002`, dotbot-logistics' own default port). |
 | `[run.gateway] serial_port` | Gateway serial port. |

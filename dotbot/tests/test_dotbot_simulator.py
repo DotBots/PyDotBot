@@ -225,9 +225,21 @@ def test_a_generated_fleet_is_centred_and_a_pitch_apart():
     assert nearest == FLEET_PITCH_MM
 
 
-def test_a_generated_fleets_top_half_faces_up_and_the_rest_down():
+def test_a_generated_fleet_all_faces_up():
     bots = fleet_init_state(4, FIELD_SITE).dotbots
-    assert [bot.direction for bot in bots] == [180, 180, 0, 0]
+    assert [bot.direction for bot in bots] == [180, 180, 180, 180]
+
+
+def test_a_generated_fleets_photodiodes_are_evenly_spaced():
+    """Robots facing opposite ways put their photodiodes a lever arm closer or
+    further apart than their axles; the reported grid must stay one pitch."""
+    fleet = fleet_init_state(100, FIELD_SITE)
+    sim = DotBotSimulatorCommunicationInterface(lambda frame: None, fleet)
+    px, py = sim.plant.photodiode()
+    rows = sorted({round(y) for y in py})
+    assert {b - a for a, b in zip(rows, rows[1:])} == {FLEET_PITCH_MM}
+    columns = sorted({round(x) for x in px})
+    assert {b - a for a, b in zip(columns, columns[1:])} == {FLEET_PITCH_MM}
 
 
 def test_without_a_field_the_fleet_goes_to_the_first_area_then_the_extent():
@@ -249,10 +261,50 @@ def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do(site):
         fleet_init_state(101, site)
 
 
-def test_the_capacity_of_a_narrow_area_counts_its_near_square_grid():
-    # One row: a 2-column grid still has one row, a 3-column grid needs two
-    assert fleet_capacity(Area(0, 0, 2000, 200)) == 2
-    fleet_init_state(2, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")}))
+def test_the_capacity_of_a_narrow_area_is_one_full_row():
+    assert fleet_capacity(Area(0, 0, 2000, 200)) == 10
+    bots = fleet_init_state(
+        10, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")})
+    ).dotbots
+    assert {bot.pos_y for bot in bots} == {100}
+
+
+RECTANGLE = Site(
+    name="arena",
+    extent_mm=(2000, 4000),
+    areas={
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+    },
+)
+
+
+def test_the_capacity_of_a_rectangle_is_its_pitch_squares():
+    area = RECTANGLE.registry().resolve("field+staging")
+    assert fleet_capacity(area) == 200
+    assert fleet_capacity(Area(0, 0, 2050, 4199)) == 10 * 20
+
+
+@pytest.mark.parametrize("count", [150, 200])
+def test_a_generated_fleet_fills_a_tall_rectangle(count):
+    area = RECTANGLE.registry().resolve("field+staging")
+    bots = fleet_init_state(count, RECTANGLE, area=area).dotbots
+    assert len(bots) == count
+    assert all(
+        area.x < b.pos_x < area.x_max and area.y < b.pos_y < area.y_max for b in bots
+    )
+    assert len({(b.pos_x, b.pos_y) for b in bots}) == count
+    assert len({b.pos_y for b in bots}) > len({b.pos_x for b in bots})
+    with pytest.raises(FleetDoesNotFit, match="201 robots.*at most 200 do"):
+        fleet_init_state(201, RECTANGLE, area=area)
+
+
+def test_a_generated_grid_takes_the_shape_of_its_area():
+    tall = fleet_init_state(50, area=Area(0, 0, 2000, 8000)).dotbots
+    xs, ys = {b.pos_x for b in tall}, {b.pos_y for b in tall}
+    assert len(ys) > len(xs)
+    wide = fleet_init_state(50, area=Area(0, 0, 8000, 2000)).dotbots
+    assert len({b.pos_x for b in wide}) > len({b.pos_y for b in wide})
 
 
 def test_the_simulator_example_puts_a_thousand_robots_in_its_field():

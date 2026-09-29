@@ -45,6 +45,7 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.area import Area
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_float32
 from dotbot.camera.detection.robot import MAX_ROBOTS
@@ -220,6 +221,8 @@ class ControllerSettings:
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     # A generated fleet of this many robots, in place of the init-state file
     simulator_robots: Optional[int] = None
+    # Where the simulator places its robots; None: the site's field
+    simulator_area: Optional[Area] = None
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
@@ -1249,6 +1252,7 @@ class Controller:
                 self.settings.simulator_init_state,
                 self.site,
                 robots=self.settings.simulator_robots,
+                area=self.settings.simulator_area,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

@@ -378,11 +378,31 @@ h = 16000
 """
 
 
-def _run_simulator(tmp_path, *args):
+ARENA_CONFIG = """
+site = "arena"
+
+[sites.arena]
+extent_mm = [2000, 4000]
+
+[sites.arena.areas.field]
+x = 0
+y = 0
+w = 2000
+h = 2000
+
+[sites.arena.areas.staging]
+x = 0
+y = 2000
+w = 2000
+h = 2000
+"""
+
+
+def _run_simulator(tmp_path, *args, config=FLEET_CONFIG):
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(FLEET_CONFIG)
+    config_file.write_text(config)
     return CliRunner().invoke(cli, ["-c", str(config_file), "run", "simulator", *args])
 
 
@@ -462,6 +482,46 @@ def test_write_init_state_writes_the_fleet_and_runs_from_it(
     reused = _run_simulator(tmp_path, "--simulator-init-state", str(target))
     assert reused.exit_code == 0, reused.output
     assert controller.call_args.args[0].simulator_init_state == str(target)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_area_places_the_fleet_in_a_combined_area(controller, _asyncio_run, tmp_path):
+    too_many = _run_simulator(tmp_path, "--robots", "150", config=ARENA_CONFIG)
+    assert too_many.exit_code != 0
+    assert "at most 100 do" in too_many.output
+
+    result = _run_simulator(
+        tmp_path, "--robots", "150", "--area", "field+staging", config=ARENA_CONFIG
+    )
+    assert result.exit_code == 0, result.output
+    area = controller.call_args.args[0].simulator_area
+    assert (area.x, area.y, area.w, area.h) == (0, 0, 2000, 4000)
+    assert "150 robots 200 mm apart in field+staging (2000 x 4000 mm)" in (
+        result.output
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_area_comes_from_the_config_too(controller, _asyncio_run, tmp_path):
+    config = ARENA_CONFIG.replace(
+        "[sites.arena]", '[run.controller]\nsimulator_area = "staging"\n\n[sites.arena]'
+    )
+    result = _run_simulator(tmp_path, "--robots", "10", config=config)
+    assert result.exit_code == 0, result.output
+    assert controller.call_args.args[0].simulator_area.name == "staging"
+
+
+def test_an_unknown_area_is_refused_with_the_known_ones(tmp_path):
+    result = _run_simulator(
+        tmp_path, "--robots", "10", "--area", "field+pen", config=ARENA_CONFIG
+    )
+    assert result.exit_code == 2
+    assert "unknown area 'pen'" in result.output
+    assert "field, staging" in result.output
 
 
 def test_write_init_state_needs_robots(tmp_path):

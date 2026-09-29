@@ -72,15 +72,20 @@ so it shares the controller's flags and serves the same console.
 ```bash
 dotbot run simulator
 dotbot run simulator --robots 500                  # a generated fleet
+dotbot run simulator --robots 150 --area field+staging
 dotbot run simulator --robots 500 --write-init-state fleet.toml
 dotbot run simulator --simulator-init-state fleet.toml
 ```
 
-`--robots N` places N robots 200 mm apart in a near-square grid centred in the
-site's `field` area (else its first area, else its extent, else a 2 x 2 m
-square), the top half of the rows facing up and the rest down, and refuses a
-count that does not fit. `--write-init-state` saves that fleet as a file to
-edit and reuse with `--simulator-init-state`.
+`--robots N` places N robots 200 mm apart, all facing up, in a grid shaped
+like and centred in `--area`, and refuses a count that does not fit: an area
+holds one robot per 200 mm square. `--area` takes a name from the site's
+areas, `x,y,w,h` in mm or a `+`-joined composite, and defaults to the site's
+`field` (else its first area, else its extent, else a 2 x 2 m square); it
+also places the robots a `--simulator-init-state` file gives no position.
+`[run.controller] simulator_area` sets it from the config.
+`--write-init-state` saves that fleet as a file to edit and reuse with
+`--simulator-init-state`.
 
 ## `calibrate-lh2` - capture & apply (cabled, deprecated)
 

@@ -176,8 +176,28 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     click.echo(f"Created {target} — edit it to customize the simulated swarm.")
 
 
-def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulator):
-    """Check `--robots` against the fleet's site and the other flags.
+def _simulator_area(spec, source, site, dotbot_simulator):
+    """The area `--area` names, resolved in `site`; None for the field.
+
+    A spec from the config applies to simulator runs only; on the command
+    line it needs one.
+    """
+    if spec is None:
+        return None
+    if not dotbot_simulator:
+        if source == "the command line":
+            raise click.UsageError("--area needs a DotBot simulator connection.")
+        return None
+    try:
+        return site.registry().resolve(spec)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="'--area'") from exc
+
+
+def _generated_fleet(
+    robots, write_init_state, init_state, site, dotbot_simulator, area=None
+):
+    """Check `--robots` against the fleet's area and the other flags.
 
     Returns the robot count left for the simulator to generate and the
     init-state path to run from: with `--write-init-state`, the count is
@@ -203,10 +223,10 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
     )
 
     try:
-        fleet = fleet_init_state(robots, site)
+        fleet = fleet_init_state(robots, site, area=area)
     except FleetDoesNotFit as exc:
         raise click.ClickException(str(exc)) from exc
-    area = placement_area(site)
+    area = placement_area(site, area)
     print(
         f"Simulated fleet: {robots} robots {FLEET_PITCH_MM} mm apart in "
         f"{area.name or 'the default area'} ({area.w} x {area.h} mm)"
@@ -375,9 +395,19 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
     "--robots",
     type=click.IntRange(min=1),
     help=(
-        "With a simulator: start this many robots, 200 mm apart in a "
-        "near-square grid centred in the site's `field` area (else its first "
-        "area, else its extent). Not with --simulator-init-state."
+        "With a simulator: start this many robots, 200 mm apart in a grid "
+        "shaped like and centred in --area. Not with --simulator-init-state."
+    ),
+)
+@click.option(
+    "--area",
+    "simulator_area",
+    type=str,
+    default=None,
+    help=(
+        "With a simulator: the area its robots are placed in, a name from "
+        "the site's `[sites.<site>.areas.<name>]` tables, `x,y,w,h` in "
+        "frame mm, or a `+`-joined composite. Defaults to the site's field."
     ),
 )
 @click.option(
@@ -435,6 +465,7 @@ def main(
     background_map,
     simulator_init_state,
     robots,
+    simulator_area,
     write_init_state,
     swarmit_url,
     mrta_url,
@@ -530,12 +561,18 @@ def main(
     # implementation detail — the CLI never exposes it.
     conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
 
+    dotbot_simulator = conn_settings.get("adapter") == "dotbot-simulator"
+    area_spec, area_source = _resolve_controller_key(
+        "simulator_area", simulator_area, unified, None
+    )
+    simulator_area = _simulator_area(area_spec, area_source, site, dotbot_simulator)
     robots, simulator_init_state = _generated_fleet(
         robots,
         write_init_state,
         simulator_init_state,
         site,
-        conn_settings.get("adapter") == "dotbot-simulator",
+        dotbot_simulator,
+        simulator_area,
     )
 
     # For a simulator connection with no init-state set (CLI default is
@@ -561,6 +598,7 @@ def main(
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "simulator_robots": robots,
+        "simulator_area": simulator_area,
         "swarmit_url": swarmit_url,
         "mrta_url": mrta_url,
         "headless": True if headless else None,
