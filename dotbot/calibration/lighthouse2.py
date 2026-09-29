@@ -788,6 +788,20 @@ def resolve_calibration_spec(
     )
 
 
+def calibration_age_days(
+    calibration: Calibration, now: Optional[datetime.datetime] = None
+) -> Optional[float]:
+    """Days since `created_at`, or None when it is missing or unreadable."""
+    try:
+        created = datetime.datetime.strptime(
+            calibration.created_at, "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return (now - created).total_seconds() / 86400
+
+
 def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) -> None:
     """Refuse a calibration made in another site, or against another anchor.
 

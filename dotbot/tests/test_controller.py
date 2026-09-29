@@ -1565,3 +1565,74 @@ async def test_a_resend_that_fails_drops_the_command(controller, clock):
     controller.handle_received_frame(_report(batch_id=3))
     assert simulator.write.call_count == 2
     assert not controller.pending_commands
+
+
+# --- calibration warnings ---------------------------------------------------
+
+
+def _old_calibration_settings(tmp_path, **kwargs):
+    """Settings loading the wire fixture, made 2026-09-10, by path."""
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "calibration.toml"
+    path.write_text(FIXTURE_TOML)
+    return ControllerSettings(
+        port="/dev/null",
+        baudrate=115200,
+        network_id="0",
+        gw_address="78",
+        site=Site(name="c405-arena"),
+        lh2_calibration=str(path),
+        **kwargs,
+    )
+
+
+def test_an_old_calibration_is_warned_about_at_load(tmp_path, serial_mock):
+    with capture_logs() as logs:
+        Controller(_old_calibration_settings(tmp_path, lh2_calibration_max_age_days=7))
+    (entry,) = (e for e in logs if e["log_level"] == "warning")
+    assert "older than lh2_calibration_max_age_days" in entry["event"]
+    assert entry["max_age_days"] == 7 and entry["age_days"] > 7
+
+
+@pytest.mark.parametrize("max_age_days", [0, 100_000])
+def test_a_calibration_within_its_age_or_with_no_limit_is_not(
+    tmp_path, serial_mock, max_age_days
+):
+    with capture_logs() as logs:
+        Controller(
+            _old_calibration_settings(
+                tmp_path, lh2_calibration_max_age_days=max_age_days
+            )
+        )
+    assert not [e for e in logs if e["log_level"] == "warning"]
+
+
+def test_a_calibration_from_another_site_is_refused_at_load(tmp_path, serial_mock):
+    settings = _old_calibration_settings(tmp_path)
+    settings.site = Site(name="aio")
+    with pytest.raises(ValueError, match="made in site 'c405-arena', not 'aio'"):
+        Controller(settings)
+
+
+def test_a_robot_holding_a_station_the_calibration_does_not_solve_is_warned_once(
+    tmp_path, serial_mock
+):
+    controller = Controller(
+        _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
+    )
+    solved = sorted(station.index for station in controller.lh2_calibration)
+    unsolved = min(set(range(8)) - set(solved))
+    calibrated = sum(1 << index for index in solved) | 1 << unsolved
+    with capture_logs() as logs:
+        for _ in range(3):
+            controller.handle_received_frame(
+                _advertised(
+                    BOT, calibrated=calibrated, direction=90, pos_x=1000, pos_y=1000
+                )
+            )
+    warnings = [e for e in logs if e["log_level"] == "warning"]
+    assert [(e["address"], e["station"]) for e in warnings] == [
+        (addr_to_hex(BOT), unsolved)
+    ]
+    assert warnings[0]["solved"] == solved

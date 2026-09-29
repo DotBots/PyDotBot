@@ -99,6 +99,8 @@ LOST_DELAY = 60  # seconds
 # A robot silent this long no longer names what a camera sees.
 CAMERA_PRIOR_MAX_AGE_S = 2.0
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
+# Older than this many days at load, an LH2 calibration is warned about
+LH2_CALIBRATION_MAX_AGE_DAYS = 30
 # A command the robot confirms in its advertisement is resent when an
 # advertisement this long after sending still does not show it; adverts come
 # every 0.1 to 1 s, twice that on a bench-telemetry build
@@ -204,6 +206,7 @@ class ControllerSettings:
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
+    lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
     camera_calibration: Optional[str] = None
     camera_detect: bool = True
     camera_max_robots: int = MAX_ROBOTS
@@ -219,6 +222,13 @@ class ControllerSettings:
     simulator_robots: Optional[int] = None
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
+
+
+def _held_stations(calibrated: int) -> set[int]:
+    """The station indices an advertised `calibrated` bitmask holds."""
+    return {
+        index for index in range(calibrated.bit_length()) if calibrated >> index & 1
+    }
 
 
 def is_lh2_fix(position: DotBotLH2Position, dotbot: DotBotModel) -> bool:
@@ -307,11 +317,14 @@ class Controller:
                 tag=self.calibration.tag,
                 stations=len(self.lh2_calibration),
             )
+            self._warn_calibration_age(settings.lh2_calibration_max_age_days)
         else:
             self.logger.info(
                 "No calibration selected: robots keep whatever they hold. "
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
+        # (robot, station) pairs already warned about, so each is warned once
+        self._unsolved_warned: set[tuple[str, int]] = set()
         self.cameras: List[CameraService] = []
         # The warp each camera's last pushed detection came from, so a
         # console is told about a frame once.
@@ -333,6 +346,39 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def _warn_calibration_age(self, max_age_days: int) -> None:
+        """Warn when the calibration is older than `max_age_days` (0: never)."""
+        from dotbot.calibration.lighthouse2 import calibration_age_days
+
+        age = calibration_age_days(self.calibration)
+        if not max_age_days or age is None or age <= max_age_days:
+            return
+        self.logger.warning(
+            "Calibration is older than lh2_calibration_max_age_days: it holds "
+            "only while no base station has moved since",
+            calibration_id=self.calibration.id,
+            created_at=self.calibration.created_at,
+            age_days=round(age, 1),
+            max_age_days=max_age_days,
+        )
+
+    def _warn_unsolved_stations(self, address: str, calibrated: int) -> None:
+        """Warn once per robot and station about a homography the loaded
+        calibration does not solve: that robot's positions from the station
+        come from some other calibration."""
+        solved = {station.index for station in self.lh2_calibration}
+        for index in sorted(_held_stations(calibrated) - solved):
+            if (address, index) in self._unsolved_warned:
+                continue
+            self._unsolved_warned.add((address, index))
+            self.logger.warning(
+                "Robot holds a station the calibration does not solve",
+                address=address,
+                station=index,
+                calibration_id=self.calibration.id,
+                solved=sorted(solved),
+            )
 
     def _start_camera(self, spec: str) -> None:
         """Open the camera layer one registration describes.
@@ -737,6 +783,8 @@ class Controller:
                 )
             for name in self._waypoints_report(dotbot, payload):
                 record.revs[name] = seq
+            if self.lh2_calibration:
+                self._warn_unsolved_stations(dotbot.address, dotbot.calibrated)
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration

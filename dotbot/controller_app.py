@@ -31,7 +31,11 @@ from dotbot.camera.rate import DETECT_SHARE
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.cli._site import site_from_context
-from dotbot.controller import Controller, ControllerSettings
+from dotbot.controller import (
+    LH2_CALIBRATION_MAX_AGE_DAYS,
+    Controller,
+    ControllerSettings,
+)
 from dotbot.logger import setup_logging
 
 # Old transport/identity config keys replaced by `conn` / `swarm_id`.
@@ -475,6 +479,9 @@ def main(
     camera_detect_share, _ = _resolve_controller_key(
         "camera_detect_share", camera_detect_share, unified, DETECT_SHARE
     )
+    max_age_days, _ = _resolve_controller_key(
+        "lh2_calibration_max_age_days", None, unified, LH2_CALIBRATION_MAX_AGE_DAYS
+    )
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -531,6 +538,7 @@ def main(
         "controller_http_host": controller_http_host,
         "site": site,
         "lh2_calibration": lh2_calibration,
+        "lh2_calibration_max_age_days": int(max_age_days),
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
         "camera_max_robots": camera_max_robots,
