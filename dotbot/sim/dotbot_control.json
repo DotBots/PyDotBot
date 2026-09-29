@@ -1,8 +1,8 @@
 {
   "file": "dotbot_control.wasm",
   "source": "https://github.com/DotBots/DotBot-libs",
-  "commit": "8e4b96b68364fb59f84925f83043df0e52812a71",
+  "commit": "48cc06bff499db56be1373cd3bf5c852084adddd",
   "build": "wasm/fetch-wasi-sdk.sh && make wasm (wasi-sdk 34.0)",
   "abi_version": 2,
-  "sha256": "49226467eb460738133213892862ba0ad223e574337a56e9e2b4efcc8ee2e13f"
+  "sha256": "53df5c73421442d85b306514d403e968d32289a0e823ed2a12825fb2800a5177"
 }

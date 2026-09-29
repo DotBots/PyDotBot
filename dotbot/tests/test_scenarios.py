@@ -127,7 +127,8 @@ async def test_a_robot_that_never_sees_lh2_fails_no_heading(scenario):
     s.robots[A].lh2_visible = False
     await s.waypoints(A, [(900, 900)])
 
-    assert await s.run_until_reported([A], "FAILED", seconds=10)
+    # 4 spins of 3 s with 1 s rests before NO_HEADING
+    assert await s.run_until_reported([A], "FAILED", seconds=20)
     assert s.dotbot(A).waypoints_reason == "NO_HEADING"
     assert s.robots[A].batch_id == s.batch_id(A)
 
