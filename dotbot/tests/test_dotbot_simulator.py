@@ -255,6 +255,24 @@ def test_the_capacity_of_a_narrow_area_counts_its_near_square_grid():
     fleet_init_state(2, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")}))
 
 
+def test_the_simulator_example_puts_a_thousand_robots_in_its_field():
+    from pathlib import Path
+
+    import dotbot
+    from dotbot.config import load_config
+    from dotbot.site import site_from_config
+
+    path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "site.toml"
+    config = load_config(path)
+    site = site_from_config(config, config.site)
+    assert site.areas["charging"].role == "staging"
+    field = site.field
+    assert field.name == "field"
+    bots = fleet_init_state(1000, site).dotbots
+    assert all(field.x < b.pos_x < field.x_max for b in bots)
+    assert all(field.y < b.pos_y < field.y_max for b in bots)
+
+
 def test_a_written_fleet_reads_back_as_the_same_robots(tmp_path):
     fleet = fleet_init_state(50, FIELD_SITE)
     path = tmp_path / "fleet.toml"
