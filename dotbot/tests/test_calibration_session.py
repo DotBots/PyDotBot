@@ -31,7 +31,7 @@ from dotbot.calibration.ota import (
     CaptureSession,
     parse_capture_payload,
 )
-from dotbot.calibration.points import CORNERS
+from dotbot.calibration.points import CORNERS, PointsFrom
 from dotbot.calibration.session import CalibrationSession, SessionError
 from dotbot.site import Site
 
@@ -212,21 +212,25 @@ def test_a_session_given_no_points_opens_on_the_fields_corners():
     )
     session = CalibrationSession.resolve([], site=site)
     assert session.at == "field:corners"
-    assert session.points_from == "field"
+    assert session.points_from == PointsFrom("field")
     assert [p.mm for p in session.points][1] == (1953, 18.5)
-    assert session.placement().points_from == "field"
+    assert session.placement().points_from == PointsFrom("field")
 
 
 def test_a_session_records_how_its_points_were_chosen():
     assert CalibrationSession.resolve(["annex:corners"], site=C405).points_from == (
-        "over annex"
+        PointsFrom("over", area="annex")
     )
     typed = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
-    assert CalibrationSession.resolve(typed, site=C405).points_from == "points"
-    square = CalibrationSession.resolve(
-        ["750,750,500,500:corners"], site=C405, points_from="square 500"
+    assert CalibrationSession.resolve(typed, site=C405).points_from == PointsFrom(
+        "points"
     )
-    assert square.points_from == "square 500"
+    square = CalibrationSession.resolve(
+        ["750,750,500,500:corners"],
+        site=C405,
+        points_from=PointsFrom("square", side_mm=500),
+    )
+    assert square.points_from == PointsFrom("square", side_mm=500)
 
 
 def test_fewer_than_four_points_is_refused_with_the_span_rule():
@@ -1095,7 +1099,7 @@ def _collect_in(monkeypatch, tmp_path, site, *args):
     )
 
 
-def _saved_points_from(tmp_path) -> str:
+def _saved_points_from(tmp_path) -> PointsFrom | None:
     (path,) = (tmp_path / "calibrations" / "c405-arena").glob("*.toml")
     return read_calibration_file(path).placements[0].points_from
 
@@ -1106,7 +1110,7 @@ def test_collect_with_no_point_flag_calibrates_over_the_field(monkeypatch, tmp_p
     assert result.exit_code == 0, result.output
     assert "Points: field:corners (field)." in result.output
     assert "top-left corner of field" in result.output
-    assert _saved_points_from(tmp_path) == "field"
+    assert _saved_points_from(tmp_path) == PointsFrom("field")
 
 
 def test_collect_over_an_area_takes_its_corners(monkeypatch, tmp_path):
@@ -1114,7 +1118,7 @@ def test_collect_over_an_area_takes_its_corners(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "top-left corner of dev-corner" in result.output
-    assert _saved_points_from(tmp_path) == "over dev-corner"
+    assert _saved_points_from(tmp_path) == PointsFrom("over", area="dev-corner")
 
 
 def test_collect_square_says_the_rest_of_the_field_is_extrapolated(
@@ -1123,9 +1127,9 @@ def test_collect_square_says_the_rest_of_the_field_is_extrapolated(
     result = _collect_in(monkeypatch, tmp_path, ROLED, "--square", "500")
 
     assert result.exit_code == 0, result.output
-    assert "Points: 750,750,500,500:corners (square 500)." in result.output
+    assert "Points: 750,750,500,500:corners (square 500 mm)." in result.output
     assert "rest of the 2000 x 2000 mm field is extrapolated" in result.output
-    assert _saved_points_from(tmp_path) == "square 500"
+    assert _saved_points_from(tmp_path) == PointsFrom("square", side_mm=500)
 
 
 @pytest.mark.parametrize(

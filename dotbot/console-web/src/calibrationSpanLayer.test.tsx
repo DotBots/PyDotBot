@@ -24,7 +24,7 @@ const SITE: Site = {
           [750, 1250],
           [1250, 1250],
         ],
-        points_from: "square 500",
+        points_from: { kind: "square", side_mm: 500 },
       },
     ],
   },

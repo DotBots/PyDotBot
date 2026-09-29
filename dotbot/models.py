@@ -15,6 +15,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from dotbot.area import Area, Role
+from dotbot.calibration.points import PointsKind
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
 from dotbot.site import Site
@@ -195,12 +196,20 @@ class DotBotAreaModel(BaseModel):
     role: Optional[Role] = None
 
 
+class DotBotPointsFromModel(BaseModel):
+    """How a placement's points were chosen: the field's corners, the corners
+    of `area`, a `side_mm` square centred in the field, or given by hand."""
+
+    kind: PointsKind
+    area: Optional[str] = None
+    side_mm: Optional[int] = None
+
+
 class DotBotPlacementSpanModel(BaseModel):
-    """One placement's points, in frame millimetres, and how they were chosen
-    (`field`, `over <area>`, `square <mm>` or `points`)."""
+    """One placement's points, in frame millimetres, and how they were chosen."""
 
     points_mm: List[List[float]]
-    points_from: str = ""
+    points_from: Optional[DotBotPointsFromModel] = None
 
 
 class DotBotCalibrationSpanModel(BaseModel):
@@ -221,7 +230,11 @@ class DotBotCalibrationSpanModel(BaseModel):
             placements=[
                 DotBotPlacementSpanModel(
                     points_mm=[list(point) for point in placement.points_mm],
-                    points_from=placement.points_from,
+                    points_from=(
+                        None
+                        if placement.points_from is None
+                        else DotBotPointsFromModel(**placement.points_from.to_dict())
+                    ),
                 )
                 for placement in calibration.placements
             ],

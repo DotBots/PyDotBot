@@ -440,12 +440,19 @@ export interface Site {
 
 // The LH2 calibration the controller loaded: each placement's points in
 // frame mm, which span the part of the site it was fitted over, and how they
-// were chosen (`field`, `over <area>`, `square <mm>` or `points`).
+// were chosen: the field's corners, the corners of `area`, a `side_mm` square
+// centred in the field, or given by hand. Null when the file does not say.
+export interface PointsFrom {
+  kind: "field" | "over" | "square" | "points";
+  area?: string | null;
+  side_mm?: number | null;
+}
+
 export interface SiteCalibration {
   id: string;
   tag: string;
   created_at: string;
-  placements: { points_mm: [number, number][]; points_from: string }[];
+  placements: { points_mm: [number, number][]; points_from: PointsFrom | null }[];
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

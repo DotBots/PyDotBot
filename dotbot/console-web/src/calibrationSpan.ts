@@ -1,4 +1,4 @@
-import type { Area, SiteCalibration } from "./types";
+import type { Area, PointsFrom, SiteCalibration } from "./types";
 
 // Where the loaded LH2 calibration was fitted, and what is extrapolated: the
 // map outlines each placement's span and hatches the rest of the site.
@@ -7,7 +7,7 @@ export type Point = [number, number];
 
 export interface Span {
   points: Point[];
-  pointsFrom: string;
+  pointsFrom: PointsFrom | null;
 }
 
 const cross = (o: Point, a: Point, b: Point) =>
@@ -45,12 +45,19 @@ export function hatchBox(extent: [number, number] | null): Area | null {
 }
 
 /** How a placement's points were chosen, as a phrase. */
-export function describePointsFrom(pointsFrom: string): string {
-  if (pointsFrom === "field") return "the field's corners";
-  if (pointsFrom.startsWith("over ")) return `the corners of ${pointsFrom.slice(5)}`;
-  if (pointsFrom.startsWith("square ")) return `a ${pointsFrom.slice(7)} mm square in the field`;
-  if (pointsFrom === "points") return "points given by hand";
-  return "its recorded points";
+export function describePointsFrom(pointsFrom: PointsFrom | null): string {
+  switch (pointsFrom?.kind) {
+    case "field":
+      return "the field's corners";
+    case "over":
+      return `the corners of ${pointsFrom.area}`;
+    case "square":
+      return `a ${pointsFrom.side_mm} mm square in the field`;
+    case "points":
+      return "points given by hand";
+    default:
+      return "its recorded points";
+  }
 }
 
 /** Whole days since `createdAt`, 0 for a time ahead of this browser's clock,

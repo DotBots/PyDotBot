@@ -22,7 +22,7 @@ const CALIBRATION: SiteCalibration = {
   id: "ac893d2d85e3068c",
   tag: "demo",
   created_at: "2026-09-10T09:12:00Z",
-  placements: [{ points_mm: SQUARE, points_from: "square 500" }],
+  placements: [{ points_mm: SQUARE, points_from: { kind: "square", side_mm: 500 } }],
 };
 
 describe("convexHull", () => {
@@ -44,13 +44,13 @@ describe("calibrationSpans", () => {
   it("gives the span of four points, with how they were chosen", () => {
     const [span] = calibrationSpans(CALIBRATION);
     expect(span.points).toHaveLength(4);
-    expect(span.pointsFrom).toBe("square 500");
+    expect(span.pointsFrom).toEqual({ kind: "square", side_mm: 500 });
   });
 
   it("skips a placement whose points do not span an area", () => {
     const line = {
       ...CALIBRATION,
-      placements: [{ points_mm: [[0, 0], [10, 0], [20, 0]] as [number, number][], points_from: "points" }],
+      placements: [{ points_mm: [[0, 0], [10, 0], [20, 0]] as [number, number][], points_from: { kind: "points" } as const }],
     };
     expect(calibrationSpans(line)).toEqual([]);
     expect(calibrationSpans(null)).toEqual([]);
@@ -69,11 +69,15 @@ describe("hatchBox", () => {
 
 describe("the tooltip", () => {
   it("says how the points were chosen", () => {
-    expect(describePointsFrom("field")).toBe("the field's corners");
-    expect(describePointsFrom("over dev-corner")).toBe("the corners of dev-corner");
-    expect(describePointsFrom("square 500")).toBe("a 500 mm square in the field");
-    expect(describePointsFrom("points")).toBe("points given by hand");
-    expect(describePointsFrom("")).toBe("its recorded points");
+    expect(describePointsFrom({ kind: "field" })).toBe("the field's corners");
+    expect(describePointsFrom({ kind: "over", area: "dev-corner" })).toBe(
+      "the corners of dev-corner",
+    );
+    expect(describePointsFrom({ kind: "square", side_mm: 500 })).toBe(
+      "a 500 mm square in the field",
+    );
+    expect(describePointsFrom({ kind: "points" })).toBe("points given by hand");
+    expect(describePointsFrom(null)).toBe("its recorded points");
   });
 
   it("names the calibration and its age", () => {

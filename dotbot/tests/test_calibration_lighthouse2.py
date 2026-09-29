@@ -28,6 +28,7 @@ from dotbot.calibration.lighthouse2 import (
     resolve_calibration_path,
 )
 from dotbot.calibration.points import (
+    PointsFrom,
     centred_square,
     collect_header,
     collect_points,
@@ -266,15 +267,45 @@ def test_schema_2_round_trips_and_re_solves_to_the_same_matrices_and_id(
 
 def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
     corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
-    placement = replace(_consistent_placement(corners), points_from="over dev-corner")
+    how = PointsFrom("over", area="dev-corner")
+    placement = replace(_consistent_placement(corners), points_from=how)
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     manager = LighthouseManager(placements=[placement])
     manager.solve()
     path = manager.save_calibration()
 
     parsed = tomllib.loads(path.read_text())
-    assert parsed["placement"][0]["points_from"] == "over dev-corner"
-    assert read_calibration_file(path).placements[0].points_from == "over dev-corner"
+    assert parsed["placement"][0]["points_from"] == {
+        "kind": "over",
+        "area": "dev-corner",
+    }
+    assert read_calibration_file(path).placements[0].points_from == how
+
+
+def test_points_from_written_as_a_string_is_rejected(tmp_path):
+    path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
+    path.write_text(
+        "schema_version = 2\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        'points_from = "over dev-corner"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="points_from is a table"):
+        read_calibration_file(path)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"kind": "nearby"},
+        {"kind": "over"},
+        {"kind": "square"},
+        {"kind": "field", "area": "field"},
+        {"kind": "points", "side_mm": 500},
+    ],
+)
+def test_points_from_carries_exactly_the_fields_of_its_kind(raw):
+    with pytest.raises(ValueError):
+        PointsFrom.from_dict(raw)
 
 
 def test_schema_1_file_is_rejected(tmp_path):
@@ -305,7 +336,7 @@ def test_calibration_id_ignores_the_descriptive_fields(monkeypatch, tmp_path):
     original.tag = "another-session"
     original.robot = "dotbot-v9"
     original.placements[0].at = "typed by hand"
-    original.placements[0].points_from = "square 500"
+    original.placements[0].points_from = PointsFrom("square", side_mm=500)
     assert original.id == before
 
 
@@ -856,13 +887,13 @@ ROLED = Site(
 def test_collect_defaults_to_the_fields_corners():
     assert field_corners(ROLED) == "field:corners"
     assert collect_points(ROLED, []) == (["field:corners"], None, "")
-    assert points_from_specs(["field:corners"], ROLED) == "field"
+    assert points_from_specs(["field:corners"], ROLED) == PointsFrom("field")
 
 
 def test_a_site_with_only_an_extent_calibrates_over_the_extent():
     site = Site(name="hall", extent_mm=(5000, 4000))
     assert field_corners(site) == "0,0,5000,4000:corners"
-    assert points_from_specs([field_corners(site)], site) == "field"
+    assert points_from_specs([field_corners(site)], site) == PointsFrom("field")
     assert resolve_points(field_corners(site), site.registry())[3].mm == (
         5000 - 47.0,
         4000 - 18.5,
@@ -877,10 +908,12 @@ def test_a_site_with_no_field_names_the_fix():
 def test_over_calibrates_another_areas_corners():
     assert collect_points(ROLED, [], over="dev-corner") == (
         ["dev-corner:corners"],
-        "over dev-corner",
+        PointsFrom("over", area="dev-corner"),
         "",
     )
-    assert points_from_specs(["dev-corner:corners"], ROLED) == "over dev-corner"
+    assert points_from_specs(["dev-corner:corners"], ROLED) == PointsFrom(
+        "over", area="dev-corner"
+    )
     with pytest.raises(ValueError, match="unknown area 'nowhere'"):
         collect_points(ROLED, [], over="nowhere")
 
@@ -888,9 +921,9 @@ def test_over_calibrates_another_areas_corners():
 def test_square_calibrates_a_centred_square_and_says_the_rest_is_extrapolated():
     specs, how, note = collect_points(ROLED, [], square=500)
     assert specs == ["750,750,500,500:corners"]
-    assert how == "square 500"
+    assert how == PointsFrom("square", side_mm=500)
     assert "the rest of the 2000 x 2000 mm field is extrapolated" in note
-    assert points_from_specs(specs, ROLED) == "points"
+    assert points_from_specs(specs, ROLED) == PointsFrom("points")
 
 
 @pytest.mark.parametrize("side", [0, -5, 2001])
@@ -902,7 +935,7 @@ def test_a_square_that_is_empty_or_does_not_fit_is_refused(side):
 def test_typed_points_are_recorded_as_points():
     specs = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
     assert collect_points(ROLED, specs) == (specs, None, "")
-    assert points_from_specs(specs, ROLED) == "points"
+    assert points_from_specs(specs, ROLED) == PointsFrom("points")
 
 
 @pytest.mark.parametrize(

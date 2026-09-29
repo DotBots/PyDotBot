@@ -38,6 +38,7 @@ from dotbot.calibration.ota import (
 )
 from dotbot.calibration.points import (
     PointPlacement,
+    PointsFrom,
     field_corners,
     points_from_specs,
     resolve_placement_points,
@@ -82,7 +83,7 @@ class CalibrationSession:
     points: list[SessionPoint]
     site: Site
     at: str = ""
-    points_from: str = ""
+    points_from: PointsFrom | None = None
     # The area the expected error will be evaluated over; "" means none.
     area: str = ""
     device: str = ""
@@ -108,7 +109,7 @@ class CalibrationSession:
         specs: Sequence[str],
         site: Site | None = None,
         robot: str = ROBOT_DEFAULT,
-        points_from: str | None = None,
+        points_from: PointsFrom | None = None,
         **kwargs: Any,
     ) -> CalibrationSession:
         """A session over the points one `--points` specification stands for.

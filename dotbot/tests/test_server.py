@@ -1383,6 +1383,7 @@ async def test_get_controller_site():
 @pytest.mark.asyncio
 async def test_get_controller_site_carries_the_loaded_calibration_span():
     from dotbot.calibration.lighthouse2 import Calibration, Placement
+    from dotbot.calibration.points import PointsFrom
 
     api.controller.site = Site(name="c405-arena", extent_mm=(2000, 4000))
     calibration = Calibration(
@@ -1391,7 +1392,7 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
             Placement(
                 index=0,
                 points_mm=[(750, 750), (1250, 750), (750, 1250), (1250, 1250)],
-                points_from="square 500",
+                points_from=PointsFrom("square", side_mm=500),
             )
         ],
         created_at="2026-09-10T09:12:00Z",
@@ -1406,7 +1407,7 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
         "placements": [
             {
                 "points_mm": [[750, 750], [1250, 750], [750, 1250], [1250, 1250]],
-                "points_from": "square 500",
+                "points_from": {"kind": "square", "area": None, "side_mm": 500},
             }
         ],
     }

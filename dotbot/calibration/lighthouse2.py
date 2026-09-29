@@ -27,6 +27,7 @@ from typing import Callable, Iterable, Optional, Sequence, Union
 
 import numpy as np
 
+from dotbot.calibration.points import PointsFrom
 from dotbot.robots import ROBOT_DEFAULT
 from dotbot.site import SITE_DEFAULT, Site
 
@@ -156,14 +157,13 @@ class Placement:
 
     `at` records what the operator typed and nothing reads it back;
     `points_mm` is resolved once, at capture, and is the only solver input.
-    `points_from` says how the points were chosen: `field`, `over <area>`,
-    `square <mm>` or `points`.
+    `points_from` says how the points were chosen.
     """
 
     index: int
     points_mm: list[tuple[float, float]]
     at: str = ""
-    points_from: str = ""
+    points_from: PointsFrom | None = None
     captured_at: str = ""
     samples: list[Sample] = field(default_factory=list)
 
@@ -552,6 +552,19 @@ def toml_matrix(matrix: Sequence[Sequence[float]]) -> str:
     return f"[{rows}]"
 
 
+def _toml_inline_table(values: dict[str, str | int]) -> str:
+    """A flat table of strings and ints, as a TOML inline table."""
+    items = (
+        (
+            f'{key} = "{toml_escape(value)}"'
+            if isinstance(value, str)
+            else f"{key} = {value}"
+        )
+        for key, value in values.items()
+    )
+    return "{ " + ", ".join(items) + " }"
+
+
 def toml_escape(text: str) -> str:
     """`text` as the body of a TOML basic string."""
     return text.replace("\\", "\\\\").replace('"', '\\"')
@@ -587,8 +600,10 @@ def render_calibration(calibration: Calibration) -> str:
             f'at = "{toml_escape(placement.at)}"',
             f"points_mm = {toml_points(placement.points_mm)}",
         ]
-        if placement.points_from:
-            out.append(f'points_from = "{toml_escape(placement.points_from)}"')
+        if placement.points_from is not None:
+            out.append(
+                f"points_from = {_toml_inline_table(placement.points_from.to_dict())}"
+            )
         out += [
             f'captured_at = "{placement.captured_at}"',
             "samples = [",
@@ -659,7 +674,11 @@ def read_calibration_file(path: Path) -> Calibration:
                 index=int(raw["index"]),
                 points_mm=[(float(p[0]), float(p[1])) for p in raw["points_mm"]],
                 at=raw.get("at", ""),
-                points_from=raw.get("points_from", ""),
+                points_from=(
+                    PointsFrom.from_dict(raw["points_from"])
+                    if "points_from" in raw
+                    else None
+                ),
                 captured_at=raw.get("captured_at", ""),
                 samples=samples,
             )
