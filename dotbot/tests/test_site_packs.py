@@ -72,11 +72,9 @@ def test_site_dirs_default_and_relative_entries_read_from_the_config_folder(
         tmp_path / "lab" / "sites",
         home / ".dotbot" / "sites",
     ]
-    config = load_config_text('site_dirs = ["packs", "/abs/packs"]')
-    assert site_dirs(config, config_path) == [
-        tmp_path / "lab" / "packs",
-        Path("/abs/packs"),
-    ]
+    absolute = tmp_path / "abs" / "packs"
+    config = load_config_text(f'site_dirs = ["packs", "{absolute.as_posix()}"]')
+    assert site_dirs(config, config_path) == [tmp_path / "lab" / "packs", absolute]
 
 
 def test_the_first_site_dir_wins_a_name_clash(tmp_path):
@@ -255,7 +253,7 @@ def test_add_a_pack_folder_and_a_git_repository(runner, tmp_path, home):
         ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "pack"],
     ):
         subprocess.run(["git", "-C", str(repo), *command], check=True)
-    result = runner.invoke(cli, ["site", "add", f"git+file://{repo}"])
+    result = runner.invoke(cli, ["site", "add", f"git+{repo.as_uri()}"])
     assert result.exit_code == 0, result.output
     added = home / ".dotbot" / "sites" / "aio"
     assert (added / "site.toml").is_file() and not (added / ".git").exists()
