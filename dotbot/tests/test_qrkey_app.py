@@ -139,4 +139,5 @@ def test_a_site_request_replies_with_the_whole_site(site_client):
             {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex", "role": None},
         ],
         "field": "arena",
+        "calibration": None,
     }

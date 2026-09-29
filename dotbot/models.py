@@ -195,6 +195,39 @@ class DotBotAreaModel(BaseModel):
     role: Optional[Literal["field", "staging", "corner"]] = None
 
 
+class DotBotPlacementSpanModel(BaseModel):
+    """One placement's points, in frame millimetres, and how they were chosen
+    (`field`, `over <area>`, `square <mm>` or `points`)."""
+
+    points_mm: List[List[float]]
+    points_from: str = ""
+
+
+class DotBotCalibrationSpanModel(BaseModel):
+    """The loaded LH2 calibration's placements, which span the part of the
+    site it was fitted over; positions outside them are extrapolated."""
+
+    id: str
+    tag: str = ""
+    created_at: str = ""
+    placements: List[DotBotPlacementSpanModel] = []
+
+    @classmethod
+    def from_calibration(cls, calibration: Any) -> "DotBotCalibrationSpanModel":
+        return cls(
+            id=calibration.id,
+            tag=calibration.tag,
+            created_at=calibration.created_at,
+            placements=[
+                DotBotPlacementSpanModel(
+                    points_mm=[list(point) for point in placement.points_mm],
+                    points_from=placement.points_from,
+                )
+                for placement in calibration.placements
+            ],
+        )
+
+
 class DotBotSiteModel(BaseModel):
     """The site the controller works in, and the areas it defines.
 
@@ -203,7 +236,8 @@ class DotBotSiteModel(BaseModel):
     `areas` are in the order the config declares them. `field` names the
     area experiments and calibration default to (`Site.field`): an area's
     name, an `x,y,w,h` literal for a site with an extent and no areas, or
-    None for a site that declares neither.
+    None for a site that declares neither. `calibration` is the LH2
+    calibration the controller loaded, if any.
     """
 
     name: str
@@ -211,9 +245,10 @@ class DotBotSiteModel(BaseModel):
     extent_mm: Optional[List[int]] = None
     areas: List[DotBotAreaModel] = []
     field: Optional[str] = None
+    calibration: Optional[DotBotCalibrationSpanModel] = None
 
     @classmethod
-    def from_site(cls, site: Site) -> "DotBotSiteModel":
+    def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
         field = site.field
         return cls(
             name=site.name,
@@ -221,6 +256,11 @@ class DotBotSiteModel(BaseModel):
             extent_mm=list(site.extent_mm) if site.extent_mm else None,
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
+            calibration=(
+                DotBotCalibrationSpanModel.from_calibration(calibration)
+                if calibration is not None
+                else None
+            ),
         )
 
     def to_site(self) -> Site:

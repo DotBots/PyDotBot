@@ -562,12 +562,12 @@ async def device_poses():
 @api.get(
     path="/controller/site",
     response_model=DotBotSiteModel,
-    summary="Return the site the controller works in, with its areas",
+    summary="Return the site the controller works in, its areas and calibrated span",
     tags=["controller"],
 )
 async def site():
     """Active site HTTP GET handler."""
-    return DotBotSiteModel.from_site(api.controller.site)
+    return DotBotSiteModel.from_site(api.controller.site, api.controller.calibration)
 
 
 @api.get(
