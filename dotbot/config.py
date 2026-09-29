@@ -240,6 +240,9 @@ class DotbotConfig(_Strict):
     # whole config: a deployment selects a site by name, and several
     # deployments can work the same floor.
     sites: dict[str, SiteSection] = Field(default_factory=dict)
+    # Folders searched, in order, for site packs (`dotbot.site_packs`);
+    # relative entries are read from this file's folder.
+    site_dirs: list[str] | None = None
 
     fw: FwSection = Field(default_factory=FwSection)
     device: DeviceSection = Field(default_factory=DeviceSection)

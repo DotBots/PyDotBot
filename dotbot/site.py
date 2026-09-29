@@ -9,14 +9,15 @@ extent, x growing right, y growing down, millimetres. The frame has no name
 of its own - the site's name identifies it, and `anchor` is the prose that
 re-establishes zero in the physical world.
 
-Sites come from the `[sites.<name>]` tables of a dotbot config file. The
-package default is deliberately empty: a real site is measured, never
-shipped.
+Sites come from the `[sites.<name>]` tables of a dotbot config file, or from
+site packs (`dotbot.site_packs`). The package default is deliberately empty:
+a real site is measured, never shipped.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from dotbot.area import Area, AreaRegistry, area_role
@@ -25,6 +26,8 @@ SITE_DEFAULT = "default"
 # The side of the square, at the frame origin, a site that declares nothing
 # works in.
 FIELD_FALLBACK_MM = 2000
+# A site pack's folder of calibration files
+PACK_CALIBRATIONS = "calibrations"
 
 
 @dataclass
@@ -34,13 +37,14 @@ class Site:
     `extent_mm` is (width, height) in millimetres with zero at its top-left
     corner, which is the site's anchor. A calibration file records only
     `name` and `anchor`, so a site read back from one carries no extent and
-    no areas.
+    no areas. `pack` is the site pack folder the site was read from, if any.
     """
 
     name: str = SITE_DEFAULT
     anchor: str = ""
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
+    pack: Path | None = None
 
     @property
     def extent(self) -> Area | None:
@@ -85,6 +89,11 @@ class Site:
         return Area(0, 0, extent.w, extent.h, f"0,0,{extent.w},{extent.h}")
 
     @property
+    def pack_calibrations(self) -> Path | None:
+        """The pack's calibration folder, looked in before the home one."""
+        return self.pack / PACK_CALIBRATIONS if self.pack is not None else None
+
+    @property
     def staging(self) -> Area | None:
         """Where robots park and charge: the first area whose role is `staging`."""
         for area in self.areas.values():
@@ -112,12 +121,18 @@ def site_from_config(config: Any, name: str) -> Site:
     pydantic model.
     """
     tables = getattr(config, "sites", None) or {}
-    table = tables.get(name)
+    return site_from_table(name, tables.get(name))
+
+
+def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
+    """A site from one `[sites.<name>]` table or pack `site.toml`; None is an
+    empty site."""
     if table is None:
-        return Site(name=name)
+        return Site(name=name, pack=pack)
     extent = getattr(table, "extent_mm", None)
     return Site(
         name=name,
+        pack=pack,
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
         areas={

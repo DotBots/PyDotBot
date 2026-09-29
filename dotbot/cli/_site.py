@@ -15,7 +15,11 @@ from __future__ import annotations
 import os
 from typing import Any, Mapping
 
-from dotbot.site import SITE_DEFAULT, Site, site_from_config
+import click
+
+from dotbot.config import ConfigError
+from dotbot.site import SITE_DEFAULT, Site
+from dotbot.site_packs import resolve_site_entry
 
 SITE_ENV = "DOTBOT_SITE"
 
@@ -44,10 +48,23 @@ def resolve_site_name(
 
 
 def site_from_context(ctx: Any, flag: str | None = None) -> tuple[Site, str]:
-    """The active site, built from the config the root group stashed on `ctx.obj`."""
+    """The active site, from the config the root group stashed on `ctx.obj`:
+    its inline table, else a site pack of that name."""
     obj = ctx.obj or {}
     config = obj.get("config")
     name, source = resolve_site_name(
         config=config, deployment=obj.get("deployment"), flag=flag
     )
-    return site_from_config(config, name), source
+    try:
+        entry = resolve_site_entry(config, obj.get("config_path"), name)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if entry is None:
+        return Site(name=name), source
+    if entry.shadows is not None:
+        click.echo(
+            f"note: the inline [sites.{name}] table shadows the site pack at "
+            f"{entry.shadows}",
+            err=True,
+        )
+    return entry.site(), source

@@ -18,8 +18,9 @@ from typing import Any
 import click
 import tomlkit
 
-from dotbot.config import USER_CONFIG_PATH
+from dotbot.config import USER_CONFIG_PATH, ConfigError
 from dotbot.site import SITE_DEFAULT
+from dotbot.site_packs import site_catalog
 
 _CONFIG_DOCS_URL = (
     "https://pydotbot.readthedocs.io/en/latest/reference/configuration.html"
@@ -270,7 +271,8 @@ def _prune(value: Any) -> Any:
 @cmd.command()
 @click.pass_context
 def show(ctx):
-    """Print the source path, the active deployment, and the loaded config.
+    """Print the source path, the active deployment, each site and where it
+    was read from, and the loaded config.
 
     None-valued fields are skipped so only what is actually set shows up.
     """
@@ -284,6 +286,15 @@ def show(ctx):
     )
     click.echo(f"source:  {source}")
     click.echo(f"deployment: {deployment_name or '(none)'}")
+    try:
+        catalog = site_catalog(config, config_path)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if catalog:
+        click.echo("sites:")
+        width = max(len(name) for name in catalog)
+        for name, entry in catalog.items():
+            click.echo(f"  {name:<{width}}  {entry.source}")
     click.echo("")
 
     if config is None:
