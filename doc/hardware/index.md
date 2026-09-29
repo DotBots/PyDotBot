@@ -117,7 +117,7 @@ start `10` (the `-s` prefix selects which probe to talk to). See
 For position tracking, the testbed uses **Valve Lighthouse 2** base stations.
 Each DotBot v3 carries an LH2 sensor shield (a TS4231 light-to-digital receiver
 with a photodiode) that decodes the base station's sweeping IR beams into a
-position. One base station illuminates the arena; the DotBots compute where they
+position. One base station illuminates the floor; the DotBots compute where they
 are from what they see.
 
 Once the optical setup is in place, calibrate it before relying on the

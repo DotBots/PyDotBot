@@ -7,21 +7,32 @@ The simulator setup below is the default path for reproducibility.
 
 ## How to run (default: simulator)
 
-### 1. Start the controller in simulator mode
+The example reads its layout from the controller's site, which needs a
+**field** and a **staging** area: robots queue on the border between the two,
+charge one at a time at a charger on staging's far edge, then park along the
+field's opposite edge. It refuses a site without a staging area. The site
+`dotbot config init` writes has both.
+
+### 1. Start the simulator
+
+In an empty folder:
 
 ```bash
-dotbot-controller -a dotbot-simulator \
-    --background-map dotbot/examples/charging_station/charging_station-2000x2000.png
+dotbot config init                  # a site with a 2 x 2 m field and a staging strip
+dotbot run simulator --robots 10
 ```
 
-Use `--simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml` to test with 10 robots.
-The default map size should also be changed with `--map-size=4000x2000` and the
-background map used above doesn't work anymore in that case.
+To start from fixed positions instead, pass
+`--simulator-init-state dotbot/examples/charging_station/charging_station_init_state.toml`
+in place of `--robots 10`.
 
 ### 2. Run the charging-station scenario
 
-From the `PyDotBot/` root in a new terminal:
+In a new terminal:
 
 ```bash
 python -m dotbot.examples.charging_station.charging_station
 ```
+
+It talks to the controller on `localhost:8000`; `DOTBOT_CONTROLLER_URL` and
+`DOTBOT_CONTROLLER_PORT` point it elsewhere.

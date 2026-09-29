@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
 import { CalibrationLayer } from "./CalibrationLayer";
+import { calibrationSpans, hatchBox, spanTitle } from "./calibrationSpan";
 import {
   CameraOffset,
   CameraOpacity,
@@ -103,6 +104,8 @@ export interface Layers {
   trails: boolean;
   // Every robot's waypoints, not only the selection's.
   allWaypoints: boolean;
+  // Where the loaded LH2 calibration was fitted, and the rest hatched.
+  calibratedSpan: boolean;
 }
 
 export interface SpreadPreviewLeg {
@@ -331,6 +334,15 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
+  // Floor points in the drawn box's own pixels, as an SVG `points` list.
+  const pointsPx = (points: [number, number][]) =>
+    points
+      .map(([x, y]) => {
+        const { fx, fy } = areaToFraction({ x, y }, props.viewport);
+        return `${fx * boxW},${fy * boxH}`;
+      })
+      .join(" ");
+
   // The same box in the drawn box's own pixels, for the SVG outlines.
   const rectPx = (a: Area) => {
     const tl = areaToFraction({ x: a.x, y: a.y }, props.viewport);
@@ -343,11 +355,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     };
   };
 
+  const spanId = useId().replace(/:/g, "");
+  const calibration =
+    props.layers.calibratedSpan ? (props.site?.calibration ?? null) : null;
+  const spans = useMemo(() => calibrationSpans(calibration), [calibration]);
+  const hatch = hatchBox(props.site?.extent_mm ?? null);
+
   const drawnAreas = props.siteAreas.filter(
     (a) => !props.hiddenAreas.has(a.name ?? ""),
   );
-  const colorOf = (a: Area) =>
-    areaColor(a.name ?? "", props.siteAreas.map((o) => o.name));
+  const colorOf = (a: Area) => areaColor(a, props.siteAreas);
 
   // A camera is drawn on the area it covers, so one the site does not define
   // has nowhere to land and is left out.
@@ -1152,8 +1169,9 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           />
 
           {/* The outlines: the site as the one outer silhouette, then one
-              dashed rectangle per area in the area's own colour, ticked under
-              Layers > Areas, where the colour is named. Strokes rather than
+              dashed rectangle per area in its role's colour, ticked under
+              Layers > Areas, where the role is named. A corner lies over
+              another area, so its line is heavier and finer-dashed. Strokes rather than
               borders, because a CSS border under a pixel wide is rounded back
               up to one and then multiplied by the camera; a stroke keeps the
               width it is given, so counter-scaling it holds the hairline at
@@ -1179,14 +1197,74 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 fill={colorOf(a)}
                 fillOpacity={AREA_TINT}
                 stroke={colorOf(a)}
-                strokeOpacity={0.85}
-                strokeWidth={chrome}
-                strokeDasharray={`${5 * chrome} ${4 * chrome}`}
+                strokeOpacity={a.role === "corner" ? 1 : 0.85}
+                strokeWidth={a.role === "corner" ? 2 * chrome : chrome}
+                strokeDasharray={
+                  a.role === "corner"
+                    ? `${2 * chrome} ${2 * chrome}`
+                    : `${5 * chrome} ${4 * chrome}`
+                }
                 style={{ pointerEvents: "stroke" }}
               >
                 <title>{a.name}</title>
               </rect>
             ))}
+            {/* The loaded calibration: each placement's span outlined, and
+                the rest of the site hatched, where positions are
+                extrapolated. The hatch is the site masked by the spans, so
+                overlapping placements still leave one clear region. */}
+            {calibration && spans.length > 0 && (
+              <g data-testid="calibration-span">
+                {hatch && (
+                  <>
+                    <defs>
+                      <pattern
+                        id={`${spanId}-hatch`}
+                        patternUnits="userSpaceOnUse"
+                        width={8 * chrome}
+                        height={8 * chrome}
+                        patternTransform="rotate(45)"
+                      >
+                        <line
+                          x1={0}
+                          y1={0}
+                          x2={0}
+                          y2={8 * chrome}
+                          stroke="var(--muted)"
+                          strokeOpacity={0.45}
+                          strokeWidth={chrome}
+                        />
+                      </pattern>
+                      <mask id={`${spanId}-outside`}>
+                        <rect {...rectPx(hatch)} fill="white" />
+                        {spans.map((span, i) => (
+                          <polygon key={i} points={pointsPx(span.points)} fill="black" />
+                        ))}
+                      </mask>
+                    </defs>
+                    <rect
+                      data-testid="calibration-hatch"
+                      {...rectPx(hatch)}
+                      fill={`url(#${spanId}-hatch)`}
+                      mask={`url(#${spanId}-outside)`}
+                    />
+                  </>
+                )}
+                {spans.map((span, i) => (
+                  <polygon
+                    key={`span-${i}`}
+                    data-testid={`calibration-span-${i}`}
+                    points={pointsPx(span.points)}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth={1.5 * chrome}
+                    style={{ pointerEvents: "stroke" }}
+                  >
+                    <title>{spanTitle(calibration, span)}</title>
+                  </polygon>
+                ))}
+              </g>
+            )}
           </svg>
           {props.session && (
             <CalibrationLayer

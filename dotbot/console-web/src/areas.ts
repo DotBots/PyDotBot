@@ -1,36 +1,47 @@
 // Which area outlines the map draws, per browser.
 //
 // Every area of the site is an outline; Layers > Areas ticks which ones are
-// visible. Nothing reaches the controller, so the set is remembered locally
-// and a browser that refuses storage still renders every outline.
+// visible. An area is shown unless its role is `corner`, and a tick in Layers
+// overrides that per name. Nothing reaches the controller, so the overrides
+// are remembered locally and a browser that refuses storage falls back to
+// the role defaults.
 
-import { store } from "./persisted";
+import { loadRecord, store } from "./persisted";
+import type { Area } from "./types";
 
-const KEY = "dotbot.console.hiddenAreas";
+const KEY = "dotbot.console.areaVisibility";
 
-/** The area names this browser hides, empty when storage says nothing. */
-export function loadHiddenAreas(): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(
-      Array.isArray(parsed) ? parsed.filter((n) => typeof n === "string") : [],
-    );
-  } catch {
-    return new Set();
-  }
+/** Per-name show/hide choices this browser made, `{name: shown}`. */
+export type AreaVisibility = Record<string, boolean>;
+
+/** The choices storage holds, empty when it says nothing. */
+export function loadAreaVisibility(): AreaVisibility {
+  return loadRecord(KEY, (v): v is boolean => typeof v === "boolean");
 }
 
-/** Remember the hidden set; a browser that refuses storage just forgets it. */
-export function saveHiddenAreas(hidden: Set<string>): void {
-  store(KEY, [...hidden]);
+/** Remember the choices; a browser that refuses storage just forgets them. */
+export function saveAreaVisibility(visibility: AreaVisibility): void {
+  store(KEY, visibility);
 }
 
-/** The hidden set with `name` flipped. */
-export function toggleHidden(hidden: Set<string>, name: string): Set<string> {
-  const next = new Set(hidden);
-  if (next.has(name)) next.delete(name);
-  else next.add(name);
-  return next;
+/** Whether `area` is drawn: this browser's choice, else its role's default. */
+export function isShown(area: Area, visibility: AreaVisibility): boolean {
+  return visibility[area.name ?? ""] ?? area.role !== "corner";
+}
+
+/** The names of the areas not drawn. */
+export function hiddenAreaNames(areas: Area[], visibility: AreaVisibility): Set<string> {
+  return new Set(
+    areas.filter((a) => !isShown(a, visibility)).map((a) => a.name ?? ""),
+  );
+}
+
+/** The choices with area `name` flipped from how it is drawn now. */
+export function toggleShown(
+  visibility: AreaVisibility,
+  areas: Area[],
+  name: string,
+): AreaVisibility {
+  const area = areas.find((a) => a.name === name) ?? { x: 0, y: 0, w: 0, h: 0, name };
+  return { ...visibility, [name]: !isShown(area, visibility) };
 }

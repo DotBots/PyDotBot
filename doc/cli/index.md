@@ -7,6 +7,7 @@ device
 swarm
 run
 config
+site
 ```
 
 One CLI for the whole DotBot workflow: build firmware, flash one board, control a
@@ -29,7 +30,9 @@ dotbot --help
 | [`run`](run.md) | Start host processes on your computer - controller, gateway bridge, simulator, demos, teleop. | You need the web UI, a gateway bridge, the simulator, or a demo. |
 
 Beyond the four namespaces, [`config`](config.md) scaffolds and inspects the
-shared `dotbot.toml` the other commands read their defaults from.
+shared `dotbot.toml` the other commands read their defaults from, and
+[`site`](site.md) installs and exports site packs: the floors you work on,
+as folders you can share.
 
 ## Which one do I want?
 
@@ -65,6 +68,7 @@ A few signposts so the namespaces don't blur together:
 - [`swarm`](swarm.md) - run experiments across the fleet.
 - [`run`](run.md) - launch the controller, gateway bridge, simulator, and demos.
 - [`config`](config.md) - scaffold and inspect the shared `dotbot.toml`.
+- [`site`](site.md) - add a site pack to this machine, or export one to share.
 
 Two end-to-end walkthroughs put these together: [build and flash one
 board](device.md), and [operate a swarm over the air](swarm.md).

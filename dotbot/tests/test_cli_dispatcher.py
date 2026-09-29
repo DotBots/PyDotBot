@@ -28,6 +28,7 @@ EXPECTED_SUBCOMMANDS = {
     "run",
     "config",
     "deployment",
+    "site",
 }
 
 # `run` groups the host-side processes (the former flat top-level verbs).

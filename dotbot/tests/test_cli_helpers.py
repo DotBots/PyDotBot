@@ -228,10 +228,10 @@ def test_config_init_writes_valid_starter(runner):
         assert result.exit_code == 0, result.output
         written = Path("dotbot.toml")
         assert written.is_file()
-        # The starter is all-commented, so it loads as a valid empty config.
         loaded = cfg.load_config(written)
         assert loaded.conn is None
         assert loaded.deployment == {}
+        assert loaded.site == "default"
 
 
 def test_config_init_refuses_overwrite_without_force(runner):
@@ -253,6 +253,22 @@ def test_config_init_global(runner, tmp_path, monkeypatch):
         result = runner.invoke(cli, ["config", "init", "--global"])
     assert result.exit_code == 0, result.output
     assert user.is_file()
+
+
+def test_config_show_names_the_active_site_and_each_areas_role(runner, tmp_path):
+    cfg = _write(
+        tmp_path,
+        'site = "arena"\n'
+        "[sites.arena.areas.field]\nx = 0\ny = 0\nw = 1\nh = 1\n"
+        '[sites.arena.areas.bench]\nrole = "corner"\nx = 0\ny = 0\nw = 1\nh = 1\n'
+        "[sites.arena.areas.annex]\nx = 0\ny = 0\nw = 1\nh = 1\n",
+    )
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
+    assert result.exit_code == 0, result.output
+    assert "site:    arena (from the config file)" in result.output
+    assert "field  field (from its name)" in result.output
+    assert "bench  corner\n" in result.output
+    assert "annex  no role" in result.output
 
 
 def test_config_show_without_config_hints_init(runner):

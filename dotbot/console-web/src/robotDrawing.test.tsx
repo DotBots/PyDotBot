@@ -80,6 +80,7 @@ const Harness: React.FC = () => {
           trails: false,
           crashedOnly: false,
           allWaypoints: false,
+          calibratedSpan: true,
         }}
         layerRows={[]}
         onLayerToggle={() => {}}

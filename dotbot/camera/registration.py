@@ -25,7 +25,9 @@ import numpy as np
 from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import (
     apply_homography,
+    calibration_folders,
     calibration_root,
+    check_calibration_site,
     compute_homography_matrix,
     reprojection_residual_mm,
     resolve_calibration_spec,
@@ -323,14 +325,13 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
 def resolve_camera_calibration_path(
     spec: str,
     root: Path | None = None,
-    site: str | None = None,
+    site: Site | str | None = None,
 ) -> Path:
     """The camera file `spec` names, as `resolve_calibration_spec` finds it
     among `camera-*.toml` files only."""
     return resolve_calibration_spec(
         spec,
-        root or calibration_root(),
-        site,
+        calibration_folders(site, root or calibration_root()),
         glob=CAMERA_TOML_GLOB,
         metadata=_camera_file_data,
         what="camera calibration",
@@ -350,12 +351,16 @@ def _camera_file_data(path: Path) -> dict:
 def load_camera_calibration(
     spec: str,
     root: Path | None = None,
-    site: str | None = None,
+    site: Site | str | None = None,
 ) -> CameraCalibration:
-    """Read the camera calibration `spec` names."""
-    return read_camera_calibration_file(
+    """Read the camera calibration `spec` names; given a `Site`, refuse one
+    made in another (`check_calibration_site`)."""
+    calibration = read_camera_calibration_file(
         resolve_camera_calibration_path(spec, root, site)
     )
+    if isinstance(site, Site):
+        check_calibration_site(calibration.site, site, calibration.path)
+    return calibration
 
 
 def write_camera_calibration(

@@ -130,12 +130,12 @@ def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
 @click.option(
     "--area",
     "area_name",
-    required=True,
+    default=None,
     help=(
         "The one area this camera covers: a name from the site's "
         "`[sites.<site>.areas.<name>]` tables, `x,y,w,h` in frame mm, or a "
         "`+`-joined composite. The four sheet positions are derived from its "
-        "corners."
+        "corners. Defaults to the site's field."
     ),
 )
 @click.option(
@@ -189,7 +189,7 @@ def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
 @click.pass_context
 def collect(
     ctx: click.Context,
-    area_name: str,
+    area_name: str | None,
     site_name: str | None,
     camera_spec: str | None,
     reads: int | None,
@@ -210,6 +210,14 @@ def collect(
         sys.exit(1)
 
     site, _ = site_from_context(ctx, site_name)
+    if area_name is None:
+        field = site.field
+        if field is None:
+            raise click.ClickException(
+                f"site {site.name!r} declares no areas and no extent, so it has "
+                "no field for the camera to cover; name one with --area x,y,w,h"
+            )
+        area_name = field.name
     try:
         area = site.registry().resolve(area_name)
     except ValueError as exc:

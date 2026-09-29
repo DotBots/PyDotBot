@@ -407,6 +407,11 @@ export interface ControllerConnection {
   gw_address: string;
 }
 
+// What an area is for: `field` is where experiments happen and what gets
+// calibrated, `staging` is where robots park and charge, `corner` is a small
+// patch that starts hidden.
+export type AreaRole = "field" | "staging" | "corner";
+
 // One named rectangle of the site, in frame mm. An area is a view of the
 // frame and carries no calibration, so showing or hiding one never touches
 // one.
@@ -416,16 +421,38 @@ export interface Area {
   w: number;
   h: number;
   name?: string;
+  role?: AreaRole | null;
 }
 
 // GET /controller/site - the floor the controller works in. `extent_mm` is
 // [width, height] with zero at its top-left corner, which is where `anchor`
-// points; a site with nothing measured yet reports none.
+// points; a site with nothing measured yet reports none. `field` names the
+// area calibration defaults to: an area's name, an `x,y,w,h` literal for a
+// site with an extent and no areas, or null.
 export interface Site {
   name: string;
   anchor: string;
   extent_mm: [number, number] | null;
   areas: Area[];
+  field?: string | null;
+  calibration?: SiteCalibration | null;
+}
+
+// The LH2 calibration the controller loaded: each placement's points in
+// frame mm, which span the part of the site it was fitted over, and how they
+// were chosen: the field's corners, the corners of `area`, a `side_mm` square
+// centred in the field, or given by hand. Null when the file does not say.
+export interface PointsFrom {
+  kind: "field" | "over" | "square" | "points";
+  area?: string | null;
+  side_mm?: number | null;
+}
+
+export interface SiteCalibration {
+  id: string;
+  tag: string;
+  created_at: string;
+  placements: { points_mm: [number, number][]; points_from: PointsFrom | null }[];
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

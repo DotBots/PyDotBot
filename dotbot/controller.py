@@ -16,7 +16,7 @@ import secrets
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import serial
 import uvicorn
@@ -45,6 +45,7 @@ from dotbot.adapter import (
     SailBotSimulatorAdapter,
     SerialAdapter,
 )
+from dotbot.area import Area
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import homography_as_float32
 from dotbot.camera.detection.robot import MAX_ROBOTS
@@ -99,6 +100,8 @@ LOST_DELAY = 60  # seconds
 # A robot silent this long no longer names what a camera sees.
 CAMERA_PRIOR_MAX_AGE_S = 2.0
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
+# Older than this many days at load, an LH2 calibration is warned about
+LH2_CALIBRATION_MAX_AGE_DAYS = 30
 # A command the robot confirms in its advertisement is resent when an
 # advertisement this long after sending still does not show it; adverts come
 # every 0.1 to 1 s, twice that on a bench-telemetry build
@@ -129,19 +132,20 @@ WAYPOINTS_REPORT_FIELDS = (
 )
 
 
-def load_calibration(spec: str, site: Optional[str] = None):
-    """The schema 2 calibration `spec` names: a file path or an id prefix.
+def load_calibration(spec: str, site: Union[Site, str, None] = None):
+    """The schema 2 calibration `spec` names: a file path, a tag or an id prefix.
 
     Never the newest file on disk: a controller runs on the calibration it
     was told to run on, so that two bots reporting the same id are known to
-    carry the same numbers. An id prefix resolves under `site` only.
+    carry the same numbers. A tag or an id prefix resolves under `site` only,
+    and a `Site` refuses a file made in another.
     """
     from dotbot.calibration.lighthouse2 import load_calibration as _load
 
     return _load(spec, site=site)
 
 
-def load_camera_calibration(spec: str, site: Optional[str] = None):
+def load_camera_calibration(spec: str, site: Union[Site, str, None] = None):
     """The camera registration `spec` names: a file path or an id prefix."""
     from dotbot.camera.registration import load_camera_calibration as _load
 
@@ -203,6 +207,7 @@ class ControllerSettings:
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
+    lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
     camera_calibration: Optional[str] = None
     camera_detect: bool = True
     camera_max_robots: int = MAX_ROBOTS
@@ -216,8 +221,23 @@ class ControllerSettings:
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     # A generated fleet of this many robots, in place of the init-state file
     simulator_robots: Optional[int] = None
+    # Where the simulator places its robots; None: the site's field
+    simulator_area: Optional[Area] = None
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
+
+
+def _station_mask(stations: set[int]) -> Optional[int]:
+    """The `calibrated` bitmask of robots holding exactly `stations`; None
+    for no stations."""
+    return sum(1 << index for index in stations) or None
+
+
+def _held_stations(calibrated: int) -> set[int]:
+    """The station indices an advertised `calibrated` bitmask holds."""
+    return {
+        index for index in range(calibrated.bit_length()) if calibrated >> index & 1
+    }
 
 
 def is_lh2_fix(position: DotBotLH2Position, dotbot: DotBotModel) -> bool:
@@ -295,7 +315,7 @@ class Controller:
         self.lh2_calibration = []
         if settings.lh2_calibration:
             self.calibration = load_calibration(
-                settings.lh2_calibration, site=self.site.name
+                settings.lh2_calibration, site=self.site
             )
             self.lh2_calibration = self.calibration.stations
             self.logger.info(
@@ -306,11 +326,16 @@ class Controller:
                 tag=self.calibration.tag,
                 stations=len(self.lh2_calibration),
             )
+            self._warn_calibration_age(settings.lh2_calibration_max_age_days)
         else:
             self.logger.info(
                 "No calibration selected: robots keep whatever they hold. "
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
+        self._solved_stations = {station.index for station in self.lh2_calibration}
+        # The stations each robot holds that the calibration does not solve
+        self._unsolved_held: Dict[str, frozenset[int]] = {}
+        self._unsolved_warned: frozenset[int] = frozenset()
         self.cameras: List[CameraService] = []
         # The warp each camera's last pushed detection came from, so a
         # console is told about a frame once.
@@ -333,6 +358,47 @@ class Controller:
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
 
+    def _warn_calibration_age(self, max_age_days: int) -> None:
+        """Warn when the calibration is older than `max_age_days` (0: never)."""
+        from dotbot.calibration.lighthouse2 import calibration_age_days
+
+        age = calibration_age_days(self.calibration)
+        if not max_age_days or age is None or age <= max_age_days:
+            return
+        self.logger.warning(
+            "Calibration is older than lh2_calibration_max_age_days: it holds "
+            "only while no base station has moved since",
+            calibration_id=self.calibration.id,
+            created_at=self.calibration.created_at,
+            age_days=round(age, 1),
+            max_age_days=max_age_days,
+        )
+
+    def _warn_unsolved_stations(self, address: str, calibrated: int) -> None:
+        """Warn when robots hold homographies for stations the loaded
+        calibration does not solve: their positions from those stations come
+        from some other calibration. One line, again only when the set of
+        such stations changes."""
+        unsolved = frozenset(_held_stations(calibrated) - self._solved_stations)
+        if unsolved:
+            self._unsolved_held[address] = unsolved
+        else:
+            self._unsolved_held.pop(address, None)
+        stations = frozenset().union(*self._unsolved_held.values())
+        if not stations or stations == self._unsolved_warned:
+            return
+        self._unsolved_warned = stations
+        robots = len(self._unsolved_held)
+        self.logger.warning(
+            f"{robots} {'robot holds' if robots == 1 else 'robots hold'} "
+            f"calibrations for stations {sorted(stations)} that the loaded "
+            "calibration does not solve",
+            robots=robots,
+            stations=sorted(stations),
+            calibration_id=self.calibration.id,
+            solved=sorted(self._solved_stations),
+        )
+
     def _start_camera(self, spec: str) -> None:
         """Open the camera layer one registration describes.
 
@@ -340,7 +406,7 @@ class Controller:
         controller without a camera is a missing layer, not a broken console.
         """
         try:
-            calibration = load_camera_calibration(spec, site=self.site.name)
+            calibration = load_camera_calibration(spec, site=self.site)
         except (ValueError, OSError) as exc:
             self.logger.warning(
                 "Camera calibration not loaded, so no camera layer is served",
@@ -736,6 +802,8 @@ class Controller:
                 )
             for name in self._waypoints_report(dotbot, payload):
                 record.revs[name] = seq
+            if self.lh2_calibration:
+                self._warn_unsolved_stations(dotbot.address, dotbot.calibrated)
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
@@ -1200,6 +1268,8 @@ class Controller:
                 self.settings.simulator_init_state,
                 self.site,
                 robots=self.settings.simulator_robots,
+                area=self.settings.simulator_area,
+                calibrated=_station_mask(self._solved_stations),
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

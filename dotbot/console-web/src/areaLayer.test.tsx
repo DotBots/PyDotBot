@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { saveHiddenAreas, toggleHidden } from "./areas";
+import { type AreaVisibility, hiddenAreaNames, saveAreaVisibility, toggleShown } from "./areas";
 import { MapView } from "./MapView";
 import { RightPane, RightTab } from "./RightPane";
 import type { Area, Site } from "./types";
@@ -10,11 +10,12 @@ import type { Calibration } from "./useCalibration";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
 const ANNEX: Area = { x: 0, y: 2000, w: 2000, h: 2000, name: "annex" };
+const CORNER: Area = { x: 1000, y: 0, w: 1000, h: 1000, name: "dev-corner", role: "corner" };
 const C405: Site = {
   name: "c405-arena",
   anchor: "the arena's top-left corner",
   extent_mm: [2000, 4000],
-  areas: [ARENA, ANNEX],
+  areas: [ARENA, ANNEX, CORNER],
 };
 const VIEWPORT: Area = { x: -2000, y: -2000, w: 6000, h: 8000 };
 
@@ -32,7 +33,8 @@ const calibration = {
 
 // The map and the Layers tab over one hidden set, exactly as App wires them.
 const Harness: React.FC = () => {
-  const [hiddenAreas, setHiddenAreas] = useState<Set<string>>(new Set());
+  const [visibility, setVisibility] = useState<AreaVisibility>({});
+  const hiddenAreas = hiddenAreaNames(C405.areas, visibility);
   const [tab, setTab] = useState<RightTab>("layers");
   return (
     <>
@@ -52,6 +54,7 @@ const Harness: React.FC = () => {
             trails: false,
             crashedOnly: false,
             allWaypoints: false,
+            calibratedSpan: true,
           }}
           plannedMissions={[]}
           cam={{ scale: 1, tx: 0, ty: 0 }}
@@ -73,9 +76,9 @@ const Harness: React.FC = () => {
           site={C405}
           hiddenAreas={hiddenAreas}
           onAreaToggle={(name) =>
-            setHiddenAreas((prev) => {
-              const next = toggleHidden(prev, name);
-              saveHiddenAreas(next);
+            setVisibility((prev) => {
+              const next = toggleShown(prev, C405.areas, name);
+              saveAreaVisibility(next);
               return next;
             })
           }
@@ -87,6 +90,7 @@ const Harness: React.FC = () => {
             trails: false,
             crashedOnly: false,
             allWaypoints: false,
+            calibratedSpan: true,
           }}
           layerRows={[]}
           onLayerToggle={() => {}}
@@ -123,6 +127,19 @@ describe("Layers > Areas", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("starts with a corner hidden and draws it once ticked", () => {
+    render(<Harness />);
+    const map = screen.getByTestId("map");
+    expect(within(map).queryByRole("img", { name: "dev-corner" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByTestId("pane")).getByText("dev-corner"));
+
+    expect(within(map).getByRole("img", { name: "dev-corner" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("dotbot.console.areaVisibility")).toBe(
+      '{"dev-corner":true}',
+    );
+  });
+
   it("draws each area in its own colour, the one its row carries", () => {
     render(<Harness />);
     const map = screen.getByTestId("map");
@@ -137,6 +154,22 @@ describe("Layers > Areas", () => {
     expect(outline("arena")).not.toBe(outline("annex"));
   });
 
+  it("tags each row with its role", () => {
+    render(<Harness />);
+    const pane = screen.getByTestId("pane");
+    expect(within(pane).getByTestId("tag-dev-corner")).toHaveTextContent("corner");
+    expect(within(pane).queryByTestId("tag-arena")).not.toBeInTheDocument();
+  });
+
+  it("draws a corner heavier than the other outlines", () => {
+    render(<Harness />);
+    fireEvent.click(within(screen.getByTestId("pane")).getByText("dev-corner"));
+    const map = screen.getByTestId("map");
+    const width = (name: string) =>
+      Number(within(map).getByRole("img", { name }).getAttribute("stroke-width"));
+    expect(width("dev-corner")).toBeGreaterThan(width("arena"));
+  });
+
   it("keeps an area's colour when another is hidden", () => {
     render(<Harness />);
     const map = screen.getByTestId("map");
@@ -149,11 +182,11 @@ describe("Layers > Areas", () => {
     ).toBe(before);
   });
 
-  it("remembers the hidden set in this browser", () => {
+  it("remembers the choice in this browser", () => {
     render(<Harness />);
     fireEvent.click(within(screen.getByTestId("pane")).getByText("annex"));
-    expect(window.localStorage.getItem("dotbot.console.hiddenAreas")).toBe(
-      '["annex"]',
+    expect(window.localStorage.getItem("dotbot.console.areaVisibility")).toBe(
+      '{"annex":false}',
     );
   });
 });

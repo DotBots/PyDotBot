@@ -27,14 +27,14 @@ pip install pyyaml scipy
 **Static setup** (without motion):
 
 ```bash
-dotbot-controller -a dotbot-simulator \
+dotbot run simulator \
     --simulator-init-state dotbot/examples/minimum_naming_game/init_state.toml
 ```
 
 **Dynamic setup** (with motion):
 
 ```bash
-dotbot-controller -a dotbot-simulator \
+dotbot run simulator \
     --simulator-init-state dotbot/examples/minimum_naming_game/init_state_with_motion.toml
 ```
 

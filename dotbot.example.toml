@@ -1,0 +1,13 @@
+# dotbot config. Options + examples: https://pydotbot.readthedocs.io/en/latest/reference/configuration.html
+# (MQTT credentials are env-only: DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.)
+
+site = "default"
+
+# Zero is the top-left corner of the extent, x right, y down, millimetres.
+[sites.default]
+anchor = "top-left corner of a 5 x 5 m floor; the field starts 1.5 m in from each wall"
+extent_mm = [5000, 5000]
+
+[sites.default.areas]
+field   = { x = 1500, y = 1500, w = 2000, h = 2000 }
+staging = { x = 1500, y = 3500, w = 2000, h = 600 }

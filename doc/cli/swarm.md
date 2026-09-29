@@ -123,22 +123,23 @@ For another board or an app outside this list, pass the full `.bin` path.
 
 ## 6. LH2 calibration over the air
 
-Capture and push a Lighthouse-2 calibration for one DotBot without a cable,
-driving it over the swarm. The arena geometry and `-d` sizing live in the
-[LH2 calibration guide](../guides/lh2-calibration.md).
+Capture a Lighthouse-2 calibration from one DotBot without a cable, then push
+it to the fleet. Choosing the points, the span overlay and troubleshooting live
+in the [LH2 calibration guide](../guides/lh2-calibration.md).
 
 ```bash
-dotbot swarm stop                                              # capture only runs in READY
-dotbot swarm calibrate-lh2 collect --device BC3D... -d 500     # capture from one DotBot -> solve -> save
-dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml   # apply to every ready DotBot
+dotbot swarm flash calibrate -ys          # the app that captures on a button press
+dotbot swarm calibrate-lh2 collect        # the field's four corners -> solve -> save
+dotbot swarm calibrate-lh2 push <id>      # send it to every robot
 ```
 
-`collect` walks one DotBot through the four arena corners over the air, solves the
-homography, and saves it under `~/.dotbot/calibrations/`. `push` (no `--device`) then sends
-that calibration to **every ready DotBot** - the arena shares one transform.
-(`collect --push` is a single-DotBot shortcut: it sends only to the captured DotBot.)
-`push` takes a `calibration-*.toml` or the legacy raw payload - the format is
-picked by file extension. Get the `--device` address from `dotbot swarm status`.
+`collect` asks for the four corners of the site's field in turn, and captures
+each when you press the DotBot's button; `--over <area>`, `--square <mm>` and
+`--points` choose other points. It solves every station and saves the result
+under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
+the whole site shares one calibration. It takes a file path, a `--tag` or an
+id prefix, and refuses robots that report another site. (`collect --push` sends
+only to the robots whose captures built it.)
 
 ## Two web servers - don't mix them up
 

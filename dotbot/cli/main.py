@@ -66,11 +66,40 @@ _SUBCOMMANDS = (
         "dotbot.cli.deployment_cmd",
         "List / show configured deployments.",
     ),
+    (
+        "site",
+        "dotbot.cli.site_cmd",
+        "Add a site pack to this machine, or export one to share.",
+    ),
 )
 
 
+# The commands that read no config, so say nothing about which one is in
+# effect: `config` inspects that itself, and `site add` only writes a pack
+_CONFIGLESS = {("config",), ("site", "add")}
+
+
+class _RootGroup(LazyGroup):
+    """The root group, which records the words after its subcommand's name
+    before its own callback runs, so the callback can tell `site add` from
+    `site export`."""
+
+    def resolve_command(self, ctx, args):
+        name, command, rest = super().resolve_command(ctx, args)
+        ctx.meta[_SUBCOMMAND_ARGS] = list(rest)
+        return name, command, rest
+
+
+_SUBCOMMAND_ARGS = "dotbot.subcommand_args"
+
+
+def _reads_config(ctx) -> bool:
+    words = (ctx.invoked_subcommand, *ctx.meta.get(_SUBCOMMAND_ARGS, [])[:1])
+    return not any(words[: len(path)] == path for path in _CONFIGLESS)
+
+
 @click.group(
-    cls=LazyGroup,
+    cls=_RootGroup,
     subcommands=_SUBCOMMANDS,
     help=(
         "One CLI for the whole DotBot workflow: build and flash firmware, "
@@ -136,15 +165,12 @@ def cli(ctx, config_path, deployment_name):
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    # The `config` group inspects config state itself (show/path) or scaffolds
-    # it (init), so the root-level "which config is in effect" echo is redundant
-    # there - and reads as a contradiction right before `config init` writes one.
-    if ctx.invoked_subcommand != "config":
+    if _reads_config(ctx):
         if path is not None:
-            click.echo(f"using config file at {path}", err=True)
+            click.echo(f"Using config file at {path}", err=True)
         else:
             click.echo(
-                f"no config file found (looked for ./{PROJECT_CONFIG_NAME} and "
+                f"No config file found (looked for ./{PROJECT_CONFIG_NAME} and "
                 f"{USER_CONFIG_PATH}); using built-in defaults",
                 err=True,
             )

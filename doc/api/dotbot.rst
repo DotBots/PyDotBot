@@ -33,6 +33,7 @@ Submodules
    dotbot.server
    dotbot.sim
    dotbot.site
+   dotbot.site_packs
    dotbot.stream
    dotbot.trail
    dotbot.twin

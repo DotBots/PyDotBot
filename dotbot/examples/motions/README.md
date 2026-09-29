@@ -7,22 +7,29 @@ This example moves a single DotBot through a predefined motion: either a geometr
 
 | Name          | Type       | Description                                      |
 |---------------|------------|--------------------------------------------------|
-| `square`      | waypoints  | Square path centred in the arena                 |
-| `triangle`    | waypoints  | Equilateral triangle centred in the arena        |
-| `circle`      | waypoints  | Circular path centred in the arena               |
-| `infinity`    | waypoints  | Lemniscate (∞) path centred in the arena         |
-| `sawtooth`    | waypoints  | Boustrophedon sawtooth sweep across the arena    |
+| `square`      | waypoints  | Square path centred in the field                 |
+| `triangle`    | waypoints  | Equilateral triangle centred in the field        |
+| `circle`      | waypoints  | Circular path centred in the field               |
+| `infinity`    | waypoints  | Lemniscate (∞) path centred in the field         |
+| `sawtooth`    | waypoints  | Boustrophedon sawtooth sweep across the field    |
 | `speed_ramp`  | move\_raw  | Sinusoidal ramp from `-MAX_SPEED` to `+MAX_SPEED` |
 | `speed_steps` | move\_raw  | Forward/backward motion stepping through discrete speed levels |
 | `speed_swing` | move\_raw  | Alternating ±speed with increasing-then-decreasing magnitude |
 
 ## How to run (default: simulator)
 
-### 1. Start the controller
+### 1. Start the simulator
+
+In an empty folder, write a config holding a default site (a 2 x 2 m field),
+then start the simulator from that folder; it opens the console in your
+browser:
 
 ```bash
-dotbot-controller --config-path config_sample.toml -a dotbot-simulator
+dotbot config init
+dotbot run simulator
 ```
+
+`dotbot.example.toml`, in the repository root, is the same file.
 
 ### 2. Run a motion
 
@@ -33,6 +40,7 @@ python -m dotbot.examples.motions.motions --motion <MOTION_NAME>
 ```
 
 If `--address` is omitted, the script automatically picks the first available DotBot.
+Shapes are centred in the controller's field; `--area` picks another area.
 
 ## Options
 
@@ -42,7 +50,9 @@ If `--address` is omitted, the script automatically picks the first available Do
                                   Motion to execute.  [required]
   -n, --repeat INTEGER            Number of times to replay the motion.  [default: 1]
   --scale FLOAT                   Shape scale in mm.  [default: 400]
-  --arena-size INTEGER            Arena size in mm (square arena).  [default: 2000]
+  --area TEXT                     Area to centre the shapes in: a name, a `+`-joined
+                                  composite or x,y,w,h in mm. Defaults to the
+                                  controller's field.
   --num-points INTEGER            Number of waypoints for circle and infinity motions.  [default: 12]
   --waypoint-threshold INTEGER    Proximity threshold in mm to consider a waypoint reached.
                                   Ignored for raw motions.  [default: 100]

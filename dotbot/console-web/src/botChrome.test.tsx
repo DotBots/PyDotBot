@@ -126,6 +126,7 @@ const Harness: React.FC<HarnessProps> = ({
         trails: false,
         crashedOnly: false,
         allWaypoints: false,
+        calibratedSpan: true,
       }}
       robotDrawing={robotDrawing}
       colorMode={colorMode}

@@ -1,5 +1,6 @@
 import math
 
+from dotbot.area import Area
 from dotbot.models import DotBotModel
 
 
@@ -9,11 +10,10 @@ def walk_avoid(
     direction: float,
     neighbors: list[DotBotModel],
     max_speed: float,
-    arena_limits: tuple[float, float],
+    area: Area,
 ) -> list[float]:
     """
-    Walk straight while avoiding collisions and arena boundary.
-    Arena limits: x, y in [0.0, 1.0]
+    Walk straight while avoiding collisions and the edges of `area`.
     """
     UNIT_SPEED = max_speed
     MARGIN = 0.1  # Trigger turn when within 10% of any edge
@@ -23,15 +23,14 @@ def walk_avoid(
     if neighbors:
         neighbor_collision = True
 
-    # 2. Identify if any arena boundary is violated
+    # 2. Identify if any edge of the area is violated
     curr_x = position_x
     curr_y = position_y
 
+    x_low, x_high = area.x + MARGIN * area.w, area.x_max - MARGIN * area.w
+    y_low, y_high = area.y + MARGIN * area.h, area.y_max - MARGIN * area.h
     wall_collision = (
-        curr_x < MARGIN * arena_limits[0]
-        or curr_x > (arena_limits[0] - MARGIN * arena_limits[0])
-        or curr_y < MARGIN * arena_limits[1]
-        or curr_y > (arena_limits[1] - MARGIN * arena_limits[1])
+        curr_x < x_low or curr_x > x_high or curr_y < y_low or curr_y > y_high
     )
 
     # 3. Determine "Local" movement
@@ -41,13 +40,13 @@ def walk_avoid(
 
         if wall_collision:
             # Decide direction of repulsion (Left or Right)
-            if curr_x < MARGIN * arena_limits[0]:
+            if curr_x < x_low:
                 local_v[0] += UNIT_SPEED
-            if curr_x > (arena_limits[0] - MARGIN * arena_limits[0]):
+            if curr_x > x_high:
                 local_v[0] += -UNIT_SPEED
-            if curr_y < MARGIN * arena_limits[1]:
+            if curr_y < y_low:
                 local_v[1] += UNIT_SPEED
-            if curr_y > (arena_limits[1] - MARGIN * arena_limits[1]):
+            if curr_y > y_high:
                 local_v[1] += -UNIT_SPEED
 
         if neighbor_collision:

@@ -38,6 +38,9 @@ from dotbot.calibration.ota import (
 )
 from dotbot.calibration.points import (
     PointPlacement,
+    PointsFrom,
+    field_corners,
+    points_from_specs,
     resolve_placement_points,
 )
 from dotbot.robots import ROBOT_DEFAULT
@@ -80,6 +83,7 @@ class CalibrationSession:
     points: list[SessionPoint]
     site: Site
     at: str = ""
+    points_from: PointsFrom | None = None
     # The area the expected error will be evaluated over; "" means none.
     area: str = ""
     device: str = ""
@@ -105,10 +109,16 @@ class CalibrationSession:
         specs: Sequence[str],
         site: Site | None = None,
         robot: str = ROBOT_DEFAULT,
+        points_from: PointsFrom | None = None,
         **kwargs: Any,
     ) -> CalibrationSession:
-        """A session over the points one `--points` specification stands for."""
+        """A session over the points one `--points` specification stands for.
+
+        No specification means the site's field corners. `points_from`
+        defaults to what `points_from_specs` reads off the specification.
+        """
         site = site or Site()
+        specs = list(specs) or [field_corners(site)]
         placements = resolve_placement_points(specs, site.registry(), robot)
         if len(placements) < POINTS_MIN:
             raise SessionError(
@@ -122,6 +132,7 @@ class CalibrationSession:
             ],
             site=site,
             at=" ".join(specs),
+            points_from=points_from or points_from_specs(specs, site),
             robot=robot,
             **kwargs,
         )
@@ -238,6 +249,7 @@ class CalibrationSession:
         return Placement(
             index=0,
             at=self.at,
+            points_from=self.points_from,
             points_mm=[p.mm for p in self.points],
             captured_at=datetime.datetime.now(datetime.timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"

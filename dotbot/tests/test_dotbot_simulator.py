@@ -19,6 +19,7 @@ from dotbot.dotbot_simulator import (
     SIMULATOR_STEP_DELTA_T,
     DotBotSimulatorCommunicationInterface,
     FleetDoesNotFit,
+    InitStateToml,
     SimulatedDotBotSettings,
     fleet_capacity,
     fleet_init_state,
@@ -102,26 +103,27 @@ HALL = Site(
     name="hall",
     extent_mm=(20000, 30000),
     areas={
-        "charging": Area(1000, 1000, 1000, 500, "charging"),
-        "arena": Area(14000, 22000, 2000, 2000, "arena"),
+        "charging": Area(1000, 1000, 1000, 500, "charging", "staging"),
+        "field": Area(14000, 22000, 2000, 2000, "field", "field"),
     },
 )
 
 
-def test_the_placement_area_is_the_arena_whatever_its_declaration_order():
-    assert placement_area(HALL).name == "arena"
+def test_the_placement_area_is_the_field_whatever_its_declaration_order():
+    assert placement_area(HALL).name == "field"
 
 
-def test_a_site_with_areas_but_no_arena_places_in_the_first_declared_one():
+def test_a_site_without_a_field_places_in_its_first_area_that_is_not_staging():
     site = Site(
         name="hall",
         extent_mm=(20000, 30000),
         areas={
-            "charging": Area(1000, 1000, 1000, 500, "charging"),
+            "charging": Area(1000, 1000, 1000, 500, "charging", "staging"),
+            "bench": Area(1000, 2000, 1000, 1000, "bench", "corner"),
             "workshop": Area(5000, 5000, 3000, 3000, "workshop"),
         },
     )
-    assert placement_area(site).name == "charging"
+    assert placement_area(site).name == "workshop"
 
 
 def test_a_site_with_an_extent_and_no_areas_places_over_the_whole_extent():
@@ -158,7 +160,7 @@ def test_no_robots_need_no_grid():
     assert grid_positions(Area(0, 0, 2000, 2000), 0) == []
 
 
-def test_an_unpositioned_fleet_lands_inside_the_sites_arena():
+def test_an_unpositioned_fleet_lands_inside_the_sites_field():
     fleet = [SimulatedDotBotSettings(address=f"{i:016X}") for i in range(4)]
     placed = place_dotbots(fleet, HALL)
     assert [(bot.pos_x, bot.pos_y) for bot in placed] == [
@@ -177,7 +179,7 @@ def test_an_explicit_position_is_left_alone_and_takes_no_grid_cell():
     placed = place_dotbots(fleet, HALL)
     assert (placed[0].pos_x, placed[0].pos_y) == (7, 9)
     # The one unplaced robot is alone on its grid, so it takes the centre.
-    assert (placed[1].pos_x, placed[1].pos_y) == HALL.areas["arena"].centre
+    assert (placed[1].pos_x, placed[1].pos_y) == HALL.areas["field"].centre
 
 
 def test_a_fully_positioned_fleet_is_returned_unchanged():
@@ -192,8 +194,8 @@ FIELD_SITE = Site(
     name="hall",
     extent_mm=(20000, 30000),
     areas={
-        "arena": Area(5000, 5000, 2000, 2000, "arena"),
-        "field": Area(2000, 10000, 16000, 16000, "field"),
+        "staging": Area(0, 0, 20000, 2000, "staging", "staging"),
+        "field": Area(2000, 10000, 16000, 16000, "field", "field"),
     },
 )
 
@@ -224,9 +226,21 @@ def test_a_generated_fleet_is_centred_and_a_pitch_apart():
     assert nearest == FLEET_PITCH_MM
 
 
-def test_a_generated_fleets_top_half_faces_up_and_the_rest_down():
+def test_a_generated_fleet_all_faces_up():
     bots = fleet_init_state(4, FIELD_SITE).dotbots
-    assert [bot.direction for bot in bots] == [180, 180, 0, 0]
+    assert [bot.direction for bot in bots] == [180, 180, 180, 180]
+
+
+def test_a_generated_fleets_photodiodes_are_evenly_spaced():
+    """Robots facing opposite ways put their photodiodes a lever arm closer or
+    further apart than their axles; the reported grid must stay one pitch."""
+    fleet = fleet_init_state(100, FIELD_SITE)
+    sim = DotBotSimulatorCommunicationInterface(lambda frame: None, fleet)
+    px, py = sim.plant.photodiode()
+    rows = sorted({round(y) for y in py})
+    assert {b - a for a, b in zip(rows, rows[1:])} == {FLEET_PITCH_MM}
+    columns = sorted({round(x) for x in px})
+    assert {b - a for a, b in zip(columns, columns[1:])} == {FLEET_PITCH_MM}
 
 
 def test_without_a_field_the_fleet_goes_to_the_first_area_then_the_extent():
@@ -237,17 +251,80 @@ def test_without_a_field_the_fleet_goes_to_the_first_area_then_the_extent():
     assert len(bots) == 1000
 
 
-def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do():
+@pytest.mark.parametrize(
+    "site",
+    [None, Site(areas={"field": Area(1500, 1500, 2000, 2000, "field", "field")})],
+)
+def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do(site):
     assert fleet_capacity(Area(0, 0, 2000, 2000)) == 100
-    fleet_init_state(100)
+    fleet_init_state(100, site)
     with pytest.raises(FleetDoesNotFit, match="101 robots.*at most 100 do"):
-        fleet_init_state(101)
+        fleet_init_state(101, site)
 
 
-def test_the_capacity_of_a_narrow_area_counts_its_near_square_grid():
-    # One row: a 2-column grid still has one row, a 3-column grid needs two
-    assert fleet_capacity(Area(0, 0, 2000, 200)) == 2
-    fleet_init_state(2, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")}))
+def test_the_capacity_of_a_narrow_area_is_one_full_row():
+    assert fleet_capacity(Area(0, 0, 2000, 200)) == 10
+    bots = fleet_init_state(
+        10, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")})
+    ).dotbots
+    assert {bot.pos_y for bot in bots} == {100}
+
+
+RECTANGLE = Site(
+    name="arena",
+    extent_mm=(2000, 4000),
+    areas={
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+    },
+)
+
+
+def test_the_capacity_of_a_rectangle_is_its_pitch_squares():
+    area = RECTANGLE.registry().resolve("field+staging")
+    assert fleet_capacity(area) == 200
+    assert fleet_capacity(Area(0, 0, 2050, 4199)) == 10 * 20
+
+
+@pytest.mark.parametrize("count", [150, 200])
+def test_a_generated_fleet_fills_a_tall_rectangle(count):
+    area = RECTANGLE.registry().resolve("field+staging")
+    bots = fleet_init_state(count, RECTANGLE, area=area).dotbots
+    assert len(bots) == count
+    assert all(
+        area.x < b.pos_x < area.x_max and area.y < b.pos_y < area.y_max for b in bots
+    )
+    assert len({(b.pos_x, b.pos_y) for b in bots}) == count
+    assert len({b.pos_y for b in bots}) > len({b.pos_x for b in bots})
+    with pytest.raises(FleetDoesNotFit, match="201 robots.*at most 200 do"):
+        fleet_init_state(201, RECTANGLE, area=area)
+
+
+def test_a_generated_grid_takes_the_shape_of_its_area():
+    tall = fleet_init_state(50, area=Area(0, 0, 2000, 8000)).dotbots
+    xs, ys = {b.pos_x for b in tall}, {b.pos_y for b in tall}
+    assert len(ys) > len(xs)
+    wide = fleet_init_state(50, area=Area(0, 0, 8000, 2000)).dotbots
+    assert len({b.pos_x for b in wide}) > len({b.pos_y for b in wide})
+
+
+def test_the_simulator_example_puts_a_thousand_robots_in_its_field():
+    from pathlib import Path
+
+    import dotbot
+    from dotbot.config import load_config
+    from dotbot.site import site_from_config
+
+    path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "dotbot.toml"
+    config = load_config(path)
+    site = site_from_config(config, config.site)
+    assert site.staging.name == "staging"
+    assert [a.name for a in site.areas.values() if a.role == "staging"] == ["staging"]
+    field = site.field
+    assert field.name == "field"
+    bots = fleet_init_state(1000, site).dotbots
+    assert all(field.x < b.pos_x < field.x_max for b in bots)
+    assert all(field.y < b.pos_y < field.y_max for b in bots)
 
 
 def test_a_written_fleet_reads_back_as_the_same_robots(tmp_path):
@@ -269,19 +346,19 @@ def test_the_simulator_runs_a_generated_fleet_without_a_file():
     ]
 
 
-def test_the_packaged_world_spreads_its_fleet_over_the_active_arena():
+def test_the_packaged_world_spreads_its_fleet_over_the_active_field():
     """End to end from the shipped world file: every declared robot must start
-    inside the site's arena, not in a corner of the floor."""
+    inside the site's field, not in a corner of the floor."""
     interface = DotBotSimulatorCommunicationInterface(
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
         site=HALL,
     )
-    arena = HALL.areas["arena"]
+    field = HALL.areas["field"]
     assert len(interface.dotbots) == 5
     assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 5
     assert all(
-        arena.x < bot.pos_x < arena.x_max and arena.y < bot.pos_y < arena.y_max
+        field.x < bot.pos_x < field.x_max and field.y < bot.pos_y < field.y_max
         for bot in interface.dotbots
     )
 
@@ -482,6 +559,32 @@ def test_a_robot_given_a_heading_starts_tracking_it_where_it_was_put(tmp_path):
     # The LH2 position is the photodiode, a lever arm ahead of the axle
     assert math.hypot(advert.pos_x - 949, advert.pos_y - 1000) < 3
     assert (advert.encoder_left, advert.encoder_right) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "calibrated, expected", [(None, [0xFF, 0x05]), (0b11, [0b11, 0x05])]
+)
+def test_a_robot_holds_the_controllers_stations_unless_its_file_says(
+    calibrated, expected
+):
+    fleet = InitStateToml(
+        dotbots=[
+            SimulatedDotBotSettings(address="0000000000000001", pos_x=1, pos_y=1),
+            SimulatedDotBotSettings(
+                address="0000000000000002", pos_x=1, pos_y=1, calibrated=0x05
+            ),
+        ]
+    )
+    received = []
+    interface = DotBotSimulatorCommunicationInterface(
+        received.append, fleet, calibrated=calibrated
+    )
+    _step(interface, 0.5)
+    by_source = {
+        frame.header.source: advert
+        for frame, advert in zip(received, _adverts(received))
+    }
+    assert [by_source[1].calibrated, by_source[2].calibrated] == expected
 
 
 def test_a_robot_without_a_heading_starts_with_none_and_no_position(tmp_path):

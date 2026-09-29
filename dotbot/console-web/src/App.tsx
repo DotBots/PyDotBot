@@ -1,8 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { clearWaypoints, fetchBuild, fetchConnection, putWaypointBatches } from "./api";
 import type { WaypointsSent } from "./api";
-import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import {
+  type AreaVisibility,
+  hiddenAreaNames,
+  loadAreaVisibility,
+  saveAreaVisibility,
+  toggleShown,
+} from "./areas";
 import { BodyColorMode, loadBodyColorMode, saveBodyColorMode } from "./bodyColor";
 import {
   CameraOffset,
@@ -206,6 +212,7 @@ export const App: React.FC = () => {
     trails: false,
     crashedOnly: false,
     allWaypoints: false,
+    calibratedSpan: true,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
@@ -229,14 +236,19 @@ export const App: React.FC = () => {
   }, []);
 
   // Area visibility is a map layer, not shared state: no controller call, and
-  // the set is this browser's.
-  const [hiddenAreas, updateHiddenAreas] = usePersisted<Set<string>>(
-    loadHiddenAreas,
-    saveHiddenAreas,
+  // the choices are this browser's.
+  const [areaVisibility, updateAreaVisibility] = usePersisted<AreaVisibility>(
+    loadAreaVisibility,
+    saveAreaVisibility,
+  );
+  const hiddenAreas = useMemo(
+    () => hiddenAreaNames(site?.areas ?? [], areaVisibility),
+    [site, areaVisibility],
   );
   const onAreaToggle = useCallback(
-    (name: string) => updateHiddenAreas((prev) => toggleHidden(prev, name)),
-    [updateHiddenAreas],
+    (name: string) =>
+      updateAreaVisibility((prev) => toggleShown(prev, site?.areas ?? [], name)),
+    [updateAreaVisibility, site],
   );
 
   // So is the camera layer's opacity: a way of looking at the map, and this

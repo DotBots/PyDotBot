@@ -42,7 +42,7 @@ from dotbot.sim.plant import (
     FleetPlant,
     battery_discharge_model,
 )
-from dotbot.site import Site
+from dotbot.site import Site, field_or_fallback
 
 SIMULATOR_STEP_DELTA_T = 0.01  # one app tick, 10 ms
 
@@ -58,16 +58,13 @@ MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
 )
 
-# Where a world file's unpositioned robots go. `arena` is the area name the
-# rest of the CLI already defaults to (`--points` resolves `arena:corners`).
-PLACEMENT_AREA_DEFAULT = "arena"
-# Where `--robots N` puts a generated fleet, and how far apart
-FLEET_AREA_DEFAULT = "field"
+# How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
-# Headings of a generated fleet's two halves, 0 facing +y (down)
-FLEET_FACING_UP, FLEET_FACING_DOWN = 180, 0
-# The square a site that measures neither an extent nor an area falls back to.
-PLACEMENT_EXTENT_DEFAULT_MM = 2000
+# The stations a simulated robot holds when neither its world file nor the
+# controller's calibration says: all eight
+CALIBRATED_ALL = 0xFF
+# The heading of every robot of a generated fleet: up (-y), 0 facing +y
+FLEET_FACING = 180
 
 # Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
 GRU_FEATURE_COLS = [
@@ -114,14 +111,17 @@ class SimulatedDotBotSettings(BaseModel):
     out asks for a placement inside the active site instead - see
     `place_dotbots`. A `direction` is the robot's heading, which its
     estimator starts out tracking; without one the robot faces +y and starts
-    with no heading, as a real robot does from boot.
+    with no heading, as a real robot does from boot. `calibrated` is the
+    bitmask of stations the robot holds a homography for; without one it
+    holds the stations of the controller's calibration, all eight when none
+    is loaded.
     """
 
     address: str = Field(default_factory=_random_address)
     pos_x: Optional[int] = None
     pos_y: Optional[int] = None
     direction: int = DIRECTION_NONE
-    calibrated: int = 0xFF
+    calibrated: Optional[int] = None
     motor_left_error: float = 0
     motor_right_error: float = 0
     lh2_noise_mm: float = 0
@@ -219,30 +219,27 @@ def resolve_init_state_path(path: str) -> str:
     return path
 
 
-def placement_area(
-    site: Optional[Site] = None, preferred: str = PLACEMENT_AREA_DEFAULT
-) -> Area:
-    """The rectangle a fleet is spread over.
+def placement_area(site: Optional[Site] = None, area: Optional[Area] = None) -> Area:
+    """The rectangle a fleet is spread over: `area` when given, else
+    `field_or_fallback`."""
+    return area if area is not None else field_or_fallback(site)
 
-    The site's `preferred` area, else its first declared area, else its whole
-    extent, else a 2 x 2 m square at the frame origin for a site that
-    measures neither.
+
+def _grid_shape(
+    count: int, area: Area, max_columns: int = 0, max_rows: int = 0
+) -> Tuple[int, int]:
+    """Columns and rows of a grid of `count` points shaped like `area`.
+
+    Rows run across the area's width. A non-zero `max_columns` / `max_rows`
+    caps the grid; with both, `count` fits whenever it is at most their
+    product.
     """
-    if site is not None:
-        area = site.areas.get(preferred)
-        if area is not None:
-            return area
-        for first in site.areas.values():
-            return first
-        if site.extent is not None:
-            return site.extent
-    side = PLACEMENT_EXTENT_DEFAULT_MM
-    return Area(0, 0, side, side)
-
-
-def _grid_shape(count: int) -> Tuple[int, int]:
-    """Columns and rows of the near-square grid `count` points fill."""
-    columns = ceil(sqrt(count))
+    columns = ceil(sqrt(count * area.w / area.h)) if area.h > 0 else count
+    if max_rows:
+        columns = max(columns, ceil(count / max_rows))
+    if max_columns:
+        columns = min(columns, max_columns)
+    columns = max(1, min(columns, count))
     return columns, ceil(count / columns)
 
 
@@ -254,7 +251,7 @@ def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
     """
     if count <= 0:
         return []
-    cols, rows = _grid_shape(count)
+    cols, rows = _grid_shape(count, area)
     return [
         (
             int(area.x + (index % cols + 0.5) * area.w / cols),
@@ -265,12 +262,14 @@ def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
 
 
 def place_dotbots(
-    dotbots: List[SimulatedDotBotSettings], site: Optional[Site] = None
+    dotbots: List[SimulatedDotBotSettings],
+    site: Optional[Site] = None,
+    area: Optional[Area] = None,
 ) -> List[SimulatedDotBotSettings]:
     """Fill in the positions a world file left out.
 
     A robot that gives `pos_x` / `pos_y` keeps them; the rest take grid cells
-    of the site's placement area, in file order.
+    of the placement area (see `placement_area`), in file order.
     """
     unplaced = [
         index
@@ -279,7 +278,7 @@ def place_dotbots(
     ]
     if not unplaced:
         return list(dotbots)
-    positions = grid_positions(placement_area(site), len(unplaced))
+    positions = grid_positions(placement_area(site, area), len(unplaced))
     placed = list(dotbots)
     for slot, index in enumerate(unplaced):
         bot, (x, y) = dotbots[index], positions[slot]
@@ -297,36 +296,33 @@ class FleetDoesNotFit(ValueError):
 
 
 def fleet_capacity(area: Area, pitch_mm: int = FLEET_PITCH_MM) -> int:
-    """The most robots `fleet_init_state` fits in `area`."""
-    max_columns, max_rows = area.w // pitch_mm, area.h // pitch_mm
-    best = 0
-    for columns in range(1, max_columns + 1):
-        count = min(columns * columns, columns * max_rows)
-        if count > (columns - 1) ** 2:
-            best = count
-    return best
+    """The most robots `fleet_init_state` fits in `area`: one per pitch
+    square, with half a pitch of margin all round."""
+    return (area.w // pitch_mm) * (area.h // pitch_mm)
 
 
 def fleet_init_state(
-    count: int, site: Optional[Site] = None, pitch_mm: int = FLEET_PITCH_MM
+    count: int,
+    site: Optional[Site] = None,
+    pitch_mm: int = FLEET_PITCH_MM,
+    area: Optional[Area] = None,
 ) -> InitStateToml:
-    """`count` robots in a near-square grid `pitch_mm` apart, centred in the
-    site's `field` area (see `placement_area`).
+    """`count` robots `pitch_mm` apart in a grid shaped like the placement
+    area (see `placement_area`) and centred in it.
 
-    Rows fill left to right and a short last row is centred under the
-    others. The top half of the rows face up (-y), the rest down (+y).
-    Raises `FleetDoesNotFit` when the grid, with half a pitch of margin all
-    round, is larger than the area.
+    Rows fill left to right and wrap at the area's width; a short last row is
+    centred under the others. Every robot faces up (-y). Raises
+    `FleetDoesNotFit` when more robots are asked for than `fleet_capacity`.
     """
-    area = placement_area(site, FLEET_AREA_DEFAULT)
-    columns, rows = _grid_shape(count)
-    if columns * pitch_mm > area.w or rows * pitch_mm > area.h:
+    area = placement_area(site, area)
+    capacity = fleet_capacity(area, pitch_mm)
+    if count > capacity:
         where = f"{area.name} " if area.name else ""
         raise FleetDoesNotFit(
             f"{count} robots do not fit in the {where}area ({area.w} x "
-            f"{area.h} mm) at {pitch_mm} mm apart; at most "
-            f"{fleet_capacity(area, pitch_mm)} do."
+            f"{area.h} mm) at {pitch_mm} mm apart; at most {capacity} do."
         )
+    columns, rows = _grid_shape(count, area, area.w // pitch_mm, area.h // pitch_mm)
     left = area.x + (area.w - (columns - 1) * pitch_mm) // 2
     top = area.y + (area.h - (rows - 1) * pitch_mm) // 2
     dotbots = []
@@ -338,7 +334,7 @@ def fleet_init_state(
                 address=f"DE{index:014X}",
                 pos_x=left + shift + column * pitch_mm,
                 pos_y=top + row * pitch_mm,
-                direction=FLEET_FACING_UP if row < rows // 2 else FLEET_FACING_DOWN,
+                direction=FLEET_FACING,
             )
         )
     return InitStateToml(dotbots=dotbots)
@@ -473,6 +469,8 @@ class DotBotSimulatorCommunicationInterface:
         on_frame_received: Callable,
         simulator_init_state: "str | InitStateToml",
         site: Optional[Site] = None,
+        area: Optional[Area] = None,
+        calibrated: Optional[int] = None,
     ):
         self.on_frame_received = on_frame_received
         self.ticks = 0
@@ -488,7 +486,7 @@ class DotBotSimulatorCommunicationInterface:
             )
         )
         self._network = init_state.network
-        settings = place_dotbots(init_state.dotbots, site)
+        settings = place_dotbots(init_state.dotbots, site, area)
         count = len(settings)
         self.addresses = [s.address.upper() for s in settings]
         headed = np.array([s.direction != DIRECTION_NONE for s in settings], bool)
@@ -520,7 +518,11 @@ class DotBotSimulatorCommunicationInterface:
         self._headers = [
             Header(destination=gateway, source=int(a, 16)) for a in self.addresses
         ]
-        self._calibrated = [s.calibrated & 0xFF for s in settings]
+        calibrated = CALIBRATED_ALL if calibrated is None else calibrated
+        self._calibrated = [
+            (calibrated if s.calibrated is None else s.calibrated) & 0xFF
+            for s in settings
+        ]
         self._dotbot_modes = [s.network_mode for s in settings]
         self._mari = None
         if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):

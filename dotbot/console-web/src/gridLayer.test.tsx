@@ -36,6 +36,7 @@ const Harness: React.FC<{ cam: Camera; siteExtent?: Area | null }> = ({
       trails: false,
       crashedOnly: false,
       allWaypoints: false,
+      calibratedSpan: true,
     }}
     plannedMissions={[]}
     cam={cam}

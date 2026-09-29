@@ -15,6 +15,8 @@ Both the frame and the capture come from `camera_fixtures`, which the sheet
 and detector tests share.
 """
 
+import dataclasses
+
 import cv2
 import numpy as np
 import pytest
@@ -846,8 +848,25 @@ def test_collect_refuses_an_area_the_site_does_not_define(tmp_path, monkeypatch)
     assert "defines: arena" in result.output
 
 
-def test_collect_needs_an_area_to_derive_the_sheets_from(tmp_path, monkeypatch):
+def test_collect_defaults_to_the_sites_field(tmp_path, monkeypatch, frame_path):
+    bench = dataclasses.replace(DEV_CORNER, name="bench", role="field")
+    staging = Area(0, 4000, 2000, 2000, "staging", "staging")
+    result = run_collect(
+        tmp_path,
+        monkeypatch,
+        ["--camera", str(frame_path), "--reads", "1"],
+        areas={"staging": staging, "bench": bench},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "sheet 0 inside the top-left corner of bench" in result.output
+    written = sorted((tmp_path / SITE.name).glob("camera-*.toml"))
+    assert read_camera_calibration_file(written[0]).area == "bench"
+
+
+def test_collect_needs_an_area_when_the_site_has_no_field(tmp_path, monkeypatch):
     """The bare group invokes collect with no flags, so the ask has to be said."""
-    result = run_collect(tmp_path, monkeypatch, [])
+    result = run_collect(tmp_path, monkeypatch, [], areas={})
     assert result.exit_code != 0
+    assert "no field" in result.output
     assert "--area" in result.output

@@ -23,6 +23,7 @@ from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
+from dotbot.area import Area
 from dotbot.dotbot_simulator import (
     DotBotSimulatorCommunicationInterface,
     fleet_init_state,
@@ -294,19 +295,27 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
         site: Optional[Site] = None,
         robots: Optional[int] = None,
+        area: Optional[Area] = None,
+        calibrated: Optional[int] = None,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
         self.robots = robots
+        self.area = area
+        self.calibrated = calibrated
 
     def create_simulator(self, on_frame_received: callable):
         init_state = (
             self.simulator_init_state
             if self.robots is None
-            else fleet_init_state(self.robots, self.site)
+            else fleet_init_state(self.robots, self.site, area=self.area)
         )
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, init_state, self.site
+            on_frame_received,
+            init_state,
+            self.site,
+            self.area,
+            calibrated=self.calibrated,
         )
 
 

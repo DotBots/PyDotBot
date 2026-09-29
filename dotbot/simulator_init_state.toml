@@ -5,9 +5,10 @@
 # the sandbox dotbot app: waypoints are steered on board, and the advertised
 # LH2 position is the photodiode, a lever arm ahead of the axle.
 #
-# A robot with no `pos_x` / `pos_y` is placed inside the active site: its
-# `arena` area, else its first declared area, else its whole extent, else a
-# 2 x 2 m square at the frame origin. Unplaced robots share a grid, so they
+# A robot with no `pos_x` / `pos_y` is placed inside the active site's field
+# (the area with role `field`, else the first area that is neither staging nor
+# a corner, else the first area, else the whole extent), else a 2 x 2 m square
+# at the frame origin. Unplaced robots share a grid, so they
 # spread over the area rather than stack. Give both keys to pin a robot to
 # frame millimetres instead.
 

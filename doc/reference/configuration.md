@@ -10,8 +10,9 @@ You never need a config file: every setting also has a flag and an env var. The
 file just makes a repeated setup (a broker URL, a board name, a swarm id) the
 default.
 
-Create one with `dotbot config init` (it writes a minimal `./dotbot.toml`);
-pass `--conn` / `--swarm-id` to pre-fill the two most common keys:
+Create one with `dotbot config init` (it writes a `./dotbot.toml` holding a
+starter [site](#sites)); pass `--conn` / `--swarm-id` to pre-fill the two most
+common keys:
 
 ```bash
 dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
@@ -82,6 +83,8 @@ Set once at the top of the file; any section or deployment can override them.
 | `swarm_id` | Swarm id selecting the MQTT topic namespace. |
 | `log_level` | Logging verbosity. |
 | `default_deployment` | Name of the deployment to select when neither `--deployment` nor `DOTBOT_DEPLOYMENT` is given. |
+| `site` | The active [site](#sites): its frame, its areas and the folder its calibrations are kept under. `--site` or `DOTBOT_SITE` overrides it. |
+| `site_dirs` | Folders searched, in order, for [site packs](#site-packs) (default `["sites", "~/.dotbot/sites"]`). |
 
 ## Section tables
 
@@ -124,7 +127,8 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] http_port` | REST/WebSocket port (default 8000). |
 | `[run.controller] http_host` | Interface the REST/WebSocket API binds to (default `127.0.0.1`). `0.0.0.0` exposes it to the network; the API is unauthenticated. |
 | `[run.controller] background_map` | Background map image. |
-| `[run.controller] lh2_calibration` | Lighthouse calibration to run on: a file path, or an id prefix of one under `~/.dotbot/calibrations/<site>/`. |
+| `[run.controller] lh2_calibration` | Lighthouse calibration to run on: a file path, the exact `--tag` it was collected with, or an id prefix of one of the site's calibrations (see [where calibrations are found](#where-calibrations-are-found)). |
+| `[run.controller] lh2_calibration_max_age_days` | Warn at load when the LH2 calibration is older than this many days (default 30, `0` never warns). Also `DOTBOT_RUN_CONTROLLER_LH2_CALIBRATION_MAX_AGE_DAYS`. |
 | `[run.controller] camera_calibration` | Overhead camera registration to draw on the map, same form. Written by `dotbot run calibrate-camera collect`. |
 | `[run.controller] camera_detect` | Run the robot detector on a registered camera (default true). False serves the layer as a picture only, and writes no `-camera.csv`. |
 | `[run.controller] log_output` | Log output path. |
@@ -132,6 +136,7 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `[run.controller] headless` | Stay headless - don't open the web UI in a browser on start (default false; it's still served). |
 | `[run.controller] gw_address` | Gateway address. |
 | `[run.controller] simulator_init_state` | Initial simulator state. |
+| `[run.controller] simulator_area` | Where a simulator places its robots (`--area`): an area name, a `+`-joined composite or `x,y,w,h` in mm. Defaults to the site's field. |
 | `[run.controller] swarmit_url` | swarmit server the console's orchestration panel talks to, proxied at `/swarmit/*` (default `http://localhost:8001`, which matches `swarmit serve`). |
 | `[run.controller] mrta_url` | MRTA mode server (dotbot-logistics) the console's MRTA toggle talks to, proxied at `/mrta/*`. Unset by default (no default URL) - the console shows no MRTA control until this is set (typically `http://localhost:8002`, dotbot-logistics' own default port). |
 | `[run.gateway] serial_port` | Gateway serial port. |
@@ -165,6 +170,7 @@ metadata:
 | `conn` | Broker / link for this deployment. |
 | `swarm_id` | Swarm id for this deployment. |
 | `serial_port` | Default serial port for this deployment. |
+| `site` | The [site](#sites) this deployment works in, when the top-level `site` should not apply. |
 | `location` | Descriptive label (shown by `dotbot deployment list`). |
 | `bots` | Descriptive DotBot count. |
 
@@ -189,6 +195,111 @@ use` or `--deployment`. Useful flags: `--into project` (write the nearest
 
 Because MQTT credentials are env-only (below), a published deployment file is not
 secret - it carries only the broker URL, swarm id, and descriptive labels.
+
+## Sites
+
+A **site** is the floor you work on. Its `[sites.<name>]` table says where zero
+is, how big the floor is, and which named rectangles, **areas**, it holds.
+Positions, calibrations and the console map are all in the active site's
+frame: millimetres, zero at the top-left corner of the extent, x to the right,
+y down.
+
+```toml
+site = "lab"
+
+[sites.lab]
+anchor    = "corner of the tiles by the door; x along the window wall"
+extent_mm = [5000, 5000]
+
+[sites.lab.areas]
+field      = { x = 1500, y = 1500, w = 2000, h = 2000 }
+staging    = { x = 1500, y = 3500, w = 2000, h = 600 }
+dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
+```
+
+| Key | Meaning |
+|---|---|
+| `anchor` | Prose saying where zero is on the real floor. No code reads it, but a calibration records it, and one made against another anchor is refused. |
+| `extent_mm` | `[width, height]` of the floor. |
+| `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
+
+The active site is, in order: `--site`, `DOTBOT_SITE`, the selected
+deployment's `site`, the top-level `site`, then `default`.
+`dotbot config init` writes a `default` site; see [`dotbot config`](../cli/config.md).
+
+### Area roles
+
+An area can have one of three roles:
+
+| Role | Meaning |
+|---|---|
+| `field` | Where experiments happen and what a calibration covers. The simulator fleet, `swarm calibrate-lh2 collect`, the camera `collect --area` and the console's calibration setup all default to it. |
+| `staging` | Where robots park and charge. The charging example needs one. |
+| `corner` | A small patch, such as a bench, that may overlap other areas. The console starts it hidden. |
+
+An area named `field`, `staging` or `corner` has that role; `role = "..."`
+gives one to any other name, and beats the one the name implies. An area with
+neither has no role.
+
+A site has **at most one field**; two is a config error naming both. When no
+area has the `field` role, the field is the first area that is neither staging
+nor corner, else the first area, else the whole extent. Areas keep the order
+they are declared in.
+
+### Site packs
+
+A site can also live in its own folder, a **site pack**, to commit, zip or hand
+to someone:
+
+```text
+lab/
+├── site.toml          # the keys of [sites.lab]: anchor, extent_mm, areas
+└── calibrations/      # optional: the site's LH2 and camera calibration files
+```
+
+The folder's name is the site's name. Packs are found in the `site_dirs`
+folders, searched in order, and the first folder holding a pack of a name wins.
+The default is `["sites", "~/.dotbot/sites"]`: a `sites/` folder next to the
+config file, then the folder `dotbot site add` copies packs into. A relative
+entry is read from the config file's folder.
+
+```toml
+site      = "lab"
+site_dirs = ["sites"]
+```
+
+An inline `[sites.<name>]` table wins over a pack of the same name, with a
+one-line notice naming the pack it hides. `dotbot config show` lists every site
+and where it was read from. To install or share a pack, see
+[`dotbot site`](../cli/site.md).
+
+### Where calibrations are found
+
+A calibration is always the one you name: a file path, the exact `--tag` it was
+collected with, or a prefix of its id, never "the latest". A tag or an id is
+looked up in the site's pack `calibrations/` folder first, then in
+`~/.dotbot/calibrations/<site>/`, where `collect` writes; the first folder with
+a match wins.
+
+At load, the controller refuses an LH2 or camera calibration made in another
+site, and one whose recorded anchor differs from the site's when both record
+one. Select the calibration's site with `--site`, or pick a calibration of the
+active site.
+
+### How calibration points were chosen
+
+Each placement in an LH2 calibration file records how its four points were
+chosen, as a `points_from` table:
+
+| `points_from` | Meaning |
+|---|---|
+| `{ kind = "field" }` | The field's corners (`collect` with no flag). |
+| `{ kind = "over", area = "dev-corner" }` | Another area's corners (`--over`). |
+| `{ kind = "square", side_mm = 800 }` | A square centred in the field (`--square`). |
+| `{ kind = "points" }` | Points given by hand (`--points`). |
+
+The console shows it in the calibrated span's tooltip. It is not part of the
+calibration's id.
 
 ## MQTT credentials are env-only
 
@@ -224,6 +335,8 @@ default_deployment = "inria"                 # used when --deployment / DOTBOT_D
 conn            = "mqtts://broker.local:8883"
 swarm_id        = "0001"
 log_level       = "info"
+site            = "lab"                      # the active site; --site / DOTBOT_SITE override
+site_dirs       = ["sites"]                  # site packs next to this file, e.g. sites/hall/site.toml
 
 # A physical deployment. Select it with `--deployment inria`, DOTBOT_DEPLOYMENT, or
 # default_deployment above - don't edit this table to switch deployments.
@@ -239,6 +352,16 @@ conn     = "mqtts://broker.limerick:8883"
 swarm_id = "0002"
 location = "Limerick campaign"
 bots     = 725
+
+# A site: where zero is, the floor's size, and its areas.
+[sites.lab]
+anchor    = "corner of the tiles by the door; x along the window wall"
+extent_mm = [5000, 5000]
+
+[sites.lab.areas]
+field      = { x = 1500, y = 1500, w = 2000, h = 2000 }  # named after its role
+staging    = { x = 1500, y = 3500, w = 2000, h = 600 }
+dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 
 # Firmware-artifact builds (dotbot fw).
 [fw]
@@ -263,6 +386,7 @@ conn = "mqtts://broker.local:8883"
 
 [run.controller]
 http_port      = 8000
+lh2_calibration_max_age_days = 30   # warn when the loaded LH2 calibration is older
 headless       = true    # default is false; set true to suppress the browser (still served)
 # background_map = "./map.png"
 

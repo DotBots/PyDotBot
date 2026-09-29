@@ -14,8 +14,11 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
+from dotbot.area import Area, Role
+from dotbot.calibration.points import PointsKind
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
+from dotbot.site import Site
 
 # Points of trail the controller keeps per robot
 MAX_TRAIL_SIZE = 1000
@@ -183,13 +186,59 @@ class DotBotWaypointsSent(BaseModel):
 
 
 class DotBotAreaModel(BaseModel):
-    """One named rectangle in frame millimetres."""
+    """One named rectangle in frame millimetres, and its role if it has one."""
 
     x: int
     y: int
     w: int
     h: int
     name: str = ""
+    role: Optional[Role] = None
+
+
+class DotBotPointsFromModel(BaseModel):
+    """How a placement's points were chosen: the field's corners, the corners
+    of `area`, a `side_mm` square centred in the field, or given by hand."""
+
+    kind: PointsKind
+    area: Optional[str] = None
+    side_mm: Optional[int] = None
+
+
+class DotBotPlacementSpanModel(BaseModel):
+    """One placement's points, in frame millimetres, and how they were chosen."""
+
+    points_mm: List[List[float]]
+    points_from: Optional[DotBotPointsFromModel] = None
+
+
+class DotBotCalibrationSpanModel(BaseModel):
+    """The loaded LH2 calibration's placements, which span the part of the
+    site it was fitted over; positions outside them are extrapolated."""
+
+    id: str
+    tag: str = ""
+    created_at: str = ""
+    placements: List[DotBotPlacementSpanModel] = []
+
+    @classmethod
+    def from_calibration(cls, calibration: Any) -> "DotBotCalibrationSpanModel":
+        return cls(
+            id=calibration.id,
+            tag=calibration.tag,
+            created_at=calibration.created_at,
+            placements=[
+                DotBotPlacementSpanModel(
+                    points_mm=[list(point) for point in placement.points_mm],
+                    points_from=(
+                        None
+                        if placement.points_from is None
+                        else DotBotPointsFromModel(**placement.points_from.to_dict())
+                    ),
+                )
+                for placement in calibration.placements
+            ],
+        )
 
 
 class DotBotSiteModel(BaseModel):
@@ -197,12 +246,47 @@ class DotBotSiteModel(BaseModel):
 
     `extent_mm` is `[width, height]`, zero at its top-left corner, which is
     where `anchor` points. A site with no measured extent reports none.
+    `areas` are in the order the config declares them. `field` names the
+    area experiments and calibration default to (`Site.field`): an area's
+    name, an `x,y,w,h` literal for a site with an extent and no areas, or
+    None for a site that declares neither. `calibration` is the LH2
+    calibration the controller loaded, if any.
     """
 
     name: str
     anchor: str = ""
     extent_mm: Optional[List[int]] = None
     areas: List[DotBotAreaModel] = []
+    field: Optional[str] = None
+    calibration: Optional[DotBotCalibrationSpanModel] = None
+
+    @classmethod
+    def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
+        field = site.field
+        return cls(
+            name=site.name,
+            anchor=site.anchor,
+            extent_mm=list(site.extent_mm) if site.extent_mm else None,
+            areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
+            field=field.name if field is not None else None,
+            calibration=(
+                DotBotCalibrationSpanModel.from_calibration(calibration)
+                if calibration is not None
+                else None
+            ),
+        )
+
+    def to_site(self) -> Site:
+        return Site(
+            name=self.name,
+            anchor=self.anchor,
+            extent_mm=(
+                (self.extent_mm[0], self.extent_mm[1]) if self.extent_mm else None
+            ),
+            areas={
+                a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
+            },
+        )
 
 
 class DotBotCameraModel(BaseModel):
@@ -360,12 +444,12 @@ class DotBotCalibrationSessionModel(BaseModel):
 class DotBotCalibrationStartModel(BaseModel):
     """Where this session's points are, in `--points` form.
 
-    `area` names the area the expected error is evaluated over; empty means
-    none chosen. `reads` is captures averaged per point; None takes the
-    session's own default.
+    Empty `points` means the site's field corners. `area` names the area the
+    expected error is evaluated over; empty means none chosen. `reads` is
+    captures averaged per point; None takes the session's own default.
     """
 
-    points: Union[str, List[str]] = "arena:corners"
+    points: Union[str, List[str]] = []
     device: str = ""
     area: str = ""
     reads: Optional[int] = None

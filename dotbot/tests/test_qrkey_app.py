@@ -135,7 +135,9 @@ def test_a_site_request_replies_with_the_whole_site(site_client):
         "anchor": "the arena's top-left corner",
         "extent_mm": [2000, 4000],
         "areas": [
-            {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"},
-            {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"},
+            {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena", "role": None},
+            {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex", "role": None},
         ],
+        "field": "arena",
+        "calibration": None,
     }

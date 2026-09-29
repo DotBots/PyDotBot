@@ -31,7 +31,11 @@ from dotbot.camera.rate import DETECT_SHARE
 from dotbot.cli._cfg import from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
 from dotbot.cli._site import site_from_context
-from dotbot.controller import Controller, ControllerSettings
+from dotbot.controller import (
+    LH2_CALIBRATION_MAX_AGE_DAYS,
+    Controller,
+    ControllerSettings,
+)
 from dotbot.logger import setup_logging
 
 # Old transport/identity config keys replaced by `conn` / `swarm_id`.
@@ -66,6 +70,20 @@ def _resolve_controller_key(key, flag, config, default):
     if value is not None:
         return ([value] if isinstance(default, str) else value), "the config file"
     return ([default] if isinstance(default, str) else default), "the default"
+
+
+def _max_age_days(raw, source: str) -> int:
+    """`lh2_calibration_max_age_days` as a count of days, 0 or more."""
+    try:
+        days = int(raw)
+    except ValueError:
+        days = -1
+    if days < 0:
+        raise click.ClickException(
+            f"lh2_calibration_max_age_days from {source} is {raw!r}; give a "
+            "whole number of days, or 0 to never warn"
+        )
+    return days
 
 
 def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
@@ -158,8 +176,28 @@ def _maybe_scaffold_sim_state(explicit_init_state):
     click.echo(f"Created {target} — edit it to customize the simulated swarm.")
 
 
-def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulator):
-    """Check `--robots` against the fleet's site and the other flags.
+def _simulator_area(spec, source, site, dotbot_simulator):
+    """The area `--area` names, resolved in `site`; None for the field.
+
+    A spec from the config applies to simulator runs only; on the command
+    line it needs one.
+    """
+    if spec is None:
+        return None
+    if not dotbot_simulator:
+        if source == "the command line":
+            raise click.UsageError("--area needs a DotBot simulator connection.")
+        return None
+    try:
+        return site.registry().resolve(spec)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="'--area'") from exc
+
+
+def _generated_fleet(
+    robots, write_init_state, init_state, site, dotbot_simulator, area=None
+):
+    """Check `--robots` against the fleet's area and the other flags.
 
     Returns the robot count left for the simulator to generate and the
     init-state path to run from: with `--write-init-state`, the count is
@@ -177,7 +215,6 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
             "pass one of them."
         )
     from dotbot.dotbot_simulator import (
-        FLEET_AREA_DEFAULT,
         FLEET_PITCH_MM,
         FleetDoesNotFit,
         fleet_init_state,
@@ -186,10 +223,10 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
     )
 
     try:
-        fleet = fleet_init_state(robots, site)
+        fleet = fleet_init_state(robots, site, area=area)
     except FleetDoesNotFit as exc:
         raise click.ClickException(str(exc)) from exc
-    area = placement_area(site, FLEET_AREA_DEFAULT)
+    area = placement_area(site, area)
     print(
         f"Simulated fleet: {robots} robots {FLEET_PITCH_MM} mm apart in "
         f"{area.name or 'the default area'} ({area.w} x {area.h} mm)"
@@ -343,7 +380,7 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
     "--background-map",
     type=click.Path(exists=True, dir_okay=False),
     help=(
-        "Path to a background map image file in png format. The image should"
+        "Path to a background map image file in png format. The image should "
         "be a top-down view of the environment, with 1024 pixels width and a "
         "height proportional to the site extent (2 x 2 m when the site has "
         "none)."
@@ -358,9 +395,19 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
     "--robots",
     type=click.IntRange(min=1),
     help=(
-        "With a simulator: start this many robots, 200 mm apart in a "
-        "near-square grid centred in the site's `field` area (else its first "
-        "area, else its extent). Not with --simulator-init-state."
+        "With a simulator: start this many robots, 200 mm apart in a grid "
+        "shaped like and centred in --area. Not with --simulator-init-state."
+    ),
+)
+@click.option(
+    "--area",
+    "simulator_area",
+    type=str,
+    default=None,
+    help=(
+        "With a simulator: the area its robots are placed in, a name from "
+        "the site's `[sites.<site>.areas.<name>]` tables, `x,y,w,h` in "
+        "frame mm, or a `+`-joined composite. Defaults to the site's field."
     ),
 )
 @click.option(
@@ -418,6 +465,7 @@ def main(
     background_map,
     simulator_init_state,
     robots,
+    simulator_area,
     write_init_state,
     swarmit_url,
     mrta_url,
@@ -476,6 +524,10 @@ def main(
     camera_detect_share, _ = _resolve_controller_key(
         "camera_detect_share", camera_detect_share, unified, DETECT_SHARE
     )
+    raw_max_age, max_age_source = _resolve_controller_key(
+        "lh2_calibration_max_age_days", None, unified, LH2_CALIBRATION_MAX_AGE_DAYS
+    )
+    max_age_days = _max_age_days(raw_max_age, max_age_source)
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -509,12 +561,18 @@ def main(
     # implementation detail — the CLI never exposes it.
     conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
 
+    dotbot_simulator = conn_settings.get("adapter") == "dotbot-simulator"
+    area_spec, area_source = _resolve_controller_key(
+        "simulator_area", simulator_area, unified, None
+    )
+    simulator_area = _simulator_area(area_spec, area_source, site, dotbot_simulator)
     robots, simulator_init_state = _generated_fleet(
         robots,
         write_init_state,
         simulator_init_state,
         site,
-        conn_settings.get("adapter") == "dotbot-simulator",
+        dotbot_simulator,
+        simulator_area,
     )
 
     # For a simulator connection with no init-state set (CLI default is
@@ -532,6 +590,7 @@ def main(
         "controller_http_host": controller_http_host,
         "site": site,
         "lh2_calibration": lh2_calibration,
+        "lh2_calibration_max_age_days": max_age_days,
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
         "camera_max_robots": camera_max_robots,
@@ -539,6 +598,7 @@ def main(
         "background_map": background_map,
         "simulator_init_state": simulator_init_state,
         "simulator_robots": robots,
+        "simulator_area": simulator_area,
         "swarmit_url": swarmit_url,
         "mrta_url": mrta_url,
         "headless": True if headless else None,
@@ -567,7 +627,11 @@ def main(
         ["console", "file"],
     )
     try:
+        # A calibration that cannot be found, or belongs to another site
         controller = Controller(controller_settings)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    try:
         asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")

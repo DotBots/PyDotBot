@@ -14,6 +14,7 @@ provenance.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Literal, get_args
 
 from dotbot.area import Area, AreaRegistry
 from dotbot.robots import ROBOT_DEFAULT, robot_geometry
@@ -21,6 +22,62 @@ from dotbot.site import Site
 
 # The corners of a rectangle, in the order a placement stores them.
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+
+PointsKind = Literal["field", "over", "square", "points"]
+POINTS_KINDS: tuple[str, ...] = get_args(PointsKind)
+
+
+@dataclass(frozen=True)
+class PointsFrom:
+    """How a placement's points were chosen.
+
+    `field`: the field's corners. `over`: the corners of `area`. `square`: a
+    `side_mm` square centred in the field. `points`: given by hand.
+    """
+
+    kind: PointsKind
+    area: str | None = None
+    side_mm: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in POINTS_KINDS:
+            raise ValueError(
+                f"points_from kind {self.kind!r} is not one of "
+                f"{', '.join(POINTS_KINDS)}"
+            )
+        if (self.kind == "over") != (self.area is not None):
+            raise ValueError("points_from carries an area exactly when it is `over`")
+        if (self.kind == "square") != (self.side_mm is not None):
+            raise ValueError(
+                "points_from carries a side_mm exactly when it is `square`"
+            )
+
+    def __str__(self) -> str:
+        if self.kind == "over":
+            return f"over {self.area}"
+        if self.kind == "square":
+            return f"square {self.side_mm} mm"
+        return self.kind
+
+    def to_dict(self) -> dict[str, Any]:
+        """The fields that are set, as a calibration file's table holds them."""
+        out: dict[str, Any] = {"kind": self.kind}
+        if self.area is not None:
+            out["area"] = self.area
+        if self.side_mm is not None:
+            out["side_mm"] = self.side_mm
+        return out
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> PointsFrom:
+        if not isinstance(raw, dict):
+            raise ValueError(f"points_from is a table with a `kind`, not {raw!r}")
+        side_mm = raw.get("side_mm")
+        return cls(
+            kind=raw.get("kind", ""),
+            area=raw.get("area"),
+            side_mm=None if side_mm is None else int(side_mm),
+        )
 
 
 @dataclass(frozen=True)
@@ -142,6 +199,87 @@ def resolve_placement_points(
     for spec in specs:
         points.extend(resolve_points(spec, registry, robot))
     return points
+
+
+def _field(site: Site) -> Area:
+    field = site.field
+    if field is None:
+        raise ValueError(
+            f"site {site.name!r} declares no areas and no extent, so it has no "
+            f"field to calibrate over. Add a [sites.{site.name}.areas.field] "
+            "table to your dotbot config, or give the points with --points"
+        )
+    return field
+
+
+def field_corners(site: Site) -> str:
+    """The `--points` specification of the site's field corners, the default."""
+    return f"{_field(site).name}:corners"
+
+
+def centred_square(area: Area, side_mm: int) -> Area:
+    """The `side_mm` square centred in `area`, named as its `x,y,w,h` literal."""
+    if side_mm <= 0:
+        raise ValueError(f"a square side is a positive number of mm, not {side_mm}")
+    if side_mm > min(area.w, area.h):
+        raise ValueError(
+            f"a {side_mm} mm square does not fit in {area.name} "
+            f"({area.w} x {area.h} mm)"
+        )
+    x = area.x + (area.w - side_mm) // 2
+    y = area.y + (area.h - side_mm) // 2
+    return Area(x, y, side_mm, side_mm, f"{x},{y},{side_mm},{side_mm}")
+
+
+def collect_points(
+    site: Site,
+    points: list[str],
+    over: str | None = None,
+    square: int | None = None,
+) -> tuple[list[str], PointsFrom | None, str]:
+    """The specification `collect` captures, how it was chosen, and a note.
+
+    One of `points`, `over` and `square` at most; none means the field's
+    corners. The chosen-how is None when `points_from_specs` can read it off
+    the specification. The note is the extrapolation warning a square gets,
+    else empty.
+    """
+    if points:
+        return points, None, ""
+    if over is not None:
+        area = site.registry().resolve(over)
+        return [f"{area.name}:corners"], PointsFrom("over", area=area.name), ""
+    if square is None:
+        return [field_corners(site)], None, ""
+    field = _field(site)
+    square_area = centred_square(field, square)
+    note = (
+        f"Only the {square} x {square} mm square is calibrated: the rest of the "
+        f"{field.w} x {field.h} mm field is extrapolated, and the error grows "
+        "toward its corners."
+    )
+    return (
+        [f"{square_area.name}:corners"],
+        PointsFrom("square", side_mm=square),
+        note,
+    )
+
+
+def points_from_specs(specs: list[str] | tuple[str, ...], site: Site) -> PointsFrom:
+    """How a placement's points were chosen, read off its specification.
+
+    `field` for the field's corners, `over` for another named area's corners,
+    `points` for anything else. `square` is recorded by the caller that built
+    the square, since its literal rectangle says nothing of where it came from.
+    """
+    if len(specs) == 1 and specs[0].strip().endswith(":corners"):
+        name = specs[0].strip()[: -len(":corners")]
+        field = site.field
+        if field is not None and name == field.name:
+            return PointsFrom("field")
+        if name in site.areas:
+            return PointsFrom("over", area=name)
+    return PointsFrom("points")
 
 
 def _centre(area: Area) -> PointPlacement:

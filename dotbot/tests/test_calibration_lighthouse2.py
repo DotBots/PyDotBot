@@ -27,7 +27,16 @@ from dotbot.calibration.lighthouse2 import (
     render_calibration,
     resolve_calibration_path,
 )
-from dotbot.calibration.points import collect_header, point_prompt, resolve_points
+from dotbot.calibration.points import (
+    PointsFrom,
+    centred_square,
+    collect_header,
+    collect_points,
+    field_corners,
+    point_prompt,
+    points_from_specs,
+    resolve_points,
+)
 from dotbot.site import Site
 
 # A plausible wall-mounted station: the magnitude of perspective row real
@@ -256,6 +265,49 @@ def test_schema_2_round_trips_and_re_solves_to_the_same_matrices_and_id(
     assert f'id = "{loaded.id}"' in written_again
 
 
+def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
+    corners = [(-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)]
+    how = PointsFrom("over", area="dev-corner")
+    placement = replace(_consistent_placement(corners), points_from=how)
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    manager = LighthouseManager(placements=[placement])
+    manager.solve()
+    path = manager.save_calibration()
+
+    parsed = tomllib.loads(path.read_text())
+    assert parsed["placement"][0]["points_from"] == {
+        "kind": "over",
+        "area": "dev-corner",
+    }
+    assert read_calibration_file(path).placements[0].points_from == how
+
+
+def test_points_from_written_as_a_string_is_rejected(tmp_path):
+    path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
+    path.write_text(
+        "schema_version = 2\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        'points_from = "over dev-corner"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="points_from is a table"):
+        read_calibration_file(path)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"kind": "nearby"},
+        {"kind": "over"},
+        {"kind": "square"},
+        {"kind": "field", "area": "field"},
+        {"kind": "points", "side_mm": 500},
+    ],
+)
+def test_points_from_carries_exactly_the_fields_of_its_kind(raw):
+    with pytest.raises(ValueError):
+        PointsFrom.from_dict(raw)
+
+
 def test_schema_1_file_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
@@ -284,6 +336,7 @@ def test_calibration_id_ignores_the_descriptive_fields(monkeypatch, tmp_path):
     original.tag = "another-session"
     original.robot = "dotbot-v9"
     original.placements[0].at = "typed by hand"
+    original.placements[0].points_from = PointsFrom("square", side_mm=500)
     assert original.id == before
 
 
@@ -488,6 +541,7 @@ def test_area_resolution_forms():
         "w": 2000,
         "h": 2000,
         "name": "annex",
+        "role": None,
     }
     assert registry.resolve("0,0,500,600").as_dict() == {
         "x": 0,
@@ -495,6 +549,7 @@ def test_area_resolution_forms():
         "w": 500,
         "h": 600,
         "name": "0,0,500,600",
+        "role": None,
     }
     composite = registry.resolve("arena+wing")
     assert composite.as_dict() == {
@@ -503,6 +558,7 @@ def test_area_resolution_forms():
         "w": 3330,
         "h": 4000,
         "name": "arena+wing",
+        "role": None,
     }
 
 
@@ -580,6 +636,7 @@ def test_a_site_extent_is_the_plausibility_fence():
         "w": 2000,
         "h": 4000,
         "name": "c405-arena",
+        "role": None,
     }
 
 
@@ -812,3 +869,90 @@ def _five_point_placement():
         counts = counts_for_camera_point(camera[0] + 0.002 * index, camera[1], 0)
         samples.append(Sample(0, index, [round(counts.count1)], [round(counts.count2)]))
     return Placement(index=0, points_mm=points, samples=samples)
+
+
+# --- where collect calibrates by default ------------------------------------
+
+ROLED = Site(
+    name="c405-arena",
+    extent_mm=(2000, 4000),
+    areas={
+        "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+        "field": Area(0, 0, 2000, 2000, "field", "field"),
+        "dev-corner": Area(1000, 0, 1000, 1000, "dev-corner", "corner"),
+    },
+)
+
+
+def test_collect_defaults_to_the_fields_corners():
+    assert field_corners(ROLED) == "field:corners"
+    assert collect_points(ROLED, []) == (["field:corners"], None, "")
+    assert points_from_specs(["field:corners"], ROLED) == PointsFrom("field")
+
+
+def test_a_site_with_only_an_extent_calibrates_over_the_extent():
+    site = Site(name="hall", extent_mm=(5000, 4000))
+    assert field_corners(site) == "0,0,5000,4000:corners"
+    assert points_from_specs([field_corners(site)], site) == PointsFrom("field")
+    assert resolve_points(field_corners(site), site.registry())[3].mm == (
+        5000 - 47.0,
+        4000 - 18.5,
+    )
+
+
+def test_a_site_with_no_field_names_the_fix():
+    with pytest.raises(ValueError, match=r"no field.*\[sites.default.areas.field\]"):
+        field_corners(Site())
+
+
+def test_over_calibrates_another_areas_corners():
+    assert collect_points(ROLED, [], over="dev-corner") == (
+        ["dev-corner:corners"],
+        PointsFrom("over", area="dev-corner"),
+        "",
+    )
+    assert points_from_specs(["dev-corner:corners"], ROLED) == PointsFrom(
+        "over", area="dev-corner"
+    )
+    with pytest.raises(ValueError, match="unknown area 'nowhere'"):
+        collect_points(ROLED, [], over="nowhere")
+
+
+def test_square_calibrates_a_centred_square_and_says_the_rest_is_extrapolated():
+    specs, how, note = collect_points(ROLED, [], square=500)
+    assert specs == ["750,750,500,500:corners"]
+    assert how == PointsFrom("square", side_mm=500)
+    assert "the rest of the 2000 x 2000 mm field is extrapolated" in note
+    assert points_from_specs(specs, ROLED) == PointsFrom("points")
+
+
+@pytest.mark.parametrize("side", [0, -5, 2001])
+def test_a_square_that_is_empty_or_does_not_fit_is_refused(side):
+    with pytest.raises(ValueError):
+        centred_square(ROLED.areas["field"], side)
+
+
+def test_typed_points_are_recorded_as_points():
+    specs = ["47,18.5", "1953,18.5", "47,1981.5", "1953,1981.5"]
+    assert collect_points(ROLED, specs) == (specs, None, "")
+    assert points_from_specs(specs, ROLED) == PointsFrom("points")
+
+
+@pytest.mark.parametrize(
+    "created_at, age",
+    [
+        ("2026-09-10T09:00:00Z", 2.0),
+        ("2026-09-10T11:00:00+02:00", 2.0),
+        ("2026-09-10T09:00:00", 2.0),
+        ("", None),
+        ("last tuesday", None),
+    ],
+)
+def test_calibration_age_reads_any_iso_zone(created_at, age):
+    import datetime
+
+    from dotbot.calibration.lighthouse2 import Calibration, calibration_age_days
+
+    now = datetime.datetime(2026, 9, 12, 9, tzinfo=datetime.timezone.utc)
+    calibration = Calibration(created_at=created_at)
+    assert calibration_age_days(calibration, now) == age

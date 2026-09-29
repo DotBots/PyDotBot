@@ -31,7 +31,6 @@ from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_TRAIL_SIZE,
-    DotBotAreaModel,
     DotBotBackgroundMapModel,
     DotBotBodyModel,
     DotBotBuildModel,
@@ -563,21 +562,12 @@ async def device_poses():
 @api.get(
     path="/controller/site",
     response_model=DotBotSiteModel,
-    summary="Return the site the controller works in, with its areas",
+    summary="Return the site the controller works in, its areas and calibrated span",
     tags=["controller"],
 )
 async def site():
     """Active site HTTP GET handler."""
-    current = api.controller.site
-    return DotBotSiteModel(
-        name=current.name,
-        anchor=current.anchor,
-        extent_mm=list(current.extent_mm) if current.extent_mm else None,
-        areas=[
-            DotBotAreaModel(**a.as_dict())
-            for a in sorted(current.areas.values(), key=lambda a: a.name)
-        ],
-    )
+    return DotBotSiteModel.from_site(api.controller.site, api.controller.calibration)
 
 
 @api.get(
@@ -632,9 +622,8 @@ async def camera_stream(area: str):
 )
 async def calibration_session_start(request: DotBotCalibrationStartModel):
     """Calibration-session HTTP POST handler."""
-    specs = (
-        [request.points] if isinstance(request.points, str) else list(request.points)
-    )
+    points = request.points
+    specs = ([points] if points else []) if isinstance(points, str) else list(points)
     return await _calibration(
         api.controller.calibration_session.start(
             specs, request.device, request.area, request.reads

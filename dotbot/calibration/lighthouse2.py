@@ -23,10 +23,11 @@ import struct
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence, Union
 
 import numpy as np
 
+from dotbot.calibration.points import PointsFrom
 from dotbot.robots import ROBOT_DEFAULT
 from dotbot.site import SITE_DEFAULT, Site
 
@@ -156,11 +157,13 @@ class Placement:
 
     `at` records what the operator typed and nothing reads it back;
     `points_mm` is resolved once, at capture, and is the only solver input.
+    `points_from` says how the points were chosen.
     """
 
     index: int
     points_mm: list[tuple[float, float]]
     at: str = ""
+    points_from: PointsFrom | None = None
     captured_at: str = ""
     samples: list[Sample] = field(default_factory=list)
 
@@ -477,7 +480,7 @@ def canonical_serialisation(calibration: Calibration) -> str:
     One `key=value` line per hashed field, sorted, newline-joined. The rule
     that decides membership: if changing a field cannot change any computed
     position, it is not here. So the site's `anchor`, `created_at`, `tag`,
-    the robot model and a placement's `at` note are all outside it, and a
+    the robot model and a placement's `at` and `points_from` are all outside it, and a
     typo fix in a sentence no code reads cannot make a fleet look stale.
 
     Zero is the site's anchor by definition, so there is no origin offset to
@@ -549,6 +552,19 @@ def toml_matrix(matrix: Sequence[Sequence[float]]) -> str:
     return f"[{rows}]"
 
 
+def _toml_inline_table(values: dict[str, str | int]) -> str:
+    """A flat table of strings and ints, as a TOML inline table."""
+    items = (
+        (
+            f'{key} = "{toml_escape(value)}"'
+            if isinstance(value, str)
+            else f"{key} = {value}"
+        )
+        for key, value in values.items()
+    )
+    return "{ " + ", ".join(items) + " }"
+
+
 def toml_escape(text: str) -> str:
     """`text` as the body of a TOML basic string."""
     return text.replace("\\", "\\\\").replace('"', '\\"')
@@ -583,6 +599,12 @@ def render_calibration(calibration: Calibration) -> str:
             f"index = {placement.index}",
             f'at = "{toml_escape(placement.at)}"',
             f"points_mm = {toml_points(placement.points_mm)}",
+        ]
+        if placement.points_from is not None:
+            out.append(
+                f"points_from = {_toml_inline_table(placement.points_from.to_dict())}"
+            )
+        out += [
             f'captured_at = "{placement.captured_at}"',
             "samples = [",
         ]
@@ -652,6 +674,11 @@ def read_calibration_file(path: Path) -> Calibration:
                 index=int(raw["index"]),
                 points_mm=[(float(p[0]), float(p[1])) for p in raw["points_mm"]],
                 at=raw.get("at", ""),
+                points_from=(
+                    PointsFrom.from_dict(raw["points_from"])
+                    if "points_from" in raw
+                    else None
+                ),
                 captured_at=raw.get("captured_at", ""),
                 samples=samples,
             )
@@ -685,13 +712,12 @@ def read_calibration_file(path: Path) -> Calibration:
 def resolve_calibration_path(
     spec: str,
     root: Optional[Path] = None,
-    site: Optional[str] = None,
+    site: Union[Site, str, None] = None,
 ) -> Path:
     """The file `spec` names: see `resolve_calibration_spec`."""
     return resolve_calibration_spec(
         spec,
-        root or calibration_root(),
-        site,
+        calibration_folders(site, root or calibration_root()),
         glob=CALIBRATION_TOML_GLOB,
         metadata=_file_metadata,
         what="calibration",
@@ -699,10 +725,25 @@ def resolve_calibration_path(
     )
 
 
+def calibration_folders(
+    site: Union[Site, str, None], root: Path
+) -> list[tuple[Path, str]]:
+    """Where a site's calibration files are looked for, in order, as (folder,
+    pattern prefix): its pack's `calibrations/`, then `root/<site>/`. No site
+    searches every site under `root`."""
+    if site is None:
+        return [(root, "*/")]
+    if isinstance(site, str):
+        return [(root / site, "")]
+    folders = [(root / site.name, "")]
+    if site.pack_calibrations is not None:
+        folders.insert(0, (site.pack_calibrations, ""))
+    return folders
+
+
 def resolve_calibration_spec(
     spec: str,
-    root: Path,
-    site: Optional[str],
+    folders: Sequence[tuple[Path, str]],
     glob: str,
     metadata: Callable[[Path], dict],
     what: str,
@@ -710,22 +751,21 @@ def resolve_calibration_spec(
 ) -> Path:
     """The file `spec` names, tried in order: a readable path; an exact,
     case-insensitive `tag` (as typed or as its stored slug); an id prefix of
-    a `glob` file under `root`, limited to `site` when given.
+    a `glob` file. Each (folder, prefix) of `folders` is searched in turn,
+    and the first with a match wins.
 
     Raises ValueError when nothing matches, or when a tag or an id prefix
-    matches several files, listing each one's id, `created_key` and path.
+    matches several files in one folder, listing each one's id,
+    `created_key` and path.
     """
     candidate = Path(spec).expanduser()
     if candidate.is_file():
         return candidate
 
-    files = {
-        path: metadata(path) for path in sorted(root.glob(f"{site or '*'}/{glob}"))
-    }
     spec_lower = spec.lower()
     spec_slug = slug_tag(spec).lower()
 
-    def unique(kind: str, matches: list) -> Optional[Path]:
+    def unique(kind: str, matches: list[Path], files: dict) -> Optional[Path]:
         if len(matches) > 1:
             lines = [
                 f"  {files[path].get('id', '?')}  "
@@ -737,27 +777,63 @@ def resolve_calibration_spec(
             )
         return matches[0] if matches else None
 
-    found = unique(
-        "tag",
-        [
+    for folder, prefix in folders:
+        files = {path: metadata(path) for path in sorted(folder.glob(prefix + glob))}
+        tags = [
             path
             for path, data in files.items()
             if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
-        ],
-    ) or unique(
-        "id prefix",
-        [
+        ]
+        ids = [
             path
             for path, data in files.items()
             if str(data.get("id", "")).lower().startswith(spec_lower)
-        ],
+        ]
+        found = unique("tag", tags, files) or unique("id prefix", ids, files)
+        if found is not None:
+            return found
+    searched = " or ".join(
+        str(folder / prefix.rstrip("/")) for folder, prefix in folders
     )
-    if found is not None:
-        return found
     raise ValueError(
         f"no {what} matches {spec!r}: it is neither a readable file, an "
-        f"exact tag, nor the id prefix of a file under {root / (site or '*')}"
+        f"exact tag, nor the id prefix of a file under {searched}"
     )
+
+
+def calibration_age_days(
+    calibration: Calibration, now: Optional[datetime.datetime] = None
+) -> Optional[float]:
+    """Days since `created_at`, an ISO 8601 time read as UTC when it names no
+    zone; None when it is missing or unreadable."""
+    try:
+        created = datetime.datetime.fromisoformat(calibration.created_at)
+    except ValueError:
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return (now - created).total_seconds() / 86400
+
+
+def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) -> None:
+    """Refuse a calibration made in another site, or against another anchor.
+
+    Anchors are compared only when both are recorded.
+    """
+    where = path or "the calibration"
+    if file_site.name != site.name:
+        raise ValueError(
+            f"{where} was made in site {file_site.name!r}, not {site.name!r}; "
+            f"select site {file_site.name!r} (--site or DOTBOT_SITE) or pick a "
+            f"calibration of {site.name!r}"
+        )
+    if file_site.anchor and site.anchor and file_site.anchor != site.anchor:
+        raise ValueError(
+            f"{where} records the anchor {file_site.anchor!r}, but site "
+            f"{site.name!r} has {site.anchor!r}: its frame is another one, so "
+            "recalibrate or correct the site's anchor"
+        )
 
 
 def _file_metadata(path: Path) -> dict:
@@ -772,10 +848,14 @@ def _file_metadata(path: Path) -> dict:
 def load_calibration(
     spec: str,
     root: Optional[Path] = None,
-    site: Optional[str] = None,
+    site: Union[Site, str, None] = None,
 ) -> Calibration:
-    """Read the calibration `spec` names."""
-    return read_calibration_file(resolve_calibration_path(spec, root, site))
+    """Read the calibration `spec` names; given a `Site`, refuse one made in
+    another (`check_calibration_site`)."""
+    calibration = read_calibration_file(resolve_calibration_path(spec, root, site))
+    if isinstance(site, Site):
+        check_calibration_site(calibration.site, site, calibration.path)
+    return calibration
 
 
 # --- Manager ----------------------------------------------------------------

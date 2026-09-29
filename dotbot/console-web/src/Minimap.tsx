@@ -189,7 +189,7 @@ export const Minimap: React.FC<MinimapProps> = ({
                 style={{
                   position: "absolute",
                   ...areaBox(a),
-                  border: `1px dashed ${areaColor(a.name ?? "", (site?.areas ?? []).map((o) => o.name))}`,
+                  border: `1px dashed ${areaColor(a, site?.areas ?? [])}`,
                   opacity: 0.85,
                   pointerEvents: "none",
                 }}

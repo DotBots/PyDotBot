@@ -35,6 +35,20 @@ own code - one DotBot, or a swarm of hundreds. Pick a starting point:
   **Prerequisites** below before you start.
 ```
 
+```{admonition} Sites and areas
+:class: note
+
+Positions are millimetres in a **site**: the floor you work on, with its zero
+at a physical mark you write down and named rectangles called **areas**. An
+area can have a role. The **field** is where experiments happen and what a
+calibration covers, and a site has at most one. **Staging** is where robots
+park and charge. A **corner** is a small patch, such as a bench, that may
+overlap other areas and stays hidden in the console until you turn it on.
+`dotbot config init` writes a site with a field and a staging strip, and
+commands that need a place default to the field. See
+[sites](reference/configuration.md#sites) in the configuration reference.
+```
+
 ```{include} ../README.md
 :relative-images:
 ```
