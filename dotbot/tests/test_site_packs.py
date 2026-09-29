@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Site packs: discovery, the inline-wins rule and pack-first calibration
-lookup. Every folder is a temporary one."""
+"""Site packs: discovery, the inline-wins rule, pack-first calibration lookup,
+and `dotbot site add` / `export`. Every folder is a temporary one."""
 
+import subprocess
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -176,3 +178,99 @@ def test_a_calibration_from_another_site_or_anchor_is_refused(tmp_path, home):
         load_calibration(path, site=Site(name="aio"))
     # A site with no recorded anchor does not compare anchors.
     assert load_calibration(path, site=Site(name="c405-arena")).id == FIXTURE_ID
+
+
+# --- dotbot site add / export ------------------------------------------------
+
+
+def test_export_an_inline_site_with_its_calibrations_then_add_it(
+    runner, tmp_path, home
+):
+    calibrations = home / ".dotbot" / "calibrations" / "c405-arena"
+    calibrations.mkdir(parents=True)
+    (calibrations / CALIBRATION_NAME).write_text(FIXTURE_TOML)
+    config = tmp_path / "dotbot.toml"
+    config.write_text(
+        '[sites.c405-arena]\nanchor = "a corner"\nextent_mm = [2000, 4000]\n'
+        "[sites.c405-arena.areas]\n"
+        "field = { x = 0, y = 0, w = 2000, h = 2000 }\n"
+        'bench = { x = 1000, y = 0, w = 1000, h = 1000, role = "corner" }\n'
+    )
+    archive = tmp_path / "out" / "c405.zip"
+    result = runner.invoke(
+        cli,
+        [
+            "-c",
+            str(config),
+            "site",
+            "export",
+            "c405-arena",
+            "--out",
+            str(archive),
+            "--with-calibrations",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "1 calibration files" in result.output
+    with zipfile.ZipFile(archive) as opened:
+        assert sorted(opened.namelist()) == [
+            f"c405-arena/calibrations/{CALIBRATION_NAME}",
+            "c405-arena/site.toml",
+        ]
+
+    result = runner.invoke(cli, ["-c", str(config), "site", "add", str(archive)])
+    assert result.exit_code == 0, result.output
+    added = home / ".dotbot" / "sites" / "c405-arena"
+    assert (added / "calibrations" / CALIBRATION_NAME).is_file()
+
+    # The added pack is a site the next config finds, bench role and all.
+    other = tmp_path / "elsewhere" / "dotbot.toml"
+    other.parent.mkdir()
+    other.write_text("")
+    result = runner.invoke(cli, ["-c", str(other), "config", "show"])
+    assert f"c405-arena  {added}" in result.output
+    site = resolve_site_entry(load_config(other), other, "c405-arena").site()
+    assert site.areas["bench"].role == "corner"
+    assert site.extent_mm == (2000, 4000)
+
+    again = runner.invoke(cli, ["-c", str(config), "site", "add", str(archive)])
+    assert again.exit_code != 0 and "--force" in again.output
+    forced = runner.invoke(
+        cli, ["-c", str(config), "site", "add", str(archive), "--force"]
+    )
+    assert forced.exit_code == 0, forced.output
+
+
+def test_add_a_pack_folder_and_a_git_repository(runner, tmp_path, home):
+    pack = _pack(tmp_path / "shared", "demo-dcoss-2026")
+    result = runner.invoke(cli, ["site", "add", str(pack)])
+    assert result.exit_code == 0, result.output
+    assert (home / ".dotbot" / "sites" / "demo-dcoss-2026" / "site.toml").is_file()
+
+    repo = _pack(tmp_path / "repos", "aio")
+    for command in (
+        ["init", "-q"],
+        ["add", "site.toml"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "pack"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *command], check=True)
+    result = runner.invoke(cli, ["site", "add", f"git+file://{repo}"])
+    assert result.exit_code == 0, result.output
+    added = home / ".dotbot" / "sites" / "aio"
+    assert (added / "site.toml").is_file() and not (added / ".git").exists()
+
+
+def test_add_refuses_what_is_not_a_pack(runner, tmp_path, home):
+    (tmp_path / "empty").mkdir()
+    result = runner.invoke(cli, ["site", "add", str(tmp_path / "empty")])
+    assert result.exit_code != 0 and "no site.toml" in result.output
+    result = runner.invoke(cli, ["site", "add", str(tmp_path / "missing")])
+    assert result.exit_code != 0 and "neither a folder" in result.output
+
+
+def test_export_names_the_known_sites_when_asked_for_another(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text("[sites.lab]\n")
+    result = runner.invoke(cli, ["-c", str(config), "site", "export", "nope"])
+    assert result.exit_code != 0
+    assert "known sites: lab" in result.output

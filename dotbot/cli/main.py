@@ -66,6 +66,11 @@ _SUBCOMMANDS = (
         "dotbot.cli.deployment_cmd",
         "List / show configured deployments.",
     ),
+    (
+        "site",
+        "dotbot.cli.site_cmd",
+        "Add a site pack to this machine, or export one to share.",
+    ),
 )
 
 
