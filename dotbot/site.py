@@ -16,6 +16,7 @@ a real site is measured, never shipped.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,8 @@ from typing import Any
 from dotbot.area import Area, AreaRegistry, area_role
 
 SITE_DEFAULT = "default"
+# A site name is a bare TOML key, and names a site pack's folder
+SITE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 # The side of the square, at the frame origin, a site that declares nothing
 # works in.
 FIELD_FALLBACK_MM = 2000
@@ -104,6 +107,13 @@ class Site:
     def registry(self) -> AreaRegistry:
         """The resolver `--points` runs against."""
         return AreaRegistry(named=dict(self.areas), site=self.name)
+
+
+def check_site_name(name: str) -> str:
+    """`name`, or ValueError when it is not letters, digits, `-` and `_`."""
+    if not SITE_NAME.fullmatch(name):
+        raise ValueError(f"site name {name!r}: use letters, digits, - and _")
+    return name
 
 
 def field_or_fallback(site: Site | None) -> Area:

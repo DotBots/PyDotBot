@@ -232,11 +232,13 @@ def test_config_init_names_the_site(runner):
     assert set(loaded.sites) == {"demo-dcoss-2026"}
 
 
-def test_config_init_refuses_a_site_name_toml_cannot_hold(runner):
+@pytest.mark.parametrize("name", ["my lab", "lab\n", ""])
+def test_config_init_refuses_a_site_name_toml_cannot_hold(runner, name):
     with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["config", "init", "--site", "my lab"])
+        result = runner.invoke(cli, ["config", "init", "--site", name])
         assert result.exit_code != 0
         assert "--site" in result.output
+        assert not Path("dotbot.toml").exists()
 
 
 def test_config_init_global_writes_the_default_site(runner, tmp_path, monkeypatch):

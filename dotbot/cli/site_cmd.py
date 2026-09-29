@@ -9,6 +9,7 @@ config finds it; `export` writes one as a zip, from a pack or from an inline
 `[sites.<name>]` table. The same folders can be shared with git, cp or unzip.
 """
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -19,7 +20,7 @@ import click
 import tomlkit
 
 from dotbot.config import ConfigError
-from dotbot.site import PACK_CALIBRATIONS
+from dotbot.site import PACK_CALIBRATIONS, check_site_name
 from dotbot.site_packs import PACK_FILE, read_pack, site_catalog, user_sites_dir
 
 _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
@@ -49,34 +50,73 @@ def _pack_in(folder: Path, name: str) -> tuple[Path, str]:
     raise click.ClickException(f"no {PACK_FILE} found in {name}")
 
 
+def _git_clone(url: str, target: Path) -> None:
+    """A shallow clone of `url`; git's `ext::` transport, which runs a
+    command, is refused."""
+    result = subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.ext.allow=never",
+            "clone",
+            "--depth",
+            "1",
+            "--",
+            url,
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(f"git clone {url} failed:\n{result.stderr.strip()}")
+
+
 def _fetch(source: str, scratch: Path) -> tuple[Path, str]:
     """The pack folder SOURCE names, and its site name."""
     if _is_git_url(source):
-        name = source.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
-        target = scratch / name
         url = source.removeprefix("git+")
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", url, str(target)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise click.ClickException(
-                f"git clone {url} failed:\n{result.stderr.strip()}"
-            )
+        target = scratch / "clone"
+        _git_clone(url, target)
+        name = re.split(r"[/:]", url.rstrip("/"))[-1].removesuffix(".git")
         return _pack_in(target, name)
     path = Path(source).expanduser()
     if path.is_dir():
         return _pack_in(path, path.resolve().name)
     if path.is_file() and zipfile.is_zipfile(path):
-        target = scratch / path.stem
+        target = scratch / "unzipped"
         with zipfile.ZipFile(path) as archive:
             archive.extractall(target)
         return _pack_in(target, path.stem)
     raise click.ClickException(
         f"{source} is neither a folder, a zip file nor a git URL"
     )
+
+
+def _check_pack(folder: Path, name: str) -> None:
+    """Refuse a pack with an unusable name, a link in it, or an invalid
+    `site.toml`."""
+    try:
+        check_site_name(name)
+    except ValueError as exc:
+        raise click.ClickException(
+            f"{exc}; rename the pack folder (or the repository) to its site's name"
+        ) from exc
+    calibrations = folder / PACK_CALIBRATIONS
+    paths = [folder / PACK_FILE, calibrations]
+    if calibrations.is_dir() and not calibrations.is_symlink():
+        paths += list(calibrations.rglob("*"))
+    links = [path for path in paths if path.is_symlink()]
+    if links:
+        raise click.ClickException(
+            f"the site pack {name} holds links, which are not copied: "
+            + ", ".join(str(path.relative_to(folder)) for path in links)
+        )
+    try:
+        read_pack(folder)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cmd.command()
@@ -90,10 +130,7 @@ def add(source, force):
     """
     with tempfile.TemporaryDirectory() as scratch:
         folder, name = _fetch(source, Path(scratch))
-        try:
-            read_pack(folder)
-        except ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
+        _check_pack(folder, name)
         target = user_sites_dir() / name
         if target.exists():
             if not force:
@@ -161,6 +198,10 @@ def export(ctx, name, out_path, with_calibrations, force):
     if entry is None:
         known = ", ".join(sorted(catalog)) or "(none)"
         raise click.ClickException(f"unknown site {name!r}; known sites: {known}")
+    try:
+        check_site_name(name)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     target = Path(out_path or f"{name}.zip")
     if target.exists() and not force:
         raise click.ClickException(
@@ -168,9 +209,9 @@ def export(ctx, name, out_path, with_calibrations, force):
         )
 
     if entry.pack is not None:
-        site_toml = (entry.pack / PACK_FILE).read_text()
+        site_toml = (entry.pack / PACK_FILE).read_bytes()
     else:
-        site_toml = _site_toml(entry.table)
+        site_toml = _site_toml(entry.table).encode()
     calibrations: dict[str, Path] = {}
     if with_calibrations:
         site = entry.site()

@@ -19,7 +19,7 @@ import click
 import tomlkit
 
 from dotbot.config import USER_CONFIG_PATH, ConfigError
-from dotbot.site import SITE_DEFAULT
+from dotbot.site import SITE_DEFAULT, check_site_name
 from dotbot.site_packs import site_catalog
 
 _CONFIG_DOCS_URL = (
@@ -37,7 +37,6 @@ FIELD_MAX_MM = 100_000
 # Above this, one LH2 base station rarely covers the field well.
 FIELD_COVERAGE_MM = 5000
 
-_SITE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 _FIELD_SIDE = re.compile(r"^(?P<value>\d+(?:\.\d+)?)(?P<unit>mm|m|[a-z]+)?$")
 
 
@@ -202,10 +201,10 @@ def init(global_, force, conn, swarm_id, site, field_spec):
     margin of floor round both. `--field` sizes the field, and the rest
     follows from it. `--conn` / `--swarm-id` pre-fill those top-level keys.
     """
-    if not _SITE_NAME.match(site):
-        raise click.BadParameter(
-            f"{site!r}: use letters, digits, - and _", param_hint="'--site'"
-        )
+    try:
+        check_site_name(site)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="'--site'") from exc
     try:
         field_mm = parse_field_size(field_spec)
     except click.BadParameter as exc:

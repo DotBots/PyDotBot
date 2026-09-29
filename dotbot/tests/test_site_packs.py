@@ -275,3 +275,60 @@ def test_export_names_the_known_sites_when_asked_for_another(runner, tmp_path, h
     result = runner.invoke(cli, ["-c", str(config), "site", "export", "nope"])
     assert result.exit_code != 0
     assert "known sites: lab" in result.output
+
+
+def _commit(repo: Path) -> None:
+    for command in (
+        ["init", "-q"],
+        ["add", "-A"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "pack"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *command], check=True)
+
+
+def test_add_refuses_a_git_url_that_names_no_usable_site(runner, tmp_path, home):
+    # The URL's last segment, `..`, would name the folder above the packs.
+    repo = _pack(tmp_path, "repo")
+    (repo / "sub").mkdir()
+    (repo / "sub" / "keep").write_text("")
+    _commit(repo)
+    kept = home / ".dotbot" / "config.toml"
+    kept.parent.mkdir()
+    kept.write_text("")
+    url = f"git+{repo.as_uri()}/sub/.."
+    result = runner.invoke(cli, ["site", "add", url, "--force"])
+    assert result.exit_code != 0
+    assert "site name '..'" in result.output
+    assert kept.is_file()
+
+
+def test_add_refuses_a_zip_whose_name_is_not_a_site_name(runner, tmp_path, home):
+    archive = tmp_path / "my lab.zip"
+    with zipfile.ZipFile(archive, "w") as opened:
+        opened.writestr("site.toml", 'anchor = "a corner"\n')
+    result = runner.invoke(cli, ["site", "add", str(archive)])
+    assert result.exit_code != 0 and "site name 'my lab'" in result.output
+    assert not (home / ".dotbot" / "sites").exists()
+
+
+def test_add_refuses_a_pack_holding_links(runner, tmp_path, home):
+    secret = tmp_path / "secret.toml"
+    secret.write_text("private = true\n")
+    pack = _pack(tmp_path / "shared", "linked", calibration=True)
+    try:
+        (pack / "calibrations" / "stolen.toml").symlink_to(secret)
+    except OSError:
+        pytest.skip("this machine cannot create symbolic links")
+    result = runner.invoke(cli, ["site", "add", str(pack)])
+    assert result.exit_code != 0
+    assert "holds links" in result.output and "stolen.toml" in result.output
+    assert not (home / ".dotbot" / "sites" / "linked").exists()
+
+
+def test_add_refuses_git_transports_that_run_commands(runner, tmp_path, home):
+    marker = tmp_path / "ran"
+    result = runner.invoke(
+        cli, ["site", "add", f"git+ext::sh -c touch% {marker.as_posix()}"]
+    )
+    assert result.exit_code != 0 and "git clone" in result.output
+    assert not marker.exists()
