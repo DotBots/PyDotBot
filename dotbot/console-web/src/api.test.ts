@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   captureCalibrationPoint,
+  clearWaypoints,
   fetchCalibrationSession,
+  fetchMrtaStatus,
   parseSseChunk,
+  putWaypointBatches,
   saveCalibration,
   startCalibration,
 } from "./api";
@@ -60,6 +63,7 @@ function stubFetch(status: number, payload: unknown): Call[] {
       status,
       statusText: "",
       text: async () => JSON.stringify(payload),
+      json: async () => payload,
     };
   }) as unknown as typeof fetch;
   return calls;
@@ -67,6 +71,38 @@ function stubFetch(status: number, payload: unknown): Call[] {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("fetchMrtaStatus", () => {
+  it("reads a 404 as 'not configured' - the controller has no --mrta-url set", async () => {
+    stubFetch(404, { detail: "no MRTA server configured" });
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(false);
+    expect(poll.status.state).toBe("unavailable");
+  });
+
+  it("reads a reachable proxy as configured, whatever state it reports", async () => {
+    stubFetch(200, { state: "off", bots: null, detail: null });
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(true);
+    expect(poll.status.state).toBe("off");
+  });
+
+  it("reads a 502 (mrta_url set but the server is down) as configured but unavailable", async () => {
+    stubFetch(502, {});
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(true);
+    expect(poll.status.state).toBe("unavailable");
+  });
+
+  it("defaults to hidden when the request fails outright", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    const poll = await fetchMrtaStatus();
+    expect(poll.configured).toBe(false);
+    expect(poll.status.state).toBe("unavailable");
+  });
 });
 
 describe("the calibration session", () => {
@@ -97,5 +133,34 @@ describe("the calibration session", () => {
     // can act on.
     stubFetch(409, { detail: "no calibration session is open" });
     await expect(saveCalibration()).rejects.toThrow("no calibration session is open");
+  });
+});
+
+describe("the bulk waypoint routes", () => {
+  it("pass on the robots the controller did not know", async () => {
+    stubFetch(200, { applied: ["AAAA"], unknown: ["BBBB"] });
+    expect(await putWaypointBatches(60, { AAAA: [], BBBB: [] })).toEqual({
+      applied: ["AAAA"],
+      unknown: ["BBBB"],
+    });
+  });
+
+  it("read a 404 as every named robot unknown", async () => {
+    stubFetch(404, { detail: "No matching dotbot found: AAAA, BBBB" });
+    expect(await clearWaypoints(["AAAA", "BBBB"])).toEqual({
+      applied: [],
+      unknown: ["AAAA", "BBBB"],
+    });
+  });
+
+  it("refuse a waypoint the controller cannot send with its own sentence", async () => {
+    const detail = "AAAA: waypoint (-100, 500) mm is outside site 'c405', 0 to 3000 x 0 to 2000 mm";
+    stubFetch(422, { detail });
+    await expect(putWaypointBatches(60, { AAAA: [{ x: -100, y: 500 }] })).rejects.toThrow(detail);
+  });
+
+  it("refuse a malformed request as an error", async () => {
+    stubFetch(422, { detail: [] });
+    await expect(putWaypointBatches(60, { AAAA: [] })).rejects.toThrow("422");
   });
 });

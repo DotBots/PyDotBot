@@ -4,71 +4,55 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Dotbot simulator for the DotBot project."""
+"""Dotbot simulator for the DotBot project.
 
-import ctypes
+Each simulated robot runs the DotBot app's control firmware, `dotbot.sim.core`:
+the wheel loop, the pose estimator, the waypoint steering and the
+advertisement, every 10 ms tick, on a body simulated by `dotbot.sim.plant`.
+"""
+
+import functools
 import heapq
 import queue
 import random
 import threading
 import time
-from dataclasses import dataclass
 from enum import Enum
-from math import atan2, ceil, cos, pi, sin, sqrt
+from math import ceil, sqrt
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+import numpy as np
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 from pydantic import BaseModel, Field, model_validator
 
 from dotbot import (
+    DOTBOT_ADDRESS_DEFAULT,
     GATEWAY_ADDRESS_DEFAULT,
     SIMULATOR_INIT_STATE_DEFAULT,
     addr_to_hex,
 )
 from dotbot.area import Area
 from dotbot.logger import LOGGER
-from dotbot.protocol import (
-    DIRECTION_NONE,
-    ControlModeType,
-    PayloadDotBotAdvertisement,
-    PayloadType,
+from dotbot.protocol import DIRECTION_NONE
+from dotbot.sim import core as control
+from dotbot.sim.plant import (
+    INITIAL_BATTERY_VOLTAGE,
+    FleetPlant,
+    battery_discharge_model,
 )
-from dotbot.robots import robot_geometry
 from dotbot.site import Site
 
-_GEOMETRY = robot_geometry()
-
-Kv = 700  # motor speed constant in RPM
-R = _GEOMETRY.gear_ratio  # motor reduction ratio
-D = _GEOMETRY.wheel_diameter_mm
-L = _GEOMETRY.track_mm  # distance between the two wheels in mm
-ENCODER_CPR = _GEOMETRY.encoder_cpr  # counts per motor shaft revolution
-MM_PER_COUNT = _GEOMETRY.mm_per_count
-
-# Control parameters for the automatic mode
-MOTOR_SPEED = 60
-ANGULAR_SPEED_GAIN = 1.5
-REDUCE_SPEED_FACTOR = 0.8
-REDUCE_SPEED_ANGLE = 25
-
-# Travel away from the last recorded point before a new heading is computed.
-# Mirrors DB_DIRECTION_THRESHOLD in the firmware control loop.
-DIRECTION_THRESHOLD_MM = 50
-
-SIMULATOR_STEP_DELTA_T = 0.01  # 10 ms
-
-# The sandbox dotbot firmware stops the wheels this long after the last wheel
-# velocity command.
-WHEEL_VELOCITY_TIMEOUT_S = 0.5
-
-# Battery model parameters
-INITIAL_BATTERY_VOLTAGE = 3000  # mV
-MAX_BATTERY_DURATION = 60 * 60 * 3  # 3 hours in seconds
+SIMULATOR_STEP_DELTA_T = 0.01  # one app tick, 10 ms
 
 ADVERTISEMENT_INTERVAL_S = 0.5
-SIMULATOR_UPDATE_INTERVAL_S = 0.05
+# How far the live clock may fall behind the wall before it stops catching up
+MAX_LAG_TICKS = 10
+ADVERTISEMENT_TICKS = round(ADVERTISEMENT_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
+
+# Version, type, destination and source
+FRAME_HEADER_BYTES = 18
 
 MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
@@ -77,6 +61,11 @@ MARI_SLOTFRAME_SIZE = (
 # Where a world file's unpositioned robots go. `arena` is the area name the
 # rest of the CLI already defaults to (`--points` resolves `arena:corners`).
 PLACEMENT_AREA_DEFAULT = "arena"
+# Where `--robots N` puts a generated fleet, and how far apart
+FLEET_AREA_DEFAULT = "field"
+FLEET_PITCH_MM = 200
+# Headings of a generated fleet's two halves, 0 facing +y (down)
+FLEET_FACING_UP, FLEET_FACING_DOWN = 180, 0
 # The square a site that measures neither an extent nor an area falls back to.
 PLACEMENT_EXTENT_DEFAULT_MM = 2000
 
@@ -91,35 +80,6 @@ GRU_FEATURE_COLS = [
     "pos_y",
 ]
 GRU_SEQ_LEN_DEFAULT = 20  # must match --seq-len used during training
-
-
-def battery_discharge_model(time_elapsed_s: float) -> int:
-    """Linear discharge over MAX_BATTERY_DURATION (supercapacitor idle model)."""
-    t = min(time_elapsed_s / MAX_BATTERY_DURATION, 1.0)
-    return max(0, int(INITIAL_BATTERY_VOLTAGE * (1 - t)))
-
-
-def wheel_speed_from_pwm(pwm: float) -> float:
-    """Convert a PWM value to a wheel speed in mm/s."""
-    if pwm > 100:
-        pwm = 100
-    if pwm < -100:
-        pwm = -100
-    return pwm * D * Kv / (R * 127)
-
-
-def pwm_from_wheel_speed(speed_mm_s: float) -> int:
-    """Convert a wheel speed in mm/s to the PWM that would produce it."""
-    pwm = round(speed_mm_s * R * 127 / (D * Kv))
-    return max(-100, min(100, pwm))
-
-
-@dataclass
-class Waypoint:
-    """Waypoint class for the dotbot simulator."""
-
-    x: int
-    y: int
 
 
 class SimulatedNetworkMode(str, Enum):
@@ -150,8 +110,11 @@ def _random_address() -> str:
 class SimulatedDotBotSettings(BaseModel):
     """One simulated robot as a world file declares it.
 
-    `pos_x` / `pos_y` are frame millimetres. Leaving them out asks for a
-    placement inside the active site instead - see `place_dotbots`.
+    `pos_x` / `pos_y` are the axle midpoint in frame millimetres. Leaving them
+    out asks for a placement inside the active site instead - see
+    `place_dotbots`. A `direction` is the robot's heading, which its
+    estimator starts out tracking; without one the robot faces +y and starts
+    with no heading, as a real robot does from boot.
     """
 
     address: str = Field(default_factory=_random_address)
@@ -161,48 +124,10 @@ class SimulatedDotBotSettings(BaseModel):
     calibrated: int = 0xFF
     motor_left_error: float = 0
     motor_right_error: float = 0
-    custom_control_loop_library: Path = None
+    lh2_noise_mm: float = 0
     gru_model_path: Path = None
     battery_model_path: Path = None
     network_mode: SimulatedNetworkMode = SimulatedNetworkMode.DEFAULT
-
-
-class ControlLoopWaypoint(ctypes.Structure):
-    """Mirrors coordinate_t from control_loop.h — used when calling control_loop_set_waypoints."""
-
-    _fields_ = [
-        ("x", ctypes.c_uint32),
-        ("y", ctypes.c_uint32),
-    ]
-
-
-class RobotControl(ctypes.Structure):
-    """Mirrors robot_control_t from control_loop.h.
-
-    Only the stable external I/O boundary is represented here.  All internal
-    algorithm state lives in the opaque context managed by the C library.
-    Layout must stay in sync with the C struct (no internal padding gaps).
-    """
-
-    _fields_ = [
-        # Inputs — robot state (4-byte fields first, no padding gaps)
-        ("pos_x", ctypes.c_uint32),
-        ("pos_y", ctypes.c_uint32),
-        ("encoder_left", ctypes.c_int32),  # signed delta counts since last call
-        ("encoder_right", ctypes.c_int32),  # signed delta counts since last call
-        # Outputs — current target waypoint coordinates (written by C, for telemetry)
-        ("waypoint_x", ctypes.c_uint32),
-        ("waypoint_y", ctypes.c_uint32),
-        # Input — robot heading (2-byte, followed by 1-byte fields — no internal padding)
-        ("direction", ctypes.c_int16),
-        # Outputs — actuation (written by C)
-        ("pwm_left", ctypes.c_int8),
-        ("pwm_right", ctypes.c_int8),
-        # Outputs — status flags (written by C)
-        ("waypoint_reached", ctypes.c_uint8),
-        ("all_done", ctypes.c_uint8),
-        ("waypoint_idx", ctypes.c_uint8),
-    ]
 
 
 class InitStateToml(BaseModel):
@@ -210,578 +135,26 @@ class InitStateToml(BaseModel):
     network: SimulatedNetworkSettings = SimulatedNetworkSettings()
 
 
-class DotBotSimulator:
-    """Simulator class for the dotbot."""
-
-    def __init__(self, settings: SimulatedDotBotSettings, tx_queue: queue.Queue):
-        self.address = settings.address.upper()
-        self.pos_x = settings.pos_x or 0
-        self.pos_y = settings.pos_y or 0
-        self.theta = (
-            settings.direction * -1 if settings.direction != DIRECTION_NONE else 0
-        )
-        self.motor_left_error = settings.motor_left_error
-        self.motor_right_error = settings.motor_right_error
-        self.custom_control_loop_library = settings.custom_control_loop_library
-        self._control_loop_func = self._init_control_loop()
-        self.time_elapsed_s = 0
-
-        self.pwm_left = 0
-        self.pwm_right = 0
-        # Wheel speeds in mm/s set by a wheel velocity command; None while the
-        # wheels are driven by PWM.
-        self.wheel_velocity: Optional[Tuple[int, int]] = None
-        self._wheel_velocity_deadline = 0.0
-        self.direction = settings.direction
-        # Point the next heading is measured from. The frame origin at boot, as
-        # on the real robot, so the first heading is an origin bearing.
-        self._direction_origin_x = 0.0
-        self._direction_origin_y = 0.0
-
-        # Accumulated encoder deltas between control-loop calls (control runs at
-        # SIMULATOR_UPDATE_INTERVAL_S, physics at SIMULATOR_STEP_DELTA_T — multiple
-        # physics steps per control call)
-        self.encoder_left_acc = 0.0
-        self.encoder_right_acc = 0.0
-        # Last encoder delta actually passed to update_control — advertised to match
-        # real-robot telemetry semantics (the value from the most recent control call)
-        self._last_encoder_left = 0
-        self._last_encoder_right = 0
-
-        self.calibrated = settings.calibrated
-        self.waypoint_threshold = 0
-        self.waypoints = []
-        self.waypoint_index = 0
-        self.waypoint_x = 0
-        self.waypoint_y = 0
-
-        self.logger = LOGGER.bind(context=__name__, address=self.address)
-        self._gru_model = None
-        self._gru_buffer: list[list[float]] = (
-            []
-        )  # rolling window of raw feature vectors
-        if settings.gru_model_path is not None:
-            self._gru_model = self._load_gru_model(settings.gru_model_path)
-
-        self._battery_model = None
-        self.battery_voltage: float = float(INITIAL_BATTERY_VOLTAGE)
-        if settings.battery_model_path is not None:
-            self._battery_model = self._load_battery_model(settings.battery_model_path)
-
-        self._lock = threading.Lock()
-        self.tx_queue = tx_queue
-        self.queue = queue.Queue()
-        self.advertise_thread = threading.Thread(target=self.advertise, daemon=True)
-        self.control_thread = threading.Thread(target=self.control_thread, daemon=True)
-        self.rx_thread = threading.Thread(target=self.rx_frame, daemon=True)
-        self.main_thread = threading.Thread(target=self.update_state, daemon=True)
-        self.controller_mode: ControlModeType = ControlModeType.MANUAL
-        self._stop_event = threading.Event()
-        self.logger.info(
-            "DotBot simulator initialized",
-            pos_x=self.pos_x,
-            pos_y=self.pos_y,
-            direction=self.direction,
-            theta=self.theta,
-        )
-
-    def _load_gru_model(self, path: Path):
-        """Load a TorchScript GRU residual model from *path*."""
-        try:
-            import torch  # imported lazily — not required when model is unused
-
-            model = torch.jit.load(str(path), map_location="cpu")
-            model.eval()
-            self.logger.info("GRU residual model loaded", path=str(path))
-            return model
-        except Exception as exc:  # noqa: BLE001
-            self.logger.error(
-                "Failed to load GRU model", path=str(path), error=str(exc)
-            )
-            return None
-
-    def _load_battery_model(self, path: Path):
-        """Load a TorchScript battery discharge model from *path*."""
-        try:
-            import torch  # imported lazily — not required when model is unused
-
-            model = torch.jit.load(str(path), map_location="cpu")
-            model.eval()
-            self.logger.info("Battery discharge model loaded", path=str(path))
-            return model
-        except Exception as exc:  # noqa: BLE001
-            self.logger.error(
-                "Failed to load battery model", path=str(path), error=str(exc)
-            )
-            return None
-
-    def _gru_residual(self) -> tuple[float, float, float, float]:
-        """Return (dx, dy, d_enc_left, d_enc_right) predicted by the GRU, or zeros."""
-        if self._gru_model is None or len(self._gru_buffer) < GRU_SEQ_LEN_DEFAULT:
-            return 0.0, 0.0, 0.0, 0.0
-        try:
-            import torch
-
-            seq = self._gru_buffer[-GRU_SEQ_LEN_DEFAULT:]
-            x = torch.tensor([seq], dtype=torch.float32)  # (1, seq_len, n_features)
-            with torch.no_grad():
-                pred = self._gru_model(x)  # (1, 4)
-            return (
-                float(pred[0, 0]),
-                float(pred[0, 1]),
-                float(pred[0, 2]),
-                float(pred[0, 3]),
-            )
-        except Exception as exc:  # noqa: BLE001
-            self.logger.warning("GRU inference failed", error=str(exc))
-            return 0.0, 0.0, 0.0, 0.0
-
-    def start(self):
-        self.rx_thread.start()
-        self.advertise_thread.start()
-        self.control_thread.start()
-        self.main_thread.start()
-        self.logger.info("DotBot simulator started")
-
-    @property
-    def header(self):
-        return Header(
-            destination=int(GATEWAY_ADDRESS_DEFAULT, 16),
-            source=int(self.address, 16),
-        )
-
-    def diff_drive_model_update(self, dt=SIMULATOR_STEP_DELTA_T):
-        """State space model update."""
-        pos_x_old = self.pos_x
-        pos_y_old = self.pos_y
-        theta_old = self.theta
-
-        if (
-            self.wheel_velocity is not None
-            and time.monotonic() > self._wheel_velocity_deadline
-        ):
-            self._stop_wheel_velocity()
-
-        if self.wheel_velocity is not None:
-            # The onboard wheel loop closes on the encoders, so the motor error
-            # does not show in the wheel speeds.
-            v_left_real, v_right_real = self.wheel_velocity
-        else:
-            # Compute each wheel's real speed considering the motor error and the minimum PWM to move
-            v_left_real = wheel_speed_from_pwm(self.pwm_left) * (
-                1 - self.motor_left_error
-            )
-            v_right_real = wheel_speed_from_pwm(self.pwm_right) * (
-                1 - self.motor_right_error
-            )
-
-        V = (v_right_real + v_left_real) / 2
-        w = (v_right_real - v_left_real) / L
-        x_dot = V * cos(theta_old * pi / 180 - pi / 2)
-        y_dot = V * sin(theta_old * pi / 180 + pi / 2)
-        dx = x_dot * dt
-        dy = y_dot * dt
-
-        self.pos_x = pos_x_old + dx
-        self.pos_y = pos_y_old + dy
-        self.theta = (theta_old + w * dt * 180 / pi) % 360
-
-        origin_dx = self.pos_x - self._direction_origin_x
-        origin_dy = self.pos_y - self._direction_origin_y
-        moved = dx != 0 or dy != 0
-        if moved and sqrt(origin_dx**2 + origin_dy**2) > DIRECTION_THRESHOLD_MM:
-            self.direction = int(-1 * atan2(origin_dx, origin_dy) * 180 / pi) % 360
-            if self.direction > 180:
-                self.direction -= 360
-            self._direction_origin_x = self.pos_x
-            self._direction_origin_y = self.pos_y
-
-        # Accumulate encoder counts for this physics step
-        if self.controller_mode == ControlModeType.AUTO:
-            self.encoder_left_acc += v_left_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
-            self.encoder_right_acc += (
-                v_right_real * SIMULATOR_STEP_DELTA_T / MM_PER_COUNT
-            )
-
-        # Update GRU feature buffer with the post-step state
-        if self._gru_model is not None:
-            self._gru_buffer.append(
-                [
-                    float(self.pwm_left),
-                    float(self.pwm_right),
-                    float(self.encoder_left_acc),
-                    float(self.encoder_right_acc),
-                    float(self.direction),
-                    float(self.pos_x),
-                    float(self.pos_y),
-                ]
-            )
-            # Keep only as many steps as needed to avoid unbounded growth
-            if len(self._gru_buffer) > GRU_SEQ_LEN_DEFAULT:
-                self._gru_buffer.pop(0)
-            res_x, res_y, res_enc_l, res_enc_r = self._gru_residual()
-            self.pos_x += res_x
-            self.pos_y += res_y
-            if self.controller_mode == ControlModeType.AUTO:
-                self.encoder_left_acc += res_enc_l
-                self.encoder_right_acc += res_enc_r
-
-        self.time_elapsed_s += dt
-        if self._battery_model is not None:
-            try:
-                import torch
-
-                # Encoders are only reported by the real hardware in AUTO mode;
-                # mirror that here so the battery model sees consistent inputs.
-                in_auto = self.controller_mode == ControlModeType.AUTO
-                enc_left = float(self.encoder_left_acc) if in_auto else 0.0
-                enc_right = float(self.encoder_right_acc) if in_auto else 0.0
-                features = torch.tensor(
-                    [
-                        [
-                            float(self.pwm_left),
-                            float(self.pwm_right),
-                            enc_left,
-                            enc_right,
-                            float(int(self.controller_mode)),
-                        ]
-                    ],
-                    dtype=torch.float32,
-                )
-                with torch.no_grad():
-                    rate = float(self._battery_model(features)[0, 0])  # mV/s
-                self.battery_voltage = max(0.0, self.battery_voltage + rate * dt)
-            except Exception as exc:  # noqa: BLE001
-                self.logger.warning("Battery model inference failed", error=str(exc))
-        else:
-            self.battery_voltage = battery_discharge_model(self.time_elapsed_s)
-
-        self.logger.debug(
-            "State updated",
-            pos_x=int(self.pos_x),
-            pos_y=int(self.pos_y),
-            theta=int(self.theta),
-            direction=int(self.direction),
-            pwm_left=int(self.pwm_left),
-            pwm_right=int(self.pwm_right),
-        )
-
-    def _stop_wheel_velocity(self):
-        self.wheel_velocity = None
-        self.pwm_left = 0
-        self.pwm_right = 0
-
-    def update_state(self):
-        """Update the state of the dotbot simulator."""
-        while True:
-            with self._lock:
-                self.diff_drive_model_update()
-            is_stopped = self._stop_event.wait(SIMULATOR_STEP_DELTA_T)
-            if is_stopped:
-                break
-
-    def _init_control_loop(self) -> callable:
-        """Initialize the control loop, potentially loading a custom control loop library."""
-        if self.custom_control_loop_library is not None:
-            lib = ctypes.CDLL(self.custom_control_loop_library)
-            self.custom_control_loop_library = lib
-
-            lib.control_loop_alloc.argtypes = []
-            lib.control_loop_alloc.restype = ctypes.c_void_p
-
-            lib.control_loop_free.argtypes = [ctypes.c_void_p]
-            lib.control_loop_free.restype = None
-
-            lib.control_loop_set_waypoints.argtypes = [
-                ctypes.c_void_p,
-                ctypes.POINTER(ControlLoopWaypoint),
-                ctypes.c_uint8,
-                ctypes.c_uint32,
-            ]
-            lib.control_loop_set_waypoints.restype = None
-
-            lib.update_control.argtypes = [
-                ctypes.POINTER(RobotControl),
-                ctypes.c_void_p,
-            ]
-            lib.update_control.restype = None
-
-            self._control_ctx = lib.control_loop_alloc()
-            self.custom_robot_control = RobotControl()
-            return self._control_loop_custom
-        else:
-            return self._control_loop_default
-
-    def _control_loop_custom(self):
-        """Control loop using a custom control loop library."""
-        self.custom_robot_control.pos_x = int(self.pos_x)
-        self.custom_robot_control.pos_y = int(self.pos_y)
-        self.custom_robot_control.direction = self.direction
-        self._last_encoder_left = int(self.encoder_left_acc)
-        self._last_encoder_right = int(self.encoder_right_acc)
-        self.custom_robot_control.encoder_left = self._last_encoder_left
-        self.custom_robot_control.encoder_right = self._last_encoder_right
-        self.encoder_left_acc = 0
-        self.encoder_right_acc = 0
-
-        self.custom_control_loop_library.update_control(
-            ctypes.byref(self.custom_robot_control),
-            self._control_ctx,
-        )
-
-        self.pwm_left = self.custom_robot_control.pwm_left
-        self.pwm_right = self.custom_robot_control.pwm_right
-        self.waypoint_index = self.custom_robot_control.waypoint_idx
-        self.waypoint_x = self.custom_robot_control.waypoint_x
-        self.waypoint_y = self.custom_robot_control.waypoint_y
-
-        self.logger.info(
-            "Custom loop",
-            pwm_left=self.pwm_left,
-            pwm_right=self.pwm_right,
-            direction=self.direction,
-            encoder_left=int(self.custom_robot_control.encoder_left),
-            encoder_right=int(self.custom_robot_control.encoder_right),
-            waypoint_index=self.custom_robot_control.waypoint_idx,
-            waypoint_x=self.custom_robot_control.waypoint_x,
-            waypoint_y=self.custom_robot_control.waypoint_y,
-            waypoint_reached=self.custom_robot_control.waypoint_reached,
-            all_done=self.custom_robot_control.all_done,
-        )
-
-        if self.custom_robot_control.all_done:
-            self.logger.info("All waypoints completed")
-            self.waypoint_index = 0
-            self.waypoint_x = 0
-            self.waypoint_y = 0
-            self.controller_mode = ControlModeType.MANUAL
-            self.encoder_right_acc = 0
-            self.encoder_left_acc = 0
-
-    def _control_loop_default(self):
-        self._last_encoder_left = int(self.encoder_left_acc)
-        self._last_encoder_right = int(self.encoder_right_acc)
-        self.encoder_left_acc = 0.0
-        self.encoder_right_acc = 0.0
-
-        delta_x = self.waypoints[self.waypoint_index].pos_x - self.pos_x
-        delta_y = self.waypoints[self.waypoint_index].pos_y - self.pos_y
-        distance_to_target = sqrt(delta_x**2 + delta_y**2)
-
-        # check if we are close enough to the "next" waypoint
-        if distance_to_target < self.waypoint_threshold:
-            self.logger.info("Waypoint reached", waypoint_index=self.waypoint_index)
-            self.waypoint_index += 1
-            # check if there are no more waypoints:
-            if self.waypoint_index >= len(self.waypoints):
-                self.logger.info(
-                    "Last waypoint reached", waypoint_index=self.waypoint_index
-                )
-                self.pwm_left = 0
-                self.pwm_right = 0
-                self.waypoint_index = 0
-                self.waypoint_x = 0
-                self.waypoint_y = 0
-                self.controller_mode = ControlModeType.MANUAL
-                self.encoder_right_acc = 0
-                self.encoder_left_acc = 0
-                return
-
-        self.waypoint_x = int(self.waypoints[self.waypoint_index].pos_x)
-        self.waypoint_y = int(self.waypoints[self.waypoint_index].pos_y)
-
-        angle_to_target = -1 * atan2(delta_x, delta_y) * 180 / pi
-        # Steer on the true pose: the advertised direction lags travel, so a
-        # bot turning in place would never see its own heading change.
-        robot_angle = -self.theta
-        if robot_angle >= 180:
-            robot_angle -= 360
-        elif robot_angle < -180:
-            robot_angle += 360
-
-        error_angle = angle_to_target - robot_angle
-        if error_angle >= 180:
-            error_angle -= 360
-        elif error_angle < -180:
-            error_angle += 360
-
-        speed_reduction_factor: float = 1.0
-        if distance_to_target < self.waypoint_threshold * 2:
-            speed_reduction_factor = REDUCE_SPEED_FACTOR
-        if error_angle > REDUCE_SPEED_ANGLE or error_angle < -REDUCE_SPEED_ANGLE:
-            speed_reduction_factor = REDUCE_SPEED_FACTOR
-
-        angular_speed = (error_angle / 180) * MOTOR_SPEED * ANGULAR_SPEED_GAIN
-        self.pwm_left = MOTOR_SPEED * speed_reduction_factor + angular_speed
-        self.pwm_right = MOTOR_SPEED * speed_reduction_factor - angular_speed
-
-        self.logger.info(
-            "Loop update",
-            robot_angle=int(robot_angle),
-            direction=int(self.direction),
-            angle_to_target=int(angle_to_target),
-            error_angle=int(error_angle),
-            angular_speed=int(angular_speed),
-            pwm_left=int(self.pwm_left),
-            pwm_right=int(self.pwm_right),
-            theta=int(self.theta),
-            waypoint=f"{self.waypoint_index}/{len(self.waypoints)}",
-        )
-
-    def control_thread(self):
-        """Control thread to update the state of the dotbot simulator."""
-        while self._stop_event.is_set() is False:
-            if self.controller_mode == ControlModeType.AUTO:
-                with self._lock:
-                    self._control_loop_func()
-            is_stopped = self._stop_event.wait(SIMULATOR_UPDATE_INTERVAL_S)
-            if is_stopped:
-                break
-
-    def advertise(self):
-        """Send an advertisement message to the gateway."""
-        while self._stop_event.is_set() is False:
-            payload = Frame(
-                header=self.header,
-                packet=Packet.from_payload(
-                    PayloadDotBotAdvertisement(
-                        calibrated=self.calibrated,
-                        direction=self.direction,
-                        pos_x=int(self.pos_x) if self.pos_x >= 0 else 0,
-                        pos_y=int(self.pos_y) if self.pos_y >= 0 else 0,
-                        battery=int(self.battery_voltage),
-                        pwm_left=int(self.pwm_left),
-                        pwm_right=int(self.pwm_right),
-                        mode=int(self.controller_mode),
-                        encoder_left=self._last_encoder_left,
-                        encoder_right=self._last_encoder_right,
-                        waypoint_x=int(self.waypoint_x),
-                        waypoint_y=int(self.waypoint_y),
-                        waypoint_idx=int(self.waypoint_index),
-                    )
-                ),
-            )
-            self.tx_queue.put_nowait(payload)
-            is_stopped = self._stop_event.wait(ADVERTISEMENT_INTERVAL_S)
-            if is_stopped:
-                break
-
-    def rx_frame(self):
-        """Decode the serial input received from the gateway."""
-
-        while self._stop_event.is_set() is False:
-            frame = self.queue.get()
-            if frame is None:
-                break
-            with self._lock:
-                if self.address == addr_to_hex(int(frame.header.destination)):
-                    if frame.payload_type == PayloadType.CMD_MOVE_RAW:
-                        self.controller_mode = ControlModeType.MANUAL
-                        self.wheel_velocity = None
-                        self.waypoint_index = 0
-                        self.waypoint_x = 0
-                        self.waypoint_y = 0
-                        self.pwm_left = frame.packet.payload.left_y
-                        self.pwm_right = frame.packet.payload.right_y
-                        if self.pwm_left > 127:
-                            self.pwm_left = self.pwm_left - 256
-                        if self.pwm_right > 127:
-                            self.pwm_right = self.pwm_right - 256
-                        self.logger.info(
-                            "RAW command received",
-                            pwm_left=self.pwm_left,
-                            pwm_right=self.pwm_right,
-                        )
-                    elif frame.payload_type == PayloadType.CMD_WHEEL_VELOCITY:
-                        self.controller_mode = ControlModeType.MANUAL
-                        self.waypoint_index = 0
-                        self.waypoint_x = 0
-                        self.waypoint_y = 0
-                        left = frame.packet.payload.left_mm_s
-                        right = frame.packet.payload.right_mm_s
-                        self.wheel_velocity = (left, right)
-                        self._wheel_velocity_deadline = (
-                            time.monotonic() + WHEEL_VELOCITY_TIMEOUT_S
-                        )
-                        self.pwm_left = pwm_from_wheel_speed(left)
-                        self.pwm_right = pwm_from_wheel_speed(right)
-                        self.logger.info(
-                            "Wheel velocity command received",
-                            left_mm_s=left,
-                            right_mm_s=right,
-                        )
-                    elif frame.payload_type == PayloadType.LH2_WAYPOINTS:
-                        self.wheel_velocity = None
-                        self.waypoint_threshold = frame.packet.payload.threshold
-                        self.waypoints = frame.packet.payload.waypoints
-                        self.waypoint_index = 0
-                        self.encoder_left_acc = 0.0
-                        self.encoder_right_acc = 0.0
-                        if hasattr(self, "_control_ctx"):
-                            n = len(self.waypoints)
-                            WaypointArray = ControlLoopWaypoint * n
-                            waypoint_arr = WaypointArray(
-                                *[
-                                    ControlLoopWaypoint(x=int(w.pos_x), y=int(w.pos_y))
-                                    for w in self.waypoints
-                                ]
-                            )
-                            self.custom_control_loop_library.control_loop_set_waypoints(
-                                self._control_ctx,
-                                waypoint_arr,
-                                n,
-                                int(self.waypoint_threshold),
-                            )
-                        self.logger.info(
-                            "Waypoints received",
-                            threshold=self.waypoint_threshold,
-                            waypoints=self.waypoints,
-                        )
-                        if self.waypoints:
-                            self.controller_mode = ControlModeType.AUTO
-                        else:
-                            self.pwm_left = 0
-                            self.pwm_right = 0
-                            self.controller_mode = ControlModeType.MANUAL
-                    else:
-                        self.logger.warning(
-                            "Unhandled payload type",
-                            payload_type=f"0x{int(frame.payload_type):02X}",
-                        )
-
-    def stop(self):
-        self.logger.info(f"Stopping DotBot {self.address} simulator...")
-        self._stop_event.set()
-        self.queue.put_nowait(None)  # unblock the rx_thread if waiting on the queue
-        self.advertise_thread.join()
-        self.control_thread.join()
-        self.rx_thread.join()
-        self.main_thread.join()
-        if hasattr(self, "_control_ctx"):
-            self.custom_control_loop_library.control_loop_free(self._control_ctx)
-            self._control_ctx = None
-
-
 class MariNetworkSimulator:
-    """TSCH slot-based network simulator modelling the Mari link layer."""
+    """TSCH slot-based network simulator modelling the Mari link layer.
+
+    Runs on the simulator's clock: frames are scheduled from `now`, in
+    simulated seconds, and `deliver()` hands over those whose slot has come.
+    """
 
     def __init__(self, settings: SimulatedNetworkSettings, on_frame_received: Callable):
         self._settings = settings
         self._on_frame_received = on_frame_received
         self._heap: list = []
         self._seq = 0
-        self._cond = threading.Condition()
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self.now = 0.0
+        # Downlinks are scheduled from the controller's thread
+        self._lock = threading.Lock()
 
-    def start(self):
-        self._thread.start()
-
-    def stop(self):
-        self._stop_event.set()
-        with self._cond:
-            self._cond.notify_all()
-        self._thread.join()
+    @property
+    def min_tx_interval_us(self) -> int:
+        """A joined node's minimum TX interval: the slotframe's duration."""
+        return round(MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms * 1000)
 
     def _slot_delay_s(self, dotbot_index: int, slot_shift: int = 0) -> float:
         slotframe_duration_s = (
@@ -789,15 +162,13 @@ class MariNetworkSimulator:
         )
         slot_pos = (dotbot_index + slot_shift) % MARI_SLOTFRAME_SIZE
         slot_offset_s = slot_pos * self._settings.slot_duration_ms / 1000
-        phase = time.monotonic() % slotframe_duration_s
+        phase = self.now % slotframe_duration_s
         return (slot_offset_s - phase) % slotframe_duration_s
 
     def _enqueue(self, delay_s: float, fn: Callable):
-        delivery = time.monotonic() + delay_s
-        with self._cond:
-            heapq.heappush(self._heap, (delivery, self._seq, fn))
+        with self._lock:
+            heapq.heappush(self._heap, (self.now + delay_s, self._seq, fn))
             self._seq += 1
-            self._cond.notify()
 
     def schedule_uplink(self, frame, dotbot_index: int):
         if random.randint(0, 100) > self._settings.uplink_pdr:
@@ -805,37 +176,24 @@ class MariNetworkSimulator:
         delay = self._slot_delay_s(dotbot_index) + self._settings.mqtt_latency_ms / 1000
         self._enqueue(delay, lambda: self._on_frame_received(frame))
 
-    def schedule_downlink(
-        self, bytes_: bytes, dotbot: "DotBotSimulator", dotbot_index: int
-    ):
+    def schedule_downlink(self, dotbot_index: int, deliver: Callable):
+        """Call `deliver` once the robot's downlink slot has come."""
         if random.randint(0, 100) > self._settings.downlink_pdr:
             return
-        frame = Frame.from_bytes(bytes_)
         # Downlink slots are in the second half of the frame — distinct from uplink slots
         delay = (
             self._slot_delay_s(dotbot_index, slot_shift=MARI_SLOTFRAME_SIZE // 2)
             + self._settings.mqtt_latency_ms / 1000
         )
-        self._enqueue(delay, lambda: dotbot.queue.put_nowait(frame))
+        self._enqueue(delay, deliver)
 
-    def _run(self):
-        with self._cond:
-            while not self._stop_event.is_set():
-                now = time.monotonic()
-                if self._heap:
-                    deadline, _, fn = self._heap[0]
-                    if deadline <= now:
-                        heapq.heappop(self._heap)
-                        self._cond.release()
-                        try:
-                            fn()
-                        finally:
-                            self._cond.acquire()
-                        continue
-                    wait = deadline - now
-                else:
-                    wait = None
-                self._cond.wait(timeout=wait)
+    def deliver(self):
+        while True:
+            with self._lock:
+                if not self._heap or self._heap[0][0] > self.now:
+                    return
+                _, _, fn = heapq.heappop(self._heap)
+            fn()
 
 
 def packaged_init_state_path() -> Path:
@@ -861,15 +219,17 @@ def resolve_init_state_path(path: str) -> str:
     return path
 
 
-def placement_area(site: Optional[Site] = None) -> Area:
-    """The rectangle a world file's unpositioned robots are spread over.
+def placement_area(
+    site: Optional[Site] = None, preferred: str = PLACEMENT_AREA_DEFAULT
+) -> Area:
+    """The rectangle a fleet is spread over.
 
-    The site's `arena` area, else its first declared area, else its whole
+    The site's `preferred` area, else its first declared area, else its whole
     extent, else a 2 x 2 m square at the frame origin for a site that
     measures neither.
     """
     if site is not None:
-        area = site.areas.get(PLACEMENT_AREA_DEFAULT)
+        area = site.areas.get(preferred)
         if area is not None:
             return area
         for first in site.areas.values():
@@ -880,6 +240,12 @@ def placement_area(site: Optional[Site] = None) -> Area:
     return Area(0, 0, side, side)
 
 
+def _grid_shape(count: int) -> Tuple[int, int]:
+    """Columns and rows of the near-square grid `count` points fill."""
+    columns = ceil(sqrt(count))
+    return columns, ceil(count / columns)
+
+
 def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
     """`count` points on the cell centres of a grid covering `area`, row-major.
 
@@ -888,8 +254,7 @@ def grid_positions(area: Area, count: int) -> List[Tuple[int, int]]:
     """
     if count <= 0:
         return []
-    cols = ceil(sqrt(count))
-    rows = ceil(count / cols)
+    cols, rows = _grid_shape(count)
     return [
         (
             int(area.x + (index % cols + 0.5) * area.w / cols),
@@ -927,63 +292,446 @@ def place_dotbots(
     return placed
 
 
+class FleetDoesNotFit(ValueError):
+    """A generated fleet larger than its area holds at the fleet pitch."""
+
+
+def fleet_capacity(area: Area, pitch_mm: int = FLEET_PITCH_MM) -> int:
+    """The most robots `fleet_init_state` fits in `area`."""
+    max_columns, max_rows = area.w // pitch_mm, area.h // pitch_mm
+    best = 0
+    for columns in range(1, max_columns + 1):
+        count = min(columns * columns, columns * max_rows)
+        if count > (columns - 1) ** 2:
+            best = count
+    return best
+
+
+def fleet_init_state(
+    count: int, site: Optional[Site] = None, pitch_mm: int = FLEET_PITCH_MM
+) -> InitStateToml:
+    """`count` robots in a near-square grid `pitch_mm` apart, centred in the
+    site's `field` area (see `placement_area`).
+
+    Rows fill left to right and a short last row is centred under the
+    others. The top half of the rows face up (-y), the rest down (+y).
+    Raises `FleetDoesNotFit` when the grid, with half a pitch of margin all
+    round, is larger than the area.
+    """
+    area = placement_area(site, FLEET_AREA_DEFAULT)
+    columns, rows = _grid_shape(count)
+    if columns * pitch_mm > area.w or rows * pitch_mm > area.h:
+        where = f"{area.name} " if area.name else ""
+        raise FleetDoesNotFit(
+            f"{count} robots do not fit in the {where}area ({area.w} x "
+            f"{area.h} mm) at {pitch_mm} mm apart; at most "
+            f"{fleet_capacity(area, pitch_mm)} do."
+        )
+    left = area.x + (area.w - (columns - 1) * pitch_mm) // 2
+    top = area.y + (area.h - (rows - 1) * pitch_mm) // 2
+    dotbots = []
+    for index in range(count):
+        row, column = divmod(index, columns)
+        shift = (columns - min(columns, count - row * columns)) * pitch_mm // 2
+        dotbots.append(
+            SimulatedDotBotSettings(
+                address=f"DE{index:014X}",
+                pos_x=left + shift + column * pitch_mm,
+                pos_y=top + row * pitch_mm,
+                direction=FLEET_FACING_UP if row < rows // 2 else FLEET_FACING_DOWN,
+            )
+        )
+    return InitStateToml(dotbots=dotbots)
+
+
+def init_state_toml(init_state: InitStateToml) -> str:
+    """`init_state` as a world file, each robot with its address, position
+    and heading."""
+    return toml.dumps(
+        {
+            "network": {"pdr": init_state.network.pdr},
+            "dotbots": [
+                bot.model_dump(include={"address", "pos_x", "pos_y", "direction"})
+                for bot in init_state.dotbots
+            ],
+        }
+    )
+
+
+def _load_torch_model(path: Path, what: str, logger):
+    """A TorchScript model from `path`, or None if it cannot be loaded."""
+    try:
+        import torch  # imported lazily — not required when no model is used
+
+        model = torch.jit.load(str(path), map_location="cpu")
+        model.eval()
+        logger.info(f"{what} model loaded", path=str(path))
+        return model
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Failed to load {what} model", path=str(path), error=str(exc))
+        return None
+
+
+class SimulatedDotBot:
+    """One robot of a simulated fleet: the truth of its body, and the report
+    of the firmware it runs."""
+
+    def __init__(self, fleet: "DotBotSimulatorCommunicationInterface", index: int):
+        self._fleet = fleet
+        self.index = index
+        self.address = fleet.addresses[index]
+
+    # --- truth --------------------------------------------------------------
+
+    @property
+    def pos_x(self) -> float:
+        return float(self._fleet.plant.x[self.index])
+
+    @property
+    def pos_y(self) -> float:
+        return float(self._fleet.plant.y[self.index])
+
+    @property
+    def heading_deg(self) -> float:
+        return float(self._fleet.plant.heading_deg[self.index])
+
+    @property
+    def v_left(self) -> float:
+        return float(self._fleet.plant.speed[0, self.index])
+
+    @property
+    def v_right(self) -> float:
+        return float(self._fleet.plant.speed[1, self.index])
+
+    @property
+    def lh2_visible(self) -> bool:
+        """Whether the lighthouses see the robot, so it gets fixes."""
+        return bool(self._fleet.visible[self.index])
+
+    @lh2_visible.setter
+    def lh2_visible(self, visible: bool):
+        self._fleet.visible[self.index] = visible
+
+    @property
+    def held(self) -> bool:
+        """Whether a hand holds the robot, so its wheels cannot turn."""
+        return bool(self._fleet.plant.held[self.index])
+
+    @held.setter
+    def held(self, held: bool):
+        self._fleet.plant.held[self.index] = held
+
+    def kidnap(self, x_mm: float, y_mm: float, heading_deg: float):
+        """Move the robot elsewhere at once, as a hand would."""
+        self._fleet.plant.place(self.index, x_mm, y_mm, heading_deg)
+
+    # --- the firmware's report ---------------------------------------------
+
+    @property
+    def report(self):
+        """This robot's control.REPORT record."""
+        return self._fleet.reports()[self.index]
+
+    @property
+    def steering_state(self) -> control.SteeringState:
+        return control.SteeringState(self.report["steering_state"])
+
+    @property
+    def waypoint_index(self) -> int:
+        return int(self.report["waypoint_index"])
+
+    @property
+    def estimator_status(self) -> control.PoseStatus:
+        return control.PoseStatus(self.report["estimator_status"])
+
+    @property
+    def drive_mode(self) -> control.DriveMode:
+        return control.DriveMode(self.report["drive_mode"])
+
+    @property
+    def batch_id(self) -> int:
+        return int(self.report["batch_id"])
+
+    @property
+    def direction(self) -> int:
+        """The advertised heading, DIRECTION_NONE while the estimator has none."""
+        return int(self.report["direction"])
+
+
 class DotBotSimulatorCommunicationInterface:
-    """Bidirectional serial interface to control simulated robots"""
+    """Bidirectional serial interface to control simulated robots.
+
+    Each robot's control is the firmware's own, stepped for the whole fleet
+    in one call per tick; each robot's body is `FleetPlant`. One clock drives
+    the whole fleet: `step()` advances every robot one tick on the caller's
+    thread, and `start()` runs it on a thread at the tick rate of the wall
+    clock.
+    """
 
     def __init__(
         self,
         on_frame_received: Callable,
-        simulator_init_state: str,
+        simulator_init_state: "str | InitStateToml",
         site: Optional[Site] = None,
     ):
-        self.queue = queue.Queue()
         self.on_frame_received = on_frame_received
-        self._stp_event = threading.Event()
+        self.ticks = 0
+        self.time_elapsed_s = 0.0
+        self._stop_event = threading.Event()
         self.main_thread = threading.Thread(target=self.run, daemon=True)
-        init_state = InitStateToml(
-            **toml.load(resolve_init_state_path(simulator_init_state))
+        self.logger = LOGGER.bind(context=__name__)
+        init_state = (
+            simulator_init_state
+            if isinstance(simulator_init_state, InitStateToml)
+            else InitStateToml(
+                **toml.load(resolve_init_state_path(simulator_init_state))
+            )
         )
         self._network = init_state.network
-        self.dotbots = [
-            DotBotSimulator(
-                settings=dotbot_settings,
-                tx_queue=self.queue,
-            )
-            for dotbot_settings in place_dotbots(init_state.dotbots, site)
+        settings = place_dotbots(init_state.dotbots, site)
+        count = len(settings)
+        self.addresses = [s.address.upper() for s in settings]
+        headed = np.array([s.direction != DIRECTION_NONE for s in settings], bool)
+
+        self.core = control.ControlCore(count)
+        self.plant = FleetPlant(
+            x=[float(s.pos_x) for s in settings],
+            y=[float(s.pos_y) for s in settings],
+            heading_deg=[
+                float(s.direction) if h else 0.0 for s, h in zip(settings, headed)
+            ],
+            motor_error=[
+                [s.motor_left_error for s in settings],
+                [s.motor_right_error for s in settings],
+            ],
+            noise_mm=[s.lh2_noise_mm for s in settings],
+            rng=np.random.default_rng(random.getrandbits(64)),
+        )
+        self.visible = np.ones(count, dtype=bool)
+        self.battery = np.full(count, float(INITIAL_BATTERY_VOLTAGE))
+        self._inputs = np.zeros(count, dtype=control.INPUT)
+        self._inputs["elapsed_ticks"] = 1
+        self._reports = None
+        self._counts = np.zeros((2, count), dtype=np.int64)
+
+        self.dotbots = [SimulatedDotBot(self, i) for i in range(count)]
+        self._address_to_index = {a: i for i, a in enumerate(self.addresses)}
+        gateway = int(GATEWAY_ADDRESS_DEFAULT, 16)
+        self._headers = [
+            Header(destination=gateway, source=int(a, 16)) for a in self.addresses
         ]
-        self._dotbot_modes = [s.network_mode for s in init_state.dotbots]
-        self._address_to_index = {d.address: i for i, d in enumerate(self.dotbots)}
+        self._calibrated = [s.calibrated & 0xFF for s in settings]
+        self._dotbot_modes = [s.network_mode for s in settings]
         self._mari = None
         if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):
             self._mari = MariNetworkSimulator(self._network, self.on_frame_received)
+            # Mari robots are joined from boot, and advertise at the rate
+            # their firmware derives from the node's TX interval
+            for index, mode in enumerate(self._dotbot_modes):
+                if mode == SimulatedNetworkMode.MARI:
+                    self.core.set_min_tx_interval(index, self._mari.min_tx_interval_us)
+        # Commands for the robots, (index, packet), from the controller's thread
+        self._inbound = queue.SimpleQueue()
 
-        self.logger = LOGGER.bind(context=__name__)
+        self._gru = {
+            i: _load_torch_model(s.gru_model_path, "GRU residual", self.logger)
+            for i, s in enumerate(settings)
+            if s.gru_model_path is not None
+        }
+        self._gru = {i: m for i, m in self._gru.items() if m is not None}
+        self._gru_buffers = {i: [] for i in self._gru}
+        self._battery_models = {
+            i: _load_torch_model(s.battery_model_path, "Battery discharge", self.logger)
+            for i, s in enumerate(settings)
+            if s.battery_model_path is not None
+        }
+        self._battery_models = {
+            i: m for i, m in self._battery_models.items() if m is not None
+        }
+        self._battery_modelled = np.zeros(count, dtype=bool)
+        self._battery_modelled[list(self._battery_models)] = True
+
+        self._boot(headed)
+        self.logger.info(
+            "DotBot simulator initialized",
+            robots=count,
+            control_core=self.core.manifest["commit"][:12],
+        )
+
+    # --- the clock ------------------------------------------------------
 
     def start(self):
-        for dotbot in self.dotbots:
-            dotbot.start()
-        if self._mari is not None:
-            self._mari.start()
         self.main_thread.start()
         self.logger.info("DotBot Simulation Started")
 
     def run(self):
-        """Listen continuously at each byte received on the fake serial interface."""
-        while self._stp_event.is_set() is False:
-            frame = self.queue.get()
-            if frame is None:
-                break
-            self.handle_dotbot_frame(frame)
+        """Step the fleet every SIMULATOR_STEP_DELTA_T of wall-clock time.
+
+        A step that overruns is followed at once by the next; once the fleet
+        is more than MAX_LAG_TICKS behind, simulated time gives up the lag
+        rather than catching it up in a burst.
+        """
+        deadline = time.monotonic()
+        while not self._stop_event.is_set():
+            self.step()
+            deadline += SIMULATOR_STEP_DELTA_T
+            delay = deadline - time.monotonic()
+            if delay > 0:
+                self._stop_event.wait(delay)
+            elif -delay > MAX_LAG_TICKS * SIMULATOR_STEP_DELTA_T:
+                deadline = time.monotonic()
 
     def stop(self):
         self.logger.info("Stopping DotBot Simulation...")
-        self._stp_event.set()
-        self.queue.put_nowait(None)  # unblock the run thread if waiting on the queue
-        for dotbot in self.dotbots:
-            dotbot.stop()
+        self._stop_event.set()
+        if self.main_thread.is_alive():
+            self.main_thread.join()
+
+    def step(self):
+        """Advance every robot one tick and hand over, before returning, the
+        frames due by the end of it."""
+        while True:
+            try:
+                index, packet = self._inbound.get_nowait()
+            except queue.Empty:
+                break
+            self.core.rx(index, packet)
+        # Fixes only for the robots whose firmware reads one this tick
+        outputs = self._tick(self.visible & self.core.next_fix_due())
+        self.ticks += 1
+        self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
+        self._models_update()
         if self._mari is not None:
-            self._mari.stop()
-        self.main_thread.join()
+            self._mari.now = self.ticks * SIMULATOR_STEP_DELTA_T
+        if outputs["advertise"].any():
+            indices, packets = self.core.advertisements(self.battery)
+            for index, packet in zip(indices.tolist(), packets):
+                self._advertise(index, bytearray(packet))
+        if self._mari is not None:
+            self._mari.deliver()
+
+    def _tick(self, fixes: np.ndarray) -> np.ndarray:
+        """One tick of the bodies, then of the firmware reading them."""
+        counts = self.plant.step(fixes)
+        self._counts += counts
+        inputs = self._inputs
+        inputs["counts_left"] = counts[0]
+        inputs["counts_right"] = counts[1]
+        inputs["fix_sequence"] = self.plant.fix_sequence
+        inputs["fix_x"] = self.plant.fix_x
+        inputs["fix_y"] = self.plant.fix_y
+        outputs = self.core.step(inputs)
+        self.plant.apply(outputs)
+        self._reports = None
+        return outputs
+
+    def reports(self) -> np.ndarray:
+        """Every robot's control.REPORT, as of the last tick."""
+        if self._reports is None:
+            self._reports = self.core.reports()
+        return self._reports
+
+    # --- boot -----------------------------------------------------------
+
+    def _boot(self, headed: np.ndarray):
+        """Before the clock starts: spread the robots' advertising phases, as
+        robots switched on one by one have, and seed each robot the world file
+        gives a heading with its pose."""
+        count = self.plant.count
+        self._inputs["elapsed_ticks"] = 1 + np.arange(count) % ADVERTISEMENT_TICKS
+        self._tick(np.zeros(count, dtype=bool))
+        self._inputs["elapsed_ticks"] = 1
+        plant = self.plant
+        for index in np.flatnonzero(headed).tolist():
+            self.core.seed(
+                index, plant.x[index], plant.y[index], plant.heading_deg[index]
+            )
+
+    # --- models ---------------------------------------------------------
+
+    def _models_update(self):
+        """The battery, and the optional learned residual and battery models."""
+        if self._gru:
+            reports = self.reports()
+            for index, model in self._gru.items():
+                self._gru_residual(index, model, reports[index])
+        linear = battery_discharge_model(self.time_elapsed_s)
+        if not self._battery_models:
+            self.battery[:] = linear
+            return
+        self.battery[~self._battery_modelled] = linear
+        import torch
+
+        reports = self.reports()
+        for index, model in self._battery_models.items():
+            features = torch.tensor(
+                [
+                    [
+                        float(self.plant.pwm[0, index]),
+                        float(self.plant.pwm[1, index]),
+                        float(self._counts[0, index]),
+                        float(self._counts[1, index]),
+                        float(reports[index]["control_mode"]),
+                    ]
+                ],
+                dtype=torch.float32,
+            )
+            try:
+                with torch.no_grad():
+                    rate = float(model(features)[0, 0])  # mV/s
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning("Battery model inference failed", error=str(exc))
+                continue
+            self.battery[index] = max(
+                0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T
+            )
+
+    def _gru_residual(self, index: int, model, report):
+        """Add the GRU's predicted (dx, dy, d_enc_left, d_enc_right) to the truth."""
+        buffer = self._gru_buffers[index]
+        buffer.append(
+            [
+                float(self.plant.pwm[0, index]),
+                float(self.plant.pwm[1, index]),
+                float(self._counts[0, index]),
+                float(self._counts[1, index]),
+                float(report["direction"]),
+                float(self.plant.x[index]),
+                float(self.plant.y[index]),
+            ]
+        )
+        del buffer[:-GRU_SEQ_LEN_DEFAULT]
+        if len(buffer) < GRU_SEQ_LEN_DEFAULT:
+            return
+        try:
+            import torch
+
+            with torch.no_grad():
+                pred = model(torch.tensor([buffer], dtype=torch.float32))
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("GRU inference failed", error=str(exc))
+            return
+        self.plant.x[index] += float(pred[0, 0])
+        self.plant.y[index] += float(pred[0, 1])
+        self.plant.add_counts(index, float(pred[0, 2]), float(pred[0, 3]))
+
+    # --- radio ----------------------------------------------------------
+
+    def _advertise(self, index: int, packet: bytearray):
+        """Send robot `index`'s advertisement, as its firmware encoded it."""
+        # The calibration bitmask is the node's, not the control core's
+        packet[1] = self._calibrated[index]
+        self._counts[:, index] = 0
+        frame = Frame(header=self._headers[index], packet=Packet.from_bytes(packet))
+        if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
+            self._mari.schedule_uplink(frame, index)
+            return
+        if not self._packet_delivered(self._network.pdr):
+            self.logger.debug(
+                "Packet from DotBot lost in simulation", address=self.addresses[index]
+            )
+            return
+        self.on_frame_received(frame)
 
     def flush(self):
         """Flush fake serial output."""
@@ -992,29 +740,28 @@ class DotBotSimulatorCommunicationInterface:
     def _packet_delivered(self, pdr: int) -> bool:
         return random.randint(0, 100) <= pdr
 
-    def handle_dotbot_frame(self, frame):
-        """Send bytes to the fake serial, similar to the real gateway."""
-        addr = addr_to_hex(int(frame.header.source))
-        index = self._address_to_index.get(addr, 0)
-        if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
-            self._mari.schedule_uplink(frame, index)
-            return
-        if not self._packet_delivered(self._network.pdr):
-            self.logger.info(
-                f"Packet from DotBot {addr_to_hex(int(frame.header.source))} lost in simulation"
-            )
-            return
-        self.on_frame_received(frame)
-
     def write(self, bytes_):
-        """Write bytes on the fake serial."""
-        for index, dotbot in enumerate(self.dotbots):
+        """Write bytes on the fake serial and deliver the packet to its
+        addressee: every robot for the broadcast address, as the firmware's
+        DB_FRAME_DST_BROADCAST check does, or only the matching one otherwise."""
+        header = Header().from_bytes(bytes_[:FRAME_HEADER_BYTES])
+        packet = bytes(bytes_[FRAME_HEADER_BYTES:])
+        destination = addr_to_hex(int(header.destination))
+        if destination == DOTBOT_ADDRESS_DEFAULT:
+            targets = range(len(self.dotbots))
+        else:
+            index = self._address_to_index.get(destination)
+            targets = [index] if index is not None else []
+        for index in targets:
             if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
-                self._mari.schedule_downlink(bytes_, dotbot, index)
-                continue
-            if not self._packet_delivered(self._network.pdr):
-                self.logger.info(
-                    f"Packet to DotBot {dotbot.address} lost in simulation"
+                self._mari.schedule_downlink(
+                    index, functools.partial(self._inbound.put, (index, packet))
                 )
                 continue
-            dotbot.queue.put_nowait(Frame.from_bytes(bytes_))
+            if not self._packet_delivered(self._network.pdr):
+                self.logger.debug(
+                    "Packet to DotBot lost in simulation",
+                    address=self.addresses[index],
+                )
+                continue
+            self._inbound.put((index, packet))

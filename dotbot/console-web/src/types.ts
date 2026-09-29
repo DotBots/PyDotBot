@@ -57,11 +57,21 @@ export interface RgbLed {
 // placeholder and its body must not be drawn.
 export type HeadingSource = "none" | "travel" | "ekf";
 
-// The robot's body, as the controller expands one photodiode fix into it. Every
-// point is frame millimetres, the same frame as an LH2 position: `centre` is
-// the board outline's centre, `nose` the middle of its front edge, and
-// `outline` the board path itself, already rotated to the heading.
-export interface BotPose {
+// Where the controller places a robot: its axle midpoint in frame millimetres
+// and its heading. With `heading_source` "none" both the heading and the axle
+// are placeholders. `bodyOf` in body.ts turns it into the body drawn.
+export interface RobotPose {
+  x: number;
+  y: number;
+  heading_deg: number;
+  heading_source: HeadingSource;
+}
+
+// The robot's body, expanded from a pose. Every point is frame millimetres,
+// the same frame as an LH2 position: `centre` is the board outline's centre,
+// `nose` the middle of its front edge, and `outline` the board path itself,
+// already rotated to the heading.
+export interface RobotBody {
   heading_deg: number;
   heading_source: HeadingSource;
   /** Where the pose places the LH2 photodiode. */
@@ -88,11 +98,14 @@ export interface PyDotBot {
   mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
   direction?: number;
   lh2_position?: LH2Position;
-  pose?: BotPose;
+  // The geometry record's key, which names the shape `pose` places
+  model?: string;
+  pose?: RobotPose;
   // The axle midpoint as the robot itself estimates it; null from apps that
   // do not report it, or with no heading yet.
   axle_position?: LH2Position | null;
-  position_history?: LH2Position[];
+  // Where the robot has been, oldest first: as many points as were asked for.
+  trail?: LH2Position[];
   waypoints?: Waypoint[];
   waypoints_threshold?: number;
   // The robot's own report on its last waypoint batch, from apps that send
@@ -103,17 +116,6 @@ export interface PyDotBot {
   rgb_led?: RgbLed;
   battery?: number; // volts
   calibrated?: number;
-}
-
-export interface WsNotification {
-  // 1 RELOAD, 2 UPDATE, 4 NEW_DOTBOT, 5 CALIBRATION_SESSION_UPDATE,
-  // 6 CAMERA_DETECTION
-  cmd: number;
-  data?: Partial<PyDotBot> & {
-    lh2_waypoints?: Waypoint[];
-  };
-  calibration_session?: CalibrationSession | null;
-  camera_detection?: CameraDetection;
 }
 
 // --- what a camera sees on its own area ------------------------------------
@@ -308,7 +310,7 @@ export interface UnifiedBot {
   // The body around that photodiode fix, as the controller expanded it. Null
   // for a bot with no fix, and for one whose position comes from swarmit,
   // which reports a point and no heading.
-  pose: BotPose | null;
+  pose: RobotBody | null;
   battery: number; // volts
   led: RgbLed | null;
   deviceType: string;
@@ -380,6 +382,9 @@ export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport 
 export function lastMissionTargets(bot: UnifiedBot): Waypoint[] {
   return bot.waypoints.length > 1 ? bot.waypoints.slice(1) : [];
 }
+
+/** The short name a robot goes by on screen: its address's last four hex digits. */
+export const shortId = (id: string): string => id.slice(-4).toUpperCase();
 
 // A bot under way is already running its last mission, so it is left alone.
 export function canRedoMission(bot: UnifiedBot): boolean {

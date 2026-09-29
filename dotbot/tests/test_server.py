@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from dotbot.area import Area
-from dotbot.controller import ControllerSettings, body_pose, device_pose
+from dotbot.controller import Controller, ControllerSettings
 from dotbot.models import (
     DotBotGPSPosition,
     DotBotLH2Position,
@@ -23,6 +23,7 @@ from dotbot.models import (
     WSRgbLed,
     WSWaypoints,
 )
+from dotbot.poses import device_pose, robot_pose
 from dotbot.protocol import (
     DIRECTION_NONE,
     WAYPOINT_NO_HEADING,
@@ -38,6 +39,7 @@ from dotbot.protocol import (
 from dotbot.robots import ROBOT_DEFAULT
 from dotbot.server import api
 from dotbot.site import Site
+from dotbot.stream import robot_object
 from dotbot.tests.camera_fixtures import (
     DEV_CORNER,
     delivering,
@@ -50,16 +52,40 @@ client = AsyncClient(transport=ASGITransport(app=api), base_url="http://testserv
 @pytest.fixture(autouse=True)
 def controller():
     api.controller = MagicMock()
-    api.controller.websockets = []
     api.controller.header = MagicMock()
     api.controller.header.destination = MagicMock()
     api.controller.dotbots = MagicMock()
-    api.controller.get_dotbots = MagicMock()
-    api.controller.notify_clients = AsyncMock()
     api.controller.send_payload = MagicMock()
     api.controller.settings = MagicMock()
     api.controller.settings.gw_address = "0000"
     api.controller.settings.network_id = "0000"
+    api.controller.settings.site = None
+    # The robot state bookkeeping is the real one, over `dotbots`
+    api.controller.seq = 0
+    api.controller.run_id = "0123456789ab"
+    api.controller.records = {}
+    api.controller.changed = {}
+    api.controller.max_evicted = 0
+    for name in (
+        "_record",
+        "_append_trail",
+        "_changed",
+        "update_dotbot",
+        "seed_trail",
+        "clear_trail",
+        "matching",
+    ):
+        setattr(api.controller, name, getattr(Controller, name).__get__(api.controller))
+
+
+def _serve(dotbots):
+    """Serve `dotbots`, each carrying its `trail` as its trail."""
+    api.controller.dotbots = {
+        address: dotbot.model_copy(update={"trail": []})
+        for address, dotbot in dotbots.items()
+    }
+    for address, dotbot in dotbots.items():
+        api.controller.seed_trail(address, dotbot.trail)
 
 
 @pytest.mark.asyncio
@@ -478,9 +504,7 @@ async def test_set_dotbots_waypoints(
     ],
 )
 async def test_get_dotbots(dotbots, result):
-    api.controller.get_dotbots.return_value = list(
-        sorted(dotbots.values(), key=lambda dotbot: dotbot.address)
-    )
+    _serve(dotbots)
     response = await client.get("/controller/dotbots")
     assert response.status_code == 200
     assert response.json() == result
@@ -540,11 +564,67 @@ async def test_get_dotbots(dotbots, result):
     ],
 )
 async def test_get_dotbot(dotbots, address, code, found, result):
-    api.controller.dotbots = dotbots
+    _serve(dotbots)
     response = await client.get(f"/controller/dotbots/{address}")
     assert response.status_code == code
     if found is True:
         assert response.json() == result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query,expected", [("", []), ("?trail=2", [3, 4])])
+async def test_get_dotbot_returns_the_newest_trail_points(query, expected):
+    _serve(
+        {
+            "12345": DotBotModel(
+                address="12345",
+                last_seen=123.4,
+                trail=[DotBotLH2Position(x=i, y=i) for i in range(5)],
+            )
+        }
+    )
+    response = await client.get(f"/controller/dotbots/12345{query}")
+    assert response.status_code == 200
+    assert [p["x"] for p in response.json()["trail"]] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path", ["/controller/dotbots", "/controller/dotbots?trail=5&body=1"]
+)
+async def test_the_whole_fleet_names_its_seq_and_run(path):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert response.headers["X-Controller-Seq"] == str(api.controller.seq)
+    assert response.headers["X-Controller-Run"] == "0123456789ab"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/controller/dotbots/12345",
+        "/controller/dotbots?address=12345",
+        "/controller/dotbots?limit=1",
+        "/controller/dotbots?min_battery=1",
+    ],
+)
+async def test_part_of_the_fleet_names_no_seq_to_resume_from(path):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert "X-Controller-Seq" not in response.headers
+    assert "X-Controller-Run" not in response.headers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trail", ["-1", "1001"])
+async def test_a_trail_out_of_range_is_refused(trail):
+    _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
+    for path in ("/controller/dotbots", "/controller/dotbots/12345"):
+        response = await client.get(f"{path}?trail={trail}")
+        assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -558,7 +638,7 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotLH2Position(x=0.0, y=0.5),
                         DotBotLH2Position(x=0.5, y=0.5),
                     ],
@@ -568,7 +648,7 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     application=ApplicationType.DotBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotLH2Position(x=0.5, y=0.5),
                         DotBotLH2Position(x=0.5, y=0.0),
                     ],
@@ -606,7 +686,7 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     application=ApplicationType.SailBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotGPSPosition(latitude=45.7597, longitude=4.8422),
                         DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
                     ],
@@ -616,7 +696,7 @@ async def test_get_dotbot(dotbots, address, code, found, result):
                     application=ApplicationType.SailBot,
                     swarm="0000",
                     last_seen=123.4,
-                    position_history=[
+                    trail=[
                         DotBotGPSPosition(latitude=51.509865, longitude=-0.118092),
                         DotBotGPSPosition(latitude=48.8567, longitude=2.3508),
                     ],
@@ -649,22 +729,38 @@ async def test_get_dotbot(dotbots, address, code, found, result):
         ),
     ],
 )
-async def test_clear_dotbot_position_history(dotbots, address, code, found):
-    api.controller.dotbots = dotbots
+async def test_clear_dotbot_trail(dotbots, address, code, found):
+    _serve(dotbots)
     response = await client.delete(f"/controller/dotbots/{address}/positions")
     assert response.status_code == code
     if found is True:
-        assert api.controller.dotbots[address].position_history == []
+        assert (
+            robot_object(api.controller, address, 10, api.controller.seq)["trail"] == []
+        )
 
 
 @pytest.mark.asyncio
-async def test_ws_client():
-    with TestClient(api).websocket_connect("/controller/ws/status") as websocket:
+async def test_ws_stream_client():
+    api.controller.stream.hello.return_value = '{"type": "hello"}'
+    with TestClient(api).websocket_connect(
+        "/controller/ws/stream?hz=4&trail=7&since=12&run=abc"
+    ) as websocket:
+        assert websocket.receive_json() == {"type": "hello"}
+        websocket.send_text('{"ack": 3}')
         await asyncio.sleep(0.1)
-        assert len(api.controller.websockets) == 1
+        api.controller.stream.add.assert_called_once()
+        options = api.controller.stream.client.call_args.args[1]
+        assert (options.hz, options.trail, options.since, options.run) == (
+            4,
+            7,
+            12,
+            "abc",
+        )
         websocket.close()
         await asyncio.sleep(0.1)
-        assert len(api.controller.websockets) == 0
+    socket = api.controller.stream.client.call_args.args[0]
+    api.controller.stream.receive.assert_called_once_with(socket, '{"ack": 3}')
+    api.controller.stream.remove.assert_called_once_with(socket)
 
 
 @pytest.mark.asyncio
@@ -799,6 +895,84 @@ async def test_swarmit_proxy_unreachable(monkeypatch):
 
     assert response.status_code == 502
     assert b"swarmit server unreachable" in response.content
+
+
+def test_swarmit_proxy_without_a_server_is_404_and_reaches_nothing(monkeypatch):
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", MagicMock())
+    api.controller.settings.swarmit_url = None
+    response = TestClient(api).get("/swarmit/status")
+    assert response.status_code == 404
+    server_module.httpx.AsyncClient.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mrta_proxy_forwards(monkeypatch):
+
+    async def mock_send(request: httpx.Request):
+        assert request.url == httpx.URL("http://mrta-host:9002/status")
+        return httpx.Response(
+            status_code=200,
+            stream=_MockByteStream([b'{"state": "off", "bots": null, "detail": null}']),
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = httpx.MockTransport(mock_send)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.mrta_url = "http://mrta-host:9002"
+
+    client = TestClient(api)
+    response = client.get("/mrta/status")
+
+    assert response.status_code == 200
+    assert response.content == b'{"state": "off", "bots": null, "detail": null}'
+
+
+@pytest.mark.asyncio
+async def test_mrta_proxy_unreachable(monkeypatch):
+
+    async def mock_send_failed(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    transport = httpx.MockTransport(mock_send_failed)
+    RealAsyncClient = httpx.AsyncClient
+
+    def mock_async_client(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return RealAsyncClient(transport=transport, **kwargs)
+
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
+    api.controller.settings.mrta_url = "http://mrta-host:9002"
+
+    client = TestClient(api)
+    response = client.get("/mrta/status")
+
+    assert response.status_code == 502
+    assert b"MRTA mode server unreachable" in response.content
+
+
+def test_mrta_proxy_without_a_server_is_404_and_reaches_nothing(monkeypatch):
+    """`mrta_url` is unset by default: the proxy answers 404 without ever
+    touching the network, which is also the signal the console uses to hide
+    the MRTA control entirely rather than show it as unavailable."""
+    import dotbot.server as server_module
+
+    monkeypatch.setattr(server_module.httpx, "AsyncClient", MagicMock())
+    api.controller.settings.mrta_url = None
+    response = TestClient(api).get("/mrta/status")
+    assert response.status_code == 404
+    server_module.httpx.AsyncClient.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1138,6 +1312,18 @@ async def test_get_device_poses():
     assert list(body) == ["DotBotV3"]
     assert body["DotBotV3"]["heading_source"] == "none"
     assert body["DotBotV3"]["photodiode"] == {"x": 0, "y": 0}
+
+
+@pytest.mark.asyncio
+async def test_get_robot_models():
+    """A client draws a pose's body from its model's shape, axle at the origin."""
+    response = await client.get("/controller/robot_models")
+    assert response.status_code == 200
+    shape = response.json()["dotbot-v3"]
+    assert shape["axle"] == {"x": 0.0, "y": 0.0}
+    assert shape["photodiode"] == pytest.approx({"x": 0.0, "y": 53.5})
+    assert shape["heading_deg"] == 0.0
+    assert len(shape["outline"]) == 14
 
 
 @pytest.mark.asyncio
@@ -1603,9 +1789,9 @@ def detecting(calibration, status="found"):
     controller = Controller.__new__(Controller)
     controller.settings = ControllerSettings()
     controller.cameras = [service]
-    controller.websockets = [MagicMock()]
     controller._camera_pushed = {}
-    controller.notify_clients = AsyncMock()
+    controller.seq = 0
+    controller.events = {}
     assert service.start()
     assert wait_for_detection(service) is not None
     try:
@@ -1616,16 +1802,11 @@ def detecting(calibration, status="found"):
 
 @pytest.mark.asyncio
 async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
-    """One notification per new warp, and none for a warp already pushed."""
-    from dotbot.models import DotBotNotificationCommand
-
+    """One event per new warp, and none for a warp already pushed."""
     with detecting(synthetic_camera) as controller:
         await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
-        notification = controller.notify_clients.await_args[0][0]
-        assert notification.cmd == DotBotNotificationCommand.CAMERA_DETECTION
-
-        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        seq, name, message = controller.events["camera_detection/dev-corner"]
+        assert (seq, name) == (controller.seq, "camera_detection")
         assert message["area"] == "dev-corner"
         assert message["camera_id"] == synthetic_camera.id
         assert message["status"] == "found"
@@ -1647,38 +1828,28 @@ async def test_a_detection_reaches_the_console_once_per_warp(synthetic_camera):
         assert pose["centre_mm"] == [1500.0, 500.0]
 
         await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
+        assert controller.seq == seq
 
 
 @pytest.mark.asyncio
 async def test_a_detection_of_nothing_carries_no_pose(synthetic_camera):
     with detecting(synthetic_camera, status="none") as controller:
         await controller._push_camera_detections()
-        notification = controller.notify_clients.await_args[0][0]
-        message = notification.model_dump(exclude_none=True)["camera_detection"]
+        _, _, message = controller.events["camera_detection/dev-corner"]
         assert message["status"] == "none"
         assert message["robots"] == []
 
 
 @pytest.mark.asyncio
-async def test_a_console_that_connects_late_is_told_the_last_frame(
+async def test_the_last_detection_is_kept_for_a_console_that_connects_late(
     synthetic_camera,
 ):
-    """Nothing is sent with no socket, and nothing is marked sent either.
-
-    A camera that has stopped delivering pushes no further frame, so a
-    console arriving afterwards would otherwise draw an empty floor.
-    """
+    """A camera that has stopped delivering pushes no further frame, so a
+    console arriving afterwards would otherwise draw an empty floor."""
     with detecting(synthetic_camera) as controller:
-        controller.websockets = []
         await controller._push_camera_detections()
-        controller.notify_clients.assert_not_awaited()
-        assert controller._camera_pushed == {}
-
-        controller.websockets = [MagicMock()]
-        await controller._push_camera_detections()
-        assert controller.notify_clients.await_count == 1
         assert controller._camera_pushed["dev-corner"] >= 1
+        assert "camera_detection/dev-corner" in controller.events
 
 
 @pytest.mark.asyncio
@@ -1720,6 +1891,31 @@ async def test_set_dotbots_waypoints_poses():
 
 
 @pytest.mark.asyncio
+async def test_set_dotbots_waypoints_empty_clears_the_batch():
+    """The console clears a robot's waypoints with an empty batch: it goes
+    out with no points, and the record keeps only where the robot stood."""
+    api.controller.dotbots = {
+        "4242": DotBotModel(
+            address="4242",
+            application=ApplicationType.DotBot,
+            last_seen=123.4,
+            lh2_position=DotBotLH2Position(x=100, y=500),
+            waypoints=[
+                DotBotLH2Position(x=100, y=500),
+                DotBotLH2Waypoint(x=900, y=900),
+            ],
+        )
+    }
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints", json={"threshold": 10, "waypoints": []}
+    )
+    assert response.status_code == 200
+    address, payload = api.controller.send_waypoints.call_args.args
+    assert (address, payload.count, payload.waypoints) == ("4242", 0, [])
+    assert api.controller.dotbots["4242"].waypoints == [DotBotLH2Position(x=100, y=500)]
+
+
+@pytest.mark.asyncio
 async def test_set_dotbots_waypoints_poses_echo_their_heading():
     """The console draws an active pose and repeats a mission from what the
     controller echoes, so a heading survives into the notification and the
@@ -1743,8 +1939,11 @@ async def test_set_dotbots_waypoints_poses_echo_their_heading():
         },
     )
     assert response.status_code == 200
-    notification = api.controller.notify_clients.await_args[0][0]
-    echoed = notification.model_dump(exclude_none=True)["data"]["lh2_waypoints"]
+    record = api.controller.records["4242"]
+    assert record.revs["waypoints"] == api.controller.seq
+    echoed = api.controller.dotbots["4242"].model_dump(mode="json", exclude_none=True)[
+        "waypoints"
+    ]
     assert echoed == [
         {"x": 100, "y": 100},
         {"x": 500, "y": 100},
@@ -1801,12 +2000,13 @@ async def test_waypoints_start_from_the_axle():
         application=ApplicationType.DotBot,
         last_seen=123.4,
         lh2_position=photodiode,
-        pose=body_pose(ROBOT_DEFAULT, photodiode, 90),
+        pose=robot_pose(ROBOT_DEFAULT, photodiode, 90),
     )
     api.controller.dotbots = {"4242": robot}
     body = {"threshold": 10, "waypoints": [{"x": 500, "y": 100}]}
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
-    assert robot.waypoints[0] == robot.pose.axle != photodiode
+    axle = DotBotLH2Position(x=robot.pose.x, y=robot.pose.y)
+    assert robot.waypoints[0] == axle != photodiode
 
     robot.axle_position = DotBotLH2Position(x=1001, y=949)
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
@@ -1857,10 +2057,434 @@ async def test_waypoints_start_from_the_fix_without_a_heading():
         application=ApplicationType.DotBot,
         last_seen=123.4,
         lh2_position=photodiode,
-        pose=body_pose(ROBOT_DEFAULT, photodiode, DIRECTION_NONE),
+        pose=robot_pose(ROBOT_DEFAULT, photodiode, DIRECTION_NONE),
     )
     assert robot.pose.heading_source == "none"
     api.controller.dotbots = {"4242": robot}
     body = {"threshold": 10, "waypoints": [{"x": 500, "y": 100}]}
     await client.put("/controller/dotbots/4242/0/waypoints", json=body)
     assert robot.waypoints[0] == photodiode
+
+
+def _two_dotbots():
+    return {
+        address: DotBotModel(
+            address=address,
+            application=ApplicationType.DotBot,
+            last_seen=123.4,
+            lh2_position=DotBotLH2Position(x=100, y=100),
+        )
+        for address in ("4242", "4343")
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_sends_each_robot_its_own():
+    """One request, one batch per robot, under the same settings: each goes
+    out as the single-robot route would send it."""
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={
+            "threshold": 40,
+            "intermediate_threshold": 20,
+            "dotbots": {
+                "4242": [{"x": 500, "y": 100}],
+                "4343": [{"x": 600, "y": 200, "heading_deg": 90}, {"x": 700, "y": 200}],
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": ["4242", "4343"], "unknown": [], "failed": []}
+    sent = {
+        address: payload
+        for address, payload in (
+            c.args for c in api.controller.send_waypoints.call_args_list
+        )
+    }
+    assert [(w.pos_x, w.pos_y) for w in sent["4242"].waypoints] == [(500, 100)]
+    assert [(w.pos_x, w.pos_y) for w in sent["4343"].waypoints] == [
+        (600, 200),
+        (700, 200),
+    ]
+    assert {p.threshold for p in sent.values()} == {40}
+    assert {p.pass_mm for p in sent.values()} == {20}
+    assert api.controller.dotbots["4343"].waypoints[1].heading_deg == 90.0
+    assert {
+        address
+        for address, record in api.controller.records.items()
+        if "waypoints" in record.revs
+    } == {"4242", "4343"}
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_takes_more_robots_than_a_batch_takes_points():
+    """The 16-point cap is per robot: 20 robots with one point each is fine."""
+    api.controller.dotbots = {
+        f"{i:04x}": DotBotModel(
+            address=f"{i:04x}", application=ApplicationType.DotBot, last_seen=1.0
+        )
+        for i in range(20)
+    }
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={
+            "threshold": 40,
+            "dotbots": {a: [{"x": 1, "y": 2}] for a in api.controller.dotbots},
+        },
+    )
+    assert response.status_code == 200
+    assert api.controller.send_waypoints.call_count == 20
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(
+            {"threshold": 40, "dotbots": {"4242": [{"x": 1, "y": 2}] * 17}},
+            id="17_points",
+        ),
+        pytest.param(
+            {"threshold": -1, "dotbots": {"4242": []}}, id="negative_threshold"
+        ),
+        pytest.param(
+            {"threshold": 40, "heading_tolerance": 300, "dotbots": {}},
+            id="heading_tolerance",
+        ),
+        pytest.param(
+            {
+                "threshold": 40,
+                "dotbots": {"4242": [{"x": 1, "y": 2, "heading_deg": "nan"}]},
+            },
+            id="nan_heading",
+        ),
+        pytest.param({"threshold": 40}, id="no_dotbots"),
+    ],
+)
+async def test_set_waypoint_batches_validates_as_the_single_route(body):
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put("/controller/dotbots/waypoints", json=body)
+    assert response.status_code == 422
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_applies_the_known_and_lists_the_unknown():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={
+            "threshold": 40,
+            "dotbots": {"4242": [{"x": 1, "y": 2}], "9999": [], "8888": []},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "applied": ["4242"],
+        "unknown": ["9999", "8888"],
+        "failed": [],
+    }
+    assert [c.args[0] for c in api.controller.send_waypoints.call_args_list] == ["4242"]
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_strict_refuses_an_unknown_robot_before_sending():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints?strict=true",
+        json={"threshold": 40, "dotbots": {"4242": [{"x": 1, "y": 2}], "9999": []}},
+    )
+    assert response.status_code == 404
+    assert "9999" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_strict_with_every_robot_known():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints?strict=true",
+        json={"threshold": 40, "dotbots": {"4242": [{"x": 1, "y": 2}]}},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": ["4242"], "unknown": [], "failed": []}
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_with_no_robot_known_is_404():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={"threshold": 40, "dotbots": {"9999": [{"x": 1, "y": 2}]}},
+    )
+    assert response.status_code == 404
+    assert "9999" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_waypoint_batches_with_no_robot_named_is_empty():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints", json={"threshold": 40, "dotbots": {}}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": [], "unknown": [], "failed": []}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["", "?strict=true"])
+async def test_set_waypoint_batches_validation_refuses_everything(query):
+    """A malformed batch for one robot, even an unknown one, sends nothing."""
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        f"/controller/dotbots/waypoints{query}",
+        json={
+            "threshold": 40,
+            "dotbots": {"4242": [{"x": 1, "y": 2}], "9999": [{"x": 1, "y": 2}] * 17},
+        },
+    )
+    assert response.status_code == 422
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["", "?strict=true"])
+async def test_set_waypoint_batches_of_the_wrong_kind_send_nothing(query):
+    """A GPS batch for a DotBot refuses the whole request, including the
+    robots listed before it."""
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    api.controller.send_payload = MagicMock()
+    response = await client.put(
+        f"/controller/dotbots/waypoints{query}",
+        json={
+            "threshold": 40,
+            "dotbots": {
+                "4242": [{"x": 1, "y": 2}],
+                "4343": [{"latitude": 48.8, "longitude": 2.3}],
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert "4343" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+    api.controller.send_payload.assert_not_called()
+    assert api.controller.dotbots["4242"].waypoints == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "application,point",
+    [
+        (ApplicationType.DotBot.value, {"latitude": 48.8, "longitude": 2.3}),
+        (ApplicationType.SailBot.value, {"x": 1, "y": 2}),
+    ],
+)
+async def test_set_dotbot_waypoints_of_the_wrong_kind_is_422(application, point):
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    api.controller.send_payload = MagicMock()
+    response = await client.put(
+        f"/controller/dotbots/4242/{application}/waypoints",
+        json={"threshold": 40, "waypoints": [point]},
+    )
+    assert response.status_code == 422
+    api.controller.send_waypoints.assert_not_called()
+    api.controller.send_payload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_of_named_robots():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.dotbots["4242"].waypoints = [
+        DotBotLH2Position(x=100, y=100),
+        DotBotLH2Waypoint(x=900, y=900),
+    ]
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete(
+        "/controller/dotbots/waypoints?address=4242&address=4242"
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": ["4242"], "unknown": [], "failed": []}
+    address, payload = api.controller.send_waypoints.call_args.args
+    assert (address, payload.count) == ("4242", 0)
+    assert api.controller.send_waypoints.call_count == 1
+    assert api.controller.dotbots["4242"].waypoints == [DotBotLH2Position(x=100, y=100)]
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_of_every_robot():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete("/controller/dotbots/waypoints")
+    assert response.status_code == 200
+    assert sorted(response.json()["applied"]) == ["4242", "4343"]
+    assert sorted(c.args[0] for c in api.controller.send_waypoints.call_args_list) == [
+        "4242",
+        "4343",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_stops_the_known_and_lists_the_unknown():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete(
+        "/controller/dotbots/waypoints?address=4242&address=9999"
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": ["4242"], "unknown": ["9999"], "failed": []}
+    assert [c.args[0] for c in api.controller.send_waypoints.call_args_list] == ["4242"]
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_strict_refuses_an_unknown_robot_before_sending():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete(
+        "/controller/dotbots/waypoints?address=4242&address=9999&strict=true"
+    )
+    assert response.status_code == 404
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_with_no_robot_known_is_404():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete("/controller/dotbots/waypoints?address=9999")
+    assert response.status_code == 404
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_waypoints_of_every_robot_with_none_known():
+    api.controller.dotbots = {}
+    api.controller.send_waypoints = MagicMock()
+    response = await client.delete("/controller/dotbots/waypoints")
+    assert response.status_code == 200
+    assert response.json() == {"applied": [], "unknown": [], "failed": []}
+
+
+# --- Waypoints the wire or the site cannot take ------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "point",
+    [
+        pytest.param({"x": -100, "y": 500}, id="negative_x"),
+        pytest.param({"x": 100, "y": -1}, id="negative_y"),
+        pytest.param({"x": 2**32, "y": 500}, id="over_u32"),
+        pytest.param({"x": "NaN", "y": 500}, id="nan"),
+        pytest.param({"x": "inf", "y": 500}, id="inf"),
+    ],
+)
+async def test_a_waypoint_the_wire_cannot_carry_is_422(point):
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints",
+        json={"threshold": 40, "waypoints": [point]},
+    )
+    assert response.status_code == 422
+    assert "cannot be sent" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+    assert api.controller.dotbots["4242"].waypoints == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("point", [{"x": 3001, "y": 500}, {"x": -1, "y": 500}])
+async def test_a_waypoint_outside_the_site_is_422(point):
+    api.controller.settings.site = Site(name="c405", extent_mm=(3000, 2000))
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints",
+        json={"threshold": 40, "waypoints": [{"x": 3000, "y": 2000}, point]},
+    )
+    assert response.status_code == 422
+    assert "outside site 'c405', 0 to 3000 x 0 to 2000 mm" in response.json()["detail"]
+    api.controller.send_waypoints.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_bulk_request_with_one_waypoint_outside_the_site_sends_nothing():
+    api.controller.settings.site = Site(name="c405", extent_mm=(3000, 2000))
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={
+            "threshold": 40,
+            "dotbots": {"4242": [{"x": 1, "y": 2}], "4343": [{"x": -5, "y": 2}]},
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("4343: waypoint (-5, 2) mm")
+    api.controller.send_waypoints.assert_not_called()
+    assert api.controller.dotbots["4242"].waypoints == []
+
+
+def test_ws_waypoint_outside_the_site_is_an_invalid_message():
+    api.controller.settings.site = Site(name="c405", extent_mm=(3000, 2000))
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock()
+    with TestClient(api).websocket_connect("/controller/ws/dotbots") as ws:
+        ws.send_json(
+            {
+                "cmd": "waypoints",
+                "address": "4242",
+                "application": 0,
+                "data": {"threshold": 40, "waypoints": [{"x": -100, "y": 500}]},
+            }
+        )
+        response = ws.receive_json()
+    assert response["error"] == "invalid_message"
+    assert "outside site 'c405'" in response["details"]
+    api.controller.send_waypoints.assert_not_called()
+
+
+# --- Waypoints the controller could not send ----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_waypoints_not_sent_are_a_500_and_leave_the_robot_as_it_was():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock(return_value=False)
+    response = await client.put(
+        "/controller/dotbots/4242/0/waypoints",
+        json={"threshold": 40, "waypoints": [{"x": 1, "y": 2}]},
+    )
+    assert response.status_code == 500
+    assert response.json()["detail"].startswith("4242: waypoints not sent")
+    assert api.controller.dotbots["4242"].waypoints == []
+
+
+@pytest.mark.asyncio
+async def test_a_bulk_request_lists_the_robots_it_could_not_send_to():
+    api.controller.dotbots = _two_dotbots()
+    api.controller.send_waypoints = MagicMock(
+        side_effect=lambda address, _payload: address != "4343"
+    )
+    response = await client.put(
+        "/controller/dotbots/waypoints",
+        json={
+            "threshold": 40,
+            "dotbots": {"4242": [{"x": 1, "y": 2}], "4343": [{"x": 3, "y": 4}]},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"applied": ["4242"], "unknown": [], "failed": ["4343"]}
+    assert api.controller.dotbots["4343"].waypoints == []

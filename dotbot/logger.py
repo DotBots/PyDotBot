@@ -40,6 +40,8 @@ SUPPORTED_HANDLERS_DEFAULT = {
 def setup_logging(filename, level, handlers):
     """Setup logging."""
     processors = [
+        # First, so an event below the level costs no processing
+        structlog.stdlib.filter_by_level,
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
@@ -91,6 +93,19 @@ def setup_logging(filename, level, handlers):
         },
     }
     logging.config.dictConfig(stdlib_config)
+
+
+def debug_enabled(logger) -> bool:
+    """Whether `logger` emits DEBUG events.
+
+    structlog's stdlib logger spells the check `isEnabledFor`, its native
+    filtering logger `is_enabled_for` (from 25.1), and before that the native
+    logger has neither, in which case this answers True.
+    """
+    is_enabled = getattr(logger, "isEnabledFor", None) or getattr(
+        logger, "is_enabled_for", None
+    )
+    return is_enabled is None or is_enabled(logging.DEBUG)
 
 
 LOGGER = structlog.get_logger("pydotbot")

@@ -48,7 +48,7 @@ class RestClient:
         try:
             url = f"{self.base_url}/dotbots"
             if query is not None:
-                url += f"?{urllib.parse.urlencode(query.model_dump(exclude_none=True))}"
+                url += f"?{urllib.parse.urlencode(query.model_dump(exclude_defaults=True))}"
             response = await self._client.get(
                 url,
                 headers={
@@ -137,22 +137,19 @@ class RestClient:
         """Send an waypoint command to a DotBot."""
         await self._send_command(address, application, "waypoints", command)
 
-    async def clear_position_history(self, address):
-        """Clear the position history of a DotBot."""
+    async def clear_trail(self, address):
+        """Clear the trail of a DotBot."""
         try:
-            response = await self._client.put(
-                f"{self.base_url}/dotbots" f"/{address}/positions",
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
+            response = await self._client.delete(
+                f"{self.base_url}/dotbots/{address}/positions",
+                headers={"Accept": "application/json"},
             )
         except httpx.ConnectError as exc:
-            self._logger.warning(f"Failed to clear positions: {exc}")
+            self._logger.warning(f"Failed to clear the trail: {exc}")
             return
         if response.status_code != 200:
             self._logger.error(
-                "Cannot clear positions",
+                "Cannot clear the trail",
                 response=str(response),
                 status_code=response.status_code,
                 content=str(response.text),

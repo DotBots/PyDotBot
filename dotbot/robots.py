@@ -7,8 +7,8 @@ board revision.
 Every point in a record is a coordinate in that revision's KiCad board frame:
 millimetres, x to the robot's right, y toward the rear, nose at low y, origin
 off the robot. The C copy of the drivetrain constants and the lever arm lives
-in DotBot-libs `drv/geometry.h` and is pinned to this one by
-`dotbot/tests/test_control_loop_geometry.py`.
+in DotBot-libs `drv/geometry.h`, and `dotbot/tests/test_sim_geometry.py` pins
+the two together through the vendored control core.
 """
 
 from __future__ import annotations
@@ -236,36 +236,84 @@ class RobotGeometry:
         """Wheel travel per encoder count: `DB_MM_PER_COUNT`."""
         return math.pi * self.wheel_diameter_mm / (self.encoder_cpr * self.gear_ratio)
 
+    @cached_property
+    def _pose_offsets(self):
+        """How far ahead of and aside from the photodiode each point
+        `body_pose` places sits, in its order: axle, centre, nose, LED, then
+        the outline's points and each wheel's."""
+
+        def offset(point: Point) -> tuple[float, float]:
+            return (self.photodiode.y - point.y, point.x - self.photodiode.x)
+
+        return (
+            offset(self.axle_midpoint),
+            offset(self.outline_centre),
+            offset(Point(self.photodiode.x, self.outline_bbox[1])),
+            offset(self.led),
+            tuple(offset(p) for p in self.outline_path),
+            tuple(tuple(offset(p) for p in wheel) for wheel in self.wheel_paths),
+        )
+
     def body_pose(
         self, sensor: Point, heading_deg: float, source: HeadingSource
     ) -> BodyPose:
         """The body around a photodiode fix at `sensor`, facing `heading_deg`."""
         theta = math.radians(heading_deg)
-        forward = (-math.sin(theta), math.cos(theta))
-        right = (-math.cos(theta), -math.sin(theta))
+        sin, cos = math.sin(theta), math.cos(theta)
+        x, y = sensor[0], sensor[1]
 
-        def place(point: Point) -> Point:
-            ahead = self.photodiode.y - point.y
-            aside = point.x - self.photodiode.x
-            return Point(
-                sensor[0] + ahead * forward[0] + aside * right[0],
-                sensor[1] + ahead * forward[1] + aside * right[1],
-            )
+        def place(offset: tuple[float, float]) -> Point:
+            ahead, aside = offset
+            return Point(x - ahead * sin - aside * cos, y + ahead * cos - aside * sin)
 
+        axle, centre, nose, led, outline, wheels = self._pose_offsets
         return BodyPose(
             heading_deg=heading_deg,
             heading_source=source,
-            photodiode=Point(sensor[0], sensor[1]),
-            axle=place(self.axle_midpoint),
-            centre=place(self.outline_centre),
-            nose=place(Point(self.photodiode.x, self.outline_bbox[1])),
-            led=place(self.led),
-            outline=tuple(place(p) for p in self.outline_path),
-            wheels=tuple(tuple(place(p) for p in wheel) for wheel in self.wheel_paths),
+            photodiode=Point(x, y),
+            axle=place(axle),
+            centre=place(centre),
+            nose=place(nose),
+            led=place(led),
+            outline=tuple(place(o) for o in outline),
+            wheels=tuple(tuple(place(o) for o in wheel) for wheel in wheels),
             reach_mm=self.reach_mm,
             core_mm=self.core_mm,
             envelope_mm=self.envelope_mm,
         )
+
+    def axle_at(self, sensor: Point, heading_deg: float) -> Point:
+        """The axle midpoint of a robot whose photodiode is at `sensor`,
+        facing `heading_deg`."""
+        ahead, aside = self._pose_offsets[0]
+        theta = math.radians(heading_deg)
+        sin, cos = math.sin(theta), math.cos(theta)
+        return Point(
+            sensor[0] - ahead * sin - aside * cos,
+            sensor[1] + ahead * cos - aside * sin,
+        )
+
+    def body_at_axle(
+        self, axle: Point, heading_deg: float, source: HeadingSource
+    ) -> BodyPose:
+        """The body whose axle midpoint is at `axle`, facing `heading_deg`."""
+        ahead, aside = self._pose_offsets[0]
+        theta = math.radians(heading_deg)
+        sin, cos = math.sin(theta), math.cos(theta)
+        sensor = Point(
+            axle[0] + ahead * sin + aside * cos,
+            axle[1] - ahead * cos + aside * sin,
+        )
+        return self.body_pose(sensor, heading_deg, source)
+
+    @cached_property
+    def shape(self) -> BodyPose:
+        """The body with its axle midpoint at the origin, facing 0 degrees.
+
+        Any other pose's body is this one rotated by its heading about the
+        origin, `(x cos - y sin, x sin + y cos)`, then moved onto its axle.
+        """
+        return self.body_at_axle(Point(0.0, 0.0), 0.0, HeadingSource.NONE)
 
     def clearance_mm(self, edge: str) -> float:
         """Distance from the photodiode to the body edge facing `edge`.

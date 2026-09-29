@@ -53,36 +53,6 @@ jobs:
         flags: python
         verbose: true
 
-  control_loop:
-    name: check custom control loop
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-      - name: Checkout DotBot-libs repo
-        uses: actions/checkout@v4
-        with:
-          repository: DotBots/DotBot-libs
-          path: DotBot-libs
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Build control loop library
-        run: |
-          cmake -DDOTBOT_LIBS_DIR=${PWD}/DotBot-libs -S utils/control_loop -B build
-          cmake --build build
-      - name: Check the simulator geometry against the compiled library
-        run: |
-          python -m pip install --upgrade --requirement tests_requirements.txt
-          tox -e tests -- dotbot/tests/test_control_loop_geometry.py
-
   doc:
     name: check documentation
     runs-on: ubuntu-latest
@@ -129,7 +99,7 @@ jobs:
         path: ./dotbot/console-web/dist
 
   package:
-    needs: [test, doc, console, control_loop]
+    needs: [test, doc, console]
     name: build source package
     runs-on: ${{ matrix.os }}
     strategy:

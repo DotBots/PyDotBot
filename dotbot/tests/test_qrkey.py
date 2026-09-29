@@ -40,7 +40,7 @@ def client(monkeypatch):
 
     async def recv_side_effect():
         await asyncio.sleep(0.1)  # simulate some delay in receiving messages
-        return json.dumps({"cmd": 2, "data": {"address": "test_bot"}})
+        return json.dumps({"type": "delta", "seq": 7, "robots": {}})
 
     websocket_mock.recv.side_effect = recv_side_effect
     monkeypatch.setattr(
@@ -67,3 +67,71 @@ async def test_qrkey_client_basic(client):
     """Test that the QrKeyClient can be instantiated and run without errors."""
     setup_logging(None, "debug", ["console"])
     await client.run()
+
+
+@pytest.mark.asyncio
+async def test_the_relay_forwards_stream_frames_and_acks_them(client, monkeypatch):
+    """Each stream frame reaches MQTT /notify verbatim and is acked."""
+    import dotbot.examples.qrkey_demo.client as module
+
+    websocket = module.connect()
+    client.qrkey = MagicMock()
+    task = asyncio.create_task(client.start_ws_client())
+    await asyncio.sleep(0.25)
+    task.cancel()
+    client.qrkey.publish.assert_any_call(
+        "/notify", {"type": "delta", "seq": 7, "robots": {}}
+    )
+    websocket.send.assert_any_await(json.dumps({"ack": 7}))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "closed",
+    [
+        websockets_exceptions.ConnectionClosedOK(None, None),
+        websockets_exceptions.ConnectionClosedError(None, None),
+        ConnectionRefusedError("refused"),
+    ],
+    ids=["ok", "error", "refused"],
+)
+async def test_the_relay_reconnects_and_resumes_where_it_left(monkeypatch, closed):
+    """A closed or refused stream is reconnected with `since` and `run` of
+    the last whole frame relayed."""
+    import dotbot.examples.qrkey_demo.client as module
+
+    monkeypatch.setattr(module, "RECONNECT_MIN_S", 0.001)
+    frames = [
+        [
+            {"type": "hello", "run": "r1", "seq": 0},
+            {"type": "snapshot", "seq": 5, "part": 1, "parts": 2, "robots": []},
+            {"type": "snapshot", "seq": 5, "part": 2, "parts": 2, "robots": []},
+            {"type": "delta", "seq": 9, "robots": {}},
+            closed,
+        ],
+        [{"type": "hello", "run": "r1", "seq": 9}, asyncio.CancelledError()],
+    ]
+    urls = []
+
+    def connect(url, **_kwargs):
+        urls.append(url)
+        websocket = WebsocketMock()
+        script = iter(frames[len(urls) - 1])
+
+        async def recv():
+            item = next(script)
+            if isinstance(item, BaseException):
+                raise item
+            return json.dumps(item)
+
+        websocket.recv.side_effect = recv
+        return websocket
+
+    monkeypatch.setattr(module, "connect", connect)
+    client = QrKeyClient(QrKeyClientSettings(), MagicMock())
+    client.qrkey = MagicMock()
+    with pytest.raises(asyncio.CancelledError):
+        await client.start_ws_client()
+    assert len(urls) == 2
+    assert "since" not in urls[0]
+    assert urls[1].endswith("&since=9&run=r1")

@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { putWaypoints } from "./api";
+import { putWaypointBatches } from "./api";
 import type { Site, UnifiedBot } from "./types";
 
 const site: Site = {
@@ -88,7 +88,8 @@ vi.mock("./useMrta", () => ({
 vi.mock("./api", () => ({
   fetchConnection: vi.fn(async () => null),
   fetchBuild: vi.fn(async () => null),
-  putWaypoints: vi.fn(async () => {}),
+  putWaypointBatches: vi.fn(async () => {}),
+  clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
   captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
@@ -135,12 +136,10 @@ describe("redo mission", () => {
 
     fireEvent.click(redo());
 
-    expect(putWaypoints).toHaveBeenCalledTimes(1);
-    expect(putWaypoints).toHaveBeenCalledWith(
-      arrived.id,
-      arrived.application,
+    expect(putWaypointBatches).toHaveBeenCalledTimes(1);
+    expect(putWaypointBatches).toHaveBeenCalledWith(
       expect.any(Number),
-      TARGETS,
+      { [arrived.id]: TARGETS },
       { intermediate_threshold: 20 },
     );
     expect(screen.getByText("Mission re-sent to 1 bot")).toBeInTheDocument();
@@ -153,7 +152,7 @@ describe("redo mission", () => {
     expect(redo()).toHaveAttribute("title", "No previous mission to repeat");
     fireEvent.click(redo());
 
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
   });
 
   it("is not offered while the bot is still under way", () => {
@@ -170,19 +169,10 @@ describe("redo mission", () => {
 
     fireEvent.click(redo());
 
-    expect(putWaypoints).toHaveBeenCalledTimes(2);
-    expect(putWaypoints).toHaveBeenCalledWith(
-      arrived.id,
-      arrived.application,
+    expect(putWaypointBatches).toHaveBeenCalledTimes(1);
+    expect(putWaypointBatches).toHaveBeenCalledWith(
       expect.any(Number),
-      TARGETS,
-      { intermediate_threshold: 20 },
-    );
-    expect(putWaypoints).toHaveBeenCalledWith(
-      arrivedElsewhere.id,
-      arrivedElsewhere.application,
-      expect.any(Number),
-      OTHER_TARGETS,
+      { [arrived.id]: TARGETS, [arrivedElsewhere.id]: OTHER_TARGETS },
       { intermediate_threshold: 20 },
     );
     expect(screen.getByText("Mission re-sent to 2 bots")).toBeInTheDocument();
@@ -195,6 +185,6 @@ describe("redo mission", () => {
     expect(redo()).toHaveAttribute("title", "No previous mission to repeat");
     fireEvent.click(redo());
 
-    expect(putWaypoints).not.toHaveBeenCalled();
+    expect(putWaypointBatches).not.toHaveBeenCalled();
   });
 });

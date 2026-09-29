@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  controllerWsUrl,
+  controllerStreamUrl,
   fetchCalibrationSession,
   fetchCameras,
   fetchDevicePoses,
-  fetchDotBots,
   fetchSite,
   fetchSwarmitStatus,
 } from "./api";
+import { robotBody, RobotShapes } from "./body";
+import { connectStream, FleetStream, StreamEvent } from "./stream";
 import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
   Area,
-  BotPose,
+  RobotBody,
   BotState,
   CalibrationSession,
   LH2Position,
@@ -25,10 +26,11 @@ import {
   SwarmitNode,
   UnifiedBot,
   CameraDetection,
-  WsNotification,
 } from "./types";
 
 const TRAIL_MAX = 200;
+// Robots advertise at 2 Hz, so this adds at most 100 ms to what they report
+const STREAM_HZ = 10;
 
 // swarmit tiers the last reset itself (crashed / hung / normal); the console
 // styles by that rather than re-deriving the bit tests, so the badge and the
@@ -54,7 +56,7 @@ export function deriveLink(py: PyDotBot | undefined): LinkState {
 }
 
 // A device type's pose moved onto `at`, which is where its photodiode goes.
-function poseAt(pose: BotPose, at: LH2Position): BotPose {
+function poseAt(pose: RobotBody, at: LH2Position): RobotBody {
   const dx = at.x - pose.photodiode.x;
   const dy = at.y - pose.photodiode.y;
   const move = (p: LH2Position): LH2Position => ({ x: p.x + dx, y: p.y + dy });
@@ -71,25 +73,27 @@ function poseAt(pose: BotPose, at: LH2Position): BotPose {
 }
 
 // The controller's pose while it hears the app running, else swarmit's
-// position if it has located the bot, else the controller's last pose. Out of
-// its app a robot computes no heading, so it is placed headingless: from
-// swarmit, sized by the pose the host gave its device type, or a bare point
-// for a type the host has no record of. swarmit reports (0, 0) for a bot it
-// has never located.
+// position if it has located the bot, else the controller's last pose, each
+// drawn as the body of the robot's model from `shapes`. Out of its app a
+// robot computes no heading, so it is placed headingless: from swarmit, sized
+// by the pose the host gave its device type, or a bare point for a type the
+// host has no record of. swarmit reports (0, 0) for a bot it has never
+// located.
 export function derivePose(
   py: PyDotBot | undefined,
   sw: SwarmitNode | undefined,
   link: LinkState,
-  devicePoses: Record<string, BotPose> = {},
+  devicePoses: Record<string, RobotBody> = {},
+  shapes: RobotShapes = {},
 ): {
   position: LH2Position | null;
   heading: number | null;
-  pose: BotPose | null;
+  pose: RobotBody | null;
 } {
   const inApp = !sw || sw.status === "Running";
   const pyHeading =
     py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
-  const pyPose = py?.pose ?? null;
+  const pyPose = py?.pose ? robotBody(py.pose, py.model, shapes) : null;
   if (inApp && link === "active" && py?.lh2_position) {
     return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
@@ -111,7 +115,8 @@ export function derivePose(
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
-  devicePoses: Record<string, BotPose> = {},
+  devicePoses: Record<string, RobotBody> = {},
+  shapes: RobotShapes = {},
 ): UnifiedBot[] {
   const ids = new Set([...Object.keys(pyBots), ...Object.keys(swNodes)]);
   const out: UnifiedBot[] = [];
@@ -120,7 +125,7 @@ export function merge(
     const sw = swNodes[id];
     const state = deriveState(sw);
     const link = deriveLink(py);
-    const { position, heading, pose } = derivePose(py, sw, link, devicePoses);
+    const { position, heading, pose } = derivePose(py, sw, link, devicePoses, shapes);
     out.push({
       id,
       state,
@@ -142,7 +147,7 @@ export function merge(
       waypoints: py?.waypoints ?? [],
       mission: missionReport(py),
       axle: py?.axle_position ?? (pose && pose.heading_source !== "none" ? pose.axle : null),
-      trail: py?.position_history?.slice(-TRAIL_MAX) ?? [],
+      trail: py?.trail?.slice(-TRAIL_MAX) ?? [],
       image: sw?.info?.image_name || null,
       resetCause: sw?.reset_cause ?? null,
       severity: severityOf(sw),
@@ -155,18 +160,6 @@ export function merge(
 }
 
 /** The detections keyed by area, with `detection`'s area replaced. */
-/**
- * The waypoint report from an update, into `bot`. It arrives whole with its
- * null fields left out, so a field missing beside the status is now null.
- */
-export function applyReport(bot: Partial<PyDotBot>, d: Partial<PyDotBot>): void {
-  if (d.waypoints_status === undefined) return;
-  bot.waypoints_status = d.waypoints_status;
-  bot.waypoints_reason = d.waypoints_reason ?? null;
-  bot.waypoint_index = d.waypoint_index ?? null;
-  bot.axle_position = d.axle_position ?? null;
-}
-
 export function withDetection(
   previous: Record<string, CameraDetection>,
   detection: CameraDetection,
@@ -186,7 +179,8 @@ export function useFleet(): {
 } {
   const pyRef = useRef<Record<string, PyDotBot>>({});
   const swRef = useRef<Record<string, SwarmitNode>>({});
-  const devicePosesRef = useRef<Record<string, BotPose>>({});
+  const devicePosesRef = useRef<Record<string, RobotBody>>({});
+  const shapesRef = useRef<RobotShapes>({});
   const [bots, setBots] = useState<UnifiedBot[]>([]);
   const [site, setSite] = useState<Site | null>(null);
   const [cameras, setCameras] = useState<RegisteredCamera[]>([]);
@@ -197,22 +191,28 @@ export function useFleet(): {
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
-    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current));
+    setBots(merge(pyRef.current, swRef.current, devicePosesRef.current, shapesRef.current));
   }, []);
 
-  const reloadDotBots = useCallback(async () => {
-    try {
-      const list = await fetchDotBots();
-      pyRef.current = Object.fromEntries(list.map((b) => [b.address, b]));
+  // Telemetry arrives per robot, so a fleet sends hundreds of updates a
+  // second; they fold into one rebuild per frame.
+  const frameRef = useRef<number | null>(null);
+  const rebuildNextFrame = useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
       rebuild();
-    } catch {
-      /* controller not up yet; ws reconnect loop will retrigger */
-    }
+    });
   }, [rebuild]);
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
 
   // Initial data, and the site the map is drawn over.
   useEffect(() => {
-    reloadDotBots();
     fetchDevicePoses().then((poses) => {
       devicePosesRef.current = poses;
       rebuild();
@@ -229,84 +229,32 @@ export function useFleet(): {
     fetchCalibrationSession()
       .then(setSession)
       .catch(() => {});
-  }, [reloadDotBots, rebuild]);
+  }, [rebuild]);
 
-  // Live updates over the controller WebSocket.
+  // The fleet itself, over the controller stream: a snapshot on connect,
+  // then only what changed, resumed across reconnects.
   useEffect(() => {
-    let ws: WebSocket | null = null;
-    let closed = false;
-    const connect = () => {
-      ws = new WebSocket(controllerWsUrl());
-      ws.onopen = () => {
-        setWsUp(true);
-        reloadDotBots();
-      };
-      ws.onclose = () => {
-        setWsUp(false);
-        if (!closed) setTimeout(connect, 1000);
-      };
-      ws.onerror = () => ws?.close();
-      ws.onmessage = (ev) => {
-        let msg: WsNotification;
-        try {
-          msg = JSON.parse(ev.data);
-        } catch {
-          return;
-        }
-        if (msg.cmd === 5) {
-          setSession(msg.calibration_session ?? null);
-          return;
-        }
-        if (msg.cmd === 6 && msg.camera_detection) {
-          const detection = msg.camera_detection;
-          setCameraDetections((prev) => withDetection(prev, detection));
-          return;
-        }
-        if (msg.cmd === 2 && msg.data?.address) {
-          const bot = pyRef.current[msg.data.address];
-          if (!bot) {
-            reloadDotBots();
-            return;
-          }
-          const d = msg.data;
-          if (d.direction !== undefined) bot.direction = d.direction;
-          if (d.pose !== undefined) bot.pose = d.pose;
-          if (d.battery !== undefined) bot.battery = d.battery;
-          if (d.rgb_led !== undefined) bot.rgb_led = d.rgb_led;
-          if (d.lh2_position !== undefined) {
-            bot.lh2_position = d.lh2_position;
-            bot.position_history = [
-              ...(bot.position_history ?? []),
-              d.lh2_position!,
-            ].slice(-TRAIL_MAX);
-          }
-          if (d.position_history !== undefined)
-            bot.position_history = d.position_history;
-          if (d.lh2_waypoints !== undefined) bot.waypoints = d.lh2_waypoints;
-          if (d.waypoints_threshold !== undefined)
-            bot.waypoints_threshold = d.waypoints_threshold;
-          applyReport(bot, d);
-          rebuild();
-        } else {
-          // RELOAD / NEW_DOTBOT / unknown -> refetch everything.
-          reloadDotBots();
-        }
-      };
+    const fleet = new FleetStream(TRAIL_MAX);
+    const onEvent = (event: StreamEvent) => {
+      if (event.event === "robot_models") {
+        shapesRef.current = (event.data as RobotShapes | null) ?? {};
+        rebuildNextFrame();
+      } else if (event.event === "calibration_session") {
+        setSession((event.data as CalibrationSession | null) ?? null);
+      } else if (event.event === "camera_detection" && event.data) {
+        const detection = event.data as CameraDetection;
+        setCameraDetections((prev) => withDetection(prev, detection));
+      }
     };
-    connect();
-    return () => {
-      closed = true;
-      ws?.close();
-    };
-  }, [reloadDotBots, rebuild]);
-
-  // Slow refresh for fields the WS does not push (mode/nav, status, waypoint
-  // clears): the controller only notifies telemetry deltas, so a bot's
-  // AUTO -> MANUAL arrival flip is invisible without an occasional refetch.
-  useEffect(() => {
-    const t = setInterval(reloadDotBots, 3000);
-    return () => clearInterval(t);
-  }, [reloadDotBots]);
+    return connectStream(controllerStreamUrl(TRAIL_MAX, STREAM_HZ), fleet, {
+      onRobots: (robots) => {
+        pyRef.current = robots;
+        rebuildNextFrame();
+      },
+      onEvent,
+      onUp: setWsUp,
+    });
+  }, [rebuildNextFrame]);
 
   // SwarmIT status poll (read-only orchestration plane), 1 Hz.
   useEffect(() => {

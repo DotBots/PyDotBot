@@ -7,7 +7,7 @@
 
 import base64
 import os
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import (
@@ -30,9 +30,10 @@ from dotbot.build import build_info
 from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    MAX_POSITION_HISTORY_SIZE,
+    MAX_TRAIL_SIZE,
     DotBotAreaModel,
     DotBotBackgroundMapModel,
+    DotBotBodyModel,
     DotBotBuildModel,
     DotBotCalibrationCaptureModel,
     DotBotCalibrationPreviewModel,
@@ -45,24 +46,25 @@ from dotbot.models import (
     DotBotCameraDetectionModel,
     DotBotCameraModel,
     DotBotConnectionModel,
+    DotBotGPSPosition,
     DotBotLH2Position,
+    DotBotLH2Waypoint,
     DotBotMaxSpeedCommandModel,
     DotBotModel,
     DotBotMoveRawCommandModel,
-    DotBotNotificationCommand,
-    DotBotNotificationModel,
-    DotBotNotificationUpdate,
-    DotBotPoseModel,
     DotBotQueryModel,
     DotBotRgbLedCommandModel,
     DotBotSiteModel,
+    DotBotWaypointBatches,
     DotBotWaypoints,
+    DotBotWaypointsSent,
     DotBotWheelVelocityCommandModel,
     WSMessage,
     WSMoveRaw,
     WSRgbLed,
     WSWaypoints,
 )
+from dotbot.poses import robot_models as robot_model_shapes
 from dotbot.protocol import (
     WAYPOINT_NO_HEADING,
     ApplicationType,
@@ -75,7 +77,9 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadWaypointHeading,
 )
+from dotbot.stream import StreamOptions, encode, robot_object
 from dotbot.swarm_client import conn_string
+from dotbot.ws_clients import TransportScope
 
 ws_adapter = TypeAdapter(WSMessage)
 
@@ -121,8 +125,11 @@ api.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Controller-Seq", "X-Controller-Run"],
 )
 api.add_middleware(ReverseProxyMiddleware)
+# Last, so it is the outermost: see TransportScope.
+api.add_middleware(TransportScope)
 
 
 @api.put(
@@ -148,7 +155,7 @@ def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
         right_y=command.right_y,
     )
     api.controller.send_payload(int(address, 16), payload)
-    api.controller.dotbots[address].move_raw = command
+    api.controller.update_dotbot(address, move_raw=command)
 
 
 @api.put(
@@ -213,12 +220,7 @@ async def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
         red=command.red, green=command.green, blue=command.blue
     )
     api.controller.send_payload(int(address, 16), payload)
-    api.controller.dotbots[address].rgb_led = command
-    notification = DotBotNotificationModel(
-        cmd=DotBotNotificationCommand.UPDATE,
-        data=DotBotNotificationUpdate(address=address, rgb_led=command),
-    )
-    await api.controller.notify_clients(notification)
+    api.controller.update_dotbot(address, rgb_led=command)
 
 
 @api.put(
@@ -234,9 +236,153 @@ async def dotbots_waypoints(
     """Set the waypoints of a DotBot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-
-    await _dotbots_waypoints(
+    _check_waypoints(address, application, waypoints.waypoints)
+    if not await _dotbots_waypoints(
         address=address, application=application, waypoints=waypoints
+    ):
+        raise HTTPException(
+            status_code=500,
+            detail=f"{address}: waypoints not sent, see the controller log",
+        )
+
+
+# PayloadLH2Location carries each coordinate as an unsigned 32-bit mm count
+WAYPOINT_MAX_MM = 0xFFFFFFFF
+
+
+def _check_waypoints(address: str, application: int, waypoints) -> None:
+    """Raises 422 unless every point is of the kind `application` drives
+    to (latitude/longitude for a SailBot, x/y for a DotBot) and every x/y
+    point lies inside the site, or on the wire's range without a site extent."""
+    kind = (
+        DotBotGPSPosition
+        if application == ApplicationType.SailBot.value
+        else DotBotLH2Waypoint
+    )
+    if not all(isinstance(waypoint, kind) for waypoint in waypoints):
+        wanted = "latitude/longitude" if kind is DotBotGPSPosition else "x/y"
+        raise HTTPException(
+            status_code=422, detail=f"{address}: waypoints must be {wanted} points"
+        )
+    if kind is not DotBotLH2Waypoint:
+        return
+    site = api.controller.settings.site
+    extent = site.extent_mm if site is not None else None
+    width, height = extent or (WAYPOINT_MAX_MM, WAYPOINT_MAX_MM)
+    for waypoint in waypoints:
+        if 0 <= waypoint.x <= width and 0 <= waypoint.y <= height:
+            continue
+        where = f"{address}: waypoint ({waypoint.x:g}, {waypoint.y:g}) mm"
+        if extent is not None:
+            detail = (
+                f"{where} is outside site '{site.name}', "
+                f"0 to {width} x 0 to {height} mm"
+            )
+        else:
+            detail = f"{where} cannot be sent: x and y must be 0 to {width} mm"
+        raise HTTPException(status_code=422, detail=detail)
+
+
+def _split_known(addresses: List[str], strict: bool) -> List[str]:
+    """The addresses the controller knows, in request order.
+
+    Raises 404 when `strict` and any address is unknown, or when addresses
+    were named and none of them is known.
+    """
+    known = [a for a in addresses if a in api.controller.dotbots]
+    unknown = [a for a in addresses if a not in api.controller.dotbots]
+    if unknown and (strict or not known):
+        raise HTTPException(
+            status_code=404, detail=f"No matching dotbot found: {', '.join(unknown)}"
+        )
+    return known
+
+
+@api.put(
+    path="/controller/dotbots/waypoints",
+    summary="Set the waypoints of several DotBots at once",
+    tags=["dotbots"],
+)
+async def dotbots_waypoint_batches(
+    batches: DotBotWaypointBatches,
+    strict: bool = False,
+) -> DotBotWaypointsSent:
+    """Give each DotBot its own batch, keyed by address, under one set of
+    settings: the same as one PUT per robot on its own waypoints route.
+
+    ::
+
+        {"threshold": 60,
+         "dotbots": {"badcafe111111111": [{"x": 400, "y": 1600}],
+                     "deadbeef22222222": [{"x": 1600, "y": 400}]}}
+
+    Every known DotBot gets its batch and unknown addresses are listed in
+    ``unknown``. With ``?strict=true`` an unknown address refuses the whole
+    request, before anything is sent. When no address is known: 404. A batch
+    whose points are not of the kind its robot drives to (x/y for a DotBot,
+    latitude/longitude for a SailBot) refuses the whole request: 422.
+    """
+    addresses = list(batches.dotbots)
+    known = _split_known(addresses, strict)
+    for address in known:
+        _check_waypoints(
+            address,
+            api.controller.dotbots[address].application.value,
+            batches.dotbots[address],
+        )
+    return await _send_each(addresses, known, batches.batch)
+
+
+@api.delete(
+    path="/controller/dotbots/waypoints",
+    summary="Clear the waypoints of several DotBots, or of all of them",
+    tags=["dotbots"],
+)
+async def dotbots_waypoints_clear(
+    address: Annotated[Optional[List[str]], Query()] = None,
+    strict: bool = False,
+) -> DotBotWaypointsSent:
+    """Stop the DotBots named by `?address=` (repeat it for several), or every
+    known DotBot without it, keeping only where each one stood.
+
+    Unknown addresses are listed in `unknown` and the rest are stopped. With
+    `?strict=true` an unknown address refuses the whole request, before
+    anything is sent. When no named address is known: 404.
+    """
+    if address is None:
+        addresses = list(api.controller.dotbots)
+    else:
+        addresses = list(dict.fromkeys(address))
+    known = _split_known(addresses, strict)
+    return await _send_each(
+        addresses,
+        known,
+        lambda each: DotBotWaypoints(
+            threshold=api.controller.dotbots[each].waypoints_threshold or 0,
+            waypoints=[],
+        ),
+    )
+
+
+async def _send_each(
+    addresses: List[str],
+    known: List[str],
+    batch_of: Callable[[str], DotBotWaypoints],
+) -> DotBotWaypointsSent:
+    """Send each known robot its `batch_of(address)`, and report the outcome."""
+    sent = [
+        address
+        for address in known
+        if await _dotbots_waypoints(
+            address=address,
+            application=api.controller.dotbots[address].application.value,
+            waypoints=batch_of(address),
+        )
+    ]
+    return DotBotWaypointsSent(
+        applied=sent,
+        unknown=[a for a in addresses if a not in known],
+        failed=[a for a in known if a not in sent],
     )
 
 
@@ -246,7 +392,7 @@ def _axle_position(dotbot: DotBotModel) -> Optional[DotBotLH2Position]:
     if dotbot.axle_position is not None:
         return dotbot.axle_position
     if dotbot.pose is not None and dotbot.pose.heading_source != "none":
-        return dotbot.pose.axle
+        return DotBotLH2Position(x=dotbot.pose.x, y=dotbot.pose.y)
     return dotbot.lh2_position
 
 
@@ -263,7 +409,9 @@ async def _dotbots_waypoints(
     address: str,
     application: int,
     waypoints: DotBotWaypoints,
-):
+) -> bool:
+    """Send a validated batch; False when it was not sent, and the robot's
+    waypoints are then left as they were."""
     waypoints_list = waypoints.waypoints
     if application == ApplicationType.SailBot.value:
         if api.controller.dotbots[address].gps_position is not None:
@@ -280,11 +428,6 @@ async def _dotbots_waypoints(
                 )
                 for waypoint in waypoints.waypoints
             ],
-        )
-        update_data = DotBotNotificationUpdate(
-            address=address,
-            gps_waypoints=waypoints_list,
-            waypoints_threshold=waypoints.threshold,
         )
     else:  # DotBot application
         start = _axle_position(api.controller.dotbots[address])
@@ -307,39 +450,48 @@ async def _dotbots_waypoints(
                 for waypoint in waypoints.waypoints
             ],
         )
-        update_data = DotBotNotificationUpdate(
-            address=address,
-            lh2_waypoints=waypoints_list,
-            waypoints_threshold=waypoints.threshold,
-        )
-    api.controller.dotbots[address].waypoints = waypoints_list
-    api.controller.dotbots[address].waypoints_threshold = waypoints.threshold
     if isinstance(payload, PayloadLH2Waypoints):
-        api.controller.send_waypoints(address, payload)
+        sent = api.controller.send_waypoints(address, payload)
     else:
-        api.controller.send_payload(int(address, 16), payload)
-    notification = DotBotNotificationModel(
-        cmd=DotBotNotificationCommand.UPDATE, data=update_data
+        sent = api.controller.send_payload(int(address, 16), payload)
+    if not sent:
+        return False
+    api.controller.update_dotbot(
+        address, waypoints=waypoints_list, waypoints_threshold=waypoints.threshold
     )
-    await api.controller.notify_clients(notification)
+    return True
 
 
 @api.delete(
     path="/controller/dotbots/{address}/positions",
-    summary="Clear the history of positions of a DotBot",
+    summary="Clear the trail of a DotBot",
     tags=["dotbots"],
 )
-async def dotbot_positions_history_clear(address: str):
-    """Clear the history of positions of a dotbot."""
+async def dotbot_trail_clear(address: str):
+    """Clear the trail of a dotbot."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    api.controller.dotbots[address].position_history = []
-    await api.controller.notify_clients(
-        DotBotNotificationModel(
-            cmd=DotBotNotificationCommand.UPDATE,
-            data=DotBotNotificationUpdate(address=address, position_history=[]),
-        )
+    api.controller.clear_trail(address)
+
+
+def _snapshot(body, resumable: bool = False) -> Response:
+    """A REST response of `body`, JSON built from the stream's cached dumps.
+
+    A `resumable` one carries the seq and run it reflects, which a stream
+    client resumes from with `?since=&run=`.
+    """
+    headers = {}
+    if resumable:
+        headers = {
+            "X-Controller-Seq": str(api.controller.seq),
+            "X-Controller-Run": api.controller.run_id,
+        }
+    return Response(
+        content=encode(body), media_type="application/json", headers=headers
     )
+
+
+_QUERY_FILTERS = set(DotBotQueryModel.model_fields) - {"trail", "body"}
 
 
 @api.get(
@@ -349,13 +501,19 @@ async def dotbot_positions_history_clear(address: str):
     summary="Return information about a dotbot given its address",
     tags=["dotbots"],
 )
-async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
-    """Dotbot HTTP GET handler."""
-    if address not in api.controller.dotbots:
+async def dotbot(
+    address: str,
+    trail: Annotated[int, Query(ge=0, le=MAX_TRAIL_SIZE)] = 0,
+    body: bool = False,
+):
+    """Dotbot HTTP GET handler; `trail` is how many of its newest trail
+    points to return, and `body` adds the body its pose places."""
+    controller = api.controller
+    if address not in controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
-    _dotbot = DotBotModel(**api.controller.dotbots[address].model_dump())
-    _dotbot.position_history = _dotbot.position_history[:max_positions]
-    return _dotbot
+    return _snapshot(
+        robot_object(controller, address, trail, controller.seq, body=body)
+    )
 
 
 @api.get(
@@ -366,13 +524,34 @@ async def dotbot(address: str, max_positions: int = MAX_POSITION_HISTORY_SIZE):
     tags=["dotbots"],
 )
 async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
-    """Dotbots HTTP GET handler."""
-    return api.controller.get_dotbots(query)
+    """Dotbots HTTP GET handler. Only the unfiltered list carries
+    `X-Controller-Seq` and `X-Controller-Run`."""
+    controller = api.controller
+    return _snapshot(
+        [
+            robot_object(
+                controller, address, query.trail, controller.seq, body=query.body
+            )
+            for address in controller.matching(query)
+        ],
+        resumable=all(getattr(query, name) is None for name in _QUERY_FILTERS),
+    )
+
+
+@api.get(
+    path="/controller/robot_models",
+    response_model=Dict[str, DotBotBodyModel],
+    summary="Return each robot model's body, axle at the origin, facing 0 degrees",
+    tags=["controller"],
+)
+async def robot_models():
+    """Robot models HTTP GET handler; the stream's `robot_models` event."""
+    return robot_model_shapes()
 
 
 @api.get(
     path="/controller/device_poses",
-    response_model=Dict[str, DotBotPoseModel],
+    response_model=Dict[str, DotBotBodyModel],
     summary="Return the headingless pose of each swarmit device type, at the origin",
     tags=["controller"],
 )
@@ -603,17 +782,27 @@ async def background_map():
     return DotBotBackgroundMapModel(data=encoded_string)
 
 
-@api.websocket("/controller/ws/status")
-async def websocket_endpoint(websocket: WebSocket):
-    """Websocket server endpoint."""
+@api.websocket("/controller/ws/stream")
+async def controller_stream(websocket: WebSocket):
+    """The controller stream: `hello`, a `snapshot`, then `delta` and
+    `event` frames, each answered with `{"ack": seq}`.
+
+    Query: `hz` (1-20, default 10; 1 until the first ack), `trail` (points
+    per robot, default 0), and `since` with `run` to resume from a seq.
+    """
+    hub = api.controller.stream
+    options = StreamOptions.from_query(websocket.query_params)
     await websocket.accept()
-    api.controller.websockets.append(websocket)
+    client = hub.client(websocket, options)
     try:
+        await websocket.send_text(hub.hello(client))
+        hub.add(client)
         while True:
-            _ = await websocket.receive_text()
-    except WebSocketDisconnect:
-        if websocket in api.controller.websockets:
-            api.controller.websockets.remove(websocket)
+            hub.receive(websocket, await websocket.receive_text())
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        hub.remove(websocket)
 
 
 @api.websocket("/controller/ws/dotbots")
@@ -649,6 +838,13 @@ async def ws_dotbots(websocket: WebSocket):
                     command=msg.data,
                 )
             elif isinstance(msg, WSWaypoints):
+                try:
+                    _check_waypoints(msg.address, msg.application, msg.data.waypoints)
+                except HTTPException as exc:
+                    await websocket.send_json(
+                        {"error": "invalid_message", "details": exc.detail}
+                    )
+                    continue
                 await _dotbots_waypoints(
                     address=msg.address,
                     application=msg.application,
@@ -672,6 +868,8 @@ SWARMIT_PROXY_TIMEOUT = httpx.Timeout(5.0, read=None)
 async def swarmit_proxy(path: str, request: Request):
     """Forward /swarmit/* to the configured swarmit server (same-origin for
     the web console; the streaming body keeps SSE responses live)."""
+    if api.controller.settings.swarmit_url is None:
+        return Response(status_code=404, content=b"no swarmit server configured")
     base = api.controller.settings.swarmit_url.rstrip("/")
     client = httpx.AsyncClient(timeout=SWARMIT_PROXY_TIMEOUT)
     upstream_request = client.build_request(
@@ -708,10 +906,10 @@ async def swarmit_proxy(path: str, request: Request):
     )
 
 
-# The MRTA mode server (dotbot-logistics) is optional and usually absent, so
-# a plain short timeout: the console reads any failure - a 404 on a
-# controller without this route, a 502 here, a timeout - as "MRTA N/A". No
-# streaming: /mrta/status and /mrta/mode are small JSON.
+# The MRTA mode server (dotbot-logistics) is opt-in: with no `mrta_url` this
+# route answers 404, as `/swarmit/*` does with no swarmit server; the console
+# hides its MRTA control on that 404. /mrta/* is small JSON, so a short
+# timeout and no streaming.
 MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 
 
@@ -723,6 +921,8 @@ MRTA_PROXY_TIMEOUT = httpx.Timeout(5.0)
 async def mrta_proxy(path: str, request: Request):
     """Forward /mrta/* to the configured MRTA mode server (same-origin for
     the web console, exactly like ``/swarmit/*``). The /mrta prefix is dropped."""
+    if api.controller.settings.mrta_url is None:
+        return Response(status_code=404, content=b"no MRTA server configured")
     base = api.controller.settings.mrta_url.rstrip("/")
     async with httpx.AsyncClient(timeout=MRTA_PROXY_TIMEOUT) as client:
         try:

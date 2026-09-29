@@ -20,6 +20,9 @@ REQUIRED = (
     "dotbot/calibration/app.tcss",
     # Default simulator scene, loaded when no state file is passed.
     "dotbot/simulator_init_state.toml",
+    # The simulator's firmware control core and the manifest that pins it.
+    "dotbot/sim/dotbot_control.wasm",
+    "dotbot/sim/dotbot_control.json",
     # Built console served by the controller at /console. Its dist/ is
     # gitignored, so it only ships through the pyproject `artifacts` override.
     "dotbot/console-web/dist/index.html",

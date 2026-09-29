@@ -1,6 +1,7 @@
 """Test module for controller base class."""
 
 import asyncio
+import json
 import pathlib
 import time
 from unittest.mock import MagicMock
@@ -12,23 +13,24 @@ from dotbot_utils.serial_interface import SerialInterface
 from structlog.testing import capture_logs
 
 from dotbot import addr_to_hex
-from dotbot.adapter import SerialAdapter
+from dotbot.adapter import DotBotSimulatorAdapter, SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
-    PLACEHOLDER_HEADING_DEG,
+    INACTIVE_DELAY,
     Controller,
     ControllerSettings,
-    device_pose,
     gps_distance,
     lh2_distance,
 )
 from dotbot.models import (
+    MAX_TRAIL_SIZE,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
     DotBotStatus,
 )
+from dotbot.poses import PLACEHOLDER_HEADING_DEG, device_pose, robot_body
 from dotbot.protocol import (
     DIRECTION_NONE,
     ApplicationType,
@@ -44,6 +46,8 @@ from dotbot.protocol import (
 )
 from dotbot.robots import HeadingSource, Point, robot_geometry
 from dotbot.site import Site
+from dotbot.stream import delta_frames, robot_object
+from dotbot.twin import wheel_speed_from_pwm
 
 # A measured site, which the package never ships.
 C405 = Site(
@@ -58,6 +62,16 @@ C405 = Site(
 
 # The 1 x 1 m patch a camera is registered over, in C405's frame.
 DEV_CORNER = Area(1000, 0, 1000, 1000, "dev-corner")
+
+
+def _trail(controller, address):
+    """A robot's whole trail, oldest first, as REST returns it."""
+    return [
+        DotBotLH2Position(x=p["x"], y=p["y"])
+        for p in robot_object(controller, address, MAX_TRAIL_SIZE, controller.seq)[
+            "trail"
+        ]
+    ]
 
 
 @pytest.fixture
@@ -98,10 +112,6 @@ def controller(monkeypatch):
                 status=DotBotStatus.ACTIVE,
                 battery=2.0,
                 lh2_position=DotBotLH2Position(x=1000, y=1000),
-                position_history=[
-                    DotBotLH2Position(x=900, y=900),
-                    DotBotLH2Position(x=800, y=800),
-                ],
             ),
             "0000000000000001": DotBotModel(
                 address="0000000000000001",
@@ -117,10 +127,6 @@ def controller(monkeypatch):
                 status=DotBotStatus.INACTIVE,
                 battery=1.0,
                 lh2_position=DotBotLH2Position(x=500, y=500),
-                position_history=[
-                    DotBotLH2Position(x=400, y=400),
-                    DotBotLH2Position(x=300, y=300),
-                ],
             ),
             "0000000000000003": DotBotModel(
                 address="0000000000000003",
@@ -129,9 +135,16 @@ def controller(monkeypatch):
                 status=DotBotStatus.LOST,
                 battery=1.0,
                 lh2_position=DotBotLH2Position(x=1000, y=1500),
-                position_history=[],
             ),
         }
+    )
+    _controller.seed_trail(
+        "0000000000000000",
+        [DotBotLH2Position(x=900, y=900), DotBotLH2Position(x=800, y=800)],
+    )
+    _controller.seed_trail(
+        "0000000000000002",
+        [DotBotLH2Position(x=400, y=400), DotBotLH2Position(x=300, y=300)],
     )
     _controller.adapter = SerialAdapter(settings.port, settings.baudrate)
     _controller.adapter.serial = SerialInterface(
@@ -228,9 +241,9 @@ async def test_controller_dont_send(controller):
             id="by min position y",
         ),
         pytest.param(
-            DotBotQueryModel(max_positions=1),
-            3,
-            id="by max positions",
+            DotBotQueryModel(trail=1),
+            4,
+            id="a trail does not filter",
         ),
         pytest.param(
             DotBotQueryModel(limit=2),
@@ -239,10 +252,21 @@ async def test_controller_dont_send(controller):
         ),
     ],
 )
-async def test_controller_get_dotbots_query(query, length, controller):
-    """Check controller get_dotbots query."""
-    dotbots = controller.get_dotbots(query=query)
-    assert len(dotbots) == length
+async def test_controller_matching_query(query, length, controller):
+    """Check the controller's query matching."""
+    assert len(controller.matching(query)) == length
+
+
+@pytest.mark.parametrize(
+    "trail,expected", [(2, [8, 9]), (0, []), (20, list(range(10)))]
+)
+def test_a_robot_object_returns_the_newest_trail_points(controller, trail, expected):
+    """A capped trail keeps the newest points, not the oldest."""
+    address = "0000000000000003"
+    controller.seed_trail(address, [DotBotLH2Position(x=i, y=i) for i in range(10)])
+    result = robot_object(controller, address, trail, controller.seq)
+    assert [p["x"] for p in result["trail"]] == expected
+    assert len(_trail(controller, address)) == 10
 
 
 def test_controller_sailbot_simulator():
@@ -810,23 +834,14 @@ def test_a_log_an_old_sidecar_misdescribes_is_an_error_not_a_stop(
 
 
 @pytest.mark.asyncio
-async def test_a_calibration_notification_keeps_the_session_s_nulls(controller):
+async def test_a_calibration_event_keeps_the_session_s_nulls(controller):
     """A complete session reaches the client with `outstanding` null, not absent."""
-    import json
-    from unittest.mock import AsyncMock
-
-    websocket = MagicMock()
-    websocket.send_text = AsyncMock()
-    controller.websockets = [websocket]
-
     await controller._notify_calibration_session({"outstanding": None, "total": 4})
+    seq, name, session = controller.events["calibration_session"]
+    assert (seq, name) == (controller.seq, "calibration_session")
+    assert "outstanding" in session and session["outstanding"] is None
     await controller._notify_calibration_session(None)
-
-    first, second = (json.loads(c.args[0]) for c in websocket.send_text.await_args_list)
-    assert first["cmd"] == 5
-    assert first["calibration_session"]["outstanding"] is None
-    assert "outstanding" in first["calibration_session"]
-    assert second == {"cmd": 5, "calibration_session": None}
+    assert controller.events["calibration_session"][2] is None
 
 
 # --- DotBot advertisements, through the bytes the gateway delivers ----------
@@ -855,6 +870,45 @@ async def test_a_new_robot_with_no_heading_is_tracked(controller):
 
 
 @pytest.mark.asyncio
+async def test_the_advertisement_before_the_first_fix_leaves_no_position(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=0, pos_y=0, report=True)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    history = _trail(controller, addr_to_hex(BOT))
+    assert [(p.x, p.y) for p in history] == [(1000, 1000)]
+
+
+@pytest.mark.asyncio
+async def test_a_fix_at_the_origin_is_kept_once_the_robot_has_a_position(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=1000, pos_y=1000)
+    )
+    controller.handle_received_frame(
+        _advertised(BOT, direction=DIRECTION_NONE, pos_x=0, pos_y=0)
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
+    history = _trail(controller, addr_to_hex(BOT))
+    assert [(p.x, p.y) for p in history] == [(1000, 1000), (0, 0)]
+
+
+@pytest.mark.asyncio
+async def test_a_first_fix_at_the_origin_is_kept_while_the_axle_is_tracked(
+    controller,
+):
+    controller.handle_received_frame(
+        _advertised(
+            BOT, direction=0, pos_x=0, pos_y=0, axle_x=0, axle_y=29, report=True
+        )
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (0, 0)
+
+
+@pytest.mark.asyncio
 async def test_an_advertisement_without_a_heading_clears_the_last_one(controller):
     """-1000 is the no-heading sentinel: a restarted robot has no heading."""
     controller.handle_received_frame(
@@ -866,6 +920,52 @@ async def test_an_advertisement_without_a_heading_clears_the_last_one(controller
     dotbot = controller.dotbots[addr_to_hex(BOT)]
     assert dotbot.direction is None
     assert dotbot.pose.heading_source == "none"
+
+
+class _StdlibLogger:
+    """structlog's stdlib BoundLogger before 26.1: `isEnabledFor` only."""
+
+    def __init__(self):
+        self.events = []
+
+    def isEnabledFor(self, level):  # pylint:disable=invalid-name
+        return True
+
+    def debug(self, event, **kw):
+        self.events.append(event)
+
+    info = warning = debug
+
+
+class _NativeLogger(_StdlibLogger):
+    """structlog's native filtering logger from 25.1: `is_enabled_for` only."""
+
+    isEnabledFor = None
+
+    def is_enabled_for(self, level):
+        return True
+
+
+class _OldNativeLogger(_StdlibLogger):
+    """structlog's native filtering logger before 25.1: no level check."""
+
+    isEnabledFor = None
+
+
+@pytest.mark.parametrize(
+    "logger_class", [_StdlibLogger, _NativeLogger, _OldNativeLogger]
+)
+@pytest.mark.asyncio
+async def test_a_frame_is_handled_whatever_the_structlog_logger(
+    controller, logger_class
+):
+    """Guards the structlog floor: the level check exists under every logger."""
+    controller.logger = logger_class()
+    controller.handle_received_frame(
+        _advertised(BOT, direction=90, pos_x=1000, pos_y=2000)
+    )
+    assert addr_to_hex(BOT) in controller.dotbots
+    assert "Advertisement Data" in controller.logger.events
 
 
 @pytest.mark.asyncio
@@ -880,7 +980,8 @@ async def test_the_advertisement_debug_log_reports_y(controller):
 
 @pytest.mark.asyncio
 async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller):
-    """The centre is 29 mm behind the photodiode, along (-sin, +cos)."""
+    """The axle is 53.5 mm and the centre 29 mm behind the photodiode, along
+    (-sin, +cos)."""
     controller.handle_received_frame(
         _advertised(BOT, direction=90, pos_x=1000, pos_y=1000)
     )
@@ -888,9 +989,10 @@ async def test_a_travel_heading_puts_the_centre_behind_the_photodiode(controller
     assert (dotbot.lh2_position.x, dotbot.lh2_position.y) == (1000, 1000)
     assert dotbot.pose.heading_source == "travel"
     assert dotbot.pose.heading_deg == 90
-    assert (dotbot.pose.centre.x, dotbot.pose.centre.y) == pytest.approx(
-        (1029.0, 1000.0)
-    )
+    assert (dotbot.pose.x, dotbot.pose.y) == (1053.5, 1000.0)
+    body = robot_body(dotbot.model, dotbot.pose)
+    assert (body.centre.x, body.centre.y) == pytest.approx((1029.0, 1000.0))
+    assert (body.photodiode.x, body.photodiode.y) == pytest.approx((1000.0, 1000.0))
 
 
 @pytest.mark.asyncio
@@ -901,8 +1003,10 @@ async def test_no_heading_gives_a_placeholder_pose_that_says_so(controller):
     pose = controller.dotbots[addr_to_hex(BOT)].pose
     assert pose.heading_source == "none"
     assert pose.heading_deg == PLACEHOLDER_HEADING_DEG
-    assert pose.reach_mm == pytest.approx(88.91, abs=0.01)
-    assert pose.core_mm == pytest.approx(18.5)
+    body = robot_body("dotbot-v3", pose)
+    assert body.heading_source == "none"
+    assert body.reach_mm == pytest.approx(88.91, abs=0.01)
+    assert body.core_mm == pytest.approx(18.5)
 
 
 @pytest.mark.asyncio
@@ -920,18 +1024,27 @@ async def test_the_rest_surface_serves_the_photodiode_and_the_body(controller):
             transport=ASGITransport(app=api), base_url="http://testserver"
         ) as client:
             response = await client.get("/controller/dotbots")
+            full = await client.get(f"/controller/dotbots/{addr_to_hex(BOT)}?body=1")
     finally:
         api.controller = previous
     (bot,) = (b for b in response.json() if b["address"] == addr_to_hex(BOT))
     assert bot["lh2_position"] == {"x": 1000.0, "y": 1000.0}
     assert bot["model"] == "dotbot-v3"
-    assert bot["pose"]["photodiode"] == {"x": 1000.0, "y": 1000.0}
-    assert bot["pose"]["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
-    assert bot["pose"]["heading_source"] == "travel"
-    assert len(bot["pose"]["outline"]) == 14
-    assert bot["pose"]["reach_mm"] == pytest.approx(88.91, abs=0.01)
-    assert bot["pose"]["core_mm"] == pytest.approx(18.5)
-    assert bot["pose"]["envelope_mm"] == 95.0
+    assert bot["pose"] == {
+        "x": 1000.0,
+        "y": 946.5,
+        "heading_deg": 0.0,
+        "heading_source": "travel",
+    }
+    assert "body" not in bot
+    body = full.json()["body"]
+    assert body["photodiode"] == pytest.approx({"x": 1000.0, "y": 1000.0})
+    assert body["centre"] == pytest.approx({"x": 1000.0, "y": 971.0})
+    assert body["heading_source"] == "travel"
+    assert len(body["outline"]) == 14
+    assert body["reach_mm"] == pytest.approx(88.91, abs=0.01)
+    assert body["core_mm"] == pytest.approx(18.5)
+    assert body["envelope_mm"] == 95.0
 
 
 @pytest.mark.asyncio
@@ -984,6 +1097,19 @@ def test_the_twin_measures_its_first_heading_from_where_it_was_created(
     assert twin.pos_x < 1500 - 50
     assert twin.pos_y == pytest.approx(1500)
     assert twin.direction == 90
+
+
+def test_the_twin_counts_its_wheels_travel_in_encoder_counts(controller, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr("dotbot.controller.time.time", lambda: now[0])
+    twin = controller._update_dotbot_twin("AA", 60, -60, init_pos_x=1500)
+    assert (twin.encoder_left, twin.encoder_right) == (0, 0)
+    now[0] += 0.5
+    twin = controller._update_dotbot_twin("AA", 60, -60)
+    counts = wheel_speed_from_pwm(60) * 0.5 / robot_geometry().mm_per_count
+    assert twin.encoder_left == int(counts) > 0
+    assert twin.encoder_right == -int(counts)
+    assert twin.encoder_left_acc == 0.0
 
 
 # --- The waypoint report and the commands it confirms ------------------------
@@ -1240,4 +1366,202 @@ async def test_a_direct_command_cancels_a_pending_batch(controller, clock, comma
     clock.now += 1.5
     controller.handle_received_frame(_report(batch_id=3))
     assert controller.adapter.send_payload.call_count == 2
+    assert not controller.pending_commands
+
+
+# --- what the stream sends for an advertisement -----------------------------
+
+
+def _patches(controller, *frames, trail=0):
+    """The stream delta a caught-up client receives for `frames`, by address."""
+    since = controller.seq
+    for frame in frames:
+        controller.handle_received_frame(frame)
+    sent = [json.loads(text) for text in delta_frames(controller, since, trail)]
+    return sent[0]["robots"] if sent else {}
+
+
+@pytest.mark.asyncio
+async def test_a_patch_carries_the_new_fix_and_no_trail(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    controller.seed_trail(
+        addr_to_hex(BOT), [DotBotLH2Position(x=i, y=i) for i in range(1000)]
+    )
+    patch = _patches(controller, _advertised(BOT, direction=0, pos_x=1500, pos_y=1000))[
+        addr_to_hex(BOT)
+    ]
+    assert "trail" not in patch and "trail_append" not in patch
+    assert patch["lh2_position"] == {"x": 1500.0, "y": 1000.0}
+    assert patch["pose"] == {
+        "x": 1500.0,
+        "y": 946.5,
+        "heading_deg": 0.0,
+        "heading_source": "travel",
+    }
+    assert len(_trail(controller, addr_to_hex(BOT))) == 1000
+
+
+@pytest.mark.asyncio
+async def test_a_moving_robots_patch_is_its_fix_and_pose(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=10, pos_x=1000, pos_y=1000)
+    )
+    patch = _patches(
+        controller, _advertised(BOT, direction=12, pos_x=1234, pos_y=5678)
+    )[addr_to_hex(BOT)]
+    assert set(patch) == {"direction", "lh2_position", "pose", "last_seen"}
+    assert len(json.dumps(patch, separators=(",", ":"))) < 200
+
+
+@pytest.mark.asyncio
+async def test_a_patch_carries_only_what_changed(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=3000)
+    )
+    patches = _patches(
+        controller,
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000, battery=2900),
+    )
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    assert patches == {
+        addr_to_hex(BOT): {"battery": 2.9, "last_seen": dotbot.last_seen}
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_unchanged_advertisement_changes_nothing(controller):
+    frame = _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    controller.handle_received_frame(frame)
+    seq = controller.seq
+    assert _patches(controller, frame) == {}
+    assert controller.seq == seq
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_changes_one_field_patches_that_field(controller):
+    report = dict(
+        direction=0,
+        pos_x=1000,
+        pos_y=1000,
+        axle_x=1000,
+        axle_y=971,
+        waypoints_status=WaypointsStatus.IN_PROGRESS,
+        report=True,
+    )
+    controller.handle_received_frame(_advertised(BOT, waypoint_idx=0, **report))
+    patch = _patches(controller, _advertised(BOT, waypoint_idx=1, **report))[
+        addr_to_hex(BOT)
+    ]
+    assert patch == {
+        "waypoint_index": 1,
+        "last_seen": controller.dotbots[addr_to_hex(BOT)].last_seen,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_stops_patches_its_fields_to_null(controller):
+    controller.handle_received_frame(
+        _advertised(
+            BOT,
+            direction=0,
+            pos_x=1000,
+            pos_y=1000,
+            axle_x=1000,
+            axle_y=971,
+            waypoints_status=WaypointsStatus.FAILED,
+            waypoints_reason=1,
+            report=True,
+        )
+    )
+    patch = _patches(
+        controller,
+        _advertised(
+            BOT,
+            direction=0,
+            pos_x=1000,
+            pos_y=1000,
+            axle_x=1000,
+            axle_y=971,
+            waypoints_status=WaypointsStatus.IN_PROGRESS,
+            report=True,
+        ),
+    )[addr_to_hex(BOT)]
+    assert patch["waypoints_status"] == WaypointsStatus.IN_PROGRESS
+    assert patch["waypoints_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_new_robot_arrives_as_its_whole_object(controller):
+    patches = _patches(
+        controller, _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    body = patches[addr_to_hex(BOT)]
+    assert body["address"] == addr_to_hex(BOT)
+    assert body["lh2_position"] == {"x": 1000.0, "y": 1000.0}
+    assert body["trail"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_status_change_is_a_patch_not_a_reload(controller):
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=1000)
+    )
+    since = controller.seq
+    dotbot = controller.dotbots[addr_to_hex(BOT)]
+    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
+    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
+    (delta,) = (json.loads(t) for t in delta_frames(controller, since, 0))
+    assert delta["robots"][addr_to_hex(BOT)] == {
+        "status": DotBotStatus.INACTIVE,
+        "last_seen": dotbot.last_seen,
+    }
+
+
+# --- A payload that fails to encode or send ----------------------------------
+
+
+def _simulated(controller) -> MagicMock:
+    """Route the controller's commands through a simulator adapter, so they
+    are encoded for real."""
+    controller.adapter = DotBotSimulatorAdapter()
+    controller.adapter.simulator = MagicMock()
+    return controller.adapter.simulator
+
+
+def _unencodable() -> PayloadLH2Waypoints:
+    return PayloadLH2Waypoints(
+        threshold=5, count=1, waypoints=[PayloadLH2Location(pos_x=-100, pos_y=500)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_that_cannot_be_encoded_is_not_sent_and_not_resent(
+    controller, clock
+):
+    simulator = _simulated(controller)
+    controller.handle_received_frame(_report(batch_id=3))
+    address = addr_to_hex(BOT)
+    with capture_logs() as logs:
+        assert controller.send_waypoints(address, _unencodable()) is False
+    assert any(log["event"] == "Payload not sent" for log in logs)
+    assert not controller.pending_commands
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=3))
+    simulator.write.assert_not_called()
+    assert controller.send_waypoints(address, _batch()) is True
+    simulator.write.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_resend_that_fails_drops_the_command(controller, clock):
+    """The resend runs on the adapter's task: raising there would stop it."""
+    simulator = _simulated(controller)
+    controller.handle_received_frame(_report(batch_id=3))
+    controller.send_waypoints(addr_to_hex(BOT), _batch())
+    simulator.write.side_effect = ConnectionError("gateway gone")
+    clock.now += 2.0
+    controller.handle_received_frame(_report(batch_id=3))
+    assert simulator.write.call_count == 2
     assert not controller.pending_commands

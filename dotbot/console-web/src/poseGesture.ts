@@ -1,4 +1,4 @@
-import type { BotPose, LH2Position, Waypoint } from "./types";
+import type { RobotBody, LH2Position, Waypoint } from "./types";
 
 // Placing a waypoint, and a pose: a press that is released quickly and still
 // queues a position; one held or dragged turns into the robot's silhouette,
@@ -125,7 +125,7 @@ export function bearing(from: LH2Position, to: LH2Position): number | null {
  * body is the one the controller expanded for `template`, turned about its
  * axle by the difference in headings, so the silhouette is the real robot.
  */
-export function poseAt(template: BotPose, axle: LH2Position, heading: number): BotPose {
+export function poseAt(template: RobotBody, axle: LH2Position, heading: number): RobotBody {
   const d = ((heading - template.heading_deg) * Math.PI) / 180;
   const c = Math.cos(d);
   const s = Math.sin(d);
@@ -154,11 +154,11 @@ export function poseAt(template: BotPose, axle: LH2Position, heading: number): B
  * heading still has the right shape about its own axle, so it serves too.
  */
 export function silhouetteTemplate(
-  bots: { id: string; pose: BotPose | null }[],
+  bots: { id: string; pose: RobotBody | null }[],
   ids: Iterable<string>,
-): BotPose | null {
+): RobotBody | null {
   const wanted = new Set(ids);
-  const usable = (p: BotPose | null): p is BotPose => !!p && p.outline.length >= 3;
+  const usable = (p: RobotBody | null): p is RobotBody => !!p && p.outline.length >= 3;
   return (
     bots.find((b) => wanted.has(b.id) && usable(b.pose))?.pose ??
     bots.find((b) => usable(b.pose))?.pose ??

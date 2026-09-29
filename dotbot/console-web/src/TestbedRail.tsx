@@ -8,17 +8,20 @@ import {
   RegisteredCamera,
   Site,
   UnifiedBot,
+  shortId,
 } from "./types";
 import { FirmwareSection } from "./FirmwareSection";
 import { PanelToggle } from "./PanelToggle";
 import { FirmwareFile } from "./firmwareFile";
 import { FlashJob, LogRow } from "./useOrchestration";
+import { HeldWaypointsList } from "./HeldWaypointsList";
+import { heldWaypoints } from "./heldWaypoints";
 
 // Left testbed rail, per v1: collapsed 52px icon strip <-> 340px panel with a
-// Testbed tab (orchestration controls - disabled until the swarmit write path
-// lands; never mocked), a Missions tab (waypoint missions derived from live
-// state: Planned = the local queue, Active = bots navigating) and a
-// Localization tab (the site and what the fleet carries).
+// Testbed tab (firmware, flash queue and the swarmit log; Start and Stop live
+// in the top bar), a Missions tab (waypoint missions derived from live state:
+// Planned = the local queue, Active = bots navigating) and a Localization tab
+// (the site and what the fleet carries).
 
 export interface DoneMission {
   key: string;
@@ -50,12 +53,13 @@ interface TestbedRailProps {
   clearLogs: () => void;
   targetCount: number;
   onFlash: (image: FirmwareFile) => void;
-  onStart: () => void;
-  onStop: () => void;
   onSelectIds: (ids: string[]) => void;
   onGoMission: (key: string) => void;
   onDiscardMission: (key: string) => void;
   onStopMission: (ids: string[]) => void;
+  showAllWaypoints: boolean;
+  onShowAllWaypoints: (on: boolean) => void;
+  onClearWaypoints: (ids: string[]) => void;
   site: Site | null;
   session: CalibrationSession | null;
   cameras?: RegisteredCamera[];
@@ -68,27 +72,7 @@ interface TestbedRailProps {
 
 const ledCss = (b: UnifiedBot) =>
   b.led ? `rgb(${b.led.red},${b.led.green},${b.led.blue})` : "var(--s-Inactive)";
-const short = (id: string) => id.slice(-4).toUpperCase();
 const label10 = { fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)" } as const;
-
-// v1 actBtn, rail variant (full width), rendered disabled until orchestration.
-const railBtn = (accent: boolean): React.CSSProperties => ({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  padding: "7px 13px",
-  borderRadius: 7,
-  fontSize: 12,
-  fontWeight: 500,
-  whiteSpace: "nowrap",
-  border: `1px solid ${accent ? "var(--accent)" : "var(--hairline)"}`,
-  background: accent ? "var(--accent)" : "var(--elevated)",
-  color: accent ? "#fff" : "var(--text)",
-  width: "100%",
-  boxSizing: "border-box",
-  cursor: "pointer",
-});
 
 const tabStyle = (active: boolean): React.CSSProperties => ({
   padding: "5px 11px",
@@ -123,7 +107,7 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
     missions.push({
       key: m.key,
       ids: m.ids,
-      label: bs.length === 1 ? short(bs[0].id) : `${bs.length} bots`,
+      label: bs.length === 1 ? shortId(bs[0].id) : `${bs.length} bots`,
       count: bs.length,
       n: m.waypoints.length,
       phase: "planned",
@@ -149,7 +133,7 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
     missions.push({
       key: `active-${sig}`,
       ids: bs.map((b) => b.id),
-      label: bs.length === 1 ? short(bs[0].id) : `${bs.length} bots`,
+      label: bs.length === 1 ? shortId(bs[0].id) : `${bs.length} bots`,
       count: bs.length,
       n: Math.max(...bs.map((b) => targetsOf(b).length)),
       phase: "active",
@@ -174,7 +158,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
   const [tab, setTab] = useState<"console" | "flash">("console");
 
   const missions = deriveMissions(props.bots, props.planned);
-  const targetLabel = props.selection.size ? `${props.selection.size} selected` : "whole fleet";
 
   const ico: React.CSSProperties = {
     width: 32,
@@ -206,15 +189,6 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
       {mode === "collapsed" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "10px 0", flex: 1 }}>
           <PanelToggle side="left" collapsed onToggle={expand} />
-          <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
-          {[
-            { g: "▶", t: "Start", fn: props.onStart },
-            { g: "■", t: "Stop", fn: props.onStop },
-          ].map((x, i) => (
-            <div key={i} title={x.t} onClick={x.fn} style={{ ...ico, cursor: "pointer" }}>
-              {x.g}
-            </div>
-          ))}
           <div style={{ height: 1, width: 22, background: "var(--hairline)", margin: "2px 0" }} />
           <div
             onClick={() => {
@@ -328,30 +302,17 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                   onFlash={props.onFlash}
                 />
               </div>
-              <div style={{ flex: "none", padding: "10px 12px", borderBottom: "1px solid var(--hairline)" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
-                  Target&nbsp;&middot;&nbsp;<span style={{ color: "var(--text)" }}>{targetLabel}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  <div onClick={props.onStart} style={railBtn(false)}>
-                    &#9654;&nbsp;Start
+              {props.flashing && (
+                <div style={{ flex: "none", padding: "0 12px 10px", borderBottom: "1px solid var(--hairline)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)", margin: "8px 0 4px" }}>
+                    <span>Flashing</span>
+                    <span style={{ color: "var(--s-Programming)" }}>{props.fleetPct}%</span>
                   </div>
-                  <div onClick={props.onStop} style={railBtn(false)}>
-                    &#9632;&nbsp;Stop
+                  <div style={{ height: 5, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${props.fleetPct}%`, background: "var(--s-Programming)", transition: "width .2s linear" }} />
                   </div>
                 </div>
-                {props.flashing && (
-                  <div style={{ marginTop: 2 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)", margin: "8px 0 4px" }}>
-                      <span>Flashing</span>
-                      <span style={{ color: "var(--s-Programming)" }}>{props.fleetPct}%</span>
-                    </div>
-                    <div style={{ height: 5, background: "var(--elevated)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${props.fleetPct}%`, background: "var(--s-Programming)", transition: "width .2s linear" }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
               <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 2, padding: "8px 10px 0" }}>
                 <div onClick={() => setTab("console")} style={tabStyle(tab === "console")}>
                   Console
@@ -416,7 +377,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                       return (
                         <div key={j.addr} style={{ marginBottom: 10 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 11, marginBottom: 3 }}>
-                            <span>{short(j.addr)}</span>
+                            <span>{shortId(j.addr)}</span>
                             <span style={{ color: j.done ? "var(--s-Running)" : "var(--s-Programming)" }}>
                               {j.done ? "done" : `${pct}%`}
                             </span>
@@ -561,6 +522,15 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
                     press <b>Go</b> to make it <b>Active</b>. Click a mission to reselect its bots.
                   </div>
                 )}
+                <HeldWaypointsList
+                  rows={heldWaypoints(props.bots)}
+                  bots={props.bots}
+                  selection={props.selection}
+                  showAll={props.showAllWaypoints}
+                  onShowAll={props.onShowAllWaypoints}
+                  onClear={props.onClearWaypoints}
+                  onSelectIds={props.onSelectIds}
+                />
                 {props.doneMissions.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--hairline)", marginTop: 6, paddingTop: 10 }}>
                     <div style={{ ...label10, marginBottom: 8 }}>Recently completed</div>

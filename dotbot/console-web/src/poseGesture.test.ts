@@ -17,12 +17,12 @@ import {
   wheelSteps,
 } from "./poseGesture";
 import { poseShape } from "./PoseMarker";
-import type { BotPose } from "./types";
+import type { RobotBody } from "./types";
 
 // A robot facing down the map (heading 0) with its axle at (1000, 1000) and
 // its photodiode 53.5 mm ahead, the v3's lever.
 const LEVER = 53.5;
-const template: BotPose = {
+const template: RobotBody = {
   heading_deg: 0,
   heading_source: "ekf",
   photodiode: { x: 1000, y: 1000 + LEVER },

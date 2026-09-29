@@ -7,9 +7,8 @@
 // /swarmit/*. The console therefore never owns the mode's state: it renders
 // what that process reports.
 //
-// Which is why "unavailable" is a first-class state rather than an error. No
-// MRTA server behind the proxy is the NORMAL case - the console is fully
-// useful without it - so the button has to look absent, not broken.
+// Which is why "unavailable" is a first-class state rather than an error: a
+// configured MRTA server that does not answer is shown, as unavailable.
 //
 // And why the toggle is not a boolean. Turning MRTA on builds a whole session:
 // it snapshots the fleet, so ON is a fresh PIBT world every time rather than a

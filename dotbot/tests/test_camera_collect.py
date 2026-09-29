@@ -46,6 +46,7 @@ from dotbot.camera.registration import (
     load_camera_calibration,
     read_camera_calibration_file,
     render_camera_calibration,
+    resolve_camera_calibration_path,
     solve,
     write_camera_calibration,
 )
@@ -430,7 +431,7 @@ def test_a_source_that_stops_delivering_is_counted_not_hidden(frame):
 # --- The file ---------------------------------------------------------------
 
 
-def a_calibration(frame, reads=25):
+def a_calibration(frame, reads=25, tag=""):
     layout = marker_layout(DEV_CORNER)
     found = detect_markers(frame, build_detector())
     return build_calibration(
@@ -449,6 +450,7 @@ def a_calibration(frame, reads=25):
         ),
         reads=reads,
         created="2026-09-15T13:42:00Z",
+        tag=tag,
     )
 
 
@@ -594,6 +596,27 @@ def test_the_written_file_declares_its_kind_and_schema(frame):
     assert 'area = "dev-corner"' in text
 
 
+def test_the_file_records_an_optional_tag_and_omits_it_when_unset(frame, tmp_path):
+    tagged = a_calibration(frame, tag="Overhead A!")
+    assert tagged.tag == "Overhead-A"
+    path = write_camera_calibration(tagged, root=tmp_path)
+    assert 'tag = "Overhead-A"' in path.read_text(encoding="utf-8")
+    assert read_camera_calibration_file(path).tag == "Overhead-A"
+
+    untagged = a_calibration(frame)
+    untagged.area = "annex"  # a different area gives a different id/filename
+    untagged_path = write_camera_calibration(untagged, root=tmp_path)
+    assert "tag" not in untagged_path.read_text(encoding="utf-8")
+    assert read_camera_calibration_file(untagged_path).tag == ""
+
+
+def test_the_tag_does_not_change_the_id(frame):
+    """A label chosen after the fact cannot move which registration it names."""
+    plain = a_calibration(frame)
+    tagged = a_calibration(frame, tag="overhead-a")
+    assert tagged.id == plain.id
+
+
 def test_the_loader_takes_a_path_or_an_id_prefix(frame, tmp_path):
     written = a_calibration(frame)
     path = write_camera_calibration(written, root=tmp_path)
@@ -602,6 +625,64 @@ def test_the_loader_takes_a_path_or_an_id_prefix(frame, tmp_path):
     assert (
         load_camera_calibration(written.id8, root=tmp_path, site=SITE.name).id
         == written.id
+    )
+
+
+def test_the_loader_resolves_by_exact_tag(frame, tmp_path):
+    written = a_calibration(frame, tag="overhead-a")
+    path = write_camera_calibration(written, root=tmp_path)
+
+    assert resolve_camera_calibration_path("overhead-a", root=tmp_path) == path
+    assert resolve_camera_calibration_path("OVERHEAD-A", root=tmp_path) == path
+
+
+def test_the_loader_resolves_a_tag_by_its_stored_slug(frame, tmp_path):
+    written = a_calibration(frame, tag="Overhead A!")
+    assert written.tag == "Overhead-A"
+    path = write_camera_calibration(written, root=tmp_path)
+
+    assert resolve_camera_calibration_path("Overhead A!", root=tmp_path) == path
+    assert resolve_camera_calibration_path("overhead a!", root=tmp_path) == path
+
+
+def test_an_ambiguous_camera_tag_lists_every_match(frame, tmp_path):
+    first = a_calibration(frame, tag="shared")
+    first_path = write_camera_calibration(first, root=tmp_path)
+
+    second = a_calibration(frame, tag="shared")
+    second.area = "annex"  # a different area gives a different id
+    second_path = write_camera_calibration(second, root=tmp_path)
+
+    with pytest.raises(
+        ValueError, match="camera calibration tag 'shared' matches several"
+    ) as exc:
+        resolve_camera_calibration_path("shared", root=tmp_path, site=SITE.name)
+    message = str(exc.value)
+    for calibration, path in ((first, first_path), (second, second_path)):
+        assert calibration.id in message
+        assert calibration.created in message
+        assert str(path) in message
+
+
+def test_a_camera_tag_wins_over_an_id_prefix_only_on_an_exact_match(frame, tmp_path):
+    tagged = a_calibration(frame, tag="deadbeef")
+    tagged_path = write_camera_calibration(tagged, root=tmp_path)
+
+    other = a_calibration(frame)
+    other.area = "annex"  # a different area gives a different id/filename
+    other_path = write_camera_calibration(other, root=tmp_path)
+
+    # "deadbeef" is `tagged`'s tag, and not `other`'s id prefix, so the
+    # exact tag match wins.
+    assert (
+        resolve_camera_calibration_path("deadbeef", root=tmp_path, site=SITE.name)
+        == tagged_path
+    )
+    # `other`'s own id prefix is nobody's tag, so it falls through to the
+    # id-prefix branch and still resolves.
+    assert (
+        resolve_camera_calibration_path(other.id[:8], root=tmp_path, site=SITE.name)
+        == other_path
     )
 
 
@@ -694,6 +775,30 @@ def test_collect_registers_a_camera_from_a_recorded_frame(
     assert calibration.reads == 1
     assert calibration.residual_mm < RESIDUAL_MAX_MM
     assert calibration.id8 in written[0].name
+
+
+def test_collect_records_the_tag_it_was_given(tmp_path, monkeypatch, frame_path):
+    result = run_collect(
+        tmp_path,
+        monkeypatch,
+        [
+            "--camera",
+            str(frame_path),
+            "--area",
+            "dev-corner",
+            "--reads",
+            "1",
+            "--tag",
+            "Overhead A!",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "tag 'Overhead-A'" in result.output
+
+    written = sorted((tmp_path / SITE.name).glob("camera-*.toml"))
+    calibration = read_camera_calibration_file(written[0])
+    assert calibration.tag == "Overhead-A"
 
 
 def test_collect_writes_nothing_when_a_sheet_is_missing(tmp_path, monkeypatch):

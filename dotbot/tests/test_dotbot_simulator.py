@@ -1,45 +1,58 @@
-"""Tests for the simulated DotBot's receive path."""
+"""Tests for the simulated fleet: its placement, its radio and the firmware
+control it runs."""
 
-import queue
+import math
+import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
+import toml
 from dotbot_utils.protocol import Frame, Header, Packet
 
-from dotbot import addr_to_hex
+from dotbot import DOTBOT_ADDRESS_DEFAULT, addr_to_hex
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
-    DIRECTION_THRESHOLD_MM,
-    MOTOR_SPEED,
+    ADVERTISEMENT_TICKS,
+    FLEET_PITCH_MM,
+    MARI_SLOTFRAME_SIZE,
     SIMULATOR_STEP_DELTA_T,
-    SIMULATOR_UPDATE_INTERVAL_S,
-    DotBotSimulator,
     DotBotSimulatorCommunicationInterface,
+    FleetDoesNotFit,
     SimulatedDotBotSettings,
+    fleet_capacity,
+    fleet_init_state,
     grid_positions,
+    init_state_toml,
     packaged_init_state_path,
     place_dotbots,
     placement_area,
 )
 from dotbot.protocol import (
+    AXLE_UNKNOWN,
     DIRECTION_NONE,
     ControlModeType,
     PayloadCommandMoveRaw,
-    PayloadCommandRgbLed,
     PayloadCommandWheelVelocity,
+    PayloadDotBotAdvertisement,
     PayloadLH2Location,
     PayloadLH2Waypoints,
+    PayloadWaypointHeading,
+    WaypointsStatus,
 )
+from dotbot.sim import core as control
 from dotbot.site import Site
 
-ADDRESS = "BADCAFE111111111"
+# The firmware advertises every twice its node's minimum TX interval, the
+# slotframe, once joined: 2 x 126 ms
+MARI_ADVERTISEMENT_TICKS = 25
 
 
-def _bot(address: str) -> DotBotSimulator:
-    return DotBotSimulator(
-        SimulatedDotBotSettings(address=address, pos_x=100, pos_y=100),
-        queue.Queue(),
+def _frame(bot_or_address, payload) -> Frame:
+    address = getattr(bot_or_address, "address", bot_or_address)
+    return Frame(
+        header=Header(destination=int(address, 16), source=0),
+        packet=Packet().from_payload(payload),
     )
 
 
@@ -52,159 +65,34 @@ def _move_raw(destination: int) -> Frame:
     )
 
 
-def _deliver(bot: DotBotSimulator, frame: Frame) -> None:
-    """Run one pass of the rx loop over a single frame."""
-    bot.queue.put(frame)
-    bot.queue.put(None)  # breaks the loop once the frame is handled
-    bot.rx_frame()
-
-
-@pytest.mark.parametrize(
-    "address",
-    [
-        "B0B0F00D33333333",  # letters: fails if the two sides disagree on case
-        "00B0F00D33333333",  # leading zero: fails if the address is not padded
-        "1234567890123456",  # digits only: matches under either convention
-    ],
-)
-def test_a_command_addressed_to_this_bot_is_applied(address):
-    bot = _bot(address)
-    _deliver(bot, _move_raw(int(address, 16)))
-    assert bot.pwm_left == 80
-    assert bot.pwm_right == 80
-
-
-def test_a_command_for_another_bot_is_ignored():
-    bot = _bot("B0B0F00D33333333")
-    _deliver(bot, _move_raw(0xDEADBEEF22222222))
-    assert bot.pwm_left == 0
-    assert bot.pwm_right == 0
-
-
-def _wheel_velocity(bot: DotBotSimulator, left: int, right: int) -> Frame:
-    return Frame(
-        header=Header(destination=int(bot.address, 16), source=0),
-        packet=Packet().from_payload(
-            PayloadCommandWheelVelocity(left_mm_s=left, right_mm_s=right)
-        ),
+def _waypoints(bot, points, threshold=10, batch_id=0, headings=None, pass_mm=0):
+    headings = headings or [None] * len(points)
+    payload = PayloadLH2Waypoints(
+        threshold=threshold,
+        count=len(points),
+        waypoints=[PayloadLH2Location(pos_x=x, pos_y=y) for x, y in points],
+        batch_id=batch_id,
+        pass_mm=pass_mm,
+        headings=[
+            (
+                PayloadWaypointHeading()
+                if h is None
+                else PayloadWaypointHeading(heading_cdeg=round(h * 100))
+            )
+            for h in headings
+        ],
     )
+    return _frame(bot, payload)
 
 
-def test_a_wheel_velocity_command_drives_the_wheels_at_that_speed():
-    bot = DotBotSimulator(
-        SimulatedDotBotSettings(address=ADDRESS, motor_left_error=0.3),
-        queue.Queue(),
-    )
-    _deliver(bot, _wheel_velocity(bot, 300, 300))
-    bot.diff_drive_model_update()
-    assert bot.pos_x == pytest.approx(0)
-    assert bot.pos_y == pytest.approx(300 * SIMULATOR_STEP_DELTA_T)
-    assert bot.controller_mode == ControlModeType.MANUAL
-
-
-def test_the_wheels_stop_when_wheel_velocity_commands_stop_arriving():
-    bot = _bot(ADDRESS)
-    _deliver(bot, _wheel_velocity(bot, 300, -300))
-    bot._wheel_velocity_deadline = time.monotonic() - 0.01
-    bot.diff_drive_model_update()
-    assert (bot.pos_x, bot.pos_y, bot.theta) == (100, 100, 0)
-    assert (bot.pwm_left, bot.pwm_right) == (0, 0)
-
-
-def test_a_move_raw_command_takes_over_from_wheel_velocity():
-    bot = _bot(ADDRESS)
-    _deliver(bot, _wheel_velocity(bot, 300, 300))
-    _deliver(bot, _move_raw(int(ADDRESS, 16)))
-    assert bot.wheel_velocity is None
-    assert bot.pwm_left == 80
-
-
-def test_an_unhandled_payload_type_is_logged():
-    bot = _bot(ADDRESS)
-    bot.logger = MagicMock()
-    _deliver(
-        bot,
-        Frame(
-            header=Header(destination=int(ADDRESS, 16), source=0),
-            packet=Packet().from_payload(PayloadCommandRgbLed(red=1, green=2, blue=3)),
-        ),
-    )
-    bot.logger.warning.assert_called_once_with(
-        "Unhandled payload type", payload_type="0x01"
-    )
+def _wheel_velocity(bot, left: int, right: int) -> Frame:
+    return _frame(bot, PayloadCommandWheelVelocity(left_mm_s=left, right_mm_s=right))
 
 
 def test_the_address_rendering_round_trips():
     """The rx path and the index map must render an address the same way."""
     for address in ("B0B0F00D33333333", "00B0F00D33333333", "1234567890123456"):
         assert addr_to_hex(int(address, 16)) == address
-
-
-# --- Heading ----------------------------------------------------------------
-
-
-def test_a_fresh_bot_has_no_heading_until_it_has_travelled_past_the_threshold():
-    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
-    assert bot.direction == DIRECTION_NONE
-
-    # Started at the frame origin facing north, so pos_y is the travel so far.
-    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
-    while bot.pos_y <= DIRECTION_THRESHOLD_MM:
-        assert bot.direction == DIRECTION_NONE
-        bot.diff_drive_model_update()
-    assert bot.direction == 0
-
-
-def test_the_next_heading_waits_for_another_threshold_of_travel():
-    """The recorded point advances with the heading, not with every step."""
-    bot = DotBotSimulator(SimulatedDotBotSettings(address=ADDRESS), queue.Queue())
-    bot.pwm_left = bot.pwm_right = MOTOR_SPEED
-    while bot.direction == DIRECTION_NONE:
-        bot.diff_drive_model_update()
-
-    bot.theta = 90  # turned east, where a recomputed heading reads -90
-    bot.diff_drive_model_update()
-    assert bot.direction == 0
-    while bot.pos_x <= DIRECTION_THRESHOLD_MM:
-        bot.diff_drive_model_update()
-    assert bot.direction == -90
-
-
-def _drive_to(bot: DotBotSimulator, x: int, y: int, timeout_s: float) -> None:
-    """Run control and physics at their real rates until the waypoint run ends."""
-    waypoints = [PayloadLH2Location(pos_x=x, pos_y=y)]
-    _deliver(
-        bot,
-        Frame(
-            header=Header(destination=int(bot.address, 16), source=0),
-            packet=Packet().from_payload(
-                PayloadLH2Waypoints(threshold=50, count=1, waypoints=waypoints)
-            ),
-        ),
-    )
-    physics_per_control = round(SIMULATOR_UPDATE_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
-    elapsed = 0.0
-    while bot.controller_mode == ControlModeType.AUTO and elapsed < timeout_s:
-        bot._control_loop_default()
-        for _ in range(physics_per_control):
-            bot.diff_drive_model_update()
-        elapsed += SIMULATOR_UPDATE_INTERVAL_S
-
-
-@pytest.mark.parametrize("direction", [90, DIRECTION_NONE], ids=["heading", "none"])
-def test_the_default_control_loop_reaches_a_waypoint_it_must_turn_toward(direction):
-    """Guards against steering on the advertised heading, which a bot turning
-    in place never updates, so it spins without arriving."""
-    bot = DotBotSimulator(
-        SimulatedDotBotSettings(
-            address=ADDRESS, pos_x=1000, pos_y=1000, direction=direction
-        ),
-        queue.Queue(),
-    )
-    _drive_to(bot, 1000, 300, timeout_s=10)
-    assert bot.controller_mode == ControlModeType.MANUAL
-    assert (bot.pos_x - 1000) ** 2 + (bot.pos_y - 300) ** 2 < 50**2
-    assert bot.direction != DIRECTION_NONE
 
 
 # --- Placement of a world file's unpositioned robots -------------------------
@@ -297,6 +185,90 @@ def test_a_fully_positioned_fleet_is_returned_unchanged():
     assert place_dotbots(fleet, HALL) == fleet
 
 
+# --- A fleet generated by `--robots N` ---------------------------------------
+
+
+FIELD_SITE = Site(
+    name="hall",
+    extent_mm=(20000, 30000),
+    areas={
+        "arena": Area(5000, 5000, 2000, 2000, "arena"),
+        "field": Area(2000, 10000, 16000, 16000, "field"),
+    },
+)
+
+
+@pytest.mark.parametrize("count", [1, 7, 500, 1000])
+def test_a_generated_fleet_has_its_count_inside_the_field(count):
+    field = FIELD_SITE.areas["field"]
+    bots = fleet_init_state(count, FIELD_SITE).dotbots
+    assert len(bots) == count
+    assert len({bot.address for bot in bots}) == count
+    assert all(
+        field.x < bot.pos_x < field.x_max and field.y < bot.pos_y < field.y_max
+        for bot in bots
+    )
+
+
+def test_a_generated_fleet_is_centred_and_a_pitch_apart():
+    field = FIELD_SITE.areas["field"]
+    bots = fleet_init_state(500, FIELD_SITE).dotbots
+    xs, ys = [bot.pos_x for bot in bots], [bot.pos_y for bot in bots]
+    assert (min(xs) + max(xs)) / 2 == pytest.approx(field.x + field.w / 2, abs=100)
+    assert (min(ys) + max(ys)) / 2 == pytest.approx(field.y + field.h / 2, abs=100)
+    nearest = min(
+        math.dist((a.pos_x, a.pos_y), (b.pos_x, b.pos_y))
+        for i, a in enumerate(bots)
+        for b in bots[i + 1 :]
+    )
+    assert nearest == FLEET_PITCH_MM
+
+
+def test_a_generated_fleets_top_half_faces_up_and_the_rest_down():
+    bots = fleet_init_state(4, FIELD_SITE).dotbots
+    assert [bot.direction for bot in bots] == [180, 180, 0, 0]
+
+
+def test_without_a_field_the_fleet_goes_to_the_first_area_then_the_extent():
+    area = Area(1000, 1000, 1000, 1000, "pen")
+    bots = fleet_init_state(4, Site(areas={"pen": area})).dotbots
+    assert all(area.x < bot.pos_x < area.x_max for bot in bots)
+    bots = fleet_init_state(1000, Site(extent_mm=(20000, 30000))).dotbots
+    assert len(bots) == 1000
+
+
+def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do():
+    assert fleet_capacity(Area(0, 0, 2000, 2000)) == 100
+    fleet_init_state(100)
+    with pytest.raises(FleetDoesNotFit, match="101 robots.*at most 100 do"):
+        fleet_init_state(101)
+
+
+def test_the_capacity_of_a_narrow_area_counts_its_near_square_grid():
+    # One row: a 2-column grid still has one row, a 3-column grid needs two
+    assert fleet_capacity(Area(0, 0, 2000, 200)) == 2
+    fleet_init_state(2, Site(areas={"strip": Area(0, 0, 2000, 200, "strip")}))
+
+
+def test_a_written_fleet_reads_back_as_the_same_robots(tmp_path):
+    fleet = fleet_init_state(50, FIELD_SITE)
+    path = tmp_path / "fleet.toml"
+    path.write_text(init_state_toml(fleet))
+    sim = DotBotSimulatorCommunicationInterface(lambda frame: None, str(path))
+    assert [
+        (bot.address, bot.pos_x, bot.pos_y, bot.heading_deg % 360)
+        for bot in sim.dotbots
+    ] == [(bot.address, bot.pos_x, bot.pos_y, bot.direction) for bot in fleet.dotbots]
+
+
+def test_the_simulator_runs_a_generated_fleet_without_a_file():
+    fleet = fleet_init_state(9, FIELD_SITE)
+    sim = DotBotSimulatorCommunicationInterface(lambda frame: None, fleet)
+    assert [bot.address for bot in sim.dotbots] == [
+        bot.address for bot in fleet.dotbots
+    ]
+
+
 def test_the_packaged_world_spreads_its_fleet_over_the_active_arena():
     """End to end from the shipped world file: every declared robot must start
     inside the site's arena, not in a corner of the floor."""
@@ -333,3 +305,301 @@ def test_the_packaged_world_ships_a_robot_with_no_heading():
         site=HALL,
     )
     assert [bot.direction for bot in interface.dotbots].count(DIRECTION_NONE) == 1
+
+
+def _interface(tmp_path, dotbots, network=None):
+    world = tmp_path / "world.toml"
+    body = {"dotbots": dotbots, **({"network": network} if network else {})}
+    world.write_text(toml.dumps(body))
+    received = []
+    interface = DotBotSimulatorCommunicationInterface(received.append, str(world))
+    return interface, received
+
+
+def test_the_live_fleet_runs_on_one_thread_at_the_wall_clock(tmp_path):
+    interface, received = _interface(
+        tmp_path, [{"address": f"{i:016X}", "pos_x": 100, "pos_y": 100} for i in (1, 2)]
+    )
+    threads = threading.active_count()
+    interface.start()
+    try:
+        assert threading.active_count() == threads + 1
+        began = time.monotonic()
+        time.sleep(0.6)
+        elapsed = time.monotonic() - began
+    finally:
+        interface.stop()
+    assert not interface.main_thread.is_alive()
+    assert interface.ticks == pytest.approx(elapsed / SIMULATOR_STEP_DELTA_T, rel=0.2)
+    sources = {addr_to_hex(int(frame.header.source)) for frame in received}
+    assert sources == {"0000000000000001", "0000000000000002"}
+
+
+def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": "mari",
+            }
+        ],
+    )
+    slotframe_ticks = math.ceil(
+        MARI_SLOTFRAME_SIZE * 1.236 / 1000 / SIMULATOR_STEP_DELTA_T
+    )
+    for _ in range(MARI_ADVERTISEMENT_TICKS - 1):
+        interface.step()
+    assert not received
+    for _ in range(slotframe_ticks + 1):
+        interface.step()
+    assert len(received) == 1
+
+
+@pytest.mark.parametrize(
+    "network_mode,ticks", [("default", ADVERTISEMENT_TICKS), ("mari", None)]
+)
+def test_a_robot_advertises_at_its_firmware_rate(tmp_path, network_mode, ticks):
+    """A joined Mari robot advertises at the rate its firmware derives from
+    the slotframe, an unjoined one at the firmware's default."""
+    ticks = ticks or MARI_ADVERTISEMENT_TICKS
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": network_mode,
+            }
+        ],
+    )
+    for _ in range(1000):
+        interface.step()
+    assert abs(len(received) - 1000 / ticks) <= 1
+
+
+def test_a_mari_downlink_reaches_its_robot(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "network_mode": "mari",
+            }
+        ],
+    )
+    bot = interface.dotbots[0]
+    interface.write(_move_raw(1).to_bytes())
+    for _ in range(20):
+        interface.step()
+    assert bot.drive_mode == control.DriveMode.RAW
+
+
+def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):
+    """A command addressed to one robot must not cost a parse per fleet
+    member - the O(N) fan-out this guards against made a round of commands
+    O(N^2) in fleet size."""
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {"address": "0000000000000001", "pos_x": 100, "pos_y": 100},
+            {"address": "0000000000000002", "pos_x": 100, "pos_y": 100},
+        ],
+    )
+    bot_a, bot_b = interface.dotbots
+    with patch.object(
+        Header, "from_bytes", autospec=True, side_effect=Header.from_bytes
+    ) as from_bytes:
+        interface.write(_move_raw(1).to_bytes())
+        assert from_bytes.call_count == 1
+    interface.step()
+    assert bot_a.drive_mode == control.DriveMode.RAW
+    assert bot_b.drive_mode == control.DriveMode.IDLE
+
+
+def test_write_to_broadcast_reaches_every_robot(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {"address": "0000000000000001", "pos_x": 100, "pos_y": 100},
+            {"address": "0000000000000002", "pos_x": 100, "pos_y": 100},
+        ],
+    )
+    interface.write(_move_raw(int(DOTBOT_ADDRESS_DEFAULT, 16)).to_bytes())
+    interface.step()
+    assert all(bot.drive_mode == control.DriveMode.RAW for bot in interface.dotbots)
+
+
+def test_write_to_an_unknown_address_reaches_nobody(tmp_path):
+    interface, _ = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}]
+    )
+    interface.write(_move_raw(0xDEADBEEF22222222).to_bytes())
+    interface.step()
+    assert interface.dotbots[0].drive_mode == control.DriveMode.IDLE
+
+
+# --- The fleet on the firmware's control core ---------------------------------
+
+
+def _step(interface, seconds: float):
+    for _ in range(round(seconds / SIMULATOR_STEP_DELTA_T)):
+        interface.step()
+
+
+def _adverts(received) -> list:
+    return [
+        PayloadDotBotAdvertisement().from_bytes(frame.packet.payload.to_bytes())
+        for frame in received
+    ]
+
+
+def test_a_robot_given_a_heading_starts_tracking_it_where_it_was_put(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 1000,
+                "pos_y": 1000,
+                "direction": 90,
+            }
+        ],
+    )
+    bot = interface.dotbots[0]
+    assert bot.estimator_status == control.PoseStatus.TRACKING
+    assert math.hypot(bot.pos_x - 1000, bot.pos_y - 1000) < 3
+    assert bot.heading_deg == pytest.approx(90, abs=1)
+    _step(interface, 0.5)
+    (advert,) = _adverts(received)
+    assert advert.direction == pytest.approx(90, abs=1)
+    assert math.hypot(advert.axle_x - 1000, advert.axle_y - 1000) < 3
+    # The LH2 position is the photodiode, a lever arm ahead of the axle
+    assert math.hypot(advert.pos_x - 949, advert.pos_y - 1000) < 3
+    assert (advert.encoder_left, advert.encoder_right) == (0, 0)
+
+
+def test_a_robot_without_a_heading_starts_with_none_and_no_position(tmp_path):
+    interface, received = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000}]
+    )
+    assert interface.dotbots[0].estimator_status == control.PoseStatus.SEEDING
+    interface.dotbots[0].lh2_visible = False
+    _step(interface, 0.5)
+    (advert,) = _adverts(received)
+    assert advert.direction == DIRECTION_NONE
+    assert (advert.axle_x, advert.axle_y) == (AXLE_UNKNOWN, AXLE_UNKNOWN)
+    assert (advert.pos_x, advert.pos_y) == (0, 0)
+
+
+def test_advertisements_carry_the_battery_and_the_calibration(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 100,
+                "pos_y": 100,
+                "calibrated": 0x03,
+            }
+        ],
+    )
+    _step(interface, 1.0)
+    adverts = _adverts(received)
+    assert len(adverts) == 2
+    assert all(a.has_report and a.calibrated == 0x03 for a in adverts)
+    assert adverts[-1].battery == pytest.approx(3000, abs=2)
+    assert adverts[-1].max_speed_10mm == 30
+
+
+def test_robots_advertise_out_of_phase(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [{"address": f"{i + 1:016X}", "pos_x": 100, "pos_y": 100} for i in range(50)],
+    )
+    per_tick = []
+    for _ in range(ADVERTISEMENT_TICKS):
+        before = len(received)
+        interface.step()
+        per_tick.append(len(received) - before)
+    assert sum(per_tick) == 50
+    assert max(per_tick) == 1
+
+
+def test_wheel_speeds_hold_through_a_motor_error(tmp_path):
+    """The firmware's wheel loop closes on the encoders, so a weak motor
+    neither slows its wheel nor turns the robot."""
+    interface, _ = _interface(
+        tmp_path,
+        [
+            {
+                "address": "0000000000000001",
+                "pos_x": 1000,
+                "pos_y": 1000,
+                "direction": 0,
+                "motor_left_error": 0.3,
+            }
+        ],
+    )
+    bot = interface.dotbots[0]
+    for _ in range(5):
+        interface.write(_wheel_velocity(bot, 200, 200).to_bytes())
+        _step(interface, 0.2)
+    assert bot.drive_mode == control.DriveMode.VELOCITY
+    assert bot.v_left == pytest.approx(200, abs=25)
+    assert bot.v_right == pytest.approx(200, abs=25)
+    assert abs(bot.heading_deg) < 5
+
+
+def test_the_wheels_stop_when_commands_stop_arriving(tmp_path):
+    interface, _ = _interface(
+        tmp_path, [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000}]
+    )
+    bot = interface.dotbots[0]
+    interface.write(_wheel_velocity(bot, 300, -300).to_bytes())
+    _step(interface, 0.3)
+    assert abs(bot.v_left) > 100
+    _step(interface, 1.0)
+    assert bot.drive_mode == control.DriveMode.IDLE
+    assert (bot.v_left, bot.v_right) == (0, 0)
+
+
+def test_a_waypoint_batch_is_driven_by_the_firmware(tmp_path):
+    interface, received = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 1000, "pos_y": 1000, "direction": 0}],
+    )
+    bot = interface.dotbots[0]
+    interface.write(
+        _waypoints(bot, [(1000, 1500)], threshold=20, batch_id=4).to_bytes()
+    )
+    for _ in range(1000):
+        interface.step()
+        if bot.steering_state == control.SteeringState.ARRIVED:
+            break
+    assert bot.steering_state == control.SteeringState.ARRIVED
+    _step(interface, 0.6)
+    assert math.hypot(bot.pos_x - 1000, bot.pos_y - 1500) <= 20
+    advert = _adverts(received)[-1]
+    assert advert.waypoints_status == WaypointsStatus.ARRIVED
+    assert (advert.batch_id, advert.waypoint_idx) == (4, 1)
+    assert advert.mode == ControlModeType.MANUAL
+
+
+def test_a_visible_robot_gets_a_fix_only_when_its_firmware_reads_one(tmp_path):
+    interface, _ = _interface(
+        tmp_path,
+        [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}],
+    )
+    before = int(interface.plant.fix_sequence[0])
+    for _ in range(100):
+        interface.step()
+    assert int(interface.plant.fix_sequence[0]) - before == 10
+    assert int(interface.reports()[0]["fix_sequence"]) == int(
+        interface.plant.fix_sequence[0]
+    )

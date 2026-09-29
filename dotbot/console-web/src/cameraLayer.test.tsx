@@ -114,6 +114,7 @@ const LAYERS = {
   dotBots: true,
   trails: false,
   crashedOnly: false,
+  allWaypoints: false,
 };
 
 // A robot standing where it says it is, which is all the map draws it from.

@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { BodyColorMode } from "./bodyColor";
 import { botFootprintPx } from "./BotGlyph";
 import { pxPerMm } from "./grid";
-import { MapView, WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./MapView";
+import { WAYPOINT_MAX_PX, WAYPOINT_MIN_PX, WAYPOINT_OF_BODY } from "./BotMarker";
+import { MapView } from "./MapView";
 import type { RobotDrawing } from "./robotDrawing";
-import type { Area, BotPose, LH2Position, Site, UnifiedBot } from "./types";
+import type { Area, RobotBody, LH2Position, Site, UnifiedBot } from "./types";
 import { Camera, FRAME_CAMERA, viewGeom } from "./zoom";
 
 const ARENA: Area = { x: 0, y: 0, w: 2000, h: 2000, name: "arena" };
@@ -43,7 +45,7 @@ const V3_SPAN_MM = 95;
 
 // The body of a bot standing at `at` facing `heading`, rotated the way the
 // controller rotates it.
-const bodyPose = (at: LH2Position, heading = 45): BotPose => {
+const bodyPose = (at: LH2Position, heading = 45): RobotBody => {
   const theta = (heading * Math.PI) / 180;
   const place = (p: LH2Position): LH2Position => ({
     x: at.x + p.x * Math.cos(theta) - p.y * Math.sin(theta),
@@ -96,6 +98,7 @@ interface HarnessProps {
   from?: Camera;
   planned?: { key: string; ids: string[]; waypoints: LH2Position[]; led: string | null }[];
   robotDrawing?: RobotDrawing;
+  colorMode?: BodyColorMode;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -104,6 +107,7 @@ const Harness: React.FC<HarnessProps> = ({
   from = FRAME_CAMERA,
   planned = [],
   robotDrawing,
+  colorMode,
 }) => {
   const [cam, setCam] = useState<Camera>(from);
   return (
@@ -121,8 +125,10 @@ const Harness: React.FC<HarnessProps> = ({
         dotBots: true,
         trails: false,
         crashedOnly: false,
+        allWaypoints: false,
       }}
       robotDrawing={robotDrawing}
+      colorMode={colorMode}
       plannedMissions={planned}
       cam={cam}
       setCam={setCam}
@@ -185,6 +191,24 @@ describe("waypoints on the map", () => {
     cleanup();
     render(<Harness bots={fleet()} planned={planned} selection={new Set(["b"])} />);
     expect(screen.getByTestId("planned-b-0")).toBeInTheDocument();
+  });
+});
+
+describe("where things are placed on the map", () => {
+  // The drawn box's own pixels for a floor point, unrounded.
+  const px = (p: LH2Position) =>
+    `${((p.x - VIEWPORT.x) / VIEWPORT.w) * GEOM.boxW}px ${((p.y - VIEWPORT.y) / VIEWPORT.h) * GEOM.boxH}px`;
+
+  it("carries a robot and its waypoint to their sub-pixel point by a translate", () => {
+    const at = { x: 507.3, y: 511.9 };
+    const target = { x: 613.7, y: 598.1 };
+    render(<Harness bots={[bot("a", at, { waypoints: [target] })]} selection={new Set(["a"])} />);
+    const marker = document.getElementById("bot-a")!;
+    expect(marker.style.translate).toBe(px(at));
+    expect(marker.style.left).toBe("0px");
+    const waypoint = screen.getByTestId("waypoint-a-0");
+    expect(waypoint.style.translate).toBe(px(target));
+    expect(waypoint.style.left).toBe("0px");
   });
 });
 
@@ -344,6 +368,51 @@ describe("what the map draws a robot from", () => {
   });
 });
 
+describe("the body colour mode", () => {
+  const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
+  const fill = (id: string) => glyph(id).querySelector('[data-layer="board"]')!.getAttribute("fill");
+  const near: Camera = { scale: 20, tx: 0, ty: 0 };
+  const RED = { red: 255, green: 0, blue: 0 };
+
+  it("defaults to the state colour, unchanged from before the toggle existed", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} />);
+    expect(fill("a")).toBe("var(--s-Running)");
+  });
+
+  it("fills the body from the LED once switched to led mode", () => {
+    render(
+      <Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} colorMode="led" />,
+    );
+    expect(fill("a")).toBe("rgb(255,0,0)");
+  });
+
+  it("falls back to grey in led mode for an unset or all-off LED", () => {
+    for (const led of [null, { red: 0, green: 0, blue: 0 }]) {
+      render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led })]} from={near} colorMode="led" />);
+      expect(fill("a")).toBe("var(--muted)");
+      cleanup();
+    }
+  });
+
+  it("draws a dark-then-light halo around the body only in led mode", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} />);
+    expect(glyph("a").querySelector('[data-layer="board-outline-casing"]')).toBeNull();
+    cleanup();
+    render(
+      <Harness bots={[bot("a", { x: 500, y: 500 }, { led: RED })]} from={near} colorMode="led" />,
+    );
+    expect(glyph("a").querySelector('[data-layer="board-outline-casing"]')).not.toBeNull();
+  });
+
+  it("repaints an unchanged robot when only the mode toggles", () => {
+    const fleet = [bot("a", { x: 500, y: 500 }, { led: RED })];
+    const { rerender } = render(<Harness bots={fleet} from={near} colorMode="status" />);
+    expect(fill("a")).toBe("var(--s-Running)");
+    rerender(<Harness bots={fleet} from={near} colorMode="led" />);
+    expect(fill("a")).toBe("rgb(255,0,0)");
+  });
+});
+
 describe("the fallback for a board that cannot be drawn", () => {
   const glyph = (id: string) => screen.getByTestId(`glyph-${id}`);
   const shape = (id: string) => glyph(id).getAttribute("data-shape");
@@ -351,8 +420,12 @@ describe("the fallback for a board that cannot be drawn", () => {
   const crowd = () =>
     Array.from({ length: 201 }, (_, i) => bot(`c${i}`, { x: 100 + i * 5, y: 500 }));
 
+  // A scale where the 95 mm board is about 11 px: too small to read, big
+  // enough for a mark. At the whole-site zoom it is 7 px, a dot.
+  const far: Camera = { scale: 1.5, tx: 0, ty: 0 };
+
   it("is the disc with a heading bar where the board is too small", () => {
-    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={far} />);
     expect(shape("a")).toBe("mark");
     expect(glyph("a").querySelector("rect")).toBeNull();
     expect(glyph("a").querySelector('circle[data-layer="mark"]')).not.toBeNull();
@@ -370,8 +443,20 @@ describe("the fallback for a board that cannot be drawn", () => {
   });
 
   it("is still the mark in a crowd where the board would be too small anyway", () => {
-    render(<Harness bots={crowd()} from={FRAME_CAMERA} />);
+    render(<Harness bots={crowd()} from={far} />);
     expect(shape("c0")).toBe("mark");
+  });
+
+  it("is a plain dot at its true size where even the mark would not read", () => {
+    render(<Harness bots={[bot("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    expect(shape("a")).toBe("dot");
+    const dot = glyph("a").querySelector('[data-layer="dot"]')!;
+    const perMm = pxPerMm("x", VIEWPORT, GEOM, FRAME_CAMERA);
+    expect(2 * parseFloat(dot.getAttribute("r")!)).toBeCloseTo(95 * perMm, 3);
+    expect(glyph("a").querySelector('[data-layer="heading"]')).toBeNull();
+    expect(glyph("a").querySelector('[data-layer="sensor-mark"]')).toBeNull();
+    // Only the dot's own target takes the pointer, never the box round it.
+    expect(glyph("a").style.pointerEvents).toBe("none");
   });
 });
 
@@ -416,8 +501,8 @@ describe("the possible footprint", () => {
   });
 
   it("is hidden where the ring would be too small to read", () => {
-    // At the whole-site zoom the ring is about 12 px across.
-    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={FRAME_CAMERA} />);
+    // Here the ring is about 20 px across.
+    render(<Harness bots={[headingless("a", { x: 500, y: 500 })]} from={{ scale: 1.5, tx: 0, ty: 0 }} />);
     expect(layer("a", "reach")).toBeNull();
     expect(layer("a", "core")).toBeNull();
     expect(layer("a", "sensor")).not.toBeNull();

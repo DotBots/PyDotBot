@@ -23,7 +23,7 @@ import struct
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -452,7 +452,7 @@ def calibration_payload(calibration: Calibration) -> bytes:
     return b"".join(calibration_messages(calibration))
 
 
-def _slug_tag(tag: str) -> str:
+def slug_tag(tag: str) -> str:
     """Filename-safe slug for a free-form calibration tag.
 
     Keeps ASCII letters, digits, dot, dash and underscore; collapses any
@@ -687,43 +687,86 @@ def resolve_calibration_path(
     root: Optional[Path] = None,
     site: Optional[str] = None,
 ) -> Path:
-    """The file `spec` names: a path, or an id prefix under a site directory.
+    """The file `spec` names: see `resolve_calibration_spec`."""
+    return resolve_calibration_spec(
+        spec,
+        root or calibration_root(),
+        site,
+        glob=CALIBRATION_TOML_GLOB,
+        metadata=_file_metadata,
+        what="calibration",
+        created_key="created_at",
+    )
 
-    Never "the newest": a calibration in use is always the one named. An
-    ambiguous id prefix is an error that lists the matches. `site` limits
-    the search to that site's directory, so an id prefix cannot resolve to
-    another site's calibration.
+
+def resolve_calibration_spec(
+    spec: str,
+    root: Path,
+    site: Optional[str],
+    glob: str,
+    metadata: Callable[[Path], dict],
+    what: str,
+    created_key: str,
+) -> Path:
+    """The file `spec` names, tried in order: a readable path; an exact,
+    case-insensitive `tag` (as typed or as its stored slug); an id prefix of
+    a `glob` file under `root`, limited to `site` when given.
+
+    Raises ValueError when nothing matches, or when a tag or an id prefix
+    matches several files, listing each one's id, `created_key` and path.
     """
     candidate = Path(spec).expanduser()
     if candidate.is_file():
         return candidate
 
-    root = root or calibration_root()
-    matches = sorted(
-        path
-        for path in root.glob(f"{site or '*'}/{CALIBRATION_TOML_GLOB}")
-        if _file_id(path).startswith(spec.lower())
+    files = {
+        path: metadata(path) for path in sorted(root.glob(f"{site or '*'}/{glob}"))
+    }
+    spec_lower = spec.lower()
+    spec_slug = slug_tag(spec).lower()
+
+    def unique(kind: str, matches: list) -> Optional[Path]:
+        if len(matches) > 1:
+            lines = [
+                f"  {files[path].get('id', '?')}  "
+                f"{files[path].get(created_key, '?')}  {path}"
+                for path in matches
+            ]
+            raise ValueError(
+                f"{what} {kind} {spec!r} matches several files:\n" + "\n".join(lines)
+            )
+        return matches[0] if matches else None
+
+    found = unique(
+        "tag",
+        [
+            path
+            for path, data in files.items()
+            if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
+        ],
+    ) or unique(
+        "id prefix",
+        [
+            path
+            for path, data in files.items()
+            if str(data.get("id", "")).lower().startswith(spec_lower)
+        ],
     )
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise ValueError(
-            f"no calibration matches {spec!r}: it is neither a readable file nor "
-            f"the id prefix of a file under {root / (site or '*')}"
-        )
-    listed = "\n  ".join(str(m) for m in matches)
+    if found is not None:
+        return found
     raise ValueError(
-        f"calibration id prefix {spec!r} matches several files:\n  {listed}"
+        f"no {what} matches {spec!r}: it is neither a readable file, an "
+        f"exact tag, nor the id prefix of a file under {root / (site or '*')}"
     )
 
 
-def _file_id(path: Path) -> str:
-    """The id a file declares, read without solving anything."""
+def _file_metadata(path: Path) -> dict:
+    """The file's `[metadata]` table, read without solving anything."""
     try:
         with open(path, "rb") as handle:
-            return str(tomllib.load(handle).get("metadata", {}).get("id", "")).lower()
+            return tomllib.load(handle).get("metadata", {})
     except (OSError, tomllib.TOMLDecodeError):
-        return ""
+        return {}
 
 
 def load_calibration(
@@ -882,7 +925,7 @@ class LighthouseManager:
             placements=self.placements,
             stations=self.stations or [],
             created_at=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            tag=_slug_tag(tag) if tag else "",
+            tag=slug_tag(tag) if tag else "",
             robot=self.robot,
         )
 

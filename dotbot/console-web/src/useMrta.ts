@@ -13,8 +13,11 @@ const POLL_MS = 1500;
 // them closing must not change anything. It starts from "unavailable" and stays
 // there for as long as nothing answers - the honest reading before the first
 // response, and the permanent one when no MRTA server is running.
+//
+// `configured` is false until a poll shows the controller proxies to one.
 export function useMrta() {
   const [status, setStatus] = useState<MrtaStatus>(MRTA_UNAVAILABLE);
+  const [configured, setConfigured] = useState(false);
   // A toggle in flight owns the label: a poll answered from before the POST
   // landed would otherwise snap the button back to its old state for one tick.
   const pending = useRef(false);
@@ -25,7 +28,8 @@ export function useMrta() {
     const poll = async () => {
       const next = await fetchMrtaStatus();
       if (stopped) return;
-      if (!pending.current) setStatus(next);
+      setConfigured(next.configured);
+      if (!pending.current) setStatus(next.status);
       timer = window.setTimeout(poll, POLL_MS);
     };
     poll();
@@ -46,5 +50,5 @@ export function useMrta() {
     // A refusal needs no handling: the next poll reports what actually happened.
   }, [status.state]);
 
-  return { status, toggle };
+  return { status, configured, toggle };
 }

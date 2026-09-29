@@ -32,6 +32,8 @@ Map + selection
 - [ ] Click bot: red rectangle + id chip; hover another bot: chip appears
 - [ ] Zoom +/-/recenter; arena keeps margins when rail opens or window resizes
 - [ ] Layers panel: Battery Bars / Waypoints / DotBots / Real-scale / Trails toggle live
+- [ ] Real-scale: each board outline turns with its robot and sits on its lighthouse
+      dot; after a reload the bodies come back (the `robot_models` event)
 
 Footer (bottom strip)
 - [ ] Nothing selected: N/1000 + per-state rollup; click a state row selects those bots
@@ -75,6 +77,22 @@ curl -X PUT localhost:8000/controller/dotbots/badcafe111111111/0/waypoints \
   -H 'Content-Type: application/json' \
   -d '{"threshold":60,"waypoints":[{"x":400,"y":1600},{"x":1600,"y":400}]}'
 
+# several bots in one request, each its own batch (what the console sends)
+curl -X PUT localhost:8000/controller/dotbots/waypoints \
+  -H 'Content-Type: application/json' \
+  -d '{"threshold":60,"dotbots":{"badcafe111111111":[{"x":400,"y":1600}],"deadbeef22222222":[{"x":1600,"y":400}]}}'
+# -> {"applied":["badcafe111111111","deadbeef22222222"],"unknown":[]}
+# an unknown address is skipped and listed in "unknown"; the console names it
+# in a notice. Every address unknown -> 404. Add ?strict=true to refuse the
+# whole request (404, nothing sent) if any address is unknown:
+curl -X PUT 'localhost:8000/controller/dotbots/waypoints?strict=true' \
+  -H 'Content-Type: application/json' \
+  -d '{"threshold":60,"dotbots":{"badcafe111111111":[{"x":400,"y":1600}],"0000000000000000":[]}}'
+
+# stop bots and clear their waypoints (no address = every bot; same
+# applied/unknown reply and ?strict=true as above)
+curl -X DELETE 'localhost:8000/controller/dotbots/waypoints?address=badcafe111111111&address=deadbeef22222222'
+
 # flash two bots (watch rail queue + console)
 curl -N -X POST localhost:8001/flash/stream -H 'Content-Type: application/json' \
   -d '{"firmware_b64":"ZmFrZQ==","devices":["badcafe111111111","deadbeef22222222"]}'
@@ -86,3 +104,26 @@ curl -X POST localhost:8001/stop -H 'Content-Type: application/json' \
 # screenshot for the Claude Design re-seed loop
 node dotbot/console-web/dev/screenshot.mjs "http://127.0.0.1:5173/?sel=1111" out.png
 ```
+
+## Performance harness
+
+Not part of `npm test` or CI. Build first, venv active (it launches
+`dotbot run simulator` itself, on port 18100, with `BROWSER=true --headless`):
+
+```bash
+npm --prefix dotbot/console-web run build
+npm --prefix dotbot/console-web run perf -- --robots 10,50,100,200 --duration 60 --out <dir>
+```
+
+It writes `<dir>/results.json` (load, frames, long tasks, main-thread time,
+WebSocket rates, heap growth, React commits, interaction latencies per fleet
+size, plus a React profiling-build pass naming the components that render per
+commit) and prints a table. `--no-profile` / `--no-interactions` skip passes;
+`--spread N` sets how many robots the one-target-per-robot pass sends (16);
+`--chrome` or `CHROME_PATH` picks the browser. With a snap-packaged Chrome,
+point `--out` outside `/tmp`, which it cannot write to.
+
+The controller side of the same path, K WebSocket clients (alone, beside one
+that never reads, beside one that reads too slowly) at N robots, is
+`utils/perf/bench_controller.py --stall --slow`, described in the repo's
+`AGENTS.md`.

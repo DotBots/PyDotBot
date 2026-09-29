@@ -23,7 +23,11 @@ from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
-from dotbot.dotbot_simulator import DotBotSimulatorCommunicationInterface
+from dotbot.dotbot_simulator import (
+    DotBotSimulatorCommunicationInterface,
+    fleet_init_state,
+)
+from dotbot.inbox import FrameInbox
 from dotbot.logger import LOGGER
 from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
@@ -118,8 +122,7 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
-        queue = asyncio.Queue()
-        event_loop = asyncio.get_event_loop()
+        self.inbox = FrameInbox(asyncio.get_running_loop())
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
@@ -136,9 +139,7 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
-                event_loop.call_soon_threadsafe(
-                    queue.put_nowait, Frame(header=event_data.header, packet=packet)
-                )
+                self.inbox.put(Frame(header=event_data.header, packet=packet))
 
         self.mari = MarilibEdge(
             _on_mari_event, MarilibSerialAdapter(self.port, self.baudrate)
@@ -146,9 +147,7 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
         await asyncio.sleep(3)
 
         LOGGER.info("Connected to mari edge")
-        while 1:
-            frame = await queue.get()
-            self.on_frame_received(frame)
+        await self.inbox.run(self.on_frame_received)
 
     def close(self):
         self.mari.close()
@@ -182,8 +181,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
-        queue = asyncio.Queue()
-        event_loop = asyncio.get_event_loop()
+        self.inbox = FrameInbox(asyncio.get_running_loop())
 
         def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
             if event == EdgeEvent.NODE_JOINED:
@@ -200,9 +198,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
                     return
                 if not hasattr(self, "on_frame_received"):
                     return
-                event_loop.call_soon_threadsafe(
-                    queue.put_nowait, Frame(header=event_data.header, packet=packet)
-                )
+                self.inbox.put(Frame(header=event_data.header, packet=packet))
 
         allow_unverified_broker()
         # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
@@ -242,9 +238,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
             ) from exc
         await asyncio.sleep(3)
 
-        while 1:
-            frame = await queue.get()
-            self.on_frame_received(frame)
+        await self.inbox.run(self.on_frame_received)
         LOGGER.info("Connected to mari edge")
 
     def close(self):
@@ -271,20 +265,12 @@ class SimulatorAdapterBase(GatewayAdapterBase):
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
-        queue = asyncio.Queue()
-        event_loop = asyncio.get_event_loop()
-
-        def _frame_received(frame):
-            """Callback called on byte received."""
-            event_loop.call_soon_threadsafe(queue.put_nowait, frame)
-
-        self.simulator = self.create_simulator(_frame_received)
+        self.inbox = FrameInbox(asyncio.get_running_loop())
+        self.simulator = self.create_simulator(self.inbox.put)
         self.simulator.start()
 
         LOGGER.info("Connected to simulator")
-        while 1:
-            frame = await queue.get()
-            self.on_frame_received(frame)
+        await self.inbox.run(self.on_frame_received)
 
     def close(self):
         if self.simulator is None:
@@ -307,13 +293,20 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         self,
         simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT,
         site: Optional[Site] = None,
+        robots: Optional[int] = None,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
+        self.robots = robots
 
     def create_simulator(self, on_frame_received: callable):
+        init_state = (
+            self.simulator_init_state
+            if self.robots is None
+            else fleet_init_state(self.robots, self.site)
+        )
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, self.simulator_init_state, self.site
+            on_frame_received, init_state, self.site
         )
 
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { flashStream, swarmitAction, swarmitEventsUrl } from "./api";
+import { fetchSwarmitStatus, flashStream, swarmitAction, swarmitEventsUrl } from "./api";
 import { FirmwareFile } from "./firmwareFile";
 import { remember } from "./firmwareHistory";
+import { TestbedAction, TestbedOutcome, TestbedTargets, VERB, judge, summarize, toneOf } from "./testbed";
 
 export interface LogRow {
   key: string;
@@ -20,7 +21,8 @@ export interface FlashJob {
 }
 
 // Orchestration plane: live log feed (swarmit /events SSE) + flash queue
-// (driven by /flash/stream chunk events) + the start/stop actions.
+// (driven by /flash/stream chunk events) + the start/stop actions and the
+// outcome of the last one.
 //
 // No reset: swarmit's /reset takes {locations: {addr: {pos_x, pos_y}}}, one
 // per ready device, and the bootloader's handler stores the position but never
@@ -67,14 +69,73 @@ export function useOrchestration(onToast: (msg: string) => void) {
 
   const clearLogs = useCallback(() => setLogs([]), []);
 
+  const localSeq = useRef(0);
+  const note = useCallback((level: LogRow["level"], msg: string) => {
+    const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    localSeq.current += 1;
+    setLogs((prev) => [...prev, { key: `local-${localSeq.current}`, t, level, msg }].slice(-200));
+  }, []);
+
+  const [busy, setBusy] = useState<TestbedAction | null>(null);
+  const [outcome, setOutcome] = useState<TestbedOutcome | null>(null);
+  const busyRef = useRef<TestbedAction | null>(null);
+  // Tracked apart from `busy`, which a stop sent meanwhile takes over
+  const startInFlight = useRef(false);
+
+  // `targets` is what the caller saw of the fleet when it acted; without it
+  // the devices themselves are what the command is judged on. A start with
+  // nothing to start is not sent, as with the CLI; a stop always is, because
+  // the state it was judged on may be a second old.
   const act = useCallback(
-    (action: "start" | "stop", devices?: string[]) => {
-      const target = devices && devices.length ? `${devices.length} device(s)` : "whole fleet";
+    (action: TestbedAction, devices?: string[], targets?: TestbedTargets) => {
+      const { eligible, skipped } = targets ?? { eligible: devices ?? [], skipped: [] };
+      const base = {
+        action,
+        selected: devices && devices.length ? devices.length : null,
+        eligible,
+        skipped,
+        responded: [] as string[],
+        silent: [] as string[],
+        error: null as string | null,
+      };
+      const finish = (o: TestbedOutcome) => {
+        setOutcome(o);
+        const line = summarize(o);
+        note(toneOf(o), line);
+        onToast(line);
+      };
+      if (action === "start" && startInFlight.current) {
+        onToast("A start is already in progress");
+        return;
+      }
+      if (action === "start" && targets && eligible.length === 0) {
+        finish({ ...base, at: Date.now() });
+        return;
+      }
+      busyRef.current = action;
+      if (action === "start") startInFlight.current = true;
+      setBusy(action);
+      onToast(`${VERB[action]} sent · ${base.selected === null ? "whole fleet" : `${base.selected} selected`}`);
       swarmitAction(action, devices)
-        .then(() => onToast(`${action[0].toUpperCase()}${action.slice(1)} sent · ${target}`))
-        .catch(() => onToast(`${action} failed`));
+        .then(async () => {
+          let after = {};
+          try {
+            after = await fetchSwarmitStatus();
+          } catch {
+            /* judged against nothing: every eligible robot reads as silent */
+          }
+          finish({ ...base, ...judge(action, eligible, after), at: Date.now() });
+        })
+        .catch((e: Error) => finish({ ...base, error: e.message ?? String(e), at: Date.now() }))
+        .finally(() => {
+          if (action === "start") startInFlight.current = false;
+          if (busyRef.current === action) {
+            busyRef.current = null;
+            setBusy(null);
+          }
+        });
     },
-    [onToast],
+    [note, onToast],
   );
 
   const flashingRef = useRef(false);
@@ -147,5 +208,5 @@ export function useOrchestration(onToast: (msg: string) => void) {
     ? Math.round((jobs.reduce((a, j) => a + j.acked, 0) / Math.max(1, jobs.reduce((a, j) => a + j.total, 0))) * 100)
     : 0;
 
-  return { logs, clearLogs, queue, jobs, flashing, fleetPct, act, flash };
+  return { logs, clearLogs, queue, jobs, flashing, fleetPct, act, busy, outcome, flash };
 }

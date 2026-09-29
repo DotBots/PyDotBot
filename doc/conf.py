@@ -32,6 +32,8 @@ nitpick_ignore_regex = [
     ("py:class", r"pydantic.*"),
     ("py:class", r"pynput.*"),
     ("py:class", r"threading.*"),
+    ("py:class", r"asyncio\..*"),
+    ("py:class", r"_asyncio\..*"),
     ("py:class", r"starlette.*"),
     ("py:class", r"fastapi.*"),
     ("py:class", r"ConfigDict"),
@@ -53,6 +55,18 @@ nitpick_ignore_regex = [
     ("py:class", r"_ctypes.Structure"),
     ("py:class", r"pathlib._local.Path"),
     ("py:class", r"pathlib.Path"),
+    ("py:class", r"annotated_types\..*"),
+    ("py:class", r"annotation=.*"),
+    ("py:class", r"required=.*"),
+    ("py:class", r"metadata=.*"),
+    ("py:class", r"max_length=.*"),
+    ("py:class", r"ge=.*"),
+    ("py:class", r"le=.*"),
+    ("py:class", r"func=.*"),
+    ("py:class", r"json_schema_input_type=.*"),
+    ("py:class", r"MaxLen"),
+    ("py:class", r"NoneType"),
+    ("py:class", r"dotbot\.models\._positions_as_waypoints"),
 ]
 
 # -- Options for HTML output -------------------------------------------------

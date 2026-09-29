@@ -10,14 +10,15 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum
-from typing import Any, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
 
-MAX_POSITION_HISTORY_SIZE = 1000
+# Points of trail the controller keeps per robot
+MAX_TRAIL_SIZE = 1000
 
 
 class DotBotAddressModel(BaseModel):
@@ -103,41 +104,82 @@ class DotBotLH2Waypoint(DotBotLH2Position):
         return None if value is None else value % 360.0
 
 
-class DotBotWaypoints(BaseModel):
+def _positions_as_waypoints(value):
+    # DotBotLH2Position is left out of the union so that a point whose
+    # heading is invalid is refused, not parsed as a point without one
+    if not isinstance(value, list):
+        return value
+    return [
+        (
+            DotBotLH2Waypoint(x=point.x, y=point.y)
+            if type(point) is DotBotLH2Position
+            else point
+        )
+        for point in value
+    ]
+
+
+# One robot's batch. DB_MAX_WAYPOINTS: the firmware drops the points beyond it.
+WaypointList = Annotated[
+    List[Union[DotBotLH2Waypoint, DotBotGPSPosition]],
+    Field(max_length=16),
+    BeforeValidator(_positions_as_waypoints),
+]
+
+
+class DotBotWaypointSettings(BaseModel):
+    """How a batch is driven, shared by every point in it.
+
+    The robot passes an intermediate point once its centre is within
+    `intermediate_threshold` mm of it, or past it along the leg, without
+    stopping, and stops at the last one within `threshold` mm; below 5 mm it
+    settles at rest until within it. At a point with a heading it stops within
+    `threshold`, turns to the heading within `heading_tolerance` degrees, then
+    goes on. None leaves the firmware's default.
+    """
+
+    threshold: int = Field(ge=0, le=65535)
+    intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
+    heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class DotBotWaypoints(DotBotWaypointSettings):
     """Waypoints model.
 
     Each point is a position for the robot's centre, the axle midpoint (the
     bare dotbot app steers its LH2 photodiode onto it instead). The robot
-    drives through the points in order. It passes an intermediate point once
-    its centre is within `intermediate_threshold` mm of it, or past it along
-    the leg, without stopping, and stops at the last one within `threshold`
-    mm; below 5 mm it settles at rest until within it. A point with a heading
-    is a pose: the robot stops there within `threshold`, turns to the heading
-    within `heading_tolerance` degrees, then goes on. None leaves the
-    firmware's default.
+    drives through the points in order; a point with a heading is a pose.
     """
 
-    threshold: int = Field(ge=0, le=65535)
-    # DB_MAX_WAYPOINTS: the firmware drops the points beyond it
-    waypoints: List[Union[DotBotLH2Waypoint, DotBotGPSPosition]] = Field(max_length=16)
-    intermediate_threshold: Optional[int] = Field(default=None, ge=0, le=65535)
-    heading_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+    waypoints: WaypointList
 
-    @field_validator("waypoints", mode="before")
-    @classmethod
-    def _positions_as_waypoints(cls, value):
-        # DotBotLH2Position is left out of the union so that a point whose
-        # heading is invalid is refused, not parsed as a point without one
-        if not isinstance(value, list):
-            return value
-        return [
-            (
-                DotBotLH2Waypoint(x=point.x, y=point.y)
-                if type(point) is DotBotLH2Position
-                else point
-            )
-            for point in value
-        ]
+
+class DotBotWaypointBatches(DotBotWaypointSettings):
+    """One batch per DotBot, keyed by address, all under the same settings.
+
+    An empty list stops that robot and clears its batch.
+    """
+
+    dotbots: Dict[str, WaypointList]
+
+    def batch(self, address: str) -> DotBotWaypoints:
+        """The batch for one robot, as the single-robot route takes it."""
+        return DotBotWaypoints(
+            threshold=self.threshold,
+            intermediate_threshold=self.intermediate_threshold,
+            heading_tolerance=self.heading_tolerance,
+            waypoints=self.dotbots[address],
+        )
+
+
+class DotBotWaypointsSent(BaseModel):
+    """The DotBots a bulk waypoint request reached, the addresses it named
+    that the controller does not know, and the known ones it could not send
+    to."""
+
+    applied: List[str]
+    unknown: List[str]
+    failed: List[str] = []
 
 
 class DotBotAreaModel(BaseModel):
@@ -423,7 +465,10 @@ class DotBotQueryModel(BaseModel):
     status: Optional[DotBotStatus] = None
     max_battery: Optional[float] = None
     min_battery: Optional[float] = None
-    max_positions: int = None
+    # The newest points of each robot's trail to return
+    trail: int = Field(default=0, ge=0, le=MAX_TRAIL_SIZE)
+    # Add each robot's `body`, its pose expanded into the drawn body
+    body: bool = False
     max_position_x: Optional[float] = None
     min_position_x: Optional[float] = None
     max_position_y: Optional[float] = None
@@ -451,16 +496,33 @@ class DotBotReplyModel(BaseModel):
     data: Any
 
 
+HeadingSourceName = Literal["none", "travel", "ekf"]
+
+
 class DotBotPoseModel(BaseModel):
-    """A robot's body in the arena frame, expanded from its photodiode fix.
+    """Where a robot stands: its axle midpoint in mm and its heading.
 
     `heading_source` says how `heading_deg` was made: "travel" is the bearing
     between fixes, "ekf" the robot's own estimate, and "none" means there was
-    no heading and `heading_deg` is a placeholder.
+    no heading, `heading_deg` is a placeholder and so is the axle, placed
+    from the photodiode as if the robot faced it. The body drawn around the
+    axle is the robot model's shape turned by `heading_deg`.
+    """
+
+    x: float
+    y: float
+    heading_deg: float
+    heading_source: HeadingSourceName
+
+
+class DotBotBodyModel(BaseModel):
+    """A robot's body in the arena frame, expanded from its pose.
+
+    `heading_source` is the pose's.
     """
 
     heading_deg: float
-    heading_source: Literal["none", "travel", "ekf"]
+    heading_source: HeadingSourceName
     photodiode: DotBotLH2Position  # where the pose places the LH2 photodiode
     axle: DotBotLH2Position
     centre: DotBotLH2Position
@@ -475,23 +537,26 @@ class DotBotPoseModel(BaseModel):
     envelope_mm: float
 
     @classmethod
-    def from_body_pose(cls, pose: BodyPose) -> "DotBotPoseModel":
+    def from_body_pose(cls, pose: BodyPose) -> "DotBotBodyModel":
+        # One validation of plain data, rather than one per nested point
         def point(p):
-            return DotBotLH2Position(x=p.x, y=p.y)
+            return {"x": p.x, "y": p.y}
 
-        return cls(
-            heading_deg=pose.heading_deg,
-            heading_source=pose.heading_source.name.lower(),
-            photodiode=point(pose.photodiode),
-            axle=point(pose.axle),
-            centre=point(pose.centre),
-            nose=point(pose.nose),
-            led=point(pose.led),
-            outline=[point(p) for p in pose.outline],
-            wheels=[[point(p) for p in wheel] for wheel in pose.wheels],
-            reach_mm=pose.reach_mm,
-            core_mm=pose.core_mm,
-            envelope_mm=pose.envelope_mm,
+        return cls.model_validate(
+            {
+                "heading_deg": pose.heading_deg,
+                "heading_source": pose.heading_source.name.lower(),
+                "photodiode": point(pose.photodiode),
+                "axle": point(pose.axle),
+                "centre": point(pose.centre),
+                "nose": point(pose.nose),
+                "led": point(pose.led),
+                "outline": [point(p) for p in pose.outline],
+                "wheels": [[point(p) for p in wheel] for wheel in pose.wheels],
+                "reach_mm": pose.reach_mm,
+                "core_mm": pose.core_mm,
+                "envelope_mm": pose.envelope_mm,
+            }
         )
 
 
@@ -511,9 +576,11 @@ class DotBotModel(BaseModel):
     move_raw: Optional[DotBotMoveRawCommandModel] = None
     rgb_led: Optional[DotBotRgbLedCommandModel] = None
     model: str = ROBOT_DEFAULT  # the geometry record's key
-    # The LH2 photodiode, not a body point; `pose` is the body.
+    # The LH2 photodiode, not a body point; `pose` places the body.
     lh2_position: Optional[DotBotLH2Position] = None
     pose: Optional[DotBotPoseModel] = None
+    # Only when asked for: the body the pose places, in frame millimetres
+    body: Optional[DotBotBodyModel] = None
     gps_position: Optional[DotBotGPSPosition] = None
     waypoints: List[Union[DotBotLH2Waypoint, DotBotLH2Position, DotBotGPSPosition]] = []
     waypoints_threshold: int = 100  # in mm
@@ -525,56 +592,10 @@ class DotBotModel(BaseModel):
     )
     max_speed: Optional[int] = None  # cruise speed limit in force, mm/s
     axle_position: Optional[DotBotLH2Position] = None  # the robot's own estimate
-    position_history: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
+    # Where the robot has been, oldest first
+    trail: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
     calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
     battery: float = 3.0  # Voltage in Volts
-
-
-class DotBotNotificationCommand(IntEnum):
-    """Notification command of a DotBot."""
-
-    NONE: int = 0
-    RELOAD: int = 1
-    UPDATE: int = 2
-    PIN_CODE_UPDATE: int = 3
-    NEW_DOTBOT: int = 4
-    CALIBRATION_SESSION_UPDATE: int = 5
-    CAMERA_DETECTION: int = 6
-
-
-class DotBotNotificationUpdate(BaseModel):
-    """Update notification model."""
-
-    address: str
-    direction: Optional[int] = None
-    wind_angle: Optional[int] = None
-    rudder_angle: Optional[int] = None
-    sail_angle: Optional[int] = None
-    lh2_position: Optional[DotBotLH2Position] = None
-    gps_position: Optional[DotBotGPSPosition] = None
-    battery: Optional[float] = None
-    rgb_led: Optional[DotBotRgbLedCommandModel] = None
-    lh2_waypoints: Optional[List[Union[DotBotLH2Waypoint, DotBotLH2Position]]] = None
-    gps_waypoints: Optional[List[DotBotGPSPosition]] = None
-    waypoints_threshold: Optional[int] = None
-    waypoints_status: Optional[WaypointsStatus] = None
-    waypoints_reason: Optional[str] = None
-    waypoint_index: Optional[int] = None
-    max_speed: Optional[int] = None
-    axle_position: Optional[DotBotLH2Position] = None
-    position_history: Optional[List[Union[DotBotLH2Position, DotBotGPSPosition]]] = None
-
-
-class DotBotNotificationModel(BaseModel):
-    """Model class used to send controller notifications."""
-
-    cmd: DotBotNotificationCommand
-    data: Optional[Union[DotBotNotificationUpdate, DotBotModel]] = None
-    pin_code: Optional[int] = None
-    # Carried by CALIBRATION_SESSION_UPDATE; None also means "no session".
-    calibration_session: Optional[DotBotCalibrationSessionModel] = None
-    # Carried by CAMERA_DETECTION, one message per camera per new warp.
-    camera_detection: Optional[DotBotCameraDetectionModel] = None
 
 
 class WSBase(BaseModel):

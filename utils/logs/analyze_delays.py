@@ -3,7 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Python script used to analyze delays between LH2 packets received by the controller, sorted by DotBot."""
+"""Python script used to analyze delays between advertisements received by the controller, sorted by DotBot.
+
+It reads the controller's "Advertisement received" events, which are logged
+only at debug level: run the controller with `--log-level debug`.
+"""
 
 # pylint: disable=import-error,invalid-name,unspecified-encoding
 
@@ -30,7 +34,7 @@ if not os.path.exists(log_path):
 # Load the log file as Pandas dataframe
 with open(log_path) as log:
     df = read_logfmt(StringIO(log.read()))
-df = df[df["event"] == "lh2"].filter(items=["timestamp", "source"])
+df = df[df["event"] == "Advertisement received"].filter(items=["timestamp", "source"])
 sources = df["source"].unique()
 
 bins = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5]
@@ -77,6 +81,6 @@ ax.set_yticks(
 
 ax.set_xlabel("Time between packets [ms]")
 ax.set_ylabel("Percentage of Packets [%]")
-ax.set_title("Delay between LH2 packets")
+ax.set_title("Delay between advertisements")
 
 plt.show()

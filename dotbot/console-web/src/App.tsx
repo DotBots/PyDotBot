@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchBuild, fetchConnection, putWaypoints } from "./api";
+import { clearWaypoints, fetchBuild, fetchConnection, putWaypointBatches } from "./api";
+import type { WaypointsSent } from "./api";
 import { loadHiddenAreas, saveHiddenAreas, toggleHidden } from "./areas";
+import { BodyColorMode, loadBodyColorMode, saveBodyColorMode } from "./bodyColor";
 import {
   CameraOffset,
   CameraOpacity,
@@ -35,6 +37,8 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
+import { SpreadPanel, SpreadRun } from "./SpreadPanel";
+import { describeHazards, hazardCount, planSpread, spreadColor, swap } from "./spread";
 import { WaypointSettings, batchFields, loadWaypointSettings, saveWaypointSettings } from "./arrival";
 import {
   ACTION_KEY,
@@ -49,6 +53,9 @@ import {
 } from "./shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
+import { TestbedControls } from "./TestbedControls";
+import { TestbedAction, targetsOf } from "./testbed";
+import { useTestbedConfirm } from "./testbedConfirm";
 import { DoneMission, TestbedRail } from "./TestbedRail";
 import {
   canRedoMission,
@@ -56,6 +63,7 @@ import {
   ControllerConnection,
   lastMissionTargets,
   PlannedMission,
+  shortId,
   Waypoint,
 } from "./types";
 import { useCalibration, useCapturer } from "./useCalibration";
@@ -76,7 +84,8 @@ import {
   zoomMax,
 } from "./zoom";
 
-// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch.
+// The firmware's DB_MAX_WAYPOINTS; the controller refuses a longer batch. It
+// caps one robot's route, never how many robots get one target each.
 const MAX_WAYPOINTS = 16;
 
 // Build provenance, quiet enough to ignore until it is the question:
@@ -108,6 +117,13 @@ function usePersisted<T>(load: () => T, save: (value: T) => void) {
   return [value, update] as const;
 }
 
+/** "3 robots not found: 1111, 2222, 3333", naming at most five. */
+function robotsNotice(ids: string[], what: string): string {
+  const names = ids.slice(0, 5).map(shortId);
+  const more = ids.length > 5 ? ` and ${ids.length - 5} more` : "";
+  return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
+}
+
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
@@ -131,6 +147,24 @@ export const App: React.FC = () => {
   }, []);
 
   const orch = useOrchestration(showToast);
+  // Names the robots a bulk waypoint request did not reach: unknown to the
+  // controller, or not sent to.
+  const reportSent = useCallback(
+    (sent: WaypointsSent | void) => {
+      if (!sent) return;
+      const notices = [];
+      if (sent.unknown.length > 0) notices.push(robotsNotice(sent.unknown, "not found"));
+      if (sent.failed?.length) notices.push(robotsNotice(sent.failed, "not sent"));
+      if (notices.length > 0) showToast(notices.join("; "));
+    },
+    [showToast],
+  );
+  // A toast for a waypoint request that failed outright.
+  const reportFailure = useCallback(
+    (what: string) => (err: unknown) =>
+      showToast(`${what} failed: ${err instanceof Error ? err.message : String(err)}`),
+    [showToast],
+  );
   const mrta = useMrta();
 
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
@@ -153,6 +187,10 @@ export const App: React.FC = () => {
 
   // Planned missions: local waypoint queues bound to bots at queue time.
   const [planned, setPlanned] = useState<PlannedMission[]>([]);
+  // Selections sending one target per robot, by mission key: the operator's
+  // robot for each target, or null for the shortest assignment.
+  const [spread, setSpread] = useState<Record<string, string[] | null>>({});
+  const [spreadRun, setSpreadRun] = useState<SpreadRun | null>(null);
   // How missions end and pass their points, this browser's choice.
   const [wpSettings, setWpSettingsState] = useState(loadWaypointSettings);
   const setWpSettings = useCallback((s: WaypointSettings) => {
@@ -167,6 +205,7 @@ export const App: React.FC = () => {
     dotBots: true,
     trails: false,
     crashedOnly: false,
+    allWaypoints: false,
   });
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
@@ -245,6 +284,17 @@ export const App: React.FC = () => {
   const onRobotDrawing = useCallback(
     (next: RobotDrawing) => updateRobotDrawing(() => next),
     [updateRobotDrawing],
+  );
+
+  // What a robot's body is filled with on the map: its swarmit state, or its
+  // LED colour, per browser.
+  const [bodyColorMode, updateBodyColorMode] = usePersisted<BodyColorMode>(
+    loadBodyColorMode,
+    saveBodyColorMode,
+  );
+  const onBodyColorMode = useCallback(
+    (next: BodyColorMode) => updateBodyColorMode(() => next),
+    [updateBodyColorMode],
   );
 
   // The rail's action opens the tab that sets a session up; the session
@@ -434,6 +484,41 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [shortcuts]);
 
+  // Start and Stop act on the selection at once. With none they act on the
+  // whole fleet, on a second press of the same key or button, or Enter; Esc
+  // or a new selection drops it. The stop key works with the shortcuts panel
+  // open: it is the safety action.
+  const testbed = useCallback(
+    (action: TestbedAction) => {
+      const ids = selection.size ? [...selection] : undefined;
+      orch.act(action, ids, targetsOf(action, bots, ids));
+    },
+    [orch.act, selection, bots],
+  );
+  const fleetWide = useCallback(
+    (action: TestbedAction) => selection.size === 0 && targetsOf(action, bots).eligible.length > 0,
+    [selection, bots],
+  );
+  const fleetConfirm = useTestbedConfirm(testbed, fleetWide);
+  const { request: requestTestbed, confirm: confirmTestbed, cancel: cancelTestbed } = fleetConfirm;
+  useEffect(() => {
+    cancelTestbed();
+  }, [selection, cancelTestbed]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || typingIn(e.target)) return;
+      if (pressed(e, ACTION_KEY.stop)) requestTestbed("stop");
+      else if (!shortcuts && pressed(e, ACTION_KEY.start)) requestTestbed("start");
+      // Enter confirms whatever holds the focus, so it never also presses it.
+      else if (e.key === "Enter" && confirmTestbed()) e.stopImmediatePropagation();
+      else if (e.key === CLOSE_KEY && cancelTestbed()) e.stopImmediatePropagation();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [shortcuts, requestTestbed, confirmTestbed, cancelTestbed]);
+
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
     setSelection((prev) => {
@@ -455,6 +540,9 @@ export const App: React.FC = () => {
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");
   const selPlanned = planned.find((m) => m.key === selKey);
   const pending = selPlanned?.waypoints ?? [];
+  const spreadOn = drivableSelected.length > 1 && selKey in spread;
+  const extent = siteExtentArea(site);
+  const spreadPlan = spreadOn ? planSpread(drivableSelected, pending, spread[selKey], extent) : null;
 
   const onAddWaypoint = useCallback(
     (p: Waypoint) => {
@@ -464,7 +552,13 @@ export const App: React.FC = () => {
       }
       const ids = drivableSelected.map((b) => b.id).sort();
       const key = ids.join("-");
-      if ((planned.find((m) => m.key === key)?.waypoints.length ?? 0) >= MAX_WAYPOINTS) {
+      const have = planned.find((m) => m.key === key)?.waypoints.length ?? 0;
+      if (key in spread) {
+        if (have >= ids.length) {
+          showToast(`One target per robot: all ${ids.length} placed`);
+          return;
+        }
+      } else if (have >= MAX_WAYPOINTS) {
         showToast(`A robot takes at most ${MAX_WAYPOINTS} waypoints at once`);
         return;
       }
@@ -474,15 +568,60 @@ export const App: React.FC = () => {
         return [...prev, { key, ids, waypoints: [p] }];
       });
     },
-    [drivableSelected, planned, selection, showToast],
+    [drivableSelected, planned, selection, showToast, spread],
+  );
+
+  // A mission whose request failed goes back to the plan, unless one was
+  // planned under its key meanwhile.
+  const restoreMission = useCallback((m: PlannedMission) => {
+    setPlanned((prev) => (prev.some((x) => x.key === m.key) ? prev : [...prev, m]));
+  }, []);
+
+  // Each robot its own single-target batch; the hazards are hints, so they
+  // only ask before sending.
+  const sendSpread = useCallback(
+    (m: PlannedMission) => {
+      const robots = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
+      if (m.waypoints.length !== robots.length) {
+        showToast(`Place one target per robot: ${m.waypoints.length} of ${robots.length}`);
+        return;
+      }
+      const plan = planSpread(robots, m.waypoints, spread[m.key], siteExtentArea(site));
+      if (hazardCount(plan.hazards) > 0) {
+        const lines = describeHazards(plan.hazards, plan.legs, plan.spacing);
+        if (!window.confirm(`${lines.join("\n")}\n\nSend anyway?`)) return;
+      }
+      const batches = Object.fromEntries(plan.order.map((id, t) => [id, [m.waypoints[t]]]));
+      const order = spread[m.key];
+      const run = { order: plan.order, targets: m.waypoints };
+      putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportSent, (err) => {
+        reportFailure("Send")(err);
+        restoreMission(m);
+        setSpread((prev) => ({ ...prev, [m.key]: order }));
+        setSpreadRun((prev) => (prev === run ? null : prev));
+      });
+      setSpreadRun(run);
+      showToast(`${robots.length} robots sent to their own targets`);
+      setPlanned((prev) => prev.filter((x) => x.key !== m.key));
+      setSpread((prev) => ({ ...prev, [m.key]: null }));
+    },
+    [bots, showToast, reportSent, reportFailure, restoreMission, arrivalMm, wpSettings, spread, site],
   );
 
   const sendMission = useCallback(
     (m: PlannedMission) => {
+      if (m.key in spread && m.ids.length > 1) {
+        sendSpread(m);
+        return;
+      }
       const targets = bots.filter((b) => m.ids.includes(b.id) && b.drivable);
-      targets.forEach((b) => {
-        putWaypoints(b.id, b.application, arrivalMm, m.waypoints, batchFields(wpSettings)).catch(() => {});
-      });
+      if (targets.length > 0) {
+        const batches = Object.fromEntries(targets.map((b) => [b.id, m.waypoints]));
+        putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportSent, (err) => {
+          reportFailure("Send")(err);
+          restoreMission(m);
+        });
+      }
       showToast(
         `${m.waypoints.length} waypoint${m.waypoints.length > 1 ? "s" : ""} sent to ${targets.length} bot${
           targets.length > 1 ? "s" : ""
@@ -490,7 +629,35 @@ export const App: React.FC = () => {
       );
       setPlanned((prev) => prev.filter((x) => x.key !== m.key));
     },
-    [bots, showToast, arrivalMm, wpSettings],
+    [bots, showToast, reportSent, reportFailure, restoreMission, arrivalMm, wpSettings, spread, sendSpread],
+  );
+
+  const onSpreadToggle = useCallback(
+    (on: boolean) => {
+      setSpread((prev) => {
+        const next = { ...prev };
+        if (on) next[selKey] = null;
+        else delete next[selKey];
+        return next;
+      });
+      // A route longer than the robots cannot become one target each, and
+      // targets for more robots than a batch holds cannot become one route.
+      const keep = on ? drivableSelected.length : MAX_WAYPOINTS;
+      if (pending.length > keep) {
+        setPlanned((prev) =>
+          prev.map((m) => (m.key === selKey ? { ...m, waypoints: m.waypoints.slice(0, keep) } : m)),
+        );
+        showToast(on ? `Kept the first ${keep} points, one per robot` : `Kept the first ${keep} points, a robot's most`);
+      }
+    },
+    [selKey, pending.length, drivableSelected.length, showToast],
+  );
+  const onSpreadSwap = useCallback(
+    (t: number, id: string) => {
+      if (!spreadPlan) return;
+      setSpread((prev) => ({ ...prev, [selKey]: swap(spreadPlan.order, t, id) }));
+    },
+    [selKey, spreadPlan],
   );
 
   const onGo = useCallback(() => {
@@ -506,11 +673,9 @@ export const App: React.FC = () => {
   );
 
   const onStopNav = useCallback(() => {
-    drivableSelected.forEach((b) => {
-      putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {});
-    });
+    clearWaypoints(drivableSelected.map((b) => b.id)).then(reportSent, reportFailure("Stop"));
     if (drivableSelected.length > 0) showToast("Navigation stopped");
-  }, [drivableSelected, showToast, arrivalMm]);
+  }, [drivableSelected, showToast, reportSent, reportFailure]);
 
   // Redo sends each bot the mission it last ran, which the controller still
   // holds after the bot arrived. Each bot gets its own list, so a selection
@@ -518,11 +683,10 @@ export const App: React.FC = () => {
   const onRedo = useCallback(() => {
     const again = selectedBots.filter(canRedoMission);
     if (again.length === 0) return;
-    again.forEach((b) => {
-      putWaypoints(b.id, b.application, arrivalMm, lastMissionTargets(b), batchFields(wpSettings)).catch(() => {});
-    });
+    const batches = Object.fromEntries(again.map((b) => [b.id, lastMissionTargets(b)]));
+    putWaypointBatches(arrivalMm, batches, batchFields(wpSettings)).then(reportSent, reportFailure("Redo"));
     showToast(`Mission re-sent to ${again.length} bot${again.length > 1 ? "s" : ""}`);
-  }, [selectedBots, showToast, arrivalMm, wpSettings]);
+  }, [selectedBots, showToast, reportSent, reportFailure, arrivalMm, wpSettings]);
 
   // The go key is the dock's Go button: it sends the selection to its queued
   // waypoints, or stops it when it is already under way. With nothing to act
@@ -608,7 +772,7 @@ export const App: React.FC = () => {
     if (arrived.length) {
       const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       setDoneMissions((d) =>
-        [...arrived.map((b) => ({ key: `${b.id}-${Date.now()}`, id: b.id.slice(-4).toUpperCase(), t })), ...d].slice(0, 8),
+        [...arrived.map((b) => ({ key: `${b.id}-${Date.now()}`, id: shortId(b.id), t })), ...d].slice(0, 8),
       );
     }
     prevNavRef.current = Object.fromEntries(bots.map((b) => [b.id, b.nav]));
@@ -616,12 +780,22 @@ export const App: React.FC = () => {
 
   const onStopMission = useCallback(
     (ids: string[]) => {
-      bots
-        .filter((b) => ids.includes(b.id) && b.drivable)
-        .forEach((b) => putWaypoints(b.id, b.application, arrivalMm, []).catch(() => {}));
+      const stop = bots.filter((b) => ids.includes(b.id) && b.drivable).map((b) => b.id);
+      clearWaypoints(stop).then(reportSent, reportFailure("Interrupt"));
       showToast("Mission interrupted");
     },
-    [bots, showToast, arrivalMm],
+    [bots, showToast, reportSent, reportFailure],
+  );
+
+  // Clearing a batch is an empty one: the robot stops and the controller
+  // keeps only where it stood.
+  const onClearWaypoints = useCallback(
+    (ids: string[]) => {
+      const targets = bots.filter((b) => ids.includes(b.id) && b.link !== "unknown");
+      clearWaypoints(targets.map((b) => b.id)).then(reportSent, reportFailure("Clear"));
+      showToast(`Waypoints cleared · ${targets.length} bot${targets.length === 1 ? "" : "s"}`);
+    },
+    [bots, showToast, reportSent, reportFailure],
   );
 
   const layerRows: { key: keyof Layers; label: string }[] = [
@@ -630,6 +804,7 @@ export const App: React.FC = () => {
     { key: "hotSpots", label: "HotSpots" },
     { key: "dotBots", label: "DotBots" },
     { key: "trails", label: "Trails" },
+    { key: "allWaypoints", label: "Every robot's waypoints" },
     { key: "crashedOnly", label: "Only crashed bots" },
   ];
 
@@ -769,7 +944,17 @@ export const App: React.FC = () => {
           <span style={{ fontSize: 11, color: "var(--muted)" }}>&middot; {bots.length} bots</span>
         </div>
         <div style={{ flex: 1 }} />
-        <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />
+        <TestbedControls
+          selected={selection.size}
+          busy={orch.busy}
+          outcome={orch.outcome}
+          armed={fleetConfirm.armed}
+          armedCount={fleetConfirm.armed ? targetsOf(fleetConfirm.armed, bots).eligible.length : 0}
+          onStart={() => requestTestbed("start")}
+          onStop={() => requestTestbed("stop")}
+          onSelectIds={(ids) => onSelect(ids, "replace")}
+        />
+        {mrta.configured && <MrtaToggle status={mrta.status} onToggle={mrta.toggle} />}
         {/* theme: Dark | Light segmented (v1) */}
         <div
           style={{
@@ -824,12 +1009,13 @@ export const App: React.FC = () => {
               window.localStorage.getItem("dotbot.console.startAfterFlash") === "1",
             )
           }
-          onStart={() => orch.act("start", selection.size ? [...selection] : undefined)}
-          onStop={() => orch.act("stop", selection.size ? [...selection] : undefined)}
           onSelectIds={(ids) => onSelect(ids, "replace")}
           onGoMission={onGoMission}
           onDiscardMission={onDiscardMission}
           onStopMission={onStopMission}
+          showAllWaypoints={!!layers.allWaypoints}
+          onShowAllWaypoints={(on) => setLayers((prev) => ({ ...prev, allWaypoints: on }))}
+          onClearWaypoints={onClearWaypoints}
           site={site}
           session={session}
           cameras={cameras}
@@ -857,6 +1043,7 @@ export const App: React.FC = () => {
               selection={selection}
               layers={layers}
               robotDrawing={robotDrawing}
+              colorMode={bodyColorMode}
               plannedMissions={planned.map((m) => {
                 const owner = bots.find((b) => m.ids.includes(b.id) && b.led);
                 return {
@@ -864,8 +1051,18 @@ export const App: React.FC = () => {
                   ids: m.ids,
                   waypoints: m.waypoints,
                   led: owner?.led ? `rgb(${owner.led.red},${owner.led.green},${owner.led.blue})` : null,
+                  ...(m.key in spread && m.ids.length > 1 ? { colors: m.waypoints.map((_, t) => spreadColor(t)) } : {}),
                 };
               })}
+              spreadLegs={spreadPlan?.legs.map((l) => ({
+                id: l.id,
+                from: l.from,
+                to: l.to,
+                color: spreadColor(l.target),
+                crossing: spreadPlan.hazards.crossings.some(([a, b]) => a === l.target || b === l.target),
+                flagged: spreadPlan.flagged.has(l.target),
+                ringMm: spreadPlan.spacing / 2,
+              }))}
               cam={cam}
               setCam={setCam}
               onGeom={setGeom}
@@ -880,6 +1077,18 @@ export const App: React.FC = () => {
               site={site}
               onZoom={zoomTo}
               onShortcuts={() => setShortcuts(true)}
+            />
+          )}
+          {view === "map" && drivableSelected.length > 1 && !session && (
+            <SpreadPanel
+              bots={drivableSelected}
+              on={spreadOn}
+              plan={spreadPlan}
+              onToggle={onSpreadToggle}
+              onSwap={onSpreadSwap}
+              onShortest={() => setSpread((prev) => ({ ...prev, [selKey]: null }))}
+              run={spreadRun && spreadRun.order.some((id) => selection.has(id)) ? spreadRun : null}
+              allBots={bots}
             />
           )}
           {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
@@ -959,6 +1168,8 @@ export const App: React.FC = () => {
           onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
           robotDrawing={robotDrawing}
           onRobotDrawing={onRobotDrawing}
+          bodyColorMode={bodyColorMode}
+          onBodyColorMode={onBodyColorMode}
           cameras={cameras}
           cameraDetections={cameraDetections}
           cameraOpacity={cameraOpacity}

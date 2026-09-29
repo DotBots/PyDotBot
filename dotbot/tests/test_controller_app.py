@@ -92,7 +92,7 @@ def test_run_controller_swarmit_url_from_unified_config(
     controller, _asyncio_run, tmp_path
 ):
     """`[run.controller] swarmit_url` in dotbot.toml reaches the settings;
-    without it the built-in default applies."""
+    without it a simulator has no swarmit server."""
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
@@ -114,7 +114,73 @@ swarmit_url = "http://lab:9001"
     result = runner.invoke(main, ["--conn", "simulator"])
     assert result.exit_code == 0, result.output
     settings = controller.call_args.args[0]
+    assert settings.swarmit_url is None
+    assert "Swarmit server: none" in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_a_testbed_connection_keeps_the_default_swarmit_server(
+    controller, _asyncio_run
+):
+    runner = CliRunner()
+    result = runner.invoke(main, ["--conn", "mqtts://argus:8883", "--swarm-id", "A001"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
     assert settings.swarmit_url == "http://localhost:8001"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_mrta_url_is_unset_by_default(controller, _asyncio_run):
+    """No `--mrta-url` -> `mrta_url` is None, unlike `swarmit_url` which keeps
+    a default. MRTA is opt-in: the console shows no control until this is set."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--conn", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_mrta_url_flag(controller, _asyncio_run):
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["--conn", "simulator", "--mrta-url", "http://lab:9002"]
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url == "http://lab:9002"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_mrta_url_from_unified_config(
+    controller, _asyncio_run, tmp_path
+):
+    """`[run.controller] mrta_url` in dotbot.toml reaches the settings."""
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(
+        """
+conn = "simulator"
+
+[run.controller]
+mrta_url = "http://lab:9002"
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.mrta_url == "http://lab:9002"
 
 
 def test_main_without_conn_errors():
@@ -295,3 +361,117 @@ h = 2000
         "h": 2000,
         "name": "arena",
     }
+
+
+FLEET_CONFIG = """
+site = "hall"
+
+[sites.hall]
+extent_mm = [20000, 30000]
+
+[sites.hall.areas.field]
+x = 2000
+y = 10000
+w = 16000
+h = 16000
+"""
+
+
+def _run_simulator(tmp_path, *args):
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(FLEET_CONFIG)
+    return CliRunner().invoke(cli, ["-c", str(config_file), "run", "simulator", *args])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+@patch("dotbot.controller_app._maybe_scaffold_sim_state")
+def test_robots_hands_the_simulator_a_count_and_offers_no_world_file(
+    scaffold, controller, _asyncio_run, tmp_path
+):
+    result = _run_simulator(tmp_path, "--robots", "500")
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.simulator_robots == 500
+    assert "500 robots 200 mm apart in field" in result.output
+    scaffold.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_robots_that_do_not_fit_are_refused_before_starting(
+    controller, _asyncio_run, tmp_path
+):
+    result = _run_simulator(tmp_path, "--robots", "7000")
+    assert result.exit_code != 0
+    assert "at most 6400 do" in result.output
+    controller.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_robots_and_an_init_state_file_are_refused_together(
+    controller, _asyncio_run, tmp_path
+):
+    world = tmp_path / "world.toml"
+    world.write_text("[[dotbots]]\n")
+    result = _run_simulator(
+        tmp_path, "--robots", "10", "--simulator-init-state", str(world)
+    )
+    assert result.exit_code == 2
+    assert "pass one of them" in result.output
+    controller.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_write_init_state_writes_the_fleet_and_runs_from_it(
+    controller, _asyncio_run, tmp_path
+):
+    import toml
+
+    from dotbot.dotbot_simulator import fleet_init_state
+
+    target = tmp_path / "fleet.toml"
+    result = _run_simulator(
+        tmp_path, "--robots", "20", "--write-init-state", str(target)
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.simulator_robots is None
+    assert settings.simulator_init_state == str(target)
+    written = toml.load(target)["dotbots"]
+    expected = fleet_init_state(20, settings.site).dotbots
+    assert [
+        (b["address"], b["pos_x"], b["pos_y"], b["direction"]) for b in written
+    ] == [(b.address, b.pos_x, b.pos_y, b.direction) for b in expected]
+
+    # The file is then an ordinary init-state file, and never overwritten
+    again = _run_simulator(
+        tmp_path, "--robots", "20", "--write-init-state", str(target)
+    )
+    assert again.exit_code != 0
+    assert "already exists" in again.output
+    reused = _run_simulator(tmp_path, "--simulator-init-state", str(target))
+    assert reused.exit_code == 0, reused.output
+    assert controller.call_args.args[0].simulator_init_state == str(target)
+
+
+def test_write_init_state_needs_robots(tmp_path):
+    result = _run_simulator(tmp_path, "--write-init-state", str(tmp_path / "f.toml"))
+    assert result.exit_code == 2
+    assert "needs --robots" in result.output
+
+
+def test_robots_needs_a_dotbot_simulator():
+    result = CliRunner().invoke(
+        main, ["--conn", "simulator", "--sailbot", "--robots", "5"]
+    )
+    assert result.exit_code == 2
+    assert "needs a DotBot simulator" in result.output

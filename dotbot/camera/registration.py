@@ -28,7 +28,9 @@ from dotbot.calibration.lighthouse2 import (
     calibration_root,
     compute_homography_matrix,
     reprojection_residual_mm,
+    resolve_calibration_spec,
     site_dir,
+    slug_tag,
     toml_escape,
     toml_matrix,
     toml_num,
@@ -143,6 +145,7 @@ class CameraCalibration:
     residual_mm: float = 0.0
     span_mm: list[tuple[float, float]] = field(default_factory=list)
     created: str = ""
+    tag: str = ""
     path: Path | None = None
 
     @property
@@ -203,6 +206,10 @@ def render_camera_calibration(calibration: CameraCalibration) -> str:
         f'kind = "{CAMERA_KIND}"',
         f'created = "{calibration.created}"',
         f'id = "{calibration.id}"',
+    ]
+    if calibration.tag:
+        out.append(f'tag = "{toml_escape(calibration.tag)}"')
+    out += [
         "",
         "[site]",
         f'name = "{site.name}"',
@@ -307,6 +314,7 @@ def read_camera_calibration_file(path: Path) -> CameraCalibration:
         residual_mm=float(homography.get("residual_mm", 0.0)),
         span_mm=[(float(p[0]), float(p[1])) for p in homography.get("span_mm", [])],
         created=data.get("created", ""),
+        tag=data.get("tag", ""),
         path=path,
     )
     return calibration
@@ -317,41 +325,26 @@ def resolve_camera_calibration_path(
     root: Path | None = None,
     site: str | None = None,
 ) -> Path:
-    """The camera file `spec` names: a path, or an id prefix under a site.
-
-    The glob is `camera-*.toml`, so a camera id prefix can never resolve to
-    a lighthouse file sitting in the same directory.
-    """
-    candidate = Path(spec).expanduser()
-    if candidate.is_file():
-        return candidate
-
-    root = root or calibration_root()
-    matches = sorted(
-        path
-        for path in root.glob(f"{site or '*'}/{CAMERA_TOML_GLOB}")
-        if _camera_file_id(path).startswith(spec.lower())
-    )
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise ValueError(
-            f"no camera calibration matches {spec!r}: it is neither a readable "
-            f"file nor the id prefix of a file under {root / (site or '*')}"
-        )
-    listed = "\n  ".join(str(m) for m in matches)
-    raise ValueError(
-        f"camera calibration id prefix {spec!r} matches several files:\n  {listed}"
+    """The camera file `spec` names, as `resolve_calibration_spec` finds it
+    among `camera-*.toml` files only."""
+    return resolve_calibration_spec(
+        spec,
+        root or calibration_root(),
+        site,
+        glob=CAMERA_TOML_GLOB,
+        metadata=_camera_file_data,
+        what="camera calibration",
+        created_key="created",
     )
 
 
-def _camera_file_id(path: Path) -> str:
-    """The id a file declares, read without solving anything."""
+def _camera_file_data(path: Path) -> dict:
+    """The file's top-level table, read without solving anything."""
     try:
         with open(path, "rb") as handle:
-            return str(tomllib.load(handle).get("id", "")).lower()
+            return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
-        return ""
+        return {}
 
 
 def load_camera_calibration(
@@ -392,6 +385,7 @@ def build_calibration(
     reads: int,
     lens: str = LENS_DEFAULT,
     created: str = "",
+    tag: str = "",
 ) -> CameraCalibration:
     """Everything the file records, assembled from one collect run."""
     now = created or datetime.datetime.now(datetime.timezone.utc).strftime(
@@ -406,6 +400,7 @@ def build_calibration(
         fps=probe_result.fps,
         lens=lens,
         reads=reads,
+        tag=slug_tag(tag) if tag else "",
         controls=dict(probe_result.controls),
         markers=[
             MarkerObservation(

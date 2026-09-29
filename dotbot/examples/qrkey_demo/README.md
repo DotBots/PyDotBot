@@ -33,7 +33,7 @@ The demo's FastAPI serves on `http://localhost:8080` by default:
 The QR encoded URL is set with `FRONTEND_BASE_URL=…`, and
 `--webbrowser` opens that same URL, PIN included, on the machine running
 the demo. The phone page it pointed at is retired pending a qrkey mode in
-the console: the relay publishes the controller's notifications on
+the console: the relay publishes the controller stream's frames on
 `/notify`, which no published phone page reads yet.
 
 ## Architecture

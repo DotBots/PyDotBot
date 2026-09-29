@@ -9,23 +9,19 @@
 
 import asyncio
 import dataclasses
-import json
 import math
 import os
-import queue
 import random
+import secrets
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import serial
-import starlette
 import uvicorn
-import websockets
 from dotbot_utils.protocol import Frame, Payload
 from dotbot_utils.serial_interface import SerialInterfaceException
-from fastapi import WebSocket
 
 from dotbot import (
     CONTROLLER_ADAPTER_DEFAULT,
@@ -34,7 +30,6 @@ from dotbot import (
     GATEWAY_ADDRESS_DEFAULT,
     MQTT_HOST_DEFAULT,
     MQTT_PORT_DEFAULT,
-    MRTA_URL_DEFAULT,
     NETWORK_ID_DEFAULT,
     SERIAL_BAUDRATE_DEFAULT,
     SERIAL_PORT_DEFAULT,
@@ -62,22 +57,18 @@ from dotbot.csv_data_logger import (
     CSVLog,
     camera_log_path,
 )
-from dotbot.dotbot_simulator import DotBotSimulator, SimulatedDotBotSettings
-from dotbot.logger import LOGGER
+from dotbot.logger import LOGGER, debug_enabled
 from dotbot.models import (
-    MAX_POSITION_HISTORY_SIZE,
+    DotBotBodyModel,
     DotBotCalibrationSessionModel,
     DotBotCameraDetectionModel,
     DotBotGPSPosition,
     DotBotLH2Position,
     DotBotModel,
-    DotBotNotificationCommand,
-    DotBotNotificationModel,
-    DotBotNotificationUpdate,
-    DotBotPoseModel,
     DotBotQueryModel,
     DotBotStatus,
 )
+from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
 from dotbot.protocol import (
     AXLE_UNKNOWN,
     DIRECTION_NONE,
@@ -95,26 +86,13 @@ from dotbot.protocol import (
     WaypointsFailReason,
     WaypointsStatus,
 )
-from dotbot.robots import (
-    SWARMIT_DEVICE_MODELS,
-    HeadingSource,
-    Point,
-    robot_geometry,
-)
+from dotbot.robots import SWARMIT_DEVICE_MODELS, robot_geometry
 from dotbot.server import api, default_ui_path
 from dotbot.site import Site
+from dotbot.stream import StreamHub
 from dotbot.swarm_client import build_swarmit_client, conn_string
-
-# from dotbot.models import (
-#     DotBotModel,
-#     DotBotGPSPosition,
-#     DotBotLH2Position,
-#     DotBotRgbLedCommandModel,
-# )
-
-
-# Stands in for the body heading until the control loop advertises one.
-PLACEHOLDER_HEADING_DEG = 0
+from dotbot.trail import Trail
+from dotbot.twin import DotBotTwin
 
 INACTIVE_DELAY = 5  # seconds
 LOST_DELAY = 60  # seconds
@@ -132,6 +110,23 @@ DIRECT_COMMANDS = (
     PayloadControlMode,
 )
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
+IGNORED_PAYLOAD_TYPES = (
+    PayloadType.CMD_MOVE_RAW,
+    PayloadType.CMD_RGB_LED,
+    PayloadType.CMD_WHEEL_VELOCITY,
+)
+ADVERTISEMENT_PAYLOAD_TYPES = (
+    PayloadType.ADVERTISEMENT,
+    PayloadType.DOTBOT_ADVERTISEMENT,
+)
+# What `Controller._waypoints_report` sets, as one change
+WAYPOINTS_REPORT_FIELDS = (
+    "waypoints_status",
+    "waypoints_reason",
+    "waypoint_index",
+    "max_speed",
+    "axle_position",
+)
 
 
 def load_calibration(spec: str, site: Optional[str] = None):
@@ -167,6 +162,25 @@ class PendingCommand:
     batch_ids: frozenset = frozenset()
 
 
+@dataclass
+class RobotRecord:
+    """What the controller keeps about a robot beside its model.
+
+    `revs` maps a field of the model, or "trail", to the controller `seq` it
+    last changed at. `trail` holds the points, each with the `seq` it was
+    added at. `created` and `trail_reset` are the seq the robot appeared at
+    and its trail was last cleared at.
+    """
+
+    revs: Dict[str, int] = dataclasses.field(default_factory=dict)
+    trail: Trail = dataclasses.field(default_factory=Trail)
+    created: int = 0
+    trail_reset: int = 0
+    # The robot's fields as the stream last dumped them, at `changed` seq
+    dump_seq: int = -1
+    dump: Dict[str, object] = dataclasses.field(default_factory=dict)
+
+
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
 
@@ -200,34 +214,23 @@ class ControllerSettings:
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
-    swarmit_url: str = SWARMIT_URL_DEFAULT
-    mrta_url: str = MRTA_URL_DEFAULT
+    # A generated fleet of this many robots, in place of the init-state file
+    simulator_robots: Optional[int] = None
+    swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
+    mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
 
-def body_pose(
-    model: str, position: DotBotLH2Position, direction: int
-) -> DotBotPoseModel:
-    """The body around an LH2 photodiode fix, facing the advertised direction.
+def is_lh2_fix(position: DotBotLH2Position, dotbot: DotBotModel) -> bool:
+    """Whether an advertised position is a real LH2 fix.
 
-    With no advertised direction the pose faces `PLACEHOLDER_HEADING_DEG`
-    and says so in its `heading_source`.
+    A robot advertises (0, 0) until its first fix, so (0, 0) counts only once
+    the robot has had a fix or its estimator tracks an axle position.
     """
-    if direction != DIRECTION_NONE:
-        heading, source = direction, HeadingSource.TRAVEL
-    else:
-        heading, source = PLACEHOLDER_HEADING_DEG, HeadingSource.NONE
-    return DotBotPoseModel.from_body_pose(
-        robot_geometry(model).body_pose(Point(position.x, position.y), heading, source)
-    )
-
-
-def device_pose(device: str, position: DotBotLH2Position) -> Optional[DotBotPoseModel]:
-    """The headingless pose of a robot swarmit reports as `device` at
-    `position`, or None when the host has no geometry record for that type."""
-    model = SWARMIT_DEVICE_MODELS.get(device)
-    if model is None:
-        return None
-    return body_pose(model, position, DIRECTION_NONE)
+    if position.x == 0xFFFFFFFF or position.y == 0xFFFFFFFF:
+        return False
+    if position.x == 0 and position.y == 0:
+        return dotbot.lh2_position is not None or dotbot.axle_position is not None
+    return True
 
 
 def lh2_distance(last: DotBotLH2Position, new: DotBotLH2Position) -> float:
@@ -260,39 +263,33 @@ class Controller:
 
     def __init__(self, settings: ControllerSettings):
         self.dotbots: Dict[str, DotBotModel] = {}
-        # self.dotbots: Dict[str, DotBotModel] = {
-        #     "0000000000000001": DotBotModel(
-        #         address="0000000000000001",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.5, y=0.5, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
-        #     ),
-        #     "0000000000000002": DotBotModel(
-        #         address="0000000000000002",
-        #         last_seen=time.time(),
-        #         lh2_position=DotBotLH2Position(x=0.2, y=0.2, z=0),
-        #         rgb_led=DotBotRgbLedCommandModel(red=0, green=255, blue=0),
-        #     ),
-        #     "0000000000000003": DotBotModel(
-        #         address="0000000000000003",
-        #         last_seen=time.time(),
-        #     ),
-        #     "0000000000000004": DotBotModel(
-        #         address="0000000000000004",
-        #         application=ApplicationType.SailBot,
-        #         last_seen=time.time(),
-        #         wind_angle=135,
-        #         rotation=49,
-        #         gps_position=DotBotGPSPosition(latitude=48.832313766146896, longitude=2.4126897594949184),
-        #     ),
-        # }
+        # Bumped on every change to the state the stream serves; starts at 0
+        # per run, which `run_id` names
+        self.seq = 0
+        self.run_id = secrets.token_hex(6)
+        self.records: Dict[str, RobotRecord] = {}
+        # Each robot's address with the seq of its last change, oldest first
+        self.changed: Dict[str, int] = {}
+        # The seq of the newest trail point any robot dropped
+        self.max_evicted = 0
+        # State that is not a robot's, by key: (seq, event name, data)
+        self.events: Dict[str, Tuple[int, str, Optional[dict]]] = {}
+        self.stream = StreamHub(self)
+        # Each robot model's shape, which a client turns and moves onto a pose
+        self.set_event(
+            "robot_models",
+            "robot_models",
+            {
+                name: body.model_dump(mode="json")
+                for name, body in robot_models().items()
+            },
+        )
         self.logger = LOGGER.bind(context=__name__)
         self.settings = settings
         self.adapter: GatewayAdapterBase = None
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
         self.advertised_batch_ids: Dict[str, int] = {}
-        self.websockets = []
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
@@ -306,6 +303,7 @@ class Controller:
                 path=str(self.calibration.path),
                 site=self.calibration.site.name,
                 calibration_id=self.calibration.id,
+                tag=self.calibration.tag,
                 stations=len(self.lh2_calibration),
             )
         else:
@@ -331,7 +329,7 @@ class Controller:
             self.csv_data_logger = CSVDataLogger(settings.csv_data_output)
         else:
             self.csv_data_logger = None
-        self._dotbot_twins: Dict[str, DotBotSimulator] = {}
+        self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
 
@@ -367,6 +365,7 @@ class Controller:
             site=calibration.site.name,
             area=area.name,
             camera_id=calibration.id,
+            tag=calibration.tag,
             residual_mm=round(calibration.residual_mm, 2),
         )
         if not self.settings.camera_detect:
@@ -517,14 +516,8 @@ class Controller:
             await self._push_camera_detections()
 
     async def _push_camera_detections(self):
-        """One notification per camera that has detected on a newer warp.
-
-        A frame counts as pushed only once it has actually gone out, so a
-        console that connects after the camera has stopped delivering is
-        still told what the last frame showed.
-        """
-        if not self.websockets:
-            return
+        """One `camera_detection` event per camera that has detected on a
+        newer warp; a client connecting later is sent the last one."""
         for camera in self.cameras:
             if not camera.live:
                 continue
@@ -535,11 +528,12 @@ class Controller:
             if self._camera_pushed.get(camera.area.name) == sequence:
                 continue
             self._camera_pushed[camera.area.name] = sequence
-            await self.notify_clients(
-                DotBotNotificationModel(
-                    cmd=DotBotNotificationCommand.CAMERA_DETECTION,
-                    camera_detection=DotBotCameraDetectionModel(**record),
-                )
+            self.set_event(
+                f"camera_detection/{camera.area.name}",
+                "camera_detection",
+                DotBotCameraDetectionModel(**record).model_dump(
+                    mode="json", exclude_none=True
+                ),
             )
 
     def _update_dotbot_twin(
@@ -547,13 +541,12 @@ class Controller:
         address: str,
         pwm_left: int,
         pwm_right: int,
-        controller_mode: ControlModeType = ControlModeType.MANUAL,
         init_pos_x: int = 0,
         init_pos_y: int = 0,
         init_direction: int = 0,
         init_encoder_left: int = 0,
         init_encoder_right: int = 0,
-    ) -> DotBotSimulator:
+    ) -> DotBotTwin:
         """Create (if needed) and advance the kinematic twin for *address*.
 
         The init_* parameters are only used on first contact to seed the twin's
@@ -562,31 +555,16 @@ class Controller:
         twin = self._dotbot_twins.get(address)
         now = time.time()
         if twin is None:
-            twin = DotBotSimulator(
-                SimulatedDotBotSettings(
-                    address=address,
-                    pos_x=init_pos_x,
-                    pos_y=init_pos_y,
-                    direction=init_direction,
-                ),
-                queue.Queue(),
-            )
-            twin._direction_origin_x = init_pos_x
-            twin._direction_origin_y = init_pos_y
+            twin = DotBotTwin(init_pos_x, init_pos_y, init_direction)
             twin.encoder_left_acc = init_encoder_left
             twin.encoder_right_acc = init_encoder_right
             self._dotbot_twins[address] = twin
             self._dotbot_twin_timestamps[address] = now
         twin.pwm_left = pwm_left
         twin.pwm_right = pwm_right
-        twin.controller_mode = controller_mode
         dt = now - self._dotbot_twin_timestamps[address]
         self._dotbot_twin_timestamps[address] = now
-        twin.diff_drive_model_update(dt)
-        twin._last_encoder_left = int(twin.encoder_left_acc)
-        twin._last_encoder_right = int(twin.encoder_right_acc)
-        twin.encoder_left_acc = 0.0
-        twin.encoder_right_acc = 0.0
+        twin.update(dt)
         return twin
 
     async def _open_webbrowser(self):
@@ -614,111 +592,150 @@ class Controller:
     async def _dotbots_status_refresh(self):
         """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            needs_refresh = [False] * len(self.dotbots)
-            for idx, dotbot in enumerate(self.dotbots.values()):
-                previous_status = dotbot.status
-                if dotbot.last_seen + LOST_DELAY < time.time():
-                    dotbot.status = DotBotStatus.LOST
-                elif dotbot.last_seen + INACTIVE_DELAY < time.time():
-                    dotbot.status = DotBotStatus.INACTIVE
-                else:
-                    dotbot.status = DotBotStatus.ACTIVE
-                logger = self.logger.bind(
-                    source=dotbot.address,
-                    application=dotbot.application.name,
-                )
-                if len(needs_refresh) > idx:
-                    needs_refresh[idx] = bool(previous_status != dotbot.status)
-                    if needs_refresh[idx]:
-                        logger.info(
-                            "Dotbot status changed",
-                            previous_status=previous_status.name,
-                            status=dotbot.status.name,
-                        )
-            if any(needs_refresh) is True:
-                await self.notify_clients(
-                    DotBotNotificationModel(cmd=DotBotNotificationCommand.RELOAD)
-                )
+            await self._refresh_status(time.time())
             await asyncio.sleep(1)
+
+    async def _refresh_status(self, now: float):
+        """Mark each robot ACTIVE, INACTIVE or LOST by its silence at `now`."""
+        for dotbot in list(self.dotbots.values()):
+            if dotbot.last_seen + LOST_DELAY < now:
+                status = DotBotStatus.LOST
+            elif dotbot.last_seen + INACTIVE_DELAY < now:
+                status = DotBotStatus.INACTIVE
+            else:
+                status = DotBotStatus.ACTIVE
+            if status == dotbot.status:
+                continue
+            self.logger.info(
+                "Dotbot status changed",
+                source=dotbot.address,
+                application=dotbot.application.name,
+                previous_status=dotbot.status.name,
+                status=status.name,
+            )
+            self.update_dotbot(dotbot.address, status=status)
+
+    def _record(self, address: str) -> RobotRecord:
+        """The record kept beside `address`'s model, created on first use."""
+        record = self.records.get(address)
+        if record is None:
+            record = self.records[address] = RobotRecord()
+        return record
+
+    def _set(
+        self, dotbot: DotBotModel, record: RobotRecord, name: str, value, seq: int
+    ) -> None:
+        """Set one field of a robot, recording `seq` if its value changes."""
+        if getattr(dotbot, name) != value:
+            setattr(dotbot, name, value)
+            record.revs[name] = seq
+
+    def _append_trail(self, record: RobotRecord, point, seq: int) -> None:
+        evicted = record.trail.append(seq, point)
+        if evicted is not None:
+            self.max_evicted = max(self.max_evicted, evicted)
+        record.revs["trail"] = seq
+
+    def _changed(self, address: str) -> None:
+        """Record that `address` changed at the current seq."""
+        self.changed.pop(address, None)
+        self.changed[address] = self.seq
+
+    def update_dotbot(self, address: str, **fields) -> None:
+        """Set fields of a known robot as one change."""
+        dotbot, record = self.dotbots[address], self._record(address)
+        self.seq += 1
+        for name, value in fields.items():
+            setattr(dotbot, name, value)
+            record.revs[name] = self.seq
+        self._changed(address)
+
+    def seed_trail(self, address: str, points) -> None:
+        """Append `points` to a known robot's trail as one change."""
+        record = self._record(address)
+        self.seq += 1
+        for point in points:
+            self._append_trail(record, point, self.seq)
+        self._changed(address)
+
+    def clear_trail(self, address: str) -> None:
+        """Empty a known robot's trail."""
+        record = self._record(address)
+        self.seq += 1
+        record.trail.clear()
+        record.trail_reset = record.revs["trail"] = self.seq
+        self._changed(address)
+
+    def set_event(self, key: str, name: str, data: Optional[dict]) -> None:
+        """Set the state an event carries; stream clients get its latest."""
+        self.seq += 1
+        self.events[key] = (self.seq, name, data)
 
     def handle_received_frame(
         self, frame: Frame
     ):  # pylint:disable=too-many-branches,too-many-statements
         """Handle a received frame."""
+        payload_type = frame.packet.payload_type
         # Controller is not interested by command messages received
-        if frame.packet.payload_type in [
-            PayloadType.CMD_MOVE_RAW,
-            PayloadType.CMD_RGB_LED,
-            PayloadType.CMD_WHEEL_VELOCITY,
-        ]:
+        if payload_type in IGNORED_PAYLOAD_TYPES:
             return
         source = addr_to_hex(int(frame.header.source))
-        logger = self.logger.bind(
-            source=source,
-            payload_type=PayloadType(frame.packet.payload_type).name,
-        )
         if source == GATEWAY_ADDRESS_DEFAULT:
-            logger.warning("Invalid source in payload")
+            self.logger.warning(
+                "Invalid source in payload",
+                source=source,
+                payload_type=PayloadType(payload_type).name,
+            )
             return
-        dotbot = DotBotModel(
-            address=source,
-            last_seen=time.time(),
-        )
-        notification_cmd = DotBotNotificationCommand.NONE
-
-        if source not in self.dotbots and frame.packet.payload_type not in [
-            PayloadType.ADVERTISEMENT,
-            PayloadType.DOTBOT_ADVERTISEMENT,
-        ]:
-            logger.info("Ignoring non advertised dotbot")
+        payload = frame.packet.payload
+        debug = debug_enabled(self.logger)
+        dotbot = self.dotbots.get(source)
+        if dotbot is None and payload_type not in ADVERTISEMENT_PAYLOAD_TYPES:
+            self.logger.debug("Ignoring non advertised dotbot", source=source)
             return
 
-        if source in self.dotbots:
-            dotbot.application = self.dotbots[source].application
-            dotbot.mode = self.dotbots[source].mode
-            dotbot.status = self.dotbots[source].status
-            dotbot.direction = self.dotbots[source].direction
-            dotbot.wind_angle = self.dotbots[source].wind_angle
-            dotbot.rudder_angle = self.dotbots[source].rudder_angle
-            dotbot.sail_angle = self.dotbots[source].sail_angle
-            dotbot.rgb_led = self.dotbots[source].rgb_led
-            dotbot.model = self.dotbots[source].model
-            dotbot.lh2_position = self.dotbots[source].lh2_position
-            dotbot.pose = self.dotbots[source].pose
-            dotbot.gps_position = self.dotbots[source].gps_position
-            dotbot.waypoints = self.dotbots[source].waypoints
-            dotbot.waypoints_threshold = self.dotbots[source].waypoints_threshold
-            dotbot.waypoints_status = self.dotbots[source].waypoints_status
-            dotbot.waypoints_reason = self.dotbots[source].waypoints_reason
-            dotbot.waypoint_index = self.dotbots[source].waypoint_index
-            dotbot.max_speed = self.dotbots[source].max_speed
-            dotbot.axle_position = self.dotbots[source].axle_position
-            dotbot.position_history = self.dotbots[source].position_history
-            dotbot.battery = self.dotbots[source].battery
-            dotbot.calibrated = self.dotbots[source].calibrated
+        seq = self.seq + 1
+        created = dotbot is None
+        if created:
+            self.logger.info(
+                "New DotBot", source=source, payload_type=PayloadType(payload_type).name
+            )
+            dotbot = DotBotModel(address=source, last_seen=time.time())
+            self.dotbots[source] = dotbot
         else:
-            # reload if a new dotbot comes in
-            logger.info("New DotBot")
-            notification_cmd = DotBotNotificationCommand.NEW_DOTBOT
+            dotbot.last_seen = time.time()
+        record = self._record(source)
+        if created:
+            record.created = seq
 
-        if frame.packet.payload_type == PayloadType.ADVERTISEMENT:
-            logger = logger.bind(
-                application=ApplicationType(frame.packet.payload.application).name,
+        if payload_type == PayloadType.ADVERTISEMENT:
+            self._set(
+                dotbot, record, "application", ApplicationType(payload.application), seq
             )
-            dotbot.application = ApplicationType(frame.packet.payload.application)
-            self.dotbots.update({dotbot.address: dotbot})
-            logger.debug("Advertisement received")
+            if debug:
+                self.logger.debug(
+                    "Advertisement received",
+                    source=source,
+                    application=dotbot.application.name,
+                )
 
-        if frame.packet.payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
-            logger = logger.bind(application=ApplicationType.DotBot.name)
-            dotbot.calibrated = int(frame.packet.payload.calibrated)
-            dict_adv = dataclasses.asdict(frame.packet.payload)
-            dict_adv.pop("metadata", None)
-            logger.info(
-                "Advertisement received", cal_hex=hex(dotbot.calibrated), **dict_adv
-            )
-            # Send calibration to dotbot if it's not calibrated and the localization system has calibration
-            need_update = self._waypoints_report(dotbot, frame.packet.payload)
+        if payload_type == PayloadType.DOTBOT_ADVERTISEMENT:
+            self._set(dotbot, record, "calibrated", int(payload.calibrated), seq)
+            if debug:
+                # Not dataclasses.asdict(): it deep-copies the field metadata
+                dict_adv = {
+                    field.name: getattr(payload, field.name)
+                    for field in dataclasses.fields(payload)
+                    if field.name != "metadata"
+                }
+                self.logger.debug(
+                    "Advertisement received",
+                    source=source,
+                    cal_hex=hex(dotbot.calibrated),
+                    **dict_adv,
+                )
+            for name in self._waypoints_report(dotbot, payload):
+                record.revs[name] = seq
             is_fully_calibrated = all(
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
@@ -726,7 +743,6 @@ class Controller:
             if is_fully_calibrated is False and self.lh2_calibration:
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
-                self.dotbots.update({dotbot.address: dotbot})
                 for station in self.lh2_calibration:
                     matrix_bytes = homography_as_float32(station.homography)
                     self.logger.info(
@@ -734,197 +750,155 @@ class Controller:
                         index=station.index,
                         matrix=matrix_bytes,
                     )
-                    payload = PayloadLh2CalibrationHomography(
-                        index=station.index,
-                        homography_matrix=matrix_bytes,
+                    self.send_payload(
+                        int(source, 16),
+                        payload=PayloadLh2CalibrationHomography(
+                            index=station.index,
+                            homography_matrix=matrix_bytes,
+                        ),
                     )
-                    self.send_payload(int(source, 16), payload=payload)
             elif is_fully_calibrated is True:
-                dotbot.direction = (
-                    None
-                    if frame.packet.payload.direction == DIRECTION_NONE
-                    else frame.packet.payload.direction
+                self._set(
+                    dotbot,
+                    record,
+                    "direction",
+                    None if payload.direction == DIRECTION_NONE else payload.direction,
+                    seq,
                 )
-                new_position = DotBotLH2Position(
-                    x=frame.packet.payload.pos_x,
-                    y=frame.packet.payload.pos_y,
+                new_position = DotBotLH2Position(x=payload.pos_x, y=payload.pos_y)
+                if is_lh2_fix(new_position, dotbot):
+                    self._lh2_fix(dotbot, record, payload, new_position, seq, debug)
+
+            self._set(dotbot, record, "battery", payload.battery / 1000.0, seq)  # mV
+            self._set(dotbot, record, "mode", ControlModeType(payload.mode), seq)
+            if debug:
+                self.logger.debug(
+                    "Advertisement Data",
+                    source=source,
+                    direction=payload.direction,
+                    X=payload.pos_x,
+                    Y=payload.pos_y,
+                    battery=payload.battery,
                 )
-                if new_position.x != 0xFFFFFFFF and new_position.y != 0xFFFFFFFF:
-                    dotbot.lh2_position = new_position
-                    dotbot.pose = body_pose(
-                        dotbot.model, new_position, frame.packet.payload.direction
-                    )
-                    if (
-                        dotbot.position_history
-                        and lh2_distance(dotbot.position_history[-1], new_position)
-                        < LH2_POSITION_DISTANCE_THRESHOLD
-                    ):
-                        # If the new position is too close from the last one, we consider it as noise and we don't add it to the position history
-                        logger.debug(
-                            "Discarding LH2 position update because it's too close from the last one",
-                            last_position=dotbot.position_history[-1].model_dump(),
-                            new_position=new_position.model_dump(),
-                            distance=lh2_distance(
-                                dotbot.position_history[-1], new_position
-                            ),
-                        )
-                    else:
-                        dotbot.position_history.append(new_position)
-                        if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                            dotbot.position_history.pop(0)
-                    twin = self._update_dotbot_twin(
-                        address=dotbot.address,
-                        pwm_left=frame.packet.payload.pwm_left,
-                        pwm_right=frame.packet.payload.pwm_right,
-                        controller_mode=ControlModeType(frame.packet.payload.mode),
-                        init_pos_x=new_position.x,
-                        init_pos_y=new_position.y,
-                        init_direction=frame.packet.payload.direction,
-                        init_encoder_left=frame.packet.payload.encoder_left,
-                        init_encoder_right=frame.packet.payload.encoder_right,
-                    )
-                    if self.csv_data_logger is not None:
-                        real_log = CSVLog(
-                            pos_x=dotbot.lh2_position.x,
-                            pos_y=dotbot.lh2_position.y,
-                            direction=frame.packet.payload.direction,
-                            pwm_left=frame.packet.payload.pwm_left,
-                            pwm_right=frame.packet.payload.pwm_right,
-                            encoder_left=frame.packet.payload.encoder_left,
-                            encoder_right=frame.packet.payload.encoder_right,
-                        )
-                        sim_log = CSVLog(
-                            pos_x=int(twin.pos_x),
-                            pos_y=int(twin.pos_y),
-                            direction=int(twin.direction),
-                            pwm_left=int(twin.pwm_left),
-                            pwm_right=int(twin.pwm_right),
-                            encoder_left=twin._last_encoder_left,
-                            encoder_right=twin._last_encoder_right,
-                        )
-                        self.csv_data_logger.log(
-                            real_log=real_log,
-                            sim_log=sim_log,
-                            control_mode=ControlModeType(
-                                frame.packet.payload.mode
-                            ).value,
-                            waypoint_index=frame.packet.payload.waypoint_idx,
-                            waypoint_x=frame.packet.payload.waypoint_x,
-                            waypoint_y=frame.packet.payload.waypoint_y,
-                            battery_level=dotbot.battery,
-                            sim_battery_voltage=twin.battery_voltage / 1000.0,
-                            address=dotbot.address,
-                            pose=dotbot.pose,
-                        )
-                need_update = True
-
-            if dotbot.battery != frame.packet.payload.battery / 1000.0:
-                dotbot.battery = frame.packet.payload.battery / 1000.0  # mV to V
-                need_update = True
-
-            if dotbot.mode != ControlModeType(frame.packet.payload.mode):
-                dotbot.mode = ControlModeType(frame.packet.payload.mode)
-                need_update = True
-
-            self.logger.debug(
-                "Advertisement Data",
-                direction=frame.packet.payload.direction,
-                X=frame.packet.payload.pos_x,
-                Y=frame.packet.payload.pos_y,
-                battery=frame.packet.payload.battery,
-            )
-            if (
-                need_update is True
-                and notification_cmd != DotBotNotificationCommand.NEW_DOTBOT
-            ):
-                notification_cmd = DotBotNotificationCommand.UPDATE
 
         if (
-            frame.packet.payload_type == PayloadType.SAILBOT_DATA
-            and -500 <= frame.packet.payload.direction <= 500
+            payload_type == PayloadType.SAILBOT_DATA
+            and -500 <= payload.direction <= 500
         ):
-            dotbot.direction = frame.packet.payload.direction
-            logger = logger.bind(direction=dotbot.direction)
+            self._set(dotbot, record, "direction", payload.direction, seq)
 
-        if frame.packet.payload_type in [PayloadType.SAILBOT_DATA]:
-            logger = logger.bind(
-                wind_angle=dotbot.wind_angle,
-                rudder_angle=dotbot.rudder_angle,
-                sail_angle=dotbot.sail_angle,
-            )
-
-        if frame.packet.payload_type in [
-            PayloadType.GPS_POSITION,
-            PayloadType.SAILBOT_DATA,
-        ]:
+        if payload_type in (PayloadType.GPS_POSITION, PayloadType.SAILBOT_DATA):
             new_position = DotBotGPSPosition(
-                latitude=float(frame.packet.payload.latitude) / 1e6,
-                longitude=float(frame.packet.payload.longitude) / 1e6,
+                latitude=float(payload.latitude) / 1e6,
+                longitude=float(payload.longitude) / 1e6,
             )
-            dotbot.gps_position = new_position
+            self._set(dotbot, record, "gps_position", new_position, seq)
             # Read wind sensor measurements
-            dotbot.wind_angle = frame.packet.payload.wind_angle
-            dotbot.rudder_angle = frame.packet.payload.rudder_angle
-            dotbot.sail_angle = frame.packet.payload.sail_angle
-            logger.info(
-                "gps",
-                lat=new_position.latitude,
-                long=new_position.longitude,
-                wind_angle=dotbot.wind_angle,
-                rudder_angle=dotbot.rudder_angle,
-                sail_angle=dotbot.sail_angle,
-            )
-            if (
-                not dotbot.position_history
-                or gps_distance(dotbot.position_history[-1], new_position)
-                >= GPS_POSITION_DISTANCE_THRESHOLD
-            ):
-                dotbot.position_history.append(new_position)
-            if len(dotbot.position_history) > MAX_POSITION_HISTORY_SIZE:
-                dotbot.position_history.pop(0)
-            if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
-                notification_cmd = DotBotNotificationCommand.UPDATE
-
-        if notification_cmd == DotBotNotificationCommand.UPDATE:
-            notification = DotBotNotificationModel(
-                cmd=notification_cmd.value,
-                data=DotBotNotificationUpdate(
-                    address=dotbot.address,
-                    direction=dotbot.direction,
+            self._set(dotbot, record, "wind_angle", payload.wind_angle, seq)
+            self._set(dotbot, record, "rudder_angle", payload.rudder_angle, seq)
+            self._set(dotbot, record, "sail_angle", payload.sail_angle, seq)
+            if debug:
+                self.logger.debug(
+                    "gps",
+                    source=source,
+                    lat=new_position.latitude,
+                    long=new_position.longitude,
                     wind_angle=dotbot.wind_angle,
                     rudder_angle=dotbot.rudder_angle,
                     sail_angle=dotbot.sail_angle,
-                    lh2_position=dotbot.lh2_position,
-                    gps_position=dotbot.gps_position,
-                    battery=dotbot.battery,
-                ),
-            )
-        else:
-            notification = DotBotNotificationModel(cmd=notification_cmd.value)
+                )
+            last = record.trail.last()
+            if (
+                last is None
+                or gps_distance(last, new_position) >= GPS_POSITION_DISTANCE_THRESHOLD
+            ):
+                self._append_trail(record, new_position, seq)
+
+        if created or seq in record.revs.values():
+            self.seq = seq
+            self._changed(source)
 
         if self.settings.verbose is True:
             print(frame)
-        self.dotbots.update({dotbot.address: dotbot})
-        if notification_cmd != DotBotNotificationCommand.NEW_DOTBOT:
-            notification.data = DotBotModel(**dotbot.model_dump(exclude_none=True))
-        if notification_cmd != DotBotNotificationCommand.NONE:
-            asyncio.create_task(self.notify_clients(notification))
 
-    async def _ws_send_safe(self, websocket: WebSocket, msg: str):
-        """Safely send a message to a websocket client."""
-        try:
-            await websocket.send_text(msg)
-        except (
-            websockets.exceptions.ConnectionClosedError,
-            RuntimeError,
-            starlette.websockets.WebSocketDisconnect,
-        ) as exc:
-            self.logger.warning(
-                "Failed to send message to websocket client",
-                error=str(exc),
-            )
-            if websocket in self.websockets:
-                self.websockets.remove(websocket)
+    def _lh2_fix(
+        self,
+        dotbot: DotBotModel,
+        record: RobotRecord,
+        payload: PayloadDotBotAdvertisement,
+        new_position: DotBotLH2Position,
+        seq: int,
+        debug: bool,
+    ) -> None:
+        """Take a lighthouse fix: position, pose and trail."""
+        self._set(dotbot, record, "lh2_position", new_position, seq)
+        # The pose follows from the fix and the direction alone
+        if (
+            dotbot.pose is None
+            or record.revs.get("lh2_position") == seq
+            or record.revs.get("direction") == seq
+        ):
+            dotbot.pose = robot_pose(dotbot.model, new_position, payload.direction)
+            record.revs["pose"] = seq
+        last = record.trail.last()
+        if (
+            last is not None
+            and lh2_distance(last, new_position) < LH2_POSITION_DISTANCE_THRESHOLD
+        ):
+            # Too close to the last point: noise, kept out of the trail
+            if debug:
+                self.logger.debug(
+                    "Discarding LH2 position update because it's too close from the last one",
+                    source=dotbot.address,
+                    last_position=last.model_dump(),
+                    new_position=new_position.model_dump(),
+                    distance=lh2_distance(last, new_position),
+                )
+        else:
+            self._append_trail(record, new_position, seq)
+        if self.csv_data_logger is None:
+            return
+        # The twin is only read by the CSV log
+        twin = self._update_dotbot_twin(
+            address=dotbot.address,
+            pwm_left=payload.pwm_left,
+            pwm_right=payload.pwm_right,
+            init_pos_x=new_position.x,
+            init_pos_y=new_position.y,
+            init_direction=payload.direction,
+            init_encoder_left=payload.encoder_left,
+            init_encoder_right=payload.encoder_right,
+        )
+        real_log = CSVLog(
+            pos_x=dotbot.lh2_position.x,
+            pos_y=dotbot.lh2_position.y,
+            direction=payload.direction,
+            pwm_left=payload.pwm_left,
+            pwm_right=payload.pwm_right,
+            encoder_left=payload.encoder_left,
+            encoder_right=payload.encoder_right,
+        )
+        sim_log = CSVLog(
+            pos_x=int(twin.pos_x),
+            pos_y=int(twin.pos_y),
+            direction=int(twin.direction),
+            pwm_left=int(twin.pwm_left),
+            pwm_right=int(twin.pwm_right),
+            encoder_left=twin.encoder_left,
+            encoder_right=twin.encoder_right,
+        )
+        self.csv_data_logger.log(
+            real_log=real_log,
+            sim_log=sim_log,
+            control_mode=ControlModeType(payload.mode).value,
+            waypoint_index=payload.waypoint_idx,
+            waypoint_x=payload.waypoint_x,
+            waypoint_y=payload.waypoint_y,
+            battery_level=dotbot.battery,
+            sim_battery_voltage=twin.battery_voltage / 1000.0,
+            address=dotbot.address,
+            pose=robot_body(dotbot.model, dotbot.pose),
+        )
 
     def _swarmit_client(self, device: str = ""):
         """A swarmit client on the same connection the controller runs on.
@@ -948,28 +922,17 @@ class Controller:
         return None if point is None else point.mm
 
     async def _notify_calibration_session(self, state):
-        """One notification per calibration-session state change.
+        """A `calibration_session` event per session state change.
 
-        The session keeps its nulls, unlike `notify_clients`: `outstanding`
-        null is how a client learns every point is captured.
+        The session keeps its nulls: `outstanding` null is how a client
+        learns every point is captured, and a null session means none.
         """
-        cmd = DotBotNotificationCommand.CALIBRATION_SESSION_UPDATE
-        self.logger.debug("notify", cmd=cmd.name)
-        session = DotBotCalibrationSessionModel(**state).model_dump() if state else None
-        await self._broadcast({"cmd": cmd.value, "calibration_session": session})
-
-    async def notify_clients(self, notification):
-        """Send a message to all clients connected."""
-        self.logger.debug("notify", cmd=notification.cmd.name)
-        await self._broadcast(notification.model_dump(exclude_none=True))
-
-    async def _broadcast(self, message: dict):
-        await asyncio.gather(
-            *[
-                self._ws_send_safe(websocket, json.dumps(message))
-                for websocket in self.websockets
-            ]
+        session = (
+            DotBotCalibrationSessionModel(**state).model_dump(mode="json")
+            if state
+            else None
         )
+        self.set_event("calibration_session", "calibration_session", session)
 
     def send_confirmed(
         self,
@@ -977,21 +940,22 @@ class Controller:
         payload: Payload,
         confirmed: Callable[[PayloadDotBotAdvertisement], bool],
         **pending,
-    ):
+    ) -> bool:
         """Send a command, and resend it until an advertisement confirms it.
 
         Robots whose advertisement carries no waypoint report cannot confirm,
-        so for them the command is sent once.
+        so for them the command is sent once. False when it was not sent.
         """
         key = (address, type(payload).__name__)
         self.pending_commands[key] = PendingCommand(
             payload=payload, confirmed=confirmed, sent=time.monotonic(), **pending
         )
-        self.send_payload(int(address, 16), payload)
+        return self.send_payload(int(address, 16), payload)
 
-    def send_waypoints(self, address: str, payload: PayloadLH2Waypoints):
+    def send_waypoints(self, address: str, payload: PayloadLH2Waypoints) -> bool:
         """Send a waypoint batch under a new batch id, resent until the
-        robot advertises that id or another controller's newer batch."""
+        robot advertises that id or another controller's newer batch. False
+        when it was not sent."""
         advertised = self.advertised_batch_ids.get(address)
         last = self.batch_ids.get(address, random.randrange(255))
         payload.batch_id = last % 255 + 1
@@ -1000,7 +964,7 @@ class Controller:
         previous = self.pending_commands.get((address, PayloadLH2Waypoints.__name__))
         earlier = previous.batch_ids if previous is not None else frozenset({last})
         expected = earlier | {advertised, batch_id}
-        self.send_confirmed(
+        return self.send_confirmed(
             address,
             payload,
             lambda adv: adv.batch_id == batch_id,
@@ -1059,12 +1023,12 @@ class Controller:
 
     def _waypoints_report(
         self, dotbot: DotBotModel, advert: PayloadDotBotAdvertisement
-    ) -> bool:
+    ) -> List[str]:
         """Take the waypoint report from an advertisement, resend what it
-        does not confirm, and return whether the robot's state changed."""
+        does not confirm, and return the fields of the robot it changed."""
         self._resend_pending(dotbot.address, advert)
         if not advert.has_report:
-            return False
+            return []
         self.advertised_batch_ids[dotbot.address] = advert.batch_id
         if (dotbot.address, PayloadLH2Waypoints.__name__) not in self.pending_commands:
             # Follow the robot's id, which another controller may have set, so
@@ -1088,51 +1052,54 @@ class Controller:
             else DotBotLH2Position(x=advert.axle_x, y=advert.axle_y)
         )
         report = (status, reason, advert.waypoint_idx, advert.max_speed_10mm * 10, axle)
-        changed = report != (
-            dotbot.waypoints_status,
-            dotbot.waypoints_reason,
-            dotbot.waypoint_index,
-            dotbot.max_speed,
-            dotbot.axle_position,
-        )
-        (
-            dotbot.waypoints_status,
-            dotbot.waypoints_reason,
-            dotbot.waypoint_index,
-            dotbot.max_speed,
-            dotbot.axle_position,
-        ) = report
+        changed = []
+        for name, value in zip(WAYPOINTS_REPORT_FIELDS, report):
+            if getattr(dotbot, name) != value:
+                setattr(dotbot, name, value)
+                changed.append(name)
         return changed
 
-    def send_payload(self, destination: int, payload: Payload):
-        """Sends a command in an HDLC frame over serial."""
+    def send_payload(self, destination: int, payload: Payload) -> bool:
+        """Send a command to one robot through the adapter; False when it was
+        not sent. A failed send is logged and dropped, with any resend pending
+        for it."""
         if self.adapter is None:
             self.logger.warning("Adapter not started")
-            return
+            return False
         dest_str = addr_to_hex(destination)
         if dest_str not in self.dotbots:
-            return
+            return False
         if isinstance(payload, DIRECT_COMMANDS):
             # The robot drops its batch on these, so a resend would restart it
             self.pending_commands.pop((dest_str, PayloadLH2Waypoints.__name__), None)
-        self.adapter.send_payload(destination, payload=payload)
+        try:
+            self.adapter.send_payload(destination, payload=payload)
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.pending_commands.pop((dest_str, type(payload).__name__), None)
+            self.logger.exception(
+                "Payload not sent",
+                destination=dest_str,
+                payload=type(payload).__name__,
+            )
+            return False
         self.logger.debug(
             "Payload sent",
             application=self.dotbots[dest_str].application.name,
             destination=dest_str,
             payload=payload,
         )
+        return True
 
-    def device_poses(self) -> Dict[str, DotBotPoseModel]:
+    def device_poses(self) -> Dict[str, DotBotBodyModel]:
         """The headingless pose of each swarmit device type the host has a
         geometry record for, with its photodiode at the origin."""
         origin = DotBotLH2Position(x=0, y=0)
         return {device: device_pose(device, origin) for device in SWARMIT_DEVICE_MODELS}
 
-    def get_dotbots(self, query: DotBotQueryModel) -> List[DotBotModel]:
-        """Returns the list of dotbots matching the query."""
-        dotbots: List[DotBotModel] = []
-        for dotbot in self.dotbots.values():
+    def matching(self, query: DotBotQueryModel) -> List[str]:
+        """The addresses of the dotbots matching the query, in order."""
+        addresses: List[str] = []
+        for address, dotbot in self.dotbots.items():
             if query.address is not None and dotbot.address != query.address:
                 continue
             if (
@@ -1160,8 +1127,6 @@ class Controller:
                 and dotbot.lh2_position is None
             ):
                 continue
-            if dotbot.lh2_position is None and query.max_positions is not None:
-                continue
             if dotbot.lh2_position is not None:
                 if query.max_position_x is not None:
                     if query.max_position_x < dotbot.lh2_position.x:
@@ -1175,18 +1140,11 @@ class Controller:
                 if query.min_position_y is not None:
                     if query.min_position_y > dotbot.lh2_position.y:
                         continue
-            _dotbot = DotBotModel(**dotbot.model_dump())
-            max_positions = (
-                MAX_POSITION_HISTORY_SIZE
-                if query.max_positions is None
-                else query.max_positions
-            )
-            _dotbot.position_history = _dotbot.position_history[:max_positions]
-            dotbots.append(_dotbot)
-        dotbots = sorted(dotbots, key=lambda dotbot: dotbot.address)
+            addresses.append(address)
+        addresses.sort()
         if query.limit is not None:
-            dotbots = dotbots[: query.limit]
-        return dotbots
+            addresses = addresses[: query.limit]
+        return addresses
 
     async def web(self):
         """Starts the web server application."""
@@ -1203,9 +1161,13 @@ class Controller:
             host=host,
             port=self.settings.controller_http_port,
             log_level="critical",
-            # The status WebSocket stays open for as long as a browser tab is,
-            # so a graceful shutdown that waits for connections never returns.
+            # The stream stays open for as long as a browser tab is, so a
+            # graceful shutdown that waits for connections never returns.
             timeout_graceful_shutdown=0,
+            # A stream client that never acks is dropped by these once it
+            # stops reading.
+            ws_ping_interval=5,
+            ws_ping_timeout=5,
         )
         server = uvicorn.Server(config)
 
@@ -1237,6 +1199,7 @@ class Controller:
             self.adapter = DotBotSimulatorAdapter(
                 self.settings.simulator_init_state,
                 self.site,
+                robots=self.settings.simulator_robots,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

@@ -1,12 +1,11 @@
 import {
-  BotPose,
+  RobotBody,
   CalibrationPreview,
   CalibrationPushed,
   CalibrationSaved,
   CalibrationSession,
   ControllerBuild,
   ControllerConnection,
-  PyDotBot,
   RegisteredCamera,
   RgbLed,
   Site,
@@ -20,11 +19,6 @@ const CONTROLLER = "/controller";
 const SWARMIT = "/swarmit";
 const MRTA = "/mrta";
 
-export async function fetchDotBots(): Promise<PyDotBot[]> {
-  const res = await fetch(`${CONTROLLER}/dotbots`);
-  return res.json();
-}
-
 export async function fetchSite(): Promise<Site> {
   const res = await fetch(`${CONTROLLER}/site`);
   return res.json();
@@ -32,7 +26,7 @@ export async function fetchSite(): Promise<Site> {
 
 // The headingless pose of each swarmit device type, photodiode at the origin.
 // A controller too old to know the route has none to give.
-export async function fetchDevicePoses(): Promise<Record<string, BotPose>> {
+export async function fetchDevicePoses(): Promise<Record<string, RobotBody>> {
   try {
     const res = await fetch(`${CONTROLLER}/device_poses`);
     if (!res.ok) return {};
@@ -112,18 +106,57 @@ export async function putRgbLed(
   });
 }
 
-export async function putWaypoints(
-  address: string,
-  application: number,
+/**
+ * What a bulk waypoint request reached, the addresses it did not know, and
+ * the known ones it could not send to.
+ */
+export interface WaypointsSent {
+  applied: string[];
+  unknown: string[];
+  failed?: string[];
+}
+
+// The controller answers 404 when it knows none of the named robots, and
+// explains a refusal in a sentence when it can.
+async function waypointsSent(res: Response, addresses: string[]): Promise<WaypointsSent> {
+  if (res.status === 404) return { applied: [], unknown: addresses };
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((body) => body?.detail)
+      .catch(() => undefined);
+    throw new Error(typeof detail === "string" ? detail : `waypoints: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Each robot its own batch, keyed by address, in one request; an empty list
+ * stops that robot. The controller applies what it can and lists the robots
+ * it does not know.
+ */
+export async function putWaypointBatches(
   threshold: number,
-  waypoints: Waypoint[],
+  dotbots: Record<string, Waypoint[]>,
   batch: { intermediate_threshold?: number; heading_tolerance?: number } = {},
-): Promise<void> {
-  await fetch(`${CONTROLLER}/dotbots/${address}/${application}/waypoints`, {
+): Promise<WaypointsSent> {
+  const res = await fetch(`${CONTROLLER}/dotbots/waypoints`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threshold, waypoints, ...batch }),
+    body: JSON.stringify({ threshold, ...batch, dotbots }),
   });
+  return waypointsSent(res, Object.keys(dotbots));
+}
+
+/**
+ * Stop these robots, keeping only where each one stood. The route without an
+ * address stops every robot, so an empty list sends nothing.
+ */
+export async function clearWaypoints(addresses: string[]): Promise<WaypointsSent> {
+  if (addresses.length === 0) return { applied: [], unknown: [] };
+  const query = addresses.map((a) => `address=${encodeURIComponent(a)}`).join("&");
+  const res = await fetch(`${CONTROLLER}/dotbots/waypoints?${query}`, { method: "DELETE" });
+  return waypointsSent(res, addresses);
 }
 
 // --- the calibration session ----------------------------------------------
@@ -204,9 +237,10 @@ export async function abandonCalibration(): Promise<void> {
   await controllerJson(SESSION, { method: "DELETE" });
 }
 
-export function controllerWsUrl(): string {
+/** The controller stream, asking for `trail` points per robot at `hz`. */
+export function controllerStreamUrl(trail: number, hz: number): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}${CONTROLLER}/ws/status`;
+  return `${proto}://${window.location.host}${CONTROLLER}/ws/stream?trail=${trail}&hz=${hz}`;
 }
 
 // --- SwarmIT orchestration (write path; same contract as the real server) ---
@@ -301,17 +335,23 @@ export function swarmitEventsUrl(): string {
   return `${SWARMIT}/events`;
 }
 
-// MRTA mode lives behind the controller's /mrta proxy, and is expected to be
-// absent: an unreachable server, a 404 on a controller without the route and a
-// 502 from the proxy all mean the same thing to the console - no MRTA - so
-// they collapse into MRTA_UNAVAILABLE instead of surfacing as errors.
-export async function fetchMrtaStatus(): Promise<MrtaStatus> {
+export interface MrtaPoll {
+  status: MrtaStatus;
+  /** Whether the controller proxies to an MRTA server at all (`--mrta-url`). */
+  configured: boolean;
+}
+
+// MRTA mode lives behind the controller's /mrta proxy, which answers 404 when
+// no MRTA server is configured. Any other failure is a configured server that
+// is not up; an unreachable controller counts as not configured.
+export async function fetchMrtaStatus(): Promise<MrtaPoll> {
   try {
     const res = await fetch(`${MRTA}/status`);
-    if (!res.ok) return MRTA_UNAVAILABLE;
-    return parseStatus(await res.json());
+    if (res.status === 404) return { status: MRTA_UNAVAILABLE, configured: false };
+    if (!res.ok) return { status: MRTA_UNAVAILABLE, configured: true };
+    return { status: parseStatus(await res.json()), configured: true };
   } catch {
-    return MRTA_UNAVAILABLE;
+    return { status: MRTA_UNAVAILABLE, configured: false };
   }
 }
 

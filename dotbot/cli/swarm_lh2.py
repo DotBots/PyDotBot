@@ -333,14 +333,18 @@ def _collect(
                 "(a homography needs 4)"
             )
         click.echo(f"\nCalibration saved to {session.saved_path}")
-        click.echo(f"Calibration id {calibration.id}, site {site.name}")
+        click.echo(
+            f"Calibration id {calibration.id}, site {site.name}"
+            + (f", tag {calibration.tag!r}" if calibration.tag else "")
+        )
 
         if push:
             _gated_push(client, calibration, devices=session.push_devices)
         else:
             click.echo(
                 "To send it to the robots over the air:\n"
-                f"  dotbot swarm calibrate-lh2 push {calibration.id8}"
+                f"  dotbot swarm calibrate-lh2 push "
+                f"{calibration.tag or calibration.id8}"
             )
 
 
@@ -348,11 +352,11 @@ def _collect(
     name="push",
     help=(
         "Send a saved LH2 calibration to the robots over the air. Takes a "
-        "file path or the id prefix of a file under "
-        "~/.dotbot/calibrations/<site>/. Reads device info first: refuses "
-        "robots on firmware older than this host, which need a reflash, and "
-        "robots that report another site, then lists the robots still on "
-        "another id."
+        "file path, the exact --tag it was collected with, or the id prefix "
+        "of a file under ~/.dotbot/calibrations/<site>/. Reads device info "
+        "first: refuses robots on firmware older than this host, which need "
+        "a reflash, and robots that report another site, then lists the "
+        "robots still on another id."
     ),
 )
 @click.argument("calibration")

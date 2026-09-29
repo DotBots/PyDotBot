@@ -23,7 +23,6 @@ from dotbot.logger import LOGGER
 from dotbot.models import (
     DotBotAreaModel,
     DotBotMoveRawCommandModel,
-    DotBotNotificationModel,
     DotBotReplyModel,
     DotBotRequestModel,
     DotBotRequestType,
@@ -43,6 +42,14 @@ from dotbot.rest import RestClient
 # are read at QrkeyController.__init__ time).
 qrkey_settings.pin_code_refresh_interval = 2 * 60 * 60  # 2 hours
 qrkey_settings.pin_code_revoke_delay = 15 * 60  # 15 minutes
+
+# What the relay asks the controller stream for: MQTT carries every frame
+# to every phone, so the rate stays low; the trail is what the phone draws.
+STREAM_HZ = 2
+STREAM_TRAIL = 100
+# Reconnect delays after the stream closes, doubling up to the cap
+RECONNECT_MIN_S = 0.5
+RECONNECT_MAX_S = 10.0
 
 
 @dataclass
@@ -227,7 +234,7 @@ class QrKeyClient:
             application=ApplicationType(int(application)).name,
         )
         logger.info("Notify clear command", address=address)
-        self.worker.run(self.client.clear_position_history(address))
+        self.worker.run(self.client.clear_trail(address))
 
     def on_request(self, payload):
         logger = LOGGER.bind(topic="/request")
@@ -299,25 +306,48 @@ class QrKeyClient:
             webbrowser.open(url)
 
     async def start_ws_client(self):
-        """Start the WebSocket client to receive commands from the frontend."""
-        async with connect(
-            f"ws://{self.settings.http_host}:{self.settings.http_port}/controller/ws/status",
-        ) as websocket:
-            while True:
-                message = await websocket.recv()
-                try:
-                    payload = json.loads(message)
-                except json.JSONDecodeError:
-                    self.logger.warning(
-                        "Received invalid JSON message", message=message
-                    )
-                    continue
-                if "cmd" not in payload:
-                    continue
-                self.qrkey.publish(
-                    "/notify",
-                    DotBotNotificationModel(**payload).model_dump(exclude_none=True),
+        """Relay the controller stream to MQTT `/notify`, frame by frame,
+        reconnecting with backoff and resuming from the last frame relayed."""
+        run, seq = None, None
+        delay = RECONNECT_MIN_S
+        while True:
+            url = (
+                f"ws://{self.settings.http_host}:{self.settings.http_port}"
+                f"/controller/ws/stream?hz={STREAM_HZ}&trail={STREAM_TRAIL}"
+            )
+            if run is not None and seq is not None:
+                url += f"&since={seq}&run={run}"
+            try:
+                async with connect(url, max_size=None) as websocket:
+                    while True:
+                        message = await websocket.recv()
+                        delay = RECONNECT_MIN_S
+                        try:
+                            payload = json.loads(message)
+                        except json.JSONDecodeError:
+                            self.logger.warning(
+                                "Received invalid JSON message", message=message
+                            )
+                            continue
+                        if payload.get("type") == "hello":
+                            if payload.get("run") != run:
+                                run, seq = payload.get("run"), None
+                            continue
+                        self.qrkey.publish("/notify", payload)
+                        if "seq" in payload:
+                            await websocket.send(json.dumps({"ack": payload["seq"]}))
+                            if payload.get("type") != "snapshot" or (
+                                payload.get("part") == payload.get("parts")
+                            ):
+                                seq = payload["seq"]
+            except websockets_exceptions.ConnectionClosed as exc:
+                self.logger.warning(
+                    "Controller stream lost, reconnecting", error=str(exc)
                 )
+            except OSError as exc:
+                self.logger.warning("Controller unreachable, retrying", error=str(exc))
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RECONNECT_MAX_S)
 
     async def run(self):
         """Launch the controller."""
@@ -342,7 +372,7 @@ class QrKeyClient:
             await asyncio.gather(*tasks)
         except ConnectionRefusedError as exc:
             self.logger.warning(f"Failed to connect to PyDotBot controller: {exc}")
-        except websockets_exceptions.ConnectionClosedError as exc:
+        except websockets_exceptions.ConnectionClosed as exc:
             self.logger.warning(f"WebSocket connection closed: {exc}")
         except SystemExit:
             pass

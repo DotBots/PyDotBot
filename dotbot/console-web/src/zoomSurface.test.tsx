@@ -45,6 +45,7 @@ const Harness: React.FC<{ onCam?: (c: Camera) => void; from?: Camera }> = ({
         dotBots: true,
         trails: false,
         crashedOnly: false,
+        allWaypoints: false,
       }}
       plannedMissions={[]}
       cam={cam}
