@@ -317,7 +317,8 @@ def test_the_simulator_example_puts_a_thousand_robots_in_its_field():
     path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "dotbot.toml"
     config = load_config(path)
     site = site_from_config(config, config.site)
-    assert site.areas["charging"].role == "staging"
+    assert site.staging.name == "staging"
+    assert [a.name for a in site.areas.values() if a.role == "staging"] == ["staging"]
     field = site.field
     assert field.name == "field"
     bots = fleet_init_state(1000, site).dotbots

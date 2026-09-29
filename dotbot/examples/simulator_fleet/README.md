@@ -2,17 +2,17 @@
 
 A 20 x 30 m site with room for up to 1000 simulated DotBots.
 
-`dotbot.toml` defines the site `virtual-lab`: its extent and three areas, a
-`staging` strip along the north wall, the 16 x 16 m `field` and a `charging`
-strip along the south wall, which `role = "staging"` makes a second staging
-area.
+`dotbot.toml` defines the site `virtual-lab`: its extent and two areas, a
+`staging` strip along the north wall, where robots park and charge, and the
+16 x 16 m `field`.
 
-`--robots N` starts N robots in a near-square block centred on the field,
-200 mm apart centre to centre, the top half of the rows facing the staging
-strip and the bottom half the charging strip. The largest here, 1000 robots
-in 32 rows of up to 32, spans 6.2 x 6.2 m. At 200 mm a v3 robot has about
-105 mm of floor to the next one across and between rows facing the same way,
-and 47 mm tail to tail where the two halves meet.
+`--robots N` starts N robots in a block centred on the field, 200 mm apart
+centre to centre and all facing the staging strip. The block takes the
+field's shape, so on this square field the largest, 1000 robots in 32 rows of
+up to 32, spans 6.2 x 6.2 m. At 200 mm a v3 robot has about 105 mm of floor to
+the next one across and nose to tail. `--area` places the fleet in another
+area instead, a name, `x,y,w,h` in mm or a `+`-joined composite such as
+`field+staging`.
 
 ## Run
 

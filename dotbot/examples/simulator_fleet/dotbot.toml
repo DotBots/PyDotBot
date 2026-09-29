@@ -18,10 +18,3 @@ x = 2000
 y = 10000
 w = 16000
 h = 16000
-
-[sites.virtual-lab.areas.charging]   # a 2 m strip along the south wall
-role = "staging"
-x = 0
-y = 28000
-w = 20000
-h = 2000
