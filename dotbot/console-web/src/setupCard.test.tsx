@@ -20,6 +20,7 @@ const site: Site = {
     { x: 0, y: 0, w: 3330, h: 2000, name: "arena" },
     { x: 0, y: 2000, w: 3330, h: 2000, name: "annex" },
   ],
+  field: "arena",
 };
 
 // What the controller resolves `arena:corners` to: the four corners in CORNERS
@@ -68,7 +69,7 @@ beforeEach(() => {
 });
 
 describe("the Calibrate tab before a session", () => {
-  it("opens on the site's arena and asks the controller for its corners", async () => {
+  it("opens on the site's field and asks the controller for its corners", async () => {
     render(<SetupCard site={site} calibration={calibration()} device="" />);
 
     expect(screen.getByLabelText("Rectangle")).toHaveValue("arena");

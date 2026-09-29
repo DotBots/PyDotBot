@@ -407,6 +407,11 @@ export interface ControllerConnection {
   gw_address: string;
 }
 
+// What an area is for: `field` is where experiments happen and what gets
+// calibrated, `staging` is where robots park and charge, `corner` is a small
+// patch that starts hidden.
+export type AreaRole = "field" | "staging" | "corner";
+
 // One named rectangle of the site, in frame mm. An area is a view of the
 // frame and carries no calibration, so showing or hiding one never touches
 // one.
@@ -416,16 +421,20 @@ export interface Area {
   w: number;
   h: number;
   name?: string;
+  role?: AreaRole | null;
 }
 
 // GET /controller/site - the floor the controller works in. `extent_mm` is
 // [width, height] with zero at its top-left corner, which is where `anchor`
-// points; a site with nothing measured yet reports none.
+// points; a site with nothing measured yet reports none. `field` names the
+// area calibration defaults to: an area's name, an `x,y,w,h` literal for a
+// site with an extent and no areas, or null.
 export interface Site {
   name: string;
   anchor: string;
   extent_mm: [number, number] | null;
   areas: Area[];
+  field?: string | null;
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AREA_PREFERRED,
   TYPED_RECT,
   areaChoices,
   defaultChoice,
@@ -16,26 +15,31 @@ const C405: Site = {
   anchor: "the arena's top-left corner",
   extent_mm: [2000, 4000],
   areas: [
-    { x: 0, y: 2000, w: 2000, h: 2000, name: "annex" },
-    { x: 0, y: 0, w: 2000, h: 2000, name: "arena" },
+    { x: 0, y: 2000, w: 2000, h: 2000, name: "staging", role: "staging" },
+    { x: 0, y: 0, w: 2000, h: 2000, name: "field", role: "field" },
+    { x: 1000, y: 0, w: 1000, h: 1000, name: "dev-corner", role: "corner" },
   ],
+  field: "field",
 };
 
 describe("the rectangle picker", () => {
   it("offers the site's areas in the site's own order", () => {
-    expect(areaChoices(C405)).toEqual(["annex", "arena"]);
+    expect(areaChoices(C405)).toEqual(["staging", "field", "dev-corner"]);
   });
 
-  it("opens on the arena when the site has one, whatever its order", () => {
-    expect(defaultChoice(C405)).toBe(AREA_PREFERRED);
+  it("opens on the field the controller names, whatever its order", () => {
+    expect(defaultChoice(C405)).toBe("field");
+    expect(defaultChoice({ ...C405, field: "dev-corner" })).toBe("dev-corner");
   });
 
-  it("opens on the first area when the site has no arena", () => {
-    expect(defaultChoice({ ...C405, areas: [C405.areas[0]] })).toBe("annex");
+  it("opens on the typed rectangle when the field is not one of the areas", () => {
+    expect(defaultChoice({ ...C405, areas: [], field: "0,0,2000,4000" })).toBe(
+      TYPED_RECT,
+    );
   });
 
-  it("opens on the typed rectangle when the site defines no areas", () => {
-    expect(defaultChoice({ ...C405, areas: [] })).toBe(TYPED_RECT);
+  it("opens on the typed rectangle when the site has no field", () => {
+    expect(defaultChoice({ ...C405, areas: [], field: null })).toBe(TYPED_RECT);
     expect(defaultChoice(null)).toBe(TYPED_RECT);
   });
 });

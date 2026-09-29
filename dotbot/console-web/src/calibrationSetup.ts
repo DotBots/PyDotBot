@@ -12,19 +12,15 @@ import type { Area, Site } from "./types";
 /** The picker entry that means "a rectangle typed as x,y,w,h". */
 export const TYPED_RECT = "typed";
 
-/** The area a site is opened on: `arena` when it has one, else its first. */
-export const AREA_PREFERRED = "arena";
-
 /** The area names the picker offers, in the site's own order. */
 export function areaChoices(site: Site | null): string[] {
   return (site?.areas ?? []).map((a) => a.name ?? "").filter(Boolean);
 }
 
-/** Which entry the picker opens on; the typed rectangle when there is no area. */
+/** Which entry the picker opens on: the site's field, else the typed rectangle. */
 export function defaultChoice(site: Site | null): string {
-  const names = areaChoices(site);
-  if (names.includes(AREA_PREFERRED)) return AREA_PREFERRED;
-  return names[0] ?? TYPED_RECT;
+  const field = site?.field ?? "";
+  return areaChoices(site).includes(field) ? field : TYPED_RECT;
 }
 
 /** A typed `x,y,w,h` in frame mm, or null when it is not four whole numbers. */
