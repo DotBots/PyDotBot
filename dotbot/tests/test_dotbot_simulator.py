@@ -262,7 +262,7 @@ def test_the_simulator_example_puts_a_thousand_robots_in_its_field():
     from dotbot.config import load_config
     from dotbot.site import site_from_config
 
-    path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "site.toml"
+    path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "dotbot.toml"
     config = load_config(path)
     site = site_from_config(config, config.site)
     assert site.areas["charging"].role == "staging"

@@ -1,0 +1,27 @@
+# A virtual 20 x 30 m lab for simulating a large fleet. From this folder,
+# `dotbot` picks this file up by itself.
+# Zero is the top-left corner of the extent, x right, y down, millimetres.
+site = "virtual-lab"
+
+[sites.virtual-lab]
+anchor = "the north-west corner of the lab's floor marking"
+extent_mm = [20000, 30000]
+
+[sites.virtual-lab.areas.staging]    # a 2 m strip along the north wall
+x = 0
+y = 0
+w = 20000
+h = 2000
+
+[sites.virtual-lab.areas.field]      # the field, where the robots start
+x = 2000
+y = 10000
+w = 16000
+h = 16000
+
+[sites.virtual-lab.areas.charging]   # a 2 m strip along the south wall
+role = "staging"
+x = 0
+y = 28000
+w = 20000
+h = 2000
