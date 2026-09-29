@@ -7,9 +7,11 @@ A site names a physical place, so the package must not ship one: the neutral
 default is what a fresh install gets, and a real name comes from the config.
 """
 
+import pytest
+
 from dotbot.cli._site import resolve_site_name
 from dotbot.config import load_config_text, select_deployment
-from dotbot.site import SITE_DEFAULT, site_from_config
+from dotbot.site import SITE_DEFAULT, Site, site_from_config
 
 
 def test_no_config_falls_back_to_a_neutral_package_site():
@@ -62,19 +64,20 @@ def test_a_site_table_becomes_its_anchor_extent_and_areas():
         "[sites.c405-arena]\n"
         'anchor = "the arena top-left corner, C405"\n'
         "extent_mm = [2000, 4000]\n"
-        "[sites.c405-arena.areas.arena]\n"
+        "[sites.c405-arena.areas.field]\n"
         "x = 0\ny = 0\nw = 2000\nh = 2000\n"
     )
     site = site_from_config(config, "c405-arena")
     assert site.anchor == "the arena top-left corner, C405"
     assert site.extent_mm == (2000, 4000)
     assert site.valid_mm == (0, 0, 2000, 4000)
-    assert site.registry().resolve("arena").as_dict() == {
+    assert site.registry().resolve("field").as_dict() == {
         "x": 0,
         "y": 0,
         "w": 2000,
         "h": 2000,
-        "name": "arena",
+        "name": "field",
+        "role": "field",
     }
 
 
@@ -87,3 +90,59 @@ def test_a_named_site_with_no_table_is_empty_rather_than_an_error():
         None,
         {},
     )
+
+
+def _site(areas: str, extent: str = "") -> Site:
+    config = load_config_text(f"[sites.hall]\n{extent}[sites.hall.areas]\n{areas}")
+    return site_from_config(config, "hall")
+
+
+def test_an_area_named_after_a_role_has_it_unless_it_declares_another():
+    site = _site(
+        "staging = { x = 0, y = 0, w = 10, h = 10 }\n"
+        'field = { x = 0, y = 0, w = 10, h = 10, role = "corner" }\n'
+        "pen = { x = 0, y = 0, w = 10, h = 10 }\n"
+    )
+    assert {name: a.role for name, a in site.areas.items()} == {
+        "staging": "staging",
+        "field": "corner",
+        "pen": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "areas, field",
+    [
+        # the field, wherever it is declared
+        (
+            "staging = { x = 0, y = 0, w = 10, h = 10 }\n"
+            'main = { x = 5, y = 5, w = 10, h = 10, role = "field" }\n',
+            "main",
+        ),
+        # no field: the first area that is neither staging nor a corner
+        (
+            "staging = { x = 0, y = 0, w = 10, h = 10 }\n"
+            'bench = { x = 0, y = 0, w = 5, h = 5, role = "corner" }\n'
+            "pen = { x = 0, y = 0, w = 10, h = 10 }\n",
+            "pen",
+        ),
+        # only staging and corners: the first area
+        (
+            'bench = { x = 0, y = 0, w = 5, h = 5, role = "corner" }\n'
+            "staging = { x = 0, y = 0, w = 10, h = 10 }\n",
+            "bench",
+        ),
+    ],
+)
+def test_the_field_falls_back_in_order(areas, field):
+    assert _site(areas).field.name == field
+
+
+def test_a_site_with_no_areas_takes_its_extent_as_the_field():
+    field = _site("", "extent_mm = [5000, 4000]\n").field
+    assert (field.x, field.y, field.w, field.h) == (0, 0, 5000, 4000)
+    assert field.name == "0,0,5000,4000"
+
+
+def test_a_site_that_declares_nothing_has_no_field():
+    assert Site().field is None

@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from dotbot.area import Area, AreaRegistry
+from dotbot.area import Area, AreaRegistry, area_role
 
 SITE_DEFAULT = "default"
 
@@ -57,6 +57,30 @@ class Site:
             return None
         return (0, 0, int(self.extent_mm[0]), int(self.extent_mm[1]))
 
+    @property
+    def field(self) -> Area | None:
+        """Where experiments happen: what a fleet, a calibration and a camera default to.
+
+        The area whose role is `field`, else the first area that is neither
+        `staging` nor `corner`, else the first area, else the whole extent,
+        named as its `x,y,w,h` literal so the registry resolves it. None for
+        a site that declares nothing.
+        """
+        areas = list(self.areas.values())
+        roles = [area_role(area.name, area.role) for area in areas]
+        for area, role in zip(areas, roles):
+            if role == "field":
+                return area
+        for area, role in zip(areas, roles):
+            if role not in ("staging", "corner"):
+                return area
+        if areas:
+            return areas[0]
+        extent = self.extent
+        if extent is None:
+            return None
+        return Area(0, 0, extent.w, extent.h, f"0,0,{extent.w},{extent.h}")
+
     def registry(self) -> AreaRegistry:
         """The resolver `--points` runs against."""
         return AreaRegistry(named=dict(self.areas), site=self.name)
@@ -78,7 +102,14 @@ def site_from_config(config: Any, name: str) -> Site:
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
         areas={
-            area_name: Area(x=area.x, y=area.y, w=area.w, h=area.h, name=area_name)
+            area_name: Area(
+                x=area.x,
+                y=area.y,
+                w=area.w,
+                h=area.h,
+                name=area_name,
+                role=area_role(area_name, getattr(area, "role", None)),
+            )
             for area_name, area in (getattr(table, "areas", None) or {}).items()
         },
     )

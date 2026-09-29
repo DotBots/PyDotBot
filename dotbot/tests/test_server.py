@@ -1328,14 +1328,17 @@ async def test_get_robot_models():
 
 @pytest.mark.asyncio
 async def test_get_controller_site():
-    """The console draws the whole site, so it needs the extent and the areas."""
+    """The console draws the whole site, so it needs the extent, the areas in
+    their declared order with their roles, and which one is the field."""
     api.controller.site = Site(
         name="c405-arena",
         anchor="the arena's top-left corner, against the door wall of C405",
         extent_mm=(2000, 4000),
         areas={
-            "arena": Area(0, 0, 2000, 2000, "arena"),
-            "annex": Area(0, 2000, 2000, 2000, "annex"),
+            "staging": Area(0, 2000, 2000, 2000, "staging", "staging"),
+            "field": Area(0, 0, 2000, 2000, "field", "field"),
+            "dev-corner": Area(1000, 0, 1000, 1000, "dev-corner", "corner"),
+            "field+staging": Area(0, 0, 2000, 4000, "field+staging"),
         },
     )
     response = await client.get("/controller/site")
@@ -1345,10 +1348,59 @@ async def test_get_controller_site():
         "anchor": "the arena's top-left corner, against the door wall of C405",
         "extent_mm": [2000, 4000],
         "areas": [
-            {"x": 0, "y": 2000, "w": 2000, "h": 2000, "name": "annex"},
-            {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "arena"},
+            {
+                "x": 0,
+                "y": 2000,
+                "w": 2000,
+                "h": 2000,
+                "name": "staging",
+                "role": "staging",
+            },
+            {"x": 0, "y": 0, "w": 2000, "h": 2000, "name": "field", "role": "field"},
+            {
+                "x": 1000,
+                "y": 0,
+                "w": 1000,
+                "h": 1000,
+                "name": "dev-corner",
+                "role": "corner",
+            },
+            {
+                "x": 0,
+                "y": 0,
+                "w": 2000,
+                "h": 4000,
+                "name": "field+staging",
+                "role": None,
+            },
         ],
+        "field": "field",
     }
+
+
+def test_the_site_payload_reads_back_as_the_same_site():
+    from dotbot.models import DotBotSiteModel
+
+    site = Site(
+        name="hall",
+        anchor="north-west corner",
+        extent_mm=(5000, 4000),
+        areas={
+            "pen": Area(0, 0, 10, 10, "pen", "corner"),
+            "main": Area(5, 5, 10, 10, "main", "field"),
+        },
+    )
+    model = DotBotSiteModel(**DotBotSiteModel.from_site(site).model_dump())
+    assert model.field == "main"
+    assert model.to_site() == site
+    assert list(model.to_site().areas) == ["pen", "main"]
+
+
+@pytest.mark.asyncio
+async def test_get_controller_site_with_only_an_extent_names_its_literal_field():
+    api.controller.site = Site(name="hall", extent_mm=(5000, 4000))
+    response = await client.get("/controller/site")
+    assert response.json()["field"] == "0,0,5000,4000"
 
 
 @pytest.mark.asyncio
@@ -1362,6 +1414,7 @@ async def test_get_controller_site_with_nothing_measured():
         "anchor": "",
         "extent_mm": None,
         "areas": [],
+        "field": None,
     }
 
 

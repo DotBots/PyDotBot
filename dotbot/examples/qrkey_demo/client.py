@@ -21,7 +21,6 @@ from websockets.asyncio.client import connect
 from dotbot import CONTROLLER_HTTP_HOSTNAME_DEFAULT, CONTROLLER_HTTP_PORT_DEFAULT
 from dotbot.logger import LOGGER
 from dotbot.models import (
-    DotBotAreaModel,
     DotBotMoveRawCommandModel,
     DotBotReplyModel,
     DotBotRequestModel,
@@ -258,15 +257,7 @@ class QrKeyClient:
         elif request.request == DotBotRequestType.SITE:
             logger.info("Publish the site")
             site = self.worker.run(self.client.fetch_site())
-            model = DotBotSiteModel(
-                name=site.name,
-                anchor=site.anchor,
-                extent_mm=list(site.extent_mm) if site.extent_mm else None,
-                areas=[
-                    DotBotAreaModel(**a.as_dict())
-                    for a in sorted(site.areas.values(), key=lambda a: a.name)
-                ],
-            )
+            model = DotBotSiteModel.from_site(site)
             message = DotBotReplyModel(
                 request=DotBotRequestType.SITE,
                 data=model.model_dump(),

@@ -488,6 +488,7 @@ def test_area_resolution_forms():
         "w": 2000,
         "h": 2000,
         "name": "annex",
+        "role": None,
     }
     assert registry.resolve("0,0,500,600").as_dict() == {
         "x": 0,
@@ -495,6 +496,7 @@ def test_area_resolution_forms():
         "w": 500,
         "h": 600,
         "name": "0,0,500,600",
+        "role": None,
     }
     composite = registry.resolve("arena+wing")
     assert composite.as_dict() == {
@@ -503,6 +505,7 @@ def test_area_resolution_forms():
         "w": 3330,
         "h": 4000,
         "name": "arena+wing",
+        "role": None,
     }
 
 
@@ -580,6 +583,7 @@ def test_a_site_extent_is_the_plausibility_fence():
         "w": 2000,
         "h": 4000,
         "name": "c405-arena",
+        "role": None,
     }
 
 

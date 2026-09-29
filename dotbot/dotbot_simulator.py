@@ -58,11 +58,7 @@ MARI_SLOTFRAME_SIZE = (
     102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
 )
 
-# Where a world file's unpositioned robots go. `arena` is the area name the
-# rest of the CLI already defaults to (`--points` resolves `arena:corners`).
-PLACEMENT_AREA_DEFAULT = "arena"
-# Where `--robots N` puts a generated fleet, and how far apart
-FLEET_AREA_DEFAULT = "field"
+# How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
 # Headings of a generated fleet's two halves, 0 facing +y (down)
 FLEET_FACING_UP, FLEET_FACING_DOWN = 180, 0
@@ -219,23 +215,13 @@ def resolve_init_state_path(path: str) -> str:
     return path
 
 
-def placement_area(
-    site: Optional[Site] = None, preferred: str = PLACEMENT_AREA_DEFAULT
-) -> Area:
-    """The rectangle a fleet is spread over.
-
-    The site's `preferred` area, else its first declared area, else its whole
-    extent, else a 2 x 2 m square at the frame origin for a site that
-    measures neither.
+def placement_area(site: Optional[Site] = None) -> Area:
+    """The rectangle a fleet is spread over: the site's field (`Site.field`),
+    else a 2 x 2 m square at the frame origin for a site that declares nothing.
     """
-    if site is not None:
-        area = site.areas.get(preferred)
-        if area is not None:
-            return area
-        for first in site.areas.values():
-            return first
-        if site.extent is not None:
-            return site.extent
+    area = site.field if site is not None else None
+    if area is not None:
+        return area
     side = PLACEMENT_EXTENT_DEFAULT_MM
     return Area(0, 0, side, side)
 
@@ -311,14 +297,14 @@ def fleet_init_state(
     count: int, site: Optional[Site] = None, pitch_mm: int = FLEET_PITCH_MM
 ) -> InitStateToml:
     """`count` robots in a near-square grid `pitch_mm` apart, centred in the
-    site's `field` area (see `placement_area`).
+    site's field (see `placement_area`).
 
     Rows fill left to right and a short last row is centred under the
     others. The top half of the rows face up (-y), the rest down (+y).
     Raises `FleetDoesNotFit` when the grid, with half a pitch of margin all
     round, is larger than the area.
     """
-    area = placement_area(site, FLEET_AREA_DEFAULT)
+    area = placement_area(site)
     columns, rows = _grid_shape(count)
     if columns * pitch_mm > area.w or rows * pitch_mm > area.h:
         where = f"{area.name} " if area.name else ""

@@ -102,26 +102,27 @@ HALL = Site(
     name="hall",
     extent_mm=(20000, 30000),
     areas={
-        "charging": Area(1000, 1000, 1000, 500, "charging"),
-        "arena": Area(14000, 22000, 2000, 2000, "arena"),
+        "charging": Area(1000, 1000, 1000, 500, "charging", "staging"),
+        "field": Area(14000, 22000, 2000, 2000, "field", "field"),
     },
 )
 
 
-def test_the_placement_area_is_the_arena_whatever_its_declaration_order():
-    assert placement_area(HALL).name == "arena"
+def test_the_placement_area_is_the_field_whatever_its_declaration_order():
+    assert placement_area(HALL).name == "field"
 
 
-def test_a_site_with_areas_but_no_arena_places_in_the_first_declared_one():
+def test_a_site_without_a_field_places_in_its_first_area_that_is_not_staging():
     site = Site(
         name="hall",
         extent_mm=(20000, 30000),
         areas={
-            "charging": Area(1000, 1000, 1000, 500, "charging"),
+            "charging": Area(1000, 1000, 1000, 500, "charging", "staging"),
+            "bench": Area(1000, 2000, 1000, 1000, "bench", "corner"),
             "workshop": Area(5000, 5000, 3000, 3000, "workshop"),
         },
     )
-    assert placement_area(site).name == "charging"
+    assert placement_area(site).name == "workshop"
 
 
 def test_a_site_with_an_extent_and_no_areas_places_over_the_whole_extent():
@@ -158,7 +159,7 @@ def test_no_robots_need_no_grid():
     assert grid_positions(Area(0, 0, 2000, 2000), 0) == []
 
 
-def test_an_unpositioned_fleet_lands_inside_the_sites_arena():
+def test_an_unpositioned_fleet_lands_inside_the_sites_field():
     fleet = [SimulatedDotBotSettings(address=f"{i:016X}") for i in range(4)]
     placed = place_dotbots(fleet, HALL)
     assert [(bot.pos_x, bot.pos_y) for bot in placed] == [
@@ -177,7 +178,7 @@ def test_an_explicit_position_is_left_alone_and_takes_no_grid_cell():
     placed = place_dotbots(fleet, HALL)
     assert (placed[0].pos_x, placed[0].pos_y) == (7, 9)
     # The one unplaced robot is alone on its grid, so it takes the centre.
-    assert (placed[1].pos_x, placed[1].pos_y) == HALL.areas["arena"].centre
+    assert (placed[1].pos_x, placed[1].pos_y) == HALL.areas["field"].centre
 
 
 def test_a_fully_positioned_fleet_is_returned_unchanged():
@@ -192,8 +193,8 @@ FIELD_SITE = Site(
     name="hall",
     extent_mm=(20000, 30000),
     areas={
-        "arena": Area(5000, 5000, 2000, 2000, "arena"),
-        "field": Area(2000, 10000, 16000, 16000, "field"),
+        "staging": Area(0, 0, 20000, 2000, "staging", "staging"),
+        "field": Area(2000, 10000, 16000, 16000, "field", "field"),
     },
 )
 
@@ -237,11 +238,15 @@ def test_without_a_field_the_fleet_goes_to_the_first_area_then_the_extent():
     assert len(bots) == 1000
 
 
-def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do():
+@pytest.mark.parametrize(
+    "site",
+    [None, Site(areas={"field": Area(1500, 1500, 2000, 2000, "field", "field")})],
+)
+def test_a_fleet_that_does_not_fit_is_refused_with_how_many_do(site):
     assert fleet_capacity(Area(0, 0, 2000, 2000)) == 100
-    fleet_init_state(100)
+    fleet_init_state(100, site)
     with pytest.raises(FleetDoesNotFit, match="101 robots.*at most 100 do"):
-        fleet_init_state(101)
+        fleet_init_state(101, site)
 
 
 def test_the_capacity_of_a_narrow_area_counts_its_near_square_grid():
@@ -269,19 +274,19 @@ def test_the_simulator_runs_a_generated_fleet_without_a_file():
     ]
 
 
-def test_the_packaged_world_spreads_its_fleet_over_the_active_arena():
+def test_the_packaged_world_spreads_its_fleet_over_the_active_field():
     """End to end from the shipped world file: every declared robot must start
-    inside the site's arena, not in a corner of the floor."""
+    inside the site's field, not in a corner of the floor."""
     interface = DotBotSimulatorCommunicationInterface(
         on_frame_received=lambda *_: None,
         simulator_init_state=str(packaged_init_state_path()),
         site=HALL,
     )
-    arena = HALL.areas["arena"]
+    field = HALL.areas["field"]
     assert len(interface.dotbots) == 5
     assert len({(bot.pos_x, bot.pos_y) for bot in interface.dotbots}) == 5
     assert all(
-        arena.x < bot.pos_x < arena.x_max and arena.y < bot.pos_y < arena.y_max
+        field.x < bot.pos_x < field.x_max and field.y < bot.pos_y < field.y_max
         for bot in interface.dotbots
     )
 

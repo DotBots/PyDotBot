@@ -11,7 +11,6 @@ from typing import List, Optional
 
 import httpx
 
-from dotbot.area import Area
 from dotbot.logger import LOGGER, setup_logging
 from dotbot.models import (
     DotBotModel,
@@ -83,15 +82,7 @@ class RestClient:
                 f"Failed to fetch the site: {response} {response.text}"
             )
             return Site()
-        model = DotBotSiteModel(**response.json())
-        return Site(
-            name=model.name,
-            anchor=model.anchor,
-            extent_mm=(
-                (model.extent_mm[0], model.extent_mm[1]) if model.extent_mm else None
-            ),
-            areas={a.name: Area(a.x, a.y, a.w, a.h, a.name) for a in model.areas},
-        )
+        return DotBotSiteModel(**response.json()).to_site()
 
     async def _send_command(self, address, application, resource, command):
         self._logger.info(

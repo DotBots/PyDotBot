@@ -177,7 +177,6 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
             "pass one of them."
         )
     from dotbot.dotbot_simulator import (
-        FLEET_AREA_DEFAULT,
         FLEET_PITCH_MM,
         FleetDoesNotFit,
         fleet_init_state,
@@ -189,7 +188,7 @@ def _generated_fleet(robots, write_init_state, init_state, site, dotbot_simulato
         fleet = fleet_init_state(robots, site)
     except FleetDoesNotFit as exc:
         raise click.ClickException(str(exc)) from exc
-    area = placement_area(site, FLEET_AREA_DEFAULT)
+    area = placement_area(site)
     print(
         f"Simulated fleet: {robots} robots {FLEET_PITCH_MM} mm apart in "
         f"{area.name or 'the default area'} ({area.w} x {area.h} mm)"

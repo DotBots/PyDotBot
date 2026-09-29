@@ -39,6 +39,29 @@ def test_root_bad_config_errors(runner, tmp_path):
     assert "config" in result.output.lower()
 
 
+@pytest.mark.parametrize(
+    "areas, error",
+    [
+        ("field = { x = 0, y = 0, w = 10, h = 10 }\n", None),
+        ('pen = { x = 0, y = 0, w = 10, h = 10, role = "staging" }\n', None),
+        ('pen = { x = 0, y = 0, w = 10, h = 10, role = "main" }\n', "role"),
+        (
+            "field = { x = 0, y = 0, w = 10, h = 10 }\n"
+            'pen = { x = 0, y = 0, w = 10, h = 10, role = "field" }\n',
+            "field and pen are both one",
+        ),
+    ],
+)
+def test_root_checks_area_roles(runner, tmp_path, areas, error):
+    cfg = _write(tmp_path, f"[sites.hall.areas]\n{areas}")
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
+    if error is None:
+        assert result.exit_code == 0, result.output
+    else:
+        assert result.exit_code != 0
+        assert error in result.output
+
+
 def test_root_missing_config_errors(runner, tmp_path):
     result = runner.invoke(cli, ["-c", str(tmp_path / "nope.toml"), "fw", "--help"])
     assert result.exit_code != 0

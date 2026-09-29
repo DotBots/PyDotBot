@@ -163,6 +163,44 @@ def test_load_camera_limit_out_of_range_rejected(tmp_path, line):
         cfg.load_config(path)
 
 
+# --- site areas and their roles ----------------------------------------------
+
+
+def _areas(body: str) -> dict:
+    return cfg.load_config_text(f"[sites.hall.areas]\n{body}").sites["hall"].areas
+
+
+def test_an_area_role_is_optional_and_checked():
+    areas = _areas(
+        "field = { x = 0, y = 0, w = 2000, h = 2000 }\n"
+        'bench = { x = 0, y = 0, w = 500, h = 500, role = "corner" }\n'
+    )
+    assert areas["field"].role is None
+    assert areas["bench"].role == "corner"
+    with pytest.raises(cfg.ConfigError, match="role"):
+        _areas('pen = { x = 0, y = 0, w = 1, h = 1, role = "arena" }\n')
+
+
+def test_two_fields_are_refused_naming_both():
+    with pytest.raises(cfg.ConfigError, match="field and main are both one"):
+        _areas(
+            "field = { x = 0, y = 0, w = 2000, h = 2000 }\n"
+            'main = { x = 0, y = 0, w = 500, h = 500, role = "field" }\n'
+        )
+
+
+def test_an_explicit_role_frees_a_role_name_for_another_area():
+    areas = _areas(
+        'field = { x = 0, y = 0, w = 2000, h = 2000, role = "staging" }\n'
+        'main = { x = 0, y = 0, w = 500, h = 500, role = "field" }\n'
+    )
+    assert set(areas) == {"field", "main"}
+
+
+def test_a_site_with_staging_and_no_field_loads():
+    assert set(_areas("staging = { x = 0, y = 0, w = 2000, h = 600 }\n")) == {"staging"}
+
+
 # --- deployment selection ------------------------------------------------------
 
 

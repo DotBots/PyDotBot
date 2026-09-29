@@ -31,7 +31,6 @@ from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.models import (
     MAX_TRAIL_SIZE,
-    DotBotAreaModel,
     DotBotBackgroundMapModel,
     DotBotBodyModel,
     DotBotBuildModel,
@@ -568,16 +567,7 @@ async def device_poses():
 )
 async def site():
     """Active site HTTP GET handler."""
-    current = api.controller.site
-    return DotBotSiteModel(
-        name=current.name,
-        anchor=current.anchor,
-        extent_mm=list(current.extent_mm) if current.extent_mm else None,
-        areas=[
-            DotBotAreaModel(**a.as_dict())
-            for a in sorted(current.areas.values(), key=lambda a: a.name)
-        ],
-    )
+    return DotBotSiteModel.from_site(api.controller.site)
 
 
 @api.get(

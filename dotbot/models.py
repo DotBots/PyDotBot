@@ -14,8 +14,10 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
+from dotbot.area import Area
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
+from dotbot.site import Site
 
 # Points of trail the controller keeps per robot
 MAX_TRAIL_SIZE = 1000
@@ -183,13 +185,14 @@ class DotBotWaypointsSent(BaseModel):
 
 
 class DotBotAreaModel(BaseModel):
-    """One named rectangle in frame millimetres."""
+    """One named rectangle in frame millimetres, and its role if it has one."""
 
     x: int
     y: int
     w: int
     h: int
     name: str = ""
+    role: Optional[Literal["field", "staging", "corner"]] = None
 
 
 class DotBotSiteModel(BaseModel):
@@ -197,12 +200,40 @@ class DotBotSiteModel(BaseModel):
 
     `extent_mm` is `[width, height]`, zero at its top-left corner, which is
     where `anchor` points. A site with no measured extent reports none.
+    `areas` are in the order the config declares them. `field` names the
+    area experiments and calibration default to (`Site.field`): an area's
+    name, an `x,y,w,h` literal for a site with an extent and no areas, or
+    None for a site that declares neither.
     """
 
     name: str
     anchor: str = ""
     extent_mm: Optional[List[int]] = None
     areas: List[DotBotAreaModel] = []
+    field: Optional[str] = None
+
+    @classmethod
+    def from_site(cls, site: Site) -> "DotBotSiteModel":
+        field = site.field
+        return cls(
+            name=site.name,
+            anchor=site.anchor,
+            extent_mm=list(site.extent_mm) if site.extent_mm else None,
+            areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
+            field=field.name if field is not None else None,
+        )
+
+    def to_site(self) -> Site:
+        return Site(
+            name=self.name,
+            anchor=self.anchor,
+            extent_mm=(
+                (self.extent_mm[0], self.extent_mm[1]) if self.extent_mm else None
+            ),
+            areas={
+                a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
+            },
+        )
 
 
 class DotBotCameraModel(BaseModel):

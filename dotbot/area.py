@@ -7,11 +7,27 @@ An area is session configuration, a view into the frame that carries no
 homography: changing it never touches a calibration file. Named areas come
 from the `[sites.<site>.areas.<name>]` tables of a dotbot config file, so a
 fresh install with no config has none.
+
+An area may carry a role: `field` is where experiments happen and what gets
+calibrated, `staging` is where robots park and charge, `corner` is a small
+patch that overlaps other areas and starts hidden in the console. An area
+named after a role has it unless it declares another.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
+
+Role = Literal["field", "staging", "corner"]
+ROLES: tuple[str, ...] = ("field", "staging", "corner")
+
+
+def area_role(name: str, role: str | None = None) -> str | None:
+    """The role an area has: the one it declares, else the one its name is."""
+    if role is not None:
+        return role
+    return name if name in ROLES else None
 
 
 @dataclass(frozen=True)
@@ -27,6 +43,7 @@ class Area:
     w: int
     h: int
     name: str = ""
+    role: str | None = None
 
     @property
     def x_max(self) -> int:
@@ -40,9 +57,16 @@ class Area:
     def centre(self) -> tuple[float, float]:
         return (self.x + self.w / 2, self.y + self.h / 2)
 
-    def as_dict(self) -> dict[str, int]:
-        """The four numbers plus the name, the shape every consumer receives."""
-        return {"x": self.x, "y": self.y, "w": self.w, "h": self.h, "name": self.name}
+    def as_dict(self) -> dict[str, int | str | None]:
+        """The four numbers, the name and the role, the shape every consumer receives."""
+        return {
+            "x": self.x,
+            "y": self.y,
+            "w": self.w,
+            "h": self.h,
+            "name": self.name,
+            "role": self.role,
+        }
 
 
 @dataclass

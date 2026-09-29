@@ -16,7 +16,7 @@ floors you work on.
 
 ```toml
 default_deployment = "inria"
-site     = "c405-arena"
+site     = "default"
 conn     = "mqtts://broker.local:8883"   # shared; sections/deployments override
 swarm_id = "0001"
 
@@ -24,15 +24,14 @@ swarm_id = "0001"
 conn = "mqtts://broker.inria.fr:8883"
 swarm_id = "0001"
 
-[sites.c405-arena]                          # a floor: where zero is, how big, its areas
-anchor = "the corner where the arena's top wall meets the door wall"
-extent_mm = [2000, 4000]
+[sites.default]                             # a floor: where zero is, how big, its areas
+anchor = "top-left corner of a 5 x 5 m floor; the field starts 1.5 m in from each wall"
+extent_mm = [5000, 5000]
 
-[sites.c405-arena.areas.arena]
-x = 0
-y = 0
-w = 2000
-h = 2000
+[sites.default.areas]                       # a name that is a role has it
+field   = { x = 1500, y = 1500, w = 2000, h = 2000 }
+staging = { x = 1500, y = 3500, w = 2000, h = 600 }
+bench   = { x = 3000, y = 1500, w = 500,  h = 500, role = "corner" }
 
 [fw]
 board = "dotbot-v3"
@@ -65,7 +64,10 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    model_validator,
 )
+
+from dotbot.area import Role, area_role
 
 # The four CLI namespaces, used to derive env-var names (DOTBOT_<SECTION>_<KEY>).
 SECTIONS = ("fw", "device", "swarm", "run")
@@ -150,12 +152,16 @@ class SwarmSection(_Strict):
 
 
 class AreaSection(_Strict):
-    """One `[sites.<site>.areas.<name>]` table: a rectangle in frame millimetres."""
+    """One `[sites.<site>.areas.<name>]` table: a rectangle in frame millimetres.
+
+    `role` is needed only when the name is not already a role.
+    """
 
     x: int
     y: int
     w: int
     h: int
+    role: Role | None = None
 
 
 class SiteSection(_Strict):
@@ -170,6 +176,21 @@ class SiteSection(_Strict):
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, AreaSection] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _one_field(self) -> SiteSection:
+        fields = [
+            name
+            for name, area in self.areas.items()
+            if area_role(name, area.role) == "field"
+        ]
+        if len(fields) > 1:
+            raise ValueError(
+                f"a site has at most one field, and {' and '.join(fields)} "
+                'are both one; give all but one another role (role = "staging" '
+                'or "corner") or another name'
+            )
+        return self
 
 
 class ControllerSection(_Strict):
