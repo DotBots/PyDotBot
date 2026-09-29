@@ -80,6 +80,7 @@ describe("the tooltip", () => {
     const now = new Date("2026-09-29T10:00:00Z");
     expect(ageDays(CALIBRATION.created_at, now)).toBe(19);
     expect(ageDays("", now)).toBeNull();
+    expect(ageDays("2099-01-01T00:00:00Z", now)).toBe(0);
     const [span] = calibrationSpans(CALIBRATION);
     expect(spanTitle(CALIBRATION, span, now)).toBe(
       "LH2 calibration demo (ac893d2d), 19 days old: calibrated over a 500 mm " +

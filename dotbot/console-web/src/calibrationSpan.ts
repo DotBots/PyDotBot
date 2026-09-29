@@ -53,11 +53,12 @@ export function describePointsFrom(pointsFrom: string): string {
   return "its recorded points";
 }
 
-/** Whole days since `createdAt`, or null when it does not parse. */
+/** Whole days since `createdAt`, 0 for a time ahead of this browser's clock,
+ * or null when it does not parse. */
 export function ageDays(createdAt: string, now: Date = new Date()): number | null {
   const created = Date.parse(createdAt);
   if (Number.isNaN(created)) return null;
-  return Math.floor((now.getTime() - created) / 86_400_000);
+  return Math.max(0, Math.floor((now.getTime() - created) / 86_400_000));
 }
 
 /** The outline's tooltip: which calibration, how old, and what it covers. */
