@@ -42,7 +42,7 @@ from dotbot.sim.plant import (
     FleetPlant,
     battery_discharge_model,
 )
-from dotbot.site import Site
+from dotbot.site import Site, field_or_fallback
 
 SIMULATOR_STEP_DELTA_T = 0.01  # one app tick, 10 ms
 
@@ -62,8 +62,6 @@ MARI_SLOTFRAME_SIZE = (
 FLEET_PITCH_MM = 200
 # Headings of a generated fleet's two halves, 0 facing +y (down)
 FLEET_FACING_UP, FLEET_FACING_DOWN = 180, 0
-# The square a site that measures neither an extent nor an area falls back to.
-PLACEMENT_EXTENT_DEFAULT_MM = 2000
 
 # Feature order must match utils/sim_to_real/train_gru.py FEATURE_COLS
 GRU_FEATURE_COLS = [
@@ -216,14 +214,8 @@ def resolve_init_state_path(path: str) -> str:
 
 
 def placement_area(site: Optional[Site] = None) -> Area:
-    """The rectangle a fleet is spread over: the site's field (`Site.field`),
-    else a 2 x 2 m square at the frame origin for a site that declares nothing.
-    """
-    area = site.field if site is not None else None
-    if area is not None:
-        return area
-    side = PLACEMENT_EXTENT_DEFAULT_MM
-    return Area(0, 0, side, side)
+    """The rectangle a fleet is spread over (`field_or_fallback`)."""
+    return field_or_fallback(site)
 
 
 def _grid_shape(count: int) -> Tuple[int, int]:

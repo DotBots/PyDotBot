@@ -9,9 +9,16 @@ default is what a fresh install gets, and a real name comes from the config.
 
 import pytest
 
+from dotbot.area import Area
 from dotbot.cli._site import resolve_site_name
 from dotbot.config import load_config_text, select_deployment
-from dotbot.site import SITE_DEFAULT, Site, site_from_config
+from dotbot.site import (
+    FIELD_FALLBACK_MM,
+    SITE_DEFAULT,
+    Site,
+    field_or_fallback,
+    site_from_config,
+)
 
 
 def test_no_config_falls_back_to_a_neutral_package_site():
@@ -146,3 +153,25 @@ def test_a_site_with_no_areas_takes_its_extent_as_the_field():
 
 def test_a_site_that_declares_nothing_has_no_field():
     assert Site().field is None
+
+
+def test_staging_is_the_first_staging_area():
+    site = Site(
+        areas={
+            "field": Area(0, 0, 10, 10, "field", "field"),
+            "dock": Area(0, 10, 10, 5, "dock", "staging"),
+            "staging": Area(0, 15, 10, 5, "staging", "staging"),
+        }
+    )
+    assert site.staging.name == "dock"
+    assert Site(areas={"field": Area(0, 0, 1, 1, "field", "field")}).staging is None
+
+
+def test_field_or_fallback():
+    assert (
+        field_or_fallback(_site("field = { x = 1, y = 1, w = 10, h = 10 }\n")).name
+        == "field"
+    )
+    fallback = Area(0, 0, FIELD_FALLBACK_MM, FIELD_FALLBACK_MM)
+    assert field_or_fallback(Site()) == fallback
+    assert field_or_fallback(None) == fallback

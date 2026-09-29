@@ -22,6 +22,9 @@ from typing import Any
 from dotbot.area import Area, AreaRegistry, area_role
 
 SITE_DEFAULT = "default"
+# The side of the square, at the frame origin, a site that declares nothing
+# works in.
+FIELD_FALLBACK_MM = 2000
 
 
 @dataclass
@@ -81,9 +84,25 @@ class Site:
             return None
         return Area(0, 0, extent.w, extent.h, f"0,0,{extent.w},{extent.h}")
 
+    @property
+    def staging(self) -> Area | None:
+        """Where robots park and charge: the first area whose role is `staging`."""
+        for area in self.areas.values():
+            if area_role(area.name, area.role) == "staging":
+                return area
+        return None
+
     def registry(self) -> AreaRegistry:
         """The resolver `--points` runs against."""
         return AreaRegistry(named=dict(self.areas), site=self.name)
+
+
+def field_or_fallback(site: Site | None) -> Area:
+    """The site's field, else a `FIELD_FALLBACK_MM` square at the frame origin."""
+    area = site.field if site is not None else None
+    if area is not None:
+        return area
+    return Area(0, 0, FIELD_FALLBACK_MM, FIELD_FALLBACK_MM)
 
 
 def site_from_config(config: Any, name: str) -> Site:
