@@ -296,11 +296,13 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         site: Optional[Site] = None,
         robots: Optional[int] = None,
         area: Optional[Area] = None,
+        calibrated: Optional[int] = None,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
         self.robots = robots
         self.area = area
+        self.calibrated = calibrated
 
     def create_simulator(self, on_frame_received: callable):
         init_state = (
@@ -309,7 +311,11 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
             else fleet_init_state(self.robots, self.site, area=self.area)
         )
         return DotBotSimulatorCommunicationInterface(
-            on_frame_received, init_state, self.site, self.area
+            on_frame_received,
+            init_state,
+            self.site,
+            self.area,
+            calibrated=self.calibrated,
         )
 
 

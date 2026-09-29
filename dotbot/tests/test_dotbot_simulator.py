@@ -19,6 +19,7 @@ from dotbot.dotbot_simulator import (
     SIMULATOR_STEP_DELTA_T,
     DotBotSimulatorCommunicationInterface,
     FleetDoesNotFit,
+    InitStateToml,
     SimulatedDotBotSettings,
     fleet_capacity,
     fleet_init_state,
@@ -558,6 +559,32 @@ def test_a_robot_given_a_heading_starts_tracking_it_where_it_was_put(tmp_path):
     # The LH2 position is the photodiode, a lever arm ahead of the axle
     assert math.hypot(advert.pos_x - 949, advert.pos_y - 1000) < 3
     assert (advert.encoder_left, advert.encoder_right) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "calibrated, expected", [(None, [0xFF, 0x05]), (0b11, [0b11, 0x05])]
+)
+def test_a_robot_holds_the_controllers_stations_unless_its_file_says(
+    calibrated, expected
+):
+    fleet = InitStateToml(
+        dotbots=[
+            SimulatedDotBotSettings(address="0000000000000001", pos_x=1, pos_y=1),
+            SimulatedDotBotSettings(
+                address="0000000000000002", pos_x=1, pos_y=1, calibrated=0x05
+            ),
+        ]
+    )
+    received = []
+    interface = DotBotSimulatorCommunicationInterface(
+        received.append, fleet, calibrated=calibrated
+    )
+    _step(interface, 0.5)
+    by_source = {
+        frame.header.source: advert
+        for frame, advert in zip(received, _adverts(received))
+    }
+    assert [by_source[1].calibrated, by_source[2].calibrated] == expected
 
 
 def test_a_robot_without_a_heading_starts_with_none_and_no_position(tmp_path):

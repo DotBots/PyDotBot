@@ -60,6 +60,9 @@ MARI_SLOTFRAME_SIZE = (
 
 # How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
+# The stations a simulated robot holds when neither its world file nor the
+# controller's calibration says: all eight
+CALIBRATED_ALL = 0xFF
 # The heading of every robot of a generated fleet: up (-y), 0 facing +y
 FLEET_FACING = 180
 
@@ -108,14 +111,17 @@ class SimulatedDotBotSettings(BaseModel):
     out asks for a placement inside the active site instead - see
     `place_dotbots`. A `direction` is the robot's heading, which its
     estimator starts out tracking; without one the robot faces +y and starts
-    with no heading, as a real robot does from boot.
+    with no heading, as a real robot does from boot. `calibrated` is the
+    bitmask of stations the robot holds a homography for; without one it
+    holds the stations of the controller's calibration, all eight when none
+    is loaded.
     """
 
     address: str = Field(default_factory=_random_address)
     pos_x: Optional[int] = None
     pos_y: Optional[int] = None
     direction: int = DIRECTION_NONE
-    calibrated: int = 0xFF
+    calibrated: Optional[int] = None
     motor_left_error: float = 0
     motor_right_error: float = 0
     lh2_noise_mm: float = 0
@@ -464,6 +470,7 @@ class DotBotSimulatorCommunicationInterface:
         simulator_init_state: "str | InitStateToml",
         site: Optional[Site] = None,
         area: Optional[Area] = None,
+        calibrated: Optional[int] = None,
     ):
         self.on_frame_received = on_frame_received
         self.ticks = 0
@@ -511,7 +518,11 @@ class DotBotSimulatorCommunicationInterface:
         self._headers = [
             Header(destination=gateway, source=int(a, 16)) for a in self.addresses
         ]
-        self._calibrated = [s.calibrated & 0xFF for s in settings]
+        calibrated = CALIBRATED_ALL if calibrated is None else calibrated
+        self._calibrated = [
+            (calibrated if s.calibrated is None else s.calibrated) & 0xFF
+            for s in settings
+        ]
         self._dotbot_modes = [s.network_mode for s in settings]
         self._mari = None
         if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):

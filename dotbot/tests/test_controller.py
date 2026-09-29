@@ -1615,24 +1615,39 @@ def test_a_calibration_from_another_site_is_refused_at_load(tmp_path, serial_moc
         Controller(settings)
 
 
-def test_a_robot_holding_a_station_the_calibration_does_not_solve_is_warned_once(
+def test_robots_holding_stations_the_calibration_does_not_solve_are_warned_once(
     tmp_path, serial_mock
 ):
     controller = Controller(
         _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
     )
     solved = sorted(station.index for station in controller.lh2_calibration)
-    unsolved = min(set(range(8)) - set(solved))
-    calibrated = sum(1 << index for index in solved) | 1 << unsolved
+    first, second = sorted(set(range(8)) - set(solved))[:2]
+    held = sum(1 << index for index in solved)
     with capture_logs() as logs:
-        for _ in range(3):
-            controller.handle_received_frame(
-                _advertised(
-                    BOT, calibrated=calibrated, direction=90, pos_x=1000, pos_y=1000
+        for bot in (BOT, BOT + 1, BOT + 2):
+            for _ in range(3):
+                controller.handle_received_frame(
+                    _advertised(
+                        bot,
+                        calibrated=held | 1 << first,
+                        direction=90,
+                        pos_x=1000,
+                        pos_y=1000,
+                    )
                 )
+        controller.handle_received_frame(
+            _advertised(
+                BOT + 3, calibrated=held | 1 << second, direction=90, pos_x=1, pos_y=1
             )
+        )
     warnings = [e for e in logs if e["log_level"] == "warning"]
-    assert [(e["address"], e["station"]) for e in warnings] == [
-        (addr_to_hex(BOT), unsolved)
+    assert [(e["robots"], e["stations"]) for e in warnings] == [
+        (1, [first]),
+        (4, [first, second]),
     ]
+    assert warnings[0]["event"] == (
+        f"1 robot holds calibrations for stations [{first}] that the loaded "
+        "calibration does not solve"
+    )
     assert warnings[0]["solved"] == solved

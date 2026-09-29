@@ -227,6 +227,12 @@ class ControllerSettings:
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
 
+def _station_mask(stations: set[int]) -> Optional[int]:
+    """The `calibrated` bitmask of robots holding exactly `stations`; None
+    for no stations."""
+    return sum(1 << index for index in stations) or None
+
+
 def _held_stations(calibrated: int) -> set[int]:
     """The station indices an advertised `calibrated` bitmask holds."""
     return {
@@ -327,8 +333,9 @@ class Controller:
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
         self._solved_stations = {station.index for station in self.lh2_calibration}
-        # (robot, station) pairs already warned about, so each is warned once
-        self._unsolved_warned: set[tuple[str, int]] = set()
+        # The stations each robot holds that the calibration does not solve
+        self._unsolved_held: Dict[str, frozenset[int]] = {}
+        self._unsolved_warned: frozenset[int] = frozenset()
         self.cameras: List[CameraService] = []
         # The warp each camera's last pushed detection came from, so a
         # console is told about a frame once.
@@ -368,20 +375,29 @@ class Controller:
         )
 
     def _warn_unsolved_stations(self, address: str, calibrated: int) -> None:
-        """Warn once per robot and station about a homography the loaded
-        calibration does not solve: that robot's positions from the station
-        come from some other calibration."""
-        for index in sorted(_held_stations(calibrated) - self._solved_stations):
-            if (address, index) in self._unsolved_warned:
-                continue
-            self._unsolved_warned.add((address, index))
-            self.logger.warning(
-                "Robot holds a station the calibration does not solve",
-                address=address,
-                station=index,
-                calibration_id=self.calibration.id,
-                solved=sorted(self._solved_stations),
-            )
+        """Warn when robots hold homographies for stations the loaded
+        calibration does not solve: their positions from those stations come
+        from some other calibration. One line, again only when the set of
+        such stations changes."""
+        unsolved = frozenset(_held_stations(calibrated) - self._solved_stations)
+        if unsolved:
+            self._unsolved_held[address] = unsolved
+        else:
+            self._unsolved_held.pop(address, None)
+        stations = frozenset().union(*self._unsolved_held.values())
+        if not stations or stations == self._unsolved_warned:
+            return
+        self._unsolved_warned = stations
+        robots = len(self._unsolved_held)
+        self.logger.warning(
+            f"{robots} {'robot holds' if robots == 1 else 'robots hold'} "
+            f"calibrations for stations {sorted(stations)} that the loaded "
+            "calibration does not solve",
+            robots=robots,
+            stations=sorted(stations),
+            calibration_id=self.calibration.id,
+            solved=sorted(self._solved_stations),
+        )
 
     def _start_camera(self, spec: str) -> None:
         """Open the camera layer one registration describes.
@@ -1253,6 +1269,7 @@ class Controller:
                 self.site,
                 robots=self.settings.simulator_robots,
                 area=self.settings.simulator_area,
+                calibrated=_station_mask(self._solved_stations),
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()
