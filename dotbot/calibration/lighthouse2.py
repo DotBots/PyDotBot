@@ -746,37 +746,31 @@ def resolve_calibration_spec(
     spec_lower = spec.lower()
     spec_slug = slug_tag(spec).lower()
 
+    def unique(kind: str, matches: list[Path], files: dict) -> Optional[Path]:
+        if len(matches) > 1:
+            lines = [
+                f"  {files[path].get('id', '?')}  "
+                f"{files[path].get(created_key, '?')}  {path}"
+                for path in matches
+            ]
+            raise ValueError(
+                f"{what} {kind} {spec!r} matches several files:\n" + "\n".join(lines)
+            )
+        return matches[0] if matches else None
+
     for folder, prefix in folders:
         files = {path: metadata(path) for path in sorted(folder.glob(prefix + glob))}
-
-        def unique(kind: str, matches: list) -> Optional[Path]:
-            if len(matches) > 1:
-                lines = [
-                    f"  {files[path].get('id', '?')}  "
-                    f"{files[path].get(created_key, '?')}  {path}"
-                    for path in matches
-                ]
-                raise ValueError(
-                    f"{what} {kind} {spec!r} matches several files:\n"
-                    + "\n".join(lines)
-                )
-            return matches[0] if matches else None
-
-        found = unique(
-            "tag",
-            [
-                path
-                for path, data in files.items()
-                if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
-            ],
-        ) or unique(
-            "id prefix",
-            [
-                path
-                for path, data in files.items()
-                if str(data.get("id", "")).lower().startswith(spec_lower)
-            ],
-        )
+        tags = [
+            path
+            for path, data in files.items()
+            if str(data.get("tag", "")).lower() in {spec_lower, spec_slug} - {""}
+        ]
+        ids = [
+            path
+            for path, data in files.items()
+            if str(data.get("id", "")).lower().startswith(spec_lower)
+        ]
+        found = unique("tag", tags, files) or unique("id prefix", ids, files)
         if found is not None:
             return found
     searched = " or ".join(
