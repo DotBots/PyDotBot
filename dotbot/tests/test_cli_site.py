@@ -300,10 +300,33 @@ def test_a_pack_on_the_simulator_is_never_asked_about(runner, tmp_path, home):
     assert "Add site" not in result.output
 
 
+def _approved(pack):
+    from dotbot.site_packs import write_approval
+
+    write_approval(pack, "mqtts://argus.example:8883")
+    return pack
+
+
+def test_add_records_the_approved_broker(runner, tmp_path, home):
+    from dotbot.site_packs import read_approval
+
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    result = _invoke(runner, "site", "add", str(pack), input="y\n")
+    assert result.exit_code == 0, result.output
+    assert read_approval(home / "sites" / "arena") == "mqtts://argus.example:8883"
+    assert "send it DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS" in result.output
+
+
+def test_add_says_a_plain_mqtt_broker_never_gets_the_login(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena", '[connection]\nconn = "mqtt://lab:1883"\n')
+    result = _invoke(runner, "site", "add", str(pack), input="n\n")
+    assert "never send it DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS" in result.output
+
+
 def test_a_readd_that_changes_the_broker_asks_again_with_old_and_new(
     runner, tmp_path, home
 ):
-    _pack(home / "sites", "arena", _ARGUS)
+    _approved(_pack(home / "sites", "arena", _ARGUS))
     pack = _pack(
         tmp_path / "src",
         "arena",
@@ -321,11 +344,36 @@ def test_a_readd_that_changes_the_broker_asks_again_with_old_and_new(
 
 
 def test_a_readd_with_the_same_broker_is_not_asked_about(runner, tmp_path, home):
-    _pack(home / "sites", "arena", _ARGUS)
+    _approved(_pack(home / "sites", "arena", _ARGUS))
     pack = _pack(tmp_path / "src", "arena", _ARGUS)
     result = _invoke(runner, "site", "add", str(pack), "--force")
     assert result.exit_code == 0, result.output
     assert "Add site" not in result.output
+
+
+def test_a_broker_edited_in_place_is_asked_about_against_the_approved_one(
+    runner, tmp_path, home
+):
+    from dotbot.site_packs import read_approval
+
+    installed = _approved(_pack(home / "sites", "arena", _ARGUS))
+    toml = installed / "site.toml"
+    toml.write_text(toml.read_text().replace("argus", "evil"))
+    result = _invoke(runner, "site", "add", str(installed), "--force", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert (
+        "broker:    mqtts://argus.example:8883 -> mqtts://evil.example:8883"
+        in result.output
+    )
+    assert read_approval(installed) == "mqtts://evil.example:8883"
+
+
+def test_an_installed_pack_never_approved_is_asked_about(runner, tmp_path, home):
+    _pack(home / "sites", "arena", _ARGUS)
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    result = _invoke(runner, "site", "add", str(pack), "--force", input="n\n")
+    assert result.exit_code != 0
+    assert "names its connection" in result.output
 
 
 def test_add_use_with_no_config_creates_the_user_config(runner, tmp_path, home):

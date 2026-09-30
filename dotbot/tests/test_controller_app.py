@@ -147,56 +147,86 @@ def _arena_pack(tmp_path):
     return config_file
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
-@patch("dotbot.controller_app.asyncio.run")
-@patch("dotbot.controller_app.Controller")
-def test_run_controller_withholds_the_login_from_a_pack_chosen_broker(
-    controller, _asyncio_run, tmp_path, monkeypatch
-):
-    from dotbot.cli.main import cli
+def _installed_arena(tmp_path, monkeypatch, approved):
+    """A config whose site is a pack in ~/.dotbot/sites, approved for
+    `approved` (None: never approved)."""
+    from dotbot import site_packs
 
-    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
-    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
-    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
-    config_file = _arena_pack(tmp_path)
-    result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
-    assert result.exit_code == 0, result.output
-    settings = controller.call_args.args[0]
-    assert (settings.mqtt_username, settings.mqtt_password) == (None, None)
-    assert "DOTBOT_MQTT_HOST=argus.example" in result.output
+    user_sites = tmp_path / "home" / "sites"
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", user_sites)
+    pack = user_sites / "arena"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        '[connection]\nconn = "mqtts://argus.example:8883"\n'
+    )
+    if approved is not None:
+        site_packs.write_approval(pack, approved)
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text('site = "arena"\nswarm_id = "0A1B"\n')
+    return config_file, pack
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
 @pytest.mark.parametrize(
-    "args, bound",
+    "approved, why",
     [
-        (["--conn", "mqtts://argus.example:8883"], None),
-        ([], "argus.example"),
-        ("inline", None),
+        (None, "site arena's broker was never approved"),
+        (
+            "mqtts://old.example:8883",
+            "site arena's broker changed since you approved mqtts://old.example:8883",
+        ),
     ],
-    ids=["you named it", "DOTBOT_MQTT_HOST names it", "an inline site table"],
+    ids=["never approved", "changed since approval"],
 )
-def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
-    controller, _asyncio_run, tmp_path, monkeypatch, args, bound
+def test_run_controller_withholds_the_login_from_an_unapproved_broker(
+    controller, _asyncio_run, tmp_path, monkeypatch, approved, why
 ):
     from dotbot.cli.main import cli
 
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
-    if bound is None:
-        monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    config_file, pack = _installed_arena(tmp_path, monkeypatch, approved)
+    result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert (settings.mqtt_username, settings.mqtt_password) == (None, None)
+    assert why in result.output
+    assert f"dotbot site add --force {pack}" in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+@pytest.mark.parametrize(
+    "setup",
+    ["flag", "site_dirs", "approved", "inline"],
+    ids=["you named it", "your own site_dirs", "approved at site add", "inline table"],
+)
+def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
+    controller, _asyncio_run, tmp_path, monkeypatch, setup
+):
+    from dotbot.cli.main import cli
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    args = []
+    if setup == "approved":
+        config_file, _ = _installed_arena(
+            tmp_path, monkeypatch, "mqtts://argus.example:8883"
+        )
     else:
-        monkeypatch.setenv("DOTBOT_MQTT_HOST", bound)
-    config_file = _arena_pack(tmp_path)
-    if args == "inline":
-        args = []
+        config_file = _arena_pack(tmp_path)
+    if setup == "flag":
+        args = ["--conn", "mqtts://argus.example:8883"]
+    if setup == "inline":
         config_file.write_text('site = "arena"\nswarm_id = "0A1B"\n' + _ARENA)
     result = CliRunner().invoke(
         cli, ["-c", str(config_file), "run", "controller", *args]
     )
     assert result.exit_code == 0, result.output
+    assert "warning: not sending" not in result.output
     settings = controller.call_args.args[0]
     assert (settings.mqtt_username, settings.mqtt_password) == ("me", "secret")
 

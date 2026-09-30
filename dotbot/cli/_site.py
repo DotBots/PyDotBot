@@ -22,7 +22,7 @@ import click
 
 from dotbot.config import ConfigError, Resolved, SiteLayer
 from dotbot.site import SITE_DEFAULT, Site
-from dotbot.site_packs import SiteEntry, resolve_site_entry
+from dotbot.site_packs import SiteEntry, broker_trust, resolve_site_entry
 
 SITE_ENV = "DOTBOT_SITE"
 # Where the root group caches the active site, when no --site names another
@@ -68,9 +68,8 @@ class ActiveSite:
     def layer(self) -> SiteLayer:
         if self.entry is None:
             return SiteLayer(self.name)
-        return SiteLayer(
-            self.name, self.entry.table.connection, inline=self.entry.pack is None
-        )
+        trust, distrust = broker_trust(self.entry)
+        return SiteLayer(self.name, self.entry.table.connection, trust, distrust)
 
     def site(self) -> Site:
         return self.entry.site() if self.entry is not None else Site(name=self.name)

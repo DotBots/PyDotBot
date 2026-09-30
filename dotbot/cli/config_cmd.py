@@ -22,7 +22,7 @@ import tomlkit
 from dotbot import config as _config
 from dotbot.cli._site import active_site, config_label
 from dotbot.config import resolve_source
-from dotbot.mqtt_tls import HOST_ENV, USER_ENV, broker_credentials
+from dotbot.mqtt_tls import USER_ENV, broker_credentials
 from dotbot.site import SITE_DEFAULT, check_site_name
 
 _CONFIG_DOCS_URL = (
@@ -303,17 +303,16 @@ def _credentials(conn) -> dict:
     """What happens to the env's broker login, for `show`."""
     if os.environ.get(USER_ENV) is None:
         return {"set": False, "text": f"none ({USER_ENV} unset)"}
-    host = os.environ.get(HOST_ENV)
-    text = f"{USER_ENV} set" + (f", bound to {host}" if host else "")
-    decision = broker_credentials(conn.value, conn.user_set, conn.source)
+    decision = broker_credentials(conn)
+    text = f"{USER_ENV} set"
     if decision.withheld:
         text += f"; withheld: {decision.withheld}"
     elif decision.username is not None:
-        text += "; sent to this conn's broker"
+        text += f"; sent to this conn's broker: {decision.reason}"
     return {
         "set": True,
-        "bound_to": host,
         "sent": decision.username is not None,
+        "reason": decision.reason,
         "withheld": decision.withheld,
         "text": text,
     }

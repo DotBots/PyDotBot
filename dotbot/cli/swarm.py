@@ -90,7 +90,7 @@ def _settle_connection(ctx, args, swarmit_group) -> None:
         swarm_id = Resolved(given["swarm_id"], "flag", "--swarm-id")
     if sub is not None and args[sub] in _ACTING:
         click.echo(connection_banner(active_site(ctx), conn, swarm_id), err=True)
-    credentials = broker_credentials(conn.value, conn.user_set, conn.source)
+    credentials = broker_credentials(conn)
     if credentials.withheld:
         click.echo(f"warning: {credentials.withheld}", err=True)
         os.environ.pop(USER_ENV, None)

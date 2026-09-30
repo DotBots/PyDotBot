@@ -416,18 +416,19 @@ def test_resolve_source_hidden_names_the_shadowed_values():
     assert got.hidden == (("dotbot.toml", "1234"), ("site c405-arena", "5173"))
 
 
-@pytest.mark.parametrize("inline", [True, False], ids=["inline table", "site pack"])
-def test_only_an_inline_site_connection_counts_as_set_by_you(inline):
-    site = cfg.SiteLayer(SITE.name, SITE.connection, inline=inline)
+@pytest.mark.parametrize("trust", ["approved at site add", None])
+def test_a_site_connection_carries_the_sites_trust(trust):
+    site = cfg.SiteLayer(SITE.name, SITE.connection, trust, None if trust else "no")
     got = cfg.resolve_source("conn", site=site, environ={})
-    assert (got.kind, got.user_set) == ("site", inline)
+    assert (got.kind, got.trust) == ("site", trust)
+    assert got.site_distrust == (None if trust else "no")
 
 
 def test_your_file_beats_the_site_connection():
     config = cfg.DotbotConfig(conn="mqtts://mine:8883")
     got = cfg.resolve_source("conn", config=config, site=SITE, environ={})
     assert got.value == "mqtts://mine:8883"
-    assert got.user_set
+    assert got.trust == "you named it (the config file)"
     assert got.hidden == (("site c405-arena", "mqtts://site:8883"),)
 
 

@@ -76,7 +76,7 @@ def _swarmit_client(ctx, conn, swarm_id):
         and not swarm_r.value
     ):
         raise click.ClickException(missing_swarm_message(conn_r, site))
-    credentials = broker_credentials(conn_r.value, conn_r.user_set, conn_r.source)
+    credentials = broker_credentials(conn_r)
     if credentials.withheld:
         click.echo(f"warning: {credentials.withheld}", err=True)
 

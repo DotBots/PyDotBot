@@ -125,7 +125,7 @@ def cmd(ctx, port, mqtt_url, do_print):
     credentials = Credentials()
     if conn is not None:
         click.echo(connection_banner(active_site(ctx), conn), err=True)
-        credentials = broker_credentials(conn.value, conn.user_set, conn.source)
+        credentials = broker_credentials(conn)
         if credentials.withheld:
             click.echo(f"warning: {credentials.withheld}", err=True)
     _run_gateway(port, conn.value if conn else None, do_print, credentials)

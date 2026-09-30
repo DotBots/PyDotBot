@@ -449,12 +449,16 @@ def _coerce(raw: str, like: Any) -> Any:
 @dataclass(frozen=True)
 class SiteLayer:
     """The active site as a precedence layer: its name, its `[connection]`,
-    and whether that is an inline table in the person's own file rather than
-    a site pack."""
+    and whether its broker is trusted with the env's login.
+
+    `trust` says why it is (e.g. `approved at site add`); when it is None,
+    `distrust` says why not, as the clause of a warning.
+    """
 
     name: str
     connection: ConnectionSection | None = None
-    inline: bool = False
+    trust: str | None = None
+    distrust: str | None = None
 
 
 @dataclass(frozen=True)
@@ -464,23 +468,25 @@ class Resolved:
     `kind` is `flag`, `env`, `file`, `site` or `default`; `source` names the
     layer for a person (`--conn`, `DOTBOT_SWARM_ID`, `dotbot.toml [run]`,
     `site c405-arena`); `hidden` holds the (source, value) pairs of the lower
-    layers that set the key too, highest first. `inline` marks a `site`
-    value read from an inline `[sites.<name>]` table rather than a pack.
+    layers that set the key too, highest first. `site_trust` and
+    `site_distrust` carry the site layer's, for a `site` value.
     """
 
     value: Any
     kind: str
     source: str
     hidden: tuple[tuple[str, Any], ...] = ()
-    inline: bool = False
+    site_trust: str | None = None
+    site_distrust: str | None = None
 
     @property
-    def user_set(self) -> bool:
-        """True when the person set this value: a flag, the env or their own
-        file, an inline site table in it included."""
-        return self.kind in ("flag", "env", "file") or (
-            self.kind == "site" and self.inline
-        )
+    def trust(self) -> str | None:
+        """Why this value is trusted with the env's broker login, or None."""
+        if self.kind in ("flag", "env", "file"):
+            return f"you named it ({self.source})"
+        if self.kind == "site":
+            return self.site_trust
+        return None
 
 
 def _layers(
@@ -547,8 +553,9 @@ def resolve_source(
         return Resolved(default, "default", "the default")
     (kind, source, value), rest = found[0], found[1:]
     hidden = tuple((src, val) for _, src, val in rest)
-    inline = kind == "site" and site is not None and site.inline
-    return Resolved(value, kind, source, hidden, inline)
+    if kind == "site" and site is not None:
+        return Resolved(value, kind, source, hidden, site.trust, site.distrust)
+    return Resolved(value, kind, source, hidden)
 
 
 def resolve(

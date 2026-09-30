@@ -129,7 +129,10 @@ def test_config_show_names_each_source_and_what_it_hides(runner, tmp_path, monke
 
 
 def test_config_show_says_where_credentials_go(runner, tmp_path, monkeypatch):
-    pack = tmp_path / "sites" / "c405-arena"
+    from dotbot import site_packs
+
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", tmp_path / "user-sites")
+    pack = tmp_path / "user-sites" / "c405-arena"
     pack.mkdir(parents=True)
     (pack / "site.toml").write_text(
         '[connection]\nconn = "mqtts://argus.example:8883"\n'
@@ -137,15 +140,14 @@ def test_config_show_says_where_credentials_go(runner, tmp_path, monkeypatch):
     cfg = _write(tmp_path, 'site = "c405-arena"\nswarm_id = "1234"\n')
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
-    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
     result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
     assert "withheld" in result.output
-    assert "DOTBOT_MQTT_HOST=argus.example" in result.output
-    monkeypatch.setenv("DOTBOT_MQTT_HOST", "argus.example")
+    assert "site c405-arena's broker was never approved" in result.output
+    site_packs.write_approval(pack, "mqtts://argus.example:8883")
     result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
     assert (
-        "creds:     DOTBOT_MQTT_USER set, bound to argus.example; sent to this "
-        "conn's broker" in result.output
+        "creds:     DOTBOT_MQTT_USER set; sent to this conn's broker: approved "
+        "at site add" in result.output
     )
     assert "secret" not in result.output
 

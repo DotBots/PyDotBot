@@ -124,7 +124,7 @@ def _conn_to_settings(conn, swarm_id, sim_is_dotbot, conn_source=None, site=None
         raise click.ClickException(missing_swarm_message(source, site))
 
     if parsed.kind == "mqtt":
-        credentials = broker_credentials(conn, source.user_set, source.source)
+        credentials = broker_credentials(source)
         if credentials.withheld:
             click.echo(f"warning: {credentials.withheld}", err=True)
         settings = {

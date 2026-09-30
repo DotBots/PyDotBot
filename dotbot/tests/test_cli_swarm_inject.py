@@ -213,39 +213,42 @@ def _settle(args, obj, monkeypatch, capsys):
     return capsys.readouterr().err
 
 
-def test_credentials_withheld_from_a_pack_chosen_broker_leave_the_env(
+def _unapproved_obj(tmp_path, monkeypatch, **kw):
+    """The same site, from a pack in ~/.dotbot/sites that was never approved."""
+    from dotbot import site_packs
+
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", tmp_path / "sites")
+    obj = _pack_obj(tmp_path, **kw)
+    obj["config"] = DotbotConfig(site="arena", **kw)
+    return obj
+
+
+def test_credentials_withheld_from_an_unapproved_broker_leave_the_env(
     monkeypatch, capsys, tmp_path
 ):
     import os
 
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
-    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
-    err = _settle(["status"], _pack_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
-    assert "DOTBOT_MQTT_HOST=argus.example" in err
+    obj = _unapproved_obj(tmp_path, monkeypatch, swarm_id="A001")
+    err = _settle(["status"], obj, monkeypatch, capsys)
+    assert "site arena's broker was never approved" in err
     assert "DOTBOT_MQTT_USER" not in os.environ
     assert "DOTBOT_MQTT_PASS" not in os.environ
 
 
 @pytest.mark.parametrize(
-    "args, bound",
-    [
-        (["status"], True),
-        (["--conn", "mqtts://argus.example:8883", "status"], False),
-    ],
-    ids=["DOTBOT_MQTT_HOST", "--conn"],
+    "args",
+    [["status"], ["--conn", "mqtts://argus.example:8883", "status"]],
+    ids=["a pack in your site_dirs", "--conn"],
 )
-def test_credentials_kept_for_a_bound_or_named_broker(
-    monkeypatch, capsys, tmp_path, args, bound
+def test_credentials_kept_for_a_trusted_or_named_broker(
+    monkeypatch, capsys, tmp_path, args
 ):
     import os
 
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
-    if bound:
-        monkeypatch.setenv("DOTBOT_MQTT_HOST", "argus.example")
-    else:
-        monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
     err = _settle(args, _pack_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
     assert "warning" not in err
     assert os.environ["DOTBOT_MQTT_USER"] == "me"

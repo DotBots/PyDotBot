@@ -25,7 +25,14 @@ from dotbot import config as _config
 from dotbot.cli._site import SITE_ENV, active_site, config_label
 from dotbot.config import ConfigError
 from dotbot.site import PACK_CALIBRATIONS, check_site_name
-from dotbot.site_packs import PACK_FILE, read_pack, site_catalog, user_sites_dir
+from dotbot.site_packs import (
+    PACK_FILE,
+    read_approval,
+    read_pack,
+    site_catalog,
+    user_sites_dir,
+    write_approval,
+)
 
 _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
 
@@ -340,8 +347,9 @@ def _check_pack(folder: Path, name: str) -> None:
         raise click.ClickException(str(exc)) from exc
 
 
-def _install(folder: Path, target: Path) -> None:
-    """Copy the pack in `folder` to `target`, replacing any pack there.
+def _install(folder: Path, target: Path, approved: str | None) -> None:
+    """Copy the pack in `folder` to `target`, replacing any pack there, and
+    record `approved` as its approved broker.
 
     The copy lands in a hidden sibling of `target` first and is renamed into
     place, so a failure leaves whatever was at `target` as it was.
@@ -355,6 +363,8 @@ def _install(folder: Path, target: Path) -> None:
         calibrations = folder / PACK_CALIBRATIONS
         if calibrations.is_dir():
             shutil.copytree(calibrations, staging / PACK_CALIBRATIONS)
+        if approved is not None:
+            write_approval(staging, approved)
         if target.exists():
             old = staging.with_name(f"{staging.name}-old")
             target.rename(old)
@@ -367,6 +377,18 @@ def _install(folder: Path, target: Path) -> None:
         raise
     if aside is not None:
         shutil.rmtree(aside, ignore_errors=True)
+
+
+def _approved_connection(target: Path):
+    """The installed pack's (approved broker, swarm id), or None when it
+    has no approved broker to compare a re-add against."""
+    approved = read_approval(target)
+    if approved is None:
+        return None
+    try:
+        return approved, _connection(read_pack(target))[1]
+    except ConfigError:
+        return approved, None
 
 
 def _ask(question: str, from_stdin: bool) -> bool:
@@ -384,6 +406,17 @@ def _ask(question: str, from_stdin: bool) -> bool:
             "pass --yes to accept its connection"
         ) from exc
     return answer.strip().lower() in ("y", "yes")
+
+
+def _plain_remote(conn: str | None) -> bool:
+    """Whether `conn` is a plain mqtt:// broker on another machine."""
+    from urllib.parse import urlparse
+
+    from dotbot.mqtt_tls import LOCAL_HOSTS
+
+    if conn is None or not conn.strip().lower().startswith("mqtt://"):
+        return False
+    return urlparse(conn.strip()).hostname not in LOCAL_HOSTS
 
 
 def _confirm_connection(name, new, old, from_stdin) -> bool:
@@ -409,8 +442,15 @@ def _confirm_connection(name, new, old, from_stdin) -> bool:
                 f"  {label + ':':<10} {old[i] or '(none)'} -> {new[i] or '(none)'}",
                 err=True,
             )
+    login = (
+        "never send it DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS, as plain mqtt:// "
+        "would carry them unencrypted"
+        if _plain_remote(new[0])
+        else "send it DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS when they are set"
+    )
     click.echo(
-        f"Commands in {name} will connect there unless you set conn yourself.",
+        f"Commands in {name} will connect there unless you set conn yourself, "
+        f"and {login}.",
         err=True,
     )
     return _ask(f"Add site {name}?", from_stdin)
@@ -438,7 +478,9 @@ def add(ctx, source, force, use_, yes):
     SOURCE is a pack folder, a zip of one (as `site export` writes), `-` for
     such a zip on stdin, or a git URL whose repository is one. The folder's
     name is the site's name. A pack naming a broker shows it and asks first,
-    and asks again when a re-add changes it.
+    and asks again when a re-add changes it. Approving it trusts that broker
+    with DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS; if the installed pack's broker
+    later differs, the login is withheld until the site is added again.
     """
     with tempfile.TemporaryDirectory() as scratch:
         folder, name = _fetch(source, Path(scratch))
@@ -449,18 +491,12 @@ def add(ctx, source, force, use_, yes):
                 f"{target} already exists. Pass --force to replace it."
             )
         table = read_pack(folder)
-        old = None
-        if (target / PACK_FILE).is_file():
-            try:
-                old = _connection(read_pack(target))
-            except ConfigError:
-                old = None
-        if not yes and not _confirm_connection(
-            name, _connection(table), old, source == "-"
-        ):
+        old = _approved_connection(target)
+        new = _connection(table)
+        if not yes and not _confirm_connection(name, new, old, source == "-"):
             click.echo(f"Site {name} not added.", err=True)
             ctx.exit(1)
-        _install(folder, target)
+        _install(folder, target, new[0].strip() if new[0] else None)
     count = len(list((target / PACK_CALIBRATIONS).glob("*.toml")))
     click.echo(f"Added site {name} to {target} ({_files(count)})")
     if use_:
