@@ -340,7 +340,6 @@ def discover_config_path(
     *,
     environ: Mapping[str, str] = os.environ,
     start_dir: os.PathLike[str] | str | None = None,
-    include_user_file: bool = True,
 ) -> Path | None:
     """Find the config file to load, highest priority first.
 
@@ -348,8 +347,7 @@ def discover_config_path(
     2. `DOTBOT_CONFIG` env var (an explicit path by another name).
     3. A `dotbot.toml` in the current directory (the cwd only - no walking up to
        parent directories, so the active config is always unambiguous).
-    4. The user file `~/.dotbot/dotbot.toml`, unless `include_user_file` is
-       False.
+    4. The user file `~/.dotbot/dotbot.toml`.
     5. None (caller uses built-in defaults).
 
     Raises `ConfigError` when neither 1 nor 2 applies and the user file still
@@ -367,7 +365,7 @@ def discover_config_path(
     if candidate.is_file():
         return candidate
 
-    if include_user_file and USER_CONFIG_PATH.is_file():
+    if USER_CONFIG_PATH.is_file():
         return USER_CONFIG_PATH
     return None
 
