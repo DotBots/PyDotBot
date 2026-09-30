@@ -23,7 +23,7 @@ flash command fetches a missing release by itself, and **never builds**.
 | Name | What it is | Built from | `fw fetch` gets it from |
 |---|---|---|---|
 | `swarmit-sandbox` | the sandbox host of a DotBot: the swarmit bootloader and the network core | swarmit | the swarmit release |
-| `mari-gateway` | the swarm gateway of an nRF5340-DK: both Mari gateway cores | mari, per schedule too | the swarmit release, default schedule only: Mari's releases publish no firmware |
+| `mari-gateway` | the swarm gateway of an nRF5340-DK: both Mari gateway cores | mari, per schedule too | the swarmit release, with the per-schedule images when it ships them: Mari's releases publish no firmware |
 | an app, e.g. `spin` | a DotBot-firmware app: sandboxed (`.bin`, flashed over the air) or bare (`.hex`, flashed by cable) | DotBot-firmware | the DotBot-firmware release |
 
 With no name, `build` builds both roles and the apps a DotBot-firmware release
@@ -134,8 +134,16 @@ dotbot device flash mari-gateway --schedule big -f local --swarm-id 0100
 
 To select a schedule, the build temporarily edits
 `app/03app_gateway_net/main.c` in the mari source folder and restores it byte for
-byte afterwards, and the net image is always rebuilt in full. Releases carry
-only the default net image, so the schedule images always come from a build.
+byte afterwards, and the net image is always rebuilt in full. swarmit releases
+that include them ship the same four images under the same names, so a
+fetched release works too:
+
+```bash
+dotbot device flash mari-gateway --schedule big --swarm-id 0100
+```
+
+If the release you flash from lacks the schedule's image, the flash stops and
+suggests fetching the newest release or building the image.
 
 ## Boards × apps
 
@@ -189,7 +197,9 @@ dotbot fw fetch spin -f latest               # newest DotBot-firmware release
 dotbot fw fetch swarmit-sandbox -f 0.10.0    # a specific swarmit release
 ```
 
-No release carries the per-schedule gateway images: build those with
+swarmit releases that include them also ship the per-schedule gateway images
+(`03app_gateway_net-<schedule>.hex`), which `fetch` downloads with the rest.
+For a release without them, build them with
 `dotbot fw build mari-gateway --schedule`.
 
 The cache is user-level and shared across projects (override the location with

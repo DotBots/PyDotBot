@@ -100,8 +100,9 @@ def _release_dir(
         raise click.ClickException(
             f"{release_source} release {tag} does not publish "
             f"{', '.join(missing)}.\n"
-            f"  - build it: {_build_line(build, 'local')}, "
-            "then pass -f local"
+            f"  - try the newest release: dotbot fw fetch {build.split()[0]} "
+            "-f latest, then pass its tag as -f\n"
+            f"  - or build it: {_build_line(build, 'local')}, then pass -f local"
         )
     return root
 

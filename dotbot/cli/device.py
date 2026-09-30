@@ -111,8 +111,9 @@ _REFUSALS = {
         "mari-gateway: the Mari TSCH schedule, "
         f"{describe_schedules()}. It is compiled into the net-core image, so "
         "this selects the image `dotbot fw build mari-gateway --schedule` "
-        "builds; no release carries one. Omit it to flash the default net "
-        "image, with whichever schedule it was built with."
+        "builds, or the one a swarmit release ships under the same name. Omit "
+        "it to flash the default net image, with whichever schedule it was "
+        "built with."
     ),
 )
 @click.option(

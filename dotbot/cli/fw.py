@@ -169,8 +169,9 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
         "Build the mari-gateway net image for this TSCH schedule, as "
         "03app_gateway_net-<schedule>.hex, the file `dotbot device flash "
         "mari-gateway --schedule` reads (repeatable; 'all' builds every "
-        "schedule). Replaces the default net image in this run. No release "
-        "carries these images."
+        "schedule). Replaces the default net image in this run. swarmit "
+        "releases that include them ship these images too, so `dotbot fw "
+        "fetch mari-gateway` gets them."
     ),
 )
 @click.option(
@@ -469,9 +470,10 @@ def fetch(names, fw_version):
     is the installed swarmit package's version). Mari's own releases publish
     no firmware. APP is an app name: apps come from the DotBot-firmware
     release (every app it ships; its pin is the version pydotbot is tested
-    against). Default: both releases. No release carries the per-schedule
-    gateway images: build those with `dotbot fw build mari-gateway
-    --schedule`.
+    against). Default: both releases. swarmit releases that include them
+    also ship the per-schedule gateway images, which this gets with the rest;
+    for a release without them, `dotbot fw build mari-gateway --schedule`
+    builds them.
     """
     from dotbot import pydotbot_version
     from dotbot.cli._fw_sources import APP_RELEASE, ROLE_RELEASES

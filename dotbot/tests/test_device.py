@@ -939,30 +939,83 @@ def test_flash_role_missing_schedule_image_says_how_to_build_it(tmp_path, monkey
     assert "dotbot fw build mari-gateway --schedule tiny" in message
 
 
-def test_flash_role_schedule_from_a_release_says_releases_carry_none(
-    tmp_path, monkeypatch, fake_fetch, no_build
-):
-    """A swarmit release has only the default gateway net image; asking it for a
-    schedule points at the mari build without refetching the release."""
+GATEWAY_RELEASE_FILES = (
+    "03app_gateway_app-nrf5340-app.hex",
+    "03app_gateway_net-nrf5340-net.hex",
+)
+
+
+@pytest.fixture
+def gateway_hardware(monkeypatch):
+    """Stub the J-Link side of flash_role; returns what was programmed."""
+    programmed = {}
     monkeypatch.setattr(flash, "pick_last_jlink_snr", lambda: "100200300")
+    monkeypatch.setattr(
+        flash,
+        "flash_nrf_both_cores",
+        lambda app_hex, net_hex, **kw: programmed.update(app=app_hex, net=net_hex),
+    )
+    monkeypatch.setattr(flash, "flash_nrf_one_core", lambda **kw: None)
+    monkeypatch.setattr(flash, "read_net_id", lambda snr=None: "1234")
+    monkeypatch.setattr(flash, "read_device_id", lambda snr=None: "BDF2B04BC00D2725")
+    monkeypatch.setattr(flash, "reset_device", lambda snr=None: None)
+    monkeypatch.setattr(
+        flash, "create_config_hex", lambda dest, page: dest.write_text("")
+    )
+    return programmed
+
+
+@pytest.mark.parametrize("by", ["tag", "path"])
+def test_flash_mari_gateway_schedule_reads_the_image_a_release_ships(
+    runner, _no_nrfjprog_gate, gateway_hardware, tmp_path, monkeypatch, by
+):
+    monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        fetch, "fetch_assets", lambda *a: pytest.fail("a cached release refetched")
+    )
     release = _make_set(
-        tmp_path,
-        "0.9.0",
-        ("03app_gateway_app-nrf5340-app.hex", "03app_gateway_net-nrf5340-net.hex"),
+        tmp_path, "0.9.0", GATEWAY_RELEASE_FILES + ("03app_gateway_net-tiny.hex",)
     )
     (release / "manifest.json").write_text("{}")
-    with pytest.raises(click.ClickException) as exc:
-        flash.flash_role(
-            "gateway",
-            net_id=(0x1234, "1234"),
-            fw_version="0.9.0",
-            bin_dir=tmp_path,
-            schedule="big",
-        )
-    message = exc.value.format_message()
-    assert "swarmit release 0.9.0 does not publish 03app_gateway_net-big.hex" in message
-    assert "dotbot fw build mari-gateway --schedule big" in message
+    fw = "0.9.0" if by == "tag" else str(release)
+    result = runner.invoke(
+        device_cmd,
+        ["flash", "mari-gateway", "--swarm-id", "1234", "--schedule", "tiny", "-f", fw],
+    )
+    assert result.exit_code == 0, result.output
+    assert gateway_hardware["net"] == release / "03app_gateway_net-tiny.hex"
+
+
+def test_flash_mari_gateway_schedule_missing_from_the_release_says_so(
+    runner, _no_nrfjprog_gate, gateway_hardware, tmp_path, monkeypatch, fake_fetch
+):
+    """A release without the schedule's image stops before flashing, without
+    refetching it, and points at a newer release or a build."""
+    monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path))
+    release = _make_set(tmp_path, "0.9.0", GATEWAY_RELEASE_FILES)
+    (release / "manifest.json").write_text("{}")
+    result = runner.invoke(
+        device_cmd,
+        [
+            "flash",
+            "mari-gateway",
+            "--swarm-id",
+            "1234",
+            "--schedule",
+            "tiny",
+            "-f",
+            "0.9.0",
+        ],
+    )
+    assert result.exit_code != 0
+    assert (
+        "swarmit release 0.9.0 does not publish 03app_gateway_net-tiny.hex"
+        in result.output
+    )
+    assert "dotbot fw fetch mari-gateway -f latest" in result.output
+    assert "dotbot fw build mari-gateway --schedule tiny" in result.output
     assert fake_fetch.calls == []
+    assert gateway_hardware == {}
 
 
 def test_flash_role_programs_the_selected_schedule_image(tmp_path, monkeypatch):
@@ -1460,4 +1513,5 @@ def test_fetch_help_says_where_the_gateway_comes_from():
 
     help_text = " ".join(CliRunner().invoke(fw_cmd, ["fetch", "--help"]).output.split())
     assert "Mari's own releases publish no firmware" in help_text
+    assert "swarmit releases that include them also ship the per-schedule" in help_text
     assert "dotbot fw build mari-gateway --schedule" in help_text

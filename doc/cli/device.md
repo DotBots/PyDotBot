@@ -111,12 +111,15 @@ dotbot device flash mari-gateway --swarm-id 0100 --schedule big -f local --probe
 |---|---|---|
 | `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
 | `-f, --fw-version` | a swarmit release (it carries the gateway; Mari's releases carry no firmware), or a `mari` set | a swarmit release or set |
-| `--schedule` | the TSCH schedule image, built by `dotbot fw build mari-gateway --schedule` | - |
+| `--schedule` | the TSCH schedule image, from a swarmit release that ships it or built by `dotbot fw build mari-gateway --schedule` | - |
 | `--probe` | J-Link serial prefix | J-Link serial prefix |
 | `--lh2-calibration` | - | optional LH2 calibration file to bake in |
 
-The gateway's schedule is compiled into its net-core image, and releases carry
-only the default one, so `--schedule` reads a built set.
+The gateway's schedule is compiled into its net-core image, so `--schedule`
+picks `03app_gateway_net-<schedule>.hex` from the set. swarmit releases that
+include them ship all four; if the release has no image for that schedule, the
+flash says so and suggests `dotbot fw fetch mari-gateway -f latest` or
+`dotbot fw build mari-gateway --schedule <schedule>`.
 
 ## Which firmware: `-f`
 
