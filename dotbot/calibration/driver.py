@@ -162,7 +162,7 @@ class SessionDriver:
             return session.as_dict()
 
     async def save(self, tag: str = "") -> dict:
-        """Solve, write the schema 2 file, and report its id and path."""
+        """Solve, write the schema 3 file, and report its id and path."""
         async with self._lock:
             session = self._require()
             calibration = await asyncio.to_thread(session.save, tag or None)

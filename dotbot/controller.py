@@ -134,7 +134,7 @@ WAYPOINTS_REPORT_FIELDS = (
 
 
 def load_calibration(spec: str, site: Union[Site, str, None] = None):
-    """The schema 2 calibration `spec` names: a file path, a tag or an id prefix.
+    """The schema 3 calibration `spec` names: a file path, a tag or an id prefix.
 
     Never the newest file on disk: a controller runs on the calibration it
     was told to run on, so that two bots reporting the same id are known to

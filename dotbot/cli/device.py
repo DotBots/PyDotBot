@@ -121,7 +121,7 @@ _REFUSALS = {
     "calibration_path",
     type=click.Path(path_type=Path, dir_okay=False, exists=True),
     help=(
-        "swarmit-sandbox: an LH2 calibration file (schema 2) to bake into the "
+        "swarmit-sandbox: an LH2 calibration file (schema 3) to bake into the "
         "config page."
     ),
 )

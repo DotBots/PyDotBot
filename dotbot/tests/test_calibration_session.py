@@ -443,7 +443,7 @@ async def test_four_points_carry_a_residual_per_station_and_no_expected_error(
 
 
 @pytest.mark.asyncio
-async def test_save_writes_a_schema_2_file_under_the_site_directory(
+async def test_save_writes_a_schema_3_file_under_the_site_directory(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
@@ -456,7 +456,7 @@ async def test_save_writes_a_schema_2_file_under_the_site_directory(
     path = tmp_path / "calibrations" / "c405-arena" / saved["path"].split("/")[-1]
     assert path.exists()
     body = path.read_text(encoding="utf-8")
-    assert "schema_version = 2" in body
+    assert "schema_version = 3" in body
     assert f'id = "{saved["id"]}"' in body
     assert saved["id8"] == saved["id"][:8]
 

@@ -1,4 +1,4 @@
-"""Tests for the LH2 calibration solve, the schema 2 file and the identity.
+"""Tests for the LH2 calibration solve, the schema 3 file and the identity.
 
 Synthetic captures are built by inverting one chosen station matrix, so the
 correspondences are exactly consistent and the solver's own error is the only
@@ -124,7 +124,38 @@ def test_camera_points():
     counts = LH2Counts(lh_index=1, count1=49341, count2=85887)
     x, y = calculate_camera_point(counts)
     assert x == pytest.approx(-0.43435315273542)
-    assert y == pytest.approx(0.1512338330873567)
+    assert y == pytest.approx(0.16488390712555406)
+
+
+@pytest.mark.parametrize(
+    "fixed, varied",
+    [
+        ("count1", range(15000, 30000, 1000)),
+        ("count2", range(40000, 60000, 1000)),
+    ],
+)
+def test_one_sweep_plane_images_to_a_straight_line(fixed, varied):
+    """A sweep plane passes through the station, so a pinhole images it as a line.
+
+    Guards against dropping the 1 / cos(azimuth) factor, which bends the line.
+    """
+    anchor = 68590 if fixed == "count1" else 21963
+    points = []
+    for count in varied:
+        counts = (anchor, count) if fixed == "count1" else (count, anchor)
+        points.append(calculate_camera_point(LH2Counts(0, *counts)))
+    centred = np.array(points) - np.mean(points, axis=0)
+    singular = np.linalg.svd(centred, compute_uv=False)
+    assert singular[1] / singular[0] < 1e-9
+
+
+@pytest.mark.parametrize(
+    "cam_x, cam_y", [(0.0, 0.0), (-0.8, 0.6), (1.2, -0.9), (0.4, 1.1)]
+)
+def test_counts_for_camera_point_inverts_calculate_camera_point(cam_x, cam_y):
+    counts = counts_for_camera_point(cam_x, cam_y, 2)
+    back = calculate_camera_point(counts)
+    assert back == pytest.approx([cam_x, cam_y], abs=1e-12)
 
 
 # --- the solver -------------------------------------------------------------
@@ -219,12 +250,12 @@ def _saved(monkeypatch, tmp_path, tag=None, **kwargs):
     return manager, manager.save_calibration(tag=tag)
 
 
-def test_save_writes_schema_2_into_the_site_directory(monkeypatch, tmp_path):
+def test_save_writes_schema_3_into_the_site_directory(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
 
     assert path.parent == tmp_path / "calibrations" / "default"
     parsed = tomllib.loads(path.read_text())
-    assert parsed["schema_version"] == 2
+    assert parsed["schema_version"] == 3
     assert parsed["site"]["name"] == "default"
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
@@ -251,7 +282,7 @@ def test_save_writes_no_legacy_out_sidecar(monkeypatch, tmp_path):
     assert list(tmp_path.rglob("*.out")) == []
 
 
-def test_schema_2_round_trips_and_re_solves_to_the_same_matrices_and_id(
+def test_schema_3_round_trips_and_re_solves_to_the_same_matrices_and_id(
     monkeypatch, tmp_path
 ):
     manager, path = _saved(monkeypatch, tmp_path)
@@ -291,7 +322,7 @@ def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
 def test_points_from_written_as_a_string_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        "schema_version = 2\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        "schema_version = 3\n[[placement]]\nindex = 0\npoints_mm = []\n"
         'points_from = "over dev-corner"\n',
         encoding="utf-8",
     )
@@ -326,7 +357,7 @@ def test_schema_1_file_is_rejected(tmp_path):
 def test_a_file_carrying_a_frame_table_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        'schema_version = 2\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
+        'schema_version = 3\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
     )
     with pytest.raises(ValueError, match=r"\[frame\] is not a table"):
         read_calibration_file(path)
@@ -655,10 +686,10 @@ def test_slug_tag_rules():
     assert lighthouse2.slug_tag("***") == ""
 
 
-# The same schema 2 fixture swarmit's test_helpers.py carries, so the two
+# The same schema 3 fixture swarmit's test_helpers.py carries, so the two
 # packers cannot drift.
 FIXTURE_TOML = """\
-schema_version = 2
+schema_version = 3
 
 [metadata]
 created_at = "2026-09-10T09:12:00Z"
@@ -742,8 +773,8 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     )
     assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
-    assert message[76:84] == bytes.fromhex("ac893d2d85e3068c")
-    assert lighthouse2.message_site(message) == ("c405-arena", "ac893d2d85e3068c")
+    assert message[76:84] == bytes.fromhex("19ed0cdb738cdfe5")
+    assert lighthouse2.message_site(message) == ("c405-arena", "19ed0cdb738cdfe5")
 
 
 def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
