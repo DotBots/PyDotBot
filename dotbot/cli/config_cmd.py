@@ -229,9 +229,17 @@ def init(global_, force, conn, swarm_id, site, field_spec):
         from dotbot.cli._conn import ConnError, parse_connection
 
         try:
-            parse_connection(conn)
+            parsed = parse_connection(conn)
         except ConnError as exc:
             raise click.ClickException(f"invalid --conn: {exc}") from exc
+        if parsed.kind == "mqtt":
+            from pydantic import ValidationError
+
+            try:
+                _config.ConnectionSection(conn=conn)
+            except ValidationError as exc:
+                message = exc.errors()[0]["msg"].removeprefix("Value error, ")
+                raise click.ClickException(f"invalid --conn: {message}") from exc
 
     target = _config.USER_CONFIG_PATH if global_ else Path.cwd() / "dotbot.toml"
     if target.exists() and not force:

@@ -338,6 +338,16 @@ def test_config_init_keeps_a_serial_path_or_the_simulator_top_level(runner, conn
     assert loaded.sites["default"].connection is None
 
 
+def test_config_init_refuses_a_broker_url_carrying_a_login(runner):
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli, ["config", "init", "--conn", "mqtts://me:secret@broker.example:8883"]
+        )
+        assert result.exit_code != 0
+        assert "carries no credentials" in result.output
+        assert not Path("dotbot.toml").exists()
+
+
 def test_example_config_is_what_init_writes(runner):
     """The example config in the repository root is what `config init` writes."""
     example = Path(__file__).parents[2] / "dotbot.example.toml"
