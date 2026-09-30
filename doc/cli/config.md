@@ -58,13 +58,13 @@ dotbot config init --global                                    # ~/.dotbot/dotbo
 writes with no flags.
 
 > MQTT credentials are never file keys - set `DOTBOT_MQTT_USER` /
-> `DOTBOT_MQTT_PASS` in the environment, and `DOTBOT_MQTT_HOST` to the broker's
-> host when the broker comes from a site pack.
+> `DOTBOT_MQTT_PASS` in the environment.
 
 ## `show` / `path`
 
 `show` prints one line per value with the layer it came from, and under it any
-lower layer it hides; then where the broker credentials go; then the file's own
+lower layer it hides; then whether the broker credentials are sent, and why;
+then the file's own
 keys as TOML - only the keys actually set, not the full schema:
 
 ```text
@@ -74,8 +74,13 @@ site:      lab  from dotbot.toml  pack sites/lab
 conn:      mqtts://broker.lab.example:8883  from site lab
 swarm_id:  0A1B  from DOTBOT_SWARM_ID
            hides dotbot.toml swarm_id = "1234"
-creds:     DOTBOT_MQTT_USER set, bound to broker.lab.example; sent to this conn's broker
+creds:     DOTBOT_MQTT_USER set; sent to this conn's broker: a pack in your site_dirs (/home/me/lab/sites)
 ```
+
+The reason is one of `you named it (<where>)`, `approved at site add`, `a pack
+in your site_dirs (<folder>)`, `an inline site table of your own file` or `it
+runs on this machine`; a withheld login shows the warning instead
+([which broker gets the credentials](../reference/configuration.md#mqtt-credentials-are-env-only)).
 
 `--json` prints the same as JSON, for scripts. `path` prints just the file path
 (or notes that built-in defaults are in use). Both are read-only; there is no

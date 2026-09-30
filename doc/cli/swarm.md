@@ -79,8 +79,8 @@ dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 This writes `./dotbot.toml`; `dotbot swarm` discovers it from the current
 directory like the other `dotbot` commands (pass `--conn` / `--swarm-id` / `-c`
 to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
-`DOTBOT_MQTT_PASS`, and `DOTBOT_MQTT_HOST` to the broker's host when the broker
-comes from a site pack rather than from you. The commands that act on robots
+`DOTBOT_MQTT_PASS`; a site pack's broker gets them once you approved it at
+`dotbot site add`. The commands that act on robots
 (`flash`, `start`, `stop`, `reset`) first print one line naming the site, broker
 and swarm id they use and where each came from.
 

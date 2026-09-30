@@ -323,30 +323,34 @@ calibration's id.
 
 ## MQTT credentials are env-only
 
-MQTT username and password are read **only** from the environment, and tied to
-the broker they are for:
+MQTT username and password are read **only** from the environment:
 
 ```bash
 export DOTBOT_MQTT_USER=alice
 export DOTBOT_MQTT_PASS=…
-export DOTBOT_MQTT_HOST=broker.lab.example
 ```
 
 They are never file keys - don't put them in `dotbot.toml`, and don't commit
 them. Keep the broker URL in the file and the credentials in your environment
 (or a secret manager).
 
-A shared site pack must not quietly choose where your login goes, so the
-credentials go to a broker only when:
+A site pack must not quietly choose where your login goes, so the credentials
+go to a broker only when:
 
-- `DOTBOT_MQTT_HOST` names it, or
 - you named the broker yourself: a flag, an env var, or your own file (an
   inline `[sites.<name>.connection]` in it included), or
+- it is the broker of a site pack you approved at `dotbot site add` (the
+  question it asks before adding a pack that names a broker), or
+- it is the broker of a site pack in a folder of your own `site_dirs` outside
+  `~/.dotbot/sites/`, such as a `sites/` folder beside your `dotbot.toml`, or
 - it runs on this machine (`localhost`).
 
-They never go over plain `mqtt://` to another host. When they are withheld, a
-one-line warning says so and names the `DOTBOT_MQTT_HOST=<host>` that would
-allow it; `dotbot config show` says where they would go.
+`dotbot site add` records the broker you approved. If an installed pack's
+broker later differs from it, the credentials are withheld and a one-line
+warning names the `dotbot site add --force <pack>` that approves it again.
+
+They never go over plain `mqtt://` to another host. `dotbot config show` says
+whether they will be sent, and why.
 
 ## Inspecting the resolved config
 
@@ -410,6 +414,6 @@ headless       = true    # default is false; set true to suppress the browser (s
 [run.gateway]
 serial_port = "/dev/ttyACM0"
 
-# Note: MQTT credentials are env-only - DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
-# tied to a broker by DOTBOT_MQTT_HOST. Never a file key.
+# Note: MQTT credentials are env-only - DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.
+# Never a file key.
 ```

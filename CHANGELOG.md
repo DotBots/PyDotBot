@@ -69,8 +69,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   project's. A `~/.dotbot/config.toml` with no `dotbot.toml` beside it is
   refused with the rename to make.
 - **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
-  when `DOTBOT_MQTT_HOST` names it, you named the broker yourself (flag, env,
-  your file, an inline site table in it included) or it is local, and never over plain `mqtt://` to another host.
+  when you named it yourself (flag, env, your file, an inline site table in it
+  included), approved it at `dotbot site add`, it comes from a site pack in a
+  folder of your own `site_dirs`, or it is local; never over plain `mqtt://` to
+  another host. `site add` records the approved broker, and a pack whose broker
+  later differs gets no login until it is approved again.
 - `dotbot config show` prints where the site, `conn` and `swarm_id` each came
   from and what they hide, and where the credentials go (`--json` for
   scripts); the list of sites moved to `dotbot site list`.

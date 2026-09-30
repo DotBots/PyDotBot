@@ -55,13 +55,31 @@ asked to confirm, since commands in that site will connect there:
 Site pack lab names its connection:
   broker:    mqtts://broker.lab.example:8883
   swarm id:  (none; set swarm_id yourself)
-Commands in lab will connect there unless you set conn yourself.
+Commands in lab will connect there unless you set conn yourself, and send it DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS when they are set.
 Add site lab? [y/N]:
 ```
 
-A re-add that changes the broker or swarm id asks again, showing old and new. A
-pack with no connection is never asked about. When the pack comes in on stdin,
-the question goes to the terminal.
+Saying yes (or passing `--yes`) is also what trusts that broker with your MQTT
+login: from then on, commands in `lab` send it `DOTBOT_MQTT_USER` /
+`DOTBOT_MQTT_PASS` with nothing else to set. The approved broker is recorded
+beside the pack, in `~/.dotbot/sites/lab/.approved.toml`.
+
+A re-add that changes the broker or swarm id asks again, showing the approved
+broker and the new one. A pack with no connection is never asked about. When
+the pack comes in on stdin, the question goes to the terminal.
+
+If the installed pack's broker no longer matches the approved one (its
+`site.toml` was edited, or it was copied into `~/.dotbot/sites/` by hand), the
+login is withheld with a one-line warning naming the command that approves it
+again, which re-adds the pack in place and asks, old against new:
+
+```text
+warning: not sending DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS to evil.example: site lab's broker changed since you approved mqtts://broker.lab.example:8883; approve it with `dotbot site add --force /home/me/.dotbot/sites/lab`
+```
+
+A pack found in a folder of your own `site_dirs`, such as a `sites/` folder
+committed beside your `dotbot.toml`, needs no approval: you pointed your config
+at it, so it is trusted like the file itself.
 
 | Flag | Meaning |
 |---|---|
