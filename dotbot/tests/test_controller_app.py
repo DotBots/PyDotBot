@@ -141,6 +141,64 @@ def test_a_site_broker_with_no_swarm_id_names_the_site(tmp_path, monkeypatch):
     )
 
 
+def _arena_pack(tmp_path):
+    pack = tmp_path / "sites" / "arena"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        '[connection]\nconn = "mqtts://argus.example:8883"\n'
+    )
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text('site = "arena"\nsite_dirs = ["sites"]\nswarm_id = "0A1B"\n')
+    return config_file
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_withholds_the_login_from_a_pack_chosen_broker(
+    controller, _asyncio_run, tmp_path, monkeypatch
+):
+    from dotbot.cli.main import cli
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    config_file = _arena_pack(tmp_path)
+    result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert (settings.mqtt_username, settings.mqtt_password) == (None, None)
+    assert "DOTBOT_MQTT_HOST=argus.example" in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+@pytest.mark.parametrize(
+    "args, bound",
+    [(["--conn", "mqtts://argus.example:8883"], None), ([], "argus.example")],
+    ids=["you named it", "DOTBOT_MQTT_HOST names it"],
+)
+def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
+    controller, _asyncio_run, tmp_path, monkeypatch, args, bound
+):
+    from dotbot.cli.main import cli
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    if bound is None:
+        monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DOTBOT_MQTT_HOST", bound)
+    config_file = _arena_pack(tmp_path)
+    result = CliRunner().invoke(
+        cli, ["-c", str(config_file), "run", "controller", *args]
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert (settings.mqtt_username, settings.mqtt_password) == ("me", "secret")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
