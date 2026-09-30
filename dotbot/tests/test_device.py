@@ -1012,7 +1012,7 @@ def test_flash_mari_gateway_schedule_missing_from_the_release_says_so(
         "swarmit release 0.9.0 does not publish 03app_gateway_net-tiny.hex"
         in result.output
     )
-    assert "dotbot fw fetch mari-gateway -f latest" in result.output
+    assert "try the newest release: pass -f latest" in result.output
     assert "dotbot fw build mari-gateway --schedule tiny" in result.output
     assert fake_fetch.calls == []
     assert gateway_hardware == {}
@@ -1171,6 +1171,16 @@ def test_latest_resolves_to_the_tag_directory(tmp_path, fake_fetch, no_build):
     root, label = _resolve_swarmit("latest", tmp_path, required=SWARMIT_ROLE_FILES)
     assert (root, label) == (tmp_path / "swarmit-0.9.1", "0.9.1")
     assert not (tmp_path / "swarmit-latest").exists()
+
+
+def test_latest_missing_a_file_does_not_suggest_latest(tmp_path, fake_fetch, no_build):
+    fake_fetch.files = SWARMIT_ROLE_FILES[:1]
+    with pytest.raises(click.ClickException) as exc:
+        _resolve_swarmit("latest", tmp_path, required=SWARMIT_ROLE_FILES)
+    message = exc.value.format_message()
+    assert "swarmit release 0.9.1 does not publish" in message
+    assert "-f latest" not in message
+    assert "  - build it: dotbot fw build swarmit-sandbox" in message
 
 
 def test_a_named_set_is_read_from_the_cache_and_never_fetched(

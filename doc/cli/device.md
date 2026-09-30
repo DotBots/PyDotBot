@@ -118,7 +118,7 @@ dotbot device flash mari-gateway --swarm-id 0100 --schedule big -f local --probe
 The gateway's schedule is compiled into its net-core image, so `--schedule`
 picks `03app_gateway_net-<schedule>.hex` from the set. swarmit releases that
 include them ship all four; if the release has no image for that schedule, the
-flash says so and suggests `dotbot fw fetch mari-gateway -f latest` or
+flash says so and suggests `-f latest` or
 `dotbot fw build mari-gateway --schedule <schedule>`.
 
 ## Which firmware: `-f`

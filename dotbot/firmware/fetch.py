@@ -85,7 +85,13 @@ def _missing(root: Path, required) -> list[str]:
 
 
 def _release_dir(
-    release_source: str, tag: str, bin_dir: Path, required, build: str
+    release_source: str,
+    tag: str,
+    bin_dir: Path,
+    required,
+    build: str,
+    *,
+    suggest_latest: bool = True,
 ) -> Path:
     root = resolve_fw_root(bin_dir, release_source, tag)
     # A fetched release has a manifest; without one the directory is absent
@@ -97,12 +103,14 @@ def _release_dir(
         root = fetch_assets(release_source, tag, bin_dir)
     missing = _missing(root, required)
     if missing:
+        latest = (
+            "  - try the newest release: pass -f latest\n" if suggest_latest else ""
+        )
         raise click.ClickException(
             f"{release_source} release {tag} does not publish "
-            f"{', '.join(missing)}.\n"
-            f"  - try the newest release: dotbot fw fetch {build.split()[0]} "
-            "-f latest, then pass its tag as -f\n"
-            f"  - or build it: {_build_line(build, 'local')}, then pass -f local"
+            f"{', '.join(missing)}.\n{latest}"
+            f"  - {'or ' if latest else ''}build it: "
+            f"{_build_line(build, 'local')}, then pass -f local"
         )
     return root
 
@@ -134,8 +142,10 @@ def resolve_fw_dir(
     """
     rel = release_source or source
 
-    def release(tag: str) -> Path:
-        return _release_dir(rel, tag, bin_dir, required, build)
+    def release(tag: str, suggest_latest: bool = True) -> Path:
+        return _release_dir(
+            rel, tag, bin_dir, required, build, suggest_latest=suggest_latest
+        )
 
     if fw_version is None:
         tag = pinned_version(rel)
@@ -154,7 +164,7 @@ def resolve_fw_dir(
     if fw_version == "latest":
         tag = resolve_latest_version(rel)
         click.echo(f"[INFO] latest {rel} release: {tag}")
-        return release(tag), tag
+        return release(tag, suggest_latest=False), tag
     if is_release_tag(fw_version):
         return release(fw_version), fw_version
     root = resolve_fw_root(bin_dir, source, fw_version)
