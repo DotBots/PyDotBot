@@ -120,8 +120,8 @@ dotbot device flash-mari-gateway --probe 10  # flash the gateway
 dotbot device flash-swarmit-sandbox --probe 77  # the sandbox firmware - do this on each DotBot
 ```
 
-(`device flash-mari-gateway` / `flash-swarmit-sandbox` auto-fetch
-the firmware into `~/.dotbot/artifacts/` if it isn't already there.)
+(`device flash-mari-gateway` / `flash-swarmit-sandbox` fetch the pinned
+firmware into `~/.dotbot/artifacts/` if it isn't already there.)
 
 Now, run the gateway (the broker comes from your config):
 
@@ -150,7 +150,7 @@ Then, flash another experiment:
 
 ```bash
 dotbot swarm stop  # ensure all DotBots are in bootloader
-dotbot swarm flash rc-car -ys  # this firmware lets DotBots be remote-controlled
+dotbot swarm flash remote-control -ys  # this firmware lets DotBots be remote-controlled
 ```
 
 Observe and control your swarm from a web interface:
@@ -203,12 +203,14 @@ Full walkthrough - choosing the points and the cabled alternative - is in the
   the [controller guide][controller-doc].
 - **Build firmware from source** instead of `dotbot fw fetch` - needs
   [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/)
-  and a DotBot-firmware checkout:
+  and a checkout:
   ```bash
   git clone --recurse-submodules https://github.com/DotBots/DotBot-firmware.git
   export DOTBOT_FIRMWARE_REPO=$(pwd)/DotBot-firmware
+  dotbot fw build dotbot-firmware          # -> ~/.dotbot/artifacts/dotbot-firmware-local/
+  dotbot swarm flash spin -f local -ys     # flash your build instead of the release
   ```
-  then `dotbot fw build` / `dotbot fw artifacts` (see [`fw`][fw-doc]).
+  swarmit and mari build the same way (see [`fw`][fw-doc]).
 - **Everything else** - the full `dotbot` CLI (`fw` / `device` / `swarm` / `run`
   + `config`), the REST/WS and MQTT surfaces, and hardware notes: the
   [documentation][doc-link].

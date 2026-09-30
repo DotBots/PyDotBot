@@ -13,7 +13,7 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 ```text
 1. provision (once)   device flash-mari-gateway + device flash-swarmit-sandbox
 2. host bridge        run gateway          (UART <-> MQTT)
-3. build the payload  fw artifacts --sandbox  (or fw fetch)
+3. the payload       fw fetch  (or fw build dotbot-firmware)
 4. operate            swarm               flash | start | stop | status | monitor
 ```
 
@@ -25,8 +25,8 @@ USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
-dotbot device flash-mari-gateway      --swarm-id 1234 --probe 10 -f 0.8.0rc1   # a DK -> gateway, net id 0x1234
-dotbot device flash-swarmit-sandbox --swarm-id 1234 --probe 77 -f 0.8.0rc1   # each DotBot -> sandbox host
+dotbot device flash-mari-gateway    --swarm-id 1234 --probe 10   # a DK -> gateway, net id 0x1234
+dotbot device flash-swarmit-sandbox --swarm-id 1234 --probe 77   # each DotBot -> sandbox host
 ```
 
 ## 2. Start the host bridge
@@ -40,14 +40,14 @@ dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem...
 `run gateway` is the host *process*; `device flash-mari-gateway` flashed the
 *firmware* - same word, different objects.
 
-## 3. Build the OTA payload
+## 3. Get the OTA payload
 
-The OTA payload is a **sandbox** app - a TrustZone non-secure `.bin`. Build it,
-or fetch a pre-compiled release:
+The OTA payload is a **sandboxed** app - a TrustZone non-secure `.bin`. Fetch a
+release, or build your own:
 
 ```bash
-dotbot fw artifacts --sandbox          # builds -> ~/.dotbot/artifacts/dotbot-firmware-local/<app>-sandbox-<board>.bin
-dotbot fw fetch                        # or pull the pinned releases into ~/.dotbot/artifacts/<source>-<version>/
+dotbot fw fetch                        # the pinned releases -> ~/.dotbot/artifacts/<source>-<version>/
+dotbot fw build dotbot-firmware        # or build -> ~/.dotbot/artifacts/dotbot-firmware-local/<app>-sandbox-<board>.bin
 ```
 
 Sandbox apps include `dotbot`, `move`, `rgbled`, `spin`, `timer`. Artifact
@@ -98,16 +98,19 @@ To replace a running experiment: `stop`, then `flash ... -ys`.
 ### Flash by name
 
 `swarm flash` takes either a bundled app **name** or an explicit `.hex`/`.bin`
-**path**. A name resolves to the matching `<app>-sandbox-dotbot-v3.bin` in your
-artifacts cache (run `dotbot fw fetch` first); a path is flashed as-is. List
+**path**. A name resolves to the matching `<app>-sandbox-dotbot-v3.bin` in the
+dotbot-firmware set `-f` selects: the pinned release by default (fetched if
+missing), `-f local` for your own `dotbot fw build`, or any other value
+[`device`](device.md#which-firmware--f) takes. A path is flashed as-is. List
 the names with `dotbot swarm flash --list` (they're also summarized at the foot
 of `dotbot swarm flash --help`):
 
 | Name | Firmware | What it does |
 |---|---|---|
-| `rc-car` | `dotbot-sandbox-dotbot-v3.bin` | drive the DotBot from the UI / keyboard / joystick |
+| `remote-control` | `dotbot-sandbox-dotbot-v3.bin` | drive the DotBot from the UI / keyboard / joystick |
 | `spin` | `spin-sandbox-dotbot-v3.bin` | the DotBots spin in place |
 | `lights` | `rgbled-sandbox-dotbot-v3.bin` | the on-board RGB LED |
+| `calibrate` | `calibrate-sandbox-dotbot-v3.bin` | LH2 capture on the robot's own button |
 
 For another board or an app outside this list, pass the full `.bin` path.
 
@@ -116,6 +119,7 @@ For another board or an app outside this list, pass the full `.bin` path.
 | Flag | Meaning |
 |---|---|
 | `--list` | print the bundled-app names and exit |
+| `-f`, `--fw-version` | which dotbot-firmware set a bundled name comes from (default: the pinned release) |
 | `-y`, `--yes` | flash without the confirmation prompt |
 | `-s`, `--start` | start the app once flashed |
 | `-t`, `--ota-timeout` | seconds per OTA ACK (default `0.7`) |

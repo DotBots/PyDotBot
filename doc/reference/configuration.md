@@ -96,10 +96,15 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | Key | Meaning |
 |---|---|
 | `board` | Target board, e.g. `dotbot-v3`. |
-| `sandbox` | Build TrustZone sandbox apps (`.bin`) instead of bare apps. |
+| `bare` | Default to bare-metal apps (`.hex`) instead of sandboxed apps (`.bin`) on boards that have a sandbox; `--bare` / `--sandboxed` override it per run. |
 | `build_config` | `Debug` or `Release`. |
 | `segger_dir` | SEGGER Embedded Studio install path. |
-| `firmware_repo` | Path to your `DotBot-firmware` clone (so `fw build`/`artifacts` find it without `cd` or `DOTBOT_FIRMWARE_REPO`). |
+| `firmware_repo` | Path to your `DotBot-firmware` checkout (env `DOTBOT_FIRMWARE_REPO`). Default: `repos/DotBot-firmware` next to this file. |
+| `swarmit_repo` | Path to your `swarmit` checkout (env `DOTBOT_SWARMIT_REPO`). Default: `repos/swarmit` next to this file. |
+| `mari_repo` | Path to your `mari` checkout (env `DOTBOT_MARI_REPO`). Default: `repos/mari` next to this file. |
+
+A relative checkout path resolves against the config file that sets it;
+`dotbot fw build <source> --checkout <path>` overrides it for one run.
 
 `[device]` - one cabled device (`dotbot device`):
 
@@ -366,7 +371,7 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 # Firmware-artifact builds (dotbot fw).
 [fw]
 board        = "dotbot-v3"
-sandbox      = false
+bare         = false
 build_config = "Release"
 # segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.22a"
 
