@@ -83,4 +83,3 @@ def test_env_beats_config(runner, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-env"
-
