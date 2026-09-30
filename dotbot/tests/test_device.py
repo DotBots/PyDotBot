@@ -1082,7 +1082,7 @@ def no_build(monkeypatch):
         raise AssertionError("a flash command started a build")
 
     monkeypatch.setattr("dotbot.cli._fw_helpers.run_make", boom)
-    monkeypatch.setattr("dotbot.cli._fw_sources.run_embuild", boom)
+    monkeypatch.setattr("dotbot.cli._fw_sources._execute", boom)
 
 
 @pytest.fixture

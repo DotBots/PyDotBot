@@ -11,7 +11,8 @@ set, under the same release file names:
 
 - `fetch [ROLE|APP]...` downloads a release into `<release>-<tag>/`.
 - `build [ROLE|APP]...` builds from local source folders (DotBot-firmware,
-  swarmit, mari) via SES (`emBuild`) and copies the result into
+  swarmit, mari) through each one's Makefile, SES underneath, and copies the
+  result into
   `<source>-<name>/` (`local` unless `--as NAME`), with a `manifest.json`
   recording the source folder, git sha and file hashes.
 
@@ -116,7 +117,10 @@ def _verbose_option(f):
         "--verbose",
         is_flag=True,
         default=False,
-        help="Show full SEGGER Embedded Studio `-verbose -echo` output.",
+        help=(
+            "Show the full build output as it runs. Otherwise the output of a "
+            "failing swarmit or mari build is shown at the end."
+        ),
     )(f)
 
 
@@ -201,7 +205,10 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     "--rebuild",
     is_flag=True,
     default=False,
-    help="Force full rebuild (pass `-rebuild` to emBuild). Default: incremental.",
+    help=(
+        "Apps: force a full rebuild. Default: incremental. The swarmit and "
+        "mari Makefiles always rebuild in full."
+    ),
 )
 @click.option(
     "--print-path",
@@ -300,13 +307,13 @@ def build(
                 continue
             src_repo = _source_repo(source, path, explicit)
             selection = list(parts) or None
-            steps = fs.swarmit_steps(src_repo, target, cfg, selection)
-            files = [fs.collected_name(step) for step in steps]
+            plan = fs.swarmit_plan(src_repo, target, cfg, selection)
+            files = [f.name for f in plan.outputs]
             planned.append((source, src_repo, cfg, target, files, selection))
         elif source == "mari":
             src_repo = _source_repo(source, path, explicit)
-            steps = fs.mari_steps(src_repo, cfg, schedule_names)
-            files = [fs.collected_name(step) for step in steps]
+            plan = fs.mari_plan(src_repo, cfg, schedule_names)
+            files = [f.name for f in plan.outputs]
             planned.append((source, src_repo, cfg, fs.MARI_GATEWAY_BOARD, files, None))
         else:
             src_repo = _source_repo(source, path, explicit)
@@ -323,10 +330,10 @@ def build(
                 click.echo(str(out / name))
         return
 
-    mode = "rebuild" if rebuild else "incremental"
     copied: list[Path] = []
     t0 = time.perf_counter()
     for source, src_repo, cfg, board, _, selection in planned:
+        mode = "rebuild" if rebuild or source != APP_SOURCE else "incremental"
         click.echo(
             f"Building {_LABELS[source]} for {board} ({cfg}, {mode})...", err=True
         )
@@ -336,7 +343,6 @@ def build(
                 cfg,
                 parts=selection,
                 repo=src_repo,
-                rebuild=rebuild,
                 verbose=verbose,
             )
         elif source == "mari":
@@ -344,7 +350,6 @@ def build(
                 cfg,
                 schedules=schedule_names,
                 repo=src_repo,
-                rebuild=rebuild,
                 verbose=verbose,
             )
         else:

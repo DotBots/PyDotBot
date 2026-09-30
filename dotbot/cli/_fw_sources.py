@@ -12,8 +12,9 @@ What `dotbot fw build` takes, and the source folder each builds from:
 - `mari-gateway`: the Mari gateway (app + net cores) from mari, optionally
   one net-core image per TSCH schedule.
 
-swarmit and mari are built by calling emBuild on each `.emProject` directly
-(their Makefiles always pass `-rebuild`). SES names every output
+Each source is built through its own entry point: the swarmit and mari
+Makefiles (which always rebuild in full), and Mari's `build-schedules.sh`
+for the per-schedule gateway images. SES names every output
 `<project>-<BuildTarget>.<ext>`, which is also the release asset name, so
 collecting is a flat copy into the set directory
 `<artifacts>/<source>-<name>/`, next to a `manifest.json`.
@@ -23,18 +24,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
+import shlex
 import shutil
-import signal
 import subprocess
-import tempfile
-import threading
 import time
-from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 import click
 
@@ -52,41 +49,42 @@ APP_SOURCE = "dotbot-firmware"
 ROLE_RELEASES = {"swarmit-sandbox": "swarmit", "mari-gateway": "swarmit"}
 APP_RELEASE = "dotbot-firmware"
 
-# Apps left out of the default set and of help text; `-a <app>` still builds
-# them.
+# Apps left out of the default set and of help text; naming one still builds
+# it.
 LEGACY_APPS = frozenset({"lh2_calibration"})
 
 # Boards with a `swarmit-bootloader-<board>.emProject` that a release ships.
 SWARMIT_BOARDS = frozenset({"dotbot-v2", "dotbot-v3", "nrf5340dk"})
 
-# What `-a` selects inside swarmit-sandbox.
+# What `--part` selects inside swarmit-sandbox: swarmit make targets.
 SWARMIT_PARTS = ("bootloader", "netcore")
 
 # The board the Mari gateway images are built for.
 MARI_GATEWAY_BOARD = "nrf5340dk"
 
-# The line of `03app_gateway_net/main.c` that selects the gateway's schedule;
-# keep in step with Mari's build-schedules.sh, which edits the same line.
-_SCHEDULE_LINE_RE = re.compile(
-    rb"^(schedule_t\s+\*schedule_app\s*=\s*&)schedule_[a-z]+;", re.MULTILINE
-)
+
+@dataclass(frozen=True)
+class BuildCommand:
+    """One run of a source folder's own build entry point.
+
+    `env` is added to the environment, next to SEGGER_DIR.
+    """
+
+    argv: tuple[str, ...]
+    cwd: Path
+    label: str
+    env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
-class EmBuildStep:
-    """One emBuild invocation and the file it produces, relative to `cwd`.
+class BuildPlan:
+    """The commands that build a role, and the files they leave.
 
-    `schedule` names the TSCH schedule compiled into a gateway net image;
-    the output is then collected as `03app_gateway_net-<schedule>.hex`.
-    `always_rebuild` passes `-rebuild` even on an incremental run.
+    Each output is already named as its release asset.
     """
 
-    cwd: Path
-    emproject: str
-    project: str
-    output: Path
-    schedule: str | None = None
-    always_rebuild: bool = False
+    commands: list[BuildCommand]
+    outputs: list[Path]
 
 
 def set_dir(source: str, name: str, artifacts_root: Path) -> Path:
@@ -94,9 +92,9 @@ def set_dir(source: str, name: str, artifacts_root: Path) -> Path:
     return artifacts_root / f"{source}-{name}"
 
 
-def _exe(project_dir: str, build_target: str, name: str, config: str) -> Path:
+def _exe(project_dir: Path, build_target: str, name: str, config: str) -> Path:
     return (
-        Path(project_dir)
+        project_dir
         / "Output"
         / build_target
         / config
@@ -105,7 +103,7 @@ def _exe(project_dir: str, build_target: str, name: str, config: str) -> Path:
     )
 
 
-def _check_parts(parts: Iterable[str] | None) -> set[str]:
+def _check_parts(parts: Iterable[str] | None) -> list[str]:
     parts = set(parts or SWARMIT_PARTS)
     unknown = parts - set(SWARMIT_PARTS)
     if unknown:
@@ -113,19 +111,18 @@ def _check_parts(parts: Iterable[str] | None) -> set[str]:
             f"swarmit-sandbox has no part {', '.join(sorted(unknown))}. "
             f"Parts: {', '.join(SWARMIT_PARTS)}."
         )
-    return parts
+    return [part for part in SWARMIT_PARTS if part in parts]
 
 
 # --- swarmit ---------------------------------------------------------------
 
 
-def swarmit_steps(
+def swarmit_plan(
     repo: Path, board: str, config: str, parts: Iterable[str] | None = None
-) -> list[EmBuildStep]:
-    """The emBuild steps for the swarmit images of one board.
+) -> BuildPlan:
+    """`make bootloader netcore` in swarmit, or the make targets `parts` names.
 
-    `parts` narrows them to some of `SWARMIT_PARTS`; the board only matters
-    for the bootloader.
+    The board only matters for the bootloader.
     """
     parts = _check_parts(parts)
     if "bootloader" in parts and board not in SWARMIT_BOARDS:
@@ -133,66 +130,64 @@ def swarmit_steps(
             f"swarmit has no bootloader for board {board!r}. "
             f"Supported: {', '.join(sorted(SWARMIT_BOARDS))}."
         )
-    steps = []
-    if "bootloader" in parts:
-        steps.append(
-            EmBuildStep(
-                repo,
-                f"swarmit-bootloader-{board}.emProject",
-                "bootloader",
-                _exe("device/bootloader", board, "bootloader", config),
-            )
-        )
-    if "netcore" in parts:
-        steps.append(
-            EmBuildStep(
-                repo,
-                "swarmit-netcore.emProject",
-                "netcore",
-                _exe("device/network_core", "nrf5340-net", "netcore", config),
-            )
-        )
-    return steps
+    outputs = {
+        "bootloader": _exe(repo / "device/bootloader", board, "bootloader", config),
+        "netcore": _exe(repo / "device/network_core", "nrf5340-net", "netcore", config),
+    }
+    command = BuildCommand(
+        (
+            "make",
+            "-C",
+            str(repo),
+            *parts,
+            f"BUILD_TARGET={board}",
+            f"BUILD_CONFIG={config}",
+        ),
+        repo,
+        " ".join(parts),
+    )
+    return BuildPlan([command], [outputs[part] for part in parts])
 
 
 # --- mari --------------------------------------------------------------------
 
 
-def mari_steps(
-    repo: Path,
-    config: str,
-    schedules: Iterable[str] | None = None,
-) -> list[EmBuildStep]:
-    """The emBuild steps for the Mari gateway images.
+def mari_plan(
+    repo: Path, config: str, schedules: Iterable[str] | None = None
+) -> BuildPlan:
+    """`make gateway` in mari's firmware folder.
 
-    Without `schedules`, the app image and the net image with the schedule
-    `main.c` selects. With `schedules`, the app image and one net image per
-    schedule instead.
+    With `schedules`, `make gateway-app` and then Mari's `build-schedules.sh`
+    for those schedules instead, which stages one net image per schedule in
+    `firmware/Output/schedules/` under its release name.
     """
-    fw = repo / "firmware"
-    app = EmBuildStep(
-        fw,
-        "mari-gateway-app-nrf5340dk.emProject",
-        "03app_gateway_app",
-        _exe("app/03app_gateway_app", "nrf5340-app", "03app_gateway_app", config),
-    )
+    from dotbot.firmware.schedules import net_image_name
 
-    # Always a full rebuild: emBuild compares timestamps to the second, so a
-    # main.c edited or restored within a second of the last compile would
-    # otherwise link the previous schedule's object.
-    def net(schedule: str | None = None) -> EmBuildStep:
-        return EmBuildStep(
-            fw,
-            "mari-gateway-net-nrf5340dk.emProject",
-            "03app_gateway_net",
-            _exe("app/03app_gateway_net", "nrf5340-net", "03app_gateway_net", config),
-            schedule,
-            always_rebuild=True,
+    fw = repo / "firmware"
+    app = _exe(fw / "app/03app_gateway_app", "nrf5340-app", "03app_gateway_app", config)
+
+    def make(target: str) -> BuildCommand:
+        return BuildCommand(
+            ("make", "-C", str(fw), target, f"BUILD_CONFIG={config}"), fw, target
         )
 
+    schedules = list(schedules or ())
     if not schedules:
-        return [app, net()]
-    return [app] + [net(schedule) for schedule in schedules]
+        net = _exe(
+            fw / "app/03app_gateway_net", "nrf5340-net", "03app_gateway_net", config
+        )
+        return BuildPlan([make("gateway")], [app, net])
+    script = BuildCommand(
+        ("bash", str(fw / "build-schedules.sh"), *schedules),
+        fw,
+        f"gateway-net, schedule {' '.join(schedules)}",
+        {"BUILD_CONFIG": config},
+    )
+    staged = fw / "Output" / "schedules"
+    return BuildPlan(
+        [make("gateway-app"), script],
+        [app] + [staged / net_image_name(schedule) for schedule in schedules],
+    )
 
 
 def resolve_schedules(values: Iterable[str]) -> list[str]:
@@ -205,168 +200,61 @@ def resolve_schedules(values: Iterable[str]) -> list[str]:
     return [name for name in MARI_SCHEDULES if name in values]
 
 
-def collected_name(step: EmBuildStep) -> str:
-    """The file name `step`'s output is collected under."""
-    from dotbot.firmware.schedules import net_image_name
-
-    return net_image_name(step.schedule) if step.schedule else step.output.name
+# Lines of captured build output shown when a quiet build fails.
+_FAILURE_TAIL = 60
 
 
-def select_schedule(main_c: Path, schedule: str) -> None:
-    """Point the gateway's `schedule_app` at `schedule_<schedule>` in `main_c`."""
-    text = main_c.read_bytes()
-    new, count = _SCHEDULE_LINE_RE.subn(
-        rb"\g<1>schedule_" + schedule.encode() + b";", text
+def _execute(
+    argv: tuple[str, ...], cwd: Path, env: dict[str, str], capture: bool
+) -> tuple[int, str]:
+    """Run `argv`; return its exit code and, if `capture`, its combined output."""
+    if not capture:
+        return subprocess.call(argv, cwd=cwd, env=env), ""
+    result = subprocess.run(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        check=False,
     )
-    if count != 1:
-        raise click.ClickException(
-            f"Could not find the `schedule_t *schedule_app = &schedule_...;` line "
-            f"in {main_c}."
-        )
-    main_c.write_bytes(new)
+    return result.returncode, result.stdout
 
 
-def _raise_interrupt(signum, frame):
-    raise KeyboardInterrupt
+def run_plan(plan: BuildPlan, *, verbose: bool = False) -> list[Path]:
+    """Run `plan`'s commands in order; return its outputs.
 
-
-@contextmanager
-def _signals_unwind() -> Iterator[None]:
-    """Raise KeyboardInterrupt on SIGTERM and SIGHUP, so `finally` blocks run."""
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-    previous = {}
-    for name in ("SIGTERM", "SIGHUP"):
-        signum = getattr(signal, name, None)
-        if signum is not None:
-            previous[signum] = signal.signal(signum, _raise_interrupt)
-    try:
-        yield
-    finally:
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
-
-
-def _restore(main_c: Path, original: bytes) -> None:
-    """Write `original` back to `main_c`, with Ctrl-C ignored while it runs.
-
-    If the write fails, the original is saved to a temporary file and the
-    error names it.
+    With `verbose` the output streams through; otherwise only the tail of a
+    failing command's output is shown.
     """
-    in_main = threading.current_thread() is threading.main_thread()
-    sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) if in_main else None
-    try:
-        main_c.write_bytes(original)
-    except OSError as exc:
-        with tempfile.NamedTemporaryFile(
-            prefix="main.c.", suffix=".orig", delete=False
-        ) as backup:
-            backup.write(original)
-        raise click.ClickException(
-            f"Could not restore {main_c} ({exc}); the original is at {backup.name}."
-        ) from exc
-    finally:
-        if in_main:
-            signal.signal(signal.SIGINT, sigint)
-
-
-def run_embuild(
-    step: EmBuildStep, config: str, *, rebuild: bool = False, verbose: bool = False
-) -> float:
-    """Run emBuild for one step; return elapsed seconds."""
     segger = _fw_helpers.resolve_segger_dir()
-    embuild = segger / "bin" / "emBuild"
-    if not embuild.is_file():
+    if not (segger / "bin" / "emBuild").is_file():
         raise click.ClickException(
-            f"emBuild not found at {embuild}. Check that SEGGER_DIR points "
-            f"at a real SEGGER Embedded Studio install."
+            f"emBuild not found in {segger / 'bin'}. Check that SEGGER_DIR "
+            "points at a real SEGGER Embedded Studio install."
         )
-    cmd = [str(embuild), step.emproject, "-project", step.project, "-config", config]
-    if rebuild or step.always_rebuild:
-        cmd.append("-rebuild")
-    label = step.project + (f", schedule {step.schedule}" if step.schedule else "")
-    if verbose:
-        cmd += ["-verbose", "-echo"]
-        click.echo(f"$ (cd {step.cwd} && {' '.join(cmd)})", err=True)
-    else:
-        click.echo(f"  building {label} ({step.emproject})", err=True)
-    t0 = time.perf_counter()
-    rc = subprocess.call(
-        cmd,
-        cwd=step.cwd,
-        stdout=None if verbose else subprocess.DEVNULL,
-    )
-    elapsed = time.perf_counter() - t0
-    if rc != 0:
-        raise click.ClickException(
-            f"emBuild {label} exited {rc} after {elapsed:.1f}s "
-            "(rerun with -v for the compiler output)."
-        )
-    return elapsed
-
-
-def _check_emprojects(steps: list[EmBuildStep]) -> None:
-    for step in steps:
-        if not (step.cwd / step.emproject).is_file():
-            raise click.ClickException(f"{step.cwd / step.emproject} not found.")
-
-
-def run_steps(
-    steps: list[EmBuildStep],
-    config: str,
-    *,
-    rebuild: bool = False,
-    verbose: bool = False,
-) -> list[Path]:
-    """Build `steps` in order; return each output under its collected name.
-
-    A step with a schedule edits the gateway's `main.c` to select it, builds,
-    and stages the image as `firmware/Output/schedules/<collected name>` (the
-    place Mari's build-schedules.sh puts it). `main.c` is restored
-    byte-for-byte afterwards, even when a build fails or the run is
-    interrupted (Ctrl-C, SIGTERM, SIGHUP).
-    """
-    outputs: list[Path] = []
-    scheduled = [step for step in steps if step.schedule]
-    main_c = original = None
-    if scheduled:
-        main_c = scheduled[0].cwd / "app" / "03app_gateway_net" / "main.c"
-        original = main_c.read_bytes()
-    staged: list[Path] = []
-    with _signals_unwind():
-        try:
-            for step in steps:
-                if step.schedule:
-                    select_schedule(main_c, step.schedule)
-                built = _build_step(step, config, rebuild=rebuild, verbose=verbose)
-                if step.schedule:
-                    staged.append(built)
-                outputs.append(built)
-        finally:
-            if main_c is not None:
-                _restore(main_c, original)
-                # The restore makes main.c newer than the images built from
-                # it; stamp them again so they do not read as stale.
-                for path in staged:
-                    path.touch()
-    return outputs
-
-
-def _build_step(
-    step: EmBuildStep, config: str, *, rebuild: bool, verbose: bool
-) -> Path:
-    """Build one step; a scheduled image is staged under its collected name."""
-    run_embuild(step, config, rebuild=rebuild, verbose=verbose)
-    built = step.cwd / step.output
-    if not step.schedule:
-        return built
-    if not built.is_file():
-        raise click.ClickException(f"Build finished but {built} is missing.")
-    dest = step.cwd / "Output" / "schedules" / collected_name(step)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(built, dest)
-    return dest
+    for command in plan.commands:
+        extra = {"SEGGER_DIR": str(segger), **command.env}
+        env = {**_fw_helpers._make_env(segger), **command.env}
+        if verbose:
+            shown = " ".join(f"{k}={shlex.quote(v)}" for k, v in extra.items())
+            click.echo(f"$ {shown} {shlex.join(command.argv)}", err=True)
+        else:
+            click.echo(f"  building {command.label}", err=True)
+        t0 = time.perf_counter()
+        rc, output = _execute(command.argv, command.cwd, env, capture=not verbose)
+        elapsed = time.perf_counter() - t0
+        if rc != 0:
+            if output:
+                tail = output.rstrip().splitlines()[-_FAILURE_TAIL:]
+                click.echo("\n".join(tail), err=True)
+            raise click.ClickException(
+                f"Building {command.label} exited {rc} after {elapsed:.1f}s"
+                + ("." if verbose else " (rerun with -v for the full output).")
+            )
+    return plan.outputs
 
 
 def build_swarmit(
@@ -375,14 +263,11 @@ def build_swarmit(
     *,
     parts: Iterable[str] | None = None,
     repo: Path | None = None,
-    rebuild: bool = False,
     verbose: bool = False,
 ) -> list[Path]:
     """Build the swarmit images (or `parts` of them) for `board`."""
     repo = repo or _fw_helpers.resolve_swarmit_repo()
-    steps = swarmit_steps(repo, board, config, parts)
-    _check_emprojects(steps)
-    return run_steps(steps, config, rebuild=rebuild, verbose=verbose)
+    return run_plan(swarmit_plan(repo, board, config, parts), verbose=verbose)
 
 
 def build_mari(
@@ -390,14 +275,16 @@ def build_mari(
     *,
     schedules: Iterable[str] | None = None,
     repo: Path | None = None,
-    rebuild: bool = False,
     verbose: bool = False,
 ) -> list[Path]:
     """Build the Mari gateway images, one net image per schedule if given."""
     repo = repo or _fw_helpers.resolve_mari_repo()
-    steps = mari_steps(repo, config, schedules)
-    _check_emprojects(steps)
-    return run_steps(steps, config, rebuild=rebuild, verbose=verbose)
+    if schedules and not (repo / "firmware" / "build-schedules.sh").is_file():
+        raise click.ClickException(
+            f"{repo} has no firmware/build-schedules.sh, which builds the "
+            "per-schedule gateway images; update that mari checkout."
+        )
+    return run_plan(mari_plan(repo, config, schedules), verbose=verbose)
 
 
 # --- dotbot-firmware -------------------------------------------------------

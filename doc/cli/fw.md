@@ -97,8 +97,14 @@ their release file names (`bootloader-dotbot-v3.hex`,
 `03app_gateway_app-nrf5340-app.hex`, `spin-sandbox-dotbot-v3.bin`, ...) and
 records a `manifest.json` next to them: the source folder, its git sha, whether
 it had uncommitted changes, the build configuration and a sha256 per image.
-Builds are incremental; each file is reported as `new`, `changed` or
-`unchanged`.
+Each file is reported as `new`, `changed` or `unchanged`.
+
+Each source builds through its own entry point, SES underneath: apps through
+the DotBot-firmware Makefile, incrementally; `swarmit-sandbox` through
+`make bootloader netcore` in swarmit; `mari-gateway` through `make gateway` in
+mari's `firmware/`, and its schedule images through Mari's
+`firmware/build-schedules.sh`. The swarmit and mari Makefiles always rebuild
+in full. Their compiler output is shown only when a build fails, or with `-v`.
 
 | Flag | Meaning |
 |---|---|
@@ -110,9 +116,9 @@ Builds are incremental; each file is reported as `new`, `changed` or
 | `--path <folder>` | Build from this source folder for this run (every name must build from the same source) |
 | `--as <name>` | Name the set (default `local`): flash commands take it as `-f <name>` |
 | `--build-config Debug\|Release` | Default: `Debug` for the roles (what the swarmit release ships), `Release` for apps |
-| `--rebuild` | Force a full rebuild |
+| `--rebuild` | Apps: force a full rebuild (swarmit and mari always rebuild in full) |
 | `--print-path` | Print where each image would be collected, without building |
-| `-v, --verbose` | Full SES output |
+| `-v, --verbose` | Show the full build output as it runs |
 
 A flag that does not apply to anything being built is refused, e.g.
 `dotbot fw build swarmit-sandbox --schedule tiny` says `--schedule` only
@@ -132,9 +138,10 @@ dotbot fw build mari-gateway --schedule all  # 03app_gateway_net-{tiny,medium,bi
 dotbot device flash mari-gateway --schedule big -f local --swarm-id 0100
 ```
 
-To select a schedule, the build temporarily edits
-`app/03app_gateway_net/main.c` in the mari source folder and restores it byte for
-byte afterwards, and the net image is always rebuilt in full. swarmit releases
+`--schedule` runs Mari's `firmware/build-schedules.sh` with the schedules
+named, after `make gateway-app`. The script edits
+`app/03app_gateway_net/main.c` for each schedule and restores it byte for byte
+afterwards, so the mari source folder is left as it was. swarmit releases
 that include them ship the same four images under the same names, so a
 fetched release works too:
 

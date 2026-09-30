@@ -3,13 +3,12 @@
 
 """Tests for building firmware sets from local source folders (`fw build`).
 
-No SES and no real source folder: `make` and emBuild are stubbed, and the build
+No SES and no real source folder: the build commands are stubbed, and the build
 trees are tmp directories with the files SES would write.
 """
 
-import os
+import shlex
 import shutil
-import signal
 from pathlib import Path
 
 import click
@@ -29,10 +28,6 @@ MARI_NAMES = {
 # The .hex assets of the swarmit 0.10.0 release a dotbot-v3 + gateway bench
 # uses: the bootloader, the net core, and the Mari gateway it carries.
 SWARMIT_RELEASE_HEX = SWARMIT_NAMES | MARI_NAMES
-
-MAIN_C = """extern schedule_t schedule_tiny, schedule_medium, schedule_big, schedule_huge;
-schedule_t       *schedule_app = &schedule_huge;
-"""
 
 # What the fake Makefile reports, per BUILD_TARGET. The Makefile leaves the
 # legacy lh2_calibration out of its project list; an older checkout still
@@ -93,14 +88,7 @@ def swarmit_repo(isolated, monkeypatch):
 def mari_repo(isolated, monkeypatch):
     repo = isolated / "mari"
     fw = _repo(repo / "firmware")
-    for name in (
-        "mari-gateway-app-nrf5340dk.emProject",
-        "mari-gateway-net-nrf5340dk.emProject",
-    ):
-        (fw / name).write_text("")
-    main_c = fw / "app" / "03app_gateway_net" / "main.c"
-    main_c.parent.mkdir(parents=True)
-    main_c.write_text(MAIN_C)
+    (fw / "build-schedules.sh").write_text("# fake\n")
     monkeypatch.setenv("DOTBOT_FW_SOURCES_MARI", str(repo))
     return repo
 
@@ -152,48 +140,42 @@ def fake_make(monkeypatch):
 
 
 @pytest.fixture
-def fake_embuild(monkeypatch):
-    """Stub emBuild: record the command and write the step's output file."""
-    import subprocess
+def fake_build(monkeypatch):
+    """Stub the swarmit and mari entry points: record each command as
+    (cwd, argv, env) and write the files it would leave."""
+    from dotbot.firmware.schedules import net_image_name
 
     calls = []
-    # `subprocess` is one module object, so a `make` stub installed by
-    # `fake_make` is the same attribute; hand `make` commands back to it.
-    make_call = subprocess.call
 
-    def fake_call(cmd, cwd=None, **kw):
-        if cmd[0] == "make":
-            return make_call(cmd, cwd=cwd, **kw)
-        calls.append((Path(cwd), cmd))
-        config = cmd[cmd.index("-config") + 1]
-        project = cmd[cmd.index("-project") + 1]
-        if project in ("bootloader", "netcore"):
-            steps = fs.swarmit_steps(Path(cwd), "dotbot-v3", config)
+    def var(argv, name):
+        return next(a.split("=", 1)[1] for a in argv if a.startswith(f"{name}="))
+
+    def fake(argv, cwd, env, capture):
+        calls.append((Path(cwd), list(argv), env))
+        written = []
+        if argv[0] == "bash":
+            fw = Path(argv[1]).parent
+            for schedule in argv[2:]:
+                image = fw / "Output" / "schedules" / net_image_name(schedule)
+                written.append((image, f"net {schedule} {env['BUILD_CONFIG']}"))
         else:
-            steps = fs.mari_steps(Path(cwd).parent, config)
-        content = project
-        main_c = Path(cwd) / "app" / "03app_gateway_net" / "main.c"
-        if project == "03app_gateway_net":
-            content += " " + main_c.read_text().splitlines()[1].split("&")[1]
-        for step in steps:
-            if step.project == project and step.cwd == Path(cwd):
-                out = step.cwd / step.output
-                out.parent.mkdir(parents=True, exist_ok=True)
-                out.write_bytes(content.encode())
-        return 0
+            root = Path(argv[2])
+            config = var(argv, "BUILD_CONFIG")
+            targets = [a for a in argv[3:] if "=" not in a]
+            if (root / "build-schedules.sh").exists():
+                app, net = fs.mari_plan(root.parent, config).outputs
+                wanted = {"gateway": [app, net], "gateway-app": [app]}
+                written += [(p, p.stem) for t in targets for p in wanted[t]]
+            else:
+                plan = fs.swarmit_plan(root, var(argv, "BUILD_TARGET"), config, targets)
+                written += [(p, p.stem) for p in plan.outputs]
+        for path, content in written:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        return 0, "compiler output\n"
 
-    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", fake_call)
+    monkeypatch.setattr(fs, "_execute", fake)
     return calls
-
-
-@pytest.fixture
-def emprojects(swarmit_repo):
-    for name in (
-        "swarmit-bootloader-dotbot-v3.emProject",
-        "swarmit-netcore.emProject",
-    ):
-        (swarmit_repo / name).write_text("")
-    return swarmit_repo
 
 
 def _git_init(repo: Path) -> str:
@@ -314,43 +296,82 @@ def test_collect_errors_on_a_missing_output(tmp_path):
 
 
 def test_swarmit_outputs_carry_the_release_names_for_the_build_config(tmp_path):
-    steps = fs.swarmit_steps(tmp_path, "dotbot-v3", "Debug")
-    assert {s.output.name for s in steps} == SWARMIT_NAMES
-    assert all("Debug" in s.output.parts for s in steps)
+    plan = fs.swarmit_plan(tmp_path, "dotbot-v3", "Debug")
+    assert {p.name for p in plan.outputs} == SWARMIT_NAMES
+    assert all("Debug" in p.parts for p in plan.outputs)
+
+
+def test_swarmit_is_built_by_its_makefile(tmp_path):
+    (command,) = fs.swarmit_plan(tmp_path, "dotbot-v3", "Debug").commands
+    assert command.argv == (
+        "make",
+        "-C",
+        str(tmp_path),
+        "bootloader",
+        "netcore",
+        "BUILD_TARGET=dotbot-v3",
+        "BUILD_CONFIG=Debug",
+    )
 
 
 def test_build_and_flash_use_the_release_file_names(tmp_path):
     from dotbot.firmware.flash import DEVICE_ASSETS
     from dotbot.firmware.schedules import MARI_SCHEDULES, net_image_name
 
-    swarmit = fs.swarmit_steps(tmp_path, "dotbot-v3", "Debug")
-    mari = fs.mari_steps(tmp_path, "Debug")
-    built = {fs.collected_name(step) for step in swarmit + mari}
+    swarmit = fs.swarmit_plan(tmp_path, "dotbot-v3", "Debug").outputs
+    mari = fs.mari_plan(tmp_path, "Debug").outputs
+    built = {p.name for p in swarmit + mari}
     assert built == SWARMIT_RELEASE_HEX
     roles = DEVICE_ASSETS["dotbot-v3"], DEVICE_ASSETS["gateway"]
     assert {role[core] for role in roles for core in ("app", "net")} == built
-    scheduled = fs.mari_steps(tmp_path, "Debug", schedules=list(MARI_SCHEDULES))
-    assert [fs.collected_name(step) for step in scheduled[1:]] == [
+    scheduled = fs.mari_plan(tmp_path, "Debug", schedules=list(MARI_SCHEDULES))
+    assert [p.name for p in scheduled.outputs[1:]] == [
         net_image_name(name) for name in MARI_SCHEDULES
     ]
 
 
 def test_swarmit_rejects_a_board_without_bootloader(tmp_path):
     with pytest.raises(click.ClickException):
-        fs.swarmit_steps(tmp_path, "nrf5340dk-app", "Release")
+        fs.swarmit_plan(tmp_path, "nrf5340dk-app", "Release")
 
 
-def test_swarmit_parts_select_steps_and_swarmit_has_no_gateway(tmp_path):
-    steps = fs.swarmit_steps(tmp_path, "nrf5340dk-app", "Debug", ["netcore"])
-    assert [s.output.name for s in steps] == ["netcore-nrf5340-net.hex"]
+def test_swarmit_parts_select_make_targets_and_swarmit_has_no_gateway(tmp_path):
+    plan = fs.swarmit_plan(tmp_path, "nrf5340dk-app", "Debug", ["netcore"])
+    assert [p.name for p in plan.outputs] == ["netcore-nrf5340-net.hex"]
+    assert [a for a in plan.commands[0].argv[3:] if "=" not in a] == ["netcore"]
     with pytest.raises(click.ClickException, match="swarmit-sandbox has no part"):
-        fs.swarmit_steps(tmp_path, "dotbot-v3", "Debug", ["gateway"])
+        fs.swarmit_plan(tmp_path, "dotbot-v3", "Debug", ["gateway"])
 
 
-def test_mari_gateway_is_both_images_from_the_mari_firmware_dir(tmp_path):
-    steps = fs.mari_steps(tmp_path, "Debug")
-    assert {s.output.name for s in steps} == MARI_NAMES
-    assert {s.cwd for s in steps} == {tmp_path / "firmware"}
+def test_mari_gateway_is_make_gateway_in_the_mari_firmware_dir(tmp_path):
+    plan = fs.mari_plan(tmp_path, "Debug")
+    assert {p.name for p in plan.outputs} == MARI_NAMES
+    (command,) = plan.commands
+    assert command.argv == (
+        "make",
+        "-C",
+        str(tmp_path / "firmware"),
+        "gateway",
+        "BUILD_CONFIG=Debug",
+    )
+
+
+def test_mari_schedules_are_built_by_maris_script(tmp_path):
+    plan = fs.mari_plan(tmp_path, "Debug", ["tiny", "big"])
+    make, script = plan.commands
+    assert make.argv[3] == "gateway-app"
+    assert script.argv == (
+        "bash",
+        str(tmp_path / "firmware" / "build-schedules.sh"),
+        "tiny",
+        "big",
+    )
+    assert script.env == {"BUILD_CONFIG": "Debug"}
+    staged = tmp_path / "firmware" / "Output" / "schedules"
+    assert plan.outputs[1:] == [
+        staged / "03app_gateway_net-tiny.hex",
+        staged / "03app_gateway_net-big.hex",
+    ]
 
 
 def test_schedule_all_expands_in_ladder_order():
@@ -366,20 +387,29 @@ def test_schedule_all_expands_in_ladder_order():
 
 
 def test_build_swarmit_defaults_to_debug_into_the_local_set(
-    isolated, emprojects, fake_embuild
+    isolated, swarmit_repo, fake_build
 ):
     result = build("swarmit-sandbox")
     assert result.exit_code == 0, result.output
     assert "Building swarmit-sandbox for dotbot-v3" in result.output
     local = isolated / "cache" / "swarmit-local"
     assert {p.name for p in local.iterdir()} == SWARMIT_NAMES | {"manifest.json"}
-    cmds = [cmd for _, cmd in fake_embuild]
-    assert all(cmd[cmd.index("-config") + 1] == "Debug" for cmd in cmds)
-    assert not any("-rebuild" in cmd for cmd in cmds)
+    assert [argv for _, argv, _ in fake_build] == [
+        [
+            "make",
+            "-C",
+            str(swarmit_repo),
+            "bootloader",
+            "netcore",
+            "BUILD_TARGET=dotbot-v3",
+            "BUILD_CONFIG=Debug",
+        ]
+    ]
+    assert fake_build[0][2]["SEGGER_DIR"] == str(isolated / "segger")
 
 
 def test_build_mari_gateway_defaults_to_debug_into_the_mari_set(
-    isolated, mari_repo, fake_embuild
+    isolated, mari_repo, fake_build
 ):
     import json
 
@@ -387,17 +417,16 @@ def test_build_mari_gateway_defaults_to_debug_into_the_mari_set(
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
     assert {p.name for p in local.iterdir()} == MARI_NAMES | {"manifest.json"}
-    assert {cwd for cwd, _ in fake_embuild} == {mari_repo / "firmware"}
-    cmds = [cmd for _, cmd in fake_embuild]
-    assert all(cmd[cmd.index("-config") + 1] == "Debug" for cmd in cmds)
+    assert [argv[2:] for _, argv, _ in fake_build] == [
+        [str(mari_repo / "firmware"), "gateway", "BUILD_CONFIG=Debug"]
+    ]
     manifest = json.loads((local / "manifest.json").read_text())
     assert manifest["board"] == "nrf5340dk"
 
 
 def test_build_mari_schedule_builds_the_image_flash_reads(
-    isolated, mari_repo, fake_embuild
+    isolated, mari_repo, fake_build
 ):
-    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
     result = build("mari-gateway", "--schedule", "tiny")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
@@ -406,95 +435,62 @@ def test_build_mari_schedule_builds_the_image_flash_reads(
         "03app_gateway_net-tiny.hex",
         "manifest.json",
     }
-    assert (local / "03app_gateway_net-tiny.hex").read_text() == (
-        "03app_gateway_net schedule_tiny;"
-    )
-    staged = mari_repo / "firmware" / "Output" / "schedules"
-    assert (staged / "03app_gateway_net-tiny.hex").is_file()
-    assert main_c.read_text() == MAIN_C
+    assert (local / "03app_gateway_net-tiny.hex").read_text() == "net tiny Debug"
+    assert [argv[1:] for _, argv, _ in fake_build][-1] == [
+        str(mari_repo / "firmware" / "build-schedules.sh"),
+        "tiny",
+    ]
 
 
-def test_build_mari_schedule_all_builds_every_schedule(
-    isolated, mari_repo, fake_embuild
-):
+def test_build_mari_schedule_all_builds_every_schedule(isolated, mari_repo, fake_build):
     from dotbot.firmware.schedules import MARI_SCHEDULES, net_image_name
 
     result = build("mari-gateway", "--schedule", "all")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
     for name in MARI_SCHEDULES:
-        image = local / net_image_name(name)
-        assert image.read_text() == f"03app_gateway_net schedule_{name};"
+        assert (local / net_image_name(name)).read_text() == f"net {name} Debug"
     assert not (local / "03app_gateway_net-nrf5340-net.hex").exists()
+    assert fake_build[-1][1][2:] == list(MARI_SCHEDULES)
 
 
-def test_build_mari_schedule_restores_main_c_when_a_build_fails(
-    isolated, mari_repo, monkeypatch
-):
-    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
-    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", lambda *a, **k: 2)
-    result = build("mari-gateway", "--schedule", "big")
+def test_build_mari_schedule_needs_maris_script(isolated, mari_repo, fake_build):
+    (mari_repo / "firmware" / "build-schedules.sh").unlink()
+    result = build("mari-gateway", "--schedule", "tiny")
     assert result.exit_code != 0
-    assert main_c.read_text() == MAIN_C
+    assert "has no firmware/build-schedules.sh" in result.output
+    assert fake_build == []
 
 
-def test_mari_net_image_is_always_rebuilt(isolated, mari_repo, fake_embuild):
-    result = build("mari-gateway", "--schedule", "tiny", "--schedule", "big")
-    assert result.exit_code == 0, result.output
-    result = build("mari-gateway")
-    assert result.exit_code == 0, result.output
-    for _, cmd in fake_embuild:
-        net = cmd[cmd.index("-project") + 1] == "03app_gateway_net"
-        assert ("-rebuild" in cmd) == net
-
-
-# CRLF line ends and a non-UTF-8 byte: the restore must not normalise either.
-_MAIN_C_BYTES = MAIN_C.replace("\n", "\r\n").encode() + b"// \xe9\r\n"
-
-
-def test_build_mari_schedule_restores_main_c_on_ctrl_c(
-    isolated, mari_repo, monkeypatch
+def test_a_failing_build_shows_the_tail_of_its_output(
+    isolated, swarmit_repo, monkeypatch
 ):
-    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
-    main_c.write_bytes(_MAIN_C_BYTES)
+    output = "".join(f"line {i}\n" for i in range(100))
+    monkeypatch.setattr(fs, "_execute", lambda argv, cwd, env, capture: (2, output))
+    result = build("swarmit-sandbox")
+    assert result.exit_code != 0
+    assert "line 99" in result.output and "line 40" in result.output
+    assert "line 39" not in result.output
+    assert "Building bootloader netcore exited 2" in result.output
+    assert "rerun with -v" in result.output
+
+
+def test_verbose_streams_the_build_and_prints_the_command(
+    isolated, swarmit_repo, monkeypatch
+):
     seen = []
-
-    def interrupted(cmd, cwd=None, **kw):
-        if "03app_gateway_net" not in cmd:
-            return 0
-        seen.append(main_c.read_bytes())
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", interrupted)
-    with pytest.raises(KeyboardInterrupt):
-        fs.build_mari("Debug", schedules=["tiny"])
-    assert b"&schedule_tiny;" in seen[0]
-    assert main_c.read_bytes() == _MAIN_C_BYTES
+    monkeypatch.setattr(
+        fs,
+        "_execute",
+        lambda argv, cwd, env, capture: seen.append(capture) or (0, ""),
+    )
+    result = build("swarmit-sandbox", "-v")
+    assert seen == [False]
+    segger, repo = (shlex.quote(str(p)) for p in (isolated / "segger", swarmit_repo))
+    assert f"$ SEGGER_DIR={segger} make -C {repo} bootloader netcore" in result.output
 
 
-@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="POSIX signals")
-@pytest.mark.parametrize("signame", ["SIGTERM", "SIGHUP"])
-def test_build_mari_schedule_restores_main_c_on_termination(
-    isolated, mari_repo, monkeypatch, signame
-):
-    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
-    main_c.write_bytes(_MAIN_C_BYTES)
-    before = signal.getsignal(getattr(signal, signame))
-
-    def killed(cmd, cwd=None, **kw):
-        if "03app_gateway_net" in cmd:
-            assert b"&schedule_tiny;" in main_c.read_bytes()
-            os.kill(os.getpid(), getattr(signal, signame))
-        return 0
-
-    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", killed)
-    with pytest.raises(KeyboardInterrupt):
-        fs.build_mari("Debug", schedules=["tiny", "big"])
-    assert main_c.read_bytes() == _MAIN_C_BYTES
-    assert signal.getsignal(getattr(signal, signame)) == before
-
-
-def test_build_schedule_without_mari_gateway_errors(isolated, emprojects):
+def test_build_schedule_without_mari_gateway_errors(isolated, swarmit_repo):
     result = build("swarmit-sandbox", "--schedule", "tiny")
     assert result.exit_code != 0
     assert "--schedule only applies to mari-gateway" in result.output
@@ -524,7 +520,7 @@ def test_build_bare_on_a_role_only_errors(isolated):
 
 
 def test_build_bare_from_config_does_not_refuse_a_role(
-    isolated, emprojects, fake_embuild
+    isolated, swarmit_repo, fake_build
 ):
     cfg = DotbotConfig.model_validate({"fw": {"bare": True}})
     result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
@@ -537,14 +533,10 @@ def test_build_schedule_rejects_an_unknown_name(isolated):
     assert "gigantic" in result.output
 
 
-def test_build_swarmit_honors_build_config_and_rebuild(
-    isolated, emprojects, fake_embuild
-):
+def test_build_swarmit_honors_build_config(isolated, swarmit_repo, fake_build):
     result = build("swarmit-sandbox", "--build-config", "Release", "--rebuild")
     assert result.exit_code == 0, result.output
-    cmds = [cmd for _, cmd in fake_embuild]
-    assert all(cmd[cmd.index("-config") + 1] == "Release" for cmd in cmds)
-    assert all("-rebuild" in cmd for cmd in cmds)
+    assert all("BUILD_CONFIG=Release" in argv for _, argv, _ in fake_build)
 
 
 def test_build_mari_gateway_without_a_source_says_where_to_put_it(isolated):
@@ -590,7 +582,7 @@ def test_build_an_app_by_name(isolated, firmware_repo, fake_make):
 
 
 def test_build_swarmit_sandbox_part(
-    isolated, firmware_repo, emprojects, fake_make, fake_embuild
+    isolated, firmware_repo, swarmit_repo, fake_make, fake_build
 ):
     result = build("swarmit-sandbox", "-a", "bootloader")
     assert result.exit_code == 0, result.output
@@ -611,7 +603,7 @@ def test_build_unknown_app_errors(isolated, firmware_repo, fake_make):
 
 
 def test_build_roles_and_apps_together(
-    isolated, firmware_repo, emprojects, mari_repo, fake_make, fake_embuild
+    isolated, firmware_repo, swarmit_repo, mari_repo, fake_make, fake_build
 ):
     result = build("calibrate", "swarmit-sandbox", "mari-gateway")
     assert result.exit_code == 0, result.output
@@ -625,7 +617,7 @@ def test_build_roles_and_apps_together(
 
 
 def test_build_default_builds_every_source(
-    isolated, firmware_repo, emprojects, mari_repo, fake_make, fake_embuild
+    isolated, firmware_repo, swarmit_repo, mari_repo, fake_make, fake_build
 ):
     result = build()
     assert result.exit_code == 0, result.output
@@ -635,7 +627,7 @@ def test_build_default_builds_every_source(
 
 
 def test_build_default_skips_swarmit_on_a_board_without_bootloader(
-    isolated, firmware_repo, emprojects, mari_repo, fake_make
+    isolated, firmware_repo, swarmit_repo, mari_repo, fake_make
 ):
     PROJECTS["nrf52840dk"] = ["dotbot"]
     try:
@@ -648,7 +640,7 @@ def test_build_default_skips_swarmit_on_a_board_without_bootloader(
 
 
 def test_build_print_path_covers_every_source_without_building(
-    isolated, firmware_repo, emprojects, mari_repo, fake_make, fake_embuild
+    isolated, firmware_repo, swarmit_repo, mari_repo, fake_make, fake_build
 ):
     result = build("--print-path", "--schedule", "huge")
     assert result.exit_code == 0, result.output
@@ -660,7 +652,7 @@ def test_build_print_path_covers_every_source_without_building(
         str(cache / "dotbot-firmware-local" / "calibrate-sandbox-dotbot-v3.bin")
         in lines
     )
-    assert fake_make == [] and fake_embuild == []
+    assert fake_make == [] and fake_build == []
 
 
 def test_build_print_path_reflects_config_board(isolated, firmware_repo, fake_make):
@@ -679,13 +671,12 @@ def test_build_print_path_reflects_config_board(isolated, firmware_repo, fake_ma
 
 
 def test_build_config_key_overrides_both_source_defaults(
-    isolated, firmware_repo, emprojects, fake_make, fake_embuild
+    isolated, firmware_repo, swarmit_repo, fake_make, fake_build
 ):
     cfg = DotbotConfig.model_validate({"fw": {"build_config": "Release"}})
     result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
     assert result.exit_code == 0, result.output
-    cmds = [cmd for _, cmd in fake_embuild]
-    assert all(cmd[cmd.index("-config") + 1] == "Release" for cmd in cmds)
+    assert all("BUILD_CONFIG=Release" in argv for _, argv, _ in fake_build)
 
 
 def test_build_reports_new_unchanged_and_changed(isolated, firmware_repo, fake_make):
@@ -700,19 +691,19 @@ def test_build_reports_new_unchanged_and_changed(isolated, firmware_repo, fake_m
 
 
 def test_path_and_as_build_a_named_set_from_another_folder(
-    isolated, emprojects, fake_embuild, monkeypatch
+    isolated, swarmit_repo, fake_build, monkeypatch
 ):
     import json
 
     other = isolated / "other-swarmit"
-    emprojects.rename(other)
+    swarmit_repo.rename(other)
     monkeypatch.setenv("DOTBOT_FW_SOURCES_SWARMIT", str(isolated / "gone"))
     sha = _git_init(other)
     result = build("swarmit-sandbox", "--path", str(other), "--as", "test-set")
     assert result.exit_code == 0, result.output
     out = isolated / "cache" / "swarmit-test-set"
     assert not (isolated / "cache" / "swarmit-local").exists()
-    assert {cwd for cwd, _ in fake_embuild} == {other}
+    assert {cwd for cwd, _, _ in fake_build} == {other}
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["kind"] == "build"
     assert manifest["source"] == "swarmit"
@@ -732,11 +723,11 @@ def test_path_and_as_build_a_named_set_from_another_folder(
     assert entry["git_sha"] == sha
 
 
-def test_manifest_flags_a_dirty_checkout(isolated, emprojects, fake_embuild):
+def test_manifest_flags_a_dirty_checkout(isolated, swarmit_repo, fake_build):
     import json
 
-    _git_init(emprojects)
-    (emprojects / "untracked.c").write_text("")
+    _git_init(swarmit_repo)
+    (swarmit_repo / "untracked.c").write_text("")
     assert build("swarmit-sandbox").exit_code == 0
     manifest = json.loads(
         (isolated / "cache" / "swarmit-local" / "manifest.json").read_text()
@@ -761,19 +752,19 @@ def test_manifest_keeps_files_from_an_earlier_build_of_the_set(
     assert manifest["git_sha"] is None  # not a git checkout
 
 
-def test_path_builds_mari_gateway_from_that_tree(isolated, mari_repo, fake_embuild):
+def test_path_builds_mari_gateway_from_that_tree(isolated, mari_repo, fake_build):
     other = isolated / "wt-mari"
     mari_repo.rename(other)
     result = build("mari-gateway", "--path", str(other))
     assert result.exit_code == 0, result.output
-    assert {cwd for cwd, _ in fake_embuild} == {other / "firmware"}
+    assert {cwd for cwd, _, _ in fake_build} == {other / "firmware"}
 
 
-def test_path_must_be_a_folder_of_that_source(isolated, mari_repo, fake_embuild):
+def test_path_must_be_a_folder_of_that_source(isolated, mari_repo, fake_build):
     result = build("mari-gateway", "--path", str(mari_repo / "firmware"))
     assert result.exit_code != 0
     assert "is not a mari source folder: it has no firmware/Makefile" in result.output
-    assert fake_embuild == []
+    assert fake_build == []
 
 
 def test_default_build_says_what_can_be_named(isolated, firmware_repo, fake_make):
