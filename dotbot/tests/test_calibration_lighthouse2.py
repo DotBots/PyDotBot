@@ -114,6 +114,12 @@ def _consistent_placement(camera_points, station=0, reads=1, jitter_mm=0.0, seed
 # --- the camera model -------------------------------------------------------
 
 
+def test_rotor_periods_are_whole_thousands():
+    """Guards the mode 14 period against the 901900 typo."""
+    assert lighthouse2.LH_PERIODS[13] == 901000
+    assert all(period % 1000 == 0 for period in lighthouse2.LH_PERIODS)
+
+
 def test_camera_points():
     counts = LH2Counts(lh_index=1, count1=49341, count2=85887)
     x, y = calculate_camera_point(counts)
