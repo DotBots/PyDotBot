@@ -47,9 +47,6 @@ def test_main(run, version, _):
 _VIRTUAL = """
 site = "virtual-lab"
 
-[sites.virtual-lab]
-virtual = true
-
 [sites.virtual-lab.connection]
 conn = "simulator"
 """
@@ -63,9 +60,7 @@ conn = "mqtts://argus.example:8883"
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
-def test_run_controller_follows_a_virtual_sites_simulator(
-    controller, _asyncio_run, tmp_path
-):
+def test_run_controller_follows_a_sites_simulator(controller, _asyncio_run, tmp_path):
     """Through the root group: the active site's `[connection]` supplies
     `conn`, so `run controller` starts on it with no `--conn`."""
     from dotbot.cli.main import cli

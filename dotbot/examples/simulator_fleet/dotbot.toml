@@ -6,9 +6,8 @@ site = "virtual-lab"
 [sites.virtual-lab]
 anchor = "the north-west corner of the lab's floor marking"
 extent_mm = [20000, 30000]
-virtual = true                       # it exists only in simulation
 
-[sites.virtual-lab.connection]       # so run controller simulates it too
+[sites.virtual-lab.connection]       # it exists only in simulation
 conn = "simulator"
 
 [sites.virtual-lab.areas.staging]    # a 2 m strip along the north wall

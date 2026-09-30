@@ -186,7 +186,6 @@ def test_load_accepts_valid_conn_forms(tmp_path):
     [
         ('conn = "/dev/ttyACM0"', "serial port belongs to one machine"),
         ('conn = "mqtts://me:secret@h:8883"', "carries no credentials"),
-        ('conn = "simulator"', "needs virtual = true"),
     ],
 )
 def test_a_site_connection_is_a_bare_broker(tmp_path, table, needle):
@@ -197,18 +196,10 @@ def test_a_site_connection_is_a_bare_broker(tmp_path, table, needle):
     assert needle in str(excinfo.value)
 
 
-def test_a_virtual_site_takes_the_simulator_and_only_it(tmp_path):
+def test_a_site_may_name_the_simulator(tmp_path):
     path = tmp_path / "dotbot.toml"
-    path.write_text(
-        '[sites.sim]\nvirtual = true\n[sites.sim.connection]\nconn = "simulator"\n'
-    )
+    path.write_text('[sites.sim.connection]\nconn = "simulator"\n')
     assert cfg.load_config(path).sites["sim"].connection.conn == "simulator"
-    path.write_text(
-        '[sites.sim]\nvirtual = true\n[sites.sim.connection]\nconn = "mqtts://h"\n'
-    )
-    with pytest.raises(cfg.ConfigError) as excinfo:
-        cfg.load_config(path)
-    assert 'a virtual site\'s conn is "simulator"' in str(excinfo.value)
 
 
 def test_load_bad_type_rejected(tmp_path):

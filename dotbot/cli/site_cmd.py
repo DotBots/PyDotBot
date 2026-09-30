@@ -208,8 +208,6 @@ def show(ctx, name):
         click.echo(f"anchor:      {table.anchor}")
     if table.extent_mm:
         click.echo(f"extent:      {table.extent_mm[0]} x {table.extent_mm[1]} mm")
-    if table.virtual:
-        click.echo("virtual:     yes, it exists only in simulation")
     conn, swarm_id = _connection(table)
     click.echo(f"connection:  {conn or '(none)'}")
     if conn is not None:
@@ -390,8 +388,8 @@ def _ask(question: str, from_stdin: bool) -> bool:
 
 def _confirm_connection(name, new, old, from_stdin) -> bool:
     """Show the broker and swarm id a pack brings, or how a re-add changes
-    them, and ask; True when there is nothing to ask about, which includes a
-    virtual site's simulator."""
+    them, and ask; True when there is nothing to ask about, which includes the
+    simulator."""
     if new == old or new == (None, None):
         return True
     if new[0] is not None and new[0].strip().lower() in ("simulator", "sim"):
@@ -479,7 +477,7 @@ def _site_toml(table) -> str:
     """An inline `[sites.<name>]` table as a pack's `site.toml`."""
     data = table.model_dump(exclude_none=True)
     document = tomlkit.document()
-    for key in ("anchor", "extent_mm", "virtual"):
+    for key in ("anchor", "extent_mm"):
         if key in data:
             document[key] = data[key]
     if data.get("connection"):

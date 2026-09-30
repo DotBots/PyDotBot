@@ -12,7 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A site may carry its usual way in: a `[connection]` table (`conn`, a broker
   URL, and optionally `swarm_id`) in a pack's `site.toml` or an inline
   `[sites.<name>.connection]`. It is the lowest config layer for `conn` and
-  `swarm_id`; a `virtual = true` site may take `conn = "simulator"`.
+  `swarm_id`; a site that exists only in simulation takes `conn = "simulator"`.
 - `dotbot site use`, `site list` and `site show`, and `site add --use`; `site
   add` shows a pack's broker and asks before adding it (`--yes` to skip).
 - `run controller`, `run gateway` and the swarm commands that act on robots

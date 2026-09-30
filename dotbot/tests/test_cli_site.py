@@ -291,12 +291,10 @@ def test_a_pack_with_no_connection_is_never_asked_about(runner, tmp_path, home):
     assert "Add site" not in result.output
 
 
-def test_a_virtual_pack_on_the_simulator_is_never_asked_about(runner, tmp_path, home):
+def test_a_pack_on_the_simulator_is_never_asked_about(runner, tmp_path, home):
     pack = tmp_path / "src" / "lab"
     pack.mkdir(parents=True)
-    (pack / "site.toml").write_text(
-        'virtual = true\n[connection]\nconn = "simulator"\n'
-    )
+    (pack / "site.toml").write_text('[connection]\nconn = "simulator"\n')
     result = _invoke(runner, "site", "add", str(pack))
     assert result.exit_code == 0, result.output
     assert "Add site" not in result.output
@@ -376,10 +374,7 @@ def test_add_from_stdin_asks_on_the_terminal_or_needs_yes(
 
 def test_list_marks_the_active_site_and_shows_each_connection(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
-    config.write_text(
-        'site = "lab"\n[sites.lab]\nvirtual = true\n'
-        '[sites.lab.connection]\nconn = "simulator"\n'
-    )
+    config.write_text('site = "lab"\n[sites.lab.connection]\nconn = "simulator"\n')
     _pack(home / "sites", "arena", _ARGUS)
     result = _invoke(runner, "-c", str(config), "site", "list")
     assert result.exit_code == 0, result.output

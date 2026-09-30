@@ -4,8 +4,8 @@ A 20 x 30 m site with room for up to 1000 simulated DotBots.
 
 `dotbot.toml` defines the site `virtual-lab`: its extent and two areas, a
 `staging` strip along the north wall, where robots park and charge, and the
-16 x 16 m `field`. It is a virtual site, whose connection is the simulator, so
-here `dotbot run controller` and `dotbot run simulator` do the same thing.
+16 x 16 m `field`. Its connection is the simulator, so here `dotbot run
+controller` and `dotbot run simulator` do the same thing.
 
 `--robots N` starts N robots in a block centred on the field, 200 mm apart
 centre to centre and all facing the staging strip. The block takes the

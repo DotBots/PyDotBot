@@ -216,29 +216,13 @@ class SiteSection(_Strict):
     `anchor` is prose and no code parses it: it is the whole specification
     for re-establishing zero in the physical world. `extent_mm` is
     `[width, height]` with zero at the extent's top-left corner, which is
-    where the anchor points. A `virtual` site exists only in simulation, and
-    `simulator` is the one conn it takes.
+    where the anchor points.
     """
 
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
-    virtual: bool | None = None
     connection: ConnectionSection | None = None
     areas: dict[str, AreaSection] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _virtual_conn(self) -> SiteSection:
-        conn = self.connection.conn if self.connection is not None else None
-        if conn is None:
-            return self
-        if self.virtual and not _is_simulator(conn):
-            raise ValueError(f'a virtual site\'s conn is "simulator", not {conn!r}')
-        if not self.virtual and _is_simulator(conn):
-            raise ValueError(
-                'conn = "simulator" needs virtual = true: only a site that '
-                "exists in simulation alone names the simulator"
-            )
-        return self
 
     @model_validator(mode="after")
     def _one_field(self) -> SiteSection:

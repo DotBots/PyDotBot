@@ -198,7 +198,6 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 | `extent_mm` | `[width, height]` of the floor. |
 | `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
 | `connection` | The site's usual broker and, optionally, swarm id; see [below](#a-sites-connection). |
-| `virtual` | `true` for a site that exists only in simulation. |
 
 The active site is, in order: `--site`, `DOTBOT_SITE`, the top-level `site`,
 then `default`. `dotbot site use NAME` writes the top-level `site` for you.
@@ -217,7 +216,7 @@ swarm_id = "0A1B"                # only if whoever publishes the site owns the n
 
 | Key | Meaning |
 |---|---|
-| `conn` | A broker URL, `mqtt://` or `mqtts://`. A serial path names a port on one machine and is refused; pass it with `--conn` or set it in your own file. A URL with `user:pass@` is refused too. |
+| `conn` | A broker URL, `mqtt://` or `mqtts://`, or `simulator` for a site that exists only in simulation. A serial path names a port on one machine and is refused; pass it with `--conn` or set it in your own file. A URL with `user:pass@` is refused too. |
 | `swarm_id` | The swarm id, when the site has one network that everyone working there shares. Leave it out when several people flash gateways at their own ids; each then sets their own `swarm_id`. |
 
 A site has one network: all of its gateways share one net id, even at a
@@ -234,19 +233,17 @@ your file or environment overrides the site it switches to.
 An MQTT `conn` with no swarm id anywhere fails with `site lab names no swarm;
 set --swarm-id or DOTBOT_SWARM_ID`.
 
-A **virtual** site exists only in simulation. It may take `conn = "simulator"`,
-and that is the only `conn` it takes; no other site does:
+A site that exists only in simulation names the simulator as its connection:
 
 ```toml
 [sites.virtual-lab]
-virtual   = true
 extent_mm = [20000, 30000]
 
 [sites.virtual-lab.connection]
 conn = "simulator"
 ```
 
-On a virtual site `dotbot run controller` and `dotbot run simulator` do the same
+On such a site `dotbot run controller` and `dotbot run simulator` do the same
 thing. `dotbot run simulator` is `run controller --conn simulator` on whatever
 site is active, so a real site can be rehearsed in simulation too.
 
