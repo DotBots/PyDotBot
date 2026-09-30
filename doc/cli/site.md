@@ -27,8 +27,11 @@ BROWSER=true dotbot run controller --headless
 
 ## `add`
 
-Copies a pack into `~/.dotbot/sites/<name>/`, one of the default `site_dirs`,
-so any config on this machine can then name the site. The source can be:
+Copies a pack into `~/.dotbot/sites/<name>/`, which every config searches
+after its own `site_dirs`, so any config on this machine can then name the
+site. If the config in use already reads a site of that name from somewhere
+else, such as its own `sites/` folder, `add` still installs the pack and warns
+that this config keeps reading the other one. The source can be:
 
 - a pack folder, whose name is the site's name;
 - a zip of one, as `site export` writes it, whose top folder is the site's name;

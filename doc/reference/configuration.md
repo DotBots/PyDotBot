@@ -92,7 +92,7 @@ Set once at the top of the file; any section can override them.
 | `swarm_id` | Swarm id selecting the MQTT topic namespace. |
 | `log_level` | Logging verbosity. |
 | `site` | The active [site](#sites): its frame, its areas and the folder its calibrations are kept under. `--site` or `DOTBOT_SITE` overrides it. |
-| `site_dirs` | Folders searched, in order, for [site packs](#site-packs) (default `["sites", "~/.dotbot/sites"]`). |
+| `site_dirs` | Folders searched, in order, for [site packs](#site-packs) (default `["sites"]`), before `~/.dotbot/sites`. |
 
 ## Section tables
 
@@ -279,8 +279,9 @@ lab/
 
 The folder's name is the site's name. Packs are found in the `site_dirs`
 folders, searched in order, and the first folder holding a pack of a name wins.
-The default is `["sites", "~/.dotbot/sites"]`: a `sites/` folder next to the
-config file, then the folder `dotbot site add` copies packs into. A relative
+The default is `["sites"]`, a `sites/` folder next to the config file. After
+them comes `~/.dotbot/sites`, the folder `dotbot site add` copies packs into,
+whatever `site_dirs` says, unless it lists that folder itself. A relative
 entry is read from the config file's folder.
 
 ```toml
