@@ -16,6 +16,7 @@ HAND_WRITTEN = "---\nname: dotbot\ndescription: mine\n---\nhand-written\n"
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Path.home() on Windows
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
     return tmp_path
