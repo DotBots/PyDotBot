@@ -469,6 +469,16 @@ def test_build_mari_schedule_restores_main_c_when_a_build_fails(
     assert main_c.read_text() == MAIN_C
 
 
+def test_mari_net_image_is_always_rebuilt(isolated, mari_repo, fake_embuild):
+    result = build("mari", "--schedule", "tiny", "--schedule", "big")
+    assert result.exit_code == 0, result.output
+    result = build("mari")
+    assert result.exit_code == 0, result.output
+    for _, cmd in fake_embuild:
+        net = cmd[cmd.index("-project") + 1] == "03app_gateway_net"
+        assert ("-rebuild" in cmd) == net
+
+
 # CRLF line ends and a non-UTF-8 byte: the restore must not normalise either.
 _MAIN_C_BYTES = MAIN_C.replace("\n", "\r\n").encode() + b"// \xe9\r\n"
 

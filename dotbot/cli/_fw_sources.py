@@ -69,6 +69,7 @@ class EmBuildStep:
 
     `schedule` names the TSCH schedule compiled into a gateway net image;
     the output is then collected as `03app_gateway_net-<schedule>.hex`.
+    `always_rebuild` passes `-rebuild` even on an incremental run.
     """
 
     cwd: Path
@@ -76,6 +77,7 @@ class EmBuildStep:
     project: str
     output: Path
     schedule: str | None = None
+    always_rebuild: bool = False
 
 
 def set_dir(source: str, name: str, artifacts_root: Path) -> Path:
@@ -169,6 +171,9 @@ def mari_steps(
         _exe("app/03app_gateway_app", "nrf5340-app", "03app_gateway_app", config),
     )
 
+    # Always a full rebuild: emBuild compares timestamps to the second, so a
+    # main.c edited or restored within a second of the last compile would
+    # otherwise link the previous schedule's object.
     def net(schedule: str | None = None) -> EmBuildStep:
         return EmBuildStep(
             fw,
@@ -176,6 +181,7 @@ def mari_steps(
             "03app_gateway_net",
             _exe("app/03app_gateway_net", "nrf5340-net", "03app_gateway_net", config),
             schedule,
+            always_rebuild=True,
         )
 
     if not schedules:
@@ -271,7 +277,7 @@ def run_embuild(
             f"at a real SEGGER Embedded Studio install."
         )
     cmd = [str(embuild), step.emproject, "-project", step.project, "-config", config]
-    if rebuild:
+    if rebuild or step.always_rebuild:
         cmd.append("-rebuild")
     label = step.project + (f", schedule {step.schedule}" if step.schedule else "")
     if verbose:

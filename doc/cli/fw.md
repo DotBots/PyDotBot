@@ -125,8 +125,8 @@ dotbot device flash-mari-gateway --schedule big -f local --swarm-id 0100
 
 To select a schedule, the build temporarily edits
 `app/03app_gateway_net/main.c` in the mari checkout and restores it byte for
-byte afterwards. Releases carry only the default net image, so the schedule
-images always come from a build.
+byte afterwards, and the net image is always rebuilt in full. Releases carry
+only the default net image, so the schedule images always come from a build.
 
 ## Boards × apps
 
