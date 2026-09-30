@@ -56,9 +56,11 @@ open, so the board stays flashable after a power cycle.
 Nothing else recovers on its own, since a recover erases the chip. Flashing an
 app or a file with `dotbot device flash`, and `dotbot device info`, stop with
 the message *access port is protected (APPROTECT)* and say what to run. To
-unlock a board for other firmware, recover it by hand and flash again:
+unlock a board for other firmware, recover both cores by hand and flash again.
+Without `--coprocessor`, `nrfjprog --recover` only reaches the application core:
 
 ```bash
+nrfjprog -f NRF53 --recover --coprocessor CP_NETWORK
 nrfjprog -f NRF53 --recover
 ```
 
@@ -106,8 +108,9 @@ dotbot swarm start
 - **Charge-only USB cables.** Some cables carry power but no data. The board
   lights up and `nrfjprog --ids` lists nothing. Swap the cable before debugging
   anything else.
-- **A flat battery.** A DotBot below about 1.6 V (the battery reading in
-  `dotbot swarm status`) browns out and behaves erratically. Charge it first.
+- **A flat supercapacitor.** A DotBot v3 runs on a 3.0 V supercapacitor.
+  `dotbot swarm status` shows its reading as critical below 1.5 V, and the
+  robot browns out at 0.6 V. Charge it first.
 - **Base-station power.** Lighthouse 2 base stations need their own power
   supply. With them off, DotBots run but report no position.
 
@@ -116,6 +119,6 @@ dotbot swarm start
 | Step | Roughly |
 |---|---|
 | Role flash of one board (recover, both cores, config) | 1-2 minutes |
-| Recover on a slow J-Link | several minutes; the command gives up after 10 |
+| Recover on a slow J-Link | several minutes; each of its three steps gives up after 10 |
 | A DotBot joining after its flash | 15-20 seconds |
 | A DotBot joining after a power-on | 15-20 seconds, then `swarm start` |
