@@ -142,6 +142,18 @@ def resolve_segger_dir() -> Path:
     )
 
 
+def require_embuild() -> Path:
+    """The SES install to build with; raise unless it has `bin/emBuild`."""
+    segger = resolve_segger_dir()
+    embuild = segger / "bin" / "emBuild"
+    if not embuild.is_file():
+        raise click.ClickException(
+            f"emBuild not found at {embuild}. Check that SEGGER_DIR points "
+            f"at a real SEGGER Embedded Studio install."
+        )
+    return segger
+
+
 @dataclass(frozen=True)
 class RepoSpec:
     """How one source folder is located: its `[fw.sources]` key, default dir.
@@ -366,13 +378,7 @@ def run_make(
     non-zero exit so callers can short-circuit.
     """
     repo = repo or resolve_firmware_repo()
-    segger = resolve_segger_dir()
-    embuild = segger / "bin" / "emBuild"
-    if not embuild.is_file():
-        raise click.ClickException(
-            f"emBuild not found at {embuild}. Check that SEGGER_DIR points "
-            f"at a real SEGGER Embedded Studio install."
-        )
+    segger = require_embuild()
     cmd = ["make", f"BUILD_TARGET={target}", f"BUILD_CONFIG={config}"]
     if quiet:
         cmd.append("QUIET=1")

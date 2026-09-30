@@ -229,12 +229,7 @@ def run_plan(plan: BuildPlan, *, verbose: bool = False) -> list[Path]:
     With `verbose` the output streams through; otherwise only the tail of a
     failing command's output is shown.
     """
-    segger = _fw_helpers.resolve_segger_dir()
-    if not (segger / "bin" / "emBuild").is_file():
-        raise click.ClickException(
-            f"emBuild not found in {segger / 'bin'}. Check that SEGGER_DIR "
-            "points at a real SEGGER Embedded Studio install."
-        )
+    segger = _fw_helpers.require_embuild()
     for command in plan.commands:
         extra = {"SEGGER_DIR": str(segger), **command.env}
         env = {**_fw_helpers._make_env(segger), **command.env}
