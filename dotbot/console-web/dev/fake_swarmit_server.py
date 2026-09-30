@@ -183,7 +183,7 @@ def device_info(addr: str) -> dict:
         else f"{homographies} {noun} (valid, from flash)"
     )
     return {
-        "info_version": 2,
+        "info_version": 3,
         "info_gen": 4,
         "boot_count": 2 + seed % 30,
         "uptime_s": 60 + seed % 9000,
