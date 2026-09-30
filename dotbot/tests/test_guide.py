@@ -20,13 +20,16 @@ from dotbot.cli.main import cli
 GUIDE_MAX_LINES = 150
 
 _FENCE = re.compile(r"^```[a-z]*\n(.*?)^```", re.M | re.S)
-_INLINE = re.compile(r"`(dotbot [^`]+)`")
+_INLINE = re.compile(r"`((?:dotbot|curl) [^`]+)`")
 _ROUTE = re.compile(r"/controller/[^\s`'\"?)]*")
+_PROSE_CALL = re.compile(r"`(GET|PUT|POST|DELETE) (/controller/[^\s`]*)")
+# A guide segment a route's `{param}` may stand for: `$ADDR`, an address, `0`
+_PARAM_VALUE = re.compile(r"^(\$[A-Z_]+|[0-9A-Fa-f]+)$")
 _ENV_ASSIGNMENT = re.compile(r"^[A-Z_]+=\S*$")
 
 
 def guide() -> str:
-    return files("dotbot").joinpath("guide.md").read_text()
+    return files("dotbot").joinpath("guide.md").read_text("utf-8")
 
 
 def _code_lines(text: str):
@@ -61,6 +64,20 @@ def dotbot_commands(text: str):
                 break
             kept.append(word)
         yield kept
+
+
+def api_calls(text: str):
+    """(method, path) for each curl the guide shows and each `METHOD /path`
+    it names in prose; a curl without `-X` is a GET."""
+    for line in [*_code_lines(text), *_INLINE.findall(text)]:
+        words = _words(line)
+        if words[:1] != ["curl"]:
+            continue
+        method = words[words.index("-X") + 1] if "-X" in words else "GET"
+        for route in _ROUTE.findall(line):
+            yield method, route.rstrip(".,:")
+    for method, route in _PROSE_CALL.findall(text):
+        yield method, route.rstrip(".,:")
 
 
 def python_modules(text: str):
@@ -115,6 +132,20 @@ def unknown_flags(group: click.Group, words, substitutes=None):
     return problems
 
 
+def unknown_targets(words):
+    """The `device flash` role or `swarm flash` app in `words`, when it is
+    not one those commands know."""
+    from dotbot.cli._swarm_flash import APP_CATALOG
+    from dotbot.cli.device import FLASH_TARGETS
+
+    known = {("device", "flash"): FLASH_TARGETS, ("swarm", "flash"): APP_CATALOG}
+    allowed = known.get(tuple(words[:2]))
+    target = next((w for w in words[2:] if not w.startswith("-")), None)
+    if allowed is None or target is None or target in allowed:
+        return []
+    return [(" ".join(words[:2]), target)]
+
+
 def _swarm_problems(commands):
     """Check `dotbot swarm ...` lines against swarmit's group in a separate
     process: swarmit and dotbot.protocol cannot both register their payload
@@ -146,7 +177,7 @@ def test_guide_command_prints_the_guide_with_the_version():
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines()[0].startswith("# DotBot guide (pydotbot ")
     assert result.stdout.splitlines()[1:] == guide().splitlines()[1:]
-    assert "config file" not in result.stderr
+    assert "config file" not in result.output
 
 
 def test_root_help_points_at_the_guide():
@@ -161,7 +192,7 @@ def test_guide_names_only_real_commands_and_flags():
     commands = list(dotbot_commands(guide()))
     assert commands
     swarm = [words[1:] for words in commands if words[:1] == ["swarm"]]
-    problems = []
+    problems = [problem for words in commands for problem in unknown_targets(words)]
     for words in commands:
         if words[:1] != ["swarm"]:
             problems += unknown_flags(
@@ -183,8 +214,21 @@ def test_guide_names_only_real_modules():
 def _route_matches(path: str, template: str) -> bool:
     got, want = path.strip("/").split("/"), template.strip("/").split("/")
     return len(got) == len(want) and all(
-        w.startswith("{") or g == w for g, w in zip(got, want)
+        g == w or (w.startswith("{") and _PARAM_VALUE.match(g))
+        for g, w in zip(got, want)
     )
+
+
+def _route_methods(path: str):
+    """The methods the API serves at `path`, empty when no route matches."""
+    from dotbot.server import api
+
+    return {
+        method
+        for route in api.routes
+        if _route_matches(path, route.path)
+        for method in getattr(route, "methods", None) or {"GET"}
+    }
 
 
 def test_guide_names_only_real_routes():
@@ -194,17 +238,27 @@ def test_guide_names_only_real_routes():
     assert api.docs_url in templates and api.openapi_url in templates
     routes = {route.rstrip(".,:") for route in _ROUTE.findall(guide())}
     assert routes
-    missing = [
-        route
-        for route in routes
-        if not any(_route_matches(route, template) for template in templates)
-    ]
-    assert missing == []
+    assert [route for route in routes if not _route_methods(route)] == []
+
+
+def test_guide_uses_each_route_with_a_method_it_takes():
+    calls = set(api_calls(guide()))
+    assert ("DELETE", "/controller/dotbots/waypoints") in calls
+    wrong = [(m, path) for m, path in calls if m not in _route_methods(path)]
+    assert wrong == []
 
 
 def test_the_checker_catches_a_renamed_flag():
     assert unknown_flags(cli, ["run", "demo", "--lst"]) == [("run demo", "--lst")]
     assert unknown_flags(cli, ["fw", "fetchh"]) == [("fw fetchh", None)]
+
+
+def test_the_checker_catches_a_misspelt_target_route_or_method():
+    words = ["device", "flash", "mari-gatway", "--probe", "10"]
+    assert unknown_targets(words) == [("device flash", "mari-gatway")]
+    assert unknown_targets(["swarm", "flash", "remote-contrl", "-ys"]) != []
+    assert not _route_methods("/controller/dotbots/waypointz")
+    assert "DELETE" not in _route_methods("/controller/site")
 
 
 def test_guide_does_not_mention_mcp():
