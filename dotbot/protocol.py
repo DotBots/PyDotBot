@@ -23,6 +23,10 @@ WAYPOINT_NO_HEADING = 0x7FFF
 # The waypoint report's axle coordinate while the robot has no heading.
 AXLE_UNKNOWN = 0xFFFF
 
+# The advertised `calibrated` bitmask of a robot that holds no per-station
+# homographies at all, such as one running a sandbox app.
+CALIBRATED_NOT_APPLICABLE = 0xFF
+
 
 class PayloadType(IntEnum):
     """Types of DotBot payload types."""

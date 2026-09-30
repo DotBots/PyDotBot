@@ -72,6 +72,7 @@ from dotbot.models import (
 from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
 from dotbot.protocol import (
     AXLE_UNKNOWN,
+    CALIBRATED_NOT_APPLICABLE,
     DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
@@ -234,7 +235,10 @@ def _station_mask(stations: set[int]) -> Optional[int]:
 
 
 def _held_stations(calibrated: int) -> set[int]:
-    """The station indices an advertised `calibrated` bitmask holds."""
+    """The station indices an advertised `calibrated` bitmask holds; none
+    for a robot that does not apply homographies."""
+    if calibrated == CALIBRATED_NOT_APPLICABLE:
+        return set()
     return {
         index for index in range(calibrated.bit_length()) if calibrated >> index & 1
     }
