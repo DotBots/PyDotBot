@@ -70,7 +70,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   refused with the rename to make.
 - **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
   when `DOTBOT_MQTT_HOST` names it, you named the broker yourself (flag, env,
-  your file) or it is local, and never over plain `mqtt://` to another host.
+  your file, an inline site table in it included) or it is local, and never over plain `mqtt://` to another host.
 - `dotbot config show` prints where the site, `conn` and `swarm_id` each came
   from and what they hide, and where the credentials go (`--json` for
   scripts); the list of sites moved to `dotbot site list`.

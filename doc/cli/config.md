@@ -58,8 +58,8 @@ dotbot config init --global                                    # ~/.dotbot/dotbo
 writes with no flags.
 
 > MQTT credentials are never file keys - set `DOTBOT_MQTT_USER` /
-> `DOTBOT_MQTT_PASS` in the environment, and `DOTBOT_MQTT_HOST` to the broker
-> they are for.
+> `DOTBOT_MQTT_PASS` in the environment, and `DOTBOT_MQTT_HOST` to the broker's
+> host when the broker comes from a site pack.
 
 ## `show` / `path`
 

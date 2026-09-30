@@ -343,7 +343,8 @@ A shared site pack must not quietly choose where your login goes, so the
 credentials go to a broker only when:
 
 - `DOTBOT_MQTT_HOST` names it, or
-- you named the broker yourself: a flag, an env var, or your own file, or
+- you named the broker yourself: a flag, an env var, or your own file (an
+  inline `[sites.<name>.connection]` in it included), or
 - it runs on this machine (`localhost`).
 
 They never go over plain `mqtt://` to another host. When they are withheld, a

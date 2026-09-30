@@ -111,7 +111,8 @@ dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 > `./dotbot.toml`, with the broker as the site's connection and the swarm id
 > as your own; commands run from this directory pick it up, so you don't
 > repeat the flags. MQTT credentials go in `DOTBOT_MQTT_USER` /
-> `DOTBOT_MQTT_PASS`, with `DOTBOT_MQTT_HOST` naming the broker they are for.
+> `DOTBOT_MQTT_PASS`; when the broker comes from a site pack, also set
+> `DOTBOT_MQTT_HOST` to its host.
 > Full schema: the [configuration reference][config-doc].
 
 The swarm mode also requires a special "sandbox" firmware in each DotBot.
