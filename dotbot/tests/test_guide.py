@@ -205,3 +205,7 @@ def test_guide_names_only_real_routes():
 def test_the_checker_catches_a_renamed_flag():
     assert unknown_flags(cli, ["run", "demo", "--lst"]) == [("run demo", "--lst")]
     assert unknown_flags(cli, ["fw", "fetchh"]) == [("fw fetchh", None)]
+
+
+def test_guide_does_not_mention_mcp():
+    assert "mcp" not in guide().lower()

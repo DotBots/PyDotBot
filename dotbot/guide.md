@@ -134,4 +134,5 @@ README beside each in the installed `dotbot/examples/`.
 ## 7. Where next
 
 Documentation: https://pydotbot.readthedocs.io. Every group has its own help:
-`dotbot run --help`, `dotbot swarm --help`.
+`dotbot run --help`, `dotbot swarm --help`. `dotbot guide --install` installs
+an agent skill that points coding agents at this guide.
