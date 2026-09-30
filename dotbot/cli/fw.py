@@ -34,7 +34,7 @@ from dotbot.cli._artifacts import (
     artifacts_dir,
     echo_artifact_path,
 )
-from dotbot.cli._cfg import from_config
+from dotbot.cli._cfg import from_config, on_commandline
 from dotbot.cli._fw_helpers import (
     BARE_TARGETS,
     CONFIGS,
@@ -142,10 +142,6 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
         ) from exc
 
 
-def _commandline(ctx, name: str) -> bool:
-    return ctx.get_parameter_source(name) is click.core.ParameterSource.COMMANDLINE
-
-
 @cmd.command()
 @_names_argument
 @_target_option
@@ -242,7 +238,7 @@ def build(
     from dotbot.cli import _fw_sources as fs
     from dotbot.firmware.fetch import validate_set_name
 
-    bare_given = _commandline(ctx, "bare")
+    bare_given = on_commandline(ctx, "bare")
     target = from_config(ctx, "target", "board", "fw")
     config = from_config(ctx, "config", "build_config", "fw")
     bare = from_config(ctx, "bare", "bare", "fw", default=False)

@@ -25,7 +25,7 @@ from dotbot.cli._artifacts import (
     ensure_nrfjprog,
     resolve_app_artifact,
 )
-from dotbot.cli._cfg import from_config
+from dotbot.cli._cfg import from_config, on_commandline
 from dotbot.firmware.schedules import MARI_SCHEDULES, describe_schedules
 
 
@@ -91,10 +91,6 @@ _REFUSALS = {
     "probe_uid": "--probe-uid only applies to programmer; select a J-Link "
     "with --probe.",
 }
-
-
-def _commandline(ctx, name: str) -> bool:
-    return ctx.get_parameter_source(name) is click.core.ParameterSource.COMMANDLINE
 
 
 @cmd.command()
@@ -220,7 +216,7 @@ def flash(
     else:
         kind = "app"
     for param, message in _REFUSALS.items():
-        if param not in _ACCEPTS[kind] and _commandline(ctx, param):
+        if param not in _ACCEPTS[kind] and on_commandline(ctx, param):
             raise click.ClickException(message)
 
     if kind == _PROGRAMMER:

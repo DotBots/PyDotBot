@@ -20,6 +20,13 @@ import click
 from dotbot.config import resolve
 
 
+def on_commandline(ctx: click.Context, param_name: str) -> bool:
+    """True if the user typed `param_name` on the command line."""
+    return (
+        ctx.get_parameter_source(param_name) is click.core.ParameterSource.COMMANDLINE
+    )
+
+
 def from_config(
     ctx: click.Context, param_name: str, key: str, section: str, default=None
 ):
@@ -34,7 +41,7 @@ def from_config(
     (and coerces env strings) to its real type.
     """
     value = ctx.params.get(param_name)
-    if ctx.get_parameter_source(param_name) is click.core.ParameterSource.COMMANDLINE:
+    if on_commandline(ctx, param_name):
         return value
     obj = ctx.obj or {}
     return resolve(
