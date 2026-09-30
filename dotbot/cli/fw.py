@@ -151,7 +151,6 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
 @_target_option
 @click.option(
     "--part",
-    "-a",
     "parts",
     multiple=True,
     help=(
@@ -272,7 +271,7 @@ def build(
     if parts and "swarmit-sandbox" not in roles:
         raise click.ClickException(
             "--part picks parts of swarmit-sandbox: `dotbot fw build "
-            f"swarmit-sandbox -a {' -a '.join(parts)}`."
+            f"swarmit-sandbox --part {' --part '.join(parts)}`."
         )
     schedule_names = fs.resolve_schedules(schedules)
     if schedule_names and "mari" not in sources:

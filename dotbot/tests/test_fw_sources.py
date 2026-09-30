@@ -498,16 +498,16 @@ def test_build_schedule_without_mari_gateway_errors(isolated, swarmit_repo):
 
 
 def test_build_part_without_swarmit_sandbox_errors(isolated):
-    result = build("mari-gateway", "-a", "netcore")
+    result = build("mari-gateway", "--part", "netcore")
     assert result.exit_code != 0
-    assert "dotbot fw build swarmit-sandbox -a netcore" in result.output
-    result = build("-a", "netcore")
-    assert "dotbot fw build swarmit-sandbox -a netcore" in result.output
+    assert "dotbot fw build swarmit-sandbox --part netcore" in result.output
+    result = build("--part", "netcore")
+    assert "dotbot fw build swarmit-sandbox --part netcore" in result.output
 
 
 @pytest.mark.parametrize("names", [[], ["swarmit-sandbox"]])
 def test_build_part_that_names_an_app_points_at_the_argument(isolated, names):
-    result = build(*names, "-a", "spin")
+    result = build(*names, "--part", "spin")
     assert result.exit_code != 0
     assert "--part takes bootloader or netcore" in result.output
     assert "`dotbot fw build spin`" in result.output
@@ -584,7 +584,7 @@ def test_build_an_app_by_name(isolated, firmware_repo, fake_make):
 def test_build_swarmit_sandbox_part(
     isolated, firmware_repo, swarmit_repo, fake_make, fake_build
 ):
-    result = build("swarmit-sandbox", "-a", "bootloader")
+    result = build("swarmit-sandbox", "--part", "bootloader")
     assert result.exit_code == 0, result.output
     assert not (isolated / "cache" / "dotbot-firmware-local").exists()
     local = isolated / "cache" / "swarmit-local"
@@ -810,6 +810,12 @@ def test_as_rejects_names_that_read_as_a_tag_or_path(isolated, name):
     result = build("swarmit-sandbox", f"--as={name}")
     assert result.exit_code != 0
     assert "cannot name a firmware set" in result.output
+
+
+def test_part_has_no_short_form(isolated):
+    result = build("swarmit-sandbox", "-a", "netcore")
+    assert result.exit_code != 0
+    assert "No such option '-a'" in result.output
 
 
 def test_bare_is_the_flag_and_sandbox_is_gone(isolated):

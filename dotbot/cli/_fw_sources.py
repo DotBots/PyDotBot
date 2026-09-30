@@ -404,7 +404,7 @@ def write_build_manifest(
     """Record this build in `out_dir/manifest.json`; return the manifest.
 
     The top level describes the latest build. `files` covers every image in
-    the set, so one rebuilt with `-a` sits next to older ones, each carrying
+    the set, so one rebuilt with `--part` sits next to older ones, each carrying
     the build it came from.
     """
     from dotbot import pydotbot_version

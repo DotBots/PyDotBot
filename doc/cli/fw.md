@@ -88,7 +88,7 @@ dotbot fw build                              # both roles and the release apps, 
 dotbot fw build spin dotbot                  # two apps, sandboxed on dotbot-v3
 dotbot fw build dotbot --bare                # the bare-metal app instead
 dotbot fw build swarmit-sandbox              # bootloader for -t + network core
-dotbot fw build swarmit-sandbox -a netcore   # only the network core
+dotbot fw build swarmit-sandbox --part netcore  # only the network core
 dotbot fw build mari-gateway                 # the Mari gateway, default schedule
 ```
 
@@ -109,7 +109,7 @@ in full. Their compiler output is shown only when a build fails, or with `-v`.
 | Flag | Meaning |
 |---|---|
 | `ROLE\|APP` | `swarmit-sandbox`, `mari-gateway`, or an app name (repeatable); default: both roles and the release apps |
-| `-a, --part <part>` | `swarmit-sandbox` only: build just `bootloader` or `netcore` (repeatable) |
+| `--part <part>` | `swarmit-sandbox` only: build just `bootloader` or `netcore` (repeatable) |
 | `-t, --target <board>` | Board (default `dotbot-v3`); picks the apps and the swarmit-sandbox bootloader. See `dotbot fw targets` |
 | `--bare` / `--sandboxed` | Apps only: bare-metal (`.hex`) or sandboxed (`.bin`). Default: `[fw].bare` in config, else sandboxed on boards that have a sandbox |
 | `--schedule <name>\|all` | `mari-gateway` only: build the net image for this TSCH schedule (repeatable), in place of the default net image |
