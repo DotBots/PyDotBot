@@ -40,7 +40,7 @@ directories, so the active config is always unambiguous.
 
 `~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
 once and want everywhere - typically `[fw].segger_dir`, since the SEGGER
-Embedded Studio install path rarely changes. Per-project settings like `[fw].firmware_repo` belong in
+Embedded Studio install path rarely changes. Per-project settings like `[fw.sources]` belong in
 the project's `./dotbot.toml` instead. Every command, including `dotbot fw`,
 reads through this same resolver.
 
@@ -96,10 +96,27 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | Key | Meaning |
 |---|---|
 | `board` | Target board, e.g. `dotbot-v3`. |
-| `sandbox` | Build TrustZone sandbox apps (`.bin`) instead of bare apps. |
+| `bare` | Default to bare-metal apps (`.hex`) instead of sandboxed apps (`.bin`) on boards that have a sandbox; `--bare` / `--sandboxed` override it per run. |
 | `build_config` | `Debug` or `Release`. |
 | `segger_dir` | SEGGER Embedded Studio install path. |
-| `firmware_repo` | Path to your `DotBot-firmware` clone (so `fw build`/`artifacts` find it without `cd` or `DOTBOT_FIRMWARE_REPO`). |
+
+`[fw.sources]` - the source folder `dotbot fw build` reads, one key per source
+repo:
+
+| Key | Meaning |
+|---|---|
+| `dotbot-firmware` | Your `DotBot-firmware` folder, for apps (env `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`). Default: `repos/DotBot-firmware` next to this file. |
+| `swarmit` | Your `swarmit` folder, for `swarmit-sandbox` (env `DOTBOT_FW_SOURCES_SWARMIT`). Default: `repos/swarmit` next to this file. |
+| `mari` | Your `mari` folder, for `mari-gateway` (env `DOTBOT_FW_SOURCES_MARI`). Default: `repos/mari` next to this file. |
+
+```toml
+[fw.sources]
+dotbot-firmware = "../DotBot-firmware"
+swarmit = "../swarmit"
+```
+
+A relative path resolves against the config file that sets it;
+`dotbot fw build <role|app> --path <folder>` overrides it for one run.
 
 `[device]` - one cabled device (`dotbot device`):
 
@@ -366,7 +383,7 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 # Firmware-artifact builds (dotbot fw).
 [fw]
 board        = "dotbot-v3"
-sandbox      = false
+bare         = false
 build_config = "Release"
 # segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.22a"
 

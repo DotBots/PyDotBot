@@ -146,7 +146,9 @@ def test_group_value_matching_subcommand_name_is_skipped():
 
 def test_flash_name_resolved_after_group_options(tmp_path, monkeypatch):
     monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path))
-    fw = tmp_path / "dotbot-firmware-1.22.0"
+    from dotbot.firmware.fetch import DOTBOT_FIRMWARE_VERSION
+
+    fw = tmp_path / f"dotbot-firmware-{DOTBOT_FIRMWARE_VERSION}"
     fw.mkdir()
     (fw / "spin-sandbox-dotbot-v3.bin").write_bytes(b"\x00")
     seen = []

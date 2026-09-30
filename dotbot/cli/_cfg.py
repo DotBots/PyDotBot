@@ -20,17 +20,28 @@ import click
 from dotbot.config import resolve
 
 
-def from_config(ctx: click.Context, param_name: str, key: str, section: str):
+def on_commandline(ctx: click.Context, param_name: str) -> bool:
+    """True if the user typed `param_name` on the command line."""
+    return (
+        ctx.get_parameter_source(param_name) is click.core.ParameterSource.COMMANDLINE
+    )
+
+
+def from_config(
+    ctx: click.Context, param_name: str, key: str, section: str, default=None
+):
     """CLI flag if given on the command line, else config > env > the option's default.
 
     `param_name` is the Click parameter name (what `ctx.params` keys on);
     `key` / `section` address the value in the config resolver. When the
     option was set on the command line we return it verbatim; otherwise we let
     the resolver fall through config (section > deployment > top-level) and env,
-    using the option's current value as the built-in default.
+    using the option's current value as the built-in default. `default`
+    stands in when that value is None, so a tri-state flag still resolves
+    (and coerces env strings) to its real type.
     """
     value = ctx.params.get(param_name)
-    if ctx.get_parameter_source(param_name) is click.core.ParameterSource.COMMANDLINE:
+    if on_commandline(ctx, param_name):
         return value
     obj = ctx.obj or {}
     return resolve(
@@ -38,5 +49,5 @@ def from_config(ctx: click.Context, param_name: str, key: str, section: str):
         section=section,
         config=obj.get("config"),
         deployment=obj.get("deployment"),
-        default=value,
+        default=default if value is None else value,
     )

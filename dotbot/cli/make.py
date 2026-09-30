@@ -15,8 +15,9 @@ to `make` in the firmware repo, with two affordances that bare `cd
 DotBot-firmware && make ...` doesn't give you:
 
 1. SEGGER_DIR is auto-resolved (env → macOS default → clear error).
-2. The firmware repo is auto-located (`DOTBOT_FIRMWARE_REPO` env →
-   `./DotBot-firmware/`).
+2. The firmware repo is auto-located (`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`
+   env → `[fw.sources] dotbot-firmware` → `repos/DotBot-firmware` next to the
+   config file).
 
 Everything else is plain make.
 """
@@ -38,7 +39,8 @@ from dotbot.cli._fw_helpers import resolve_firmware_repo, resolve_segger_dir
         "help_option_names": ["-h", "--help"],
     },
     help=(
-        "Escape hatch: run `make` in your DotBot-firmware checkout with "
+        "(May be removed.) Escape hatch: run `make` in your DotBot-firmware "
+        "source folder with "
         "workspace-resolved SEGGER_DIR. Forwards all args verbatim. "
         "Use this when `dotbot fw build` doesn't model the Makefile knob "
         "you need."

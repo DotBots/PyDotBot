@@ -7,18 +7,14 @@
 command line (user wins) or should fall through the config resolver
 (config > env > the option's default). These tests drive it through a tiny
 throwaway Click command so the parameter-source machinery is exercised for
-real, plus one integration check via `dotbot fw artifacts --print-path` that
-a config-set `[fw].board` reaches the printed artifact path.
+real.
 """
-
-from pathlib import Path
 
 import click
 import pytest
 from click.testing import CliRunner
 
 from dotbot.cli._cfg import from_config
-from dotbot.cli.fw import cmd as fw_cmd
 from dotbot.config import DotbotConfig
 
 
@@ -87,51 +83,3 @@ def test_env_beats_config(runner, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-env"
-
-
-# --- integration: config-set [fw].board reaches the artifact path -----------
-
-
-@pytest.fixture
-def fake_firmware_repo(tmp_path, monkeypatch):
-    """Point `DOTBOT_FIRMWARE_REPO` at a tmp dir with a Makefile so
-    `artifact_path` can resolve a repo without a real DotBot-firmware clone."""
-    repo = tmp_path / "fake-dotbot-firmware"
-    repo.mkdir()
-    (repo / "Makefile").write_text("# fake\n")
-    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(repo))
-    return repo
-
-
-def test_fw_artifacts_print_path_reflects_config_board(runner, fake_firmware_repo):
-    """`fw artifacts --print-path --app dotbot` with `-t` omitted uses the
-    config-set `[fw].board` in the printed path; `-t` overrides it."""
-    cfg = DotbotConfig.model_validate({"fw": {"board": "nrf5340dk-app"}})
-
-    # -t omitted: the config board lands in the path.
-    from_cfg = runner.invoke(
-        fw_cmd,
-        ["artifacts", "--print-path", "--app", "dotbot"],
-        obj={"config": cfg, "deployment": None},
-    )
-    assert from_cfg.exit_code == 0, from_cfg.output
-    expected = str(
-        Path("Output")
-        / "nrf5340dk-app"
-        / "Release"
-        / "Exe"
-        / "dotbot-nrf5340dk-app.hex"
-    )
-    assert from_cfg.output.strip().endswith(expected)
-
-    # -t overrides the config board.
-    overridden = runner.invoke(
-        fw_cmd,
-        ["artifacts", "--print-path", "--app", "dotbot", "-t", "dotbot-v3"],
-        obj={"config": cfg, "deployment": None},
-    )
-    assert overridden.exit_code == 0, overridden.output
-    expected_override = str(
-        Path("Output") / "dotbot-v3" / "Release" / "Exe" / "dotbot-dotbot-v3.hex"
-    )
-    assert overridden.output.strip().endswith(expected_override)

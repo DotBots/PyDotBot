@@ -4,31 +4,28 @@ Build and flash one DotBot and a gateway, cable them to your computer, and drive
 the DotBot from the web UI. This is the smallest real-hardware setup. For the
 no-hardware path, use the [simulator](simulator.md) instead.
 
-Building firmware needs SEGGER Embedded Studio and `nrfjprog` (see the README
-prerequisites). To skip building, fetch a pre-built release with `dotbot fw
-fetch -f <version>` and flash those artifacts instead.
+Flashing needs `nrfjprog` (see the README prerequisites). The commands below
+flash the pinned release, fetched on first use; to flash your own build
+instead, run `dotbot fw build <app> ...` (needs SEGGER
+Embedded Studio) and add `-f local` to each `device flash`.
 
-## 1. Build and flash the DotBot
+## 1. Flash the DotBot
 
 The DotBot v3 is an nRF5340, which has two cores - the application core (your
-app) and the network core (the radio) - so you build and flash two images:
+app) and the network core (the radio) - so you flash two images:
 
 ```bash
-# build the bare dotbot apps into the cache (needs SEGGER Embedded Studio)
-dotbot fw artifacts --app dotbot
-dotbot fw artifacts --app nrf5340_net --target nrf5340dk-net
 # cable-flash to the DotBot whose J-Link serial starts with 77
-dotbot device flash dotbot --probe 77                        # app core
+dotbot device flash dotbot --bare --probe 77                 # app core
 dotbot device flash nrf5340_net -b nrf5340dk-net --probe 77  # network core
 ```
 
-## 2. Build and flash the gateway
+## 2. Flash the gateway
 
 The gateway is a dev board (e.g. an nRF52840-DK) plugged into your computer; it
 bridges the DotBot's radio to USB serial.
 
 ```bash
-dotbot fw artifacts --app dotbot_gateway --target nrf52840dk
 # cable-flash to the DK whose J-Link serial starts with 10
 dotbot device flash dotbot_gateway -b nrf52840dk --probe 10
 ```

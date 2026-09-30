@@ -83,4 +83,4 @@ is in the [configuration reference](../reference/configuration.md#precedence).
 
 - [Configuration reference](../reference/configuration.md) - the file format, every key, deployments, precedence.
 - [`dotbot site`](site.md) - install a site pack, or export a site to share.
-- [`dotbot fw`](fw.md) - reads its `[fw]` keys (`segger_dir`, `firmware_repo`) from this same config.
+- [`dotbot fw`](fw.md) - reads its `[fw]` keys (`segger_dir`, `[fw.sources]`) from this same config.

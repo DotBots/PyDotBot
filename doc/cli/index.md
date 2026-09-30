@@ -51,15 +51,23 @@ A few signposts so the namespaces don't blur together:
 - **`fw` never touches hardware.** It only produces or lists artifacts in
   `~/.dotbot/artifacts/`. Flashing always happens under `device` (cabled) or
   `swarm` (OTA).
-- **Bare vs. sandbox artifacts.** `fw` builds bare apps (`.hex`) by default;
-  `fw artifacts --sandbox` builds TrustZone apps (`.bin`) - the payload `swarm`
-  flashes over the air.
-- **Same word, different object.** `dotbot device flash-mari-gateway` flashes
+- **Sandboxed vs. bare apps.** On a board with a sandbox, `fw` builds
+  sandboxed TrustZone apps (`.bin`) by default - the payload `swarm` flashes
+  over the air; `--bare` builds bare-metal apps (`.hex`) for a cabled flash.
+- **`fetch` and `build` mirror each other.** `fw fetch` fills
+  `<release>-<version>/` from a release, `fw build` fills `<source>-local/`
+  from your source folder, under the same file names; every flash command
+  picks one with `-f`, and none of them builds.
+- **One set of names.** `fw build`, `fw fetch` and `device flash` all take a
+  role (`swarmit-sandbox`, `mari-gateway`) or an app name (`spin`,
+  `dotbot`, ...): `dotbot fw build spin`, then `dotbot device flash spin -f
+  local`.
+- **Same word, different object.** `dotbot device flash mari-gateway` flashes
   *firmware onto a board*; `dotbot run gateway` starts the *host bridge
   process*. They are not the same thing.
 - **A DotBot v3 has an on-board programmer.** Normal flashing over USB-C needs
   no external probe - a separate J-Link is only for
-  `dotbot device flash-programmer`.
+  `dotbot device flash programmer`.
 
 ## Next
 

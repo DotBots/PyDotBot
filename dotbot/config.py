@@ -132,18 +132,42 @@ class Deployment(_Strict):
     bots: int | None = None  # descriptive
 
 
+class FwSources(_Strict):
+    """`[fw.sources]`: the source folder `dotbot fw build` reads, per source repo."""
+
+    dotbot_firmware: str | None = Field(None, alias="dotbot-firmware")
+    swarmit: str | None = None
+    mari: str | None = None
+
+
+# The `[fw]` keys that became `[fw.sources]` keys.
+_MOVED_SOURCE_KEYS = {
+    "firmware_repo": "dotbot-firmware",
+    "swarmit_repo": "swarmit",
+    "mari_repo": "mari",
+}
+
+
 class FwSection(_Strict):
     board: str | None = None
-    sandbox: bool | None = None
+    bare: bool | None = None
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
-    firmware_repo: str | None = None  # path to the DotBot-firmware clone
+    sources: FwSources = Field(default_factory=FwSources)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _source_keys_moved(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for old, new in _MOVED_SOURCE_KEYS.items():
+                if old in data:
+                    raise ValueError(f"[fw].{old} is now the {new} key of [fw.sources]")
+        return data
 
 
 class DeviceSection(_Strict):
     board: str | None = None
     probe: str | None = None
-    build_config: str | None = None
 
 
 class SwarmSection(_Strict):

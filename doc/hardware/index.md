@@ -81,7 +81,7 @@ dotbot device flash dotbot --probe 77
 ```
 
 A standalone J-Link is only needed to re-flash the on-board programmer's *own*
-firmware (`dotbot device flash-programmer`) - a rare, one-time bring-up step.
+firmware (`dotbot device flash programmer`) - a rare step, for first-time bring-up or recovery.
 See [device](../cli/device.md) for the full flashing workflow.
 
 **Barrel jack (J4) - charging.** The barrel jack feeds the BQ24640 charger,
@@ -102,7 +102,7 @@ host to the swarm radio.
 
 ```bash
 # flash the gateway role onto a DK (writes the network id + both cores)
-dotbot device flash-mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
+dotbot device flash mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
 
 # then run the host-side UART<->MQTT bridge
 dotbot run gateway
