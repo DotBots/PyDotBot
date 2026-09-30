@@ -10,6 +10,7 @@ the `device info` read-and-report contract (never fails on a blank
 board), and the friendly nrfjprog-missing error.
 """
 
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1525,3 +1526,57 @@ def test_fetch_help_says_where_the_gateway_comes_from():
     assert "Mari's own releases publish no firmware" in help_text
     assert "swarmit releases that include them also ship the per-schedule" in help_text
     assert "dotbot fw build mari-gateway --schedule" in help_text
+
+
+@pytest.mark.parametrize("sub", ["", "firmware"])
+def test_flash_from_a_mari_checkout_says_to_build_it_first(
+    runner, _no_nrfjprog_gate, gateway_hardware, tmp_path, monkeypatch, sub
+):
+    """-f given a source folder (relative, against the cwd) names the build
+    that turns it into a set, instead of listing missing images."""
+    checkout = tmp_path / "src" / "mari"
+    (checkout / "firmware").mkdir(parents=True)
+    (checkout / "firmware" / "Makefile").write_text("")
+    monkeypatch.chdir(tmp_path / "src")
+    fw = str(Path("mari") / sub) if sub else "mari/"
+    result = runner.invoke(
+        device_cmd,
+        [
+            "flash",
+            "mari-gateway",
+            "--swarm-id",
+            "1234",
+            "--schedule",
+            "medium",
+            "-f",
+            fw,
+        ],
+    )
+    assert result.exit_code != 0
+    output = " ".join(result.output.split())
+    assert f"{fw} is a mari source folder, not a folder of built images" in output
+    assert (
+        "dotbot fw build mari-gateway --schedule medium --path "
+        f"{shlex.quote(str(checkout))}"
+    ) in output
+    assert "rerun this flash with -f local" in output
+    assert gateway_hardware == {}
+
+
+def test_flash_from_another_sources_checkout_names_the_right_one(tmp_path):
+    checkout = tmp_path / "swarmit"
+    checkout.mkdir()
+    (checkout / "Makefile").write_text("")
+    (checkout / "swarmit-netcore.emProject").write_text("")
+    with pytest.raises(click.ClickException) as exc:
+        fetch.resolve_fw_dir(
+            "mari",
+            str(checkout),
+            tmp_path,
+            build="mari-gateway",
+            required=("03app_gateway_app-nrf5340-app.hex",),
+        )
+    message = exc.value.format_message()
+    assert "is a swarmit source folder" in message
+    assert "mari-gateway builds from a mari source folder" in message
+    assert "dotbot fw build mari-gateway --path /path/to/mari" in message

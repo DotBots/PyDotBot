@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import ssl
 import time
 import urllib.error
@@ -157,6 +158,11 @@ def resolve_fw_dir(
             raise click.ClickException(f"-f {fw_version}: no such directory.")
         missing = _missing(path, required)
         if missing:
+            checkout = source_checkout(path)
+            if checkout is not None:
+                raise click.ClickException(
+                    _checkout_refusal(fw_version, source, build, *checkout)
+                )
             raise click.ClickException(
                 f"{path} is used as-is and has no {', '.join(missing)}."
             )
@@ -184,6 +190,39 @@ def resolve_fw_dir(
             f"  - build it: {_build_line(build, fw_version)}"
         )
     return root, fw_version
+
+
+def source_checkout(path: Path) -> tuple[str, Path] | None:
+    """The source `path` is a checkout of, and its root; None if it is not one.
+
+    A mari `firmware/` folder counts as its checkout.
+    """
+    for root in (path, path.parent) if path.name == "firmware" else (path,):
+        if (root / "firmware" / "Makefile").is_file():
+            return "mari", root
+    if (path / "Makefile").is_file():
+        if any(path.glob("swarmit-*.emProject")):
+            return "swarmit", path
+        if (path / "apps").is_dir():
+            return "dotbot-firmware", path
+    return None
+
+
+def _checkout_refusal(
+    value: str, source: str, build: str, found: str, root: Path
+) -> str:
+    message = f"{value} is a {found} source folder, not a folder of built images."
+    if found == source:
+        folder = shlex.quote(str(root.absolute()))
+        message += " Build from it"
+    else:
+        folder = f"/path/to/{source}"
+        message += f" {build.split()[0]} builds from a {source} source folder: build"
+    return (
+        f"{message}, then flash the built set:\n"
+        f"  {_build_line(build, 'local')} --path {folder}\n"
+        f"  then rerun this flash with -f local"
+    )
 
 
 def _build_line(build: str, name: str) -> str:
