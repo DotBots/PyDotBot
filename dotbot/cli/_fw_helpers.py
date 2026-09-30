@@ -12,7 +12,7 @@ contract in one place.
 
 ## Configuration
 
-`SEGGER_DIR` can be persisted in `~/.dotbot/config.toml` so it doesn't
+`SEGGER_DIR` can be persisted in `~/.dotbot/dotbot.toml` so it doesn't
 have to ride in every shell:
 
 ```toml
@@ -78,7 +78,7 @@ def _loaded_config():
 
     Uses the config the root `dotbot` group already resolved onto the Click
     context when one is active (so `-c`, the cwd `dotbot.toml`, the
-    `~/.dotbot/config.toml` fallback, and flag precedence all apply); for
+    `~/.dotbot/dotbot.toml` fallback, and flag precedence all apply); for
     direct (non-CLI) calls it discovers and loads the config fresh.
     """
     ctx = click.get_current_context(silent=True)
@@ -131,7 +131,7 @@ def resolve_segger_dir() -> Path:
     raise click.ClickException(
         "Building firmware from source needs SEGGER Embedded Studio (SES), "
         "which wasn't found.\n"
-        "  • Export SEGGER_DIR, or add to ~/.dotbot/config.toml:\n"
+        "  • Export SEGGER_DIR, or add to ~/.dotbot/dotbot.toml:\n"
         "      [fw]\n"
         '      segger_dir = "/path/to/SEGGER Embedded Studio X.YY"\n'
         "  • You do NOT need SES to run firmware: `dotbot fw fetch -f <version>` "

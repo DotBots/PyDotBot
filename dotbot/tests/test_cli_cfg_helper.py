@@ -42,7 +42,7 @@ def test_flag_on_commandline_wins_over_config(runner):
     result = runner.invoke(
         _probe_command(),
         ["--board", "from-flag"],
-        obj={"config": cfg, "deployment": None},
+        obj={"config": cfg},
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-flag"
@@ -54,7 +54,7 @@ def test_no_flag_falls_to_config(runner):
     result = runner.invoke(
         _probe_command(),
         [],
-        obj={"config": cfg, "deployment": None},
+        obj={"config": cfg},
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-config"
@@ -79,7 +79,9 @@ def test_env_beats_config(runner, monkeypatch):
     monkeypatch.setenv("DOTBOT_FW_BOARD", "from-env")
     cfg = DotbotConfig.model_validate({"fw": {"board": "from-config"}})
     result = runner.invoke(
-        _probe_command(), [], obj={"config": cfg, "deployment": None}
+        _probe_command(),
+        [],
+        obj={"config": cfg},
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == "from-env"

@@ -541,7 +541,10 @@ def test_build_bare_from_config_does_not_refuse_a_role(
     isolated, swarmit_repo, fake_build
 ):
     cfg = DotbotConfig.model_validate({"fw": {"bare": True}})
-    result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
+    result = build(
+        "swarmit-sandbox",
+        obj={"config": cfg},
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -700,7 +703,7 @@ def test_build_print_path_reflects_config_board(isolated, firmware_repo, fake_ma
         result = build(
             "--print-path",
             "dotbot_gateway",
-            obj={"config": cfg, "deployment": None},
+            obj={"config": cfg},
         )
     finally:
         del PROJECTS["nrf5340dk-app"]
@@ -712,7 +715,10 @@ def test_build_config_key_overrides_both_source_defaults(
     isolated, firmware_repo, swarmit_repo, fake_make, fake_build
 ):
     cfg = DotbotConfig.model_validate({"fw": {"build_config": "Release"}})
-    result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
+    result = build(
+        "swarmit-sandbox",
+        obj={"config": cfg},
+    )
     assert result.exit_code == 0, result.output
     assert all("BUILD_CONFIG=Release" in argv for _, argv, _ in fake_build)
 

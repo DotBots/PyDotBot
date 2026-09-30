@@ -76,6 +76,42 @@ def subcommand_index(args: Sequence[str], group: click.Group) -> Optional[int]:
     return None
 
 
+def swarm_connection(obj: Optional[dict]) -> tuple:
+    """The `[swarm]` conn and swarm id, each a `Resolved`, the active site's
+    `[connection]` included."""
+    from types import SimpleNamespace
+
+    from dotbot.cli._site import active_site, config_label
+    from dotbot.config import resolve_source
+
+    obj = obj if obj is not None else {}
+    site = active_site(SimpleNamespace(obj=obj)).layer
+    return tuple(
+        resolve_source(
+            key,
+            section="swarm",
+            config=obj.get("config"),
+            config_label=config_label(obj.get("config_path")),
+            site=site,
+        )
+        for key in ("conn", "swarm_id")
+    )
+
+
+def flag_value(args: Sequence[str], flags: Sequence[str]) -> Optional[str]:
+    """The value given to one of `flags` in `args`, if any."""
+    for i, arg in enumerate(args):
+        for flag in flags:
+            if arg == flag:
+                return args[i + 1] if i + 1 < len(args) else None
+            if flag.startswith("--") and arg.startswith(flag + "="):
+                return arg[len(flag) + 1 :]
+            if not flag.startswith("--") and arg.startswith(flag) and arg != flag:
+                if not arg.startswith("--"):
+                    return arg[len(flag) :]
+    return None
+
+
 def inject_config(args: Sequence[str], obj: Optional[dict], group: click.Group) -> list:
     """Prepend `--conn` / `--swarm-id` from the resolved config to `args`.
 
@@ -91,16 +127,8 @@ def inject_config(args: Sequence[str], obj: Optional[dict], group: click.Group) 
     if any(arg in _HELP_FLAGS for arg in args) or _has_flag(group_args, _CONFIG_FLAGS):
         return args
 
-    from dotbot.config import resolve
-
-    obj = obj or {}
-    config = obj.get("config")
-    deployment = obj.get("deployment")
+    conn, swarm_id = (item.value for item in swarm_connection(obj))
     injected: list = []
-    conn = resolve("conn", section="swarm", config=config, deployment=deployment)
-    swarm_id = resolve(
-        "swarm_id", section="swarm", config=config, deployment=deployment
-    )
     if conn and not _has_flag(group_args, _CONN_FLAGS):
         injected += ["--conn", str(conn)]
     if swarm_id and not _has_flag(group_args, _SWARM_ID_FLAGS):

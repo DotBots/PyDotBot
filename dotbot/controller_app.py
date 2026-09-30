@@ -28,9 +28,15 @@ from dotbot import (
 )
 from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.rate import DETECT_SHARE
-from dotbot.cli._cfg import from_config
+from dotbot.cli._cfg import from_config, resolved_from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
-from dotbot.cli._site import site_from_context
+from dotbot.cli._site import (
+    active_site,
+    connection_banner,
+    missing_swarm_message,
+    site_from_context,
+)
+from dotbot.config import Resolved
 from dotbot.controller import (
     LH2_CALIBRATION_MAX_AGE_DAYS,
     Controller,
@@ -86,17 +92,21 @@ def _max_age_days(raw, source: str) -> int:
     return days
 
 
-def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
+def _conn_to_settings(conn, swarm_id, sim_is_dotbot, conn_source=None, site=None):
     """Map `--conn` + `--swarm-id` into internal ControllerSettings fields.
 
     The internal `adapter` enum (`cloud`/`edge`/`dotbot-simulator`/…) is
     an implementation detail; the CLI only ever sees `--conn`. Broker
     credentials come from the environment (`DOTBOT_MQTT_USER` /
-    `DOTBOT_MQTT_PASS`), never the URL or a flag.
+    `DOTBOT_MQTT_PASS`), never the URL or a flag, and only reach a broker
+    `broker_credentials` allows. `conn_source` is the `Resolved` conn came
+    from (None: typed by the person) and `site` the active site.
 
     Raises `click.ClickException` for a malformed `--conn` or a missing
     `--swarm-id` on an mqtt connection.
     """
+    from dotbot.mqtt_tls import broker_credentials
+
     if conn is None:
         raise click.ClickException(
             "no connection given. Pass --conn (-n) with one of:\n"
@@ -109,20 +119,21 @@ def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
     except ConnError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    source = conn_source or Resolved(conn, "flag", "--conn")
     if needs_swarm_id(parsed) and not swarm_id:
-        raise click.ClickException(
-            f"--conn {conn} needs --swarm-id: the broker carries multiple "
-            "swarms; --swarm-id selects yours."
-        )
+        raise click.ClickException(missing_swarm_message(source, site))
 
     if parsed.kind == "mqtt":
+        credentials = broker_credentials(conn, source.user_set, source.source)
+        if credentials.withheld:
+            click.echo(f"warning: {credentials.withheld}", err=True)
         settings = {
             "adapter": "cloud",
             "mqtt_host": parsed.host,
             "mqtt_port": parsed.port,
             "mqtt_use_tls": parsed.use_tls,
-            "mqtt_username": os.environ.get("DOTBOT_MQTT_USER"),
-            "mqtt_password": os.environ.get("DOTBOT_MQTT_PASS"),
+            "mqtt_username": credentials.username,
+            "mqtt_password": credentials.password,
         }
         if swarm_id:
             settings["network_id"] = swarm_id
@@ -486,22 +497,26 @@ def main(
     if config_path:
         file_data = toml.load(config_path)
 
-    # Unified config / selected deployment, slotted in above the legacy
-    # `--config-path` file. Resolves CLI > env > unified-config (run >
-    # deployment > top-level) for each key; falls through to the param
-    # default (None) when no root context is present, preserving the
-    # legacy `--config-path` fallback that follows.
-    conn = from_config(ctx, "conn", "conn", "run")
-    swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
+    # The unified config, slotted in above the legacy `--config-path` file.
+    # Resolves CLI > env > unified-config (run > top-level > the active
+    # site's [connection]) for each key; falls through to the param default
+    # (None) when nothing sets it, preserving the legacy `--config-path`
+    # fallback that follows.
+    site_flag = site
+    conn_r = resolved_from_config(ctx, "conn", "conn", "run", site_flag=site_flag)
+    swarm_r = resolved_from_config(
+        ctx, "swarm_id", "swarm_id", "run", site_flag=site_flag
+    )
     swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
     mrta_url = from_config(ctx, "mrta_url", "mrta_url", "run.controller")
 
     unified = (ctx.obj or {}).get("config")
-    site, site_source = site_from_context(ctx, site)
+    active = active_site(ctx, site_flag)
+    site, site_source = site_from_context(ctx, site_flag)
     lh2_calibration, calibration_source = _resolve_controller_key(
         "lh2_calibration", lh2_calibration, unified, None
     )
-    print(f"Site: {site.name} (from {site_source})")
+    print(connection_banner(active, conn_r, swarm_r))
     print(
         f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
         if lh2_calibration
@@ -542,7 +557,10 @@ def main(
             )
         )
 
-    conn = conn if conn is not None else file_data.get("conn")
+    conn, swarm_id = conn_r.value, swarm_r.value
+    if conn is None and "conn" in file_data:
+        conn = file_data["conn"]
+        conn_r = Resolved(conn, "file", str(config_path))
     swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
 
     # Warn (and drop) legacy transport keys in a config file — they're
@@ -559,7 +577,9 @@ def main(
     # Translate the single `--conn` connection string into the internal
     # adapter + transport settings. The internal `adapter` enum stays an
     # implementation detail — the CLI never exposes it.
-    conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
+    conn_settings = _conn_to_settings(
+        conn, swarm_id, sim_is_dotbot, conn_source=conn_r, site=active
+    )
 
     dotbot_simulator = conn_settings.get("adapter") == "dotbot-simulator"
     area_spec, area_source = _resolve_controller_key(

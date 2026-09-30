@@ -168,7 +168,7 @@ def test_flash_role_ignores_app_settings_from_config(
     result = runner.invoke(
         device_cmd,
         ["flash", "mari-gateway", "--swarm-id", "1234", "-f", "0.9.0"],
-        obj={"config": cfg, "deployment": None},
+        obj={"config": cfg},
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
@@ -276,7 +276,7 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
     assert calls["kw"]["calibration_path"] is None
 
 
-# ── swarm id defaults from the selected deployment's swarm_id ─────────
+# ── swarm id defaults from the active site's [connection] ─────────
 
 
 def _write_cfg(tmp_path, text):
@@ -285,10 +285,10 @@ def _write_cfg(tmp_path, text):
     return path
 
 
-def test_flash_mari_gateway_net_id_from_deployment(
+def test_flash_mari_gateway_net_id_from_the_site(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """No --swarm-id + a selected deployment -> net_id derived from its swarm_id."""
+    """No --swarm-id + an active site naming one -> net_id derived from it."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -298,7 +298,8 @@ def test_flash_mari_gateway_net_id_from_deployment(
     )
     cfg = _write_cfg(
         tmp_path,
-        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+        'site = "lab"\n[sites.lab.connection]\n'
+        'conn = "mqtts://h:8883"\nswarm_id = "1234"\n',
     )
     result = runner.invoke(
         cli,
@@ -319,10 +320,10 @@ def test_flash_mari_gateway_net_id_from_deployment(
     assert calls["kw"]["net_id"] == (0x1234, "1234")
 
 
-def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
+def test_flash_mari_gateway_explicit_net_id_overrides_the_site(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """An explicit --swarm-id beats the deployment's swarm_id."""
+    """An explicit --swarm-id beats the site's swarm_id."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -332,7 +333,8 @@ def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
     )
     cfg = _write_cfg(
         tmp_path,
-        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+        'site = "lab"\n[sites.lab.connection]\n'
+        'conn = "mqtts://h:8883"\nswarm_id = "1234"\n',
     )
     result = runner.invoke(
         cli,
@@ -353,7 +355,7 @@ def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
 
 
 def test_flash_mari_gateway_no_swarm_id_no_config_errors(runner, _no_nrfjprog_gate):
-    """No --swarm-id and no swarm_id/deployment -> a clean ClickException, not a crash."""
+    """No --swarm-id and no swarm_id anywhere -> a clean ClickException, not a crash."""
     from dotbot.cli.main import cli
 
     with runner.isolated_filesystem():
@@ -364,10 +366,10 @@ def test_flash_mari_gateway_no_swarm_id_no_config_errors(runner, _no_nrfjprog_ga
     assert "no swarm id" in result.output
 
 
-def test_flash_swarmit_sandbox_net_id_from_deployment(
+def test_flash_swarmit_sandbox_net_id_from_the_site(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """flash swarmit-sandbox also defaults net_id from the deployment's swarm_id."""
+    """flash swarmit-sandbox also defaults net_id from the site's swarm_id."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -377,7 +379,8 @@ def test_flash_swarmit_sandbox_net_id_from_deployment(
     )
     cfg = _write_cfg(
         tmp_path,
-        'default_deployment = "lab"\n[deployment.lab]\nswarm_id = "1234"\n',
+        'site = "lab"\n[sites.lab.connection]\n'
+        'conn = "mqtts://h:8883"\nswarm_id = "1234"\n',
     )
     result = runner.invoke(
         cli,

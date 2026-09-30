@@ -19,8 +19,16 @@ from dotbot.cli import _lazy
 from dotbot.cli.main import _SUBCOMMANDS, cli
 from dotbot.cli.run import _RUN_SUBCOMMANDS
 
-# The top level is the four object-namespaces plus the read-only
-# management commands (config, deployment).
+
+@pytest.fixture(autouse=True)
+def isolated_home(monkeypatch, tmp_path):
+    """Give the `python -m dotbot.cli` subprocesses an empty home."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+
+# The top level is the four object-namespaces plus the management commands
+# (config, site).
 EXPECTED_SUBCOMMANDS = {
     "guide",
     "fw",
@@ -28,7 +36,6 @@ EXPECTED_SUBCOMMANDS = {
     "swarm",
     "run",
     "config",
-    "deployment",
     "site",
 }
 

@@ -2,7 +2,7 @@
 
 import sys
 from importlib.metadata import PackageNotFoundError
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import serial
@@ -44,32 +44,101 @@ def test_main(run, version, _):
     assert "Welcome to the DotBots controller (version: unknown)." in result.output
 
 
+_VIRTUAL = """
+site = "virtual-lab"
+
+[sites.virtual-lab]
+virtual = true
+
+[sites.virtual-lab.connection]
+conn = "simulator"
+"""
+
+_ARENA = """
+[sites.arena.connection]
+conn = "mqtts://argus.example:8883"
+"""
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
-def test_run_controller_uses_selected_deployment(controller, _asyncio_run, tmp_path):
-    """Through the root group: a selected deployment supplies `conn` so
-    `run controller` starts without a CLI `--conn` and consumes
-    `deployment.sim.conn = "simulator"`."""
+def test_run_controller_follows_a_virtual_sites_simulator(
+    controller, _asyncio_run, tmp_path
+):
+    """Through the root group: the active site's `[connection]` supplies
+    `conn`, so `run controller` starts on it with no `--conn`."""
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(
-        """
-default_deployment = "sim"
-
-[deployment.sim]
-conn = "simulator"
-"""
-    )
+    config_file.write_text(_VIRTUAL)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
     assert result.exit_code == 0, result.output
-    # The deployment's conn=simulator was consumed: no "no connection" error,
-    # and the adapter resolves to the simulator.
     settings = controller.call_args.args[0]
     assert settings.adapter == "dotbot-simulator"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_banner_names_each_source_once_before_starting(
+    controller, _asyncio_run, tmp_path
+):
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(_VIRTUAL)
+
+    banner = "site virtual-lab (dotbot.toml), conn simulator (site virtual-lab)"
+    printed = []
+    at_start = []
+
+    def started(*_args, **_kwargs):
+        at_start.append(list(printed))
+        return MagicMock()
+
+    controller.side_effect = started
+    runner = CliRunner()
+    with patch("builtins.print", side_effect=lambda *a, **k: printed.append(a[0])):
+        result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    assert banner in at_start[0]
+    assert printed.count(banner) == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_controller_site_flag_picks_that_sites_connection(
+    controller, _asyncio_run, tmp_path
+):
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text(_VIRTUAL.replace('site = "virtual-lab"', 'site = "x"'))
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["-c", str(config_file), "run", "controller", "--site", "virtual-lab"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "site virtual-lab (--site), conn simulator (site virtual-lab)" in (
+        result.output
+    )
+
+
+def test_a_site_broker_with_no_swarm_id_names_the_site(tmp_path, monkeypatch):
+    from dotbot.cli.main import cli
+
+    monkeypatch.delenv("DOTBOT_SWARM_ID", raising=False)
+    config_file = tmp_path / "dotbot.toml"
+    config_file.write_text('site = "arena"\n' + _ARENA)
+    result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code != 0
+    assert "site arena names no swarm; set --swarm-id or DOTBOT_SWARM_ID" in (
+        result.output
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")

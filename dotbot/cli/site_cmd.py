@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot site` - add and export site packs.
+"""`dotbot site` - the places you work in, and which one is active.
 
 A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
-config finds it; `export` writes one as a zip, from a pack or from an inline
-`[sites.<name>]` table. The same folders can be shared with git, cp or unzip.
+config finds it; `use` makes a site the active one; `list` and `show` read;
+`export` writes one as a zip, from a pack or from an inline `[sites.<name>]`
+table. The same folders can be shared with git, cp or unzip.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -19,6 +21,8 @@ from pathlib import Path
 import click
 import tomlkit
 
+from dotbot import config as _config
+from dotbot.cli._site import SITE_ENV, active_site, config_label
 from dotbot.config import ConfigError
 from dotbot.site import PACK_CALIBRATIONS, check_site_name
 from dotbot.site_packs import PACK_FILE, read_pack, site_catalog, user_sites_dir
@@ -28,10 +32,193 @@ _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
 
 @click.group(
     name="site",
-    help="Add a site pack to this machine, or export one to share.",
+    help=(
+        "The places you work in: add a site pack, switch with use, "
+        "list / show, export one to share."
+    ),
 )
 def cmd():
     pass
+
+
+def _catalog(ctx):
+    obj = ctx.obj or {}
+    try:
+        return site_catalog(obj.get("config"), obj.get("config_path"))
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _connection(table):
+    """A site table's (conn, swarm_id), each None when unset."""
+    connection = getattr(table, "connection", None)
+    if connection is None:
+        return None, None
+    return connection.conn, connection.swarm_id
+
+
+def _hiders(config, config_path, table) -> list[str]:
+    """What in the config file or the environment overrides the site's
+    connection, one phrase each."""
+    phrases = []
+    label = config_label(config_path)
+    for key, value in zip(("conn", "swarm_id"), _connection(table)):
+        if value is None:
+            continue
+        if config is not None:
+            if getattr(config, key, None) is not None:
+                phrases.append(f"{label} sets {key} at top level")
+            for section in ("run", "swarm"):
+                if getattr(getattr(config, section), key, None) is not None:
+                    phrases.append(f"{label} sets {key} in [{section}]")
+        for name in (
+            f"DOTBOT_{key.upper()}",
+            f"DOTBOT_RUN_{key.upper()}",
+            f"DOTBOT_SWARM_{key.upper()}",
+        ):
+            if name in os.environ:
+                phrases.append(f"{name} is set")
+    return phrases
+
+
+def write_active_site(ctx, name: str, table=None) -> Path:
+    """Write `site = "<name>"` into the config file in use, or create the
+    user config holding just that when none is.
+
+    Comments and the rest of the file are kept. Warns when the file or the
+    environment will override the site, or its connection.
+    """
+    obj = ctx.obj or {}
+    config_path = obj.get("config_path")
+    target = Path(config_path) if config_path is not None else _config.USER_CONFIG_PATH
+    if target.is_file():
+        document = tomlkit.parse(target.read_text())
+    else:
+        document = tomlkit.document()
+    document["site"] = name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(tomlkit.dumps(document))
+    click.echo(f'wrote site = "{name}" to {target}')
+    if os.environ.get(SITE_ENV) and os.environ[SITE_ENV] != name:
+        click.echo(
+            f"warning: {SITE_ENV}={os.environ[SITE_ENV]} overrides it; unset "
+            f"{SITE_ENV} to work in {name}",
+            err=True,
+        )
+    config = obj.get("config") if config_path is not None else None
+    for phrase in _hiders(config, target, table):
+        click.echo(
+            f"warning: {phrase}, which overrides {name}'s connection; remove "
+            "it to follow the site",
+            err=True,
+        )
+    return target
+
+
+@cmd.command()
+@click.argument("name")
+@click.pass_context
+def use(ctx, name):
+    """Make NAME the active site, writing it to the config file in use.
+
+    That is the file `dotbot config path` reports; with none in use,
+    ~/.dotbot/dotbot.toml is created. NAME is an inline [sites.<name>] table
+    or a site pack.
+    """
+    catalog = _catalog(ctx)
+    entry = catalog.get(name)
+    if entry is None:
+        known = ", ".join(sorted(catalog)) or "(none)"
+        raise click.ClickException(f"unknown site {name!r}; known sites: {known}")
+    write_active_site(ctx, name, entry.table)
+
+
+def _where(entry) -> str:
+    if entry.pack is not None:
+        return str(entry.pack)
+    return "inline" + (f", shadowing {entry.shadows}" if entry.shadows else "")
+
+
+@cmd.command(name="list")
+@click.pass_context
+def list_sites(ctx):
+    """List the sites the config can name, marking the active one (*), with
+    each one's connection and where it was read from."""
+    catalog = _catalog(ctx)
+    if not catalog:
+        click.echo("(no sites; add one with `dotbot site add` or `dotbot config init`)")
+        return
+    active = active_site(ctx).name
+    width = max(len(name) for name in catalog)
+    conns = {
+        name: _connection(entry.table)[0] or "-" for name, entry in catalog.items()
+    }
+    conn_width = max(len(conn) for conn in conns.values())
+    for name, entry in catalog.items():
+        marker = "*" if name == active else " "
+        click.echo(
+            f"{marker} {name:<{width}}  {conns[name]:<{conn_width}}  {_where(entry)}"
+        )
+
+
+def _echo_areas(entry) -> None:
+    """One line per area of a site: its name and its role, saying when the
+    role is implied by the name."""
+    declared = entry.table.areas
+    areas = entry.site().areas
+    if not areas:
+        return
+    click.echo("areas:")
+    width = max(len(name) for name in areas)
+    for name, area in areas.items():
+        if area.role is None:
+            role = "no role"
+        elif declared[name].role is None:
+            role = f"{area.role} (from its name)"
+        else:
+            role = area.role
+        click.echo(f"  {name:<{width}}  {role}")
+
+
+def _calibration_folders(entry) -> list[Path]:
+    from dotbot.calibration.lighthouse2 import calibration_root
+
+    site = entry.site()
+    folders = [site.pack_calibrations, calibration_root() / entry.name]
+    return [folder for folder in folders if folder is not None]
+
+
+@cmd.command()
+@click.argument("name", required=False)
+@click.pass_context
+def show(ctx, name):
+    """Print one site: where it is defined, its anchor, extent, connection,
+    areas and calibrations. NAME defaults to the active site."""
+    active = active_site(ctx).name
+    name = name or active
+    entry = _catalog(ctx).get(name)
+    if entry is None:
+        raise click.ClickException(
+            f"unknown site {name!r}; `dotbot site list` names the known ones"
+        )
+    table = entry.table
+    click.echo(f"site:        {name}{' (active)' if name == active else ''}")
+    click.echo(f"defined in:  {_where(entry)}")
+    if table.anchor:
+        click.echo(f"anchor:      {table.anchor}")
+    if table.extent_mm:
+        click.echo(f"extent:      {table.extent_mm[0]} x {table.extent_mm[1]} mm")
+    if table.virtual:
+        click.echo("virtual:     yes, it exists only in simulation")
+    conn, swarm_id = _connection(table)
+    click.echo(f"connection:  {conn or '(none)'}")
+    if conn is not None:
+        click.echo(f"swarm id:    {swarm_id or '(none; set swarm_id yourself)'}")
+    _echo_areas(entry)
+    click.echo("calibrations:")
+    for folder in _calibration_folders(entry):
+        count = len(list(folder.glob("*.toml"))) if folder.is_dir() else 0
+        click.echo(f"  {_files(count):<20}  {folder}")
 
 
 def _is_git_url(source: str) -> bool:
@@ -184,15 +371,73 @@ def _install(folder: Path, target: Path) -> None:
         shutil.rmtree(aside, ignore_errors=True)
 
 
+def _ask(question: str, from_stdin: bool) -> bool:
+    """A yes/no question, on the terminal when stdin carried the pack."""
+    if not from_stdin:
+        return click.confirm(question, default=False, err=True)
+    try:
+        with open("/dev/tty", "r+", encoding="utf-8") as tty:
+            tty.write(f"{question} [y/N]: ")
+            tty.flush()
+            answer = tty.readline()
+    except OSError as exc:
+        raise click.ClickException(
+            "the pack came in on stdin, so there is no terminal to ask on; "
+            "pass --yes to accept its connection"
+        ) from exc
+    return answer.strip().lower() in ("y", "yes")
+
+
+def _confirm_connection(name, new, old, from_stdin) -> bool:
+    """Show the broker and swarm id a pack brings, or how a re-add changes
+    them, and ask; True when there is nothing to ask about."""
+    if new == old or new == (None, None):
+        return True
+    rows = (("broker", 0), ("swarm id", 1))
+    if old is None or old == (None, None):
+        click.echo(f"Site pack {name} names its connection:", err=True)
+        for label, i in rows:
+            click.echo(
+                f"  {label + ':':<10} {new[i] or '(none; set swarm_id yourself)'}",
+                err=True,
+            )
+    else:
+        click.echo(f"Site pack {name} changes its connection:", err=True)
+        for label, i in rows:
+            click.echo(
+                f"  {label + ':':<10} {old[i] or '(none)'} -> {new[i] or '(none)'}",
+                err=True,
+            )
+    click.echo(
+        f"Commands in {name} will connect there unless you set conn yourself.",
+        err=True,
+    )
+    return _ask(f"Add site {name}?", from_stdin)
+
+
 @cmd.command()
 @click.argument("source")
 @click.option("--force", "-f", is_flag=True, help="Replace a pack of the same name.")
-def add(source, force):
+@click.option(
+    "--use",
+    "use_",
+    is_flag=True,
+    help="Make it the active site too, as `dotbot site use` does.",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Don't ask before adding a pack that names a connection.",
+)
+@click.pass_context
+def add(ctx, source, force, use_, yes):
     """Copy the site pack SOURCE into ~/.dotbot/sites/.
 
     SOURCE is a pack folder, a zip of one (as `site export` writes), `-` for
     such a zip on stdin, or a git URL whose repository is one. The folder's
-    name is the site's name.
+    name is the site's name. A pack naming a broker shows it and asks first,
+    and asks again when a re-add changes it.
     """
     with tempfile.TemporaryDirectory() as scratch:
         folder, name = _fetch(source, Path(scratch))
@@ -202,10 +447,25 @@ def add(source, force):
             raise click.ClickException(
                 f"{target} already exists. Pass --force to replace it."
             )
+        table = read_pack(folder)
+        old = None
+        if (target / PACK_FILE).is_file():
+            try:
+                old = _connection(read_pack(target))
+            except ConfigError:
+                old = None
+        if not yes and not _confirm_connection(
+            name, _connection(table), old, source == "-"
+        ):
+            click.echo(f"Site {name} not added.", err=True)
+            ctx.exit(1)
         _install(folder, target)
     count = len(list((target / PACK_CALIBRATIONS).glob("*.toml")))
     click.echo(f"Added site {name} to {target} ({_files(count)})")
-    click.echo(f'Work in it with `site = "{name}"` in your config, or --site {name}.')
+    if use_:
+        write_active_site(ctx, name, table)
+    else:
+        click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
 
 
 def _files(count: int) -> str:
@@ -216,9 +476,13 @@ def _site_toml(table) -> str:
     """An inline `[sites.<name>]` table as a pack's `site.toml`."""
     data = table.model_dump(exclude_none=True)
     document = tomlkit.document()
-    for key in ("anchor", "extent_mm"):
+    for key in ("anchor", "extent_mm", "virtual"):
         if key in data:
             document[key] = data[key]
+    if data.get("connection"):
+        connection = tomlkit.table()
+        connection.update(data["connection"])
+        document["connection"] = connection
     areas = tomlkit.table()
     for area_name, area in data.get("areas", {}).items():
         inline = tomlkit.inline_table()

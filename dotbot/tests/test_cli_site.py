@@ -7,11 +7,13 @@ A site names a physical place, so the package must not ship one: the neutral
 default is what a fresh install gets, and a real name comes from the config.
 """
 
+from pathlib import Path
+
 import pytest
 
 from dotbot.area import Area
 from dotbot.cli._site import resolve_site_name
-from dotbot.config import load_config_text, select_deployment
+from dotbot.config import load_config_text
 from dotbot.site import (
     FIELD_FALLBACK_MM,
     SITE_DEFAULT,
@@ -32,13 +34,16 @@ def test_the_config_names_the_site():
         "inria-aio-c",
         "the config file",
     )
+    assert resolve_site_name(
+        config=config, environ={}, config_path=Path("/lab/dotbot.toml")
+    ) == ("inria-aio-c", "dotbot.toml")
 
 
 def test_the_flag_wins_over_the_config():
     config = load_config_text('site = "inria-aio-c"')
     assert resolve_site_name(config=config, flag="taped-square", environ={}) == (
         "taped-square",
-        "the command line",
+        "--site",
     )
 
 
@@ -50,19 +55,6 @@ def test_the_environment_wins_over_the_config_and_loses_to_the_flag():
         "DOTBOT_SITE",
     )
     assert resolve_site_name(config=config, flag="taped", environ=environ)[0] == "taped"
-
-
-def test_a_deployment_carries_its_own_site():
-    config = load_config_text(
-        'site = "inria-aio-c"\n'
-        'default_deployment = "limerick"\n'
-        '[deployment.limerick]\nsite = "limerick-hall"\n'
-    )
-    deployment, _ = select_deployment(config)
-    assert resolve_site_name(config=config, deployment=deployment, environ={}) == (
-        "limerick-hall",
-        "the config file",
-    )
 
 
 def test_a_site_table_becomes_its_anchor_extent_and_areas():
@@ -175,3 +167,229 @@ def test_field_or_fallback():
     fallback = Area(0, 0, FIELD_FALLBACK_MM, FIELD_FALLBACK_MM)
     assert field_or_fallback(Site()) == fallback
     assert field_or_fallback(None) == fallback
+
+
+# --- site use / list / show, and site add's connection prompt ---------------
+
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    """A scratch home holding the user config and the added packs."""
+    from dotbot import site_packs
+
+    home = tmp_path / "home" / ".dotbot"
+    home.mkdir(parents=True)
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", home / "sites")
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "dotbot.toml")
+    monkeypatch.setattr(
+        "dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path / "calibrations"
+    )
+    for name in ("DOTBOT_CONFIG", "DOTBOT_SITE", "DOTBOT_CONN", "DOTBOT_RUN_CONN"):
+        monkeypatch.delenv(name, raising=False)
+    return home
+
+
+@pytest.fixture
+def runner():
+    from click.testing import CliRunner
+
+    return CliRunner()
+
+
+def _pack(root, name, connection=""):
+    pack = root / name
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        'anchor = "the door"\nextent_mm = [2000, 3000]\n'
+        "[areas]\nfield = { x = 0, y = 0, w = 2000, h = 2000 }\n"
+        '"bench" = { x = 0, y = 2000, w = 500, h = 500, role = "corner" }\n'
+        + connection
+    )
+    return pack
+
+
+_ARGUS = '[connection]\nconn = "mqtts://argus.example:8883"\n'
+
+
+def _invoke(runner, *args, input=None):
+    from dotbot.cli.main import cli
+
+    return runner.invoke(cli, list(args), input=input)
+
+
+def test_use_writes_the_site_and_keeps_comments(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('# my lab\nsite = "old"  # the old one\n[fw]\nboard = "x"\n')
+    _pack(home / "sites", "arena")
+    result = _invoke(runner, "-c", str(config), "site", "use", "arena")
+    assert result.exit_code == 0, result.output
+    assert f'wrote site = "arena" to {config}' in result.output
+    text = config.read_text()
+    assert "# my lab" in text and 'site = "arena"' in text and "[fw]" in text
+
+
+def test_use_warns_when_your_file_hides_the_sites_connection(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('conn = "mqtts://mine:8883"\n')
+    _pack(home / "sites", "arena", _ARGUS)
+    result = _invoke(runner, "-c", str(config), "site", "use", "arena")
+    assert result.exit_code == 0, result.output
+    assert (
+        "warning: dotbot.toml sets conn at top level, which overrides arena's "
+        "connection; remove it to follow the site" in result.output
+    )
+
+
+def test_use_says_nothing_about_a_site_with_no_connection(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('conn = "mqtts://mine:8883"\n')
+    _pack(home / "sites", "arena")
+    result = _invoke(runner, "-c", str(config), "site", "use", "arena")
+    assert "warning" not in result.output
+
+
+def test_use_refuses_an_unknown_site(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text("")
+    result = _invoke(runner, "-c", str(config), "site", "use", "nope")
+    assert result.exit_code != 0
+    assert "unknown site 'nope'" in result.output
+    assert config.read_text() == ""
+
+
+def test_use_with_no_config_in_use_creates_the_user_config(runner, home):
+    _pack(home / "sites", "arena")
+    with runner.isolated_filesystem():
+        result = _invoke(runner, "site", "use", "arena")
+    assert result.exit_code == 0, result.output
+    assert (home / "dotbot.toml").read_text() == 'site = "arena"\n'
+
+
+def test_add_shows_the_broker_and_asks(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    declined = _invoke(runner, "site", "add", str(pack), input="n\n")
+    assert declined.exit_code != 0
+    assert "broker:    mqtts://argus.example:8883" in declined.output
+    assert "swarm id:  (none; set swarm_id yourself)" in declined.output
+    assert not (home / "sites" / "arena").exists()
+    accepted = _invoke(runner, "site", "add", str(pack), input="y\n")
+    assert accepted.exit_code == 0, accepted.output
+    assert (home / "sites" / "arena" / "site.toml").is_file()
+
+
+def test_add_yes_skips_the_question(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    result = _invoke(runner, "site", "add", str(pack), "--yes")
+    assert result.exit_code == 0, result.output
+    assert "Add site arena?" not in result.output
+
+
+def test_a_pack_with_no_connection_is_never_asked_about(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena")
+    result = _invoke(runner, "site", "add", str(pack))
+    assert result.exit_code == 0, result.output
+    assert "Add site" not in result.output
+
+
+def test_a_readd_that_changes_the_broker_asks_again_with_old_and_new(
+    runner, tmp_path, home
+):
+    _pack(home / "sites", "arena", _ARGUS)
+    pack = _pack(
+        tmp_path / "src",
+        "arena",
+        '[connection]\nconn = "mqtts://other.example:8883"\nswarm_id = "0A1B"\n',
+    )
+    result = _invoke(runner, "site", "add", str(pack), "--force", input="n\n")
+    assert result.exit_code != 0
+    assert "changes its connection" in result.output
+    assert (
+        "broker:    mqtts://argus.example:8883 -> mqtts://other.example:8883"
+        in result.output
+    )
+    assert "swarm id:  (none) -> 0A1B" in result.output
+    assert "argus" in (home / "sites" / "arena" / "site.toml").read_text()
+
+
+def test_a_readd_with_the_same_broker_is_not_asked_about(runner, tmp_path, home):
+    _pack(home / "sites", "arena", _ARGUS)
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    result = _invoke(runner, "site", "add", str(pack), "--force")
+    assert result.exit_code == 0, result.output
+    assert "Add site" not in result.output
+
+
+def test_add_use_with_no_config_creates_the_user_config(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    with runner.isolated_filesystem():
+        result = _invoke(runner, "site", "add", str(pack), "--use", "--yes")
+    assert result.exit_code == 0, result.output
+    assert (home / "dotbot.toml").read_text() == 'site = "arena"\n'
+    assert f'wrote site = "arena" to {home / "dotbot.toml"}' in result.output
+
+
+def test_add_use_writes_into_the_config_in_use(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('swarm_id = "A001"\n')
+    pack = _pack(tmp_path / "src", "arena")
+    result = _invoke(runner, "-c", str(config), "site", "add", str(pack), "--use")
+    assert result.exit_code == 0, result.output
+    assert config.read_text() == 'swarm_id = "A001"\nsite = "arena"\n'
+    assert not (home / "dotbot.toml").exists()
+
+
+def test_add_from_stdin_asks_on_the_terminal_or_needs_yes(
+    runner, tmp_path, home, monkeypatch
+):
+    import builtins
+    import io
+    import zipfile
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as opened:
+        opened.writestr("arena/site.toml", _ARGUS)
+    real_open = builtins.open
+
+    def no_tty(path, *args, **kwargs):
+        if path == "/dev/tty":
+            raise OSError("no terminal")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", no_tty)
+    result = _invoke(runner, "site", "add", "-", input=archive.getvalue())
+    assert result.exit_code != 0
+    assert "pass --yes" in result.output
+    result = _invoke(runner, "site", "add", "-", "--yes", input=archive.getvalue())
+    assert result.exit_code == 0, result.output
+
+
+def test_list_marks_the_active_site_and_shows_each_connection(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text(
+        'site = "lab"\n[sites.lab]\nvirtual = true\n'
+        '[sites.lab.connection]\nconn = "simulator"\n'
+    )
+    _pack(home / "sites", "arena", _ARGUS)
+    result = _invoke(runner, "-c", str(config), "site", "list")
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert "* lab    simulator                   inline" in lines
+    assert f"  arena  mqtts://argus.example:8883  {home / 'sites' / 'arena'}" in lines
+
+
+def test_show_prints_the_site_its_connection_areas_and_calibrations(
+    runner, tmp_path, home
+):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('site = "arena"\n')
+    _pack(home / "sites", "arena", _ARGUS)
+    result = _invoke(runner, "-c", str(config), "site", "show")
+    assert result.exit_code == 0, result.output
+    assert "site:        arena (active)" in result.output
+    assert "anchor:      the door" in result.output
+    assert "extent:      2000 x 3000 mm" in result.output
+    assert "connection:  mqtts://argus.example:8883" in result.output
+    assert "swarm id:    (none; set swarm_id yourself)" in result.output
+    assert "field  field (from its name)" in result.output
+    assert "bench  corner" in result.output
+    assert "0 calibration files" in result.output

@@ -21,18 +21,20 @@ MQTT topics are a later phase, tracked in the controller-CLI-redesign
 plan.
 """
 
-import os
 import time
 
 import click
 
 from dotbot import addr_to_hex
-from dotbot.cli._cfg import from_config
+from dotbot.cli._cfg import resolved_from_config
 from dotbot.cli._conn import parse_connection
-from dotbot.mqtt_tls import allow_unverified_broker
+from dotbot.cli._site import active_site, connection_banner
+from dotbot.mqtt_tls import Credentials, allow_unverified_broker, broker_credentials
 
 
-def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gateway
+def _run_gateway(
+    port, mqtt_url, do_print, credentials=Credentials()
+):  # pragma: no cover - needs a gateway
     """Construct a MarilibEdge bridge and pump it until interrupted.
 
     Imports marilib lazily so `dotbot run gateway --help` is cheap and the
@@ -54,13 +56,11 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
     mqtt_interface = None
     if mqtt_url is not None:
         allow_unverified_broker()
-        # Broker credentials come from the environment (DOTBOT_MQTT_USER /
-        # DOTBOT_MQTT_PASS); they override any user:pass in the URL.
         mqtt_interface = MQTTAdapter.from_url(
             mqtt_url,
             is_edge=True,
-            username=os.environ.get("DOTBOT_MQTT_USER"),
-            password=os.environ.get("DOTBOT_MQTT_PASS"),
+            username=credentials.username,
+            password=credentials.password,
         )
 
     # metrics_probe_period=0 → MarilibEdge starts no metrics thread, so a
@@ -115,12 +115,17 @@ def _run_gateway(port, mqtt_url, do_print):  # pragma: no cover - needs a gatewa
 @click.pass_context
 def cmd(ctx, port, mqtt_url, do_print):
     """Run the gateway bridge."""
-    if mqtt_url is None:
-        # No --mqtt-url on the command line: fall back to the selected
-        # deployment's (or config's) connection, but only when it names an
-        # MQTT broker - a serial/simulator conn is not a broker to bridge to,
-        # so we leave mqtt_url None and keep the print-only behavior.
-        conn = from_config(ctx, "mqtt_url", "conn", "run")
-        if conn and parse_connection(conn).kind == "mqtt":
-            mqtt_url = conn
-    _run_gateway(port, mqtt_url, do_print)
+    # With no --mqtt-url, the config's conn (the active site's included) is
+    # bridged to only when it names a broker; otherwise the bridge prints.
+    conn = resolved_from_config(ctx, "mqtt_url", "conn", "run")
+    if conn.kind != "flag" and not (
+        conn.value and parse_connection(conn.value).kind == "mqtt"
+    ):
+        conn = None
+    credentials = Credentials()
+    if conn is not None:
+        click.echo(connection_banner(active_site(ctx), conn), err=True)
+        credentials = broker_credentials(conn.value, conn.user_set, conn.source)
+        if credentials.withheld:
+            click.echo(f"warning: {credentials.withheld}", err=True)
+    _run_gateway(port, conn.value if conn else None, do_print, credentials)

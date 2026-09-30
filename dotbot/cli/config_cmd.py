@@ -5,12 +5,13 @@
 
 A management group (like `git config` / `kubectl config`): `init` writes a
 starter config file holding a site to work in (optionally pre-filling `conn` /
-`swarm_id`); `path` and
-`show` are read-only inspectors over what the root group resolved onto the
-Click context (`ctx.obj`): the loaded `DotbotConfig`, its source path, and the
-selected deployment. There is no per-key `set` - edit the file, it is yours.
+`swarm_id`); `path` and `show` are read-only inspectors over what the root
+group resolved onto the Click context (`ctx.obj`): the loaded `DotbotConfig`
+and its source path. There is no per-key `set` - edit the file, it is yours.
 """
 
+import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -18,10 +19,11 @@ from typing import Any
 import click
 import tomlkit
 
-from dotbot.cli._site import resolve_site_name
-from dotbot.config import USER_CONFIG_PATH, ConfigError
+from dotbot import config as _config
+from dotbot.cli._site import active_site, config_label
+from dotbot.config import resolve_source
+from dotbot.mqtt_tls import HOST_ENV, USER_ENV, broker_credentials
 from dotbot.site import SITE_DEFAULT, check_site_name
-from dotbot.site_packs import site_catalog
 
 _CONFIG_DOCS_URL = (
     "https://pydotbot.readthedocs.io/en/latest/reference/configuration.html"
@@ -112,9 +114,12 @@ def parse_field_size(spec: str) -> tuple[int, int]:
     return (sizes[0], sizes[-1])
 
 
-def default_site_toml(name: str, field_mm: tuple[int, int]) -> str:
+def default_site_toml(
+    name: str, field_mm: tuple[int, int], broker: str | None = None
+) -> str:
     """The `[sites.<name>]` table `init` writes: a field with a margin of floor
-    round it and a staging strip along its bottom edge."""
+    round it and a staging strip along its bottom edge, and `broker` as its
+    `[connection]`."""
     width, height = field_mm
     extent = (width + 2 * SITE_MARGIN_MM, height + 2 * SITE_MARGIN_MM)
     x = y = SITE_MARGIN_MM
@@ -128,7 +133,8 @@ def default_site_toml(name: str, field_mm: tuple[int, int]) -> str:
         f'anchor = "{anchor}"\n'
         f"extent_mm = [{extent[0]}, {extent[1]}]\n"
         "\n"
-        f"[sites.{name}.areas]\n"
+        + (f'[sites.{name}.connection]\nconn = "{broker}"\n\n' if broker else "")
+        + f"[sites.{name}.areas]\n"
         f"field   = {{ x = {x}, y = {y}, w = {width}, h = {height} }}\n"
         f"staging = {{ x = {x}, y = {y + height}, w = {width}, "
         f"h = {STAGING_DEPTH_MM} }}\n"
@@ -148,13 +154,20 @@ def _starter_template(
         f"# dotbot config. Options + examples: {_CONFIG_DOCS_URL}\n"
         "# (MQTT credentials are env-only: DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.)\n"
     )
+    broker = conn if conn and conn.lower().startswith(("mqtt://", "mqtts://")) else None
     keys = []
-    if conn:
+    if conn and broker is None:
         keys.append(f'conn = "{conn}"')
     if swarm_id:
         keys.append(f'swarm_id = "{swarm_id}"')
     keys.append(f'site = "{site}"')
-    return header + "\n" + "\n".join(keys) + "\n\n" + default_site_toml(site, field_mm)
+    return (
+        header
+        + "\n"
+        + "\n".join(keys)
+        + "\n\n"
+        + default_site_toml(site, field_mm, broker)
+    )
 
 
 @click.group(
@@ -170,7 +183,7 @@ def cmd():
     "--global",
     "global_",
     is_flag=True,
-    help="Write the user-level ~/.dotbot/config.toml instead of ./dotbot.toml.",
+    help="Write the user-level ~/.dotbot/dotbot.toml instead of ./dotbot.toml.",
 )
 @click.option("--force", "-f", is_flag=True, help="Overwrite an existing file.")
 @click.option(
@@ -196,11 +209,12 @@ def init(global_, force, conn, swarm_id, site, field_spec):
     """Write a starter config file you can edit.
 
     Defaults to ./dotbot.toml in the current directory; --global writes your
-    user-level ~/.dotbot/config.toml. Refuses to overwrite unless --force.
+    user-level ~/.dotbot/dotbot.toml. Refuses to overwrite unless --force.
     The file names a site with a field, where experiments happen and what
     calibration covers, and a staging strip along its bottom edge, with a
     margin of floor round both. `--field` sizes the field, and the rest
-    follows from it. `--conn` / `--swarm-id` pre-fill those top-level keys.
+    follows from it. A broker `--conn` becomes the site's [connection]; a
+    serial path or `simulator`, and `--swarm-id`, are top-level keys.
     """
     try:
         check_site_name(site)
@@ -219,7 +233,7 @@ def init(global_, force, conn, swarm_id, site, field_spec):
         except ConnError as exc:
             raise click.ClickException(f"invalid --conn: {exc}") from exc
 
-    target = USER_CONFIG_PATH if global_ else Path.cwd() / "dotbot.toml"
+    target = _config.USER_CONFIG_PATH if global_ else Path.cwd() / "dotbot.toml"
     if target.exists() and not force:
         raise click.ClickException(
             f"{target} already exists. Pass --force to overwrite it."
@@ -268,59 +282,101 @@ def _prune(value: Any) -> Any:
     return value
 
 
-def _echo_areas(entry) -> None:
-    """One line per area of a site: its name and its role, saying when the
-    role is implied by the name."""
-    declared = entry.table.areas
-    areas = entry.site().areas
-    if not areas:
-        return
-    width = max(len(name) for name in areas)
-    for name, area in areas.items():
-        if area.role is None:
-            role = "no role"
-        elif declared[name].role is None:
-            role = f"{area.role} (from its name)"
-        else:
-            role = area.role
-        click.echo(f"    {name:<{width}}  {role}")
+def _entry_source(active) -> str:
+    entry = active.entry
+    if entry is None:
+        return "not defined by any config or pack"
+    if entry.pack is not None:
+        return f"pack {entry.pack}"
+    return "inline" + (f", shadowing {entry.shadows}" if entry.shadows else "")
+
+
+def _credentials(conn) -> dict:
+    """What happens to the env's broker login, for `show`."""
+    if os.environ.get(USER_ENV) is None:
+        return {"set": False, "text": f"none ({USER_ENV} unset)"}
+    host = os.environ.get(HOST_ENV)
+    text = f"{USER_ENV} set" + (f", bound to {host}" if host else "")
+    decision = broker_credentials(conn.value, conn.user_set, conn.source)
+    if decision.withheld:
+        text += f"; withheld: {decision.withheld}"
+    elif decision.username is not None:
+        text += "; sent to this conn's broker"
+    return {
+        "set": True,
+        "bound_to": host,
+        "sent": decision.username is not None,
+        "withheld": decision.withheld,
+        "text": text,
+    }
 
 
 @cmd.command()
+@click.option("--json", "as_json", is_flag=True, help="Print it as JSON.")
 @click.pass_context
-def show(ctx):
-    """Print the source path, the active deployment, each site and where it
-    was read from, and the loaded config.
+def show(ctx, as_json):
+    """Print the config file in use, where the site, conn and swarm id each
+    came from and what they hide, then the file's own keys.
 
     None-valued fields are skipped so only what is actually set shows up.
     """
     obj = ctx.obj or {}
     config = obj.get("config")
     config_path = obj.get("config_path")
-    deployment_name = obj.get("deployment_name")
+    active = active_site(ctx)
+    label = config_label(config_path)
+    resolved = {
+        key: resolve_source(
+            key,
+            section="run",
+            config=config,
+            config_label=label,
+            site=active.layer,
+        )
+        for key in ("conn", "swarm_id")
+    }
+    creds = _credentials(resolved["conn"])
+
+    if as_json:
+        report = {
+            "config": str(config_path) if config_path is not None else None,
+            "site": {
+                "name": active.name,
+                "source": active.source,
+                "defined_by": _entry_source(active),
+            },
+            **{
+                key: {
+                    "value": item.value,
+                    "source": item.source,
+                    "hides": [
+                        {"source": src, "value": val} for src, val in item.hidden
+                    ],
+                }
+                for key, item in resolved.items()
+            },
+            "creds": {k: v for k, v in creds.items() if k != "text"},
+            "file": _prune(config.model_dump()) if config is not None else {},
+        }
+        click.echo(json.dumps(report, indent=2))
+        return
 
     source = (
         str(config_path)
         if config_path is not None
         else "(none; built-in defaults. Create one with: dotbot config init)"
     )
-    click.echo(f"source:  {source}")
-    click.echo(f"deployment: {deployment_name or '(none)'}")
-    site_name, site_source = resolve_site_name(
-        config=config, deployment=obj.get("deployment")
+    click.echo(f"{'config:':<10} {source}")
+    click.echo(
+        f"{'site:':<10} {active.name}  from {active.source}  {_entry_source(active)}"
     )
-    try:
-        catalog = site_catalog(config, config_path)
-    except ConfigError as exc:
-        raise click.ClickException(str(exc)) from exc
-    known = "" if site_name in catalog else ", which no config or pack defines"
-    click.echo(f"site:    {site_name} (from {site_source}{known})")
-    if catalog:
-        click.echo("sites:")
-        width = max(len(name) for name in catalog)
-        for name, entry in catalog.items():
-            click.echo(f"  {name:<{width}}  {entry.source}")
-            _echo_areas(entry)
+    for key, item in resolved.items():
+        value = item.value if item.value is not None else "(unset)"
+        where = f"  from {item.source}" if item.value is not None else ""
+        click.echo(f"{key + ':':<10} {value}{where}")
+        for src, val in item.hidden:
+            click.echo(f"{'':<10} hides {src} {key} = {json.dumps(val)}")
+    click.echo(f"{'creds:':<10} {creds['text']}")
     click.echo("")
 
     if config is None:

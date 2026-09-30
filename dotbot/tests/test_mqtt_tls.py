@@ -17,7 +17,13 @@ import paho.mqtt.client as mqtt
 import pytest
 from click.testing import CliRunner
 
-from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker, insecure_requested
+from dotbot.mqtt_tls import (
+    INSECURE_ENV,
+    Credentials,
+    allow_unverified_broker,
+    broker_credentials,
+    insecure_requested,
+)
 
 
 @pytest.fixture
@@ -87,7 +93,7 @@ def test_the_dispatcher_arms_the_opt_out_for_every_subcommand(
 
     monkeypatch.setenv(INSECURE_ENV, "1")
     config = tmp_path / "dotbot.toml"
-    config.write_text('[deployment.bench]\nconn = "simulator"\n')
+    config.write_text('conn = "simulator"\n')
 
     result = CliRunner().invoke(cli, ["-c", str(config), "fw", "--help"])
 
@@ -153,3 +159,55 @@ def test_asking_twice_does_not_wrap_twice(monkeypatch, paho_restored):
     assert allow_unverified_broker() is True
 
     assert mqtt.Client.tls_set_context is once
+
+
+# --- which broker gets the credentials ---------------------------------------
+
+_LOGIN = {"DOTBOT_MQTT_USER": "me", "DOTBOT_MQTT_PASS": "secret"}
+
+
+@pytest.mark.parametrize(
+    "conn, user_set, extra",
+    [
+        ("mqtts://argus.example:8883", False, {"DOTBOT_MQTT_HOST": "argus.example"}),
+        ("mqtts://argus.example:8883", True, {}),
+        ("mqtt://localhost:1883", False, {}),
+        ("mqtt://127.0.0.1", False, {}),
+    ],
+    ids=["DOTBOT_MQTT_HOST matches", "you named it", "localhost", "loopback"],
+)
+def test_credentials_are_sent(conn, user_set, extra):
+    got = broker_credentials(conn, user_set, "site c405-arena", {**_LOGIN, **extra})
+    assert (got.username, got.password, got.withheld) == ("me", "secret", None)
+
+
+def test_credentials_are_refused_to_a_broker_a_site_chose():
+    got = broker_credentials(
+        "mqtts://argus.example:8883",
+        False,
+        "site c405-arena",
+        {**_LOGIN, "DOTBOT_MQTT_HOST": "other.example"},
+    )
+    assert got.username is None and got.password is None
+    assert "site c405-arena" in got.withheld
+    assert "DOTBOT_MQTT_HOST=argus.example" in got.withheld
+
+
+@pytest.mark.parametrize("user_set", [True, False])
+def test_credentials_never_go_over_plain_mqtt_to_a_remote_host(user_set):
+    got = broker_credentials(
+        "mqtt://argus.example:1883",
+        user_set,
+        "",
+        {**_LOGIN, "DOTBOT_MQTT_HOST": "argus.example"},
+    )
+    assert got.username is None
+    assert "plain mqtt://" in got.withheld
+
+
+def test_no_login_in_the_env_is_nothing_to_decide():
+    assert broker_credentials("mqtts://h", False, "site x", {}) == Credentials()
+
+
+def test_a_non_broker_conn_takes_no_credentials():
+    assert broker_credentials("simulator", True, "", _LOGIN) == Credentials()

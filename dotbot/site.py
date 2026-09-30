@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""One deployment's floor: its anchor, its extent and its areas.
+"""One place's floor: its anchor, its extent and its areas.
 
 A site names a physical place and, with it, the coordinate frame every
 position in that place is expressed in: zero at the top-left corner of the

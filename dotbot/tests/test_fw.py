@@ -185,7 +185,11 @@ def test_fw_clean_bare(runner, fake_repo, fake_segger, capture_make):
 
 def test_fw_clean_bare_from_config(runner, fake_repo, fake_segger, capture_make):
     cfg = DotbotConfig.model_validate({"fw": {"bare": True}})
-    result = runner.invoke(fw_cmd, ["clean"], obj={"config": cfg, "deployment": None})
+    result = runner.invoke(
+        fw_cmd,
+        ["clean"],
+        obj={"config": cfg},
+    )
     assert result.exit_code == 0, result.output
     assert "BUILD_TARGET=dotbot-v3" in capture_make[0]["cmd"]
 
@@ -326,13 +330,13 @@ def test_fw_help_points_at_dotbot_make(runner):
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     """Point the unified config's user file at a tmp dir and run in a clean
-    cwd, so fw config tests don't see the real `~/.dotbot/config.toml` or a
+    cwd, so fw config tests don't see the real `~/.dotbot/dotbot.toml` or a
     stray `dotbot.toml`."""
     home = tmp_path / "home"
     (home / ".dotbot").mkdir(parents=True)
     monkeypatch.setattr(
         "dotbot.config.USER_CONFIG_PATH",
-        home / ".dotbot" / "config.toml",
+        home / ".dotbot" / "dotbot.toml",
     )
     work = tmp_path / "work"
     work.mkdir()
@@ -341,7 +345,7 @@ def isolated_home(tmp_path, monkeypatch):
 
 
 def _write_config(home, toml_body):
-    (home / ".dotbot" / "config.toml").write_text(toml_body)
+    (home / ".dotbot" / "dotbot.toml").write_text(toml_body)
 
 
 def test_resolve_segger_dir_uses_env_first(tmp_path, monkeypatch, isolated_home):
@@ -401,7 +405,7 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
     # whichever they prefer.
     msg = str(excinfo.value)
     assert "SEGGER_DIR" in msg
-    assert "~/.dotbot/config.toml" in msg
+    assert "~/.dotbot/dotbot.toml" in msg
 
 
 @pytest.fixture
@@ -540,7 +544,7 @@ def test_malformed_config_raises_with_path(monkeypatch, isolated_home):
     monkeypatch.delenv("SEGGER_DIR", raising=False)
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_segger_dir()
-    assert "config.toml" in str(excinfo.value)
+    assert "dotbot.toml" in str(excinfo.value)
 
 
 # ── Parity guard against silent drift ───────────────────────────────────

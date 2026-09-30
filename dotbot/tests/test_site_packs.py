@@ -128,9 +128,9 @@ def test_the_active_site_comes_from_a_pack_with_a_notice_when_shadowed(
     _pack(tmp_path / "sites", "c405-arena")
     config = tmp_path / "dotbot.toml"
     config.write_text('site = "c405-arena"\n')
-    result = runner.invoke(cli, ["-c", str(config), "config", "show"])
+    result = runner.invoke(cli, ["-c", str(config), "site", "list"])
     assert result.exit_code == 0, result.output
-    assert f"c405-arena  {tmp_path / 'sites' / 'c405-arena'}" in result.output
+    assert f"* c405-arena  -  {tmp_path / 'sites' / 'c405-arena'}" in result.output
 
     from dotbot.cli._site import site_from_context
 
@@ -229,8 +229,8 @@ def test_export_an_inline_site_with_its_calibrations_then_add_it(
     other = tmp_path / "elsewhere" / "dotbot.toml"
     other.parent.mkdir()
     other.write_text("")
-    result = runner.invoke(cli, ["-c", str(other), "config", "show"])
-    assert f"c405-arena  {added}" in result.output
+    result = runner.invoke(cli, ["-c", str(other), "site", "list"])
+    assert f"c405-arena  -  {added}" in result.output
     site = resolve_site_entry(load_config(other), other, "c405-arena").site()
     assert site.areas["bench"].role == "corner"
     assert site.extent_mm == (2000, 4000)
@@ -359,7 +359,7 @@ def test_add_refuses_a_git_url_that_names_no_usable_site(runner, tmp_path, home)
     (repo / "sub").mkdir()
     (repo / "sub" / "keep").write_text("")
     _commit(repo)
-    kept = home / ".dotbot" / "config.toml"
+    kept = home / ".dotbot" / "dotbot.toml"
     kept.parent.mkdir()
     kept.write_text("")
     url = f"git+{repo.as_uri()}/sub/.."

@@ -62,7 +62,7 @@ def _clean_conn_env(monkeypatch):
 
 
 def _obj(**kw):
-    return {"config": DotbotConfig(**kw), "deployment": None}
+    return {"config": DotbotConfig(**kw)}
 
 
 def test_injects_conn_and_swarm_id():
@@ -163,3 +163,85 @@ def test_flash_name_resolved_after_group_options(tmp_path, monkeypatch):
 
     bin_path = str(fw / "spin-sandbox-dotbot-v3.bin")
     assert seen == [["--swarm-id", "1234", "-d", "ABC", "flash", bin_path, "-ys"]]
+
+
+# --- the active site's connection, the banner and the credentials ------------
+
+
+def _site_obj(**kw):
+    from dotbot.config import ConnectionSection, SiteSection
+
+    config = DotbotConfig(
+        site="arena",
+        sites={
+            "arena": SiteSection(
+                connection=ConnectionSection(conn="mqtts://argus.example:8883")
+            )
+        },
+        **kw,
+    )
+    return {"config": config, "config_path": None}
+
+
+def test_injects_the_sites_broker_under_your_swarm_id():
+    out = inject_config(["status"], _site_obj(swarm_id="A001"))
+    assert out == [
+        "--conn",
+        "mqtts://argus.example:8883",
+        "--swarm-id",
+        "A001",
+        "status",
+    ]
+
+
+def _settle(args, obj, monkeypatch, capsys):
+    ctx = click.Context(click.Command("swarm"), obj=obj)
+    swarm._settle_connection(ctx, args, _stub_group())
+    return capsys.readouterr().err
+
+
+def test_credentials_withheld_from_a_site_chosen_broker_leave_the_env(
+    monkeypatch, capsys
+):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    err = _settle(["status"], _site_obj(swarm_id="A001"), monkeypatch, capsys)
+    assert "DOTBOT_MQTT_HOST=argus.example" in err
+    assert "DOTBOT_MQTT_USER" not in os.environ
+    assert "DOTBOT_MQTT_PASS" not in os.environ
+
+
+@pytest.mark.parametrize(
+    "args, bound",
+    [
+        (["status"], True),
+        (["--conn", "mqtts://argus.example:8883", "status"], False),
+    ],
+    ids=["DOTBOT_MQTT_HOST", "--conn"],
+)
+def test_credentials_kept_for_a_bound_or_named_broker(monkeypatch, capsys, args, bound):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    if bound:
+        monkeypatch.setenv("DOTBOT_MQTT_HOST", "argus.example")
+    else:
+        monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    err = _settle(args, _site_obj(swarm_id="A001"), monkeypatch, capsys)
+    assert "warning" not in err
+    assert os.environ["DOTBOT_MQTT_USER"] == "me"
+
+
+def test_the_banner_prints_for_commands_that_act_on_robots(monkeypatch, capsys):
+    monkeypatch.delenv("DOTBOT_MQTT_USER", raising=False)
+    obj = _site_obj(swarm_id="A001")
+    assert _settle(["status"], obj, monkeypatch, capsys) == ""
+    err = _settle(["flash", "app.bin"], obj, monkeypatch, capsys)
+    assert err.strip() == (
+        "site arena (the config file), conn mqtts://argus.example:8883 "
+        "(site arena), swarm A001 (the config file)"
+    )

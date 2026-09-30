@@ -25,3 +25,11 @@ def _empty_user_sites(tmp_path_factory):
 def no_user_site_packs(monkeypatch, _empty_user_sites):
     """Keep every test away from this machine's ~/.dotbot/sites packs."""
     monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", _empty_user_sites)
+
+
+@pytest.fixture(autouse=True)
+def no_user_config(monkeypatch, tmp_path_factory):
+    """Keep every test away from this machine's ~/.dotbot/dotbot.toml, and
+    from a ~/.dotbot/config.toml still under its former name."""
+    home = tmp_path_factory.mktemp("home-dotbot")
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "dotbot.toml")

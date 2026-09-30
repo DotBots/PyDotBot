@@ -4,7 +4,8 @@
 """Headless tests for the unified config resolver (dotbot/config.py).
 
 Pure {flags, env, file} -> resolved value; no hardware, no network. Covers the
-precedence chain, discovery order, deployment selection, and strict validation.
+precedence chain with each value's source, discovery order, and strict
+validation.
 """
 
 import pytest
@@ -64,7 +65,7 @@ def test_discover_none(tmp_path, monkeypatch):
 
 
 def test_discover_user_file_skipped(tmp_path, monkeypatch):
-    # include_user_file=False ignores ~/.dotbot/config.toml (Phase-2 behavior).
+    # include_user_file=False ignores ~/.dotbot/dotbot.toml.
     user = tmp_path / "home.toml"
     user.write_text("")
     monkeypatch.setattr(cfg, "USER_CONFIG_PATH", user)
@@ -76,28 +77,75 @@ def test_discover_user_file_skipped(tmp_path, monkeypatch):
     assert got is None
 
 
+def test_the_user_config_is_dotbot_toml_under_home():
+    assert cfg.PROJECT_CONFIG_NAME == "dotbot.toml"
+    assert cfg.USER_CONFIG_PATH.name == "dotbot.toml"
+
+
+def test_a_user_config_under_its_former_name_is_refused(tmp_path, monkeypatch):
+    home = tmp_path / ".dotbot"
+    home.mkdir()
+    (home / "config.toml").write_text("")
+    monkeypatch.setattr(cfg, "USER_CONFIG_PATH", home / "dotbot.toml")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(cfg.ConfigError) as excinfo:
+        cfg.discover_config_path(None, environ={}, start_dir=empty)
+    assert str(excinfo.value) == (
+        f"rename {home / 'config.toml'} to {home / 'dotbot.toml'}"
+    )
+
+
+def test_the_former_name_is_ignored_once_renamed_or_pointed_past(tmp_path, monkeypatch):
+    home = tmp_path / ".dotbot"
+    home.mkdir()
+    (home / "config.toml").write_text("")
+    monkeypatch.setattr(cfg, "USER_CONFIG_PATH", home / "dotbot.toml")
+    explicit = tmp_path / "given.toml"
+    assert cfg.discover_config_path(explicit, environ={}) == explicit
+    (home / "dotbot.toml").write_text("")
+    assert cfg.discover_config_path(None, environ={}, start_dir=tmp_path) == (
+        home / "dotbot.toml"
+    )
+
+
 # --- loading + validation ---------------------------------------------------
 
 
 def test_load_none_is_empty():
     config = cfg.load_config(None)
     assert config.conn is None
-    assert config.deployment == {}
+    assert config.sites == {}
+
+
+@pytest.mark.parametrize(
+    "text, key",
+    [
+        ('[deployment.inria]\nconn = "simulator"\n', "[deployment.*]"),
+        ('default_deployment = "inria"\n', "default_deployment"),
+    ],
+)
+def test_an_old_deployment_file_names_where_its_keys_went(tmp_path, text, key):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(text)
+    with pytest.raises(cfg.ConfigError) as excinfo:
+        cfg.load_config(path)
+    message = str(excinfo.value)
+    assert f"{key} is gone" in message
+    assert "[connection]" in message
+    assert "dotbot site use" in message
 
 
 def test_load_valid(tmp_path):
     path = tmp_path / "dotbot.toml"
     path.write_text(
         """
-default_deployment = "inria"
 conn = "mqtts://broker.local:8883"
 swarm_id = "0001"
 
-[deployment.inria]
+[sites.inria.connection]
 conn = "mqtts://broker.inria.fr:8883"
 swarm_id = "0001"
-location = "Inria Paris"
-bots = 100
 
 [fw]
 board = "dotbot-v3"
@@ -107,10 +155,9 @@ http_port = 8000
 """
     )
     config = cfg.load_config(path)
-    assert config.default_deployment == "inria"
     assert config.fw.board == "dotbot-v3"
     assert config.run.controller.http_port == 8000
-    assert config.deployment["inria"].bots == 100
+    assert config.sites["inria"].connection.swarm_id == "0001"
 
 
 def test_load_unknown_top_level_key_rejected(tmp_path):
@@ -137,12 +184,44 @@ def test_load_bad_conn_rejected(tmp_path):
 def test_load_accepts_valid_conn_forms(tmp_path):
     path = tmp_path / "dotbot.toml"
     path.write_text(
-        '[deployment.sim]\nconn = "simulator"\n'
-        '[deployment.cable]\nconn = "/dev/ttyACM0"\n'
-        '[deployment.mqtt]\nconn = "mqtts://h:8883"\n'
+        '[run]\nconn = "simulator"\n'
+        '[swarm]\nconn = "/dev/ttyACM0"\n'
+        '[sites.lab.connection]\nconn = "mqtts://h:8883"\n'
     )
     config = cfg.load_config(path)
-    assert set(config.deployment) == {"sim", "cable", "mqtt"}
+    assert config.run.conn == "simulator"
+    assert config.swarm.conn == "/dev/ttyACM0"
+    assert config.sites["lab"].connection.conn == "mqtts://h:8883"
+
+
+@pytest.mark.parametrize(
+    "table, needle",
+    [
+        ('conn = "/dev/ttyACM0"', "serial port belongs to one machine"),
+        ('conn = "mqtts://me:secret@h:8883"', "carries no credentials"),
+        ('conn = "simulator"', "needs virtual = true"),
+    ],
+)
+def test_a_site_connection_is_a_bare_broker(tmp_path, table, needle):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(f"[sites.lab.connection]\n{table}\n")
+    with pytest.raises(cfg.ConfigError) as excinfo:
+        cfg.load_config(path)
+    assert needle in str(excinfo.value)
+
+
+def test_a_virtual_site_takes_the_simulator_and_only_it(tmp_path):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(
+        '[sites.sim]\nvirtual = true\n[sites.sim.connection]\nconn = "simulator"\n'
+    )
+    assert cfg.load_config(path).sites["sim"].connection.conn == "simulator"
+    path.write_text(
+        '[sites.sim]\nvirtual = true\n[sites.sim.connection]\nconn = "mqtts://h"\n'
+    )
+    with pytest.raises(cfg.ConfigError) as excinfo:
+        cfg.load_config(path)
+    assert 'a virtual site\'s conn is "simulator"' in str(excinfo.value)
 
 
 def test_load_bad_type_rejected(tmp_path):
@@ -199,51 +278,6 @@ def test_an_explicit_role_frees_a_role_name_for_another_area():
 
 def test_a_site_with_staging_and_no_field_loads():
     assert set(_areas("staging = { x = 0, y = 0, w = 2000, h = 600 }\n")) == {"staging"}
-
-
-# --- deployment selection ------------------------------------------------------
-
-
-def _two_deployments():
-    return cfg.DotbotConfig(
-        default_deployment="inria",
-        deployment={
-            "inria": cfg.Deployment(swarm_id="0001"),
-            "laposte": cfg.Deployment(swarm_id="002a"),
-        },
-    )
-
-
-def test_select_deployment_cli_beats_env_and_default():
-    config = _two_deployments()
-    tb, name = cfg.select_deployment(
-        config, cli_name="laposte", environ={"DOTBOT_DEPLOYMENT": "inria"}
-    )
-    assert name == "laposte"
-    assert tb.swarm_id == "002a"
-
-
-def test_select_deployment_env_beats_default():
-    config = _two_deployments()
-    _, name = cfg.select_deployment(config, environ={"DOTBOT_DEPLOYMENT": "laposte"})
-    assert name == "laposte"
-
-
-def test_select_deployment_default():
-    config = _two_deployments()
-    _, name = cfg.select_deployment(config, environ={})
-    assert name == "inria"
-
-
-def test_select_deployment_none_when_unset():
-    config = cfg.DotbotConfig()
-    assert cfg.select_deployment(config, environ={}) == (None, None)
-
-
-def test_select_deployment_unknown_raises():
-    config = _two_deployments()
-    with pytest.raises(cfg.ConfigError):
-        cfg.select_deployment(config, cli_name="nope", environ={})
 
 
 # --- precedence resolution --------------------------------------------------
@@ -311,24 +345,116 @@ def test_resolve_section_beats_top_level():
     assert got == "section"
 
 
-def test_resolve_deployment_beats_top_level():
-    config = cfg.DotbotConfig(conn="mqtts://top:8883")
-    tb = cfg.Deployment(conn="mqtts://inria:8883")
-    got = cfg.resolve("conn", config=config, deployment=tb, environ={}, default=None)
-    assert got == "mqtts://inria:8883"
+SITE = cfg.SiteLayer(
+    "c405-arena", cfg.ConnectionSection(conn="mqtts://site:8883", swarm_id="5173")
+)
 
 
-def test_resolve_section_beats_deployment():
-    # Documented order: section value > selected deployment > top-level.
-    config = cfg.DotbotConfig(swarm=cfg.SwarmSection(swarm_id="section"))
-    tb = cfg.Deployment(swarm_id="deployment")
-    got = cfg.resolve(
-        "swarm_id",
-        section="swarm",
+@pytest.mark.parametrize(
+    "flag, environ, config, kind, source, value",
+    [
+        (
+            "mqtts://flag:8883",
+            {"DOTBOT_RUN_CONN": "mqtts://env:8883"},
+            cfg.DotbotConfig(conn="mqtts://top:8883"),
+            "flag",
+            "--conn",
+            "mqtts://flag:8883",
+        ),
+        (
+            None,
+            {"DOTBOT_RUN_CONN": "mqtts://run-env:8883", "DOTBOT_CONN": "mqtts://e"},
+            cfg.DotbotConfig(conn="mqtts://top:8883"),
+            "env",
+            "DOTBOT_RUN_CONN",
+            "mqtts://run-env:8883",
+        ),
+        (
+            None,
+            {"DOTBOT_CONN": "mqtts://env:8883"},
+            cfg.DotbotConfig(conn="mqtts://top:8883"),
+            "env",
+            "DOTBOT_CONN",
+            "mqtts://env:8883",
+        ),
+        (
+            None,
+            {},
+            cfg.DotbotConfig(
+                conn="mqtts://top:8883",
+                run=cfg.RunSection(conn="mqtts://run:8883"),
+            ),
+            "file",
+            "dotbot.toml [run]",
+            "mqtts://run:8883",
+        ),
+        (
+            None,
+            {},
+            cfg.DotbotConfig(conn="mqtts://top:8883"),
+            "file",
+            "dotbot.toml",
+            "mqtts://top:8883",
+        ),
+        (None, {}, cfg.DotbotConfig(), "site", "site c405-arena", "mqtts://site:8883"),
+    ],
+    ids=["flag", "DOTBOT_RUN_CONN", "DOTBOT_CONN", "[run]", "top level", "site"],
+)
+def test_resolve_source_names_each_rung(flag, environ, config, kind, source, value):
+    got = cfg.resolve_source(
+        "conn",
+        section="run",
+        flag=flag,
+        flag_name="--conn",
         config=config,
-        deployment=tb,
-        environ={},
-        default="d",
+        config_label="dotbot.toml",
+        site=SITE,
+        environ=environ,
+    )
+    assert (got.kind, got.source, got.value) == (kind, source, value)
+
+
+def test_resolve_source_falls_to_the_default():
+    got = cfg.resolve_source("conn", section="run", environ={}, default="simulator")
+    assert (got.kind, got.source, got.value, got.hidden) == (
+        "default",
+        "the default",
+        "simulator",
+        (),
+    )
+
+
+def test_resolve_source_hidden_names_the_shadowed_values():
+    config = cfg.DotbotConfig(swarm_id="1234")
+    got = cfg.resolve_source(
+        "swarm_id",
+        config=config,
+        config_label="dotbot.toml",
+        site=SITE,
+        environ={"DOTBOT_SWARM_ID": "0A1B"},
+    )
+    assert got.value == "0A1B"
+    assert got.source == "DOTBOT_SWARM_ID"
+    assert got.hidden == (("dotbot.toml", "1234"), ("site c405-arena", "5173"))
+
+
+def test_your_file_beats_the_site_connection():
+    config = cfg.DotbotConfig(conn="mqtts://mine:8883")
+    got = cfg.resolve_source("conn", config=config, site=SITE, environ={})
+    assert got.value == "mqtts://mine:8883"
+    assert got.user_set
+    assert got.hidden == (("site c405-arena", "mqtts://site:8883"),)
+
+
+def test_the_site_connection_counts_only_for_conn_and_swarm_id():
+    got = cfg.resolve("board", section="fw", site=SITE, environ={}, default="d")
+    assert got == "d"
+
+
+def test_resolve_section_beats_top_level_and_the_site():
+    config = cfg.DotbotConfig(swarm=cfg.SwarmSection(swarm_id="section"))
+    got = cfg.resolve(
+        "swarm_id", section="swarm", config=config, site=SITE, environ={}, default="d"
     )
     assert got == "section"
 

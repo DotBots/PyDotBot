@@ -43,24 +43,51 @@ def _swarmit_client(ctx, conn, swarm_id):
     """A swarmit client for this CLI invocation.
 
     Falls back to the unified dotbot config's `conn` / `swarm_id` (like
-    `dotbot swarm`) when the flags are omitted, then hands off to the builder
-    the controller uses, so the two cannot drift on what a connection string
-    means.
+    `dotbot swarm`), the active site's `[connection]` included, when the
+    flags are omitted, then hands off to the builder the controller uses, so
+    the two cannot drift on what a connection string means.
     """
-    if conn is None or swarm_id is None:
-        from dotbot.config import resolve
+    from dotbot.cli._site import (
+        active_site,
+        config_label,
+        connection_banner,
+        missing_swarm_message,
+    )
+    from dotbot.config import resolve_source
+    from dotbot.mqtt_tls import broker_credentials
 
-        obj = ctx.obj or {}
-        config = obj.get("config")
-        deployment = obj.get("deployment")
-        if conn is None:
-            conn = resolve("conn", config=config, deployment=deployment)
-        if swarm_id is None:
-            swarm_id = resolve("swarm_id", config=config, deployment=deployment)
+    obj = ctx.obj or {}
+    site = active_site(ctx)
+    conn_r, swarm_r = (
+        resolve_source(
+            key,
+            flag=flag,
+            flag_name=f"--{key.replace('_', '-')}",
+            config=obj.get("config"),
+            config_label=config_label(obj.get("config_path")),
+            site=site.layer,
+        )
+        for key, flag in (("conn", conn), ("swarm_id", swarm_id))
+    )
+    click.echo(connection_banner(site, conn_r, swarm_r), err=True)
+    if (
+        conn_r.value
+        and str(conn_r.value).lower().startswith(("mqtt://", "mqtts://"))
+        and not swarm_r.value
+    ):
+        raise click.ClickException(missing_swarm_message(conn_r, site))
+    credentials = broker_credentials(conn_r.value, conn_r.user_set, conn_r.source)
+    if credentials.withheld:
+        click.echo(f"warning: {credentials.withheld}", err=True)
 
     from dotbot.swarm_client import build_swarmit_client
 
-    return build_swarmit_client(conn, swarm_id)
+    return build_swarmit_client(
+        conn_r.value,
+        swarm_r.value,
+        username=credentials.username,
+        password=credentials.password,
+    )
 
 
 @click.group(

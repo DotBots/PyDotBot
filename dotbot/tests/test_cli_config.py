@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Phase-2 wiring: the root `-c/--config` + `--deployment` flags, the
-`fw`/`device` `--config` -> `--build-config` rename, and the site `config init`
+"""The root `-c/--config` flag, the `fw`/`device` `--config` ->
+`--build-config` rename, `config show`'s sources, and the site `config init`
 writes. Headless (CliRunner)."""
 
 from pathlib import Path
@@ -30,7 +30,8 @@ def _write(tmp_path, text):
 
 def test_root_accepts_valid_config(runner, tmp_path):
     cfg = _write(
-        tmp_path, 'swarm_id = "0001"\n[deployment.inria]\nconn = "simulator"\n'
+        tmp_path,
+        'swarm_id = "0001"\n[sites.inria.connection]\nconn = "mqtts://h:8883"\n',
     )
     result = runner.invoke(cli, ["-c", str(cfg), "fw", "--help"])
     assert result.exit_code == 0, result.output
@@ -71,19 +72,29 @@ def test_root_missing_config_errors(runner, tmp_path):
     assert result.exit_code != 0
 
 
-def test_root_selects_deployment(runner, tmp_path):
-    cfg = _write(tmp_path, '[deployment.inria]\nconn = "simulator"\n')
-    result = runner.invoke(
-        cli, ["-c", str(cfg), "--deployment", "inria", "fw", "--help"]
-    )
-    assert result.exit_code == 0, result.output
-
-
-def test_root_unknown_deployment_errors(runner):
-    with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["--deployment", "nope", "fw", "--help"])
+def test_root_has_no_deployment_flag(runner, tmp_path):
+    result = runner.invoke(cli, ["--deployment", "inria", "fw", "--help"])
     assert result.exit_code != 0
-    assert "deployment" in result.output.lower()
+    assert "No such option" in result.output
+
+
+def test_an_old_deployment_config_fails_with_a_pointer(runner, tmp_path):
+    cfg = _write(tmp_path, '[deployment.inria]\nconn = "simulator"\n')
+    result = runner.invoke(cli, ["-c", str(cfg), "fw", "--help"])
+    assert result.exit_code != 0
+    assert "[deployment.*] is gone" in result.output
+    assert "validation error" not in result.output
+
+
+def test_a_user_config_under_its_former_name_is_refused(runner, tmp_path, monkeypatch):
+    home = tmp_path / "home" / ".dotbot"
+    home.mkdir(parents=True)
+    (home / "config.toml").write_text('site = "x"\n')
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "dotbot.toml")
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["fw", "--help"])
+    assert result.exit_code != 0
+    assert f"rename {home / 'config.toml'} to {home / 'dotbot.toml'}" in result.output
 
 
 def test_root_no_config_is_fine(runner):
@@ -91,6 +102,64 @@ def test_root_no_config_is_fine(runner):
     with runner.isolated_filesystem():
         result = runner.invoke(cli, ["fw", "--help"])
     assert result.exit_code == 0, result.output
+
+
+# --- config show: each value's source ----------------------------------------
+
+_ARENA = (
+    'site = "c405-arena"\n'
+    'swarm_id = "1234"\n'
+    "[sites.c405-arena.connection]\n"
+    'conn = "mqtts://argus.example:8883"\n'
+)
+
+
+def test_config_show_names_each_source_and_what_it_hides(runner, tmp_path, monkeypatch):
+    cfg = _write(tmp_path, _ARENA)
+    monkeypatch.setenv("DOTBOT_SWARM_ID", "0A1B")
+    monkeypatch.delenv("DOTBOT_MQTT_USER", raising=False)
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert "site:      c405-arena  from dotbot.toml  inline" in lines
+    assert "conn:      mqtts://argus.example:8883  from site c405-arena" in lines
+    assert "swarm_id:  0A1B  from DOTBOT_SWARM_ID" in lines
+    assert '           hides dotbot.toml swarm_id = "1234"' in lines
+    assert "creds:     none (DOTBOT_MQTT_USER unset)" in lines
+
+
+def test_config_show_says_where_credentials_go(runner, tmp_path, monkeypatch):
+    cfg = _write(tmp_path, _ARENA)
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
+    assert "withheld" in result.output
+    assert "DOTBOT_MQTT_HOST=argus.example" in result.output
+    monkeypatch.setenv("DOTBOT_MQTT_HOST", "argus.example")
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show"])
+    assert (
+        "creds:     DOTBOT_MQTT_USER set, bound to argus.example; sent to this "
+        "conn's broker" in result.output
+    )
+    assert "secret" not in result.output
+
+
+def test_config_show_json(runner, tmp_path, monkeypatch):
+    import json
+
+    cfg = _write(tmp_path, _ARENA)
+    monkeypatch.delenv("DOTBOT_SWARM_ID", raising=False)
+    result = runner.invoke(cli, ["-c", str(cfg), "config", "show", "--json"])
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["conn"] == {
+        "value": "mqtts://argus.example:8883",
+        "source": "site c405-arena",
+        "hides": [],
+    }
+    assert report["swarm_id"]["source"] == "dotbot.toml"
+    assert report["site"]["name"] == "c405-arena"
 
 
 # --- build-config rename ----------------------------------------------------
@@ -243,13 +312,30 @@ def test_config_init_refuses_a_site_name_toml_cannot_hold(runner, name):
 
 
 def test_config_init_global_writes_the_default_site(runner, tmp_path, monkeypatch):
-    import dotbot.cli.config_cmd as ccmd
-
-    user = tmp_path / "home" / ".dotbot" / "config.toml"
-    monkeypatch.setattr(ccmd, "USER_CONFIG_PATH", user)
+    user = tmp_path / "home" / ".dotbot" / "dotbot.toml"
+    monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", user)
     with runner.isolated_filesystem():
         _init(runner, "--global")
     assert "default" in load_config(user).sites
+
+
+def test_config_init_puts_a_broker_in_the_site_and_swarm_id_in_your_file(runner):
+    with runner.isolated_filesystem():
+        _init(runner, "--conn", "mqtts://broker:8883", "--swarm-id", "0100")
+        loaded = load_config("dotbot.toml")
+    assert loaded.conn is None
+    assert loaded.swarm_id == "0100"
+    assert loaded.sites["default"].connection.conn == "mqtts://broker:8883"
+    assert loaded.sites["default"].connection.swarm_id is None
+
+
+@pytest.mark.parametrize("conn", ["/dev/ttyACM0", "simulator"])
+def test_config_init_keeps_a_serial_path_or_the_simulator_top_level(runner, conn):
+    with runner.isolated_filesystem():
+        _init(runner, "--conn", conn)
+        loaded = load_config("dotbot.toml")
+    assert loaded.conn == conn
+    assert loaded.sites["default"].connection is None
 
 
 def test_example_config_is_what_init_writes(runner):
