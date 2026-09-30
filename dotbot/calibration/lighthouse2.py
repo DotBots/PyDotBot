@@ -178,6 +178,31 @@ class Placement:
 
 
 @dataclass
+class TrackSample:
+    """The reads one station took along one circle a robot traced.
+
+    `radius_mm` is the circle's true radius and `turn` +1 when the robot
+    turned counter clockwise as drawn, -1 clockwise; `name` tells the
+    circles of one capture apart.
+    """
+
+    station: int
+    name: str
+    radius_mm: float
+    turn: int
+    count1: list[int] = field(default_factory=list)
+    count2: list[int] = field(default_factory=list)
+
+    def camera_points(self) -> np.ndarray:
+        return camera_points_from_counts(
+            [
+                LH2Counts(self.station, c1, c2)
+                for c1, c2 in zip(self.count1, self.count2)
+            ]
+        )
+
+
+@dataclass
 class StationSolution:
     """One station's solved homography and how well it fits its own evidence."""
 
@@ -202,6 +227,7 @@ class Calibration:
     valid_mm: tuple[int, int, int, int] = VALID_MM_DEFAULT
     placements: list[Placement] = field(default_factory=list)
     stations: list[StationSolution] = field(default_factory=list)
+    tracks: list[TrackSample] = field(default_factory=list)
     created_at: str = ""
     tag: str = ""
     robot: str = ROBOT_DEFAULT
@@ -508,6 +534,12 @@ def canonical_serialisation(calibration: Calibration) -> str:
             base = f"{key}.sample.{sample.station}.{sample.point}"
             lines.append(base + ".count1=" + ",".join(str(c) for c in sample.count1))
             lines.append(base + ".count2=" + ",".join(str(c) for c in sample.count2))
+    for track in calibration.tracks:
+        key = f"track.{track.name}.{track.station}"
+        lines.append(f"{key}.radius_mm={toml_num(track.radius_mm)}")
+        lines.append(f"{key}.turn={track.turn}")
+        lines.append(f"{key}.count1=" + ",".join(str(c) for c in track.count1))
+        lines.append(f"{key}.count2=" + ",".join(str(c) for c in track.count2))
     for station in sorted(calibration.stations, key=lambda s: s.index):
         key = f"station.{station.index}"
         lines.append(f"{key}.solved_from={station.solved_from}")
@@ -622,6 +654,17 @@ def render_calibration(calibration: Calibration) -> str:
                 f"count1 = [{counts1}], count2 = [{counts2}] }},"
             )
         out.append("]")
+    for track in calibration.tracks:
+        out += [
+            "",
+            "[[track]]",
+            f"station = {track.station}",
+            f'name = "{toml_escape(track.name)}"',
+            f"radius_mm = {toml_num(track.radius_mm)}",
+            f"turn = {track.turn}",
+            f"count1 = [{', '.join(str(c) for c in track.count1)}]",
+            f"count2 = [{', '.join(str(c) for c in track.count2)}]",
+        ]
     for station in sorted(calibration.stations, key=lambda s: s.index):
         out += [
             "",
@@ -701,11 +744,24 @@ def read_calibration_file(path: Path) -> Calibration:
         for raw in data.get("station", [])
     ]
 
+    tracks = [
+        TrackSample(
+            station=int(raw["station"]),
+            name=str(raw["name"]),
+            radius_mm=float(raw["radius_mm"]),
+            turn=int(raw.get("turn", 0)),
+            count1=[int(c) for c in raw["count1"]],
+            count2=[int(c) for c in raw["count2"]],
+        )
+        for raw in data.get("track", [])
+    ]
+
     calibration = Calibration(
         site=site,
         valid_mm=valid_mm,
         placements=placements,
         stations=stations,
+        tracks=tracks,
         created_at=metadata.get("created_at", ""),
         tag=metadata.get("tag", ""),
         robot=metadata.get("robot", ROBOT_DEFAULT),
