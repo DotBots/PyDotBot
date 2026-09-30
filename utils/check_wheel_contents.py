@@ -23,6 +23,8 @@ REQUIRED = (
     # The simulator's firmware control core and the manifest that pins it.
     "dotbot/sim/dotbot_control.wasm",
     "dotbot/sim/dotbot_control.json",
+    # The guide `dotbot guide` prints.
+    "dotbot/guide.md",
     # Built console served by the controller at /console. Its dist/ is
     # gitignored, so it only ships through the pyproject `artifacts` override.
     "dotbot/console-web/dist/index.html",

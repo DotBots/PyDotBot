@@ -13,6 +13,7 @@ import httpx
 from fastapi import (
     FastAPI,
     HTTPException,
+    Path,
     Query,
     Request,
     WebSocket,
@@ -110,10 +111,23 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
         return response
 
 
+API_DESCRIPTION = (
+    "Drives the DotBots and SailBots one controller reaches, real or simulated: "
+    "list them with `GET /controller/dotbots`, then send waypoints, LED colours "
+    "or wheel commands to one by its address. In a robot's routes, "
+    "`{application}` is the robot kind: 0 for a DotBot, 1 for a SailBot. "
+    "Run `dotbot guide` for a walkthrough, starting with the simulator."
+)
+
+# The `{application}` segment of a robot's routes, as `ApplicationType` numbers it
+Application = Annotated[
+    int, Path(description="The robot kind: 0 for a DotBot, 1 for a SailBot.")
+]
+
 api = FastAPI(
     debug=0,
     title="DotBot controller API",
-    description="This is the DotBot controller API",
+    description=API_DESCRIPTION,
     version=pydotbot_version(),
     docs_url="/api",
     redoc_url=None,
@@ -133,13 +147,15 @@ api.add_middleware(TransportScope)
 
 @api.put(
     path="/controller/dotbots/{address}/{application}/move_raw",
-    summary="Move the dotbot",
+    summary="Drive a DotBot's two wheels directly, until the commands stop",
     tags=["dotbots"],
 )
 async def dotbots_move_raw(
-    address: str, application: int, command: DotBotMoveRawCommandModel
+    address: str, application: Application, command: DotBotMoveRawCommandModel
 ):
-    """Set the current active DotBot."""
+    """Set each wheel's motor power: `left_y` and `right_y`, -100 to 100;
+    `left_x` and `right_x` are unused, send 0. The robot stops shortly after
+    the last command, so resend it continuously."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
@@ -163,7 +179,7 @@ def _dotbots_move_raw(address: str, command: DotBotMoveRawCommandModel):
     tags=["dotbots"],
 )
 async def dotbots_wheel_velocity(
-    address: str, application: int, command: DotBotWheelVelocityCommandModel
+    address: str, application: Application, command: DotBotWheelVelocityCommandModel
 ):
     """Hand the DotBot's wheel speeds to its onboard wheel loop.
 
@@ -187,7 +203,7 @@ async def dotbots_wheel_velocity(
     tags=["dotbots"],
 )
 async def dotbots_max_speed(
-    address: str, application: int, command: DotBotMaxSpeedCommandModel
+    address: str, application: Application, command: DotBotMaxSpeedCommandModel
 ):
     """Set the fastest a DotBot drives between waypoints, until the next
     change or a reset; 0 restores the firmware's default.
@@ -206,9 +222,9 @@ async def dotbots_max_speed(
     tags=["dotbots"],
 )
 async def dotbots_rgb_led(
-    address: str, application: int, command: DotBotRgbLedCommandModel
+    address: str, application: Application, command: DotBotRgbLedCommandModel
 ):
-    """Set the current active DotBot."""
+    """Set the colour of a DotBot's RGB LED, 0 to 255 per channel."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
     await _dotbots_rgb_led(address=address, command=command)
@@ -224,12 +240,12 @@ async def _dotbots_rgb_led(address: str, command: DotBotRgbLedCommandModel):
 
 @api.put(
     path="/controller/dotbots/{address}/{application}/waypoints",
-    summary="Set the dotbot control mode",
+    summary="Send one DotBot through a list of waypoints",
     tags=["dotbots"],
 )
 async def dotbots_waypoints(
     address: str,
-    application: int,
+    application: Application,
     waypoints: DotBotWaypoints,
 ):
     """Set the waypoints of a DotBot."""

@@ -5,7 +5,7 @@
 
 No pydotbot internals - just HTTP with `requests`, so it doubles as a
 copy-pasteable template for your own scripts. Start a controller
-(e.g. `dotbot run simulator -w`), then run `dotbot run demo circle`.
+(e.g. `dotbot run simulator`), then run `dotbot run demo circle`.
 """
 
 import time
@@ -35,12 +35,12 @@ def main(base, seconds):
     except requests.RequestException as exc:
         raise click.ClickException(
             f"Cannot reach a controller at {base} ({exc}). "
-            "Start one first, e.g. `dotbot run simulator -w`."
+            "Start one first, e.g. `dotbot run simulator`."
         ) from exc
     if not bots:
         raise click.ClickException(
-            f"No DotBots at {base}. The simulator (`dotbot run simulator -w`) "
-            "spawns one; on hardware, flash and connect a bot first."
+            f"No DotBots at {base}. The simulator (`dotbot run simulator`) "
+            "spawns robots; on hardware, flash and connect a bot first."
         )
 
     address = bots[0]["address"]
