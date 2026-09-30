@@ -490,11 +490,15 @@ def test_verbose_streams_the_build_and_prints_the_command(
     assert f"$ SEGGER_DIR={segger} make -C {repo} bootloader netcore" in result.output
 
 
-def test_build_schedule_without_mari_gateway_errors(isolated, swarmit_repo):
-    result = build("swarmit-sandbox", "--schedule", "tiny")
+@pytest.mark.parametrize("names", [[], ["swarmit-sandbox"], ["spin"]])
+def test_build_schedule_without_mari_gateway_named_errors(
+    isolated, swarmit_repo, fake_build, names
+):
+    result = build(*names, "--schedule", "tiny")
     assert result.exit_code != 0
     assert "--schedule only applies to mari-gateway" in result.output
     assert "dotbot fw build mari-gateway --schedule tiny" in result.output
+    assert fake_build == []
 
 
 def test_build_part_without_swarmit_sandbox_errors(isolated):
@@ -642,7 +646,14 @@ def test_build_default_skips_swarmit_on_a_board_without_bootloader(
 def test_build_print_path_covers_every_source_without_building(
     isolated, firmware_repo, swarmit_repo, mari_repo, fake_make, fake_build
 ):
-    result = build("--print-path", "--schedule", "huge")
+    result = build(
+        "--print-path",
+        "swarmit-sandbox",
+        "mari-gateway",
+        "calibrate",
+        "--schedule",
+        "huge",
+    )
     assert result.exit_code == 0, result.output
     lines = result.output.strip().splitlines()
     cache = isolated / "cache"

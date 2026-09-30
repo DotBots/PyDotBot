@@ -154,8 +154,8 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     "parts",
     multiple=True,
     help=(
-        "Build only these parts of swarmit-sandbox (repeatable): bootloader, "
-        "netcore. Default: both."
+        "Build only these parts of swarmit-sandbox, which must be named "
+        "(repeatable): bootloader, netcore. Default: both."
     ),
 )
 @_config_option(
@@ -169,7 +169,8 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     multiple=True,
     type=click.Choice(tuple(MARI_SCHEDULES) + ("all",)),
     help=(
-        "Build the mari-gateway net image for this TSCH schedule, as "
+        "Build the net image of mari-gateway, which must be named, for this "
+        "TSCH schedule, as "
         "03app_gateway_net-<schedule>.hex, the file `dotbot device flash "
         "mari-gateway --schedule` reads (repeatable; 'all' builds every "
         "schedule). Replaces the default net image in this run. swarmit "
@@ -274,7 +275,7 @@ def build(
             f"swarmit-sandbox --part {' --part '.join(parts)}`."
         )
     schedule_names = fs.resolve_schedules(schedules)
-    if schedule_names and "mari" not in sources:
+    if schedule_names and "mari-gateway" not in roles:
         raise click.ClickException(
             "--schedule only applies to mari-gateway: `dotbot fw build "
             f"mari-gateway --schedule {' --schedule '.join(schedules)}`."

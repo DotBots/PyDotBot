@@ -109,10 +109,10 @@ in full. Their compiler output is shown only when a build fails, or with `-v`.
 | Flag | Meaning |
 |---|---|
 | `ROLE\|APP` | `swarmit-sandbox`, `mari-gateway`, or an app name (repeatable); default: both roles and the release apps |
-| `--part <part>` | `swarmit-sandbox` only: build just `bootloader` or `netcore` (repeatable) |
+| `--part <part>` | `swarmit-sandbox` only, named as an argument: build just `bootloader` or `netcore` (repeatable) |
 | `-t, --target <board>` | Board (default `dotbot-v3`); picks the apps and the swarmit-sandbox bootloader. See `dotbot fw targets` |
 | `--bare` / `--sandboxed` | Apps only: bare-metal (`.hex`) or sandboxed (`.bin`). Default: `[fw].bare` in config, else sandboxed on boards that have a sandbox |
-| `--schedule <name>\|all` | `mari-gateway` only: build the net image for this TSCH schedule (repeatable), in place of the default net image |
+| `--schedule <name>\|all` | `mari-gateway` only, named as an argument: build the net image for this TSCH schedule (repeatable), in place of the default net image |
 | `--path <folder>` | Build from this source folder for this run (every name must build from the same source) |
 | `--as <name>` | Name the set (default `local`): flash commands take it as `-f <name>` |
 | `--build-config Debug\|Release` | Default: `Debug` for the roles (what the swarmit release ships), `Release` for apps |
@@ -122,7 +122,9 @@ in full. Their compiler output is shown only when a build fails, or with `-v`.
 
 A flag that does not apply to anything being built is refused, e.g.
 `dotbot fw build swarmit-sandbox --schedule tiny` says `--schedule` only
-applies to `mari-gateway`.
+applies to `mari-gateway`. `--schedule` and `--part` never pick their role for
+you: `dotbot fw build --schedule tiny` is refused too, and points at
+`dotbot fw build mari-gateway --schedule tiny`.
 
 > **Flag mismatch to remember:** `fw` selects a board with `--target/-t`, but
 > [`device flash`](device.md) uses `--board/-b`.
