@@ -490,6 +490,20 @@ def test_verbose_streams_the_build_and_prints_the_command(
     assert f"$ SEGGER_DIR={segger} make -C {repo} bootloader netcore" in result.output
 
 
+@pytest.mark.parametrize("capture", [True, False])
+def test_a_missing_build_tool_is_named(tmp_path, monkeypatch, capture):
+    def missing(*a, **kw):
+        raise FileNotFoundError(2, "No such file or directory", "bash")
+
+    monkeypatch.setattr(fs.subprocess, "run", missing)
+    monkeypatch.setattr(fs.subprocess, "call", missing)
+    with pytest.raises(click.ClickException) as exc:
+        fs._execute(("bash", "build-schedules.sh"), tmp_path, {}, capture)
+    message = exc.value.format_message()
+    assert "`bash` was not found on PATH" in message
+    assert "Git Bash or WSL" in message
+
+
 @pytest.mark.parametrize("names", [[], ["swarmit-sandbox"], ["spin"]])
 def test_build_schedule_without_mari_gateway_named_errors(
     isolated, swarmit_repo, fake_build, names

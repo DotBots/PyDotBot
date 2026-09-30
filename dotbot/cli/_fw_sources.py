@@ -203,23 +203,35 @@ def resolve_schedules(values: Iterable[str]) -> list[str]:
 # Lines of captured build output shown when a quiet build fails.
 _FAILURE_TAIL = 60
 
+_TOOL_HINTS = {
+    "make": "swarmit and mari are built through their Makefiles, which need "
+    "GNU make.",
+    "bash": "Mari's build-schedules.sh, which builds the per-schedule gateway "
+    "images, needs bash; on Windows, run from Git Bash or WSL.",
+}
+
 
 def _execute(
     argv: tuple[str, ...], cwd: Path, env: dict[str, str], capture: bool
 ) -> tuple[int, str]:
     """Run `argv`; return its exit code and, if `capture`, its combined output."""
-    if not capture:
-        return subprocess.call(argv, cwd=cwd, env=env), ""
-    result = subprocess.run(
-        argv,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        check=False,
-    )
+    try:
+        if not capture:
+            return subprocess.call(argv, cwd=cwd, env=env), ""
+        result = subprocess.run(
+            argv,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            f"`{argv[0]}` was not found on PATH. {_TOOL_HINTS.get(argv[0], '')}"
+        ) from exc
     return result.returncode, result.stdout
 
 
