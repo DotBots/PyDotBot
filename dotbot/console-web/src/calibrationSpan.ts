@@ -1,7 +1,24 @@
+import { store } from "./persisted";
 import type { Area, PointsFrom, SiteCalibration } from "./types";
 
 // Where the loaded LH2 calibration was fitted, and what is extrapolated: the
 // map outlines each placement's span and hatches the rest of the site.
+
+const SHOWN_KEY = "dotbot.console.calibratedSpan";
+
+/** Whether this browser draws the span: on unless it was switched off here. */
+export function loadSpanShown(): boolean {
+  try {
+    return window.localStorage.getItem(SHOWN_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+/** Remember the choice; a browser that refuses storage just forgets it. */
+export function saveSpanShown(shown: boolean): void {
+  store(SHOWN_KEY, shown);
+}
 
 export type Point = [number, number];
 

@@ -26,6 +26,7 @@ import {
   withRobotOpacity,
 } from "./cameraLayer";
 import { isPhoneWidth, sessionRect } from "./calibration";
+import { loadSpanShown, saveSpanShown } from "./calibrationSpan";
 import { siteExtentArea } from "./frame";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
@@ -204,7 +205,7 @@ export const App: React.FC = () => {
     saveWaypointSettings(s);
   }, []);
   const arrivalMm = wpSettings.arrivalMm;
-  const [layers, setLayers] = useState<Layers>({
+  const [layers, setLayers] = useState<Layers>(() => ({
     batteryBars: true,
     waypoints: true,
     hotSpots: false,
@@ -212,8 +213,8 @@ export const App: React.FC = () => {
     trails: false,
     crashedOnly: false,
     allWaypoints: false,
-    calibratedSpan: true,
-  });
+    calibratedSpan: loadSpanShown(),
+  }));
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
   // ?rail=collapsed starts the left panel as its icon strip, whatever this
@@ -1177,7 +1178,13 @@ export const App: React.FC = () => {
           onZoom={zoomTo}
           layers={layers}
           layerRows={layerRows}
-          onLayerToggle={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
+          onLayerToggle={(key) =>
+            setLayers((prev) => {
+              const next = { ...prev, [key]: !prev[key] };
+              if (key === "calibratedSpan") saveSpanShown(next.calibratedSpan);
+              return next;
+            })
+          }
           robotDrawing={robotDrawing}
           onRobotDrawing={onRobotDrawing}
           bodyColorMode={bodyColorMode}

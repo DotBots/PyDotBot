@@ -32,6 +32,7 @@ from dotbot.models import (
 )
 from dotbot.poses import PLACEHOLDER_HEADING_DEG, device_pose, robot_body
 from dotbot.protocol import (
+    CALIBRATED_NOT_APPLICABLE,
     DIRECTION_NONE,
     ApplicationType,
     ControlModeType,
@@ -1651,3 +1652,21 @@ def test_robots_holding_stations_the_calibration_does_not_solve_are_warned_once(
         "calibration does not solve"
     )
     assert warnings[0]["solved"] == solved
+
+
+def test_robots_advertising_no_homographies_are_not_warned_about(tmp_path, serial_mock):
+    controller = Controller(
+        _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
+    )
+    with capture_logs() as logs:
+        controller.handle_received_frame(
+            _advertised(
+                BOT,
+                calibrated=CALIBRATED_NOT_APPLICABLE,
+                direction=90,
+                pos_x=1000,
+                pos_y=1000,
+            )
+        )
+    assert not [e for e in logs if e["log_level"] == "warning"]
+    assert not [e for e in logs if e["event"] == "Send calibration data"]
