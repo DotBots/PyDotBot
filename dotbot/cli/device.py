@@ -209,7 +209,6 @@ def flash(
     `dotbot run gateway`.)
     """
     from dotbot.firmware.flash import flash_app_image, flash_role, normalize_network_id
-    from dotbot.firmware.nrf import AccessPortProtected
 
     if name in FLASH_TARGETS:
         kind = name
@@ -265,10 +264,7 @@ def flash(
         image = resolve_app_artifact(
             name, board=board, bare=bare, fw_version=fw_version
         )
-    try:
-        flash_app_image(image, board=board, sn_starting_digits=probe)
-    except AccessPortProtected as exc:
-        raise click.ClickException(str(exc)) from exc
+    flash_app_image(image, board=board, sn_starting_digits=probe)
 
 
 @cmd.command()
@@ -288,11 +284,10 @@ def info(probe, yes):
     so the command asks first. Pass -y to skip the prompt.
 
     Never fails on a blank/unprovisioned board — reports 'not
-    provisioned' and how to fix it. A protected chip (APPROTECT) exits with
-    how to unlock it.
+    provisioned' and how to fix it.
     """
     from dotbot.firmware.flash import read_config_report
-    from dotbot.firmware.nrf import NET_CORE_READ_WARNING, AccessPortProtected
+    from dotbot.firmware.nrf import NET_CORE_READ_WARNING
 
     ensure_nrfjprog()
     if not yes:
@@ -300,9 +295,7 @@ def info(probe, yes):
         if not click.confirm("Read it anyway?", default=True):
             raise click.ClickException("Aborted.")
     try:
-        net_id, device_id, debug_port_open = read_config_report(probe)
-    except AccessPortProtected as exc:
-        raise click.ClickException(str(exc)) from exc
+        net_id, device_id = read_config_report(probe)
     except RuntimeError as exc:
         raise click.ClickException(f"Could not read the device: {exc}") from exc
 
@@ -318,11 +311,3 @@ def info(probe, yes):
     else:
         click.echo("config:    provisioned")
         click.echo(f"  net-id:  0x{net_id}")
-    if debug_port_open:
-        click.echo("debug:     open (APPROTECT disabled in UICR)")
-    else:
-        click.echo("debug:     locks at the next power cycle (APPROTECT set in UICR)")
-        click.echo(
-            "  → re-run `dotbot device flash swarmit-sandbox` (DotBot) or "
-            "`dotbot device flash mari-gateway` (gateway) to keep it open."
-        )

@@ -20,8 +20,6 @@ import click
 
 from .fetch import resolve_fw_dir
 from .nrf import (
-    AccessPortProtected,
-    approtect_disabled_in_uicr,
     do_daplink,
     do_daplink_if,
     do_jlink,
@@ -598,16 +596,13 @@ def flash_app_image(
     click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
 
 
-def read_config_report(
-    sn_starting_digits: str | None = None,
-) -> tuple[str, str, bool]:
-    """Read back (net_id, device_id, debug_port_open) from a connected device.
+def read_config_report(sn_starting_digits: str | None = None) -> tuple[str, str]:
+    """Read back (net_id, device_id) from a connected device.
 
-    Backend for `dotbot device info`. net_id is the string "unprovisioned"
-    when the config page has no valid magic; debug_port_open is False when
-    the chip will be protected again after its next power cycle. Raises
-    AccessPortProtected on a protected chip and RuntimeError on any other
-    nrfjprog failure - a blank/unprovisioned board is not an error.
+    Backend for `dotbot device info`. Returns net_id (or the string
+    "unprovisioned" when the config page has no valid magic) and the
+    64-bit device id. Raises RuntimeError only on a genuine nrfjprog
+    communication failure — a blank/unprovisioned board is not an error.
     """
     if sn_starting_digits:
         snr = pick_matching_jlink_snr(sn_starting_digits)
@@ -619,25 +614,17 @@ def read_config_report(
             "J-Link serial-number prefix (e.g. --probe 77)."
         )
     click.echo(f"[INFO] using J-Link with serial number: {snr}", err=True)
-    protected = False
     try:
-        net_id = read_net_id(snr=snr)
-        return net_id, read_device_id(snr=snr), approtect_disabled_in_uicr(snr=snr)
-    except AccessPortProtected:
-        protected = True
-        raise
+        return read_net_id(snr=snr), read_device_id(snr=snr)
     finally:
         # Reading the config page attaches the debugger to the network core,
         # which resets it. The application core does not notice, so the device
         # is left alive but with no radio - indistinguishable from dead. Reset
-        # the whole device so both cores come back up together. A protected
-        # chip never let the debugger in, so there is nothing to reset.
-        if not protected:
-            reset_device(snr=snr)
-            click.echo(
-                "[INFO] device reset (CTRL-AP) after the network-core read",
-                err=True,
-            )
+        # the whole device so both cores come back up together.
+        reset_device(snr=snr)
+        click.echo(
+            "[INFO] device reset (CTRL-AP) after the network-core read", err=True
+        )
 
 
 def flash_programmer(
