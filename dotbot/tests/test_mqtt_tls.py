@@ -170,11 +170,18 @@ _LOGIN = {"DOTBOT_MQTT_USER": "me", "DOTBOT_MQTT_PASS": "secret"}
     "conn, user_set, extra",
     [
         ("mqtts://argus.example:8883", False, {"DOTBOT_MQTT_HOST": "argus.example"}),
+        ("mqtts://argus.example:8883", False, {"DOTBOT_MQTT_HOST": " Argus.Example"}),
         ("mqtts://argus.example:8883", True, {}),
         ("mqtt://localhost:1883", False, {}),
         ("mqtt://127.0.0.1", False, {}),
     ],
-    ids=["DOTBOT_MQTT_HOST matches", "you named it", "localhost", "loopback"],
+    ids=[
+        "DOTBOT_MQTT_HOST matches",
+        "DOTBOT_MQTT_HOST in another case",
+        "you named it",
+        "localhost",
+        "loopback",
+    ],
 )
 def test_credentials_are_sent(conn, user_set, extra):
     got = broker_credentials(conn, user_set, "site c405-arena", {**_LOGIN, **extra})

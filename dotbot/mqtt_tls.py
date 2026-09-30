@@ -75,7 +75,8 @@ def broker_credentials(
                 "would carry them unencrypted; use mqtts://"
             )
         )
-    if host in _LOCAL_HOSTS or environ.get(HOST_ENV) == host or user_set:
+    bound = environ.get(HOST_ENV, "").strip().lower()
+    if host in _LOCAL_HOSTS or bound == host or user_set:
         return Credentials(user, password)
     return Credentials(
         withheld=(
