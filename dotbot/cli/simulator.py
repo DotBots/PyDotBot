@@ -41,4 +41,9 @@ def cmd(ctx):
     `dotbot run simulator --help` for the full option list.
     """
     args = ["--conn", "simulator", *ctx.args]
-    _controller_main.main(args=args, standalone_mode=True, obj=ctx.obj)
+    _controller_main.main(
+        args=args,
+        prog_name="dotbot run simulator",
+        standalone_mode=True,
+        obj=ctx.obj,
+    )
