@@ -22,6 +22,7 @@ from dotbot.cli.run import _RUN_SUBCOMMANDS
 # The top level is the four object-namespaces plus the read-only
 # management commands (config, deployment).
 EXPECTED_SUBCOMMANDS = {
+    "guide",
     "fw",
     "device",
     "swarm",

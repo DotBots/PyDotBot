@@ -36,6 +36,11 @@ from dotbot.mqtt_tls import allow_unverified_broker
 # (cli-name, dotted module path, short help shown by `dotbot --help`)
 _SUBCOMMANDS = (
     (
+        "guide",
+        "dotbot.cli.guide",
+        "Start here: for people and AI agents, simulator first.",
+    ),
+    (
         "fw",
         "dotbot.cli.fw",
         "Firmware artifacts (no hardware): build / fetch / list / make.",
@@ -75,8 +80,9 @@ _SUBCOMMANDS = (
 
 
 # The commands that read no config, so say nothing about which one is in
-# effect: `config` inspects that itself, and `site add` only writes a pack
-_CONFIGLESS = {("config",), ("site", "add")}
+# effect: `config` inspects that itself, `site add` only writes a pack, and
+# `guide` prints a file
+_CONFIGLESS = {("config",), ("site", "add"), ("guide",)}
 
 
 class _RootGroup(LazyGroup):
@@ -104,7 +110,8 @@ def _reads_config(ctx) -> bool:
     help=(
         "One CLI for the whole DotBot workflow: build and flash firmware, "
         "program and control a single DotBot, and run experiments over the air "
-        "across a swarm - from one DotBot to a thousand."
+        "across a swarm - from one DotBot to a thousand.\n\n"
+        "New here, or an AI agent? Start with: dotbot guide"
     ),
 )
 @click.option(
