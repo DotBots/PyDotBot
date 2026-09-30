@@ -291,6 +291,17 @@ def test_a_pack_with_no_connection_is_never_asked_about(runner, tmp_path, home):
     assert "Add site" not in result.output
 
 
+def test_a_virtual_pack_on_the_simulator_is_never_asked_about(runner, tmp_path, home):
+    pack = tmp_path / "src" / "lab"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        'virtual = true\n[connection]\nconn = "simulator"\n'
+    )
+    result = _invoke(runner, "site", "add", str(pack))
+    assert result.exit_code == 0, result.output
+    assert "Add site" not in result.output
+
+
 def test_a_readd_that_changes_the_broker_asks_again_with_old_and_new(
     runner, tmp_path, home
 ):

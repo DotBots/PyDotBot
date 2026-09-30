@@ -390,8 +390,11 @@ def _ask(question: str, from_stdin: bool) -> bool:
 
 def _confirm_connection(name, new, old, from_stdin) -> bool:
     """Show the broker and swarm id a pack brings, or how a re-add changes
-    them, and ask; True when there is nothing to ask about."""
+    them, and ask; True when there is nothing to ask about, which includes a
+    virtual site's simulator."""
     if new == old or new == (None, None):
+        return True
+    if new[0] is not None and new[0].strip().lower() in ("simulator", "sim"):
         return True
     rows = (("broker", 0), ("swarm id", 1))
     if old is None or old == (None, None):
