@@ -101,10 +101,14 @@ def test_f_takes_a_directory_path(fake_cache, tmp_path):
 
 
 def test_f_missing_set_suggests_the_build(fake_cache):
-    with pytest.raises(
-        click.ClickException, match="dotbot fw build dotbot-firmware -a spin --as mine"
-    ):
+    with pytest.raises(click.ClickException, match="dotbot fw build spin --as mine"):
         resolve_flash_args(["-f", "mine", "spin"])
+
+
+@pytest.mark.parametrize("name", ["mari-gateway", "swarmit-sandbox", "programmer"])
+def test_a_cabled_target_points_at_device_flash(fake_cache, name):
+    with pytest.raises(click.ClickException, match=f"`dotbot device flash {name}`"):
+        resolve_flash_args([name])
 
 
 def test_f_with_an_explicit_path_errors(fake_cache, tmp_path):

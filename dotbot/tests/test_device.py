@@ -37,60 +37,176 @@ def _no_nrfjprog_gate(monkeypatch):
 def test_device_help_lists_commands(runner):
     result = runner.invoke(device_cmd, ["--help"])
     assert result.exit_code == 0
-    for sub in (
-        "flash",
-        "flash-swarmit-sandbox",
-        "flash-mari-gateway",
-        "flash-programmer",
-        "info",
-    ):
+    for sub in ("flash", "info"):
         assert sub in result.output
+    for old in ("flash-mari-gateway", "flash-swarmit-sandbox", "flash-programmer"):
+        assert old not in result.output
 
 
-def test_flash_swarmit_sandbox_accepts_calibration(runner):
-    """flash-swarmit-sandbox has --lh2-calibration (LH2 lives on dotbot-v3)."""
-    result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "--help"])
+def test_flash_programmer_calls_the_engine(runner, monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_programmer", lambda *a: calls.append(a)
+    )
+    monkeypatch.setattr(
+        "dotbot.cli.device.ensure_nrfjprog", lambda: pytest.fail("needs no nrfjprog")
+    )
+    result = runner.invoke(
+        device_cmd,
+        [
+            "flash",
+            "programmer",
+            "-p",
+            "daplink",
+            "-d",
+            str(tmp_path),
+            "--probe-uid",
+            "u",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == [("daplink", tmp_path, "u")]
+
+
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        (["programmer", "-p", "jlink"], "-p jlink|daplink -d <folder>"),
+        (["programmer", "-p", "jlink", "-d", ".", "--probe", "77"], "--probe-uid"),
+        (["programmer", "-p", "jlink", "-d", ".", "-f", "local"], "-f selects"),
+        (["spin", "-p", "jlink"], "--programmer-firmware only applies to programmer"),
+        (
+            ["mari-gateway", "--probe-uid", "u"],
+            "--probe-uid only applies to programmer",
+        ),
+    ],
+)
+def test_flash_programmer_options_stay_with_programmer(
+    runner, monkeypatch, argv, message
+):
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_programmer", lambda *a: pytest.fail("flashed")
+    )
+    result = runner.invoke(device_cmd, ["flash", *argv])
+    assert result.exit_code != 0
+    assert message in result.output
+
+
+def test_flash_help_lists_programmer_last(runner):
+    out = runner.invoke(device_cmd, ["flash", "--help"]).output
+    names = [line.split()[0] for line in out.splitlines() if line.startswith("    ")]
+    assert names.index("programmer") > names.index("FILE") > names.index("APP")
+    assert "recovery" in out
+
+
+def test_device_flash_roles_are_fw_roles():
+    from dotbot.cli._fw_sources import ROLES
+    from dotbot.cli.device import _ROLE_DEVICES
+
+    assert set(_ROLE_DEVICES) == set(ROLES)
+
+
+def test_flash_accepts_calibration(runner):
+    """`flash` has --lh2-calibration, for swarmit-sandbox (LH2 lives on dotbot-v3)."""
+    result = runner.invoke(device_cmd, ["flash", "--help"])
     assert result.exit_code == 0
     assert "--lh2-calibration" in result.output
     assert " -l," not in result.output
 
 
-def test_flash_mari_gateway_rejects_calibration(runner):
-    """flash-mari-gateway has no --lh2-calibration option (gateway has no LH2)."""
-    result = runner.invoke(device_cmd, ["flash-mari-gateway", "--help"])
-    assert result.exit_code == 0
-    assert "--lh2-calibration" not in result.output
-    # Passing it is an unknown-option error.
-    bad = runner.invoke(
-        device_cmd,
-        [
-            "flash-mari-gateway",
-            "--swarm-id",
-            "1234",
-            "-f",
-            "0.8.0rc1",
-            "--lh2-calibration",
-            "x.toml",
-        ],
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        (
+            ["mari-gateway", "--lh2-calibration", "{cal}"],
+            "only applies to swarmit-sandbox",
+        ),
+        (["swarmit-sandbox", "--schedule", "tiny"], "only applies to mari-gateway"),
+        (["swarmit-sandbox", "--bare"], "only apply to apps"),
+        (["mari-gateway", "--board", "nrf5340dk"], "--board only applies to apps"),
+        (["spin", "--swarm-id", "0100"], "--swarm-id only applies to"),
+        (["spin", "--schedule", "tiny"], "only applies to mari-gateway"),
+        (["spin", "--lh2-calibration", "{cal}"], "only applies to swarmit-sandbox"),
+        (["./x.hex", "--bare"], "only apply to apps"),
+    ],
+)
+def test_flash_refuses_options_that_do_not_apply(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch, argv, message
+):
+    cal = tmp_path / "cal.toml"
+    cal.write_text("")
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role", lambda *a, **k: pytest.fail("flashed")
     )
-    assert bad.exit_code != 0
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_app_image", lambda *a, **k: pytest.fail("flashed")
+    )
+    argv = [a.format(cal=cal) for a in argv]
+    result = runner.invoke(device_cmd, ["flash", *argv])
+    assert result.exit_code != 0
+    assert message in result.output
+
+
+def test_flash_role_ignores_app_settings_from_config(
+    runner, _no_nrfjprog_gate, monkeypatch
+):
+    """[device].board and [fw].bare are app settings: a role flash ignores them."""
+    from dotbot.config import DotbotConfig
+
+    calls = {}
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role",
+        lambda role, **kw: calls.update(role=role, kw=kw),
+    )
+    cfg = DotbotConfig.model_validate(
+        {"device": {"board": "nrf52840dk"}, "fw": {"bare": True}}
+    )
+    result = runner.invoke(
+        device_cmd,
+        ["flash", "mari-gateway", "--swarm-id", "1234", "-f", "0.9.0"],
+        obj={"config": cfg, "deployment": None},
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["role"] == "gateway"
+
+
+def test_flash_takes_dotbot_firmwares_gateway_app_as_an_app(
+    runner, _no_nrfjprog_gate, tmp_path, monkeypatch
+):
+    """DotBot-firmware's own gateway apps are apps; only `mari-gateway` is the role."""
+    calls = []
+    monkeypatch.setattr(
+        "dotbot.firmware.flash.flash_role", lambda *a, **k: pytest.fail("a role")
+    )
+    monkeypatch.setattr(
+        "dotbot.cli.device.resolve_app_artifact",
+        lambda app, **kw: calls.append(app) or tmp_path / "x.hex",
+    )
+    monkeypatch.setattr("dotbot.firmware.flash.flash_app_image", lambda *a, **k: None)
+    for app in ("dotbot_gateway", "gateway"):
+        result = runner.invoke(device_cmd, ["flash", app, "-b", "nrf52840dk"])
+        assert result.exit_code == 0, result.output
+    assert calls == ["dotbot_gateway", "gateway"]
 
 
 def test_flash_swarmit_sandbox_requires_swarm_id(runner):
-    """flash-swarmit-sandbox needs a swarm id (flag or config); -f is now
+    """flash swarmit-sandbox needs a swarm id (flag or config); -f is now
     optional and defaults to the latest release (so no network in this test:
     swarm_id is checked before the version resolves)."""
     with runner.isolated_filesystem():
-        result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "-f", "0.8.0rc1"])
+        result = runner.invoke(
+            device_cmd, ["flash", "swarmit-sandbox", "-f", "0.8.0rc1"]
+        )
     assert result.exit_code != 0
     assert "no swarm id" in result.output
 
 
 def test_flash_mari_gateway_help_disambiguates_from_bridge(runner):
-    """`device flash-mari-gateway` help points away from the `dotbot run gateway` bridge."""
-    result = runner.invoke(device_cmd, ["flash-mari-gateway", "--help"])
+    """`device flash` help points away from the `dotbot run gateway` bridge."""
+    result = runner.invoke(device_cmd, ["flash", "--help"])
     assert result.exit_code == 0
-    assert "dotbot run gateway" in result.output  # the "use the bridge instead" note
+    # the "use the bridge instead" note
+    assert "dotbot run gateway" in " ".join(result.output.split())
 
 
 def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypatch):
@@ -104,7 +220,8 @@ def test_flash_swarmit_sandbox_calls_engine(runner, _no_nrfjprog_gate, monkeypat
     result = runner.invoke(
         device_cmd,
         [
-            "flash-swarmit-sandbox",
+            "flash",
+            "swarmit-sandbox",
             "--swarm-id",
             "0100",
             "-f",
@@ -132,7 +249,7 @@ def test_flash_swarmit_sandbox_defaults_to_pinned_version(
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
     result = runner.invoke(
-        device_cmd, ["flash-swarmit-sandbox", "--swarm-id", "0100", "--probe", "77"]
+        device_cmd, ["flash", "swarmit-sandbox", "--swarm-id", "0100", "--probe", "77"]
     )
     assert result.exit_code == 0, result.output
     assert calls["kw"]["fw_version"] is None
@@ -147,12 +264,12 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
         lambda role, **kw: calls.update(role=role, kw=kw),
     )
     result = runner.invoke(
-        device_cmd, ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.8.0rc1"]
+        device_cmd, ["flash", "mari-gateway", "--swarm-id", "1234", "-f", "0.8.0rc1"]
     )
     assert result.exit_code == 0, result.output
     assert calls["role"] == "gateway"
     # gateway carries no calibration.
-    assert "calibration_path" not in calls["kw"]
+    assert calls["kw"]["calibration_path"] is None
 
 
 # ── swarm id defaults from the selected deployment's swarm_id ─────────
@@ -185,7 +302,8 @@ def test_flash_mari_gateway_net_id_from_deployment(
             "-c",
             str(cfg),
             "device",
-            "flash-mari-gateway",
+            "flash",
+            "mari-gateway",
             "--probe",
             "10",
             "-f",
@@ -218,7 +336,8 @@ def test_flash_mari_gateway_explicit_net_id_overrides_deployment(
             "-c",
             str(cfg),
             "device",
-            "flash-mari-gateway",
+            "flash",
+            "mari-gateway",
             "--swarm-id",
             "0099",
             "-f",
@@ -234,7 +353,9 @@ def test_flash_mari_gateway_no_swarm_id_no_config_errors(runner, _no_nrfjprog_ga
     from dotbot.cli.main import cli
 
     with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["device", "flash-mari-gateway", "-f", "0.8.0rc1"])
+        result = runner.invoke(
+            cli, ["device", "flash", "mari-gateway", "-f", "0.8.0rc1"]
+        )
     assert result.exit_code != 0
     assert "no swarm id" in result.output
 
@@ -242,7 +363,7 @@ def test_flash_mari_gateway_no_swarm_id_no_config_errors(runner, _no_nrfjprog_ga
 def test_flash_swarmit_sandbox_net_id_from_deployment(
     runner, _no_nrfjprog_gate, tmp_path, monkeypatch
 ):
-    """flash-swarmit-sandbox also defaults net_id from the deployment's swarm_id."""
+    """flash swarmit-sandbox also defaults net_id from the deployment's swarm_id."""
     from dotbot.cli.main import cli
 
     calls = {}
@@ -260,7 +381,8 @@ def test_flash_swarmit_sandbox_net_id_from_deployment(
             "-c",
             str(cfg),
             "device",
-            "flash-swarmit-sandbox",
+            "flash",
+            "swarmit-sandbox",
             "--probe",
             "10",
             "-f",
@@ -298,7 +420,7 @@ def test_info_reports_unprovisioned_without_failing(
     result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code == 0, result.output
     assert "not provisioned" in result.output
-    assert "flash-swarmit-sandbox" in result.output
+    assert "dotbot device flash swarmit-sandbox" in result.output
 
 
 def test_info_surfaces_comms_failure(runner, _no_nrfjprog_gate, monkeypatch):
@@ -682,7 +804,7 @@ def test_fetch_no_args_resolves_pinned_versions(monkeypatch):
 
 
 def test_fetch_explicit_version_overrides_pin(monkeypatch):
-    """-f <tag> with a SOURCE bypasses the pin and passes through verbatim."""
+    """-f <tag> with a name bypasses the pin and passes through verbatim."""
     from dotbot.cli.fw import cmd as fw_cmd
 
     calls: list[tuple[str, str]] = []
@@ -695,9 +817,9 @@ def test_fetch_explicit_version_overrides_pin(monkeypatch):
             calls.append((src, version)) or Path(f"/x/{src}-{version}")
         ),
     )
-    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot-firmware", "-f", "1.21.0"])
+    res = CliRunner().invoke(fw_cmd, ["fetch", "mari-gateway", "-f", "1.21.0"])
     assert res.exit_code == 0, res.output
-    assert calls == [("dotbot-firmware", "1.21.0")]
+    assert calls == [("swarmit", "1.21.0")]
     assert pin_called == []  # explicit -f never consults the pin
 
 
@@ -705,7 +827,7 @@ def test_fetch_explicit_version_overrides_pin(monkeypatch):
 
 
 def _gateway_argv(*extra):
-    return ["flash-mari-gateway", "--swarm-id", "1234", "-f", "0.9.0", *extra]
+    return ["flash", "mari-gateway", "--swarm-id", "1234", "-f", "0.9.0", *extra]
 
 
 def test_schedules_are_marilibs_in_capacity_order():
@@ -755,11 +877,18 @@ def test_flash_mari_gateway_rejects_unknown_schedule(runner, _no_nrfjprog_gate):
         assert name in result.output
 
 
-def test_flash_swarmit_sandbox_has_no_schedule_option(runner):
+def test_flash_swarmit_sandbox_refuses_a_schedule(runner):
     """The schedule is the gateway's; a node adopts whatever the beacon says."""
-    result = runner.invoke(device_cmd, ["flash-swarmit-sandbox", "--help"])
-    assert result.exit_code == 0
-    assert "--schedule" not in result.output
+    result = runner.invoke(
+        device_cmd, ["flash", "swarmit-sandbox", "--swarm-id", "0100", "-s", "x"]
+    )
+    assert result.exit_code != 0
+    result = runner.invoke(
+        device_cmd,
+        ["flash", "swarmit-sandbox", "--swarm-id", "0100", "--schedule", "tiny"],
+    )
+    assert result.exit_code != 0
+    assert "--schedule only applies to mari-gateway" in result.output
 
 
 def test_flash_role_rejects_schedule_for_a_non_gateway_role(tmp_path):
@@ -804,7 +933,7 @@ def test_flash_role_missing_schedule_image_says_how_to_build_it(tmp_path, monkey
         )
     message = exc.value.format_message()
     assert "03app_gateway_net-tiny.hex" in message
-    assert "dotbot fw build mari -a mari-gateway --schedule tiny" in message
+    assert "dotbot fw build mari-gateway --schedule tiny" in message
 
 
 def test_flash_role_schedule_from_a_release_says_releases_carry_none(
@@ -829,7 +958,7 @@ def test_flash_role_schedule_from_a_release_says_releases_carry_none(
         )
     message = exc.value.format_message()
     assert "swarmit release 0.9.0 does not publish 03app_gateway_net-big.hex" in message
-    assert "dotbot fw build mari -a mari-gateway --schedule big" in message
+    assert "dotbot fw build mari-gateway --schedule big" in message
     assert fake_fetch.calls == []
 
 
@@ -873,6 +1002,12 @@ def test_flash_role_programs_the_selected_schedule_image(tmp_path, monkeypatch):
 # ── -f: which firmware set a flash command reads ─────────────────────────
 
 SWARMIT_ROLE_FILES = ("bootloader-dotbot-v3.hex", "netcore-nrf5340-net.hex")
+
+
+def _resolve_swarmit(value, bin_dir, **kw):
+    return fetch.resolve_fw_dir(
+        "swarmit", value, bin_dir, build="swarmit-sandbox", **kw
+    )
 
 
 def _make_set(root, name, files, source="swarmit"):
@@ -921,9 +1056,7 @@ def test_no_f_is_the_pinned_release_even_when_a_local_set_exists(
 ):
     _make_set(tmp_path, "local", SWARMIT_ROLE_FILES)
     pinned = _make_set(tmp_path, "0.9.0", SWARMIT_ROLE_FILES)
-    root, label = fetch.resolve_fw_dir(
-        "swarmit", None, tmp_path, required=SWARMIT_ROLE_FILES
-    )
+    root, label = _resolve_swarmit(None, tmp_path, required=SWARMIT_ROLE_FILES)
     assert (root, label) == (pinned, "0.9.0")
     assert fake_fetch.calls == []
 
@@ -938,7 +1071,12 @@ def test_gateway_releases_come_from_swarmit_and_sets_from_mari(
 
     def resolve(value):
         return fetch.resolve_fw_dir(
-            "mari", value, tmp_path, required=gateway, release_source="swarmit"
+            "mari",
+            value,
+            tmp_path,
+            build="mari-gateway",
+            required=gateway,
+            release_source="swarmit",
         )
 
     assert resolve("local") == (mari_local, "local")
@@ -946,8 +1084,8 @@ def test_gateway_releases_come_from_swarmit_and_sets_from_mari(
     assert resolve("0.9.0") == (pinned, "0.9.0")
     with pytest.raises(click.ClickException) as exc:
         resolve("mine")
-    assert "dotbot fw build mari --as mine" in exc.value.format_message()
-    assert "dotbot fw fetch swarmit -f <tag>" in exc.value.format_message()
+    assert "dotbot fw build mari-gateway --as mine" in exc.value.format_message()
+    assert "dotbot fw fetch mari-gateway -f <tag>" in exc.value.format_message()
     assert fake_fetch.calls == []
 
 
@@ -957,28 +1095,24 @@ def test_a_complete_release_missing_a_file_is_not_refetched(
     release = _make_set(tmp_path, "0.9.0", SWARMIT_ROLE_FILES[:1])
     (release / "manifest.json").write_text("{}")
     with pytest.raises(click.ClickException, match="does not publish"):
-        fetch.resolve_fw_dir("swarmit", "0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
+        _resolve_swarmit("0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
     assert fake_fetch.calls == []
 
 
 def test_a_missing_release_is_fetched(tmp_path, fake_fetch, no_build):
-    root, label = fetch.resolve_fw_dir(
-        "swarmit", "0.8.0", tmp_path, required=SWARMIT_ROLE_FILES
-    )
+    root, label = _resolve_swarmit("0.8.0", tmp_path, required=SWARMIT_ROLE_FILES)
     assert root == tmp_path / "swarmit-0.8.0"
     assert fake_fetch.calls == [("swarmit", "0.8.0")]
 
 
 def test_a_release_missing_a_required_file_is_refetched(tmp_path, fake_fetch, no_build):
     _make_set(tmp_path, "0.9.0", SWARMIT_ROLE_FILES[:1])
-    fetch.resolve_fw_dir("swarmit", "0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
+    _resolve_swarmit("0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
     assert fake_fetch.calls == [("swarmit", "0.9.0")]
 
 
 def test_latest_resolves_to_the_tag_directory(tmp_path, fake_fetch, no_build):
-    root, label = fetch.resolve_fw_dir(
-        "swarmit", "latest", tmp_path, required=SWARMIT_ROLE_FILES
-    )
+    root, label = _resolve_swarmit("latest", tmp_path, required=SWARMIT_ROLE_FILES)
     assert (root, label) == (tmp_path / "swarmit-0.9.1", "0.9.1")
     assert not (tmp_path / "swarmit-latest").exists()
 
@@ -987,9 +1121,10 @@ def test_a_named_set_is_read_from_the_cache_and_never_fetched(
     tmp_path, fake_fetch, no_build
 ):
     built = _make_set(tmp_path, "test-set", SWARMIT_ROLE_FILES)
-    assert fetch.resolve_fw_dir(
-        "swarmit", "test-set", tmp_path, required=SWARMIT_ROLE_FILES
-    ) == (built, "test-set")
+    assert _resolve_swarmit("test-set", tmp_path, required=SWARMIT_ROLE_FILES) == (
+        built,
+        "test-set",
+    )
     assert fake_fetch.calls == []
 
 
@@ -997,20 +1132,20 @@ def test_a_missing_set_errors_with_the_build_line_and_no_build(
     tmp_path, fake_fetch, no_build
 ):
     with pytest.raises(click.ClickException) as exc:
-        fetch.resolve_fw_dir("swarmit", "local", tmp_path, required=SWARMIT_ROLE_FILES)
+        _resolve_swarmit("local", tmp_path, required=SWARMIT_ROLE_FILES)
     message = exc.value.format_message()
-    assert "dotbot fw build swarmit\n" in message + "\n"
-    assert "dotbot fw fetch swarmit -f <tag>" in message
+    assert "dotbot fw build swarmit-sandbox\n" in message + "\n"
+    assert "dotbot fw fetch swarmit-sandbox -f <tag>" in message
     with pytest.raises(click.ClickException) as exc:
-        fetch.resolve_fw_dir("swarmit", "mine", tmp_path)
-    assert "dotbot fw build swarmit --as mine" in exc.value.format_message()
+        _resolve_swarmit("mine", tmp_path)
+    assert "dotbot fw build swarmit-sandbox --as mine" in exc.value.format_message()
     assert fake_fetch.calls == []
 
 
 def test_a_set_missing_a_file_names_it(tmp_path, fake_fetch, no_build):
     _make_set(tmp_path, "local", SWARMIT_ROLE_FILES[:1])
     with pytest.raises(click.ClickException, match="netcore-nrf5340-net.hex"):
-        fetch.resolve_fw_dir("swarmit", "local", tmp_path, required=SWARMIT_ROLE_FILES)
+        _resolve_swarmit("local", tmp_path, required=SWARMIT_ROLE_FILES)
 
 
 def test_a_value_with_a_slash_is_a_directory_used_as_is(
@@ -1021,17 +1156,15 @@ def test_a_value_with_a_slash_is_a_directory_used_as_is(
     for f in SWARMIT_ROLE_FILES:
         (tree / f).write_text("")
     monkeypatch.chdir(tmp_path)
-    root, label = fetch.resolve_fw_dir(
-        "swarmit", "./tree", tmp_path / "cache", required=SWARMIT_ROLE_FILES
+    root, label = _resolve_swarmit(
+        "./tree", tmp_path / "cache", required=SWARMIT_ROLE_FILES
     )
     assert (root, label) == (tree.resolve(), "tree")
     with pytest.raises(click.ClickException, match="no such directory"):
-        fetch.resolve_fw_dir("swarmit", "./nope", tmp_path / "cache")
+        _resolve_swarmit("./nope", tmp_path / "cache")
     (tree / SWARMIT_ROLE_FILES[0]).unlink()
     with pytest.raises(click.ClickException, match="used as-is"):
-        fetch.resolve_fw_dir(
-            "swarmit", "./tree", tmp_path / "cache", required=SWARMIT_ROLE_FILES
-        )
+        _resolve_swarmit("./tree", tmp_path / "cache", required=SWARMIT_ROLE_FILES)
 
 
 def test_a_bare_word_is_never_a_path(tmp_path, fake_fetch, no_build, monkeypatch):
@@ -1039,7 +1172,7 @@ def test_a_bare_word_is_never_a_path(tmp_path, fake_fetch, no_build, monkeypatch
     (tmp_path / "tree").mkdir()
     monkeypatch.chdir(tmp_path)
     with pytest.raises(click.ClickException, match="No 'tree' swarmit set"):
-        fetch.resolve_fw_dir("swarmit", "tree", tmp_path / "cache")
+        _resolve_swarmit("tree", tmp_path / "cache")
 
 
 def _fake_hardware(monkeypatch, programmed):
@@ -1069,7 +1202,8 @@ def test_flash_swarmit_sandbox_latest_flashes_the_fetched_tag(
     result = runner.invoke(
         device_cmd,
         [
-            "flash-swarmit-sandbox",
+            "flash",
+            "swarmit-sandbox",
             "--swarm-id",
             "0100",
             "-f",
@@ -1096,16 +1230,15 @@ def test_flash_mari_gateway_from_a_named_set(
     programmed = {}
     _fake_hardware(monkeypatch, programmed)
     result = runner.invoke(
-        device_cmd, ["flash-mari-gateway", "--swarm-id", "0100", "-f", "test-set"]
+        device_cmd, ["flash", "mari-gateway", "--swarm-id", "0100", "-f", "test-set"]
     )
     assert result.exit_code == 0, result.output
     assert programmed["net"] == built / "03app_gateway_net-nrf5340-net.hex"
     assert fake_fetch.calls == []
 
 
-@pytest.mark.parametrize("sub", ["flash-swarmit-sandbox", "flash-mari-gateway"])
-def test_local_root_is_gone(runner, sub):
-    result = runner.invoke(device_cmd, [sub, "--help"])
+def test_local_root_is_gone(runner):
+    result = runner.invoke(device_cmd, ["flash", "--help"])
     assert "--local-root" not in result.output
     assert "directory path" in " ".join(result.output.split())
 
@@ -1165,14 +1298,14 @@ def test_device_flash_never_builds_and_says_how_to(
     )
     result = runner.invoke(device_cmd, ["flash", "myapp", "-f", "local", "--bare"])
     assert result.exit_code != 0
-    assert "dotbot fw build dotbot-firmware -a myapp --bare" in result.output
-    assert "dotbot fw fetch dotbot-firmware -f <tag>" in result.output
+    assert "dotbot fw build myapp --bare" in result.output
+    assert "dotbot fw fetch myapp -f <tag>" in result.output
     # A release that does not ship the app says so and points at the build.
     fake_fetch.files = ()
     result = runner.invoke(device_cmd, ["flash", "myapp"])
     assert result.exit_code != 0
     assert "does not publish myapp-sandbox-dotbot-v3.bin" in result.output
-    assert "dotbot fw build dotbot-firmware -a myapp" in result.output
+    assert "dotbot fw build myapp" in result.output
 
 
 def test_device_flash_path_takes_no_f(runner, _no_nrfjprog_gate, tmp_path):
@@ -1233,13 +1366,53 @@ def test_device_flash_bare_precedence(
 # ── fw fetch ─────────────────────────────────────────────────────────────
 
 
-def test_fetch_tag_needs_exactly_one_source(monkeypatch):
+@pytest.mark.parametrize("names", [[], ["swarmit-sandbox", "spin"]])
+def test_fetch_tag_needs_names_from_one_release(monkeypatch, names):
     from dotbot.cli.fw import cmd as fw_cmd
 
     monkeypatch.setattr(fetch, "fetch_assets", lambda *a: pytest.fail("fetched"))
-    res = CliRunner().invoke(fw_cmd, ["fetch", "-f", "0.8.0"])
+    res = CliRunner().invoke(fw_cmd, ["fetch", *names, "-f", "0.8.0"])
     assert res.exit_code != 0
-    assert "dotbot fw fetch swarmit -f 0.8.0" in res.output
+    assert "dotbot fw fetch swarmit-sandbox -f 0.8.0" in res.output
+
+
+def test_fetch_both_roles_fetch_the_swarmit_release_once(monkeypatch):
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    calls = []
+    monkeypatch.setattr(
+        fetch,
+        "fetch_assets",
+        lambda src, version, bin_dir: calls.append((src, version)) or Path("/x"),
+    )
+    res = CliRunner().invoke(
+        fw_cmd, ["fetch", "swarmit-sandbox", "mari-gateway", "-f", "0.9.0"]
+    )
+    assert res.exit_code == 0, res.output
+    assert calls == [("swarmit", "0.9.0")]
+
+
+def test_fetch_an_app_checks_the_release_ships_it(tmp_path, monkeypatch):
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    out = tmp_path / "dotbot-firmware-1.24.0"
+    out.mkdir()
+    for name in (
+        "spin-sandbox-dotbot-v3.bin",
+        "dotbot-simple-sandbox-dotbot-v3.bin",
+        "dotbot_gateway-nrf52840dk.hex",
+    ):
+        (out / name).write_text("")
+    monkeypatch.setattr(fetch, "fetch_assets", lambda src, version, bin_dir: out)
+    res = CliRunner().invoke(
+        fw_cmd, ["fetch", "spin", "dotbot_gateway", "-f", "1.24.0"]
+    )
+    assert res.exit_code == 0, res.output
+    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot", "-f", "1.24.0"])
+    assert res.exit_code != 0
+    assert "ships no dotbot. It ships: dotbot-simple, dotbot_gateway, spin" in (
+        " ".join(res.output.split())
+    )
 
 
 def test_fetch_latest_covers_every_source(monkeypatch):
@@ -1257,7 +1430,7 @@ def test_fetch_latest_covers_every_source(monkeypatch):
 
 
 def test_fetch_local_is_not_a_release(tmp_path):
-    with pytest.raises(click.ClickException, match="dotbot fw build swarmit"):
+    with pytest.raises(click.ClickException, match="`dotbot fw build`"):
         fetch.fetch_assets("swarmit", "local", tmp_path)
 
 
@@ -1269,12 +1442,9 @@ def test_fetch_source_flag_is_gone():
     assert "--local-root" not in CliRunner().invoke(fw_cmd, ["fetch", "--help"]).output
 
 
-def test_fetch_takes_the_release_sources_and_says_where_the_gateway_is():
+def test_fetch_help_says_where_the_gateway_comes_from():
     from dotbot.cli.fw import cmd as fw_cmd
 
-    res = CliRunner().invoke(fw_cmd, ["fetch", "mari"])
-    assert res.exit_code != 0
-    assert "'mari' is not one of" in res.output
     help_text = " ".join(CliRunner().invoke(fw_cmd, ["fetch", "--help"]).output.split())
-    assert "Mari gateway" in help_text
-    assert "dotbot fw build mari --schedule" in help_text
+    assert "Mari's own releases publish no firmware" in help_text
+    assert "dotbot fw build mari-gateway --schedule" in help_text

@@ -23,11 +23,11 @@ segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
 Resolution order (first match wins):
 - SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
   `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
-- source checkouts (`resolve_repo`): the env var (`DOTBOT_FIRMWARE_REPO`,
-  `DOTBOT_SWARMIT_REPO`, `DOTBOT_MARI_REPO`) → the config key
-  (`[fw].firmware_repo`, `[fw].swarmit_repo`, `[fw].mari_repo`), a relative
-  value resolving against the directory of the config file that set it →
-  `repos/<name>` next to the config file in use → error.
+- source folders (`resolve_repo`): `DOTBOT_FW_SOURCES_<SOURCE>` (e.g.
+  `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`) → the `[fw.sources]` table, keyed
+  `dotbot-firmware` / `swarmit` / `mari`, a relative value resolving against
+  the directory of the config file that set it → `repos/<name>` next to the
+  config file in use → error.
 """
 
 import difflib
@@ -144,26 +144,34 @@ def resolve_segger_dir() -> Path:
 
 @dataclass(frozen=True)
 class RepoSpec:
-    """How one source checkout is located: env var, config key, default dir.
+    """How one source folder is located: its `[fw.sources]` key, default dir.
 
-    `marker` is the file, relative to the checkout, that identifies it.
+    `marker` is the file, relative to the folder, that identifies it.
     """
 
-    env_var: str
-    config_key: str
+    key: str
     dirname: str
     marker: str = "Makefile"
 
+    @property
+    def env_var(self) -> str:
+        return "DOTBOT_FW_SOURCES_" + self.key.upper().replace("-", "_")
 
-FIRMWARE_REPO = RepoSpec("DOTBOT_FIRMWARE_REPO", "firmware_repo", "DotBot-firmware")
-SWARMIT_REPO = RepoSpec("DOTBOT_SWARMIT_REPO", "swarmit_repo", "swarmit")
-MARI_REPO = RepoSpec("DOTBOT_MARI_REPO", "mari_repo", "mari", "firmware/Makefile")
+    @property
+    def setting(self) -> str:
+        return f"[fw.sources] {self.key}"
+
+
+FIRMWARE_REPO = RepoSpec("dotbot-firmware", "DotBot-firmware")
+SWARMIT_REPO = RepoSpec("swarmit", "swarmit")
+MARI_REPO = RepoSpec("mari", "mari", "firmware/Makefile")
+REPO_SPECS = {spec.key: spec for spec in (FIRMWARE_REPO, SWARMIT_REPO, MARI_REPO)}
 
 
 def resolve_repo(spec: RepoSpec) -> Path:
-    """Locate a source checkout (a directory holding `spec.marker`).
+    """Locate a source folder (a directory holding `spec.marker`).
 
-    env var → `[fw].<key>` (relative to the config file's directory) →
+    env var → `[fw.sources]` (relative to the config file's directory) →
     `repos/<dirname>` next to the config file in use → error.
     """
     env = os.environ.get(spec.env_var)
@@ -176,7 +184,7 @@ def resolve_repo(spec: RepoSpec) -> Path:
         )
     cfg, cfg_path = _loaded_config()
     base = Path(cfg_path).resolve().parent if cfg_path is not None else None
-    value = getattr(cfg.fw, spec.config_key, None)
+    value = getattr(cfg.fw.sources, spec.key.replace("-", "_"), None)
     if value:
         candidate = Path(value).expanduser()
         if not candidate.is_absolute() and base is not None:
@@ -185,7 +193,7 @@ def resolve_repo(spec: RepoSpec) -> Path:
             return candidate
         where = f" (set in {cfg_path})" if cfg_path is not None else ""
         raise click.ClickException(
-            f"[fw].{spec.config_key}={value!r}{where} resolves to {candidate}, "
+            f"{spec.setting} = {value!r}{where} resolves to {candidate}, "
             f"which does not contain {spec.marker}."
         )
     if base is not None:
@@ -193,26 +201,26 @@ def resolve_repo(spec: RepoSpec) -> Path:
         if (candidate / spec.marker).is_file():
             return candidate
     raise click.ClickException(
-        f"Could not locate your {spec.dirname} checkout. Either:\n"
+        f"Could not find your {spec.dirname} source folder. Either:\n"
+        f"  - set {spec.key} under [fw.sources] in your config (a relative "
+        "path resolves against the config file's directory), or\n"
         f"  - export {spec.env_var}=/path/to/{spec.dirname}, or\n"
-        f"  - set [fw].{spec.config_key} in your config (a relative path "
-        "resolves against the config file's directory), or\n"
         f"  - keep the clone at repos/{spec.dirname} next to your dotbot.toml."
     )
 
 
 def resolve_firmware_repo() -> Path:
-    """The DotBot-firmware checkout (see `resolve_repo`)."""
+    """The DotBot-firmware source folder (see `resolve_repo`)."""
     return resolve_repo(FIRMWARE_REPO)
 
 
 def resolve_swarmit_repo() -> Path:
-    """The swarmit checkout (see `resolve_repo`)."""
+    """The swarmit source folder (see `resolve_repo`)."""
     return resolve_repo(SWARMIT_REPO)
 
 
 def resolve_mari_repo() -> Path:
-    """The mari checkout (see `resolve_repo`)."""
+    """The mari source folder (see `resolve_repo`)."""
     return resolve_repo(MARI_REPO)
 
 

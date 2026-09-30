@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Build the firmware images a release ships, from local checkouts.
+"""Build the firmware images a release ships, from local source folders.
 
-Three sources:
+What `dotbot fw build` takes, and the source folder each builds from:
 
-- `dotbot-firmware`: sandboxed apps (`.bin`) or bare apps (`.hex`), built
-  through the DotBot-firmware Makefile.
-- `swarmit`: the bootloader for one board and the network core.
-- `mari`: the Mari gateway (app + net cores), `mari-gateway`, optionally one
-  net-core image per TSCH schedule.
+- an app name: a sandboxed app (`.bin`) or a bare app (`.hex`), built
+  through the DotBot-firmware Makefile;
+- `swarmit-sandbox`: the swarmit bootloader for one board and the network
+  core;
+- `mari-gateway`: the Mari gateway (app + net cores) from mari, optionally
+  one net-core image per TSCH schedule.
 
 swarmit and mari are built by calling emBuild on each `.emProject` directly
 (their Makefiles always pass `-rebuild`). SES names every output
@@ -33,13 +34,23 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable, Iterator
+from typing import Iterable, Iterator
 
 import click
 
 from dotbot.cli import _fw_helpers
 
 SOURCES = ("dotbot-firmware", "swarmit", "mari")
+
+# The roles `fw build`, `fw fetch` and `device flash` take by name, and the
+# source each builds from. Any other name is a DotBot-firmware app, so no app
+# may be called one of these.
+ROLES = {"swarmit-sandbox": "swarmit", "mari-gateway": "mari"}
+APP_SOURCE = "dotbot-firmware"
+# The release a target's images are fetched from. Mari's releases publish no
+# firmware; the swarmit release carries the Mari gateway.
+ROLE_RELEASES = {"swarmit-sandbox": "swarmit", "mari-gateway": "swarmit"}
+APP_RELEASE = "dotbot-firmware"
 
 # Apps left out of the default set and of help text; `-a <app>` still builds
 # them.
@@ -48,10 +59,8 @@ LEGACY_APPS = frozenset({"lh2_calibration"})
 # Boards with a `swarmit-bootloader-<board>.emProject` that a release ships.
 SWARMIT_BOARDS = frozenset({"dotbot-v2", "dotbot-v3", "nrf5340dk"})
 
-# What `-a` selects inside the swarmit and mari sources.
+# What `-a` selects inside swarmit-sandbox.
 SWARMIT_PARTS = ("bootloader", "netcore")
-MARI_PARTS = ("mari-gateway",)
-PARTS = {"swarmit": SWARMIT_PARTS, "mari": MARI_PARTS}
 
 # The board the Mari gateway images are built for.
 MARI_GATEWAY_BOARD = "nrf5340dk"
@@ -96,14 +105,13 @@ def _exe(project_dir: str, build_target: str, name: str, config: str) -> Path:
     )
 
 
-def _check_parts(source: str, parts: Iterable[str] | None) -> set[str]:
-    known = PARTS[source]
-    parts = set(parts or known)
-    unknown = parts - set(known)
+def _check_parts(parts: Iterable[str] | None) -> set[str]:
+    parts = set(parts or SWARMIT_PARTS)
+    unknown = parts - set(SWARMIT_PARTS)
     if unknown:
         raise click.ClickException(
-            f"{source} has no part {', '.join(sorted(unknown))}. "
-            f"Parts: {', '.join(known)}."
+            f"swarmit-sandbox has no part {', '.join(sorted(unknown))}. "
+            f"Parts: {', '.join(SWARMIT_PARTS)}."
         )
     return parts
 
@@ -119,7 +127,7 @@ def swarmit_steps(
     `parts` narrows them to some of `SWARMIT_PARTS`; the board only matters
     for the bootloader.
     """
-    parts = _check_parts("swarmit", parts)
+    parts = _check_parts(parts)
     if "bootloader" in parts and board not in SWARMIT_BOARDS:
         raise click.ClickException(
             f"swarmit has no bootloader for board {board!r}. "
@@ -153,7 +161,6 @@ def swarmit_steps(
 def mari_steps(
     repo: Path,
     config: str,
-    parts: Iterable[str] | None = None,
     schedules: Iterable[str] | None = None,
 ) -> list[EmBuildStep]:
     """The emBuild steps for the Mari gateway images.
@@ -162,7 +169,6 @@ def mari_steps(
     `main.c` selects. With `schedules`, the app image and one net image per
     schedule instead.
     """
-    _check_parts("mari", parts)
     fw = repo / "firmware"
     app = EmBuildStep(
         fw,
@@ -382,7 +388,6 @@ def build_swarmit(
 def build_mari(
     config: str,
     *,
-    parts: Iterable[str] | None = None,
     schedules: Iterable[str] | None = None,
     repo: Path | None = None,
     rebuild: bool = False,
@@ -390,7 +395,7 @@ def build_mari(
 ) -> list[Path]:
     """Build the Mari gateway images, one net image per schedule if given."""
     repo = repo or _fw_helpers.resolve_mari_repo()
-    steps = mari_steps(repo, config, parts, schedules)
+    steps = mari_steps(repo, config, schedules)
     _check_emprojects(steps)
     return run_steps(steps, config, rebuild=rebuild, verbose=verbose)
 
@@ -421,11 +426,18 @@ def dotbot_firmware_apps(
     if not apps:
         return default_apps(target, repo)
     available = _fw_helpers.list_projects(target, repo)
+    shadowed = sorted(set(available) & set(ROLES))
+    if shadowed:
+        raise click.ClickException(
+            f"DotBot-firmware has an app named {', '.join(shadowed)}, which is "
+            "also a role name; rename the app."
+        )
     unknown = [app for app in apps if app not in available and app not in LEGACY_APPS]
     if unknown:
         raise click.ClickException(
             f"No {', '.join(repr(a) for a in unknown)} app for {target}.\n"
-            f"Available: {', '.join(available)}"
+            f"Roles: {', '.join(ROLES)}.\n"
+            f"Apps for {target}: {', '.join(available)}."
         )
     return list(apps)
 
@@ -458,52 +470,6 @@ def dotbot_firmware_outputs(
 ) -> list[Path]:
     """The files `build_dotbot_firmware(target, apps, config)` produces."""
     return [_fw_helpers.artifact_path(target, app, config, repo) for app in apps]
-
-
-# --- which source builds what ------------------------------------------------
-
-
-def route_apps(
-    apps: Iterable[str],
-    sources: Iterable[str],
-    dotbot_firmware_names: Callable[[], Iterable[str]],
-) -> dict[str, list[str]]:
-    """Assign each `-a` name to the one source in `sources` that has it.
-
-    `dotbot_firmware_names()` lists the dotbot-firmware apps; it is only
-    called when dotbot-firmware is a candidate among several sources.
-    """
-    sources = list(sources)
-    routed: dict[str, list[str]] = {}
-    if len(sources) == 1:
-        routed[sources[0]] = list(apps)
-        return routed
-    df_names: set[str] | None = None
-    for app in apps:
-        owners = [s for s in sources if s in PARTS and app in PARTS[s]]
-        if "dotbot-firmware" in sources:
-            if df_names is None:
-                df_names = set(dotbot_firmware_names())
-            if app in df_names or app in LEGACY_APPS:
-                owners.append("dotbot-firmware")
-        if len(owners) > 1:
-            lines = " or ".join(f"`dotbot fw build {o} -a {app}`" for o in owners)
-            raise click.ClickException(
-                f"-a {app} names a part of {' and '.join(owners)}; name the "
-                f"source: {lines}."
-            )
-        if not owners:
-            listed = "; ".join(
-                f"{s} parts: {', '.join(PARTS[s])}" for s in sources if s in PARTS
-            )
-            if "dotbot-firmware" in sources:
-                listed += (
-                    f"; dotbot-firmware apps: "
-                    f"{', '.join(sorted(df_names or ())) or '(none found)'}"
-                )
-            raise click.ClickException(f"No source has -a {app!r}. {listed}.")
-        routed.setdefault(owners[0], []).append(app)
-    return routed
 
 
 # --- collection --------------------------------------------------------------

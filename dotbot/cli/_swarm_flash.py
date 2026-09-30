@@ -62,7 +62,7 @@ def _bin_for(stem: str, fw_version: str | None) -> Path:
         fw_version,
         artifacts_dir(),
         required=(name,),
-        build_args=f"-a {stem}",
+        build=stem,
     )
     return root / name
 
@@ -186,6 +186,13 @@ def resolve_flash_args(rest: list[str]) -> tuple[list[str], bool]:
             )
         return rest, False  # explicit path - passthrough
 
+    from dotbot.cli.device import FLASH_TARGETS
+
+    if target in FLASH_TARGETS:
+        raise click.ClickException(
+            f"{target} is flashed by cable, not over the air: "
+            f"`dotbot device flash {target}`."
+        )
     raise click.ClickException(
         f"Unknown app '{target}'. Pass a .hex/.bin path, or one of: "
         f"{', '.join(APP_CATALOG)} (see `dotbot swarm flash --list`)."

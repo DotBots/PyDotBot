@@ -132,14 +132,22 @@ class Deployment(_Strict):
     bots: int | None = None  # descriptive
 
 
+class FwSources(_Strict):
+    """`[fw.sources]`: the source folder `dotbot fw build` reads, per source repo."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    dotbot_firmware: str | None = Field(None, alias="dotbot-firmware")
+    swarmit: str | None = None
+    mari: str | None = None
+
+
 class FwSection(_Strict):
     board: str | None = None
     bare: bool | None = None
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
-    firmware_repo: str | None = None  # path to the DotBot-firmware clone
-    swarmit_repo: str | None = None  # path to the swarmit clone
-    mari_repo: str | None = None  # path to the mari clone
+    sources: FwSources = Field(default_factory=FwSources)
 
 
 class DeviceSection(_Strict):

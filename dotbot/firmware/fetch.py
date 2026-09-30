@@ -85,12 +85,7 @@ def _missing(root: Path, required) -> list[str]:
 
 
 def _release_dir(
-    release_source: str,
-    tag: str,
-    bin_dir: Path,
-    required,
-    build_source: str,
-    build_args: str | None = None,
+    release_source: str, tag: str, bin_dir: Path, required, build: str
 ) -> Path:
     root = resolve_fw_root(bin_dir, release_source, tag)
     # A fetched release has a manifest; without one the directory is absent
@@ -105,7 +100,7 @@ def _release_dir(
         raise click.ClickException(
             f"{release_source} release {tag} does not publish "
             f"{', '.join(missing)}.\n"
-            f"  - build it: {_build_line(build_source, 'local', build_args)}, "
+            f"  - build it: {_build_line(build, 'local')}, "
             "then pass -f local"
         )
     return root
@@ -116,8 +111,8 @@ def resolve_fw_dir(
     fw_version: str | None,
     bin_dir: Path,
     *,
+    build: str,
     required=(),
-    build_args: str | None = None,
     release_source: str | None = None,
 ) -> tuple[Path, str]:
     """The directory a flash command reads ``source`` firmware from, and its label.
@@ -129,8 +124,9 @@ def resolve_fw_dir(
       built by `dotbot fw build` (``local`` or an ``--as`` name).
 
     A release tag missing from the cache is fetched; nothing is ever built.
-    ``required`` names the files that must be present; ``build_args`` (e.g.
-    ``-a dotbot``) completes the `dotbot fw build` line an error suggests.
+    ``required`` names the files that must be present; ``build`` (e.g.
+    ``spin`` or ``mari-gateway --schedule tiny``) completes the
+    `dotbot fw build` line an error suggests.
     ``release_source`` is the source whose releases carry ``source``'s images
     when that is another one (``mari``: ``swarmit``); tags then name its
     releases, while set names still name ``<source>-<set>/``.
@@ -138,7 +134,7 @@ def resolve_fw_dir(
     rel = release_source or source
 
     def release(tag: str) -> Path:
-        return _release_dir(rel, tag, bin_dir, required, source, build_args)
+        return _release_dir(rel, tag, bin_dir, required, build)
 
     if fw_version is None:
         tag = pinned_version(rel)
@@ -166,23 +162,21 @@ def resolve_fw_dir(
             f"No '{fw_version}' {source} set: {root} does not exist.\n"
             "-f takes a release tag, 'latest', a set built by `dotbot fw build`, "
             "or a directory path containing '/'.\n"
-            f"  - build it: {_build_line(source, fw_version, build_args)}\n"
-            f"  - or fetch a release: dotbot fw fetch {rel} -f <tag>"
+            f"  - build it: {_build_line(build, fw_version)}\n"
+            f"  - or fetch a release: dotbot fw fetch {build.split()[0]} -f <tag>"
         )
     missing = _missing(root, required)
     if missing:
         raise click.ClickException(
             f"The '{fw_version}' {source} set ({root}) has no "
             f"{', '.join(missing)}.\n"
-            f"  - build it: {_build_line(source, fw_version, build_args)}"
+            f"  - build it: {_build_line(build, fw_version)}"
         )
     return root, fw_version
 
 
-def _build_line(source: str, name: str, build_args: str | None = None) -> str:
-    line = f"dotbot fw build {source}"
-    if build_args:
-        line += f" {build_args}"
+def _build_line(build: str, name: str) -> str:
+    line = f"dotbot fw build {build}"
     if name != "local":
         line += f" --as {name}"
     return line
@@ -337,7 +331,7 @@ def fetch_assets(source: str, fw_version: str, bin_dir: Path) -> Path:
         raise click.ClickException(
             f"'{fw_version}' is not a release tag. `dotbot fw fetch` takes a tag "
             "(e.g. 1.23.0) or 'latest'; a locally built set comes from "
-            f"`dotbot fw build {source}`."
+            "`dotbot fw build`."
         )
 
     release = resolve_release(source, fw_version)

@@ -140,7 +140,7 @@ def cli(ctx, config_path, deployment_name):
 
     Discovery order: `-c` / `DOTBOT_CONFIG` > a `dotbot.toml` in the cwd >
     `~/.dotbot/config.toml` (the per-machine fallback). `fw` reads its `[fw]`
-    keys (`segger_dir`, `firmware_repo`, ...) through this same resolver.
+    keys (`segger_dir`, `[fw.sources]`, ...) through this same resolver.
 
     Certificate checking is settled here, before any subcommand runs.
     """

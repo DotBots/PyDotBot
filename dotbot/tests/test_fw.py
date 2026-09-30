@@ -38,7 +38,7 @@ def fake_repo(tmp_path, monkeypatch):
     repo = tmp_path / "fake-dotbot-firmware"
     repo.mkdir()
     (repo / "Makefile").write_text("# fake\n")
-    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(repo))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE", str(repo))
     return repo
 
 
@@ -406,11 +406,11 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
 
 @pytest.fixture
 def repo_env(tmp_path, monkeypatch):
-    """No checkout env vars, no user config file, a clean cwd."""
+    """No source-folder env vars, no user config file, a clean cwd."""
     for var in (
-        "DOTBOT_FIRMWARE_REPO",
-        "DOTBOT_SWARMIT_REPO",
-        "DOTBOT_MARI_REPO",
+        "DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE",
+        "DOTBOT_FW_SOURCES_SWARMIT",
+        "DOTBOT_FW_SOURCES_MARI",
         "DOTBOT_CONFIG",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -436,14 +436,16 @@ def _config_file(path: Path, body: str) -> Path:
 def test_relative_config_path_resolves_against_the_config_file(repo_env, monkeypatch):
     ws = repo_env / "workspace"
     repo = _repo(ws / "checkouts" / "fw")
-    cfg = _config_file(ws / "dotbot.toml", '[fw]\nfirmware_repo = "checkouts/fw"\n')
+    cfg = _config_file(
+        ws / "dotbot.toml", '[fw.sources]\ndotbot-firmware = "checkouts/fw"\n'
+    )
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     assert _fw_helpers.resolve_firmware_repo() == repo
 
 
 def test_relative_config_path_ignores_the_cwd(repo_env, monkeypatch):
     ws = repo_env / "workspace"
-    cfg = _config_file(ws / "dotbot.toml", '[fw]\nswarmit_repo = "sw"\n')
+    cfg = _config_file(ws / "dotbot.toml", '[fw.sources]\nswarmit = "sw"\n')
     _repo(Path.cwd() / "sw")  # a decoy next to the cwd, not the config
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     with pytest.raises(click.ClickException) as excinfo:
@@ -463,14 +465,14 @@ def test_default_is_repos_next_to_the_config_file(repo_env, monkeypatch):
     assert _fw_helpers.resolve_swarmit_repo() == sw
 
 
-def test_mari_checkout_is_found_by_its_firmware_makefile(repo_env, monkeypatch):
+def test_mari_source_is_found_by_its_firmware_makefile(repo_env, monkeypatch):
     ws = repo_env / "workspace"
     mari = ws / "repos" / "mari"
     _repo(mari / "firmware")
     cfg = _config_file(ws / "dotbot.toml", "")
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     assert _fw_helpers.resolve_mari_repo() == mari
-    monkeypatch.setenv("DOTBOT_MARI_REPO", str(mari / "firmware"))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_MARI", str(mari / "firmware"))
     with pytest.raises(click.ClickException, match="firmware/Makefile"):
         _fw_helpers.resolve_mari_repo()
 
@@ -495,16 +497,17 @@ def test_env_var_beats_config_and_default(repo_env, monkeypatch):
     ws = repo_env / "workspace"
     _repo(ws / "repos" / "swarmit")
     elsewhere = _repo(repo_env / "elsewhere")
-    cfg = _config_file(ws / "dotbot.toml", '[fw]\nswarmit_repo = "repos/swarmit"\n')
+    cfg = _config_file(ws / "dotbot.toml", '[fw.sources]\nswarmit = "repos/swarmit"\n')
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
-    monkeypatch.setenv("DOTBOT_SWARMIT_REPO", str(elsewhere))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_SWARMIT", str(elsewhere))
     assert _fw_helpers.resolve_swarmit_repo() == elsewhere
 
 
 def test_absolute_config_path_is_used_as_is(repo_env, monkeypatch):
     repo = _repo(repo_env / "abs" / "DotBot-firmware")
     cfg = _config_file(
-        repo_env / "ws" / "dotbot.toml", f'[fw]\nfirmware_repo = "{repo.as_posix()}"\n'
+        repo_env / "ws" / "dotbot.toml",
+        f'[fw.sources]\ndotbot-firmware = "{repo.as_posix()}"\n',
     )
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     assert _fw_helpers.resolve_firmware_repo() == repo
@@ -514,8 +517,8 @@ def test_nothing_found_names_the_key_and_env_var(repo_env):
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_swarmit_repo()
     msg = str(excinfo.value)
-    assert "DOTBOT_SWARMIT_REPO" in msg
-    assert "[fw].swarmit_repo" in msg
+    assert "DOTBOT_FW_SOURCES_SWARMIT" in msg
+    assert "[fw.sources]" in msg
 
 
 def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(
@@ -524,10 +527,10 @@ def test_resolve_firmware_repo_env_var_pointing_at_no_makefile_errors(
     """Bad env-var path fails loudly rather than silently falling back."""
     bad = tmp_path / "no-makefile-here"
     bad.mkdir()
-    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(bad))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE", str(bad))
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_firmware_repo()
-    assert "DOTBOT_FIRMWARE_REPO" in str(excinfo.value)
+    assert "DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE" in str(excinfo.value)
     assert "Makefile" in str(excinfo.value)
 
 
@@ -548,7 +551,7 @@ def _real_firmware_repo_or_skip():
     import os
     from pathlib import Path
 
-    env = os.environ.get("DOTBOT_FIRMWARE_REPO")
+    env = os.environ.get("DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE")
     if env and (Path(env) / "Makefile").is_file():
         return Path(env)
     here = Path(__file__).resolve()
@@ -558,8 +561,20 @@ def _real_firmware_repo_or_skip():
             return candidate
     pytest.skip(
         "Could not locate the real DotBot-firmware repo; set "
-        "DOTBOT_FIRMWARE_REPO or run from inside the workspace."
+        "DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE or run from inside the workspace."
     )
+
+
+def test_no_dotbot_firmware_app_is_named_like_a_role():
+    """`fw build`, `fw fetch` and `device flash` read a role name (and
+    `device flash` `programmer`) as that target, so an app with that name
+    could never be built or flashed by name."""
+    from dotbot.cli._fw_sources import ROLES
+    from dotbot.cli.device import FLASH_TARGETS
+
+    repo = _real_firmware_repo_or_skip()
+    apps = {p.name for d in ("apps", "apps-sandbox") for p in (repo / d).iterdir()}
+    assert not apps & (set(ROLES) | set(FLASH_TARGETS))
 
 
 def test_targets_match_makefile_list_targets():

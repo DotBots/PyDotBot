@@ -89,17 +89,17 @@ def resolve_app_artifact(
     from dotbot.firmware.fetch import resolve_fw_dir
 
     name = app_image_name(app, board, bare)
-    build_args = f"-a {app}"
+    build = app
     if board != "dotbot-v3":
-        build_args += f" -t {board}"
+        build += f" -t {board}"
     if bare and has_sandbox(board):
-        build_args += " --bare"
+        build += " --bare"
     root, _ = resolve_fw_dir(
         "dotbot-firmware",
         fw_version,
         artifacts_dir(),
         required=(name,),
-        build_args=build_args,
+        build=build,
     )
     image = root / name
     echo_artifact_path(image, action="using")

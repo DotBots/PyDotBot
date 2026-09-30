@@ -319,8 +319,8 @@ def flash_role(
 ) -> None:
     """Flash a device's role: system firmware bundle (app+net cores) + config.
 
-    Backend for `dotbot device flash-swarmit-sandbox` (role='dotbot-v3') and
-    `dotbot device flash-mari-gateway` (role='gateway'). Selects the J-Link,
+    Backend for `dotbot device flash swarmit-sandbox` (role='dotbot-v3') and
+    `dotbot device flash mari-gateway` (role='gateway'). Selects the J-Link,
     flashes both cores, writes the config page (magic + has_net_id +
     net_id [+ calibration, dotbot-v3 only]), then best-effort reads back
     net_id/device_id (never raises on readback failure). ``fw_version``
@@ -350,18 +350,22 @@ def flash_role(
             )
     net_asset = net_image_name(schedule) if schedule else assets["net"]
     if role == "gateway":
-        build_args = "-a mari-gateway" + (f" --schedule {schedule}" if schedule else "")
+        build = "mari-gateway" + (f" --schedule {schedule}" if schedule else "")
         fw_root, fw_version = resolve_fw_dir(
             "mari",
             fw_version,
             bin_dir,
             required=(assets["app"], net_asset),
-            build_args=build_args,
+            build=build,
             release_source="swarmit",
         )
     else:
         fw_root, fw_version = resolve_fw_dir(
-            "swarmit", fw_version, bin_dir, required=(assets["app"], assets["net"])
+            "swarmit",
+            fw_version,
+            bin_dir,
+            build="swarmit-sandbox",
+            required=(assets["app"], assets["net"]),
         )
 
     if sn_starting_digits:
@@ -628,9 +632,8 @@ def flash_programmer(
 ) -> None:
     """Flash J-Link OB / DAPLink firmware to the on-board debug chip.
 
-    Backend for `dotbot device flash-programmer` (was
-    `provision flash-bringup`). Programs the APM32F103 programmer chip
-    itself — an obscure, one-time-per-board bring-up step.
+    Backend for `dotbot device flash programmer`. Programs the APM32F103
+    programmer chip itself: first-time bring-up, or recovery.
     """
     files_dir = files_dir.expanduser().resolve()
     if not files_dir.exists():

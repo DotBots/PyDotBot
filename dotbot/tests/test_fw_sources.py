@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Tests for building firmware sets from local checkouts (`fw build`).
+"""Tests for building firmware sets from local source folders (`fw build`).
 
-No SES and no real checkout: `make` and emBuild are stubbed, and the build
+No SES and no real source folder: `make` and emBuild are stubbed, and the build
 trees are tmp directories with the files SES would write.
 """
 
@@ -51,9 +51,9 @@ RELEASE_PROJECTS = {
 def isolated(tmp_path, monkeypatch):
     """No real config, env or cache: a tmp cwd, user file and artifacts dir."""
     for var in (
-        "DOTBOT_FIRMWARE_REPO",
-        "DOTBOT_SWARMIT_REPO",
-        "DOTBOT_MARI_REPO",
+        "DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE",
+        "DOTBOT_FW_SOURCES_SWARMIT",
+        "DOTBOT_FW_SOURCES_MARI",
         "DOTBOT_CONFIG",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -78,14 +78,14 @@ def _repo(path: Path) -> Path:
 @pytest.fixture
 def firmware_repo(isolated, monkeypatch):
     repo = _repo(isolated / "DotBot-firmware")
-    monkeypatch.setenv("DOTBOT_FIRMWARE_REPO", str(repo))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE", str(repo))
     return repo
 
 
 @pytest.fixture
 def swarmit_repo(isolated, monkeypatch):
     repo = _repo(isolated / "swarmit")
-    monkeypatch.setenv("DOTBOT_SWARMIT_REPO", str(repo))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_SWARMIT", str(repo))
     return repo
 
 
@@ -101,7 +101,7 @@ def mari_repo(isolated, monkeypatch):
     main_c = fw / "app" / "03app_gateway_net" / "main.c"
     main_c.parent.mkdir(parents=True)
     main_c.write_text(MAIN_C)
-    monkeypatch.setenv("DOTBOT_MARI_REPO", str(repo))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_MARI", str(repo))
     return repo
 
 
@@ -254,7 +254,7 @@ def test_release_projects_are_read_from_the_makefile(tmp_path):
 def test_legacy_app_builds_when_named_and_stays_out_of_help(
     isolated, firmware_repo, fake_make
 ):
-    result = build("dotbot-firmware", "-a", "lh2_calibration", "--bare")
+    result = build("lh2_calibration", "--bare")
     assert result.exit_code == 0, result.output
     assert "PROJECTS=lh2_calibration" in fake_make[0]
     local = isolated / "cache" / "dotbot-firmware-local"
@@ -268,6 +268,15 @@ def test_named_apps_are_checked_against_the_target(firmware_repo, fake_make):
     ]
     with pytest.raises(click.ClickException, match="nope"):
         fs.dotbot_firmware_apps("sandbox-dotbot-v3", ["nope"])
+
+
+def test_an_app_named_like_a_role_is_refused(firmware_repo, fake_make):
+    PROJECTS["dotbot-v3"].append("mari-gateway")
+    try:
+        with pytest.raises(click.ClickException, match="also a role name"):
+            fs.dotbot_firmware_apps("dotbot-v3", ["dotbot"])
+    finally:
+        PROJECTS["dotbot-v3"].remove("mari-gateway")
 
 
 # --- collection ---------------------------------------------------------------
@@ -334,16 +343,14 @@ def test_swarmit_rejects_a_board_without_bootloader(tmp_path):
 def test_swarmit_parts_select_steps_and_swarmit_has_no_gateway(tmp_path):
     steps = fs.swarmit_steps(tmp_path, "nrf5340dk-app", "Debug", ["netcore"])
     assert [s.output.name for s in steps] == ["netcore-nrf5340-net.hex"]
-    with pytest.raises(click.ClickException, match="no part gateway"):
+    with pytest.raises(click.ClickException, match="swarmit-sandbox has no part"):
         fs.swarmit_steps(tmp_path, "dotbot-v3", "Debug", ["gateway"])
 
 
 def test_mari_gateway_is_both_images_from_the_mari_firmware_dir(tmp_path):
-    steps = fs.mari_steps(tmp_path, "Debug", ["mari-gateway"])
+    steps = fs.mari_steps(tmp_path, "Debug")
     assert {s.output.name for s in steps} == MARI_NAMES
     assert {s.cwd for s in steps} == {tmp_path / "firmware"}
-    with pytest.raises(click.ClickException, match="no part"):
-        fs.mari_steps(tmp_path, "Debug", ["gateway"])
 
 
 def test_schedule_all_expands_in_ladder_order():
@@ -355,53 +362,15 @@ def test_schedule_all_expands_in_ladder_order():
     assert fs.resolve_schedules([last, first]) == [first, last]
 
 
-# --- source routing -----------------------------------------------------------
-
-
-def _no_df():
-    raise AssertionError("dotbot-firmware listed for a single source")
-
-
-def test_single_source_takes_every_app_without_listing():
-    assert fs.route_apps(["calibrate"], ["dotbot-firmware"], _no_df) == {
-        "dotbot-firmware": ["calibrate"]
-    }
-
-
-def test_apps_are_routed_to_the_source_that_has_them():
-    routed = fs.route_apps(
-        ["netcore", "calibrate", "mari-gateway", "dotbot_gateway"],
-        ["dotbot-firmware", "swarmit", "mari"],
-        lambda: ["calibrate", "dotbot", "dotbot_gateway"],
-    )
-    assert routed == {
-        "swarmit": ["netcore"],
-        "dotbot-firmware": ["calibrate", "dotbot_gateway"],
-        "mari": ["mari-gateway"],
-    }
-
-
-def test_a_name_both_sources_have_is_ambiguous():
-    with pytest.raises(click.ClickException, match="name the source"):
-        fs.route_apps(["netcore"], ["dotbot-firmware", "swarmit"], lambda: ["netcore"])
-
-
-def test_a_name_no_source_has_lists_both():
-    with pytest.raises(click.ClickException) as exc:
-        fs.route_apps(["nope"], ["dotbot-firmware", "swarmit"], lambda: ["dotbot"])
-    assert "bootloader" in exc.value.format_message()
-    assert "dotbot" in exc.value.format_message()
-    assert "mari-gateway" not in exc.value.format_message()
-
-
 # --- `fw build` ---------------------------------------------------------------
 
 
 def test_build_swarmit_defaults_to_debug_into_the_local_set(
     isolated, emprojects, fake_embuild
 ):
-    result = build("swarmit")
+    result = build("swarmit-sandbox")
     assert result.exit_code == 0, result.output
+    assert "Building swarmit-sandbox for dotbot-v3" in result.output
     local = isolated / "cache" / "swarmit-local"
     assert {p.name for p in local.iterdir()} == SWARMIT_NAMES | {"manifest.json"}
     cmds = [cmd for _, cmd in fake_embuild]
@@ -414,7 +383,7 @@ def test_build_mari_gateway_defaults_to_debug_into_the_mari_set(
 ):
     import json
 
-    result = build("mari", "-a", "mari-gateway")
+    result = build("mari-gateway")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
     assert {p.name for p in local.iterdir()} == MARI_NAMES | {"manifest.json"}
@@ -429,7 +398,7 @@ def test_build_mari_schedule_builds_the_image_flash_reads(
     isolated, mari_repo, fake_embuild
 ):
     main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
-    result = build("mari", "-a", "mari-gateway", "--schedule", "tiny")
+    result = build("mari-gateway", "--schedule", "tiny")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
     assert {p.name for p in local.iterdir()} == {
@@ -450,7 +419,7 @@ def test_build_mari_schedule_all_builds_every_schedule(
 ):
     from dotbot.firmware.schedules import MARI_SCHEDULES, net_image_name
 
-    result = build("mari", "--schedule", "all")
+    result = build("mari-gateway", "--schedule", "all")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "mari-local"
     for name in MARI_SCHEDULES:
@@ -464,15 +433,15 @@ def test_build_mari_schedule_restores_main_c_when_a_build_fails(
 ):
     main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
     monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", lambda *a, **k: 2)
-    result = build("mari", "--schedule", "big")
+    result = build("mari-gateway", "--schedule", "big")
     assert result.exit_code != 0
     assert main_c.read_text() == MAIN_C
 
 
 def test_mari_net_image_is_always_rebuilt(isolated, mari_repo, fake_embuild):
-    result = build("mari", "--schedule", "tiny", "--schedule", "big")
+    result = build("mari-gateway", "--schedule", "tiny", "--schedule", "big")
     assert result.exit_code == 0, result.output
-    result = build("mari")
+    result = build("mari-gateway")
     assert result.exit_code == 0, result.output
     for _, cmd in fake_embuild:
         net = cmd[cmd.index("-project") + 1] == "03app_gateway_net"
@@ -525,14 +494,37 @@ def test_build_mari_schedule_restores_main_c_on_termination(
     assert signal.getsignal(getattr(signal, signame)) == before
 
 
-def test_build_schedule_without_mari_errors(isolated, emprojects):
-    result = build("swarmit", "--schedule", "tiny")
+def test_build_schedule_without_mari_gateway_errors(isolated, emprojects):
+    result = build("swarmit-sandbox", "--schedule", "tiny")
     assert result.exit_code != 0
-    assert "dotbot fw build mari --schedule tiny" in result.output
+    assert "--schedule only applies to mari-gateway" in result.output
+    assert "dotbot fw build mari-gateway --schedule tiny" in result.output
+
+
+def test_build_part_without_swarmit_sandbox_errors(isolated):
+    result = build("mari-gateway", "-a", "netcore")
+    assert result.exit_code != 0
+    assert "dotbot fw build swarmit-sandbox -a netcore" in result.output
+    result = build("-a", "netcore")
+    assert "dotbot fw build swarmit-sandbox -a netcore" in result.output
+
+
+def test_build_bare_on_a_role_only_errors(isolated):
+    result = build("swarmit-sandbox", "--bare")
+    assert result.exit_code != 0
+    assert "--bare/--sandboxed only apply to apps" in result.output
+
+
+def test_build_bare_from_config_does_not_refuse_a_role(
+    isolated, emprojects, fake_embuild
+):
+    cfg = DotbotConfig.model_validate({"fw": {"bare": True}})
+    result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
+    assert result.exit_code == 0, result.output
 
 
 def test_build_schedule_rejects_an_unknown_name(isolated):
-    result = build("mari", "--schedule", "gigantic")
+    result = build("mari-gateway", "--schedule", "gigantic")
     assert result.exit_code != 0
     assert "gigantic" in result.output
 
@@ -540,24 +532,24 @@ def test_build_schedule_rejects_an_unknown_name(isolated):
 def test_build_swarmit_honors_build_config_and_rebuild(
     isolated, emprojects, fake_embuild
 ):
-    result = build("swarmit", "--build-config", "Release", "--rebuild")
+    result = build("swarmit-sandbox", "--build-config", "Release", "--rebuild")
     assert result.exit_code == 0, result.output
     cmds = [cmd for _, cmd in fake_embuild]
     assert all(cmd[cmd.index("-config") + 1] == "Release" for cmd in cmds)
     assert all("-rebuild" in cmd for cmd in cmds)
 
 
-def test_build_mari_without_a_checkout_says_where_to_put_it(isolated):
-    result = build("mari")
+def test_build_mari_gateway_without_a_source_says_where_to_put_it(isolated):
+    result = build("mari-gateway")
     assert result.exit_code != 0
-    assert "DOTBOT_MARI_REPO" in result.output
-    assert "[fw].mari_repo" in result.output
+    assert "DOTBOT_FW_SOURCES_MARI" in result.output
+    assert "mari under [fw.sources]" in result.output
 
 
-def test_build_dotbot_firmware_defaults_to_sandboxed_release_apps(
+def test_build_apps_default_to_sandboxed_release_builds(
     isolated, firmware_repo, fake_make
 ):
-    result = build("dotbot-firmware")
+    result = build("calibrate", "dotbot", "rgbled")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "dotbot-firmware-local"
     assert {p.name for p in local.iterdir()} == {
@@ -570,8 +562,8 @@ def test_build_dotbot_firmware_defaults_to_sandboxed_release_apps(
     assert all("BUILD_MODE=" in cmd for cmd in fake_make)
 
 
-def test_build_dotbot_firmware_bare(isolated, firmware_repo, fake_make):
-    result = build("dotbot-firmware", "--bare")
+def test_build_bare_app(isolated, firmware_repo, fake_make):
+    result = build("dotbot", "--bare")
     assert result.exit_code == 0, result.output
     local = isolated / "cache" / "dotbot-firmware-local"
     assert {p.name for p in local.iterdir()} == {
@@ -580,18 +572,19 @@ def test_build_dotbot_firmware_bare(isolated, firmware_repo, fake_make):
     }
 
 
-def test_build_app_infers_dotbot_firmware(isolated, firmware_repo, fake_make):
-    result = build("-a", "calibrate")
+def test_build_an_app_by_name(isolated, firmware_repo, fake_make):
+    result = build("calibrate")
     assert result.exit_code == 0, result.output
+    assert "Building apps for dotbot-v3" in result.output
     assert not (isolated / "cache" / "swarmit-local").exists()
     local = isolated / "cache" / "dotbot-firmware-local"
     assert (local / "calibrate-sandbox-dotbot-v3.bin").is_file()
 
 
-def test_build_app_infers_swarmit_parts(
+def test_build_swarmit_sandbox_part(
     isolated, firmware_repo, emprojects, fake_make, fake_embuild
 ):
-    result = build("-a", "bootloader")
+    result = build("swarmit-sandbox", "-a", "bootloader")
     assert result.exit_code == 0, result.output
     assert not (isolated / "cache" / "dotbot-firmware-local").exists()
     local = isolated / "cache" / "swarmit-local"
@@ -601,20 +594,26 @@ def test_build_app_infers_swarmit_parts(
     }
 
 
-def test_build_unknown_app_without_source_errors(
-    isolated, firmware_repo, emprojects, fake_make
-):
-    result = build("-a", "nope")
+def test_build_unknown_app_errors(isolated, firmware_repo, fake_make):
+    result = build("nope")
     assert result.exit_code != 0
-    assert "No source has -a 'nope'" in result.output
+    assert "No 'nope' app for sandbox-dotbot-v3" in result.output
+    assert "Roles: swarmit-sandbox, mari-gateway." in result.output
+    assert "Apps for sandbox-dotbot-v3: calibrate, dotbot, rgbled." in result.output
 
 
-def test_build_explicit_source_left_without_an_app_errors(
-    isolated, firmware_repo, emprojects, fake_make
+def test_build_roles_and_apps_together(
+    isolated, firmware_repo, emprojects, mari_repo, fake_make, fake_embuild
 ):
-    result = build("swarmit", "dotbot-firmware", "-a", "calibrate")
-    assert result.exit_code != 0
-    assert "swarmit" in result.output
+    result = build("calibrate", "swarmit-sandbox", "mari-gateway")
+    assert result.exit_code == 0, result.output
+    local = isolated / "cache" / "dotbot-firmware-local"
+    assert {p.name for p in local.iterdir()} == {
+        "calibrate-sandbox-dotbot-v3.bin",
+        "manifest.json",
+    }
+    assert (isolated / "cache" / "swarmit-local").is_dir()
+    assert (isolated / "cache" / "mari-local").is_dir()
 
 
 def test_build_default_builds_every_source(
@@ -636,7 +635,7 @@ def test_build_default_skips_swarmit_on_a_board_without_bootloader(
     finally:
         del PROJECTS["nrf52840dk"]
     assert result.exit_code == 0, result.output
-    assert "[skip] swarmit" in result.output
+    assert "[skip] swarmit-sandbox" in result.output
     assert "dotbot-nrf52840dk.hex" in result.output
 
 
@@ -662,7 +661,6 @@ def test_build_print_path_reflects_config_board(isolated, firmware_repo, fake_ma
     try:
         result = build(
             "--print-path",
-            "-a",
             "dotbot_gateway",
             obj={"config": cfg, "deployment": None},
         )
@@ -676,39 +674,33 @@ def test_build_config_key_overrides_both_source_defaults(
     isolated, firmware_repo, emprojects, fake_make, fake_embuild
 ):
     cfg = DotbotConfig.model_validate({"fw": {"build_config": "Release"}})
-    result = build("swarmit", obj={"config": cfg, "deployment": None})
+    result = build("swarmit-sandbox", obj={"config": cfg, "deployment": None})
     assert result.exit_code == 0, result.output
     cmds = [cmd for _, cmd in fake_embuild]
     assert all(cmd[cmd.index("-config") + 1] == "Release" for cmd in cmds)
 
 
 def test_build_reports_new_unchanged_and_changed(isolated, firmware_repo, fake_make):
-    assert "new" in build("dotbot-firmware", "-a", "dotbot").output
-    assert (
-        "unchanged dotbot-sandbox-dotbot-v3.bin"
-        in build("dotbot-firmware", "-a", "dotbot").output
-    )
+    assert "new" in build("dotbot").output
+    assert "unchanged dotbot-sandbox-dotbot-v3.bin" in build("dotbot").output
     local = isolated / "cache" / "dotbot-firmware-local"
     (local / "dotbot-sandbox-dotbot-v3.bin").write_text("stale")
-    assert (
-        "changed   dotbot-sandbox-dotbot-v3.bin"
-        in build("dotbot-firmware", "-a", "dotbot").output
-    )
+    assert "changed   dotbot-sandbox-dotbot-v3.bin" in build("dotbot").output
 
 
-# --- `--checkout` / `--as` / manifest ------------------------------------------
+# --- `--path` / `--as` / manifest ------------------------------------------
 
 
-def test_checkout_and_as_build_a_named_set_from_another_checkout(
+def test_path_and_as_build_a_named_set_from_another_folder(
     isolated, emprojects, fake_embuild, monkeypatch
 ):
     import json
 
     other = isolated / "other-swarmit"
     emprojects.rename(other)
-    monkeypatch.setenv("DOTBOT_SWARMIT_REPO", str(isolated / "gone"))
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_SWARMIT", str(isolated / "gone"))
     sha = _git_init(other)
-    result = build("swarmit", "--checkout", str(other), "--as", "test-set")
+    result = build("swarmit-sandbox", "--path", str(other), "--as", "test-set")
     assert result.exit_code == 0, result.output
     out = isolated / "cache" / "swarmit-test-set"
     assert not (isolated / "cache" / "swarmit-local").exists()
@@ -737,7 +729,7 @@ def test_manifest_flags_a_dirty_checkout(isolated, emprojects, fake_embuild):
 
     _git_init(emprojects)
     (emprojects / "untracked.c").write_text("")
-    assert build("swarmit").exit_code == 0
+    assert build("swarmit-sandbox").exit_code == 0
     manifest = json.loads(
         (isolated / "cache" / "swarmit-local" / "manifest.json").read_text()
     )
@@ -749,8 +741,8 @@ def test_manifest_keeps_files_from_an_earlier_build_of_the_set(
 ):
     import json
 
-    assert build("dotbot-firmware", "-a", "dotbot").exit_code == 0
-    assert build("dotbot-firmware", "-a", "rgbled").exit_code == 0
+    assert build("dotbot").exit_code == 0
+    assert build("rgbled").exit_code == 0
     manifest = json.loads(
         (isolated / "cache" / "dotbot-firmware-local" / "manifest.json").read_text()
     )
@@ -761,46 +753,62 @@ def test_manifest_keeps_files_from_an_earlier_build_of_the_set(
     assert manifest["git_sha"] is None  # not a git checkout
 
 
-def test_checkout_builds_mari_from_that_tree(isolated, mari_repo, fake_embuild):
+def test_path_builds_mari_gateway_from_that_tree(isolated, mari_repo, fake_embuild):
     other = isolated / "wt-mari"
     mari_repo.rename(other)
-    result = build("mari", "--checkout", str(other))
+    result = build("mari-gateway", "--path", str(other))
     assert result.exit_code == 0, result.output
     assert {cwd for cwd, _ in fake_embuild} == {other / "firmware"}
 
 
-def test_checkout_must_be_a_checkout_of_that_source(isolated, mari_repo, fake_embuild):
-    result = build("mari", "--checkout", str(mari_repo / "firmware"))
+def test_path_must_be_a_folder_of_that_source(isolated, mari_repo, fake_embuild):
+    result = build("mari-gateway", "--path", str(mari_repo / "firmware"))
     assert result.exit_code != 0
-    assert "is not a mari checkout: it has no firmware/Makefile" in result.output
+    assert "is not a mari source folder: it has no firmware/Makefile" in result.output
     assert fake_embuild == []
 
 
-def test_default_sources_say_a_source_can_be_named(isolated, firmware_repo, fake_make):
+def test_default_build_says_what_can_be_named(isolated, firmware_repo, fake_make):
     result = build()
     assert result.exit_code != 0
-    assert "DOTBOT_SWARMIT_REPO" in result.output
-    assert "`dotbot fw build dotbot-firmware`" in result.output
+    assert "DOTBOT_FW_SOURCES_SWARMIT" in result.output
+    assert "`dotbot fw build dotbot` (an app)" in result.output
 
 
-def test_repo_flag_is_gone(isolated):
-    result = build("swarmit", "--repo", ".")
+@pytest.mark.parametrize("flag", ["--repo", "--checkout"])
+def test_old_source_flags_are_gone(isolated, flag):
+    result = build("swarmit-sandbox", flag, ".")
     assert result.exit_code != 0
     assert "No such option" in result.output
 
 
+@pytest.mark.parametrize("old", ["swarmit", "mari", "dotbot-firmware"])
+def test_source_names_are_not_targets(isolated, firmware_repo, fake_make, old):
+    result = build(old)
+    assert result.exit_code != 0
+    assert f"No '{old}' app" in result.output
+
+
 @pytest.mark.parametrize(
-    "args", [["--checkout", "."], ["swarmit", "dotbot-firmware", "--checkout", "."]]
+    "args",
+    [["--path", "."], ["swarmit-sandbox", "dotbot", "--path", "."]],
 )
-def test_checkout_needs_exactly_one_source(isolated, args):
+def test_path_needs_names_from_one_source(isolated, args):
     result = build(*args)
     assert result.exit_code != 0
-    assert "exactly one SOURCE" in result.output
+    assert "--path overrides one source folder" in result.output
+
+
+def test_path_takes_several_apps(isolated, firmware_repo, fake_make, monkeypatch):
+    monkeypatch.setenv("DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE", str(isolated / "gone"))
+    result = build("dotbot", "rgbled", "--path", str(firmware_repo), "--print-path")
+    assert result.exit_code == 0, result.output
+    assert len(result.output.strip().splitlines()) == 2
 
 
 @pytest.mark.parametrize("name", ["latest", "1.23.0", "v2", "a/b", "-x"])
 def test_as_rejects_names_that_read_as_a_tag_or_path(isolated, name):
-    result = build("swarmit", f"--as={name}")
+    result = build("swarmit-sandbox", f"--as={name}")
     assert result.exit_code != 0
     assert "cannot name a firmware set" in result.output
 
@@ -817,7 +825,7 @@ def test_bare_is_the_flag_and_sandbox_is_gone(isolated):
 def test_list_shows_sets_with_their_provenance(isolated, firmware_repo, fake_make):
     import json
 
-    assert build("dotbot-firmware", "-a", "dotbot", "--as", "mine").exit_code == 0
+    assert build("dotbot", "--as", "mine").exit_code == 0
     release = isolated / "cache" / "swarmit-0.9.0"
     release.mkdir()
     (release / "bootloader-dotbot-v3.hex").write_text("")

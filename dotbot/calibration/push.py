@@ -56,7 +56,7 @@ class PushCheck:
                 "firmware older than this host expects (device info version "
                 f"below {DEVICE_INFO_VERSION_MIN}): "
                 + ", ".join(self.old_firmware)
-                + ". Reflash them with `dotbot device flash-swarmit-sandbox`."
+                + ". Reflash them with `dotbot device flash swarmit-sandbox`."
             )
         if self.unanswered:
             reasons.append(
