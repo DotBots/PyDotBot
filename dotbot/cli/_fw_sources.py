@@ -24,12 +24,16 @@ import hashlib
 import json
 import re
 import shutil
+import signal
 import subprocess
+import tempfile
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
 
 import click
 
@@ -55,7 +59,7 @@ MARI_GATEWAY_BOARD = "nrf5340dk"
 # The line of `03app_gateway_net/main.c` that selects the gateway's schedule;
 # keep in step with Mari's build-schedules.sh, which edits the same line.
 _SCHEDULE_LINE_RE = re.compile(
-    r"^(schedule_t\s+\*schedule_app\s*=\s*&)schedule_[a-z]+;", re.MULTILINE
+    rb"^(schedule_t\s+\*schedule_app\s*=\s*&)schedule_[a-z]+;", re.MULTILINE
 )
 
 
@@ -198,14 +202,61 @@ def collected_name(step: EmBuildStep) -> str:
 
 def select_schedule(main_c: Path, schedule: str) -> None:
     """Point the gateway's `schedule_app` at `schedule_<schedule>` in `main_c`."""
-    text = main_c.read_text()
-    new, count = _SCHEDULE_LINE_RE.subn(rf"\g<1>schedule_{schedule};", text)
+    text = main_c.read_bytes()
+    new, count = _SCHEDULE_LINE_RE.subn(
+        rb"\g<1>schedule_" + schedule.encode() + b";", text
+    )
     if count != 1:
         raise click.ClickException(
             f"Could not find the `schedule_t *schedule_app = &schedule_...;` line "
             f"in {main_c}."
         )
-    main_c.write_text(new)
+    main_c.write_bytes(new)
+
+
+def _raise_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
+@contextmanager
+def _signals_unwind() -> Iterator[None]:
+    """Raise KeyboardInterrupt on SIGTERM and SIGHUP, so `finally` blocks run."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = {}
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is not None:
+            previous[signum] = signal.signal(signum, _raise_interrupt)
+    try:
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def _restore(main_c: Path, original: bytes) -> None:
+    """Write `original` back to `main_c`, with Ctrl-C ignored while it runs.
+
+    If the write fails, the original is saved to a temporary file and the
+    error names it.
+    """
+    in_main = threading.current_thread() is threading.main_thread()
+    sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) if in_main else None
+    try:
+        main_c.write_bytes(original)
+    except OSError as exc:
+        with tempfile.NamedTemporaryFile(
+            prefix="main.c.", suffix=".orig", delete=False
+        ) as backup:
+            backup.write(original)
+        raise click.ClickException(
+            f"Could not restore {main_c} ({exc}); the original is at {backup.name}."
+        ) from exc
+    finally:
+        if in_main:
+            signal.signal(signal.SIGINT, sigint)
 
 
 def run_embuild(
@@ -261,7 +312,8 @@ def run_steps(
     A step with a schedule edits the gateway's `main.c` to select it, builds,
     and stages the image as `firmware/Output/schedules/<collected name>` (the
     place Mari's build-schedules.sh puts it). `main.c` is restored
-    byte-for-byte afterwards, even when a build fails.
+    byte-for-byte afterwards, even when a build fails or the run is
+    interrupted (Ctrl-C, SIGTERM, SIGHUP).
     """
     outputs: list[Path] = []
     scheduled = [step for step in steps if step.schedule]
@@ -270,31 +322,39 @@ def run_steps(
         main_c = scheduled[0].cwd / "app" / "03app_gateway_net" / "main.c"
         original = main_c.read_bytes()
     staged: list[Path] = []
-    try:
-        for step in steps:
-            if step.schedule:
-                select_schedule(main_c, step.schedule)
-            run_embuild(step, config, rebuild=rebuild, verbose=verbose)
-            built = step.cwd / step.output
-            if step.schedule:
-                if not built.is_file():
-                    raise click.ClickException(
-                        f"Build finished but {built} is missing."
-                    )
-                dest = step.cwd / "Output" / "schedules" / collected_name(step)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(built, dest)
-                staged.append(dest)
-                built = dest
-            outputs.append(built)
-    finally:
-        if main_c is not None:
-            main_c.write_bytes(original)
-            # The restore makes main.c newer than the images built from it;
-            # stamp them again so they do not read as stale.
-            for path in staged:
-                path.touch()
+    with _signals_unwind():
+        try:
+            for step in steps:
+                if step.schedule:
+                    select_schedule(main_c, step.schedule)
+                built = _build_step(step, config, rebuild=rebuild, verbose=verbose)
+                if step.schedule:
+                    staged.append(built)
+                outputs.append(built)
+        finally:
+            if main_c is not None:
+                _restore(main_c, original)
+                # The restore makes main.c newer than the images built from
+                # it; stamp them again so they do not read as stale.
+                for path in staged:
+                    path.touch()
     return outputs
+
+
+def _build_step(
+    step: EmBuildStep, config: str, *, rebuild: bool, verbose: bool
+) -> Path:
+    """Build one step; a scheduled image is staged under its collected name."""
+    run_embuild(step, config, rebuild=rebuild, verbose=verbose)
+    built = step.cwd / step.output
+    if not step.schedule:
+        return built
+    if not built.is_file():
+        raise click.ClickException(f"Build finished but {built} is missing.")
+    dest = step.cwd / "Output" / "schedules" / collected_name(step)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(built, dest)
+    return dest
 
 
 def build_swarmit(

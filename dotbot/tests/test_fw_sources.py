@@ -7,7 +7,9 @@ No SES and no real checkout: `make` and emBuild are stubbed, and the build
 trees are tmp directories with the files SES would write.
 """
 
+import os
 import shutil
+import signal
 from pathlib import Path
 
 import click
@@ -465,6 +467,52 @@ def test_build_mari_schedule_restores_main_c_when_a_build_fails(
     result = build("mari", "--schedule", "big")
     assert result.exit_code != 0
     assert main_c.read_text() == MAIN_C
+
+
+# CRLF line ends and a non-UTF-8 byte: the restore must not normalise either.
+_MAIN_C_BYTES = MAIN_C.replace("\n", "\r\n").encode() + b"// \xe9\r\n"
+
+
+def test_build_mari_schedule_restores_main_c_on_ctrl_c(
+    isolated, mari_repo, monkeypatch
+):
+    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
+    main_c.write_bytes(_MAIN_C_BYTES)
+    seen = []
+
+    def interrupted(cmd, cwd=None, **kw):
+        if "03app_gateway_net" not in cmd:
+            return 0
+        seen.append(main_c.read_bytes())
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        fs.build_mari("Debug", schedules=["tiny"])
+    assert b"&schedule_tiny;" in seen[0]
+    assert main_c.read_bytes() == _MAIN_C_BYTES
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="POSIX signals")
+@pytest.mark.parametrize("signame", ["SIGTERM", "SIGHUP"])
+def test_build_mari_schedule_restores_main_c_on_termination(
+    isolated, mari_repo, monkeypatch, signame
+):
+    main_c = mari_repo / "firmware" / "app" / "03app_gateway_net" / "main.c"
+    main_c.write_bytes(_MAIN_C_BYTES)
+    before = signal.getsignal(getattr(signal, signame))
+
+    def killed(cmd, cwd=None, **kw):
+        if "03app_gateway_net" in cmd:
+            assert b"&schedule_tiny;" in main_c.read_bytes()
+            os.kill(os.getpid(), getattr(signal, signame))
+        return 0
+
+    monkeypatch.setattr("dotbot.cli._fw_sources.subprocess.call", killed)
+    with pytest.raises(KeyboardInterrupt):
+        fs.build_mari("Debug", schedules=["tiny", "big"])
+    assert main_c.read_bytes() == _MAIN_C_BYTES
+    assert signal.getsignal(getattr(signal, signame)) == before
 
 
 def test_build_schedule_without_mari_errors(isolated, emprojects):
