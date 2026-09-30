@@ -46,7 +46,7 @@ def _lab(tmp_path):
     LAB = load_discovered(environ={}, start_dir=lab)
 
 
-def _info(version=2, site="", calibration_id="", gen=1):
+def _info(version=3, site="", calibration_id="", gen=1):
     info = SimpleNamespace(
         info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
     )
@@ -195,8 +195,10 @@ def test_push_to_another_site_is_refused_without_site_changed(
     assert "Every robot reports 19ed0cdb." in moved.output
 
 
-def test_push_refuses_a_robot_on_older_firmware(monkeypatch, calibration_file):
-    fleet = _Fleet({"OLD": _info(1)})
+@pytest.mark.parametrize("version", [1, 2])
+def test_push_refuses_a_robot_on_older_firmware(monkeypatch, calibration_file, version):
+    # Version 2 is a net core that drops calibrations sent as 0xA3.
+    fleet = _Fleet({"OLD": _info(version)})
     result = _push(monkeypatch, fleet, str(calibration_file))
     assert result.exit_code != 0
     assert "OLD" in result.output
