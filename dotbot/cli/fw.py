@@ -126,6 +126,34 @@ def _verbose_option(f):
     )(f)
 
 
+_REPO_SPECS = {
+    "dotbot-firmware": _fw_helpers.FIRMWARE_REPO,
+    "swarmit": _fw_helpers.SWARMIT_REPO,
+    "mari": _fw_helpers.MARI_REPO,
+}
+
+
+def _source_repo(source: str, checkout: Path | None, explicit: bool) -> Path:
+    """The checkout `source` builds from: `checkout`, checked, or the configured one."""
+    spec = _REPO_SPECS[source]
+    if checkout is not None:
+        if not (checkout / spec.marker).is_file():
+            raise click.ClickException(
+                f"--checkout {checkout} is not a {spec.dirname} checkout: it has "
+                f"no {spec.marker}."
+            )
+        return checkout
+    try:
+        return _fw_helpers.resolve_repo(spec)
+    except click.ClickException as exc:
+        if explicit:
+            raise
+        raise click.ClickException(
+            f"{exc.message}\nOr build only the sources you have checked out, "
+            "e.g. `dotbot fw build dotbot-firmware`."
+        ) from exc
+
+
 def _list_dotbot_firmware_apps(target: str) -> list[str]:
     try:
         return _fw_helpers.list_projects(target)
@@ -274,18 +302,18 @@ def build(
                     raise click.ClickException(msg + ".")
                 click.echo(f"[skip] {msg}", err=True)
                 continue
-            src_repo = checkout or _fw_helpers.resolve_swarmit_repo()
+            src_repo = _source_repo(source, checkout, explicit)
             steps = fs.swarmit_steps(src_repo, target, cfg, parts)
             names = [fs.collected_name(step) for step in steps]
             planned.append((source, src_repo, cfg, target, names, parts))
         elif source == "mari":
             parts = routed.get("mari")
-            src_repo = checkout or _fw_helpers.resolve_mari_repo()
+            src_repo = _source_repo(source, checkout, explicit)
             steps = fs.mari_steps(src_repo, cfg, parts, schedule_names)
             names = [fs.collected_name(step) for step in steps]
             planned.append((source, src_repo, cfg, fs.MARI_GATEWAY_BOARD, names, parts))
         else:
-            src_repo = checkout or _fw_helpers.resolve_firmware_repo()
+            src_repo = _source_repo(source, checkout, explicit)
             df_apps = fs.dotbot_firmware_apps(
                 df_target, routed.get("dotbot-firmware"), src_repo
             )

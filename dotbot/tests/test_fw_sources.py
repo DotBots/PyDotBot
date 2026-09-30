@@ -759,6 +759,20 @@ def test_checkout_builds_mari_from_that_tree(isolated, mari_repo, fake_embuild):
     assert {cwd for cwd, _ in fake_embuild} == {other / "firmware"}
 
 
+def test_checkout_must_be_a_checkout_of_that_source(isolated, mari_repo, fake_embuild):
+    result = build("mari", "--checkout", str(mari_repo / "firmware"))
+    assert result.exit_code != 0
+    assert "is not a mari checkout: it has no firmware/Makefile" in result.output
+    assert fake_embuild == []
+
+
+def test_default_sources_say_a_source_can_be_named(isolated, firmware_repo, fake_make):
+    result = build()
+    assert result.exit_code != 0
+    assert "DOTBOT_SWARMIT_REPO" in result.output
+    assert "`dotbot fw build dotbot-firmware`" in result.output
+
+
 def test_repo_flag_is_gone(isolated):
     result = build("swarmit", "--repo", ".")
     assert result.exit_code != 0
