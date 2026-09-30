@@ -64,15 +64,30 @@ class AccessPortProtected(RuntimeError):
     """nrfjprog was refused because the chip's access port is protected."""
 
     def __init__(self, family: str = "NRF53"):
-        super().__init__(
+        head = (
             "The chip's access port is protected (APPROTECT), so nrfjprog "
-            "cannot program or read it. A factory-fresh nRF5340 is in this "
-            "state. Unlocking it ERASES the whole chip:\n"
-            "  - DotBot v3: dotbot device flash swarmit-sandbox --probe 77\n"
-            "  - gateway DK: dotbot device flash mari-gateway --probe 10\n"
-            "Both recover the chip, flash it and leave it unlocked. For any "
-            f"other firmware: nrfjprog -f {family} --recover, then flash again."
+            "cannot program or read it."
         )
+        if family == "NRF53":
+            # --recover without --coprocessor only reaches the application core
+            message = (
+                f"{head} A factory-fresh nRF5340 is in this state. Unlocking it "
+                "ERASES the whole chip:\n"
+                "  - DotBot v3: dotbot device flash swarmit-sandbox "
+                "--swarm-id <id> --probe 77\n"
+                "  - gateway DK: dotbot device flash mari-gateway "
+                "--swarm-id <id> --probe 10\n"
+                "Both recover the chip, flash it and leave it unlocked. For any "
+                "other firmware, recover both cores, then flash again:\n"
+                "  nrfjprog -f NRF53 --recover --coprocessor CP_NETWORK\n"
+                "  nrfjprog -f NRF53 --recover"
+            )
+        else:
+            message = (
+                f"{head} Unlocking it ERASES the whole chip: "
+                f"nrfjprog -f {family} --recover, then flash again."
+            )
+        super().__init__(message)
         self.family = family
 
 

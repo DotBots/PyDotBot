@@ -156,7 +156,14 @@ def test_program_on_a_protected_chip_says_how_to_unlock(monkeypatch):
     message = str(info.value)
     assert "ERASES" in message
     assert "flash swarmit-sandbox" in message
-    assert "nrfjprog -f NRF53 --recover" in message
+    assert "nrfjprog -f NRF53 --recover --coprocessor CP_NETWORK" in message
+    assert "--swarm-id" in message
+
+
+def test_protected_nrf52_names_only_its_own_recover():
+    message = str(nrf.AccessPortProtected("NRF52"))
+    assert "nrfjprog -f NRF52 --recover" in message
+    assert "flash swarmit-sandbox" not in message
 
 
 def test_program_never_recovers_by_itself(monkeypatch):
