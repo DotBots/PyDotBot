@@ -562,15 +562,22 @@ def _describe_set(directory: Path) -> str:
         manifest = json.loads((directory / "manifest.json").read_text())
     except (OSError, ValueError):
         return ""
+    if not isinstance(manifest, dict):
+        return ""
     if manifest.get("kind") == "build":
-        folder = Path(manifest.get("repo") or "?").name
+        repo = manifest.get("repo")
+        folder = Path(repo).name if isinstance(repo, str) and repo else "?"
         sha = manifest.get("git_sha")
-        origin = f"{folder}@{sha[:7]}" if sha else f"{folder} (not a git checkout)"
+        if isinstance(sha, str) and sha:
+            origin = f"{folder}@{sha[:7]}"
+        else:
+            origin = f"{folder} (not a git checkout)"
         if manifest.get("dirty"):
             origin += " (dirty)"
+        files = manifest.get("files")
         shas = {
             e.get("git_sha")
-            for e in manifest.get("files", {}).values()
+            for e in (files.values() if isinstance(files, dict) else ())
             if isinstance(e, dict)
         }
         if len(shas) > 1:

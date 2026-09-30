@@ -898,3 +898,23 @@ def test_list_says_how_long_ago_a_set_was_built(age, shown):
     then = datetime.now(timezone.utc) - timedelta(seconds=age)
     assert _ago(then.isoformat(timespec="seconds")) == shown
     assert _ago(None) == ""
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        "[]",
+        '"text"',
+        '{"kind": "build", "git_sha": 7, "repo": 3, "files": []}',
+        '{"kind": "build", "built_at": "yesterday"}',
+    ],
+)
+def test_list_survives_a_malformed_manifest(isolated, manifest):
+    folder = isolated / "cache" / "swarmit-odd"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text(manifest)
+    (folder / "netcore-nrf5340-net.hex").write_text("")
+    result = CliRunner().invoke(fw_cmd, ["list"])
+    assert result.exit_code == 0, result.output
+    assert "swarmit-odd" in result.output
+    assert "  netcore-nrf5340-net.hex" in result.output
