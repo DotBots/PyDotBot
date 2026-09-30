@@ -487,6 +487,12 @@ def fetch(names, fw_version):
     )
 
     names = list(dict.fromkeys(names))
+    sources = [name for name in names if name in SOURCES]
+    if sources:
+        raise click.ClickException(
+            f"{', '.join(sources)}: `dotbot fw fetch` takes a role "
+            f"({', '.join(ROLES)}) or an app name, not a source."
+        )
     apps = [name for name in names if name not in ROLES]
     releases = list(
         dict.fromkeys(
@@ -522,8 +528,9 @@ def fetch(names, fw_version):
                 raise click.ClickException(
                     f"The DotBot-firmware release in {_short_path(out)} ships no "
                     f"{', '.join(missing)}. It ships: "
-                    f"{', '.join(sorted(shipped)) or '(no apps)'}. Build an app "
-                    "it lacks with `dotbot fw build <app>`."
+                    f"{', '.join(sorted(shipped)) or '(no apps)'}. Roles: "
+                    f"{', '.join(ROLES)}. Build an app it lacks with "
+                    "`dotbot fw build <app>`."
                 )
     click.echo("\nDone. Firmware fetched into:")
     for path in fetched:

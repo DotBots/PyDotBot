@@ -1379,6 +1379,16 @@ def test_fetch_tag_needs_names_from_one_release(monkeypatch, names):
     assert "dotbot fw fetch swarmit-sandbox -f 0.8.0" in res.output
 
 
+@pytest.mark.parametrize("name", ["swarmit", "mari", "dotbot-firmware"])
+def test_fetch_refuses_a_source_name_before_downloading(monkeypatch, name):
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    monkeypatch.setattr(fetch, "fetch_assets", lambda *a: pytest.fail("downloaded"))
+    res = CliRunner().invoke(fw_cmd, ["fetch", name])
+    assert res.exit_code != 0
+    assert "takes a role (swarmit-sandbox, mari-gateway) or an app" in res.output
+
+
 def test_fetch_both_roles_fetch_the_swarmit_release_once(monkeypatch):
     from dotbot.cli.fw import cmd as fw_cmd
 
@@ -1413,9 +1423,9 @@ def test_fetch_an_app_checks_the_release_ships_it(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot", "-f", "1.24.0"])
     assert res.exit_code != 0
-    assert "ships no dotbot. It ships: dotbot-simple, dotbot_gateway, spin" in (
-        " ".join(res.output.split())
-    )
+    output = " ".join(res.output.split())
+    assert "ships no dotbot. It ships: dotbot-simple, dotbot_gateway, spin" in output
+    assert "Roles: swarmit-sandbox, mari-gateway" in output
 
 
 def test_fetch_latest_covers_every_source(monkeypatch):
