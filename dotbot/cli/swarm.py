@@ -25,10 +25,7 @@ import click
 
 from dotbot.cli._lazy import lazy_subcommand
 from dotbot.cli._swarm_inject import (
-    _CONFIG_FLAGS,
-    _CONN_FLAGS,
-    _SWARM_ID_FLAGS,
-    flag_value,
+    group_options,
     inject_config,
     subcommand_index,
     swarm_connection,
@@ -83,16 +80,14 @@ def _settle_connection(ctx, args, swarmit_group) -> None:
     from dotbot.mqtt_tls import PASS_ENV, USER_ENV, broker_credentials
 
     sub = subcommand_index(args, swarmit_group)
-    group_args = args if sub is None else args[:sub]
-    if flag_value(group_args, _CONFIG_FLAGS) is not None:
+    given = group_options(args, swarmit_group)
+    if "config_path" in given:
         return
     conn, swarm_id = swarm_connection(ctx.obj)
-    given = flag_value(group_args, _CONN_FLAGS)
-    if given is not None:
-        conn = Resolved(given, "flag", "--conn")
-    given = flag_value(group_args, _SWARM_ID_FLAGS)
-    if given is not None:
-        swarm_id = Resolved(given, "flag", "--swarm-id")
+    if "conn" in given:
+        conn = Resolved(given["conn"], "flag", "--conn")
+    if "swarm_id" in given:
+        swarm_id = Resolved(given["swarm_id"], "flag", "--swarm-id")
     if sub is not None and args[sub] in _ACTING:
         click.echo(connection_banner(active_site(ctx), conn, swarm_id), err=True)
     credentials = broker_credentials(conn.value, conn.user_set, conn.source)

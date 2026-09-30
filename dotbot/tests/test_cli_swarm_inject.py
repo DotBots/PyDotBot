@@ -132,6 +132,8 @@ def test_subcommand_flags_do_not_block_swarm_id(args):
         ["--swarm-id", "A001", "flash", "x.bin", "-ys"],
         ["--swarm-id=A001", "-d", "ABC", "flash", "x.bin", "-y", "-s"],
         ["-sA001", "status"],
+        ["-vs", "A001", "status"],
+        ["-vsA001", "status"],
     ],
 )
 def test_explicit_group_swarm_id_wins(args):
@@ -247,6 +249,19 @@ def test_credentials_kept_for_a_bound_or_named_broker(
     err = _settle(args, _pack_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
     assert "warning" not in err
     assert os.environ["DOTBOT_MQTT_USER"] == "me"
+
+
+def test_a_conn_inside_a_short_cluster_is_the_one_judged(monkeypatch, capsys):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    args = ["-vn", "mqtt://remote.example:1883", "status"]
+    obj = _obj(conn="mqtts://mine.example:8883", swarm_id="A001")
+    assert inject_config(args, obj) == ["--swarm-id", "A001", *args]
+    err = _settle(args, obj, monkeypatch, capsys)
+    assert "plain mqtt://" in err
+    assert "DOTBOT_MQTT_USER" not in os.environ
 
 
 def test_the_banner_prints_for_commands_that_act_on_robots(monkeypatch, capsys):
