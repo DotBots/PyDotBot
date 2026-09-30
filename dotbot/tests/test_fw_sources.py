@@ -562,6 +562,19 @@ def test_build_mari_gateway_without_a_source_says_where_to_put_it(isolated):
     assert result.exit_code != 0
     assert "DOTBOT_FW_SOURCES_MARI" in result.output
     assert "mari under [fw.sources]" in result.output
+    assert "--path /path/to/mari" in result.output
+
+
+def test_build_names_the_repos_folder_it_looked_in(isolated):
+    config = isolated / "work" / "dotbot.toml"
+    config.write_text("")
+    result = build("mari-gateway")
+    assert result.exit_code != 0
+    output = " ".join(result.output.split())
+    looked = str(Path("work", "repos", "mari"))
+    assert f"{looked} (next to " in output
+    assert f"{config.name}) has no firmware/Makefile" in output
+    assert "--path /path/to/mari" in output
 
 
 def test_build_apps_default_to_sandboxed_release_builds(

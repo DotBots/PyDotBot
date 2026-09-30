@@ -138,13 +138,17 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     try:
         return _fw_helpers.resolve_repo(spec)
     except click.ClickException as exc:
-        if explicit:
-            raise
-        raise click.ClickException(
-            f"{exc.message}\nOr name only what your source folders build, "
-            "e.g. `dotbot fw build dotbot` (an app) or `dotbot fw build "
-            "swarmit-sandbox`."
-        ) from exc
+        message = (
+            f"{exc.message}\n  - or pass --path /path/to/{spec.dirname} for "
+            "this build."
+        )
+        if not explicit:
+            message += (
+                "\nOr name only what your source folders build, e.g. "
+                "`dotbot fw build dotbot` (an app) or `dotbot fw build "
+                "swarmit-sandbox`."
+            )
+        raise click.ClickException(message) from exc
 
 
 @cmd.command()

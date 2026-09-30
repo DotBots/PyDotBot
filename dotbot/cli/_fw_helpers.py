@@ -214,8 +214,11 @@ def resolve_repo(spec: RepoSpec) -> Path:
         candidate = base / "repos" / spec.dirname
         if (candidate / spec.marker).is_file():
             return candidate
+        looked = f"{candidate} (next to {cfg_path}) has no {spec.marker}"
+    else:
+        looked = "no dotbot.toml is in use, so there is no repos/ to look in"
     raise click.ClickException(
-        f"Could not find your {spec.dirname} source folder. Either:\n"
+        f"Could not find your {spec.dirname} source folder: {looked}. Either:\n"
         f"  - set {spec.key} under [fw.sources] in your config (a relative "
         "path resolves against the config file's directory), or\n"
         f"  - export {spec.env_var}=/path/to/{spec.dirname}, or\n"
