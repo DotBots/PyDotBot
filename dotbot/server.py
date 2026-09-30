@@ -147,17 +147,15 @@ api.add_middleware(TransportScope)
 
 @api.put(
     path="/controller/dotbots/{address}/{application}/move_raw",
-    summary="Drive a DotBot's two wheels directly, for 0.2 s",
+    summary="Drive a DotBot's two wheels directly, until the commands stop",
     tags=["dotbots"],
 )
 async def dotbots_move_raw(
     address: str, application: Application, command: DotBotMoveRawCommandModel
 ):
-    """Set each wheel's motor power: `left_y` and `right_y`, -100 to 100, where
-    a magnitude under 30 does not overcome the motors' dead zone; `left_x` and
-    `right_x` are unused, send 0. The robot stops 0.2 s after the last command,
-    so a caller must resend faster than that; waypoints are the command that
-    persists."""
+    """Set each wheel's motor power: `left_y` and `right_y`, -100 to 100;
+    `left_x` and `right_x` are unused, send 0. The robot stops shortly after
+    the last command, so resend it continuously."""
     if address not in api.controller.dotbots:
         raise HTTPException(status_code=404, detail="No matching dotbot found")
 
