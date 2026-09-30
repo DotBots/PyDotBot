@@ -7,6 +7,7 @@ No SES and no real checkout: `make` and emBuild are stubbed, and the build
 trees are tmp directories with the files SES would write.
 """
 
+import shutil
 from pathlib import Path
 
 import click
@@ -229,6 +230,23 @@ def build(*args, **kw):
 def test_default_set_is_the_release_set_without_legacy_apps(firmware_repo, fake_make):
     assert fs.default_apps("dotbot-v3") == ["dotbot"]
     assert "calibrate" in fs.default_apps("sandbox-dotbot-v3")
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="needs make")
+def test_release_projects_are_read_from_the_makefile(tmp_path):
+    (tmp_path / "Makefile").write_text(
+        "ifeq (dotbot-v3,$(BUILD_TARGET))\n"
+        "  ARTIFACT_PROJECTS := dotbot\n"
+        "else\n"
+        "  ARTIFACT_PROJECTS := dotbot_gateway dotbot_gateway_lr\n"
+        "endif\n"
+        "all: ; @echo built\n"
+    )
+    assert _fw_helpers.list_release_projects("dotbot-v3", tmp_path) == ["dotbot"]
+    assert _fw_helpers.list_release_projects("nrf52840dk", tmp_path) == [
+        "dotbot_gateway",
+        "dotbot_gateway_lr",
+    ]
 
 
 def test_legacy_app_builds_when_named_and_stays_out_of_help(

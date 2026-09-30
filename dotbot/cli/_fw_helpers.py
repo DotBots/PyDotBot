@@ -292,18 +292,23 @@ def list_release_projects(target: str, repo: Optional[Path] = None) -> list[str]
     """The apps a DotBot-firmware release ships for `target`.
 
     Read from the Makefile's `ARTIFACT_PROJECTS`, the list its own
-    `artifacts` target (and so the release workflow) builds.
+    `artifacts` target (and so the release workflow) builds. The rule that
+    prints it comes in on stdin (`-f -`), which make 3.81 (macOS) accepts,
+    unlike `--eval`.
     """
     repo = repo or resolve_firmware_repo()
     result = subprocess.run(
         [
             "make",
             "-s",
+            "-f",
+            "Makefile",
+            "-f",
+            "-",
             f"BUILD_TARGET={target}",
-            "--eval",
-            "print-release-projects: ; @echo $(ARTIFACT_PROJECTS)",
             "print-release-projects",
         ],
+        input="print-release-projects: ; @echo $(ARTIFACT_PROJECTS)\n",
         cwd=repo,
         capture_output=True,
         text=True,
