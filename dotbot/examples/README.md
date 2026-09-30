@@ -14,7 +14,8 @@ Each scenario has its own folder with dedicated instructions, initial states, an
 - `motions/`: move a single DotBot through predefined shapes or speed profiles
 - `simulator_fleet/`: up to 1000 simulated robots on a 20 x 30 m site
 
-We also provide a stop.py helper script to halt the simulator (without needing to stop robots via SwarmIT).
+To stop every robot where it stands, real or simulated, clear their waypoints:
+`curl -X DELETE localhost:8000/controller/dotbots/waypoints`.
 
 ## Common usage pattern (default: simulator)
 
