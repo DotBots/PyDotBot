@@ -13,6 +13,8 @@ POLL_INTERVAL = 1.0
 TIMEOUT_JLINK_SEC = 120
 TIMEOUT_BUILD_SEC = 900
 TIMEOUT_MAINTENANCE_SEC = 300
+# A recover erases a whole core and can take minutes on a slow J-Link.
+TIMEOUT_RECOVER_SEC = 600
 
 DEFAULT_SWD_SPEED_KHZ = 4000
 
@@ -36,8 +38,122 @@ def run_capture(cmd):
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     if proc.returncode != 0:
+        raise_if_protected(proc.returncode, proc.stdout, _family_of(cmd))
         raise RuntimeError(proc.stdout.strip() or f"Command failed: {' '.join(cmd)}")
     return proc.stdout
+
+
+# ---------- Access port protection (APPROTECT) ----------
+#: UICR value that leaves an access port open ("Unprotected"). Any other value,
+#: including the erased 0xFFFFFFFF, protects it (nRF5340 PS v1.6, 5.4.3.1).
+APPROTECT_UNPROTECTED = 0x50FA50FA
+
+#: The nRF5340 UICR words that must hold APPROTECT_UNPROTECTED for the chip to
+#: stay debuggable across a power cycle, as (coprocessor, address).
+NRF53_UICR_APPROTECT_WORDS = (
+    ("CP_APPLICATION", 0x00FF8000),  # UICR.APPROTECT
+    ("CP_APPLICATION", 0x00FF801C),  # UICR.SECUREAPPROTECT
+    ("CP_NETWORK", 0x01FF8000),  # network core UICR.APPROTECT
+)
+
+#: nrfjprog's exit code for NOT_AVAILABLE_BECAUSE_PROTECTION.
+NRFJPROG_PROTECTED_RC = 16
+
+
+class AccessPortProtected(RuntimeError):
+    """nrfjprog was refused because the chip's access port is protected."""
+
+    def __init__(self, family: str = "NRF53"):
+        head = (
+            "The chip's access port is protected (APPROTECT), so nrfjprog "
+            "cannot program or read it."
+        )
+        if family == "NRF53":
+            # --recover without --coprocessor only reaches the application core
+            message = (
+                f"{head} A factory-fresh nRF5340 is in this state. Unlocking it "
+                "ERASES the whole chip:\n"
+                "  - DotBot v3: dotbot device flash swarmit-sandbox "
+                "--swarm-id <id> --probe 77\n"
+                "  - gateway DK: dotbot device flash mari-gateway "
+                "--swarm-id <id> --probe 10\n"
+                "Both recover the chip, flash it and leave it unlocked. For any "
+                "other firmware, recover both cores, then flash again:\n"
+                "  nrfjprog -f NRF53 --recover --coprocessor CP_NETWORK\n"
+                "  nrfjprog -f NRF53 --recover"
+            )
+        else:
+            message = (
+                f"{head} Unlocking it ERASES the whole chip: "
+                f"nrfjprog -f {family} --recover, then flash again."
+            )
+        super().__init__(message)
+        self.family = family
+
+
+def is_protected(rc: int, out: str) -> bool:
+    """True if an nrfjprog result means the access port refused the debugger."""
+    if rc == 0:
+        return False
+    text = out.lower()
+    return (
+        rc == NRFJPROG_PROTECTED_RC
+        or "readback protection" in text
+        or "access protection" in text
+        or "approtect" in text
+    )
+
+
+def raise_if_protected(rc: int, out: str, family: str = "NRF53") -> None:
+    if is_protected(rc, out):
+        raise AccessPortProtected(family)
+
+
+def _family_of(cmd) -> str:
+    try:
+        return cmd[cmd.index("-f") + 1]
+    except (ValueError, IndexError):
+        return "NRF53"
+
+
+def nrfjprog_disable_approtect(nrfjprog, snr=None):
+    """Write APPROTECT_UNPROTECTED to every nRF5340 UICR protection word.
+
+    Without it an erased chip re-protects itself on the next power cycle, since
+    erased UICR reads as protected. The firmware copies these words into
+    CTRLAP.*.DISABLE at boot (the MDK's nrf53_handle_approtect). The words must
+    be erased when this runs: UICR bits only program from 1 to 0.
+    """
+    for core, addr in NRF53_UICR_APPROTECT_WORDS:
+        args = [nrfjprog, "-f", "NRF53"]
+        if snr:
+            args += ["-s", str(snr)]
+        args += ["--coprocessor", core]
+        args += ["--memwr", f"0x{addr:08X}", "--val", f"0x{APPROTECT_UNPROTECTED:08X}"]
+        rc, out = run(args, timeout=60)
+        raise_if_protected(rc, out)
+        if rc != 0 or "ERROR" in out.upper():
+            raise RuntimeError(
+                f"Writing UICR 0x{addr:08X} ({core}) failed; see log above."
+            )
+
+
+def approtect_disabled_in_uicr(snr: str | None = None) -> bool:
+    """True if every nRF5340 UICR protection word holds APPROTECT_UNPROTECTED.
+
+    False means the chip will be protected again after its next power cycle.
+    Reading the network core's word resets that core, like read_net_id.
+    """
+    nrfjprog = which_tool("nrfjprog.exe", candidates=_NRFJPROG_CANDIDATES)
+    for core, addr in NRF53_UICR_APPROTECT_WORDS:
+        args = [nrfjprog, "-f", "NRF53", "--coprocessor", core]
+        args += ["--memrd", f"0x{addr:08X}", "--n", "4"]
+        if snr:
+            args += ["-s", str(snr)]
+        words = _parse_memrd_words(run_capture(args))
+        if not words or int(words[0], 16) != APPROTECT_UNPROTECTED:
+            return False
+    return True
 
 
 def which_tool(exe_name, user_supplied=None, candidates=None):
@@ -245,15 +361,33 @@ def pick_matching_jlink_snr(sn_starting_digits: str, nrfjprog_opt: str | None = 
     return ids[0]
 
 
-def nrfjprog_recover(nrfjprog, snr=None):
+def nrfjprog_recover(nrfjprog, snr=None, timeout=TIMEOUT_RECOVER_SEC):
+    """Unprotect and erase both nRF5340 cores (a whole-chip erase)."""
     args = [nrfjprog, "-f", "NRF53"]
     if snr:
         args += ["-s", str(snr)]
     print(f"[INFO] Recovering both cores of nRF5340 (SNR={snr})...")
-    rc, out = run(args + ["--recover", "--coprocessor", "CP_APPLICATION"], timeout=120)
-    rc, out = run(args + ["--recover", "--coprocessor", "CP_NETWORK"], timeout=120)
-    print(f"[INFO] Erasing both cores of nRF5340 (SNR={snr})...")
-    rc, out = run(args + ["-e"], timeout=120)
+    steps = (
+        ["--recover", "--coprocessor", "CP_APPLICATION"],
+        ["--recover", "--coprocessor", "CP_NETWORK"],
+        ["-e"],
+    )
+    for step in steps:
+        if step == ["-e"]:
+            print(f"[INFO] Erasing both cores of nRF5340 (SNR={snr})...")
+        try:
+            rc, out = run(args + step, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"nrfjprog {' '.join(step)} did not finish within {timeout} s. "
+                "Check the cable and the board's power, then run the command "
+                "again."
+            ) from exc
+        if rc != 0 or "ERROR" in out.upper():
+            raise RuntimeError(
+                f"nrfjprog {' '.join(step)} failed; see log above. If it keeps "
+                "failing, power-cycle the board and try again."
+            )
 
 
 def nrfjprog_program(
@@ -286,6 +420,7 @@ def nrfjprog_program(
     if reset:
         args += ["--reset"]
     rc, out = run(args, timeout=120)
+    raise_if_protected(rc, out, family)
     if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
         raise RuntimeError("nrfjprog programming failed; see log above.")
 
@@ -424,6 +559,10 @@ def flash_nrf_both_cores(
     )
     print("[OK] Application core programmed.")
 
+    # Leaves the debug port open for good; a locked-down image skips this.
+    nrfjprog_disable_approtect(nrfjprog, snr=snr)
+    print("[OK] APPROTECT disabled in UICR on both cores.")
+
     if reset:
         nrfjprog_debugreset(nrfjprog, snr=snr)
         print("[OK] Device reset (CTRL-AP).")
@@ -521,6 +660,7 @@ def nrfjprog_debugreset(nrfjprog, snr=None, family="NRF53"):
         args += ["-s", str(snr)]
     args += ["--debugreset"]
     rc, out = run(args, timeout=120)
+    raise_if_protected(rc, out, family)
     if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
         raise RuntimeError("nrfjprog debug reset failed; see log above.")
 
@@ -559,5 +699,6 @@ def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION", family="NRF53
     if is_multicore_family(family) and core:
         args += ["--coprocessor", core]
     rc, out = run(args, timeout=120)
+    raise_if_protected(rc, out, family)
     if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
         raise RuntimeError("nrfjprog reset failed; see log above.")
