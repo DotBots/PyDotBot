@@ -11,9 +11,9 @@ see [`fw`](fw.md). The host bridge and dashboard come from [`run`](run.md).
 ## The flow
 
 ```text
-1. provision (once)   device flash-mari-gateway + device flash-swarmit-sandbox
+1. provision (once)   device flash mari-gateway + device flash swarmit-sandbox
 2. host bridge        run gateway          (UART <-> MQTT)
-3. the payload       fw fetch  (or fw build dotbot-firmware)
+3. the payload        fw fetch  (or fw build <app>)
 4. operate            swarm               flash | start | stop | status | monitor
 ```
 
@@ -25,8 +25,8 @@ USB-C (the DotBot v3 has an on-board programmer - no separate J-Link needed).
 Details and chip caveats live in [`device`](device.md).
 
 ```bash
-dotbot device flash-mari-gateway    --swarm-id 1234 --probe 10   # a DK -> gateway, net id 0x1234
-dotbot device flash-swarmit-sandbox --swarm-id 1234 --probe 77   # each DotBot -> sandbox host
+dotbot device flash mari-gateway    --swarm-id 1234 --probe 10   # a DK -> gateway, net id 0x1234
+dotbot device flash swarmit-sandbox --swarm-id 1234 --probe 77   # each DotBot -> sandbox host
 ```
 
 ## 2. Start the host bridge
@@ -37,7 +37,7 @@ The gateway board needs a host process bridging its UART to MQTT:
 dotbot run gateway -m mqtts://argus.paris.inria.fr:8883 -p /dev/cu.usbmodem...
 ```
 
-`run gateway` is the host *process*; `device flash-mari-gateway` flashed the
+`run gateway` is the host *process*; `device flash mari-gateway` flashed the
 *firmware* - same word, different objects.
 
 ## 3. Get the OTA payload
@@ -46,8 +46,8 @@ The OTA payload is a **sandboxed** app - a TrustZone non-secure `.bin`. Fetch a
 release, or build your own:
 
 ```bash
-dotbot fw fetch                        # the pinned releases -> ~/.dotbot/artifacts/<source>-<version>/
-dotbot fw build dotbot-firmware        # or build -> ~/.dotbot/artifacts/dotbot-firmware-local/<app>-sandbox-<board>.bin
+dotbot fw fetch                        # the pinned releases -> ~/.dotbot/artifacts/<release>-<version>/
+dotbot fw build spin                   # or build -> ~/.dotbot/artifacts/dotbot-firmware-local/spin-sandbox-dotbot-v3.bin
 ```
 
 Sandbox apps include `dotbot`, `move`, `rgbled`, `spin`, `timer`. Artifact

@@ -6,7 +6,7 @@ no-hardware path, use the [simulator](simulator.md) instead.
 
 Flashing needs `nrfjprog` (see the README prerequisites). The commands below
 flash the pinned release, fetched on first use; to flash your own build
-instead, run `dotbot fw build dotbot-firmware -a <app> ...` (needs SEGGER
+instead, run `dotbot fw build <app> ...` (needs SEGGER
 Embedded Studio) and add `-f local` to each `device flash`.
 
 ## 1. Flash the DotBot

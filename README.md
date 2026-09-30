@@ -116,11 +116,11 @@ id comes from your config:
 
 ```bash
 dotbot fw fetch  # pull the pinned pre-compiled firmwares (swarmit + dotbot-firmware)
-dotbot device flash-mari-gateway --probe 10  # flash the gateway
-dotbot device flash-swarmit-sandbox --probe 77  # the sandbox firmware - do this on each DotBot
+dotbot device flash mari-gateway --probe 10  # flash the gateway
+dotbot device flash swarmit-sandbox --probe 77  # the sandbox firmware - do this on each DotBot
 ```
 
-(`device flash-mari-gateway` / `flash-swarmit-sandbox` fetch the pinned
+(`device flash mari-gateway` / `flash swarmit-sandbox` fetch the pinned
 firmware into `~/.dotbot/artifacts/` if it isn't already there.)
 
 Now, run the gateway (the broker comes from your config):
@@ -203,14 +203,14 @@ Full walkthrough - choosing the points and the cabled alternative - is in the
   the [controller guide][controller-doc].
 - **Build firmware from source** instead of `dotbot fw fetch` - needs
   [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/)
-  and a checkout:
+  and a clone of the source:
   ```bash
   git clone --recurse-submodules https://github.com/DotBots/DotBot-firmware.git
-  export DOTBOT_FIRMWARE_REPO=$(pwd)/DotBot-firmware
-  dotbot fw build dotbot-firmware          # -> ~/.dotbot/artifacts/dotbot-firmware-local/
+  export DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE=$(pwd)/DotBot-firmware
+  dotbot fw build spin                     # -> ~/.dotbot/artifacts/dotbot-firmware-local/
   dotbot swarm flash spin -f local -ys     # flash your build instead of the release
   ```
-  swarmit and mari build the same way (see [`fw`][fw-doc]).
+  `swarmit-sandbox` and `mari-gateway` build the same way (see [`fw`][fw-doc]).
 - **Everything else** - the full `dotbot` CLI (`fw` / `device` / `swarm` / `run`
   + `config`), the REST/WS and MQTT surfaces, and hardware notes: the
   [documentation][doc-link].

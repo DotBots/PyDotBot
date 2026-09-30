@@ -5,13 +5,13 @@ talks to the board's on-board programmer over the SWD/J-Link interface - no
 external probe needed for normal flashing. On the **DotBot v3** the programmer
 (a J-Link-OB / DAPLink behind an SWD mux) is reached over **USB-C**; on an
 nRF5340-DK over its micro-USB port. A separate J-Link is only required for
-[`flash-programmer`](#flash-programmer).
+[`flash programmer`](#flash-the-programmer).
 
 To put firmware on the **whole fleet over the air**, use [`swarm`](swarm.md)
 instead. To build or fetch the images first, see [`fw`](fw.md).
 
 ```{tip}
-**`device flash-mari-gateway` flashes _firmware onto a board_.** The host-side
+**`device flash mari-gateway` flashes _firmware onto a board_.** The host-side
 UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md).
 ```
 
@@ -25,14 +25,16 @@ UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md)
 | Command | What it does |
 |---|---|
 | `flash <app\|file>` | Whole-chip program one app (or a `.hex`/`.bin`) onto the board |
-| `flash-mari-gateway` | Turn an nRF5340-DK into the swarm gateway (both cores + network id) |
-| `flash-swarmit-sandbox` | Turn a DotBot v3 into a swarm sandbox host (bootloader + netcore + id) |
-| `flash-programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink) - needs a J-Link |
+| `flash mari-gateway` | Turn an nRF5340-DK into the swarm gateway (both cores + network id) |
+| `flash swarmit-sandbox` | Turn a DotBot v3 into a swarm sandbox host (bootloader + netcore + id) |
+| `flash programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink), for first-time setup and recovery - needs a J-Link |
 | `info` | Read a board's provisioning state (chip id + network id) |
 
 ## Flash an app
 
-`flash` resolves `<app>` to its image in the dotbot-firmware set `-f` selects
+`flash` takes the names [`dotbot fw`](fw.md) builds and fetches: a role
+(`swarmit-sandbox`, `mari-gateway`, see [Flash a role](#flash-a-role)) or an
+app. It resolves `<app>` to its image in the DotBot-firmware set `-f` selects
 (under `~/.dotbot/artifacts/`): sandboxed (`<app>-sandbox-<board>.bin`) on a
 board that has a sandbox, bare (`<app>-<board>.hex`) with `--bare` or
 elsewhere. An explicit `.hex`/`.bin` path is flashed as-is. It never builds.
@@ -42,7 +44,7 @@ elsewhere. An explicit `.hex`/`.bin` path is flashed as-is. It never builds.
 dotbot device flash dotbot --bare --probe 77
 
 # Your own build: build it, then flash the local set
-dotbot fw build dotbot-firmware -a dotbot --bare
+dotbot fw build dotbot --bare
 dotbot device flash dotbot --bare -f local --probe 77
 ```
 
@@ -82,30 +84,34 @@ dotbot device flash nrf5340_net -b nrf5340dk-net --probe 10
 | `--bare` / `--sandboxed` | Bare-metal (`.hex`) or sandboxed (`.bin`) app; default: `[fw].bare`, else sandboxed where the board has a sandbox |
 | `-f, --fw-version` | Which set: see [Which firmware: `-f`](#which-firmware--f) |
 
+A flag that does not apply to what is being flashed is refused: `--bare` on a
+role, or `--swarm-id` on an app, stops with a message naming what it applies to.
+
 ## Flash a role
 
-`flash-mari-gateway` and `flash-swarmit-sandbox` flash a **complete system firmware**
-(both cores) and write the **network identity** in one shot.
+`flash mari-gateway` and `flash swarmit-sandbox` flash a **complete system
+firmware** (both cores) and write the **network identity** in one shot. Each
+role sets its own board, so `-b` and `--bare` do not apply.
 
 ```bash
 # nRF5340-DK → swarm gateway, from the pinned swarmit release
-dotbot device flash-mari-gateway --swarm-id 0100 --probe 10
+dotbot device flash mari-gateway --swarm-id 0100 --probe 10
 
 # DotBot v3 → swarm sandbox host (the firmware that runs OTA apps)
-dotbot device flash-swarmit-sandbox --swarm-id 0100 --probe 77
+dotbot device flash swarmit-sandbox --swarm-id 0100 --probe 77
 
 # Your own builds
-dotbot fw build swarmit
-dotbot device flash-swarmit-sandbox --swarm-id 0100 -f local --probe 77
-dotbot fw build mari --schedule big
-dotbot device flash-mari-gateway --swarm-id 0100 --schedule big -f local --probe 10
+dotbot fw build swarmit-sandbox
+dotbot device flash swarmit-sandbox --swarm-id 0100 -f local --probe 77
+dotbot fw build mari-gateway --schedule big
+dotbot device flash mari-gateway --swarm-id 0100 --schedule big -f local --probe 10
 ```
 
-| Flag | `flash-mari-gateway` | `flash-swarmit-sandbox` |
+| Flag | `mari-gateway` | `swarmit-sandbox` |
 |---|---|---|
 | `--swarm-id` | 16-bit hex swarm id (or from config) | 16-bit hex swarm id (or from config) |
-| `-f, --fw-version` | a swarmit release (it carries the gateway), or a `mari` set | a swarmit release or set |
-| `--schedule` | the TSCH schedule image, built by `dotbot fw build mari --schedule` | - |
+| `-f, --fw-version` | a swarmit release (it carries the gateway; Mari's releases carry no firmware), or a `mari` set | a swarmit release or set |
+| `--schedule` | the TSCH schedule image, built by `dotbot fw build mari-gateway --schedule` | - |
 | `--probe` | J-Link serial prefix | J-Link serial prefix |
 | `--lh2-calibration` | - | optional LH2 calibration file to bake in |
 
@@ -126,7 +132,7 @@ Every flash command takes the same `-f`:
 
 No flash command builds: a local build is always an explicit `dotbot fw build`.
 
-A board flashed with `flash-swarmit-sandbox` is what [`swarm flash`](swarm.md)
+A board flashed with `flash swarmit-sandbox` is what [`swarm flash`](swarm.md)
 targets to run sandboxed apps over the air.
 
 ## Inspect a board
@@ -138,13 +144,15 @@ dotbot device info --probe 77
 Reports the chip id and network identity. It never fails on a blank board - it
 says *not provisioned* and how to fix it.
 
-## flash-programmer
+## Flash the programmer
 
-Re-flashes the on-board debug chip's own firmware (J-Link OB or DAPLink). This is
-obscure, one-time-per-board bring-up and **requires an external J-Link**.
+`flash programmer` re-flashes the on-board debug chip's own firmware (J-Link
+OB or DAPLink). It is only for a board's first flash at the factory, or for
+recovery when that chip is in a bad state, and it **requires an external
+J-Link**.
 
 ```bash
-dotbot device flash-programmer -p daplink -d ./programmer-firmware/
+dotbot device flash programmer -p daplink -d ./programmer-firmware/
 ```
 
 | Flag | Meaning |

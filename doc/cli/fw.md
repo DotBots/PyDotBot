@@ -9,28 +9,32 @@ other, under the **same file names**:
 
 | | From | Into |
 |---|---|---|
-| `dotbot fw fetch [SOURCE]...` | a GitHub release | `<source>-<version>/`, e.g. `swarmit-0.10.0/` |
-| `dotbot fw build [SOURCE]...` | your local checkouts, via SEGGER Embedded Studio | `<source>-<set>/`, e.g. `swarmit-local/` |
+| `dotbot fw fetch [ROLE\|APP]...` | a GitHub release | `<release>-<version>/`, e.g. `swarmit-0.10.0/` |
+| `dotbot fw build [ROLE\|APP]...` | your source folders, via SEGGER Embedded Studio | `<source>-<set>/`, e.g. `swarmit-local/` |
 
 Every flash command then picks one with `-f`: a release tag, `latest`, a set
 you built (`local`, or a name you gave with `--as`), or a directory path. A
 flash command fetches a missing release by itself, and **never builds**.
 
-## Sources
+## Roles and apps
 
-| Source | What it holds | `fw fetch` | `fw build` |
+`build` and `fetch` take the names [`dotbot device flash`](device.md) takes:
+
+| Name | What it is | Built from | `fw fetch` gets it from |
 |---|---|---|---|
-| `dotbot-firmware` | the apps: sandboxed (`.bin`, flashed over the air) and bare (`.hex`, flashed by cable) | yes | yes |
-| `swarmit` | the sandbox host: the bootloader and the network core | yes, with the Mari gateway images | yes |
-| `mari` | the Mari gateway, `mari-gateway` (app + net core images) | no: Mari's releases publish no firmware | yes, per schedule too |
+| `swarmit-sandbox` | the sandbox host of a DotBot: the swarmit bootloader and the network core | swarmit | the swarmit release |
+| `mari-gateway` | the swarm gateway of an nRF5340-DK: both Mari gateway cores | mari, per schedule too | the swarmit release, default schedule only: Mari's releases publish no firmware |
+| an app, e.g. `spin` | a DotBot-firmware app: sandboxed (`.bin`, flashed over the air) or bare (`.hex`, flashed by cable) | DotBot-firmware | the DotBot-firmware release |
 
-The gateway images a release carries come with swarmit's release, so
-`dotbot device flash-mari-gateway -f 0.10.0` names a swarmit release, while
-`-f local` reads what `dotbot fw build mari` put in `mari-local/`.
+With no name, `build` builds both roles and the apps a DotBot-firmware release
+ships, and `fetch` downloads both releases. Sets are named by the source they
+came from, so `dotbot device flash mari-gateway -f 0.10.0` names a swarmit
+release, while `-f local` reads what `dotbot fw build mari-gateway` put in
+`mari-local/`.
 
 ## Setup
 
-`fw build` needs SEGGER Embedded Studio (SES) and your checkouts. SES is
+`fw build` needs SEGGER Embedded Studio (SES) and your source folders. SES is
 auto-detected only on macOS (a standard `/Applications/SEGGER/` install); set it
 once per machine in `~/.dotbot/config.toml`:
 
@@ -40,20 +44,20 @@ once per machine in `~/.dotbot/config.toml`:
 segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
 ```
 
-The checkouts default to `repos/DotBot-firmware`, `repos/swarmit` and
+The source folders default to `repos/DotBot-firmware`, `repos/swarmit` and
 `repos/mari` next to the `dotbot.toml` in use. Point elsewhere per project, with
 a path relative to that file:
 
 ```toml
 # ./dotbot.toml  (per project)
-[fw]
-firmware_repo = "../DotBot-firmware"
-swarmit_repo = "../swarmit"
-mari_repo = "../mari"
+[fw.sources]
+dotbot-firmware = "../DotBot-firmware"
+swarmit = "../swarmit"
+mari = "../mari"
 ```
 
-or with `DOTBOT_FIRMWARE_REPO` / `DOTBOT_SWARMIT_REPO` / `DOTBOT_MARI_REPO`, or
-for one run with `--checkout`.
+or with `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE` / `DOTBOT_FW_SOURCES_SWARMIT` /
+`DOTBOT_FW_SOURCES_MARI`, or for one run with `--path`.
 
 > **First SES build needs the nRF + CMSIS_5 packages.** A fresh SES install has
 > no chip headers, so the build fails with `fatal error: 'nrf.h' file not found`.
@@ -68,46 +72,51 @@ it, and the flash commands fetch what they need.
 | Goal | Command |
 |---|---|
 | Download the pinned releases | `dotbot fw fetch` |
-| Download one source at another version | `dotbot fw fetch swarmit -f 0.10.0` |
-| Build everything from your checkouts into `<source>-local/` | `dotbot fw build` |
-| Build one app | `dotbot fw build dotbot-firmware -a spin` |
-| Build the Mari gateway for one schedule, or all four | `dotbot fw build mari --schedule tiny` / `--schedule all` |
-| Build from another checkout into its own set | `dotbot fw build swarmit --checkout ../wt-swarmit-x --as lh2-fix` |
+| Download the sandbox host and gateway at another version | `dotbot fw fetch swarmit-sandbox -f 0.10.0` |
+| Build everything from your source folders into `<source>-local/` | `dotbot fw build` |
+| Build one app | `dotbot fw build spin` |
+| Build the Mari gateway for one schedule, or all four | `dotbot fw build mari-gateway --schedule tiny` / `--schedule all` |
+| Build from another folder into its own set | `dotbot fw build swarmit-sandbox --path ../wt-swarmit-x --as lh2-fix` |
 | See what is cached, and where each set came from | `dotbot fw list` |
-| List the boards `-t` takes | `dotbot fw targets` |
-| A Makefile knob the CLI doesn't model | `dotbot fw make <args…>` |
+| List the boards `-t` takes | `dotbot fw targets` (may be removed) |
+| A Makefile knob the CLI doesn't model | `dotbot fw make <args…>` (may be removed) |
 
 ## `build`
 
 ```bash
-dotbot fw build                              # every source, set "local"
-dotbot fw build dotbot-firmware              # the apps a release ships, sandboxed on dotbot-v3
-dotbot fw build dotbot-firmware --bare       # the bare-metal apps instead
-dotbot fw build swarmit                      # bootloader for -t + network core
-dotbot fw build mari                         # the Mari gateway, default schedule
-dotbot fw build -a spin -a bootloader        # the source is inferred from each -a
+dotbot fw build                              # both roles and the release apps, set "local"
+dotbot fw build spin dotbot                  # two apps, sandboxed on dotbot-v3
+dotbot fw build dotbot --bare                # the bare-metal app instead
+dotbot fw build swarmit-sandbox              # bootloader for -t + network core
+dotbot fw build swarmit-sandbox -a netcore   # only the network core
+dotbot fw build mari-gateway                 # the Mari gateway, default schedule
 ```
 
 Each run copies the images into `~/.dotbot/artifacts/<source>-<set>/` under
 their release file names (`bootloader-dotbot-v3.hex`,
 `03app_gateway_app-nrf5340-app.hex`, `spin-sandbox-dotbot-v3.bin`, ...) and
-records a `manifest.json` next to them: the checkout, its git sha, whether it
-had uncommitted changes, the build configuration and a sha256 per image. Builds
-are incremental; each file is reported as `new`, `changed` or `unchanged`.
+records a `manifest.json` next to them: the source folder, its git sha, whether
+it had uncommitted changes, the build configuration and a sha256 per image.
+Builds are incremental; each file is reported as `new`, `changed` or
+`unchanged`.
 
 | Flag | Meaning |
 |---|---|
-| `SOURCE` | `dotbot-firmware`, `swarmit`, `mari`; default: all three |
-| `-a, --app <name>` | Build only this part (repeatable). swarmit: `bootloader`, `netcore`; mari: `mari-gateway`; dotbot-firmware: an app's project name. Default: what the source's release ships |
-| `-t, --target <board>` | Board (default `dotbot-v3`); picks the dotbot-firmware apps and the swarmit bootloader. See `dotbot fw targets` |
-| `--bare` / `--sandboxed` | Bare-metal (`.hex`) or sandboxed (`.bin`) dotbot-firmware apps. Default: `[fw].bare` in config, else sandboxed on boards that have a sandbox |
-| `--schedule <name>\|all` | Build the Mari gateway net image for this TSCH schedule (repeatable), in place of the default net image |
-| `--checkout <path>` | Build from this checkout for this run (needs exactly one `SOURCE`) |
+| `ROLE\|APP` | `swarmit-sandbox`, `mari-gateway`, or an app name (repeatable); default: both roles and the release apps |
+| `-a, --part <part>` | `swarmit-sandbox` only: build just `bootloader` or `netcore` (repeatable) |
+| `-t, --target <board>` | Board (default `dotbot-v3`); picks the apps and the swarmit-sandbox bootloader. See `dotbot fw targets` |
+| `--bare` / `--sandboxed` | Apps only: bare-metal (`.hex`) or sandboxed (`.bin`). Default: `[fw].bare` in config, else sandboxed on boards that have a sandbox |
+| `--schedule <name>\|all` | `mari-gateway` only: build the net image for this TSCH schedule (repeatable), in place of the default net image |
+| `--path <folder>` | Build from this source folder for this run (every name must build from the same source) |
 | `--as <name>` | Name the set (default `local`): flash commands take it as `-f <name>` |
-| `--build-config Debug\|Release` | Default: `Debug` for swarmit and mari (what the swarmit release ships), `Release` for dotbot-firmware |
+| `--build-config Debug\|Release` | Default: `Debug` for the roles (what the swarmit release ships), `Release` for apps |
 | `--rebuild` | Force a full rebuild |
 | `--print-path` | Print where each image would be collected, without building |
 | `-v, --verbose` | Full SES output |
+
+A flag that does not apply to anything being built is refused, e.g.
+`dotbot fw build swarmit-sandbox --schedule tiny` says `--schedule` only
+applies to `mari-gateway`.
 
 > **Flag mismatch to remember:** `fw` selects a board with `--target/-t`, but
 > [`device flash`](device.md) uses `--board/-b`.
@@ -116,15 +125,15 @@ are incremental; each file is reported as `new`, `changed` or `unchanged`.
 
 The Mari gateway's TSCH schedule is compiled into its net-core image, so each
 schedule is its own image. `--schedule` builds them under the names
-[`device flash-mari-gateway --schedule`](device.md#flash-a-role) looks for:
+[`device flash mari-gateway --schedule`](device.md#flash-a-role) looks for:
 
 ```bash
-dotbot fw build mari --schedule all          # 03app_gateway_net-{tiny,medium,big,huge}.hex
-dotbot device flash-mari-gateway --schedule big -f local --swarm-id 0100
+dotbot fw build mari-gateway --schedule all  # 03app_gateway_net-{tiny,medium,big,huge}.hex
+dotbot device flash mari-gateway --schedule big -f local --swarm-id 0100
 ```
 
 To select a schedule, the build temporarily edits
-`app/03app_gateway_net/main.c` in the mari checkout and restores it byte for
+`app/03app_gateway_net/main.c` in the mari source folder and restores it byte for
 byte afterwards, and the net image is always rebuilt in full. Releases carry
 only the default net image, so the schedule images always come from a build.
 
@@ -150,33 +159,38 @@ The bare apps (`--bare`, or a board without a sandbox) include:
 
 Two different gateways, not to be confused:
 
-- **`mari-gateway`** (source `mari`) is the swarm gateway that
-  [`device flash-mari-gateway`](device.md) puts on an nRF5340-DK.
-- **`dotbot_gateway`** (source `dotbot-firmware`) is DotBot-firmware's own
-  gateway app for a DK. On an nRF5340-DK it needs two images:
+- **`mari-gateway`** (a role, built from mari) is the swarm gateway that
+  [`device flash mari-gateway`](device.md) puts on an nRF5340-DK.
+- **`dotbot_gateway`** (an app, built from DotBot-firmware) is
+  DotBot-firmware's own gateway app for a DK. On an nRF5340-DK it needs two images:
   `dotbot_gateway` on `nrf5340dk-app` **and** `nrf5340_net` on `nrf5340dk-net`.
 
 ## `fetch`
 
-`dotbot fw fetch` downloads prebuilt firmware from two release sources,
-**swarmit** (the sandbox host and the Mari gateway) and **dotbot-firmware**
-(the apps), into `~/.dotbot/artifacts/<source>-<version>/`, each with a
-`manifest.json` recording where it came from.
+`dotbot fw fetch` downloads prebuilt firmware from two releases, **swarmit**
+(the sandbox host and the Mari gateway) and **DotBot-firmware** (the apps),
+into `~/.dotbot/artifacts/<release>-<version>/`, each with a `manifest.json`
+recording where it came from. A role fetches the swarmit release and an app
+fetches the DotBot-firmware release, whole: naming an app also checks that the
+release ships it.
 
 With no `-f` it fetches the **exact versions this `dotbot` is pinned to**:
 
 - **swarmit** is also a Python dependency, so its firmware version is the
   installed `swarmit` package's.
-- **dotbot-firmware** is not a Python package, so the version `dotbot` is built
+- **DotBot-firmware** is not a Python package, so the version `dotbot` is built
   and tested against is declared in `dotbot` and bumped deliberately.
 
-The two version independently, so a tag needs its source:
+The two version independently, so a tag takes names from one release:
 
 ```bash
-dotbot fw fetch                              # pinned versions, both sources
-dotbot fw fetch dotbot-firmware -f latest    # newest dotbot-firmware release
-dotbot fw fetch swarmit -f 0.10.0            # a specific swarmit release
+dotbot fw fetch                              # pinned versions, both releases
+dotbot fw fetch spin -f latest               # newest DotBot-firmware release
+dotbot fw fetch swarmit-sandbox -f 0.10.0    # a specific swarmit release
 ```
+
+No release carries the per-schedule gateway images: build those with
+`dotbot fw build mari-gateway --schedule`.
 
 The cache is user-level and shared across projects (override the location with
 `$DOTBOT_ARTIFACTS_DIR`).
@@ -188,11 +202,17 @@ dotbot fw list
 ```
 
 Every set in the cache with its images, and where it came from: the release
-and fetch time, or the checkout, git sha, `dirty` flag and build time.
+and fetch time, or the source folder, git sha, `dirty` flag and build time.
 
 ## `make` - the escape hatch
 
-`dotbot fw make` runs `make` inside your `DotBot-firmware` checkout with the
+```{note}
+`fw make`, `fw targets` and `fw clean` may be removed: they act on the
+DotBot-firmware source folder alone, and `fw targets` repeats
+`dotbot fw make list-targets`.
+```
+
+`dotbot fw make` runs `make` inside your `DotBot-firmware` source folder with the
 resolved `SEGGER_DIR`, forwarding every argument verbatim. Use it only when
 `build` doesn't model the Makefile knob you need.
 

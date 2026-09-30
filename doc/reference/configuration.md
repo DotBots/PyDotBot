@@ -40,7 +40,7 @@ directories, so the active config is always unambiguous.
 
 `~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
 once and want everywhere - typically `[fw].segger_dir`, since the SEGGER
-Embedded Studio install path rarely changes. Per-project settings like `[fw].firmware_repo` belong in
+Embedded Studio install path rarely changes. Per-project settings like `[fw.sources]` belong in
 the project's `./dotbot.toml` instead. Every command, including `dotbot fw`,
 reads through this same resolver.
 
@@ -99,12 +99,24 @@ The four tables mirror the four CLI namespaces (`fw` / `device` / `swarm` /
 | `bare` | Default to bare-metal apps (`.hex`) instead of sandboxed apps (`.bin`) on boards that have a sandbox; `--bare` / `--sandboxed` override it per run. |
 | `build_config` | `Debug` or `Release`. |
 | `segger_dir` | SEGGER Embedded Studio install path. |
-| `firmware_repo` | Path to your `DotBot-firmware` checkout (env `DOTBOT_FIRMWARE_REPO`). Default: `repos/DotBot-firmware` next to this file. |
-| `swarmit_repo` | Path to your `swarmit` checkout (env `DOTBOT_SWARMIT_REPO`). Default: `repos/swarmit` next to this file. |
-| `mari_repo` | Path to your `mari` checkout (env `DOTBOT_MARI_REPO`). Default: `repos/mari` next to this file. |
 
-A relative checkout path resolves against the config file that sets it;
-`dotbot fw build <source> --checkout <path>` overrides it for one run.
+`[fw.sources]` - the source folder `dotbot fw build` reads, one key per source
+repo:
+
+| Key | Meaning |
+|---|---|
+| `dotbot-firmware` | Your `DotBot-firmware` folder, for apps (env `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`). Default: `repos/DotBot-firmware` next to this file. |
+| `swarmit` | Your `swarmit` folder, for `swarmit-sandbox` (env `DOTBOT_FW_SOURCES_SWARMIT`). Default: `repos/swarmit` next to this file. |
+| `mari` | Your `mari` folder, for `mari-gateway` (env `DOTBOT_FW_SOURCES_MARI`). Default: `repos/mari` next to this file. |
+
+```toml
+[fw.sources]
+dotbot-firmware = "../DotBot-firmware"
+swarmit = "../swarmit"
+```
+
+A relative path resolves against the config file that sets it;
+`dotbot fw build <role|app> --path <folder>` overrides it for one run.
 
 `[device]` - one cabled device (`dotbot device`):
 
