@@ -509,6 +509,14 @@ def test_build_part_without_swarmit_sandbox_errors(isolated):
     assert "dotbot fw build swarmit-sandbox -a netcore" in result.output
 
 
+@pytest.mark.parametrize("names", [[], ["swarmit-sandbox"]])
+def test_build_part_that_names_an_app_points_at_the_argument(isolated, names):
+    result = build(*names, "-a", "spin")
+    assert result.exit_code != 0
+    assert "--part takes bootloader or netcore" in result.output
+    assert "`dotbot fw build spin`" in result.output
+
+
 def test_build_bare_on_a_role_only_errors(isolated):
     result = build("swarmit-sandbox", "--bare")
     assert result.exit_code != 0

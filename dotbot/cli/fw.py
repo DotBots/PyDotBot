@@ -258,10 +258,17 @@ def build(
     else:
         sources = list(SOURCES)
 
+    not_parts = [part for part in parts if part not in fs.SWARMIT_PARTS]
+    if not_parts:
+        raise click.ClickException(
+            f"--part takes {' or '.join(fs.SWARMIT_PARTS)}, parts of "
+            "swarmit-sandbox. Name a role or an app as an argument: "
+            f"`dotbot fw build {' '.join(not_parts)}`."
+        )
     if parts and "swarmit-sandbox" not in roles:
         raise click.ClickException(
-            "-a picks parts of swarmit-sandbox: `dotbot fw build swarmit-sandbox "
-            f"-a {' -a '.join(parts)}`."
+            "--part picks parts of swarmit-sandbox: `dotbot fw build "
+            f"swarmit-sandbox -a {' -a '.join(parts)}`."
         )
     schedule_names = fs.resolve_schedules(schedules)
     if schedule_names and "mari" not in sources:
