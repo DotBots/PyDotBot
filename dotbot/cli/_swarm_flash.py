@@ -5,7 +5,7 @@
 
 `dotbot swarm` is a passthrough to swarmit's CLI, whose `flash` takes a
 firmware file. This lets an operator flash a bundled example app by a short,
-persona-friendly name (`rc-car`, `spin`, `lights`) instead of typing the full
+persona-friendly name (`remote-control`, `spin`, `lights`) instead of typing the full
 ~/.dotbot/artifacts/dotbot-firmware-<set>/<app>-sandbox-<board>.bin path, with
 `-f` picking the set by the rule every flash command shares. A token
 that already looks like a path is passed straight through, so the
@@ -25,7 +25,7 @@ from dotbot.cli._artifacts import artifacts_dir
 # Friendly name -> sandbox-app stem. The stem resolves to
 # `<stem>-sandbox-<board>.bin` in the dotbot-firmware set `-f` selects.
 APP_CATALOG = {
-    "rc-car": "dotbot",  # drive the DotBot from the UI / keyboard / joystick
+    "remote-control": "dotbot",  # drive the DotBot from the UI / keyboard / joystick
     "spin": "spin",  # the DotBots spin in place
     "lights": "rgbled",  # the on-board RGB LED
     "calibrate": "calibrate",  # LH2 capture on the robot's own button

@@ -38,7 +38,7 @@ def fake_cache(tmp_path, monkeypatch, no_network):
 
 
 def test_known_name_resolves_to_bin_path(fake_cache):
-    rest, handled = resolve_flash_args(["rc-car", "-y"])
+    rest, handled = resolve_flash_args(["remote-control", "-y"])
     assert handled is False
     assert rest[0] == str(fake_cache / "dotbot-sandbox-dotbot-v3.bin")
     assert rest[1] == "-y"
@@ -72,7 +72,7 @@ def test_known_name_fetches_the_pinned_release_when_missing(tmp_path, monkeypatc
         return _set(bin_dir, version)
 
     monkeypatch.setattr(fetch, "fetch_assets", fake_fetch)
-    rest, _ = resolve_flash_args(["rc-car"])
+    rest, _ = resolve_flash_args(["remote-control"])
     assert fetched == [("dotbot-firmware", fetch.DOTBOT_FIRMWARE_VERSION)]
     assert rest[0].endswith("dotbot-sandbox-dotbot-v3.bin")
 
@@ -83,7 +83,9 @@ def test_no_f_uses_the_pinned_release_even_when_a_local_set_exists(fake_cache):
     assert rest[0] == str(fake_cache / "spin-sandbox-dotbot-v3.bin")
 
 
-@pytest.mark.parametrize("flag", [["-f", "local"], ["--fw-version", "local"], ["--fw-version=local"]])
+@pytest.mark.parametrize(
+    "flag", [["-f", "local"], ["--fw-version", "local"], ["--fw-version=local"]]
+)
 def test_f_selects_a_built_set_and_is_not_forwarded(fake_cache, flag):
     local = _set(fake_cache.parent, "local")
     rest, _ = resolve_flash_args([*flag, "spin", "-y"])
@@ -99,7 +101,9 @@ def test_f_takes_a_directory_path(fake_cache, tmp_path):
 
 
 def test_f_missing_set_suggests_the_build(fake_cache):
-    with pytest.raises(click.ClickException, match="dotbot fw build dotbot-firmware -a spin --as mine"):
+    with pytest.raises(
+        click.ClickException, match="dotbot fw build dotbot-firmware -a spin --as mine"
+    ):
         resolve_flash_args(["-f", "mine", "spin"])
 
 
@@ -112,7 +116,11 @@ def test_f_with_an_explicit_path_errors(fake_cache, tmp_path):
 
 def test_image_version_value_is_not_the_firmware(fake_cache):
     rest, _ = resolve_flash_args(["--image-version", "0.9", "spin"])
-    assert rest == ["--image-version", "0.9", str(fake_cache / "spin-sandbox-dotbot-v3.bin")]
+    assert rest == [
+        "--image-version",
+        "0.9",
+        str(fake_cache / "spin-sandbox-dotbot-v3.bin"),
+    ]
 
 
 def test_list_is_handled_without_passthrough(fake_cache, capsys):
@@ -136,3 +144,10 @@ def test_help_epilog_lists_bundled_names():
         assert name in epilog
     assert "--list" in epilog
     assert "--fw-version" in epilog
+
+
+def test_rc_car_is_renamed_remote_control(fake_cache):
+    with pytest.raises(click.ClickException, match="Unknown app 'rc-car'"):
+        resolve_flash_args(["rc-car"])
+    rest, _ = resolve_flash_args(["remote-control"])
+    assert rest[0].endswith("dotbot-sandbox-dotbot-v3.bin")
