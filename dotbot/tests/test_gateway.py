@@ -101,13 +101,16 @@ def test_gateway_non_mqtt_conn_stays_print_only(run, tmp_path):
 
 
 @patch("dotbot.cli.gateway._run_gateway")
-def test_gateway_withholds_credentials_from_a_site_chosen_broker(
+def test_gateway_withholds_credentials_from_a_pack_chosen_broker(
     run, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
     monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
-    cfg = _write_config(tmp_path, _LAB)
+    pack = tmp_path / "sites" / "lab"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text('[connection]\nconn = "mqtts://broker:8883"\n')
+    cfg = _write_config(tmp_path, 'site = "lab"\n')
     result = CliRunner().invoke(cli, ["-c", str(cfg), "run", "gateway"])
     assert result.exit_code == 0, result.output
     assert run.call_args.args[3].username is None

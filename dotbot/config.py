@@ -464,10 +464,13 @@ def _coerce(raw: str, like: Any) -> Any:
 
 @dataclass(frozen=True)
 class SiteLayer:
-    """The active site as a precedence layer: its name and its `[connection]`."""
+    """The active site as a precedence layer: its name, its `[connection]`,
+    and whether that is an inline table in the person's own file rather than
+    a site pack."""
 
     name: str
     connection: ConnectionSection | None = None
+    inline: bool = False
 
 
 @dataclass(frozen=True)
@@ -477,18 +480,23 @@ class Resolved:
     `kind` is `flag`, `env`, `file`, `site` or `default`; `source` names the
     layer for a person (`--conn`, `DOTBOT_SWARM_ID`, `dotbot.toml [run]`,
     `site c405-arena`); `hidden` holds the (source, value) pairs of the lower
-    layers that set the key too, highest first.
+    layers that set the key too, highest first. `inline` marks a `site`
+    value read from an inline `[sites.<name>]` table rather than a pack.
     """
 
     value: Any
     kind: str
     source: str
     hidden: tuple[tuple[str, Any], ...] = ()
+    inline: bool = False
 
     @property
     def user_set(self) -> bool:
-        """True when the person set this value: a flag, the env or their file."""
-        return self.kind in ("flag", "env", "file")
+        """True when the person set this value: a flag, the env or their own
+        file, an inline site table in it included."""
+        return self.kind in ("flag", "env", "file") or (
+            self.kind == "site" and self.inline
+        )
 
 
 def _layers(
@@ -555,7 +563,8 @@ def resolve_source(
         return Resolved(default, "default", "the default")
     (kind, source, value), rest = found[0], found[1:]
     hidden = tuple((src, val) for _, src, val in rest)
-    return Resolved(value, kind, source, hidden)
+    inline = kind == "site" and site is not None and site.inline
+    return Resolved(value, kind, source, hidden, inline)
 
 
 def resolve(

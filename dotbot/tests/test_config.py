@@ -425,6 +425,13 @@ def test_resolve_source_hidden_names_the_shadowed_values():
     assert got.hidden == (("dotbot.toml", "1234"), ("site c405-arena", "5173"))
 
 
+@pytest.mark.parametrize("inline", [True, False], ids=["inline table", "site pack"])
+def test_only_an_inline_site_connection_counts_as_set_by_you(inline):
+    site = cfg.SiteLayer(SITE.name, SITE.connection, inline=inline)
+    got = cfg.resolve_source("conn", site=site, environ={})
+    assert (got.kind, got.user_set) == ("site", inline)
+
+
 def test_your_file_beats_the_site_connection():
     config = cfg.DotbotConfig(conn="mqtts://mine:8883")
     got = cfg.resolve_source("conn", config=config, site=SITE, environ={})

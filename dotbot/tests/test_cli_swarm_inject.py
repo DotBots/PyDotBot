@@ -183,6 +183,17 @@ def _site_obj(**kw):
     return {"config": config, "config_path": None}
 
 
+def _pack_obj(tmp_path, **kw):
+    """The same site as `_site_obj`, from a site pack instead of your file."""
+    pack = tmp_path / "sites" / "arena"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        '[connection]\nconn = "mqtts://argus.example:8883"\n'
+    )
+    config = DotbotConfig(site="arena", site_dirs=[str(tmp_path / "sites")], **kw)
+    return {"config": config, "config_path": None}
+
+
 def test_injects_the_sites_broker_under_your_swarm_id():
     out = inject_config(["status"], _site_obj(swarm_id="A001"))
     assert out == [
@@ -200,15 +211,15 @@ def _settle(args, obj, monkeypatch, capsys):
     return capsys.readouterr().err
 
 
-def test_credentials_withheld_from_a_site_chosen_broker_leave_the_env(
-    monkeypatch, capsys
+def test_credentials_withheld_from_a_pack_chosen_broker_leave_the_env(
+    monkeypatch, capsys, tmp_path
 ):
     import os
 
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
     monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
     monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
-    err = _settle(["status"], _site_obj(swarm_id="A001"), monkeypatch, capsys)
+    err = _settle(["status"], _pack_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
     assert "DOTBOT_MQTT_HOST=argus.example" in err
     assert "DOTBOT_MQTT_USER" not in os.environ
     assert "DOTBOT_MQTT_PASS" not in os.environ
@@ -222,7 +233,9 @@ def test_credentials_withheld_from_a_site_chosen_broker_leave_the_env(
     ],
     ids=["DOTBOT_MQTT_HOST", "--conn"],
 )
-def test_credentials_kept_for_a_bound_or_named_broker(monkeypatch, capsys, args, bound):
+def test_credentials_kept_for_a_bound_or_named_broker(
+    monkeypatch, capsys, tmp_path, args, bound
+):
     import os
 
     monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
@@ -231,7 +244,7 @@ def test_credentials_kept_for_a_bound_or_named_broker(monkeypatch, capsys, args,
         monkeypatch.setenv("DOTBOT_MQTT_HOST", "argus.example")
     else:
         monkeypatch.delenv("DOTBOT_MQTT_HOST", raising=False)
-    err = _settle(args, _site_obj(swarm_id="A001"), monkeypatch, capsys)
+    err = _settle(args, _pack_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
     assert "warning" not in err
     assert os.environ["DOTBOT_MQTT_USER"] == "me"
 

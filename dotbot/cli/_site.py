@@ -66,8 +66,11 @@ class ActiveSite:
 
     @property
     def layer(self) -> SiteLayer:
-        table = self.entry.table if self.entry is not None else None
-        return SiteLayer(self.name, getattr(table, "connection", None))
+        if self.entry is None:
+            return SiteLayer(self.name)
+        return SiteLayer(
+            self.name, self.entry.table.connection, inline=self.entry.pack is None
+        )
 
     def site(self) -> Site:
         return self.entry.site() if self.entry is not None else Site(name=self.name)

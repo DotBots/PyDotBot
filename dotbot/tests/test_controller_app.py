@@ -176,8 +176,12 @@ def test_run_controller_withholds_the_login_from_a_pack_chosen_broker(
 @patch("dotbot.controller_app.Controller")
 @pytest.mark.parametrize(
     "args, bound",
-    [(["--conn", "mqtts://argus.example:8883"], None), ([], "argus.example")],
-    ids=["you named it", "DOTBOT_MQTT_HOST names it"],
+    [
+        (["--conn", "mqtts://argus.example:8883"], None),
+        ([], "argus.example"),
+        ("inline", None),
+    ],
+    ids=["you named it", "DOTBOT_MQTT_HOST names it", "an inline site table"],
 )
 def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
     controller, _asyncio_run, tmp_path, monkeypatch, args, bound
@@ -191,6 +195,9 @@ def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
     else:
         monkeypatch.setenv("DOTBOT_MQTT_HOST", bound)
     config_file = _arena_pack(tmp_path)
+    if args == "inline":
+        args = []
+        config_file.write_text('site = "arena"\nswarm_id = "0A1B"\n' + _ARENA)
     result = CliRunner().invoke(
         cli, ["-c", str(config_file), "run", "controller", *args]
     )
