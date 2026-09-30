@@ -218,8 +218,21 @@ The cache is user-level and shared across projects (override the location with
 dotbot fw list
 ```
 
-Every set in the cache with its images, and where it came from: the release
-and fetch time, or the source folder, git sha, `dirty` flag and build time.
+Every set in the cache with its images, and where it came from:
+
+```text
+swarmit-0.10.0  release 0.10.0, fetched 2026-09-28T09:12:40+00:00
+  bootloader-dotbot-v3.hex
+  ...
+swarmit-local  built from swarmit@a1b2c3d (dirty)  2h ago
+  bootloader-dotbot-v3.hex
+  netcore-nrf5340-net.hex
+```
+
+A built set names the source folder and commit it was built from, and
+`(dirty)` when that folder had uncommitted changes. Its `manifest.json` holds
+the rest: the full folder path, build configuration, board and a sha256 per
+image.
 
 ## `make` - the escape hatch
 

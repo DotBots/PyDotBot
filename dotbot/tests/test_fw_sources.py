@@ -834,7 +834,36 @@ def test_list_shows_sets_with_their_provenance(isolated, firmware_repo, fake_mak
     )
     result = CliRunner().invoke(fw_cmd, ["list"])
     assert result.exit_code == 0, result.output
-    assert "dotbot-firmware-mine  built no git (Release, dotbot-v3)" in result.output
+    assert (
+        "dotbot-firmware-mine  built from DotBot-firmware (not a git checkout)  "
+        "just now"
+    ) in result.output
     assert "swarmit-0.9.0  release 0.9.0" in result.output
     assert "  dotbot-sandbox-dotbot-v3.bin" in result.output
     assert "config-" not in result.output
+
+
+def test_list_names_the_commit_and_dirty_state_a_set_was_built_from(
+    isolated, swarmit_repo, fake_build
+):
+    sha = _git_init(swarmit_repo)
+    (swarmit_repo / "untracked.c").write_text("")
+    assert build("swarmit-sandbox").exit_code == 0
+    result = CliRunner().invoke(fw_cmd, ["list"])
+    assert f"swarmit-local  built from swarmit@{sha[:7]} (dirty)  just now" in (
+        result.output
+    )
+
+
+@pytest.mark.parametrize(
+    "age, shown",
+    [(0, "just now"), (125, "2m ago"), (2 * 3600 + 5, "2h ago"), (3 * 86400, "3d ago")],
+)
+def test_list_says_how_long_ago_a_set_was_built(age, shown):
+    from datetime import datetime, timedelta, timezone
+
+    from dotbot.cli.fw import _ago
+
+    then = datetime.now(timezone.utc) - timedelta(seconds=age)
+    assert _ago(then.isoformat(timespec="seconds")) == shown
+    assert _ago(None) == ""

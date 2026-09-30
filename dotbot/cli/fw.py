@@ -540,25 +540,43 @@ def fetch(names, fw_version):
         click.echo(f"  {_short_path(path)}")
 
 
+def _ago(timestamp: str | None) -> str:
+    """`2h ago` for an ISO timestamp, or "" when there is none to read."""
+    from datetime import datetime, timezone
+
+    try:
+        then = datetime.fromisoformat(timestamp)
+    except (TypeError, ValueError):
+        return ""
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    seconds = (datetime.now(timezone.utc) - then).total_seconds()
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= size:
+            return f"{int(seconds // size)}{unit} ago"
+    return "just now"
+
+
 def _describe_set(directory: Path) -> str:
     try:
         manifest = json.loads((directory / "manifest.json").read_text())
     except (OSError, ValueError):
         return ""
     if manifest.get("kind") == "build":
-        sha = (manifest.get("git_sha") or "no git")[:10]
-        dirty = " dirty" if manifest.get("dirty") else ""
+        folder = Path(manifest.get("repo") or "?").name
+        sha = manifest.get("git_sha")
+        origin = f"{folder}@{sha[:7]}" if sha else f"{folder} (not a git checkout)"
+        if manifest.get("dirty"):
+            origin += " (dirty)"
         shas = {
             e.get("git_sha")
             for e in manifest.get("files", {}).values()
             if isinstance(e, dict)
         }
-        mixed = ", mixed builds" if len(shas) > 1 else ""
-        return (
-            f"built {sha}{dirty} ({manifest.get('build_config')}, "
-            f"{manifest.get('board')}{mixed}) at {manifest.get('built_at')}, "
-            f"from {manifest.get('repo')}"
-        )
+        if len(shas) > 1:
+            origin += " (mixed builds)"
+        ago = _ago(manifest.get("built_at"))
+        return f"built from {origin}" + (f"  {ago}" if ago else "")
     if "version" in manifest:
         return f"release {manifest['version']}, fetched {manifest.get('fetched_at')}"
     return ""
