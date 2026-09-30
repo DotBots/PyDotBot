@@ -131,7 +131,7 @@ Every flash command takes the same `-f`:
 | a tag, e.g. `0.10.0` | that release, fetched if missing |
 | `latest` | the newest release, resolved to its tag first |
 | `local`, or a name given with `fw build --as` | the set [`dotbot fw build`](fw.md) collected; an error that prints the build line if it is not there |
-| a path containing `/` | a directory of release-named files, used as is |
+| a path containing `/` | a directory of release-named files, used as is (relative to the current directory); a source folder is refused with the `fw build --path` line that turns it into a set |
 
 No flash command builds: a local build is always an explicit `dotbot fw build`.
 

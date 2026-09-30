@@ -113,7 +113,7 @@ in full. Their compiler output is shown only when a build fails, or with `-v`.
 | `-t, --target <board>` | Board (default `dotbot-v3`); picks the apps and the swarmit-sandbox bootloader. See `dotbot fw targets` |
 | `--bare` / `--sandboxed` | Apps only: bare-metal (`.hex`) or sandboxed (`.bin`). Default: `[fw].bare` in config, else sandboxed on boards that have a sandbox |
 | `--schedule <name>\|all` | `mari-gateway` only, named as an argument: build the net image for this TSCH schedule (repeatable), in place of the default net image |
-| `--path <folder>` | Build from this source folder for this run (every name must build from the same source) |
+| `--path <folder>` | Build from this source folder for this run, relative to the current directory (every name must build from the same source) |
 | `--as <name>` | Name the set (default `local`): flash commands take it as `-f <name>` |
 | `--build-config Debug\|Release` | Default: `Debug` for the roles (what the swarmit release ships), `Release` for apps |
 | `--rebuild` | Apps: force a full rebuild (swarmit and mari always rebuild in full) |
