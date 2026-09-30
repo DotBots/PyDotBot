@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ageDays,
@@ -6,6 +6,8 @@ import {
   convexHull,
   describePointsFrom,
   hatchBox,
+  loadSpanShown,
+  saveSpanShown,
   spanTitle,
 } from "./calibrationSpan";
 import type { SiteCalibration } from "./types";
@@ -90,5 +92,29 @@ describe("the tooltip", () => {
       "LH2 calibration demo (ac893d2d), 19 days old: calibrated over a 500 mm " +
         "square in the field. Positions outside the outline are extrapolated.",
     );
+  });
+});
+
+describe("whether the span is drawn", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("is on with nothing stored, and reads back what was saved", () => {
+    expect(loadSpanShown()).toBe(true);
+    saveSpanShown(false);
+    expect(loadSpanShown()).toBe(false);
+    saveSpanShown(true);
+    expect(loadSpanShown()).toBe(true);
+  });
+
+  it("stays on when storage holds junk or refuses to be read", () => {
+    window.localStorage.setItem("dotbot.console.calibratedSpan", "{nope");
+    expect(loadSpanShown()).toBe(true);
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    expect(loadSpanShown()).toBe(true);
   });
 });
