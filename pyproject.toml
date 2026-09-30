@@ -42,6 +42,7 @@ authors = [
     { name="Geovane Fedrecheski", email="geovane.fedrecheski@inria.fr" },
 ]
 dependencies = [
+    "certifi        >= 2023.5.7",
     "click          >= 8.1.7",
     "fastapi        >= 0.115.0",
     "httpx          >= 0.27.2",

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -195,11 +196,22 @@ def download_file(url: str, dest: Path, *, retries: int = 3) -> int:
     """
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(url) as resp:
+            with urllib.request.urlopen(url, context=_ssl_context()) as resp:
                 status = getattr(resp, "status", 200)
                 if status != 200:
                     raise click.ClickException(f"HTTP {status} while downloading {url}")
                 data = resp.read()
+def _ssl_context() -> ssl.SSLContext:
+    """TLS context with certifi's CA bundle.
+
+    A python.org Python on macOS has no system CA store wired in, so the
+    default context fails with CERTIFICATE_VERIFY_FAILED.
+    """
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
+
+
             dest.write_bytes(data)
             return len(data)
         except urllib.error.HTTPError as exc:
@@ -232,7 +244,7 @@ def _github_get(url: str):
         headers={"Accept": "application/vnd.github+json", "User-Agent": "dotbot"},
     )
     try:
-        with urllib.request.urlopen(request) as resp:
+        with urllib.request.urlopen(request, context=_ssl_context()) as resp:
             return json.load(resp)
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
         raise click.ClickException(f"GitHub API request failed ({url}): {exc}") from exc

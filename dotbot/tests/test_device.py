@@ -11,6 +11,7 @@ board), and the friendly nrfjprog-missing error.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import click
 import pytest
@@ -529,7 +530,7 @@ def test_resolve_latest_version_returns_newest_tag(monkeypatch):
 
     payload = json.dumps([{"tag_name": "0.8.0rc2"}, {"tag_name": "0.8.0rc1"}]).encode()
     monkeypatch.setattr(
-        fetch.urllib.request, "urlopen", lambda req: io.BytesIO(payload)
+        fetch.urllib.request, "urlopen", lambda req, **kw: io.BytesIO(payload)
     )
     assert fetch.resolve_latest_version() == "0.8.0rc2"
 
@@ -538,7 +539,9 @@ def test_resolve_latest_version_no_releases_errors(monkeypatch):
     """An empty release list is a clear error, not an IndexError."""
     import io
 
-    monkeypatch.setattr(fetch.urllib.request, "urlopen", lambda req: io.BytesIO(b"[]"))
+    monkeypatch.setattr(
+        fetch.urllib.request, "urlopen", lambda req, **kw: io.BytesIO(b"[]")
+    )
     with pytest.raises(click.ClickException):
         fetch.resolve_latest_version()
 
@@ -546,7 +549,7 @@ def test_resolve_latest_version_no_releases_errors(monkeypatch):
 def test_resolve_latest_version_network_error_errors(monkeypatch):
     """A network failure surfaces as a friendly ClickException."""
 
-    def boom(req):
+    def boom(req, **kw):
         raise fetch.urllib.error.URLError("offline")
 
     monkeypatch.setattr(fetch.urllib.request, "urlopen", boom)
@@ -561,14 +564,16 @@ def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
 
     calls = {"n": 0}
 
-    def flaky_urlopen(url):
+    def flaky_urlopen(url, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             raise fetch.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
         return io.BytesIO(b"\xde\xad")
 
     monkeypatch.setattr(fetch.urllib.request, "urlopen", flaky_urlopen)
-    monkeypatch.setattr(fetch.time, "sleep", lambda _delay: None)  # skip real backoff
+    # Replace fetch's view of `time` only: patching `time.sleep` itself turns
+    # every background thread's sleep into a busy loop.
+    monkeypatch.setattr(fetch, "time", SimpleNamespace(sleep=lambda _delay: None))
 
     dest = tmp_path / "spin-dotbot-v3.hex"
     size = fetch.download_file("http://x/spin-dotbot-v3.hex", dest, retries=3)
@@ -577,15 +582,43 @@ def test_download_file_retries_transient_5xx(tmp_path, monkeypatch):
     assert calls["n"] == 2  # one retry
 
 
+def test_https_requests_verify_against_the_certifi_bundle(tmp_path, monkeypatch):
+    """python.org Pythons ship no system CA store; certifi's bundle is used."""
+    import io
+    import ssl
+
+    contexts = []
+
+    def urlopen(url, context=None):
+        contexts.append(context)
+        return io.BytesIO(b"[]" if not str(url).endswith(".hex") else b"x")
+
+    loaded = []
+    real = ssl.create_default_context
+    monkeypatch.setattr(
+        fetch.ssl,
+        "create_default_context",
+        lambda cafile=None: loaded.append(cafile) or real(cafile=cafile),
+    )
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", urlopen)
+    with pytest.raises(click.ClickException):
+        fetch.resolve_latest_version()
+    fetch.download_file("http://x/a.hex", tmp_path / "a.hex")
+    import certifi
+
+    assert all(isinstance(c, ssl.SSLContext) for c in contexts) and len(contexts) == 2
+    assert loaded == [certifi.where()] * 2
+
+
 def test_download_file_gives_up_on_non_transient(tmp_path, monkeypatch):
     """A 404 is not transient - it surfaces immediately, with no backoff."""
 
-    def not_found(url):
+    def not_found(url, **kw):
         raise fetch.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
     sleeps: list[float] = []
     monkeypatch.setattr(fetch.urllib.request, "urlopen", not_found)
-    monkeypatch.setattr(fetch.time, "sleep", lambda d: sleeps.append(d))
+    monkeypatch.setattr(fetch, "time", SimpleNamespace(sleep=sleeps.append))
 
     with pytest.raises(click.ClickException):
         fetch.download_file("http://x/missing.hex", tmp_path / "missing.hex", retries=3)
