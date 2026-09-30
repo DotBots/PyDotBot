@@ -138,22 +138,14 @@ No flash command builds: a local build is always an explicit `dotbot fw build`.
 A board flashed with `flash swarmit-sandbox` is what [`swarm flash`](swarm.md)
 targets to run sandboxed apps over the air.
 
-Both roles **erase the whole chip** first (`nrfjprog --recover` on each
-core), so they work on a factory-fresh nRF5340 whose access port protection
-(APPROTECT) is still on. They finish by disabling APPROTECT in UICR, so the board
-stays flashable after a power cycle. Flashing an app or a file, and `info`,
-never recover: on a protected chip they stop and say what to run. See
-[Set up a bench](../guides/bench-setup.md).
-
 ## Inspect a board
 
 ```bash
 dotbot device info --probe 77
 ```
 
-Reports the chip id, the network identity, and whether the debug port stays open
-across a power cycle. It never fails on a blank board - it says *not
-provisioned* and how to fix it.
+Reports the chip id and network identity. It never fails on a blank board - it
+says *not provisioned* and how to fix it.
 
 ## Flash the programmer
 

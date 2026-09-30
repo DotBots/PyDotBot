@@ -404,7 +404,7 @@ def test_flash_swarmit_sandbox_net_id_from_deployment(
 def test_info_reports_provisioned(runner, _no_nrfjprog_gate, monkeypatch):
     monkeypatch.setattr(
         "dotbot.firmware.flash.read_config_report",
-        lambda sn=None: ("1234", "BDF2B04BC00D2725", True),
+        lambda sn=None: ("1234", "BDF2B04BC00D2725"),
     )
     result = runner.invoke(device_cmd, ["info", "--probe", "77", "-y"])
     assert result.exit_code == 0, result.output
@@ -419,7 +419,7 @@ def test_info_reports_unprovisioned_without_failing(
     """A blank board is a normal state — exit 0, report + fix hint."""
     monkeypatch.setattr(
         "dotbot.firmware.flash.read_config_report",
-        lambda sn=None: ("unprovisioned", "BDF2B04BC00D2725", True),
+        lambda sn=None: ("unprovisioned", "BDF2B04BC00D2725"),
     )
     result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code == 0, result.output
@@ -444,7 +444,7 @@ def test_info_warns_and_aborts_without_confirmation(
     called = []
     monkeypatch.setattr(
         "dotbot.firmware.flash.read_config_report",
-        lambda sn=None: called.append(sn) or ("1234", "BDF2B04BC00D2725", True),
+        lambda sn=None: called.append(sn) or ("1234", "BDF2B04BC00D2725"),
     )
     result = runner.invoke(device_cmd, ["info"], input="n\n")
     assert result.exit_code != 0
@@ -455,7 +455,7 @@ def test_info_warns_and_aborts_without_confirmation(
 def test_info_yes_flag_skips_the_prompt(runner, _no_nrfjprog_gate, monkeypatch):
     monkeypatch.setattr(
         "dotbot.firmware.flash.read_config_report",
-        lambda sn=None: ("1234", "BDF2B04BC00D2725", True),
+        lambda sn=None: ("1234", "BDF2B04BC00D2725"),
     )
     result = runner.invoke(device_cmd, ["info", "-y"])
     assert result.exit_code == 0, result.output
