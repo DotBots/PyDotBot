@@ -109,14 +109,14 @@ def _first_positional(rest: list[str]) -> int | None:
 
 
 def render_catalog(fw_version: str | None = None) -> str:
-    from dotbot.firmware.fetch import pinned_version, resolve_fw_root
+    from dotbot.firmware.fetch import is_dir_value, pinned_version, resolve_fw_root
 
     label = fw_version or pinned_version("dotbot-firmware")
     root = None
-    if label != "latest" and "/" not in label:
-        root = resolve_fw_root(artifacts_dir(), "dotbot-firmware", label)
-    elif "/" in label:
+    if is_dir_value(label):
         root = Path(label).expanduser()
+    elif label != "latest":
+        root = resolve_fw_root(artifacts_dir(), "dotbot-firmware", label)
     lines = [f"Bundled apps you can flash by name (from dotbot-firmware {label}):", ""]
     width = max(len(name) for name in APP_CATALOG)
     for name, stem in APP_CATALOG.items():

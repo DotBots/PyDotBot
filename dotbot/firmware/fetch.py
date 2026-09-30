@@ -64,6 +64,11 @@ def is_release_tag(value: str) -> bool:
     return bool(_RELEASE_TAG_RE.match(value))
 
 
+def is_dir_value(value: str) -> bool:
+    """Whether a `-f` value names a directory (it contains a path separator)."""
+    return "/" in value or os.sep in value
+
+
 def validate_set_name(name: str) -> str:
     """Return `name` if it can name a built set, else raise."""
     if name == "latest" or is_release_tag(name) or not SET_NAME_RE.match(name):
@@ -139,7 +144,7 @@ def resolve_fw_dir(
         tag = pinned_version(rel)
         click.echo(f"[INFO] no -f given: using the {rel} release pydotbot pins, {tag}")
         return release(tag), tag
-    if "/" in fw_version or os.sep in fw_version:
+    if is_dir_value(fw_version):
         path = Path(fw_version).expanduser()
         if not path.is_dir():
             raise click.ClickException(f"-f {fw_version}: no such directory.")
