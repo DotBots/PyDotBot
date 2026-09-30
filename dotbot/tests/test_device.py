@@ -73,7 +73,10 @@ def test_flash_programmer_calls_the_engine(runner, monkeypatch, tmp_path):
     [
         (["programmer", "-p", "jlink"], "-p jlink|daplink -d <folder>"),
         (["programmer", "-p", "jlink", "-d", ".", "--probe", "77"], "--probe-uid"),
-        (["programmer", "-p", "jlink", "-d", ".", "-f", "local"], "-f selects"),
+        (
+            ["programmer", "-p", "jlink", "-d", ".", "-f", "local"],
+            "-f only applies to roles and apps",
+        ),
         (["spin", "-p", "jlink"], "--programmer-firmware only applies to programmer"),
         (
             ["mari-gateway", "--probe-uid", "u"],
@@ -1313,7 +1316,7 @@ def test_device_flash_path_takes_no_f(runner, _no_nrfjprog_gate, tmp_path):
     image.write_text("")
     result = runner.invoke(device_cmd, ["flash", str(image), "-f", "local"])
     assert result.exit_code != 0
-    assert "needs no -f" in result.output
+    assert "-f only applies to roles and apps" in result.output
 
 
 def test_device_flash_has_bare_sandboxed_pair(runner):

@@ -82,8 +82,8 @@ _REFUSALS = {
     "schedule": "--schedule only applies to mari-gateway; a DotBot adopts the "
     "schedule the gateway's beacon advertises.",
     "calibration_path": "--lh2-calibration only applies to swarmit-sandbox.",
-    "fw_version": "-f selects the set a name resolves from; an explicit file "
-    "path needs no -f.",
+    "fw_version": "-f only applies to roles and apps: it selects the set a name "
+    "resolves from.",
     "probe": "programmer is flashed through an external J-Link: select it "
     "with --probe-uid.",
     "programmer_firmware": "--programmer-firmware only applies to programmer.",
