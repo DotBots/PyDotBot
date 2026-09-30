@@ -785,6 +785,27 @@ def test_path_builds_mari_gateway_from_that_tree(isolated, mari_repo, fake_build
     assert {cwd for cwd, _, _ in fake_build} == {other / "firmware"}
 
 
+@pytest.mark.parametrize("env_var", [False, True])
+def test_a_relative_source_folder_resolves_against_the_cwd(
+    isolated, mari_repo, fake_build, monkeypatch, env_var
+):
+    """make and build-schedules.sh run in the source folder, so a relative
+    --path or env var reaches them as an absolute path."""
+    monkeypatch.chdir(isolated)
+    if env_var:
+        monkeypatch.setenv("DOTBOT_FW_SOURCES_MARI", "mari")
+        result = build("mari-gateway", "--schedule", "tiny")
+    else:
+        monkeypatch.setenv("DOTBOT_FW_SOURCES_MARI", str(isolated / "gone"))
+        result = build("mari-gateway", "--schedule", "tiny", "--path", "mari")
+    assert result.exit_code == 0, result.output
+    fw = mari_repo / "firmware"
+    assert [(cwd, argv[:3]) for cwd, argv, _ in fake_build] == [
+        (fw, ["make", "-C", str(fw)]),
+        (fw, ["bash", str(fw / "build-schedules.sh"), "tiny"]),
+    ]
+
+
 def test_path_must_be_a_folder_of_that_source(isolated, mari_repo, fake_build):
     result = build("mari-gateway", "--path", str(mari_repo / "firmware"))
     assert result.exit_code != 0

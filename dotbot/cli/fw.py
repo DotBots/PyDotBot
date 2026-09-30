@@ -128,6 +128,7 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     """The source folder `source` builds from: `path`, checked, or the configured one."""
     spec = _fw_helpers.REPO_SPECS[source]
     if path is not None:
+        path = path.expanduser().absolute()
         if not (path / spec.marker).is_file():
             raise click.ClickException(
                 f"--path {path} is not a {spec.dirname} source folder: it has "

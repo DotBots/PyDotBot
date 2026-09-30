@@ -184,11 +184,12 @@ def resolve_repo(spec: RepoSpec) -> Path:
     """Locate a source folder (a directory holding `spec.marker`).
 
     env var → `[fw.sources]` (relative to the config file's directory) →
-    `repos/<dirname>` next to the config file in use → error.
+    `repos/<dirname>` next to the config file in use → error. The folder
+    returned is absolute.
     """
     env = os.environ.get(spec.env_var)
     if env:
-        candidate = Path(env).expanduser()
+        candidate = Path(env).expanduser().absolute()
         if (candidate / spec.marker).is_file():
             return candidate
         raise click.ClickException(
@@ -201,6 +202,7 @@ def resolve_repo(spec: RepoSpec) -> Path:
         candidate = Path(value).expanduser()
         if not candidate.is_absolute() and base is not None:
             candidate = base / candidate
+        candidate = candidate.absolute()
         if (candidate / spec.marker).is_file():
             return candidate
         where = f" (set in {cfg_path})" if cfg_path is not None else ""
