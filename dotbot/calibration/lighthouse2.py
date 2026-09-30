@@ -638,8 +638,8 @@ def render_calibration(calibration: Calibration) -> str:
 def read_calibration_file(path: Path) -> Calibration:
     """Parse a schema 3 calibration file.
 
-    A file of any other schema version is rejected: there is no upgrade path,
-    because a schema 1 file carries a packed payload and no site.
+    A file of any other schema version is rejected: schema 2 homographies
+    were solved on another camera point, and schema 1 has no site.
     """
     path = Path(path)
     with open(path, "rb") as handle:
