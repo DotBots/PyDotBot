@@ -47,8 +47,9 @@ curl -s localhost:8000/controller/dotbots
 Each robot has an `address` (16 hex digits, e.g. `B0B0F00D33333333`) and a
 `pose`: `x` and `y` in millimetres, `heading_deg` in degrees. `pose` is the
 midpoint of the wheel axle, which is the point waypoints steer. `lh2_position`
-is the Lighthouse photodiode, which sits 53.5 mm ahead of the axle on a
-DotBot v3, so the two always differ by that much. A person can watch at
+is the Lighthouse photodiode, 53.5 mm ahead of the axle on a DotBot v3. Until
+a robot has driven, `heading_source` is `none`: its heading and axle are
+placeholders, so trust only `lh2_position`. A person can watch at
 http://localhost:8000/console/ (the web console).
 
 ## 2. Move one robot
@@ -81,19 +82,19 @@ curl -X PUT localhost:8000/controller/dotbots/$ADDR/0/max_speed \
 Stop one robot, or all of them without `?address=`:
 `curl -X DELETE "localhost:8000/controller/dotbots/waypoints?address=$ADDR"`
 
-`move_raw` drives the wheels directly (`left_y`, `right_y`: -100 to 100, dead
-below 30), but the robot stops about half a second after the last command: a
-single curl moves it a short way and it stops. Resend it every 0.1 s, as
-`dotbot run demo circle` does, or use waypoints.
+`move_raw` drives the wheels directly (`left_y`, `right_y`: -100 to 100; a
+robot at rest needs about 50 to start), but the robot stops about half a
+second after the last command: a single curl moves it a short way and it
+stops. Resend it every 0.1 s, as `dotbot run demo circle` does, or use
+waypoints.
 
 ## 3. The live API
 
 Ask the API, then read this for what it will not say. `/openapi.json` is the
 full schema; Swagger is at http://localhost:8000/api (not `/docs`). Not in it:
 units are mm and mm/s, `move_raw` stops about 0.5 s after the last command,
-and `status` is 0 active, 1
-inactive, 2 lost. To watch instead of polling: the WebSocket
-`/controller/ws/stream`.
+and `status` is 0 active, 1 inactive, 2 lost. To watch instead of polling: the
+WebSocket `/controller/ws/stream`.
 
 ## 4. Real hardware
 
