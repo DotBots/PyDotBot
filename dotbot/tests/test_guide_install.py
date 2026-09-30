@@ -146,3 +146,32 @@ def test_uninstall_leaves_a_hand_written_skill_alone(home):
     (_skill(home) / "SKILL.md").write_text(HAND_WRITTEN)
     assert _guide("--uninstall").exit_code != 0
     assert (_skill(home) / "SKILL.md").read_text() == HAND_WRITTEN
+
+
+def test_a_claude_skills_directory_linked_to_the_agents_one(home):
+    (home / ".agents" / "skills").mkdir(parents=True)
+    (home / ".claude").mkdir()
+    (home / ".claude" / "skills").symlink_to(home / ".agents" / "skills")
+    assert _guide("--install").exit_code == 0
+    result = _guide("--install")
+    assert result.exit_code == 0, result.output
+    notes = _skill(home) / "notes.txt"
+    notes.write_text("mine\n")
+    result = _guide("--uninstall")
+    assert result.exit_code == 0, result.output
+    assert notes.read_text() == "mine\n"
+    assert not (_skill(home) / "SKILL.md").exists()
+
+
+def test_uninstall_keeps_files_added_beside_a_copy(home, monkeypatch):
+    (home / ".claude").mkdir()
+
+    def refuse(self, *args, **kwargs):
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(Path, "symlink_to", refuse)
+    assert _guide("--install").exit_code == 0
+    (_link(home) / "extra.md").write_text("mine\n")
+    assert _guide("--uninstall").exit_code == 0
+    assert (_link(home) / "extra.md").read_text() == "mine\n"
+    assert not (_link(home) / "SKILL.md").exists()

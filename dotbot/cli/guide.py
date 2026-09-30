@@ -38,27 +38,44 @@ firmware or moves a real robot.
 
 def guide_text() -> str:
     """The packaged guide, its title line naming the installed version."""
-    title, _, rest = files("dotbot").joinpath("guide.md").read_text().partition("\n")
+    title, _, rest = (
+        files("dotbot").joinpath("guide.md").read_text("utf-8").partition("\n")
+    )
     return f"{title} (pydotbot {pydotbot_version()})\n{rest}"
 
 
 def skill_dir() -> Path:
-    """The one written copy of the skill, where agents that read the
-    generic `~/.agents/skills/` find it."""
+    """Where the skill is written, for agents that read `~/.agents/skills/`."""
     return Path.home() / ".agents" / "skills" / SKILL_NAME
 
 
 def claude_dir() -> Path:
+    """Claude Code's configuration directory."""
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 
 
 def _ours(directory: Path) -> bool:
     skill = directory / "SKILL.md"
-    return skill.is_file() and SKILL_MARKER in skill.read_text(errors="replace")
+    return skill.is_file() and SKILL_MARKER in skill.read_text(
+        encoding="utf-8", errors="replace"
+    )
 
 
 def _links_to(link: Path, target: Path) -> bool:
     return link.is_symlink() and link.resolve() == target.resolve()
+
+
+def _shared(link: Path, target: Path) -> bool:
+    """`link` is `target` itself, reached through a linked parent directory."""
+    return not link.is_symlink() and link.resolve() == target.resolve()
+
+
+def _remove_skill(directory: Path) -> str:
+    """Remove the SKILL.md `--install` wrote, and `directory` once empty."""
+    (directory / "SKILL.md").unlink()
+    if not any(directory.iterdir()):
+        directory.rmdir()
+    return f"Removed {directory / 'SKILL.md'}"
 
 
 def _refusal(path: Path, link_target: Path | None = None) -> str | None:
@@ -71,7 +88,7 @@ def _refusal(path: Path, link_target: Path | None = None) -> str | None:
     if path.is_dir() and (_ours(path) or not any(path.iterdir())):
         return None
     if path.exists():
-        return f"{path} holds a skill this command did not write"
+        return f"{path} is not a skill this command wrote"
     return None
 
 
@@ -83,7 +100,7 @@ def install() -> list[str]:
     claude = claude_dir()
     link = claude / "skills" / SKILL_NAME if claude.is_dir() else None
     refusals = [_refusal(canonical)]
-    if link is not None:
+    if link is not None and not _shared(link, canonical):
         refusals.append(_refusal(link, canonical))
     refusals = [reason for reason in refusals if reason]
     if refusals:
@@ -93,15 +110,17 @@ def install() -> list[str]:
 
     lines = []
     skill = canonical / "SKILL.md"
-    if skill.is_file() and skill.read_text() == SKILL_TEXT:
+    if skill.is_file() and skill.read_text(encoding="utf-8") == SKILL_TEXT:
         lines.append(f"Skill up to date: {skill}")
     else:
         canonical.mkdir(parents=True, exist_ok=True)
-        skill.write_text(SKILL_TEXT)
+        skill.write_text(SKILL_TEXT, encoding="utf-8")
         lines.append(f"Wrote {skill}")
 
     if link is None:
         lines.append(f"No Claude Code directory at {claude}; no link made")
+    elif _shared(link, canonical):
+        lines.append(f"Claude Code reads it as {link}; no link needed")
     elif _links_to(link, canonical):
         lines.append(f"Link up to date: {link} -> {canonical}")
     elif link.is_dir() and _ours(link):
@@ -129,21 +148,19 @@ def uninstall() -> list[str]:
     canonical = skill_dir()
     link = claude_dir() / "skills" / SKILL_NAME
     lines, refusals = [], []
-    if _links_to(link, canonical):
+    if _shared(link, canonical):
+        pass
+    elif _links_to(link, canonical):
         link.unlink()
         lines.append(f"Removed the link {link}")
     elif link.is_symlink() or link.exists():
         if not link.is_symlink() and _ours(link):
-            shutil.rmtree(link)
-            lines.append(f"Removed the copy {link}")
+            lines.append(_remove_skill(link))
         else:
             refusals.append(str(link))
     if canonical.is_symlink() or canonical.exists():
         if not canonical.is_symlink() and _ours(canonical):
-            (canonical / "SKILL.md").unlink()
-            lines.append(f"Removed {canonical / 'SKILL.md'}")
-            if not any(canonical.iterdir()):
-                canonical.rmdir()
+            lines.append(_remove_skill(canonical))
         else:
             refusals.append(str(canonical))
     if refusals:
@@ -159,7 +176,8 @@ def uninstall() -> list[str]:
         "Print the getting-started guide, for people and AI agents: the "
         "simulator, moving a robot, the API, then real hardware. --install "
         "writes an agent skill that points at it to ~/.agents/skills/dotbot/, "
-        "and links ~/.claude/skills/dotbot to it when Claude Code is present."
+        "and links it into Claude Code's skills directory when Claude Code "
+        "is present."
     ),
 )
 @click.option(
