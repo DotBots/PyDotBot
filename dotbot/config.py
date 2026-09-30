@@ -135,11 +135,17 @@ class Deployment(_Strict):
 class FwSources(_Strict):
     """`[fw.sources]`: the source folder `dotbot fw build` reads, per source repo."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
     dotbot_firmware: str | None = Field(None, alias="dotbot-firmware")
     swarmit: str | None = None
     mari: str | None = None
+
+
+# The `[fw]` keys that became `[fw.sources]` keys.
+_MOVED_SOURCE_KEYS = {
+    "firmware_repo": "dotbot-firmware",
+    "swarmit_repo": "swarmit",
+    "mari_repo": "mari",
+}
 
 
 class FwSection(_Strict):
@@ -148,6 +154,15 @@ class FwSection(_Strict):
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
     sources: FwSources = Field(default_factory=FwSources)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _source_keys_moved(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for old, new in _MOVED_SOURCE_KEYS.items():
+                if old in data:
+                    raise ValueError(f"[fw].{old} is now the {new} key of [fw.sources]")
+        return data
 
 
 class DeviceSection(_Strict):

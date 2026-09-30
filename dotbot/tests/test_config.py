@@ -405,3 +405,24 @@ def test_resolve_nested_section_missing_falls_to_default():
         default="http://localhost:8001",
     )
     assert got == "http://localhost:8001"
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("firmware_repo", "dotbot-firmware"),
+        ("swarmit_repo", "swarmit"),
+        ("mari_repo", "mari"),
+    ],
+)
+def test_fw_repo_keys_name_their_fw_sources_key(tmp_path, old, new):
+    path = tmp_path / "dotbot.toml"
+    path.write_text(f'[fw]\n{old} = "x"\n')
+    with pytest.raises(cfg.ConfigError, match=rf"\[fw\]\.{old} is now the {new} key"):
+        cfg.load_config(path)
+
+
+def test_fw_sources_takes_only_the_hyphenated_key():
+    cfg.DotbotConfig.model_validate({"fw": {"sources": {"dotbot-firmware": "x"}}})
+    with pytest.raises(cfg.ValidationError):
+        cfg.DotbotConfig.model_validate({"fw": {"sources": {"dotbot_firmware": "x"}}})
