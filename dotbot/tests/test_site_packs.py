@@ -77,7 +77,47 @@ def test_site_dirs_default_and_relative_entries_read_from_the_config_folder(
     ]
     absolute = tmp_path / "abs" / "packs"
     config = load_config_text(f'site_dirs = ["packs", "{absolute.as_posix()}"]')
-    assert site_dirs(config, config_path) == [tmp_path / "lab" / "packs", absolute]
+    assert site_dirs(config, config_path) == [
+        tmp_path / "lab" / "packs",
+        absolute,
+        home / ".dotbot" / "sites",
+    ]
+    user_first = load_config_text('site_dirs = ["~/.dotbot/sites", "packs"]')
+    assert site_dirs(user_first, config_path) == [
+        home / ".dotbot" / "sites",
+        tmp_path / "lab" / "packs",
+    ]
+
+
+def test_an_added_pack_is_found_by_a_config_whose_site_dirs_omit_it(
+    runner, tmp_path, home
+):
+    config = tmp_path / "lab" / "dotbot.toml"
+    _pack(tmp_path / "lab" / "sites", "c405-arena")
+    config.write_text('site = "c405-arena"\nsite_dirs = ["sites"]\n')
+    added = runner.invoke(
+        cli, ["-c", str(config), "site", "add", str(_pack(tmp_path / "src", "hall"))]
+    )
+    assert added.exit_code == 0, added.output
+    assert "warning" not in added.output
+    listed = runner.invoke(cli, ["-c", str(config), "site", "list"])
+    assert str(home / ".dotbot" / "sites" / "hall") in listed.output
+
+
+def test_add_warns_when_the_config_in_use_reads_that_site_elsewhere(
+    runner, tmp_path, home
+):
+    config = tmp_path / "lab" / "dotbot.toml"
+    project = _pack(tmp_path / "lab" / "sites", "c405-arena")
+    config.write_text('site_dirs = ["sites"]\n')
+    source = _pack(tmp_path / "src", "c405-arena", anchor="elsewhere")
+    result = runner.invoke(cli, ["-c", str(config), "site", "add", str(source)])
+    assert result.exit_code == 0, result.output
+    assert (home / ".dotbot" / "sites" / "c405-arena" / "site.toml").is_file()
+    assert f"reads site c405-arena from {project}, not from this pack" in (
+        result.output
+    )
+    assert "site use" not in result.output
 
 
 def test_the_first_site_dir_wins_a_name_clash(tmp_path):

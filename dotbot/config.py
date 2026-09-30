@@ -16,7 +16,7 @@ table, which site packs carry the same way.
 ```toml
 site     = "default"
 swarm_id = "0001"
-site_dirs = ["sites", "~/.dotbot/sites"]    # where site packs are found, in order
+site_dirs = ["sites"]    # where site packs are found, in order, before ~/.dotbot/sites
 
 [sites.default]                             # a place: where zero is, how big, its areas
 anchor = "top-left corner of a 5 x 5 m floor; the field starts 1.5 m in from each wall"

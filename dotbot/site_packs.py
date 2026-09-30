@@ -6,8 +6,8 @@
 A pack is a folder named after its site holding `site.toml`, the keys a
 `[sites.<name>]` table holds, and optionally `calibrations/`, the site's LH2
 and camera files under their usual names. Packs are found in the `site_dirs`
-folders, in order; an inline `[sites.<name>]` table wins over a pack of the
-same name.
+folders, in order, then in ~/.dotbot/sites, where `dotbot site add` puts them;
+an inline `[sites.<name>]` table wins over a pack of the same name.
 
 A pack `dotbot site add` installs also holds `.approved.toml`, the broker the
 person approved while adding it. The env's broker login goes to that broker
@@ -32,7 +32,7 @@ from dotbot.site import Site, site_from_table
 PACK_FILE = "site.toml"
 # The broker approved at `site add`, beside `site.toml` in an installed pack
 APPROVAL_FILE = ".approved.toml"
-# Where `dotbot site add` puts packs, searched last when `site_dirs` is unset
+# Where `dotbot site add` puts packs, searched after every `site_dirs` folder
 USER_SITES_DIR = Path.home() / ".dotbot" / "sites"
 # Searched first when `site_dirs` is unset, from the config file's folder
 PROJECT_SITES_DIR = "sites"
@@ -108,15 +108,19 @@ def broker_trust(entry: SiteEntry | None) -> tuple[str | None, str | None]:
 
 
 def site_dirs(config: Any, config_path: Path | None) -> list[Path]:
-    """The folders searched for packs; relative ones from the config's folder."""
+    """The folders searched for packs: `site_dirs`, relative ones from the
+    config's folder, then ~/.dotbot/sites unless `site_dirs` already names it."""
     entries = getattr(config, "site_dirs", None)
     base = config_path.parent if config_path is not None else Path.cwd()
     if entries is None:
-        return [base / PROJECT_SITES_DIR, user_sites_dir()]
+        entries = [PROJECT_SITES_DIR]
     folders = []
     for entry in entries:
         folder = Path(entry).expanduser()
         folders.append(folder if folder.is_absolute() else base / folder)
+    user = user_sites_dir()
+    if user.resolve() not in {folder.resolve() for folder in folders}:
+        folders.append(user)
     return folders
 
 

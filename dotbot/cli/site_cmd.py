@@ -29,6 +29,7 @@ from dotbot.site_packs import (
     PACK_FILE,
     read_approval,
     read_pack,
+    resolve_site_entry,
     site_catalog,
     user_sites_dir,
     write_approval,
@@ -499,10 +500,34 @@ def add(ctx, source, force, use_, yes):
         _install(folder, target, new[0].strip() if new[0] else None)
     count = len(list((target / PACK_CALIBRATIONS).glob("*.toml")))
     click.echo(f"Added site {name} to {target} ({_files(count)})")
+    shadowed = _warn_if_shadowed(ctx, name, target)
     if use_:
         write_active_site(ctx, name, table)
-    else:
+    elif not shadowed:
         click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
+
+
+def _warn_if_shadowed(ctx, name: str, target: Path) -> bool:
+    """Warn, and return True, when the config in use reads site `name` from
+    somewhere other than the pack just installed at `target`."""
+    obj = ctx.obj or {}
+    config_path = obj.get("config_path")
+    try:
+        entry = resolve_site_entry(obj.get("config"), config_path, name)
+    except ConfigError:
+        return False
+    if entry is None or (
+        entry.pack is not None and entry.pack.resolve() == target.resolve()
+    ):
+        return False
+    where = config_path or "the config in use"
+    click.echo(
+        f"warning: {where} reads site {name} from {_where(entry)}, "
+        f"not from this pack; rename the pack folder to add it under "
+        f"another name",
+        err=True,
+    )
+    return True
 
 
 def _files(count: int) -> str:
