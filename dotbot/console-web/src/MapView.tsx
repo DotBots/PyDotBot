@@ -184,6 +184,8 @@ interface MapViewProps {
 
 // How much canvas a ruler label needs beside it to be readable whole.
 const RULER_CLEAR_PX = 40;
+// Screen pixels between the lines hatching where a calibration extrapolates.
+const HATCH_GAP_PX = 16;
 // How far in from the canvas edge the map chrome sits, and what separates
 // one piece of it from the next.
 const CHROME_INSET_PX = 14;
@@ -1221,17 +1223,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                       <pattern
                         id={`${spanId}-hatch`}
                         patternUnits="userSpaceOnUse"
-                        width={8 * chrome}
-                        height={8 * chrome}
+                        width={HATCH_GAP_PX * chrome}
+                        height={HATCH_GAP_PX * chrome}
                         patternTransform="rotate(45)"
                       >
                         <line
                           x1={0}
                           y1={0}
                           x2={0}
-                          y2={8 * chrome}
+                          y2={HATCH_GAP_PX * chrome}
                           stroke="var(--muted)"
-                          strokeOpacity={0.45}
+                          strokeOpacity={0.22}
                           strokeWidth={chrome}
                         />
                       </pattern>
