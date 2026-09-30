@@ -63,7 +63,7 @@ class PayloadWithBytesFixedLengthTest(Payload):
 
 
 # Test-only payload types, deliberately clear of dotbot's real types (<= 0xfa)
-# and swarmit's (0x80-0xa1): both register into this shared dotbot_utils registry
+# and swarmit's (0x80-0xa3): both register into this shared dotbot_utils registry
 # and swarmit (a core dep) may be imported in the same process.
 register_parser(0xFB, PayloadWithBytesTest)
 register_parser(0xFC, PayloadWithBytesFixedLengthTest)

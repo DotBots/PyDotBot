@@ -600,8 +600,9 @@ def test_the_manifest_cache_misses_on_the_old_magic(tmp_path):
     payload = build_manifest_payload(tmp_path / "c.hex", "dotbot-v3", "local", "1234")
     assert payload["magic"] == "0x5753524F"
     assert manifest_matches(payload, "dotbot-v3", "local", "1234")
-    payload["magic"] = "0x5753524D"
-    assert not manifest_matches(payload, "dotbot-v3", "local", "1234")
+    for old in ("0x5753524E", "0x5753524D"):
+        payload["magic"] = old
+        assert not manifest_matches(payload, "dotbot-v3", "local", "1234")
     gateway = build_manifest_payload(tmp_path / "g.hex", "gateway", "local", "1234")
     assert gateway["magic"] == "0x5753524D"
 
