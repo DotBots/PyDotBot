@@ -79,7 +79,8 @@ def test_a_user_config_under_its_former_name_is_refused(tmp_path, monkeypatch):
     with pytest.raises(cfg.ConfigError) as excinfo:
         cfg.discover_config_path(None, environ={}, start_dir=empty)
     assert str(excinfo.value) == (
-        f"rename {home / 'config.toml'} to {home / 'dotbot.toml'}"
+        f"{home / 'config.toml'} is the user config's former name; "
+        f"rename it to {home / 'dotbot.toml'}"
     )
 
 

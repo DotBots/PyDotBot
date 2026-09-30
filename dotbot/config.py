@@ -368,7 +368,10 @@ def check_user_config_name() -> None:
     """Refuse a user config still under its former name."""
     legacy = USER_CONFIG_PATH.with_name(LEGACY_USER_CONFIG_NAME)
     if legacy.is_file() and not USER_CONFIG_PATH.exists():
-        raise ConfigError(f"rename {legacy} to {USER_CONFIG_PATH}")
+        raise ConfigError(
+            f"{legacy} is the user config's former name; rename it to "
+            f"{USER_CONFIG_PATH}"
+        )
 
 
 def load_config(path: os.PathLike[str] | str | None) -> DotbotConfig:

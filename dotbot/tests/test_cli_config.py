@@ -94,7 +94,10 @@ def test_a_user_config_under_its_former_name_is_refused(runner, tmp_path, monkey
     with runner.isolated_filesystem():
         result = runner.invoke(cli, ["fw", "--help"])
     assert result.exit_code != 0
-    assert f"rename {home / 'config.toml'} to {home / 'dotbot.toml'}" in result.output
+    assert (
+        f"{home / 'config.toml'} is the user config's former name; "
+        f"rename it to {home / 'dotbot.toml'}"
+    ) in result.output
 
 
 def test_root_no_config_is_fine(runner):
