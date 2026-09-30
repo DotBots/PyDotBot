@@ -4,7 +4,8 @@ A 20 x 30 m site with room for up to 1000 simulated DotBots.
 
 `dotbot.toml` defines the site `virtual-lab`: its extent and two areas, a
 `staging` strip along the north wall, where robots park and charge, and the
-16 x 16 m `field`.
+16 x 16 m `field`. It is a virtual site, whose connection is the simulator, so
+here `dotbot run controller` and `dotbot run simulator` do the same thing.
 
 `--robots N` starts N robots in a block centred on the field, 200 mm apart
 centre to centre and all facing the staging strip. The block takes the
@@ -41,6 +42,6 @@ BROWSER=true dotbot run simulator --simulator-init-state fleet.toml --controller
 
 From another folder, pass the file with
 `-c dotbot/examples/simulator_fleet/dotbot.toml`. Either way it is the whole
-config, and your `~/.dotbot/config.toml` does not apply. The console frames
+config, and your `~/.dotbot/dotbot.toml` does not apply. The console frames
 the whole site, where the robots are dots at their true size; zoom in to see
 each one's body. Waypoints outside the site are refused.

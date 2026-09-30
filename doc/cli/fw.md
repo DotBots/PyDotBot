@@ -36,10 +36,10 @@ release, while `-f local` reads what `dotbot fw build mari-gateway` put in
 
 `fw build` needs SEGGER Embedded Studio (SES) and your source folders. SES is
 auto-detected only on macOS (a standard `/Applications/SEGGER/` install); set it
-once per machine in `~/.dotbot/config.toml`:
+once per machine in `~/.dotbot/dotbot.toml`:
 
 ```toml
-# ~/.dotbot/config.toml  (once per machine)
+# ~/.dotbot/dotbot.toml  (once per machine)
 [fw]
 segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
 ```

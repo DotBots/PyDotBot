@@ -12,7 +12,8 @@ default.
 
 Create one with `dotbot config init` (it writes a `./dotbot.toml` holding a
 starter [site](#sites)); pass `--conn` / `--swarm-id` to pre-fill the two most
-common keys:
+common keys (a broker becomes the site's [connection](#a-sites-connection), the
+swarm id a key of your own):
 
 ```bash
 dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
@@ -30,7 +31,7 @@ This page is the file-format reference. For the `config` command itself
 | 1 | `-c PATH` / `--config PATH` | An explicit path on the command line. |
 | 2 | `DOTBOT_CONFIG` | An explicit path in the environment. |
 | 3 | `./dotbot.toml` | A `dotbot.toml` in the current directory (the cwd only - parent directories are not searched). |
-| 4 | `~/.dotbot/config.toml` | Your user-level file. |
+| 4 | `~/.dotbot/dotbot.toml` | Your user-level file. |
 | 5 | (none) | Built-in defaults only. |
 
 A `dotbot.toml` in your working directory (3) takes precedence over your
@@ -38,11 +39,15 @@ personal file (4), so a per-experiment config wins while you work in that
 directory. Discovery looks only at the cwd - it does not walk up to parent
 directories, so the active config is always unambiguous.
 
-`~/.dotbot/config.toml` (4) is the per-machine fallback for settings you set
+`~/.dotbot/dotbot.toml` (4) is the per-machine fallback for settings you set
 once and want everywhere - typically `[fw].segger_dir`, since the SEGGER
 Embedded Studio install path rarely changes. Per-project settings like `[fw.sources]` belong in
 the project's `./dotbot.toml` instead. Every command, including `dotbot fw`,
 reads through this same resolver.
+
+The user-level file is named `dotbot.toml`, like a project's. A file still under
+its former name, `~/.dotbot/config.toml`, is refused with one line: rename it to
+`~/.dotbot/dotbot.toml`.
 
 ## Precedence
 
@@ -50,12 +55,16 @@ For any single setting, the highest-priority source that has a value wins:
 
 ```text
 CLI flag  >  env DOTBOT_<SECTION>_<KEY> (then shared DOTBOT_<KEY>)
-          >  file: section value > selected deployment > top-level
+          >  your file: section value > top-level
+          >  the active site's [connection]   (conn and swarm_id only)
           >  built-in default
 ```
 
-Inside the file, a key set in its own section table beats the same key on the
-selected deployment, which beats a shared top-level key.
+Inside your file, a key set in its own section table beats a shared top-level
+key. The active site's `[connection]` sits below your whole file, even when it
+is an inline `[sites.<name>.connection]` table in that file: it is the site's
+value, and anything you set yourself overrides it. `dotbot config show` prints
+where each value came from and what it hides.
 
 **Worked example** - resolving the controller's broker URL (`conn`):
 
@@ -64,8 +73,8 @@ selected deployment, which beats a shared top-level key.
 | `--conn mqtts://cli:8883` flag | `mqtts://cli:8883` | yes, flag is highest |
 | `DOTBOT_RUN_CONN` env | `mqtts://env:8883` | only if no flag |
 | `[run] conn` in the file | `mqtts://run:8883` | only if no flag/env |
-| `[deployment.inria] conn` (selected) | `mqtts://inria:8883` | only if `[run]` has no `conn` |
-| top-level `conn` | `mqtts://shared:8883` | only if nothing above is set |
+| top-level `conn` | `mqtts://shared:8883` | only if `[run]` has no `conn` |
+| the active site's `[connection] conn` | `mqtts://site:8883` | only if nothing above is set |
 | built-in default | - | last resort |
 
 Env-var names are mechanical: a section key becomes `DOTBOT_<SECTION>_<KEY>`
@@ -75,14 +84,13 @@ accepts the shared `DOTBOT_<KEY>` form as a fallback.
 
 ## Top-level (shared) keys
 
-Set once at the top of the file; any section or deployment can override them.
+Set once at the top of the file; any section can override them.
 
 | Key | Meaning |
 |---|---|
-| `conn` | Default connection string (`mqtts://host:port`, a serial path, or `simulator`). |
+| `conn` | Default connection string (`mqtts://host:port`, a serial path, or `simulator`). Overrides the active site's [connection](#a-sites-connection). |
 | `swarm_id` | Swarm id selecting the MQTT topic namespace. |
 | `log_level` | Logging verbosity. |
-| `default_deployment` | Name of the deployment to select when neither `--deployment` nor `DOTBOT_DEPLOYMENT` is given. |
 | `site` | The active [site](#sites): its frame, its areas and the folder its calibrations are kept under. `--site` or `DOTBOT_SITE` overrides it. |
 | `site_dirs` | Folders searched, in order, for [site packs](#site-packs) (default `["sites", "~/.dotbot/sites"]`). |
 
@@ -162,61 +170,11 @@ A relative path resolves against the config file that sets it;
 Unknown keys are rejected: a typo in a section or key name fails loud rather
 than being silently ignored.
 
-## What a deployment is
-
-A **deployment** here means one physical deployment - one set of real DotBots
-behind one broker, in one place (e.g. the ~100-DotBot setup at Inria Paris, or a
-1000-DotBot campaign). You define each one as a `[deployment.<name>]` table and
-**select** it; you do not edit the file to switch between them.
-
-Select the active deployment with, in precedence order, `--deployment NAME`, the
-`DOTBOT_DEPLOYMENT` env var, or the top-level `default_deployment`. The selected
-deployment's keys slot into the file layer (above top-level, below sections), so an
-explicit flag or env var still overrides it. Selecting a name with no matching
-`[deployment.<name>]` table is an error that lists the defined deployments.
-
-A deployment is **not** the simulator. To drive simulated DotBots, set the connection
-to `simulator` (`--conn simulator`, or `conn = "simulator"`); that is a
-connection kind, not a deployment.
-
-A `[deployment.<name>]` table holds the deployment-binding keys plus descriptive
-metadata:
-
-| Key | Meaning |
-|---|---|
-| `conn` | Broker / link for this deployment. |
-| `swarm_id` | Swarm id for this deployment. |
-| `serial_port` | Default serial port for this deployment. |
-| `site` | The [site](#sites) this deployment works in, when the top-level `site` should not apply. |
-| `location` | Descriptive label (shown by `dotbot deployment list`). |
-| `bots` | Descriptive DotBot count. |
-
-## Managing deployments
-
-The `dotbot deployment` group inspects, switches, and fetches deployments:
-
-| Command | Does |
-|---|---|
-| `dotbot deployment list` | List defined deployments; mark the active one. |
-| `dotbot deployment show NAME` | Print one deployment's fields. |
-| `dotbot deployment use NAME` | Set NAME as `default_deployment`, written into your config file (comments preserved). |
-| `dotbot deployment fetch [SOURCE]` | Fetch published deployments and merge them into your config. |
-
-`fetch` takes a URL or a local file holding `[deployment.*]` tables; with no
-SOURCE it uses the built-in DotBots registry. It **merges**: a same-named
-deployment is replaced (you are asked first), and everything else in the file
-(other deployments, sections, comments) is left intact. Like `dotbot fw fetch`,
-it only acquires the deployment - select it afterwards with `dotbot deployment
-use` or `--deployment`. Useful flags: `--into project` (write the nearest
-`dotbot.toml` instead of `~/.dotbot/config.toml`), `--dry-run`, and `--yes`.
-
-Because MQTT credentials are env-only (below), a published deployment file is not
-secret - it carries only the broker URL, swarm id, and descriptive labels.
-
 ## Sites
 
-A **site** is the floor you work on. Its `[sites.<name>]` table says where zero
-is, how big the floor is, and which named rectangles, **areas**, it holds.
+A **site** is the place you work in and its usual way in. Its `[sites.<name>]`
+table says where zero is, how big the floor is, which named rectangles,
+**areas**, it holds, and optionally which broker the site is reached through.
 Positions, calibrations and the console map are all in the active site's
 frame: millimetres, zero at the top-left corner of the extent, x to the right,
 y down.
@@ -239,10 +197,58 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 | `anchor` | Prose saying where zero is on the real floor. No code reads it, but a calibration records it, and one made against another anchor is refused. |
 | `extent_mm` | `[width, height]` of the floor. |
 | `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
+| `connection` | The site's usual broker and, optionally, swarm id; see [below](#a-sites-connection). |
+| `virtual` | `true` for a site that exists only in simulation. |
 
-The active site is, in order: `--site`, `DOTBOT_SITE`, the selected
-deployment's `site`, the top-level `site`, then `default`.
+The active site is, in order: `--site`, `DOTBOT_SITE`, the top-level `site`,
+then `default`. `dotbot site use NAME` writes the top-level `site` for you.
 `dotbot config init` writes a `default` site; see [`dotbot config`](../cli/config.md).
+
+### A site's connection
+
+A site may name the broker it is usually reached through, so working in it
+needs no `conn` of your own:
+
+```toml
+[sites.lab.connection]           # in a pack's site.toml: [connection]
+conn     = "mqtts://broker.lab.example:8883"
+swarm_id = "0A1B"                # only if whoever publishes the site owns the network
+```
+
+| Key | Meaning |
+|---|---|
+| `conn` | A broker URL, `mqtt://` or `mqtts://`. A serial path names a port on one machine and is refused; pass it with `--conn` or set it in your own file. A URL with `user:pass@` is refused too. |
+| `swarm_id` | The swarm id, when the site has one network that everyone working there shares. Leave it out when several people flash gateways at their own ids; each then sets their own `swarm_id`. |
+
+A site has one network: all of its gateways share one net id, even at a
+thousand robots. A second network in the same room is `--conn` / `--swarm-id`
+or a `conn` in a project `dotbot.toml`, never a copy of the site, since the
+site's name keys its calibrations and is stored on the robots.
+
+Your own `conn` and `swarm_id` beat the site's (see [precedence](#precedence)),
+so a leftover top-level `conn` hides every site's. The one-line banner that
+`run controller`, `run gateway` and the swarm commands that act on robots print
+before connecting names each value's source, and `dotbot site use` warns when
+your file or environment overrides the site it switches to.
+
+An MQTT `conn` with no swarm id anywhere fails with `site lab names no swarm;
+set --swarm-id or DOTBOT_SWARM_ID`.
+
+A **virtual** site exists only in simulation. It may take `conn = "simulator"`,
+and that is the only `conn` it takes; no other site does:
+
+```toml
+[sites.virtual-lab]
+virtual   = true
+extent_mm = [20000, 30000]
+
+[sites.virtual-lab.connection]
+conn = "simulator"
+```
+
+On a virtual site `dotbot run controller` and `dotbot run simulator` do the same
+thing. `dotbot run simulator` is `run controller --conn simulator` on whatever
+site is active, so a real site can be rehearsed in simulation too.
 
 ### Area roles
 
@@ -286,8 +292,8 @@ site_dirs = ["sites"]
 ```
 
 An inline `[sites.<name>]` table wins over a pack of the same name, with a
-one-line notice naming the pack it hides. `dotbot config show` lists every site
-and where it was read from. To install or share a pack, see
+one-line notice naming the pack it hides. `dotbot site list` lists every site,
+its connection and where it was read from. To install or share a pack, see
 [`dotbot site`](../cli/site.md).
 
 ### Where calibrations are found
@@ -320,16 +326,29 @@ calibration's id.
 
 ## MQTT credentials are env-only
 
-MQTT username and password are read **only** from the environment:
+MQTT username and password are read **only** from the environment, and tied to
+the broker they are for:
 
 ```bash
 export DOTBOT_MQTT_USER=alice
 export DOTBOT_MQTT_PASS=…
+export DOTBOT_MQTT_HOST=broker.lab.example
 ```
 
 They are never file keys - don't put them in `dotbot.toml`, and don't commit
 them. Keep the broker URL in the file and the credentials in your environment
 (or a secret manager).
+
+A shared site pack must not quietly choose where your login goes, so the
+credentials go to a broker only when:
+
+- `DOTBOT_MQTT_HOST` names it, or
+- you named the broker yourself: a flag, an env var, or your own file, or
+- it runs on this machine (`localhost`).
+
+They never go over plain `mqtt://` to another host. When they are withheld, a
+one-line warning says so and names the `DOTBOT_MQTT_HOST=<host>` that would
+allow it; `dotbot config show` says where they would go.
 
 ## Inspecting the resolved config
 
@@ -338,42 +357,28 @@ precedence chain by hand:
 
 | Command | Shows |
 |---|---|
-| `dotbot config show` | The merged, effective config and which file (if any) it came from. |
-| `dotbot deployment list` | The defined deployments, their metadata, and which one is selected. |
+| `dotbot config show` | The file in use, where the site, `conn` and `swarm_id` each came from and what they hide, where the credentials go, and the file's own keys. `--json` for scripts. |
+| `dotbot site list` | Every site the config can name, its connection, and which one is active. |
 
 ## Full example
 
 An annotated `dotbot.toml` exercising every layer:
 
 ```toml
-# Top-level shared keys: every section and deployment inherits these unless it
-# sets its own value.
-default_deployment = "inria"                 # used when --deployment / DOTBOT_DEPLOYMENT unset
-conn            = "mqtts://broker.local:8883"
+# Top-level shared keys: every section inherits these unless it sets its own
+# value, and they beat the active site's [connection].
 swarm_id        = "0001"
 log_level       = "info"
 site            = "lab"                      # the active site; --site / DOTBOT_SITE override
 site_dirs       = ["sites"]                  # site packs next to this file, e.g. sites/hall/site.toml
 
-# A physical deployment. Select it with `--deployment inria`, DOTBOT_DEPLOYMENT, or
-# default_deployment above - don't edit this table to switch deployments.
-[deployment.inria]
-conn        = "mqtts://broker.inria.fr:8883"
-swarm_id    = "0001"
-serial_port = "/dev/ttyACM0"
-location    = "Inria Paris"               # descriptive, for `dotbot deployment list`
-bots        = 100                          # descriptive
-
-[deployment.limerick]
-conn     = "mqtts://broker.limerick:8883"
-swarm_id = "0002"
-location = "Limerick campaign"
-bots     = 725
-
-# A site: where zero is, the floor's size, and its areas.
+# A site: where zero is, the floor's size, its broker and its areas.
 [sites.lab]
 anchor    = "corner of the tiles by the door; x along the window wall"
 extent_mm = [5000, 5000]
+
+[sites.lab.connection]
+conn = "mqtts://broker.local:8883"   # used unless you set conn yourself
 
 [sites.lab.areas]
 field      = { x = 1500, y = 1500, w = 2000, h = 2000 }  # named after its role
@@ -398,9 +403,6 @@ build_config = "Release"
 swarm_id = "0001"
 
 # Host-side processes (dotbot run).
-[run]
-conn = "mqtts://broker.local:8883"
-
 [run.controller]
 http_port      = 8000
 lh2_calibration_max_age_days = 30   # warn when the loaded LH2 calibration is older
@@ -410,6 +412,6 @@ headless       = true    # default is false; set true to suppress the browser (s
 [run.gateway]
 serial_port = "/dev/ttyACM0"
 
-# Note: MQTT credentials are env-only - DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.
-# Never a file key.
+# Note: MQTT credentials are env-only - DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
+# tied to a broker by DOTBOT_MQTT_HOST. Never a file key.
 ```

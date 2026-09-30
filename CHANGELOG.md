@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- A site may carry its usual way in: a `[connection]` table (`conn`, a broker
+  URL, and optionally `swarm_id`) in a pack's `site.toml` or an inline
+  `[sites.<name>.connection]`. It is the lowest config layer for `conn` and
+  `swarm_id`; a `virtual = true` site may take `conn = "simulator"`.
+- `dotbot site use`, `site list` and `site show`, and `site add --use`; `site
+  add` shows a pack's broker and asks before adding it (`--yes` to skip).
+- `run controller`, `run gateway` and the swarm commands that act on robots
+  print one line naming the site, conn and swarm id and where each came from.
 - `dotbot run simulator --robots N` generates a fleet of N robots 200 mm
   apart, centred in the site's `field` area; `--write-init-state FILE` saves
   it as an init-state file to edit and reuse with `--simulator-init-state`.
@@ -57,6 +65,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking:** the user config is `~/.dotbot/dotbot.toml`, the same name as a
+  project's. A `~/.dotbot/config.toml` with no `dotbot.toml` beside it is
+  refused with the rename to make.
+- **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
+  when `DOTBOT_MQTT_HOST` names it, you named the broker yourself (flag, env,
+  your file) or it is local, and never over plain `mqtt://` to another host.
+- `dotbot config show` prints where the site, `conn` and `swarm_id` each came
+  from and what they hide, and where the credentials go (`--json` for
+  scripts); the list of sites moved to `dotbot site list`.
+- `dotbot config init --conn` writes a broker into the site it creates.
 - **Breaking - the controller binds loopback by default.** `dotbot run
   controller` served the REST/WebSocket API on `0.0.0.0`, putting an
   unauthenticated API on every interface; the new `/swarmit/*` proxy would
@@ -97,6 +115,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- **Breaking:** `dotbot deployment`, the root `--deployment` flag,
+  `DOTBOT_DEPLOYMENT` and the `[deployment.*]` / `default_deployment` config
+  keys. A config that still has them fails to load and says where the keys
+  went: a site's `[connection]` and `dotbot site use`.
 - **The classic web UI** (`dotbot/frontend/`, served at `/PyDotBot`). The
   console at `/console` is the only browser UI; `/PyDotBot` now answers 404,
   so update bookmarks. Its classic-only views go with it: the REST demo page,

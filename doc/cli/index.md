@@ -31,8 +31,8 @@ dotbot --help
 
 Beyond the four namespaces, [`config`](config.md) scaffolds and inspects the
 shared `dotbot.toml` the other commands read their defaults from, and
-[`site`](site.md) installs and exports site packs: the floors you work on,
-as folders you can share.
+[`site`](site.md) adds, switches between, lists and exports sites: the places
+you work in and the broker each is reached through, as folders you can share.
 
 ## Which one do I want?
 
@@ -76,7 +76,7 @@ A few signposts so the namespaces don't blur together:
 - [`swarm`](swarm.md) - run experiments across the fleet.
 - [`run`](run.md) - launch the controller, gateway bridge, simulator, and demos.
 - [`config`](config.md) - scaffold and inspect the shared `dotbot.toml`.
-- [`site`](site.md) - add a site pack to this machine, or export one to share.
+- [`site`](site.md) - add a site pack, switch sites, list and show them, export one to share.
 
 Two end-to-end walkthroughs put these together: [build and flash one
 board](device.md), and [operate a swarm over the air](swarm.md).

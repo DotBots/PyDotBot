@@ -106,9 +106,13 @@ dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 > your swarm. Running your own handful of DotBots? Pick any swarm
 > id - the example points `--conn` at our Inria Paris broker so it works out of
 > the box, but swap in your own broker once you have one. (On a shared testbed,
-> your admin gives you the broker and swarm id to use.) This writes
-> `./dotbot.toml`; commands run from this directory pick it up, so you don't
-> repeat the flags. Full schema: the [configuration reference][config-doc].
+> your admin gives you the broker and swarm id to use, or a site pack that
+> carries the broker: `dotbot site add <pack> --use`.) This writes
+> `./dotbot.toml`, with the broker as the site's connection and the swarm id
+> as your own; commands run from this directory pick it up, so you don't
+> repeat the flags. MQTT credentials go in `DOTBOT_MQTT_USER` /
+> `DOTBOT_MQTT_PASS`, with `DOTBOT_MQTT_HOST` naming the broker they are for.
+> Full schema: the [configuration reference][config-doc].
 
 The swarm mode also requires a special "sandbox" firmware in each DotBot.
 We also need a more powerful gateway firmware. Let's flash both - the network
