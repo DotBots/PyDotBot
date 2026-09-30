@@ -62,7 +62,9 @@ dependencies = [
     "pydotbot-utils >= 0.3.0",
     "swarmit[dashboard] >= 0.11.0",
     "toml           >= 0.10.2",
-    "tomlkit        >= 0.13.0",
+    # 0.15.0 writes invalid TOML when a key is added to or removed from an
+    # inline table, which site_toml does to edit a pack
+    "tomlkit        >= 0.13.0, != 0.15.0",
     # Runs the simulator's firmware control core. Majors ship monthly; the
     # loader is tested on 49 only, and the bound admits the next few on the
     # expectation that the small Engine/Module/Instance/Memory API it uses
