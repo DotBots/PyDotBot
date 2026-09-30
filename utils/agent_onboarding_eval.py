@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026-present Inria
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Agent-onboarding eval: can a coding agent, given only an installed wheel and
 one sentence, move a simulated DotBot?
 
@@ -102,17 +105,12 @@ def project_files_above(directory: Path) -> list[Path]:
 
 
 def agent_env(venv: Path, run_id: str, config: Path) -> dict:
-    """The environment with the fresh venv first, no other `dotbot`, and an
-    empty dotbot config in place of this machine's."""
+    """The environment with the fresh venv first on PATH, so its `dotbot` is
+    the one found, and an empty dotbot config in place of this machine's."""
     env = {
         k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV")
     }
-    paths = [
-        p
-        for p in env.get("PATH", "").split(os.pathsep)
-        if p and not (Path(p) / "dotbot").exists()
-    ]
-    env["PATH"] = os.pathsep.join([str(venv / "bin"), *paths])
+    env["PATH"] = os.pathsep.join([str(venv / "bin"), env.get("PATH", "")])
     env["VIRTUAL_ENV"] = str(venv)
     env["BROWSER"] = "true"
     env["DOTBOT_CONFIG"] = str(config)
@@ -246,30 +244,40 @@ def one_run(args, wheel: Path, index: int) -> dict:
             "{budget}", str(args.budget)
         )
     )
+    cmd[0] = shutil.which(cmd[0]) or cmd[0]
     transcript = run_dir / "transcript.jsonl"
     watch = PoseWatch(args.port)
     watch.start()
     started = time.monotonic()
-    with transcript.open("w") as out:
-        agent = subprocess.Popen(
-            cmd,
-            cwd=project,
-            env=agent_env(venv, run_id, config),
-            stdin=subprocess.DEVNULL,
-            stdout=out,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        try:
-            agent.wait(timeout=args.timeout)
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            timed_out = True
-    seconds = time.monotonic() - started
-    time.sleep(1)
-    watch.stop.set()
-    watch.join()
-    left = stop_marked(run_id)
+    agent = None
+    # The agent runs in its own session, so Ctrl-C here never reaches it
+    try:
+        with transcript.open("w") as out:
+            agent = subprocess.Popen(
+                cmd,
+                cwd=project,
+                env=agent_env(venv, run_id, config),
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                agent.wait(timeout=args.timeout)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                timed_out = True
+        seconds = time.monotonic() - started
+        time.sleep(1)
+    finally:
+        watch.stop.set()
+        watch.join()
+        left = stop_marked(run_id)
+        if agent is not None:
+            try:
+                agent.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
     summary = read_transcript(transcript)
     moved = watch.best()
     passed = moved > MOVED_MM and not summary["source_reads"] and not timed_out
@@ -331,6 +339,17 @@ def main() -> int:
         problems.append(f"project instructions above the workdir: {found}")
     if port_open(args.port):
         problems.append(f"port {args.port} is already in use")
+    if args.port != 8000 and port_open(8000):
+        problems.append(
+            "port 8000 is in use: the guide's commands target it, so the agent "
+            "could drive whatever serves it"
+        )
+    claude = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    for skill in (claude / "skills" / "dotbot", Path.home() / ".agents/skills/dotbot"):
+        if skill.exists():
+            problems.append(f"a dotbot skill is already installed: {skill}")
+    if (claude / "CLAUDE.md").exists():
+        print(f"note: the agent also reads {claude / 'CLAUDE.md'}", file=sys.stderr)
     if not Path("/proc/self/environ").exists():
         problems.append("no /proc: this eval runs on Linux only")
     if args.dry_run:
