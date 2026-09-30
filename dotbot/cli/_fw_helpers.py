@@ -24,15 +24,16 @@ Resolution order (first match wins):
 - SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
   `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
 - source checkouts (`resolve_repo`): the env var (`DOTBOT_FIRMWARE_REPO`,
-  `DOTBOT_SWARMIT_REPO`) → the config key (`[fw].firmware_repo`,
-  `[fw].swarmit_repo`), a relative value resolving against the directory of
-  the config file that set it → `repos/DotBot-firmware` / `repos/swarmit`
-  next to the config file in use → error.
+  `DOTBOT_SWARMIT_REPO`, `DOTBOT_MARI_REPO`) → the config key
+  (`[fw].firmware_repo`, `[fw].swarmit_repo`, `[fw].mari_repo`), a relative
+  value resolving against the directory of the config file that set it →
+  `repos/<name>` next to the config file in use → error.
 """
 
 import difflib
 import glob
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -66,8 +67,9 @@ BOARD_NAMES = BARE_TARGETS | SANDBOX_BOARDS
 
 # Valid `BUILD_CONFIG` values.
 CONFIGS = ("Debug", "Release")
-# swarmit releases ship Debug images; DotBot-firmware releases ship Release.
-DEFAULT_CONFIGS = {"swarmit": "Debug", "dotbot-firmware": "Release"}
+# The swarmit release ships Debug images, the Mari gateway included;
+# DotBot-firmware releases ship Release.
+DEFAULT_CONFIGS = {"swarmit": "Debug", "mari": "Debug", "dotbot-firmware": "Release"}
 DEFAULT_BOARD = "dotbot-v3"
 
 
@@ -142,19 +144,24 @@ def resolve_segger_dir() -> Path:
 
 @dataclass(frozen=True)
 class RepoSpec:
-    """How one source checkout is located: env var, config key, default dir."""
+    """How one source checkout is located: env var, config key, default dir.
+
+    `marker` is the file, relative to the checkout, that identifies it.
+    """
 
     env_var: str
     config_key: str
     dirname: str
+    marker: str = "Makefile"
 
 
 FIRMWARE_REPO = RepoSpec("DOTBOT_FIRMWARE_REPO", "firmware_repo", "DotBot-firmware")
 SWARMIT_REPO = RepoSpec("DOTBOT_SWARMIT_REPO", "swarmit_repo", "swarmit")
+MARI_REPO = RepoSpec("DOTBOT_MARI_REPO", "mari_repo", "mari", "firmware/Makefile")
 
 
 def resolve_repo(spec: RepoSpec) -> Path:
-    """Locate a source checkout (a directory holding a Makefile).
+    """Locate a source checkout (a directory holding `spec.marker`).
 
     env var → `[fw].<key>` (relative to the config file's directory) →
     `repos/<dirname>` next to the config file in use → error.
@@ -162,10 +169,10 @@ def resolve_repo(spec: RepoSpec) -> Path:
     env = os.environ.get(spec.env_var)
     if env:
         candidate = Path(env).expanduser()
-        if (candidate / "Makefile").is_file():
+        if (candidate / spec.marker).is_file():
             return candidate
         raise click.ClickException(
-            f"{spec.env_var}={env!r} does not contain a Makefile."
+            f"{spec.env_var}={env!r} does not contain {spec.marker}."
         )
     cfg, cfg_path = _loaded_config()
     base = Path(cfg_path).resolve().parent if cfg_path is not None else None
@@ -174,16 +181,16 @@ def resolve_repo(spec: RepoSpec) -> Path:
         candidate = Path(value).expanduser()
         if not candidate.is_absolute() and base is not None:
             candidate = base / candidate
-        if (candidate / "Makefile").is_file():
+        if (candidate / spec.marker).is_file():
             return candidate
         where = f" (set in {cfg_path})" if cfg_path is not None else ""
         raise click.ClickException(
             f"[fw].{spec.config_key}={value!r}{where} resolves to {candidate}, "
-            "which does not contain a Makefile."
+            f"which does not contain {spec.marker}."
         )
     if base is not None:
         candidate = base / "repos" / spec.dirname
-        if (candidate / "Makefile").is_file():
+        if (candidate / spec.marker).is_file():
             return candidate
     raise click.ClickException(
         f"Could not locate your {spec.dirname} checkout. Either:\n"
@@ -202,6 +209,11 @@ def resolve_firmware_repo() -> Path:
 def resolve_swarmit_repo() -> Path:
     """The swarmit checkout (see `resolve_repo`)."""
     return resolve_repo(SWARMIT_REPO)
+
+
+def resolve_mari_repo() -> Path:
+    """The mari checkout (see `resolve_repo`)."""
+    return resolve_repo(MARI_REPO)
 
 
 def suggest_close_match(name: str, candidates: Iterable[str]) -> str:
@@ -313,6 +325,7 @@ def run_make(
     rebuild: bool = False,
     quiet: bool = True,
     make_targets: Optional[list[str]] = None,
+    variables: Optional[dict[str, str]] = None,
     repo: Optional[Path] = None,
 ) -> float:
     """Invoke `make BUILD_TARGET=... BUILD_CONFIG=... [project|make_target]`.
@@ -333,7 +346,8 @@ def run_make(
     If `make_targets` is given, those are the make-level targets passed
     on the command line (e.g. `["clean"]`, `["artifacts"]`). Otherwise
     `project` is appended (or nothing, which means default `all` →
-    every project for the BUILD_TARGET).
+    every project for the BUILD_TARGET). `variables` are passed as
+    `NAME=value` and override the Makefile's own assignments.
 
     Returns elapsed wall-clock seconds. Raises `ClickException` on
     non-zero exit so callers can short-circuit.
@@ -350,6 +364,7 @@ def run_make(
     if quiet:
         cmd.append("QUIET=1")
     cmd.append(f"BUILD_MODE={'-rebuild' if rebuild else ''}")
+    cmd.extend(f"{name}={value}" for name, value in (variables or {}).items())
     if make_targets:
         cmd.extend(make_targets)
     elif project:
@@ -357,7 +372,7 @@ def run_make(
     if not quiet:
         # Verbose mode: print the make command so the user can copy/paste
         # it to reproduce outside the CLI.
-        click.echo(f"$ {' '.join(cmd)}", err=True)
+        click.echo(f"$ {shlex.join(cmd)}", err=True)
     t0 = time.perf_counter()
     rc = subprocess.call(cmd, cwd=repo, env=_make_env(segger))
     elapsed = time.perf_counter() - t0

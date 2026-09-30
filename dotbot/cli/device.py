@@ -57,18 +57,24 @@ def _probe_option(f):
     )(f)
 
 
-def _fw_version_option(source: str):
+def _fw_version_option(source: str, release_source: str | None = None):
+    release = (
+        f"a {release_source} release tag (that release carries the {source} " "images)"
+        if release_source
+        else "a release tag"
+    )
+
     def deco(f):
         return click.option(
             "--fw-version",
             "-f",
             default=None,
             help=(
-                f"Which {source} set to flash: a release tag, 'latest', a set "
-                "built by `dotbot fw build` ('local' or its --as name), or a "
-                "directory path (containing '/') of release-named files. "
-                "Default: the release pydotbot pins. A release missing from "
-                f"{DEFAULT_ARTIFACTS_DISPLAY}/ is fetched; nothing is built."
+                f"Which {source} images to flash: {release}, 'latest', a set "
+                f"built by `dotbot fw build {source}` ('local' or its --as "
+                "name), or a directory path (containing '/') of release-named "
+                "files. Default: the release pydotbot pins. A release missing "
+                f"from {DEFAULT_ARTIFACTS_DISPLAY}/ is fetched; nothing is built."
             ),
         )(f)
 
@@ -123,9 +129,7 @@ def flash(ctx, app, probe, board, bare, fw_version):
         if not image.is_file():
             raise click.ClickException(f"Firmware image not found: {image}")
     else:
-        image = resolve_app_artifact(
-            app, board=board, bare=bare, fw_version=fw_version
-        )
+        image = resolve_app_artifact(app, board=board, bare=bare, fw_version=fw_version)
     flash_app_image(image, board=board, sn_starting_digits=probe)
 
 
@@ -184,19 +188,19 @@ def flash_swarmit_sandbox(ctx, swarm_id, calibration_path, fw_version, probe):
     help=(
         "Mari TSCH schedule to put on the gateway: "
         f"{describe_schedules()}. The schedule is compiled into the net-core "
-        "image, so this selects the per-schedule image that Mari's "
-        "build-schedules.sh produces (`dotbot fw build` does not build those "
-        "yet). Omit it to flash whichever schedule the artifact was built with."
+        "image, so this selects the per-schedule image `dotbot fw build mari "
+        "--schedule` builds; releases carry none. Omit it to flash the default "
+        "net image, with whichever schedule it was built with."
     ),
 )
-@_fw_version_option("swarmit")
+@_fw_version_option("mari", release_source="swarmit")
 @_probe_option
 @click.pass_context
 def flash_mari_gateway(ctx, swarm_id, schedule, fw_version, probe):
     """Turn an nRF5340-DK into the swarm gateway (was `provision -d gateway`).
 
     Flashes the Mari gateway firmware (both cores) + writes the network
-    identity, from the swarmit set -f selects. (To run the host-side
+    identity, from the images -f selects. (To run the host-side
     UART<->MQTT bridge instead, use `dotbot run gateway`.)
     """
     from dotbot.firmware.flash import flash_role, normalize_network_id

@@ -407,7 +407,12 @@ def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home
 @pytest.fixture
 def repo_env(tmp_path, monkeypatch):
     """No checkout env vars, no user config file, a clean cwd."""
-    for var in ("DOTBOT_FIRMWARE_REPO", "DOTBOT_SWARMIT_REPO", "DOTBOT_CONFIG"):
+    for var in (
+        "DOTBOT_FIRMWARE_REPO",
+        "DOTBOT_SWARMIT_REPO",
+        "DOTBOT_MARI_REPO",
+        "DOTBOT_CONFIG",
+    ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", tmp_path / "no-user.toml")
     work = tmp_path / "work"
@@ -428,9 +433,7 @@ def _config_file(path: Path, body: str) -> Path:
     return path
 
 
-def test_relative_config_path_resolves_against_the_config_file(
-    repo_env, monkeypatch
-):
+def test_relative_config_path_resolves_against_the_config_file(repo_env, monkeypatch):
     ws = repo_env / "workspace"
     repo = _repo(ws / "checkouts" / "fw")
     cfg = _config_file(ws / "dotbot.toml", '[fw]\nfirmware_repo = "checkouts/fw"\n')
@@ -458,6 +461,18 @@ def test_default_is_repos_next_to_the_config_file(repo_env, monkeypatch):
     monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
     assert _fw_helpers.resolve_firmware_repo() == fw
     assert _fw_helpers.resolve_swarmit_repo() == sw
+
+
+def test_mari_checkout_is_found_by_its_firmware_makefile(repo_env, monkeypatch):
+    ws = repo_env / "workspace"
+    mari = ws / "repos" / "mari"
+    _repo(mari / "firmware")
+    cfg = _config_file(ws / "dotbot.toml", "")
+    monkeypatch.setenv("DOTBOT_CONFIG", str(cfg))
+    assert _fw_helpers.resolve_mari_repo() == mari
+    monkeypatch.setenv("DOTBOT_MARI_REPO", str(mari / "firmware"))
+    with pytest.raises(click.ClickException, match="firmware/Makefile"):
+        _fw_helpers.resolve_mari_repo()
 
 
 def test_default_uses_the_config_path_on_the_click_context(repo_env):

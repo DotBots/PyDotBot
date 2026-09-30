@@ -324,7 +324,9 @@ def flash_role(
     flashes both cores, writes the config page (magic + has_net_id +
     net_id [+ calibration, dotbot-v3 only]), then best-effort reads back
     net_id/device_id (never raises on readback failure). ``fw_version``
-    selects the swarmit set by the `-f` rule of `fetch.resolve_fw_dir`.
+    selects the set by the `-f` rule of `fetch.resolve_fw_dir`: a swarmit
+    release or set for the sandbox host; for the gateway, a swarmit release
+    (which carries the Mari gateway) or a mari set.
 
     ``schedule`` (gateway only) selects the per-schedule net-core image rather
     than the role's default one. The schedule is compiled into the image, so
@@ -347,20 +349,19 @@ def flash_role(
                 f"{describe_schedules()}."
             )
     net_asset = net_image_name(schedule) if schedule else assets["net"]
-    required = (assets["app"],) if schedule else (assets["app"], assets["net"])
-    fw_root, fw_version = resolve_fw_dir(
-        "swarmit", fw_version, bin_dir, required=required
-    )
-    if schedule is not None and not (fw_root / net_asset).exists():
-        raise click.ClickException(
-            f"No gateway net-core image for the {schedule} schedule: "
-            f"{fw_root / net_asset} is not there.\n"
-            "A swarmit release publishes a single gateway net-core image, and "
-            "`dotbot fw build` does not build the per-schedule images yet. "
-            "Build it by hand in your swarmit checkout, then copy it into a set:\n"
-            f"  - mari/firmware/build-schedules.sh {schedule}\n"
-            f"  - cp mari/firmware/Output/schedules/{net_asset} {fw_root}/\n"
-            "  - flash again with the same -f"
+    if role == "gateway":
+        build_args = "-a mari-gateway" + (f" --schedule {schedule}" if schedule else "")
+        fw_root, fw_version = resolve_fw_dir(
+            "mari",
+            fw_version,
+            bin_dir,
+            required=(assets["app"], net_asset),
+            build_args=build_args,
+            release_source="swarmit",
+        )
+    else:
+        fw_root, fw_version = resolve_fw_dir(
+            "swarmit", fw_version, bin_dir, required=(assets["app"], assets["net"])
         )
 
     if sn_starting_digits:

@@ -139,6 +139,7 @@ class FwSection(_Strict):
     segger_dir: str | None = None
     firmware_repo: str | None = None  # path to the DotBot-firmware clone
     swarmit_repo: str | None = None  # path to the swarmit clone
+    mari_repo: str | None = None  # path to the mari clone
 
 
 class DeviceSection(_Strict):

@@ -790,10 +790,10 @@ def test_flash_role_rejects_unknown_schedule_listing_the_valid_ones(tmp_path):
 
 def test_flash_role_missing_schedule_image_says_how_to_build_it(tmp_path, monkeypatch):
     """A schedule with no image stops before flashing, naming the image and
-    the script that produces it."""
+    the `fw build` line that produces it."""
     monkeypatch.setattr(flash, "pick_last_jlink_snr", lambda: "100200300")
-    (tmp_path / "swarmit-local").mkdir()
-    (tmp_path / "swarmit-local" / "03app_gateway_app-nrf5340-app.hex").write_text("")
+    (tmp_path / "mari-local").mkdir()
+    (tmp_path / "mari-local" / "03app_gateway_app-nrf5340-app.hex").write_text("")
     with pytest.raises(click.ClickException) as exc:
         flash.flash_role(
             "gateway",
@@ -804,14 +804,38 @@ def test_flash_role_missing_schedule_image_says_how_to_build_it(tmp_path, monkey
         )
     message = exc.value.format_message()
     assert "03app_gateway_net-tiny.hex" in message
-    assert "build-schedules.sh" in message
-    assert "does not build the per-schedule images yet" in message
-    assert "--local-root" not in message
+    assert "dotbot fw build mari -a mari-gateway --schedule tiny" in message
+
+
+def test_flash_role_schedule_from_a_release_says_releases_carry_none(
+    tmp_path, monkeypatch, fake_fetch, no_build
+):
+    """A swarmit release has only the default gateway net image; asking it for a
+    schedule points at the mari build without refetching the release."""
+    monkeypatch.setattr(flash, "pick_last_jlink_snr", lambda: "100200300")
+    release = _make_set(
+        tmp_path,
+        "0.9.0",
+        ("03app_gateway_app-nrf5340-app.hex", "03app_gateway_net-nrf5340-net.hex"),
+    )
+    (release / "manifest.json").write_text("{}")
+    with pytest.raises(click.ClickException) as exc:
+        flash.flash_role(
+            "gateway",
+            net_id=(0x1234, "1234"),
+            fw_version="0.9.0",
+            bin_dir=tmp_path,
+            schedule="big",
+        )
+    message = exc.value.format_message()
+    assert "swarmit release 0.9.0 does not publish 03app_gateway_net-big.hex" in message
+    assert "dotbot fw build mari -a mari-gateway --schedule big" in message
+    assert fake_fetch.calls == []
 
 
 def test_flash_role_programs_the_selected_schedule_image(tmp_path, monkeypatch):
     """--schedule programs 03app_gateway_net-<name>.hex, not the role's default."""
-    fw_root = tmp_path / "swarmit-local"
+    fw_root = tmp_path / "mari-local"
     fw_root.mkdir()
     for name in (
         "03app_gateway_app-nrf5340-app.hex",
@@ -881,6 +905,7 @@ def fake_fetch(monkeypatch):
         out.mkdir(parents=True, exist_ok=True)
         for f in fake.files:
             (out / f).write_text(version)
+        (out / "manifest.json").write_text("{}")
         return out
 
     fake.files = SWARMIT_ROLE_FILES
@@ -903,6 +928,39 @@ def test_no_f_is_the_pinned_release_even_when_a_local_set_exists(
     assert fake_fetch.calls == []
 
 
+def test_gateway_releases_come_from_swarmit_and_sets_from_mari(
+    tmp_path, fake_fetch, no_build
+):
+    gateway = ("03app_gateway_app-nrf5340-app.hex", "03app_gateway_net-nrf5340-net.hex")
+    _make_set(tmp_path, "local", gateway)  # a swarmit set is not where it looks
+    mari_local = _make_set(tmp_path, "local", gateway, source="mari")
+    pinned = _make_set(tmp_path, "0.9.0", gateway)
+
+    def resolve(value):
+        return fetch.resolve_fw_dir(
+            "mari", value, tmp_path, required=gateway, release_source="swarmit"
+        )
+
+    assert resolve("local") == (mari_local, "local")
+    assert resolve(None) == (pinned, "0.9.0")
+    assert resolve("0.9.0") == (pinned, "0.9.0")
+    with pytest.raises(click.ClickException) as exc:
+        resolve("mine")
+    assert "dotbot fw build mari --as mine" in exc.value.format_message()
+    assert "dotbot fw fetch swarmit -f <tag>" in exc.value.format_message()
+    assert fake_fetch.calls == []
+
+
+def test_a_complete_release_missing_a_file_is_not_refetched(
+    tmp_path, fake_fetch, no_build
+):
+    release = _make_set(tmp_path, "0.9.0", SWARMIT_ROLE_FILES[:1])
+    (release / "manifest.json").write_text("{}")
+    with pytest.raises(click.ClickException, match="does not publish"):
+        fetch.resolve_fw_dir("swarmit", "0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
+    assert fake_fetch.calls == []
+
+
 def test_a_missing_release_is_fetched(tmp_path, fake_fetch, no_build):
     root, label = fetch.resolve_fw_dir(
         "swarmit", "0.8.0", tmp_path, required=SWARMIT_ROLE_FILES
@@ -911,9 +969,7 @@ def test_a_missing_release_is_fetched(tmp_path, fake_fetch, no_build):
     assert fake_fetch.calls == [("swarmit", "0.8.0")]
 
 
-def test_a_release_missing_a_required_file_is_refetched(
-    tmp_path, fake_fetch, no_build
-):
+def test_a_release_missing_a_required_file_is_refetched(tmp_path, fake_fetch, no_build):
     _make_set(tmp_path, "0.9.0", SWARMIT_ROLE_FILES[:1])
     fetch.resolve_fw_dir("swarmit", "0.9.0", tmp_path, required=SWARMIT_ROLE_FILES)
     assert fake_fetch.calls == [("swarmit", "0.9.0")]
@@ -998,7 +1054,9 @@ def _fake_hardware(monkeypatch, programmed):
     monkeypatch.setattr(flash, "read_net_id", lambda snr=None: "0100")
     monkeypatch.setattr(flash, "read_device_id", lambda snr=None: "BDF2B04BC00D2725")
     monkeypatch.setattr(flash, "reset_device", lambda snr=None: None)
-    monkeypatch.setattr(flash, "create_config_hex", lambda dest, page: dest.write_text(""))
+    monkeypatch.setattr(
+        flash, "create_config_hex", lambda dest, page: dest.write_text("")
+    )
 
 
 def test_flash_swarmit_sandbox_latest_flashes_the_fetched_tag(
@@ -1010,7 +1068,15 @@ def test_flash_swarmit_sandbox_latest_flashes_the_fetched_tag(
     _fake_hardware(monkeypatch, programmed)
     result = runner.invoke(
         device_cmd,
-        ["flash-swarmit-sandbox", "--swarm-id", "0100", "-f", "latest", "--probe", "77"],
+        [
+            "flash-swarmit-sandbox",
+            "--swarm-id",
+            "0100",
+            "-f",
+            "latest",
+            "--probe",
+            "77",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert programmed["app"] == tmp_path / "swarmit-0.9.1" / "bootloader-dotbot-v3.hex"
@@ -1025,6 +1091,7 @@ def test_flash_mari_gateway_from_a_named_set(
         tmp_path,
         "test-set",
         ("03app_gateway_app-nrf5340-app.hex", "03app_gateway_net-nrf5340-net.hex"),
+        source="mari",
     )
     programmed = {}
     _fake_hardware(monkeypatch, programmed)
@@ -1059,9 +1126,12 @@ def test_device_flash_resolves_the_sandboxed_app_by_default(
         lambda image, **kw: flashed.append(image),
     )
     assert runner.invoke(device_cmd, ["flash", "dotbot", "-f", "local"]).exit_code == 0
-    assert runner.invoke(
-        device_cmd, ["flash", "dotbot", "-f", "local", "--bare"]
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            device_cmd, ["flash", "dotbot", "-f", "local", "--bare"]
+        ).exit_code
+        == 0
+    )
     assert flashed == [
         local / "dotbot-sandbox-dotbot-v3.bin",
         local / "dotbot-dotbot-v3.hex",
@@ -1197,3 +1267,14 @@ def test_fetch_source_flag_is_gone():
     res = CliRunner().invoke(fw_cmd, ["fetch", "-S", "swarmit"])
     assert res.exit_code != 0
     assert "--local-root" not in CliRunner().invoke(fw_cmd, ["fetch", "--help"]).output
+
+
+def test_fetch_takes_the_release_sources_and_says_where_the_gateway_is():
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    res = CliRunner().invoke(fw_cmd, ["fetch", "mari"])
+    assert res.exit_code != 0
+    assert "'mari' is not one of" in res.output
+    help_text = " ".join(CliRunner().invoke(fw_cmd, ["fetch", "--help"]).output.split())
+    assert "Mari gateway" in help_text
+    assert "dotbot fw build mari --schedule" in help_text

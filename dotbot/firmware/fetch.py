@@ -28,8 +28,8 @@ import click
 
 GITHUB_API = "https://api.github.com/repos"
 # Firmware release sources. swarmit ships the swarm system images (bootloader
-# + mari netcore + mari gateway); DotBot-firmware ships the bare apps (.hex)
-# and the sandbox apps (.bin). Each is cached in its own <source>-<version>/
+# + netcore + the Mari gateway); DotBot-firmware ships the bare apps (.hex)
+# and the sandbox apps (.bin). Mari's releases publish no firmware. Each is cached in its own <source>-<version>/
 # subdir of the artifacts cache so versions and provenance never collide.
 RELEASE_SOURCES = {
     "swarmit": "DotBots/swarmit",
@@ -80,17 +80,27 @@ def _missing(root: Path, required) -> list[str]:
 
 
 def _release_dir(
-    source: str, tag: str, bin_dir: Path, required, build_args: str | None = None
+    release_source: str,
+    tag: str,
+    bin_dir: Path,
+    required,
+    build_source: str,
+    build_args: str | None = None,
 ) -> Path:
-    root = resolve_fw_root(bin_dir, source, tag)
-    if not root.is_dir() or _missing(root, required):
-        click.echo(f"[INFO] {source} {tag} is not cached in {root}; fetching...")
-        root = fetch_assets(source, tag, bin_dir)
+    root = resolve_fw_root(bin_dir, release_source, tag)
+    # A fetched release has a manifest; without one the directory is absent
+    # or a partial download.
+    if _missing(root, required) and not (root / "manifest.json").is_file():
+        click.echo(
+            f"[INFO] {release_source} {tag} is not cached in {root}; fetching..."
+        )
+        root = fetch_assets(release_source, tag, bin_dir)
     missing = _missing(root, required)
     if missing:
         raise click.ClickException(
-            f"{source} release {tag} does not publish {', '.join(missing)}.\n"
-            f"  - build it: {_build_line(source, 'local', build_args)}, "
+            f"{release_source} release {tag} does not publish "
+            f"{', '.join(missing)}.\n"
+            f"  - build it: {_build_line(build_source, 'local', build_args)}, "
             "then pass -f local"
         )
     return root
@@ -103,6 +113,7 @@ def resolve_fw_dir(
     *,
     required=(),
     build_args: str | None = None,
+    release_source: str | None = None,
 ) -> tuple[Path, str]:
     """The directory a flash command reads ``source`` firmware from, and its label.
 
@@ -115,13 +126,19 @@ def resolve_fw_dir(
     A release tag missing from the cache is fetched; nothing is ever built.
     ``required`` names the files that must be present; ``build_args`` (e.g.
     ``-a dotbot``) completes the `dotbot fw build` line an error suggests.
+    ``release_source`` is the source whose releases carry ``source``'s images
+    when that is another one (``mari``: ``swarmit``); tags then name its
+    releases, while set names still name ``<source>-<set>/``.
     """
+    rel = release_source or source
+
+    def release(tag: str) -> Path:
+        return _release_dir(rel, tag, bin_dir, required, source, build_args)
+
     if fw_version is None:
-        tag = pinned_version(source)
-        click.echo(
-            f"[INFO] no -f given: using the {source} release pydotbot pins, {tag}"
-        )
-        return _release_dir(source, tag, bin_dir, required, build_args), tag
+        tag = pinned_version(rel)
+        click.echo(f"[INFO] no -f given: using the {rel} release pydotbot pins, {tag}")
+        return release(tag), tag
     if "/" in fw_version or os.sep in fw_version:
         path = Path(fw_version).expanduser()
         if not path.is_dir():
@@ -133,14 +150,11 @@ def resolve_fw_dir(
             )
         return path.resolve(), path.resolve().name
     if fw_version == "latest":
-        tag = resolve_latest_version(source)
-        click.echo(f"[INFO] latest {source} release: {tag}")
-        return _release_dir(source, tag, bin_dir, required, build_args), tag
+        tag = resolve_latest_version(rel)
+        click.echo(f"[INFO] latest {rel} release: {tag}")
+        return release(tag), tag
     if is_release_tag(fw_version):
-        return (
-            _release_dir(source, fw_version, bin_dir, required, build_args),
-            fw_version,
-        )
+        return release(fw_version), fw_version
     root = resolve_fw_root(bin_dir, source, fw_version)
     if not root.is_dir():
         raise click.ClickException(
@@ -148,7 +162,7 @@ def resolve_fw_dir(
             "-f takes a release tag, 'latest', a set built by `dotbot fw build`, "
             "or a directory path containing '/'.\n"
             f"  - build it: {_build_line(source, fw_version, build_args)}\n"
-            f"  - or fetch a release: dotbot fw fetch {source} -f <tag>"
+            f"  - or fetch a release: dotbot fw fetch {rel} -f <tag>"
         )
     missing = _missing(root, required)
     if missing:
@@ -187,6 +201,17 @@ def _short_path(path: Path) -> str:
     return rel if not rel.startswith("..") else str(path)
 
 
+def _ssl_context() -> ssl.SSLContext:
+    """TLS context with certifi's CA bundle.
+
+    A python.org Python on macOS has no system CA store wired in, so the
+    default context fails with CERTIFICATE_VERIFY_FAILED.
+    """
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def download_file(url: str, dest: Path, *, retries: int = 3) -> int:
     """Download ``url`` to ``dest``; return the number of bytes written.
 
@@ -201,17 +226,6 @@ def download_file(url: str, dest: Path, *, retries: int = 3) -> int:
                 if status != 200:
                     raise click.ClickException(f"HTTP {status} while downloading {url}")
                 data = resp.read()
-def _ssl_context() -> ssl.SSLContext:
-    """TLS context with certifi's CA bundle.
-
-    A python.org Python on macOS has no system CA store wired in, so the
-    default context fails with CERTIFICATE_VERIFY_FAILED.
-    """
-    import certifi
-
-    return ssl.create_default_context(cafile=certifi.where())
-
-
             dest.write_bytes(data)
             return len(data)
         except urllib.error.HTTPError as exc:
