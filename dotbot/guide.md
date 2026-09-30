@@ -24,7 +24,8 @@ Rules:
   picked from a list or a scan.
 - Stop everything: `curl -X DELETE localhost:8000/controller/dotbots/waypoints`
   stops every known robot where it stands. Direct drive stops by itself.
-- Near people, keep `max_speed` at 300 mm/s or less.
+- Near people, keep `max_speed` at 300 mm/s or less. It caps waypoint
+  driving only; `move_raw` is not limited by it.
 - Always pass `--headless` and prefix `BROWSER=true`; never open a browser.
 - Read the pose back from `GET /controller/dotbots` before saying a robot moved.
 - Show the user every command you ran (a CLI line or a curl) to run themselves.
@@ -44,8 +45,11 @@ curl -s localhost:8000/controller/dotbots
 ```
 
 Each robot has an `address` (16 hex digits, e.g. `B0B0F00D33333333`) and a
-`pose`: `x` and `y` in millimetres, `heading_deg` in degrees. A person can
-watch at http://localhost:8000/console/ (the web console).
+`pose`: `x` and `y` in millimetres, `heading_deg` in degrees. `pose` is the
+midpoint of the wheel axle, which is the point waypoints steer. `lh2_position`
+is the Lighthouse photodiode, which sits 53.5 mm ahead of the axle on a
+DotBot v3, so the two always differ by that much. A person can watch at
+http://localhost:8000/console/ (the web console).
 
 ## 2. Move one robot
 
@@ -78,14 +82,16 @@ Stop one robot, or all of them without `?address=`:
 `curl -X DELETE "localhost:8000/controller/dotbots/waypoints?address=$ADDR"`
 
 `move_raw` drives the wheels directly (`left_y`, `right_y`: -100 to 100, dead
-below 30), but only for 0.2 s: a single curl nudges the robot and it stops.
-Resend it every 0.1 s, as `dotbot run demo circle` does, or use waypoints.
+below 30), but the robot stops about half a second after the last command: a
+single curl moves it a short way and it stops. Resend it every 0.1 s, as
+`dotbot run demo circle` does, or use waypoints.
 
 ## 3. The live API
 
 Ask the API, then read this for what it will not say. `/openapi.json` is the
 full schema; Swagger is at http://localhost:8000/api (not `/docs`). Not in it:
-units are mm and mm/s, `move_raw` lasts 0.2 s, and `status` is 0 active, 1
+units are mm and mm/s, `move_raw` stops about 0.5 s after the last command,
+and `status` is 0 active, 1
 inactive, 2 lost. To watch instead of polling: the WebSocket
 `/controller/ws/stream`.
 
@@ -116,20 +122,22 @@ Packaged scenarios, each run against a controller or simulator on port 8000:
 dotbot run demo --list                                # the built-in demos
 dotbot run demo circle                                # drive one robot in a circle
 python -m dotbot.examples.motions.motions -m square   # also circle, infinity, ...
-python -m dotbot.examples.charging_station.charging_station
 ```
 
-The other scenarios (labyrinth, work_and_charge, minimum_naming_game) each
-need their own `dotbot run simulator --simulator-init-state <file>`: see the
-README beside each in the installed `dotbot/examples/`.
+The other scenarios need more setup: charging_station needs a site with a
+field and a staging area (`dotbot config init` writes one), and labyrinth,
+work_and_charge and minimum_naming_game each need their own
+`dotbot run simulator --simulator-init-state <file>`. See the README beside
+each in the installed `dotbot/examples/`.
 
 ## 6. When it does not work
 
-- A robot nudged and stopped: that is `move_raw` ending after 0.2 s. Resend
-  it faster, or use waypoints.
+- A robot moved briefly and stopped: that is `move_raw` ending about 0.5 s
+  after the last command. Resend it faster, or use waypoints.
 - No robots listed, or connection refused: no controller or simulator is
   running on that port.
-- A 422 on waypoints: a point is outside the site; check `GET /controller/site`.
+- A 422 on waypoints: a point is outside the site (`GET /controller/site`),
+  or the body is malformed; the response's `detail` says which.
 
 ## 7. Where next
 

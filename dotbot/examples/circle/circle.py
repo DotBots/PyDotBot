@@ -40,7 +40,7 @@ def main(base, seconds):
     if not bots:
         raise click.ClickException(
             f"No DotBots at {base}. The simulator (`dotbot run simulator`) "
-            "spawns five; on hardware, flash and connect a bot first."
+            "spawns robots; on hardware, flash and connect a bot first."
         )
 
     address = bots[0]["address"]
