@@ -294,10 +294,10 @@ def run_embuild(
     return elapsed
 
 
-def _check_emprojects(steps: list[EmBuildStep], hint: str = "") -> None:
+def _check_emprojects(steps: list[EmBuildStep]) -> None:
     for step in steps:
         if not (step.cwd / step.emproject).is_file():
-            raise click.ClickException(f"{step.cwd / step.emproject} not found{hint}.")
+            raise click.ClickException(f"{step.cwd / step.emproject} not found.")
 
 
 def run_steps(

@@ -516,7 +516,7 @@ def list_artifacts():
     echo_artifact_path(root, action="listing")
     sets = sorted(p for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
     if not sets:
-        click.echo("(nothing cached yet — run `dotbot fw fetch` or `dotbot fw build`)")
+        click.echo("(nothing cached yet: run `dotbot fw fetch` or `dotbot fw build`)")
         return
     for directory in sets:
         images = sorted(
