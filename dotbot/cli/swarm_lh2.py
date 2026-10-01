@@ -301,7 +301,9 @@ def _await_point(session, stream, arrivals: queue.Queue):
     help=(
         "With --spin: radius of the photodiode's circle in a spin, in mm, "
         "which sets the scale of every distance. Default: the robot model's "
-        "measured value (51.4 mm on a DotBot v3)."
+        "measured value (51.4 mm on a DotBot v3, under the 53.5 mm from "
+        "photodiode to axle because the caster drags the turning point "
+        "forward). Re-measure it on a different floor."
     ),
 )
 @click.pass_context

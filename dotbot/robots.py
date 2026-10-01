@@ -107,7 +107,8 @@ class RobotGeometry:
     # The plan-view square for anything that needs a size rather than a shape.
     envelope_mm: float
     # Radius of the photodiode's circle in a spin in place, as measured: the
-    # scale of a spin calibration.
+    # scale of a spin calibration. Under the photodiode-to-axle distance
+    # because the caster moves the turning point; it depends on the floor.
     spin_radius_mm: float
 
     def __post_init__(self):

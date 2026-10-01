@@ -175,8 +175,16 @@ minimum-area rectangle around their spin centres, grown by what a spinning
 robot sweeps. The calibration's frame is aligned to that field, zero at its
 top-left and +y along the robots' starting heading (along the field's long side
 when the robots started facing different ways), not to the site's anchor, so
-`dotbot site init` turns it into a site of its own. `--spin-radius MM` overrides the robot model's measured radius
-(51.4 mm on a DotBot v3), which every distance scales with.
+`dotbot site init` turns it into a site of its own.
+
+Every distance scales with the radius of the photodiode's circle, 51.4 mm by
+default on a DotBot v3, not the 53.5 mm from photodiode to axle midpoint: a
+robot spinning in place does not pivot exactly on the axle, since the caster
+drags and moves the turning point toward the photodiode (measured on carpet
+against a camera registered to floor markers). That depends on the robot and the
+floor, so on a different surface measure it once (camera or tape) and pass
+`--spin-radius MM`; a single robot whose caster binds differently fails the
+peer-size check and is left out.
 
 ## Two web servers - don't mix them up
 
