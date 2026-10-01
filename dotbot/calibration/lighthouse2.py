@@ -38,7 +38,7 @@ from dotbot.site import SITE_DEFAULT, Site
 CALIBRATION_DIR = Path.home() / ".dotbot"
 CALIBRATION_SUBDIR = "calibrations"
 CALIBRATION_TOML_GLOB = "calibration-*.toml"
-CALIBRATION_SCHEMA_VERSION = 2
+CALIBRATION_SCHEMA_VERSION = 3
 
 # [x_min, y_min, x_max, y_max] in frame mm: outside it a reported position is
 # implausible and the bot drops it. A site with a known extent supplies its
@@ -226,7 +226,11 @@ class Calibration:
 
 
 def calculate_camera_point(counts: LH2Counts) -> np.ndarray:
-    """Turn one station's two sweep counts into a camera point."""
+    """Turn one station's two sweep counts into a pinhole camera point.
+
+    The sweep angles give tan(azimuth) and tan(elevation); the point on the
+    unit image plane is (-tan(azimuth), -tan(elevation) / cos(azimuth)).
+    """
     period = LH_PERIODS[counts.lh_index]
 
     a1 = (counts.count1 * 8 / period) * 2 * math.pi
@@ -237,6 +241,7 @@ def calculate_camera_point(counts: LH2Counts) -> np.ndarray:
         cam_y = -math.sin(a2 / 2 - a1 / 2 - 60 * math.pi / 180) / math.tan(math.pi / 6)
     else:
         cam_y = -math.sin(a1 / 2 - a2 / 2 - 60 * math.pi / 180) / math.tan(math.pi / 6)
+    cam_y *= math.sqrt(1 + cam_x * cam_x)
 
     return np.asarray([cam_x, cam_y], dtype=np.float64)
 
@@ -249,7 +254,8 @@ def counts_for_camera_point(cam_x: float, cam_y: float, lh_index: int = 0) -> LH
     """
     period = LH_PERIODS[lh_index]
     half_sum = math.atan(-cam_x)
-    half_diff = math.pi / 3 + math.asin(-cam_y * math.tan(math.pi / 6))
+    tan_elevation = cam_y / math.sqrt(1 + cam_x * cam_x)
+    half_diff = math.pi / 3 + math.asin(-tan_elevation * math.tan(math.pi / 6))
     a1, a2 = half_sum - half_diff, half_sum + half_diff
     while a1 < 0:
         a1 += math.pi
@@ -571,7 +577,7 @@ def toml_escape(text: str) -> str:
 
 
 def render_calibration(calibration: Calibration) -> str:
-    """The schema 2 file, as text."""
+    """The schema 3 file, as text."""
     site = calibration.site
     out = [
         f"schema_version = {CALIBRATION_SCHEMA_VERSION}",
@@ -630,10 +636,10 @@ def render_calibration(calibration: Calibration) -> str:
 
 
 def read_calibration_file(path: Path) -> Calibration:
-    """Parse a schema 2 calibration file.
+    """Parse a schema 3 calibration file.
 
-    A file of any other schema version is rejected: there is no upgrade path,
-    because a schema 1 file carries a packed payload and no site.
+    A file of any other schema version is rejected: schema 2 homographies
+    were solved on another camera point, and schema 1 has no site.
     """
     path = Path(path)
     with open(path, "rb") as handle:

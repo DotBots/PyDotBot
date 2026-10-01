@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""A schema 2 calibration and the bytes it reaches a robot as.
+"""A schema 3 calibration and the bytes it reaches a robot as.
 
 swarmit's `tests/lh2_wire_fixture.py` carries the same file and the same
 message bytes: the two packers must agree, so keep the copies identical.
 """
 
-FIXTURE_ID = "ac893d2d85e3068c"
+FIXTURE_ID = "19ed0cdb738cdfe5"
 
 FIXTURE_TOML = """\
-schema_version = 2
+schema_version = 3
 
 [metadata]
 created_at = "2026-09-10T09:12:00Z"
-id = "ac893d2d85e3068c"
+id = "19ed0cdb738cdfe5"
 robot = "dotbot-v3"
 tag = "arena-relay"
 
@@ -57,18 +57,18 @@ MESSAGE_HEX = [
     (
         "0200000000000000cd6cbe44cdcc18c2cd2c7d449a9927429a79bf4433137744"
         "88855a3e7c61b2bd0000803f0000000000000000020d0000a00f000063343035"
-        "2d6172656e61000000000000ac893d2d85e3068c"
+        "2d6172656e6100000000000019ed0cdb738cdfe5"
     ),
     (
         "02000000010000000008b9c400004841006038450000a6c100c4bb4400a07c44"
         "000040be0000803d0000803f0000000000000000020d0000a00f000063343035"
-        "2d6172656e61000000000000ac893d2d85e3068c"
+        "2d6172656e6100000000000019ed0cdb738cdfe5"
     ),
 ]
 
 # The same file without [site] and [validity], so each reader's defaults reach
 # the wire: site "default" and valid_mm [0, 0, 10000, 10000].
-DEFAULTS_FIXTURE_ID = "608c3c1dda5e30f5"
+DEFAULTS_FIXTURE_ID = "999942290d381fd8"
 
 DEFAULTS_FIXTURE_TOML = (
     FIXTURE_TOML.replace(
@@ -84,11 +84,11 @@ DEFAULTS_MESSAGE_HEX = [
     (
         "0200000000000000cd6cbe44cdcc18c2cd2c7d449a9927429a79bf4433137744"
         "88855a3e7c61b2bd0000803f0000000000000000102700001027000064656661"
-        "756c74000000000000000000608c3c1dda5e30f5"
+        "756c74000000000000000000999942290d381fd8"
     ),
     (
         "02000000010000000008b9c400004841006038450000a6c100c4bb4400a07c44"
         "000040be0000803d0000803f0000000000000000102700001027000064656661"
-        "756c74000000000000000000608c3c1dda5e30f5"
+        "756c74000000000000000000999942290d381fd8"
     ),
 ]

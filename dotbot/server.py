@@ -699,7 +699,7 @@ async def calibration_session_redo():
 @api.post(
     path="/controller/calibration/session/save",
     response_model=DotBotCalibrationSavedModel,
-    summary="Solve the session and write its schema 2 calibration file",
+    summary="Solve the session and write its schema 3 calibration file",
     tags=["calibration"],
 )
 async def calibration_session_save(request: DotBotCalibrationSaveModel):

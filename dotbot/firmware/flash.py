@@ -52,7 +52,7 @@ CONFIG_ADDR = 0x0103F800
 # swarmit's `swarmit_config_t` (SWARMIT_CONFIG_MAGIC_VALUE). Each value must
 # match its firmware's.
 CONFIG_MAGIC_BY_ROLE = {
-    "dotbot-v3": 0x5753524E,
+    "dotbot-v3": 0x5753524F,
     "gateway": 0x5753524D,
 }
 CONFIG_MANIFEST_NAME = "config-manifest.json"
@@ -163,7 +163,7 @@ def make_config_hex_path(
 
 
 def load_calibration_file(path: Path):
-    """Read a schema 2 calibration file, refused when a robot could not take it."""
+    """Read a schema 3 calibration file, refused when a robot could not take it."""
     from dotbot.calibration.lighthouse2 import (
         pushable_stations,
         read_calibration_file,

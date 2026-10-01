@@ -78,7 +78,7 @@ def _press(lh_index: int, count1: int, count2: int, n: int = 1) -> ButtonCapture
     )
 
 
-def _info(version=2, site="", calibration_id=""):
+def _info(version=3, site="", calibration_id=""):
     """A robot's device info as swarmit decodes it."""
     return SimpleNamespace(
         info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
@@ -115,7 +115,7 @@ class _FakeClient:
         for addr, info in self.infos.items():
             if devices is not None and addr not in devices:
                 continue
-            if info is not None and info.info_version >= 2:
+            if info is not None and info.info_version >= 3:
                 info.lh2_site_name, info.lh2_calibration_id = message_site(
                     payload[:LH2_CALIBRATION_MESSAGE_BYTES]
                 )
@@ -443,7 +443,7 @@ async def test_four_points_carry_a_residual_per_station_and_no_expected_error(
 
 
 @pytest.mark.asyncio
-async def test_save_writes_a_schema_2_file_under_the_site_directory(
+async def test_save_writes_a_schema_3_file_under_the_site_directory(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
@@ -456,7 +456,7 @@ async def test_save_writes_a_schema_2_file_under_the_site_directory(
     path = tmp_path / "calibrations" / "c405-arena" / saved["path"].split("/")[-1]
     assert path.exists()
     body = path.read_text(encoding="utf-8")
-    assert "schema_version = 2" in body
+    assert "schema_version = 3" in body
     assert f'id = "{saved["id"]}"' in body
     assert saved["id8"] == saved["id"][:8]
 

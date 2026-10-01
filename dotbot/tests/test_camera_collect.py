@@ -701,7 +701,7 @@ def test_the_two_loaders_refuse_each_other(frame, tmp_path, monkeypatch):
 
     lighthouse_path = camera_path.parent / "calibration-2026-09-15T13-42-00Z-abc.toml"
     lighthouse_path.write_text(
-        'schema_version = 2\n\n[metadata]\nid = "abcdef0123456789"\n\n'
+        'schema_version = 3\n\n[metadata]\nid = "abcdef0123456789"\n\n'
         '[site]\nname = "c405-arena"\nanchor = ""\n',
         encoding="utf-8",
     )

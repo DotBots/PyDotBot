@@ -279,7 +279,7 @@ class CalibrationSession:
         return self.stations
 
     def save(self, tag: str | None = None) -> Calibration:
-        """Solve if needed, write the schema 2 file, and read back its id."""
+        """Solve if needed, write the schema 3 file, and read back its id."""
         placement = self.placement()
         manager = self.manager(placement)
         self.stations = manager.solve()

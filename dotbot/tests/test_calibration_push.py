@@ -46,7 +46,7 @@ def _lab(tmp_path):
     LAB = load_discovered(environ={}, start_dir=lab)
 
 
-def _info(version=2, site="", calibration_id="", gen=1):
+def _info(version=3, site="", calibration_id="", gen=1):
     info = SimpleNamespace(
         info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
     )
@@ -156,7 +156,7 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
     # Device info is read once for the gate and never polled after the push.
     assert fleet.refreshed == [None]
     assert "2 robot(s) hold another id" in result.output
-    assert "Still not on ac893d2d (1), push again: LAGGARD" in result.output
+    assert "Still not on 19ed0cdb (1), push again: LAGGARD" in result.output
 
 
 def test_a_push_checked_for_named_robots_goes_to_exactly_them(calibration_file):
@@ -192,11 +192,13 @@ def test_push_to_another_site_is_refused_without_site_changed(
     moved = _push(monkeypatch, fleet, str(calibration_file), "--site-changed")
     assert moved.exit_code == 0, moved.output
     assert len(fleet.pushed) == 1
-    assert "Every robot reports ac893d2d." in moved.output
+    assert "Every robot reports 19ed0cdb." in moved.output
 
 
-def test_push_refuses_a_robot_on_older_firmware(monkeypatch, calibration_file):
-    fleet = _Fleet({"OLD": _info(1)})
+@pytest.mark.parametrize("version", [1, 2])
+def test_push_refuses_a_robot_on_older_firmware(monkeypatch, calibration_file, version):
+    # Version 2 is a net core that drops calibrations sent as 0xA3.
+    fleet = _Fleet({"OLD": _info(version)})
     result = _push(monkeypatch, fleet, str(calibration_file))
     assert result.exit_code != 0
     assert "OLD" in result.output

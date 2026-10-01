@@ -10,7 +10,7 @@ subcommands:
 - `collect` - walk the robots through a placement's points, take a
               raw-count capture per point over the air (the robot's button,
               or Enter with --device), solve every visible station by least
-              squares, and save a schema 2 calibration under
+              squares, and save a schema 3 calibration under
               ~/.dotbot/calibrations/<site>/.
 - `push <path|id>` - check the robots' device info, send a saved
               calibration over the air, and list the robots still on

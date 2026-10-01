@@ -13,7 +13,7 @@ single-device calibration over either transport.
 Subcommands:
 
 - `collect`  — capture LH2 counts via the Textual TUI from a single
-               serial-attached nRF DK; writes a schema 2 calibration file
+               serial-attached nRF DK; writes a schema 3 calibration file
                under ~/.dotbot/calibrations/<site>/.
 
 Cable-free, over-the-air calibration of a DotBot in the arena lives under
