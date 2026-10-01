@@ -377,12 +377,13 @@ A broker login comes from one of two places:
   one-off runs. These go to a broker only when:
   - you named it yourself: a flag, an env var, or one of your config files;
   - it is the broker of a pack you approved at `dotbot site add`, the
-    question it asks before adding a pack that names a broker;
+    question it asks before adding a pack that names a broker, or the one
+    you gave `dotbot config init --conn`;
   - it is the broker of a pack beside your project, or one you named by path;
   - it runs on this machine (`localhost`).
 
-  `dotbot site add` records the broker you approved in the pack's
-  `.approved.toml`. If an installed pack's broker later differs, the env's
+  `dotbot site add` and `dotbot config init` record that broker in the
+  pack's `.approved.toml`. If an installed pack's broker later differs, the env's
   login is withheld, and a one-line warning names the
   `dotbot site add --force <pack>` that approves it again.
 
