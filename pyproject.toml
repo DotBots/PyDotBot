@@ -73,7 +73,7 @@ dependencies = [
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
 license = { text="BSD" }
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 classifiers = [
     'Programming Language :: C',
     "Programming Language :: Python :: 3",
