@@ -170,9 +170,12 @@ dotbot swarm -d <addresses> flash -y remote-control
 
 Spread the robots about 250 mm apart over the area to calibrate; at least 3
 circles must pass the health check (round, and the size of their peers) and 8
-or more hold the frame better. The calibration's frame is the rectangle around
-the robots, not the site's anchor, so `dotbot site init` turns it into a site
-of its own. `--spin-radius MM` overrides the robot model's measured radius
+or more hold the frame better. The robots define a **field**: the
+minimum-area rectangle around their spin centres, grown by what a spinning
+robot sweeps. The calibration's frame is aligned to that field, zero at its
+top-left and +y along the robots' starting heading (along the field's long side
+when the robots started facing different ways), not to the site's anchor, so
+`dotbot site init` turns it into a site of its own. `--spin-radius MM` overrides the robot model's measured radius
 (51.4 mm on a DotBot v3), which every distance scales with.
 
 ## Two web servers - don't mix them up

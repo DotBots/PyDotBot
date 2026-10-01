@@ -707,8 +707,10 @@ def _render_site_pack(site, source_id8: str) -> str:
 def init(ctx, name, calibration, size, force):
     """Write a site pack NAME around the robots of a spin calibration.
 
-    The field is the rectangle the robots stood in when they spun, grown by a
-    robot's footprint, and the site's frame is the calibration's. The pack
+    The field is the minimum-area rectangle around the robots' spin centres,
+    grown by what a spinning robot sweeps; the calibration's frame is aligned
+    to it, zero at its top-left. The site is the field, or with --size a site
+    that big with the field centred in it, in the same frame. The pack
     goes into the nearest site home (sites/ beside the project's dotbot.toml,
     else ~/.dotbot/sites/), and the calibration, re-expressed in the site,
     under ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.

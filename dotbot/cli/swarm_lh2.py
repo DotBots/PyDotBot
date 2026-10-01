@@ -287,7 +287,8 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "Calibrate from robots spinning in place where they stand, with no "
         "marks on the floor: starts the calibrate-spin app on the robots "
         "(`dotbot swarm -d` picks them), solves the circles they trace, and "
-        "saves a calibration framed on the rectangle around them. "
+        "saves a calibration whose frame is aligned to their field (the "
+        "rectangle around them, grown by a robot's sweep). "
         "Experimental."
     ),
 )
@@ -545,7 +546,7 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
         _, _, width, height = calibration.valid_mm
         click.echo(
             f"\nThe robots' field is {width} x {height} mm: the calibration's frame "
-            "has its zero at that rectangle's top-left, not at the site's anchor."
+            "is aligned to it, zero at its top-left, not at the site's anchor."
         )
         click.echo(f"Calibration saved to {path}")
         click.echo(

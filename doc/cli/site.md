@@ -159,9 +159,12 @@ with a team.
 ## `init`
 
 Writes a site pack around the robots of a spin calibration
-(`dotbot swarm calibrate-lh2 collect --spin`): its field is the rectangle the
-robots stood in, grown by a robot's footprint, and its frame is the
-calibration's, so no mark on the floor is needed. The pack goes into the
+(`dotbot swarm calibrate-lh2 collect --spin`), so no mark on the floor is
+needed. The **field** is the minimum-area rectangle around the robots' spin
+centres, grown by what a spinning robot sweeps; the frame is aligned to the
+field, zero at its top-left and +y along the robots' starting heading. The
+**site** is the field, or with `--size WxH` a W x H mm site with the field
+centred in it. The pack goes into the
 nearest home (`sites/` beside the project's `dotbot.toml`, else
 `~/.dotbot/sites/`), and the calibration, re-expressed in the new site, under
 `~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the

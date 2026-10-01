@@ -6,8 +6,9 @@
 The image of any circle passes through the images of the plane's two
 circular points, and those fix the floor up to a similarity (Alvarado-Marin
 et al., RA-L 2025). This module recovers that rectification from tracks of
-pinhole camera points, takes the scale from the circles' known radius and
-puts the frame on the rectangle around the circles (free mode).
+pinhole camera points, takes the scale from the circles' known radius and,
+in free mode, aligns the frame to the field: the minimum-area rectangle
+around the circle centres, grown by what a spinning robot sweeps.
 
 Camera points are those of `lighthouse2.calculate_camera_point`. Rectified
 and site coordinates follow the firmware frame: x right, y down, mm.
@@ -531,12 +532,12 @@ def health_gate(tracks: Sequence[Track], Hr: np.ndarray) -> dict[Track, str]:
 def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolution:
     """Camera-to-site homography from circle tracks of known radius (free mode).
 
-    Scale from the tracks' radius; axes along the minimum-area rectangle of
-    the circle centres (`field_angle`), turned a quarter at a time so the
-    robots' starting headings point along +y (`upright_turns`); zero at the
-    top-left of that rectangle grown by
-    `margin_mm` (default: what a spinning robot sweeps), which is the field
-    (`field_mm`).
+    Scale from the tracks' radius. The field (`field_mm`) is the
+    minimum-area rectangle around the circle centres (`field_angle`) grown by
+    `margin_mm` (default: what a spinning robot sweeps). The frame is aligned
+    to the field: zero at its top-left, axes along its sides, turned a quarter
+    at a time so the robots' starting headings point along +y
+    (`upright_turns`).
     """
     if margin_mm is None:
         margin_mm = robot_geometry().axle_reach_mm
@@ -764,10 +765,9 @@ def self_defined_site(
 ) -> tuple[Site, Calibration]:
     """A site pack's site from a free-mode calibration, and the calibration in it.
 
-    The field is the calibration's own fence, the rectangle around the
-    spinning robots. With `size_mm` the site is that big and the field sits in
-    its middle, so the calibration is shifted by the field's offset; without,
-    the site is the field. A tag gets `-<name>` appended, so the two files
+    The field is the calibration's own fence (see `solve`). Without `size_mm`
+    the site is the field; with it the site is that big and the field sits in
+    its middle, so the calibration is shifted by the field's offset. A tag gets `-<name>` appended, so the two files
     answer to different tags.
     """
     if (
