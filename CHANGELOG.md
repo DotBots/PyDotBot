@@ -57,6 +57,11 @@ sandbox firmware all change.
   extrapolated rest of the site.
 - `dotbot site add` and `site export` share a site as a pack folder, zip or
   git repository.
+- `swarm calibrate-lh2 collect --spin` (experimental) calibrates with no
+  marks on the floor, from robots spinning in place with the `calibrate-spin`
+  app, and `dotbot site init NAME --from-calibration ID` writes a site around
+  those robots. `dotbot swarm -d`, `-n` and `-s` reach `calibrate-lh2`, so
+  `push` can go to named robots only.
 - `fw build` and `fw fetch` take the same role and app names, `fw list` shows
   where each set came from, and every flash command picks a set with `-f`.
 - `PUT /controller/dotbots/waypoints` and `DELETE /controller/dotbots/waypoints`
@@ -114,6 +119,9 @@ sandbox firmware all change.
   default (`--bare` / `--sandboxed`, `[fw].bare` replaces `[fw].sandbox`), and
   `device flash <app>` never builds. `[fw].firmware_repo` is `[fw.sources]
   dotbot-firmware` (`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`).
+- `swarm calibrate-lh2 push` refuses a named robot that is in its app, which
+  would drop the calibration; a push to the whole fleet leaves such robots out
+  and lists them.
 - LH2 channel 14 uses the 901000 rotor period. A site calibrated on channel
   14 recalibrates once.
 

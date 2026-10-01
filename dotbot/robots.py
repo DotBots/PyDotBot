@@ -106,6 +106,10 @@ class RobotGeometry:
     gear_ratio: float
     # The plan-view square for anything that needs a size rather than a shape.
     envelope_mm: float
+    # Radius of the photodiode's circle in a spin in place, as measured: the
+    # scale of a spin calibration. Under the photodiode-to-axle distance
+    # because the caster moves the turning point; it depends on the floor.
+    spin_radius_mm: float
 
     def __post_init__(self):
         if self.photodiode.x != self.axle_midpoint.x:
@@ -221,6 +225,14 @@ class RobotGeometry:
         return max(
             math.hypot(p.x - self.photodiode.x, p.y - self.photodiode.y) for p in points
         )
+
+    @cached_property
+    def axle_reach_mm(self) -> float:
+        """Furthest outline or wheel point from the axle midpoint: what a
+        robot spinning in place sweeps."""
+        a = self.axle_midpoint
+        points = [*self.outline_path, *(p for w in self.wheel_paths for p in w)]
+        return max(math.hypot(p.x - a.x, p.y - a.y) for p in points)
 
     @cached_property
     def core_mm(self) -> float:
@@ -377,6 +389,7 @@ ROBOTS: dict[str, RobotGeometry] = {
         encoder_cpr=28,
         gear_ratio=51.0,
         envelope_mm=95.0,
+        spin_radius_mm=51.4,  # against the field camera, not the board
     ),
 }
 

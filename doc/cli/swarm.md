@@ -147,7 +147,52 @@ under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
 the whole site shares one calibration. It takes a file path, a `--tag` or an
 id prefix, and refuses robots that report another site or run sandbox
 firmware older than this `dotbot`. (`collect --push` sends only to the robots
-whose captures built it.)
+whose captures built it, stopping their app first.) A robot in its app drops a
+calibration: `push` refuses a robot you name that is in its app, and a push to
+the whole fleet leaves such robots out and lists them, or refuses when none is
+left. `dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those
+robots only.
+
+### Spin calibration (experimental)
+
+The corner method above stays the default and the reference. `collect --spin`
+is another way that needs no marks on the floor: each robot spins twice in
+place where it stands, and the circles its photodiode traces fix the floor up
+to a rotation and an origin; the spin radius sets the scale.
+
+```bash
+dotbot swarm -d <addresses> flash -y calibrate-spin
+dotbot swarm -d <addresses> calibrate-lh2 collect --spin
+dotbot site init <name> --from-calibration <id>
+dotbot swarm -d <addresses> calibrate-lh2 push <new id> --site <name> --site-changed
+dotbot swarm -d <addresses> flash -y remote-control
+```
+
+`collect --spin` checks that every robot holds the `calibrate-spin` app and
+refuses before anything moves if one does not, printing the `flash` line for
+it. It then starts the app, collects each robot's reads, stops the robots
+again, and prints the commands that follow.
+Without `-d` it spins every robot of the swarm. `--tag` and `--push` work as
+for the corner method; `--device`, `--points`, `--over`, `--square`,
+`--reads`, `--timeout` and `--retries` do not apply.
+
+Spread the robots about 250 mm apart over the area to calibrate; at least 3
+circles must pass the health check (round, and the size of their peers) and 8
+or more hold the frame better. The robots define a **field**: the
+minimum-area rectangle around their spin centres, grown by what a spinning
+robot sweeps. The calibration's frame is aligned to that field, zero at its
+top-left and +y along the robots' starting heading (along the field's long side
+when the robots started facing different ways), not to the site's anchor, so
+`dotbot site init` turns it into a site of its own.
+
+Every distance scales with the radius of the photodiode's circle, 51.4 mm by
+default on a DotBot v3, not the 53.5 mm from photodiode to axle midpoint: a
+robot spinning in place does not pivot exactly on the axle, since the caster
+drags and moves the turning point toward the photodiode (measured on carpet
+against a camera registered to floor markers). That depends on the robot and the
+floor, so on a different surface measure it once (camera or tape) and pass
+`--spin-radius MM`; a single robot whose caster binds differently fails the
+peer-size check and is left out.
 
 ## Two web servers - don't mix them up
 

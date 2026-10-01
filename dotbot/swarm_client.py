@@ -24,6 +24,7 @@ def build_swarmit_client(
     swarm_id: str,
     username: str | None = None,
     password: str | None = None,
+    no_server: bool = False,
 ) -> Any:
     """A swarmit client over the whole swarm, logging in as `username`.
 
@@ -33,7 +34,7 @@ def build_swarmit_client(
 
     Transport selection is swarmit's call: `build_client` probes for a
     running swarmit server and falls back to an in-process controller on its
-    own, so there is nothing to choose here.
+    own; `no_server` skips the probe.
 
     swarmit connects while its controller is constructed, so certificate
     checking is settled before `build_client` is reached.
@@ -58,7 +59,7 @@ def build_swarmit_client(
         devices=[],
         verbose=False,
     )
-    return build_client(settings)
+    return build_client(settings, no_server=no_server)
 
 
 def conn_string(settings: Any) -> str:

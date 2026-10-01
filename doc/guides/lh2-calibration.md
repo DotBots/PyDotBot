@@ -12,6 +12,10 @@ You do this once per physical setup (move a base station -> recalibrate).
 **The default flow is over the air** - one already-deployed DotBot, no cable
 and no firmware swap. If you'd rather calibrate a single DotBot on the bench
 over USB, see [LH2 calibration over a cable](lh2-calibration-cabled.md).
+To calibrate with no marks on the floor, robots spinning in place can stand in
+for the corners: see
+[spin calibration](../cli/swarm.md#spin-calibration-experimental)
+(experimental; the corner flow below stays the reference).
 
 ## Prerequisites
 

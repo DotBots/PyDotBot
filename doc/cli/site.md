@@ -19,6 +19,7 @@ detail.
 | See every site, its connection and which is active | `dotbot site list` |
 | See one site in full | `dotbot site show [<name>]` |
 | Share a site | `dotbot site export <name>` |
+| Make a site around a spin calibration's robots | `dotbot site init <name> --from-calibration <id>` |
 
 Onboarding at a site that publishes a pack is one command, then the controller:
 
@@ -154,6 +155,38 @@ dotbot site export lab --out ~/share/lab.zip --with-calibrations
 A pack is plain files, so `unzip`, `git clone` or `cp` into a project's
 `sites/` folder work just as well as `site add`: that is how a pack is shared
 with a team.
+
+## `init`
+
+Writes a site pack around the robots of a spin calibration
+(`dotbot swarm calibrate-lh2 collect --spin`), so no mark on the floor is
+needed. The **field** is the minimum-area rectangle around the robots' spin
+centres, grown by what a spinning robot sweeps; the frame is aligned to the
+field, zero at its top-left and +y along the robots' starting heading. The
+**site** is the same starter site [`config init`](config.md) writes, built
+around that field: 1.5 m of floor round it and a 600 mm `staging` strip along
+its bottom (+y) edge, as wide as the field, so the demos that park robots in
+staging run without editing the pack. With `--size WxH` the site is W x H mm
+with the field centred and the strip below it, so it must be at least 1200 mm
+taller than the field. The pack carries no `[connection]`: pass `-n` to
+commands run in it, as the ones `init` prints do, or add one to its
+`site.toml`. The pack goes into the nearest
+home (`sites/` beside the project's `dotbot.toml`, else `~/.dotbot/sites/`),
+and the calibration, re-expressed in the new site, under
+`~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the tag
+with `-<name>` appended. The site name must fit the 16 characters a robot
+stores, since `calibrate-lh2 push` sends it to them.
+
+```bash
+dotbot site init spun --from-calibration 6b1a1c96                  # 1.5 m of floor round the field
+dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field centred in 3 x 4 m
+```
+
+| Flag | Meaning |
+|---|---|
+| `--from-calibration ID` | The spin calibration: an id prefix, a tag or a path. |
+| `--size WxH` | The site's size in mm, with the field in its middle and staging below it; refused when they do not fit (at least the field's width, and its height plus 1200 mm). |
+| `-f`, `--force` | Replace the `site.toml` of a site of that name. |
 
 ## See also
 

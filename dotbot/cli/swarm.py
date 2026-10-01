@@ -101,6 +101,19 @@ def _settle_connection(ctx, args, swarmit_group) -> None:
         os.environ[PASS_ENV] = credentials.password
 
 
+def _lh2_takes(token: str, given: dict) -> bool:
+    """Whether `token`, before `calibrate-lh2`, is one of the swarm options it
+    honours or the value of one."""
+    if not token.startswith("-"):
+        return token in given.values()
+    name = token.split("=", 1)[0]
+    if name in ("-d", "--devices", "-n", "--conn", "--connection", "-s", "--swarm-id"):
+        return True
+    if name == "--no-server":
+        return True
+    return not token.startswith("--") and token[:2] in ("-d", "-n", "-s")
+
+
 def _with_config_injection(swarmit_group):
     """Wrap the swarmit group so `dotbot swarm` injects config-driven conn/swarm_id.
 
@@ -120,23 +133,34 @@ def _with_config_injection(swarmit_group):
     @click.pass_context
     def cmd(ctx, args):
         args = list(args)
+        sub = subcommand_index(args, swarmit_group)
         # `calibrate-lh2` is PyDotBot-native (the homography solve lives
         # here, not in swarmit), so intercept it before the passthrough and
-        # hand off to our own group, carrying the resolved config along.
-        if args and args[0] == "calibrate-lh2":
+        # hand off to our own group, carrying the resolved config and the
+        # swarm options given before it (`-d`, `-n`, `-s`) along.
+        if sub is not None and args[sub] == "calibrate-lh2":
+            from dotbot.cli.swarm_lh2 import SWARM_OPTIONS
             from dotbot.cli.swarm_lh2 import cmd as lh2_group
 
+            given = group_options(args[:sub], swarmit_group)
+            unused = [tok for tok in args[:sub] if not _lh2_takes(tok, given)]
+            if unused:
+                raise click.UsageError(
+                    "calibrate-lh2 takes only -d, -n, -s and --no-server from "
+                    f"`dotbot swarm`; drop {' '.join(unused)}"
+                )
+            if "--no-server" in args[:sub]:
+                given = {**given, "no_server": True}
             lh2_group.main(
-                args=args[1:],
+                args=args[sub + 1 :],
                 prog_name="dotbot swarm calibrate-lh2",
                 standalone_mode=True,
-                obj=ctx.obj,
+                obj={**(ctx.obj or {}), SWARM_OPTIONS: given},
             )
             return
         # `flash <name>` is PyDotBot sugar: resolve a bundled app name to its
         # fetched .bin path before handing off (an explicit path passes
         # through), and service `--list` without touching the transport.
-        sub = subcommand_index(args, swarmit_group)
         if sub is not None and args[sub] == "flash":
             from dotbot.cli._swarm_flash import flash_help_epilog, resolve_flash_args
 

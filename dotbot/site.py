@@ -30,6 +30,10 @@ SITE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 FIELD_FALLBACK_MM = 2000
 # A site pack's folder of calibration files
 PACK_CALIBRATIONS = "calibrations"
+# The starter site's geometry, all derived from the field: a margin of floor
+# round it, and a staging strip along its bottom edge.
+SITE_MARGIN_MM = 1500
+STAGING_DEPTH_MM = 600
 
 
 @dataclass
@@ -113,6 +117,29 @@ def check_site_name(name: str) -> str:
     if not SITE_NAME.fullmatch(name):
         raise ValueError(f"site name {name!r}: use letters, digits, - and _")
     return name
+
+
+def starter_layout(
+    field_mm: tuple[int, int], size_mm: tuple[int, int] | None = None
+) -> tuple[tuple[int, int], Area, Area]:
+    """The starter site around a field of `field_mm`: (extent, field, staging).
+
+    The field sits `SITE_MARGIN_MM` in from each wall, or centred in a
+    `size_mm` site; staging is a `STAGING_DEPTH_MM` strip along the field's
+    bottom (+y) edge, as wide as the field. ValueError when `size_mm` cannot
+    hold the field with the strip below it.
+    """
+    width, height = field_mm
+    extent = size_mm or (width + 2 * SITE_MARGIN_MM, height + 2 * SITE_MARGIN_MM)
+    x, y = (extent[0] - width) // 2, (extent[1] - height) // 2
+    if x < 0 or y < STAGING_DEPTH_MM:
+        raise ValueError(
+            f"a {width} x {height} mm field centred with a {STAGING_DEPTH_MM} mm "
+            f"staging strip below it does not fit a {extent[0]} x {extent[1]} mm site"
+        )
+    field_area = Area(x, y, width, height, "field", role="field")
+    staging = Area(x, y + height, width, STAGING_DEPTH_MM, "staging", role="staging")
+    return (int(extent[0]), int(extent[1])), field_area, staging
 
 
 def field_or_fallback(site: Site | None) -> Area:

@@ -10,6 +10,7 @@ surface; none of this is hardware validation.
 import tomllib
 from types import SimpleNamespace
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -256,3 +257,114 @@ def test_reframe_takes_two_numbers_for_the_shift(calibration_file):
     )
     assert result.exit_code != 0
     assert "x,y" in result.output
+
+
+def _running(**kw):
+    node = _info(**kw)
+    node.status = SimpleNamespace(name="Running")
+    return node
+
+
+def test_a_named_robot_in_its_app_is_refused_with_a_stop(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    with pytest.raises(PushRefused, match="dotbot swarm -d B stop"):
+        gate_push(fleet, calibration, devices=["A", "B"])
+    assert fleet.pushed == []
+
+
+def test_a_fleet_push_leaves_robots_in_their_app_out(monkeypatch, calibration_file):
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    result = _push(monkeypatch, fleet, str(calibration_file))
+    assert result.exit_code == 0, result.output
+    assert "1 robot(s) in their app are left out" in result.output
+    assert "dotbot swarm -d B calibrate-lh2 push" in result.output
+    assert "Every robot reports" in result.output
+
+
+def test_a_fleet_push_with_every_robot_in_its_app_is_refused(
+    monkeypatch, calibration_file
+):
+    fleet = _Fleet({"A": _running(), "B": _running()})
+    result = _push(monkeypatch, fleet, str(calibration_file))
+    assert result.exit_code != 0
+    assert "dotbot swarm -d A,B stop" in result.output
+    assert fleet.pushed == []
+
+
+def test_a_collect_push_stops_its_robots_first(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _running(), "B": _info()})
+
+    def stop(devices=None):
+        for addr in devices:
+            fleet.nodes[addr].status.name = "Bootloader"
+
+    fleet.stop = stop
+    swarm_lh2._gated_push(fleet, calibration, devices=["A", "B"], stop=True)
+    assert fleet.pushed_to == [["A", "B"]]
+
+
+def test_a_running_robot_left_out_by_the_device_filter_does_not_stop_a_push(
+    calibration_file,
+):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    assert gate_push(fleet, calibration, devices=["A"]).send_to == ["A"]
+
+
+def test_swarm_d_before_calibrate_lh2_limits_the_push(monkeypatch, calibration_file):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a, **k: fleet)
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(SystemExit) as exit_:
+        cmd.main(
+            args=["-d", "a", "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )
+    assert exit_.value.code == 0
+    assert fleet.pushed_to == [["A"]]
+    assert fleet.refreshed == [["A"]]
+
+
+@pytest.mark.parametrize("args", [["-b", "9600"], ["-v"]])
+def test_calibrate_lh2_refuses_swarm_options_it_cannot_honour(calibration_file, args):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(click.UsageError, match=f"drop {args[0]}"):
+        cmd.main(
+            args=[*args, "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )
+
+
+def test_no_server_before_calibrate_lh2_reaches_the_client(
+    monkeypatch, calibration_file
+):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    seen = {}
+    fleet = _Fleet({"A": _info()})
+
+    def client(ctx, conn, swarm_id):
+        seen["no_server"] = swarm_lh2._swarm_option(ctx, "no_server")
+        return fleet
+
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", client)
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(SystemExit):
+        cmd.main(
+            args=["--no-server", "-dA", "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )
+    assert seen == {"no_server": True}
+    assert fleet.pushed_to == [["A"]]

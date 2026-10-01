@@ -23,7 +23,7 @@ from dotbot.cli import _config_write as cw
 from dotbot.cli._site import active_site, credentials_for
 from dotbot.config import display_path, resolve_source, unknown_env
 from dotbot.mqtt_tls import LOCAL_HOSTS
-from dotbot.site import SITE_DEFAULT, check_site_name
+from dotbot.site import SITE_DEFAULT, SITE_MARGIN_MM, check_site_name, starter_layout
 from dotbot.site_packs import (
     PACK_FILE,
     PROJECT_SITES_DIR,
@@ -36,10 +36,6 @@ _CONFIG_DOCS_URL = (
 )
 
 
-# The default site's geometry, all derived from the field: a margin of floor
-# round it, and a staging strip along its bottom edge.
-SITE_MARGIN_MM = 1500
-STAGING_DEPTH_MM = 600
 FIELD_DEFAULT_MM = (2000, 2000)
 FIELD_MIN_MM = 100
 FIELD_MAX_MM = 100_000
@@ -121,12 +117,9 @@ def parse_field_size(spec: str) -> tuple[int, int]:
 
 
 def default_site_toml(field_mm: tuple[int, int], broker: str | None = None) -> str:
-    """The `site.toml` `init` writes: a field with a margin of floor round it
-    and a staging strip along its bottom edge, and `broker` as its
-    `[connection]`."""
-    width, height = field_mm
-    extent = (width + 2 * SITE_MARGIN_MM, height + 2 * SITE_MARGIN_MM)
-    x = y = SITE_MARGIN_MM
+    """The `site.toml` `init` writes: the starter site around the field
+    (`starter_layout`), and `broker` as its `[connection]`."""
+    extent, field_area, staging = starter_layout(field_mm)
     anchor = (
         f"top-left corner of a {_metres(extent[0])} x {_metres(extent[1])} m "
         f"floor; the field starts {_metres(SITE_MARGIN_MM)} m in from each wall"
@@ -137,10 +130,13 @@ def default_site_toml(field_mm: tuple[int, int], broker: str | None = None) -> s
         f'anchor = "{anchor}"\n'
         f"extent_mm = [{extent[0]}, {extent[1]}]\n"
         "\n" + connection + "[areas]\n"
-        f"field   = {{ x = {x}, y = {y}, w = {width}, h = {height} }}\n"
-        f"staging = {{ x = {x}, y = {y + height}, w = {width}, "
-        f"h = {STAGING_DEPTH_MM} }}\n"
+        f"field   = {_area_toml(field_area)}\n"
+        f"staging = {_area_toml(staging)}\n"
     )
+
+
+def _area_toml(area) -> str:
+    return f"{{ x = {area.x}, y = {area.y}, w = {area.w}, h = {area.h} }}"
 
 
 def _project_template(site: str) -> str:
