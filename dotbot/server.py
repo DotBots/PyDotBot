@@ -506,7 +506,7 @@ def _snapshot(body, resumable: bool = False) -> Response:
     )
 
 
-_QUERY_FILTERS = set(DotBotQueryModel.model_fields) - {"trail", "body"}
+_QUERY_FILTERS = set(DotBotQueryModel.model_fields) - {"trail", "body", "include_lost"}
 
 
 @api.get(
@@ -535,12 +535,12 @@ async def dotbot(
     path="/controller/dotbots",
     response_model=List[DotBotModel],
     response_model_exclude_none=True,
-    summary="Return the list of available dotbots",
+    summary="Return the dotbots heard from; lost ones only when asked for",
     tags=["dotbots"],
 )
 async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
-    """Dotbots HTTP GET handler. Only the unfiltered list carries
-    `X-Controller-Seq` and `X-Controller-Run`."""
+    """Dotbots HTTP GET handler. Only the whole fleet, lost robots included,
+    carries `X-Controller-Seq` and `X-Controller-Run`."""
     controller = api.controller
     return _snapshot(
         [
@@ -549,7 +549,8 @@ async def dotbots(query: Annotated[DotBotQueryModel, Query()]):
             )
             for address in controller.matching(query)
         ],
-        resumable=all(getattr(query, name) is None for name in _QUERY_FILTERS),
+        resumable=query.include_lost
+        and all(getattr(query, name) is None for name in _QUERY_FILTERS),
     )
 
 

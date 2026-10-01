@@ -12,7 +12,7 @@ larger frames and its backlog is bounded by the fleet size.
 A delta patch is an RFC 7396 merge patch over the REST object: each changed
 field with its whole value (null once it has none), `last_seen`, and the
 trail as `trail_append` (new points, oldest first) and `trail_reset`. A new
-robot arrives as its whole REST object.
+robot arrives as its whole REST object, and a forgotten one as `null`.
 
 A robot's `pose` is its axle and heading only. The body drawn around it is
 its `model`'s shape, which the `robot_models` event carries with every
@@ -33,7 +33,7 @@ from dotbot.models import MAX_TRAIL_SIZE
 from dotbot.poses import robot_body
 from dotbot.ws_clients import close_websocket, write_buffer_size
 
-PROTOCOL = 1
+PROTOCOL = 2
 HZ_DEFAULT = 10
 HZ_MIN = 1
 HZ_MAX = 20
@@ -146,7 +146,7 @@ def robot_patch(controller, address: str, since: int, trail: int) -> dict:
 
 def delta_frames(controller, since: int, trail: int) -> List[str]:
     """The frames taking a client from seq `since` to now: one delta when a
-    robot changed, then one event per changed event key."""
+    robot changed or was forgotten, then one event per changed event key."""
     seq = controller.seq
     robots = {}
     changed = controller.changed
@@ -154,6 +154,11 @@ def delta_frames(controller, since: int, trail: int) -> List[str]:
         if changed[address] <= since:
             break
         robots[address] = robot_patch(controller, address, since, trail)
+    forgotten = controller.forgotten
+    for address in reversed(forgotten):
+        if forgotten[address] <= since:
+            break
+        robots[address] = None
     frames = []
     if robots:
         frames.append(encode({"type": "delta", "seq": seq, "robots": robots}))

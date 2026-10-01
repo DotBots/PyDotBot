@@ -16,7 +16,8 @@ from dotbot import addr_to_hex
 from dotbot.adapter import DotBotSimulatorAdapter, SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
-    INACTIVE_DELAY,
+    LOST_AFTER_S,
+    STALE_AFTER_S,
     Controller,
     ControllerSettings,
     gps_distance,
@@ -125,7 +126,7 @@ def controller(monkeypatch):
                 address="0000000000000002",
                 last_seen=time.time(),
                 application=ApplicationType.DotBot,
-                status=DotBotStatus.INACTIVE,
+                status=DotBotStatus.STALE,
                 battery=1.0,
                 lh2_position=DotBotLH2Position(x=500, y=500),
             ),
@@ -202,9 +203,9 @@ async def test_controller_dont_send(controller):
             id="by status active",
         ),
         pytest.param(
-            DotBotQueryModel(status=DotBotStatus.INACTIVE),
+            DotBotQueryModel(status=DotBotStatus.STALE),
             1,
-            id="by status inactive",
+            id="by status stale",
         ),
         pytest.param(
             DotBotQueryModel(status=DotBotStatus.LOST),
@@ -218,8 +219,13 @@ async def test_controller_dont_send(controller):
         ),
         pytest.param(
             DotBotQueryModel(max_battery=1.5),
+            1,
+            id="by max battery leaves the lost robot out",
+        ),
+        pytest.param(
+            DotBotQueryModel(max_battery=1.5, include_lost=True),
             2,
-            id="by max battery",
+            id="by max battery, lost included",
         ),
         pytest.param(
             DotBotQueryModel(max_position_x=600),
@@ -228,7 +234,7 @@ async def test_controller_dont_send(controller):
         ),
         pytest.param(
             DotBotQueryModel(min_position_x=800),
-            2,
+            1,
             id="by min position x",
         ),
         pytest.param(
@@ -238,13 +244,18 @@ async def test_controller_dont_send(controller):
         ),
         pytest.param(
             DotBotQueryModel(min_position_y=1000),
-            2,
+            1,
             id="by min position y",
         ),
         pytest.param(
             DotBotQueryModel(trail=1),
-            4,
+            3,
             id="a trail does not filter",
+        ),
+        pytest.param(
+            DotBotQueryModel(include_lost=True),
+            4,
+            id="the whole fleet, lost included",
         ),
         pytest.param(
             DotBotQueryModel(limit=2),
@@ -1511,11 +1522,11 @@ async def test_a_status_change_is_a_patch_not_a_reload(controller):
     )
     since = controller.seq
     dotbot = controller.dotbots[addr_to_hex(BOT)]
-    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 1)
-    await controller._refresh_status(dotbot.last_seen + INACTIVE_DELAY + 2)
+    await controller._refresh_status(dotbot.last_seen + STALE_AFTER_S + 1)
+    await controller._refresh_status(dotbot.last_seen + STALE_AFTER_S + 2)
     (delta,) = (json.loads(t) for t in delta_frames(controller, since, 0))
     assert delta["robots"][addr_to_hex(BOT)] == {
-        "status": DotBotStatus.INACTIVE,
+        "status": DotBotStatus.STALE,
         "last_seen": dotbot.last_seen,
     }
 
@@ -1670,3 +1681,77 @@ def test_robots_advertising_no_homographies_are_not_warned_about(tmp_path, seria
         )
     assert not [e for e in logs if e["log_level"] == "warning"]
     assert not [e for e in logs if e["event"] == "Send calibration data"]
+
+
+# --- How long a silent robot is kept, and as what ----------------------------
+
+
+def _quiet_controller(**thresholds) -> Controller:
+    return Controller(
+        ControllerSettings(
+            port="/dev/null", network_id="0", gw_address="78", **thresholds
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_silence_moves_a_robot_through_stale_and_lost_then_forgets_it():
+    controller = _quiet_controller(stale_after_s=2, lost_after_s=5, forget_after_s=20)
+    controller.handle_received_frame(_advertised(BOT, direction=0))
+    address = addr_to_hex(BOT)
+    heard = controller.dotbots[address].last_seen
+    for silent, status in ((1.9, "ACTIVE"), (2.1, "STALE"), (5.1, "LOST")):
+        await controller._refresh_status(heard + silent)
+        assert controller.dotbots[address].status.name == status, silent
+    await controller._refresh_status(heard + 19.9)
+    assert address in controller.dotbots
+    await controller._refresh_status(heard + 20.1)
+    assert address not in controller.dotbots
+    assert address not in controller.records
+    assert address not in controller.changed
+    assert controller.forgotten == {address: controller.seq}
+
+
+@pytest.mark.asyncio
+async def test_a_forget_threshold_of_zero_keeps_a_lost_robot():
+    controller = _quiet_controller(forget_after_s=0)
+    controller.handle_received_frame(_advertised(BOT, direction=0))
+    address = addr_to_hex(BOT)
+    await controller._refresh_status(controller.dotbots[address].last_seen + 10**6)
+    assert controller.dotbots[address].status == DotBotStatus.LOST
+
+
+@pytest.mark.asyncio
+async def test_an_advertisement_makes_a_lost_robot_active_at_once():
+    controller = _quiet_controller()
+    controller.handle_received_frame(_advertised(BOT, direction=0))
+    address = addr_to_hex(BOT)
+    await controller._refresh_status(time.time() + LOST_AFTER_S + 1)
+    assert controller.dotbots[address].status == DotBotStatus.LOST
+    since = controller.seq
+    controller.handle_received_frame(_advertised(BOT, direction=0))
+    assert controller.dotbots[address].status == DotBotStatus.ACTIVE
+    (delta,) = (json.loads(t) for t in delta_frames(controller, since, 0))
+    assert delta["robots"][address]["status"] == DotBotStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_a_forgotten_robot_comes_back_as_a_new_one_without_its_commands():
+    controller = _quiet_controller()
+    controller.adapter = MagicMock()
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=1000, pos_y=500)
+    )
+    address = addr_to_hex(BOT)
+    controller.send_max_speed(address, 300)
+    assert any(key[0] == address for key in controller.pending_commands)
+    controller.forget(address)
+    assert not any(key[0] == address for key in controller.pending_commands)
+    assert controller.send_payload(BOT, PayloadControlMode(mode=0)) is False
+    controller.handle_received_frame(
+        _advertised(BOT, direction=0, pos_x=2000, pos_y=500)
+    )
+    dotbot = controller.dotbots[address]
+    assert dotbot.status == DotBotStatus.ACTIVE
+    assert dotbot.lh2_position.x == 2000
+    assert controller.forgotten == {}

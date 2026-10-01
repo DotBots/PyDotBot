@@ -36,7 +36,10 @@ from dotbot.cli._site import (
 )
 from dotbot.config import ConfigError, Resolved, resolve_source
 from dotbot.controller import (
+    FORGET_AFTER_S,
     LH2_CALIBRATION_MAX_AGE_DAYS,
+    LOST_AFTER_S,
+    STALE_AFTER_S,
     Controller,
     ControllerSettings,
 )
@@ -83,6 +86,34 @@ def _max_age_days(raw, source: str) -> int:
             "whole number of days, or 0 to never warn"
         )
     return days
+
+
+def _staleness(ctx) -> dict:
+    """The three silence thresholds, from config or their defaults, each
+    longer than the last; a forget threshold of 0 never forgets."""
+    values = {}
+    for key, default in (
+        ("stale_after_s", STALE_AFTER_S),
+        ("lost_after_s", LOST_AFTER_S),
+        ("forget_after_s", FORGET_AFTER_S),
+    ):
+        raw, source = _resolve_controller_key(ctx, key, None, default)
+        try:
+            values[key] = float(raw)
+        except ValueError:
+            values[key] = -1.0
+        if values[key] < 0 or (values[key] == 0 and key != "forget_after_s"):
+            raise click.ClickException(
+                f"{key} from {source} is {raw!r}; give a number of seconds"
+                + (", or 0 to never forget" if key == "forget_after_s" else "")
+            )
+    stale, lost, forget = values.values()
+    if lost <= stale or (forget and forget <= lost):
+        raise click.ClickException(
+            "stale_after_s < lost_after_s < forget_after_s is needed (forget "
+            f"0 never forgets); got {stale:g}, {lost:g} and {forget:g}"
+        )
+    return values
 
 
 def _conn_to_settings(
@@ -544,6 +575,7 @@ def main(
         ctx, "lh2_calibration_max_age_days", None, LH2_CALIBRATION_MAX_AGE_DAYS
     )
     max_age_days = _max_age_days(raw_max_age, max_age_source)
+    staleness = _staleness(ctx)
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -600,6 +632,7 @@ def main(
         "site": site,
         "lh2_calibration": lh2_calibration,
         "lh2_calibration_max_age_days": max_age_days,
+        **staleness,
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
         "camera_max_robots": camera_max_robots,

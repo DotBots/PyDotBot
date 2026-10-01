@@ -253,6 +253,10 @@ class ControllerSection(_Strict):
     lh2_calibration: str | None = None
     # Older than this at load, the LH2 calibration is warned about; 0: never
     lh2_calibration_max_age_days: int | None = Field(None, ge=0)
+    # Seconds of silence before a robot is stale, lost, then forgotten (0: never)
+    stale_after_s: float | None = Field(None, gt=0)
+    lost_after_s: float | None = Field(None, gt=0)
+    forget_after_s: float | None = Field(None, ge=0)
     camera_calibration: str | None = None
     camera_detect: bool | None = None
     camera_max_robots: int | None = Field(None, ge=1)

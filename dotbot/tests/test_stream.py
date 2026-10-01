@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from starlette.websockets import WebSocketDisconnect
 
 from dotbot import addr_to_hex, stream
-from dotbot.controller import INACTIVE_DELAY, Controller, ControllerSettings
+from dotbot.controller import STALE_AFTER_S, Controller, ControllerSettings
 from dotbot.models import DotBotLH2Position, DotBotRgbLedCommandModel
 from dotbot.protocol import PayloadDotBotAdvertisement, WaypointsStatus
 from dotbot.server import api
@@ -91,7 +91,10 @@ class Client:
                 patch = dict(patch)
                 reset = patch.pop("trail_reset", False)
                 append = patch.pop("trail_append", [])
-                robot = merge_patch(self.fleet.get(address, {}), patch)
+                # A robot new to the client, or back after being forgotten,
+                # comes whole and replaces what was held
+                held = {} if "address" in patch else self.fleet.get(address, {})
+                robot = merge_patch(held, patch)
                 trail = [] if reset else list(robot.get("trail", []))
                 robot["trail"] = (trail + append)[-self.trail :] if self.trail else []
                 self.fleet[address] = robot
@@ -184,7 +187,8 @@ async def rest_fleet(trail, body=False):
         transport=ASGITransport(app=api), base_url="http://test"
     ) as client:
         response = await client.get(
-            f"/controller/dotbots?trail={trail}" + ("&body=1" if body else "")
+            f"/controller/dotbots?include_lost=true&trail={trail}"
+            + ("&body=1" if body else "")
         )
     return {robot["address"]: robot for robot in response.json()}
 
@@ -213,7 +217,7 @@ async def test_hello_says_what_the_client_is_served(controller):
     client = Client(controller.stream, trail=5, hz=7)
     assert client.hello == {
         "type": "hello",
-        "protocol": 1,
+        "protocol": 2,
         "run": controller.run_id,
         "seq": controller.seq,
         "hz": 7,
@@ -300,7 +304,8 @@ async def test_deltas_are_merge_patches_over_the_rest_object(controller):
     for step in range(60):
         source = 0x10 + rng.randrange(6)
         address = addr_to_hex(source)
-        action = rng.randrange(6)
+        action = rng.randrange(7)
+        known = address in controller.dotbots
         if action == 0:
             advertise(
                 controller,
@@ -322,17 +327,19 @@ async def test_deltas_are_merge_patches_over_the_rest_object(controller):
         elif action == 2:
             # A report that stops coming leaves its fields to null
             advertise(controller, source, report=True, axle_x=0xFFFF, axle_y=0xFFFF)
-        elif action == 3:
+        elif action == 3 and known:
             controller.update_dotbot(
                 address,
                 rgb_led=DotBotRgbLedCommandModel(
                     red=rng.randrange(255), green=0, blue=0
                 ),
             )
-        elif action == 4:
+        elif action == 4 and known:
             controller.clear_trail(address)
-        else:
-            await controller._refresh_status(time.time() + INACTIVE_DELAY + 1)
+        elif action == 5:
+            await controller._refresh_status(time.time() + STALE_AFTER_S + 1)
+        elif action == 6 and known:
+            controller.forget(address)
         now += 0.05
         await tick(controller.stream, now)
         rest = without_last_seen(await rest_fleet(8))
@@ -741,7 +748,7 @@ async def test_a_seq_from_the_rest_snapshot_resumes_the_stream(controller):
     async with AsyncClient(
         transport=ASGITransport(app=api), base_url="http://test"
     ) as http:
-        response = await http.get("/controller/dotbots")
+        response = await http.get("/controller/dotbots?include_lost=true")
     seq = int(response.headers["X-Controller-Seq"])
     run = response.headers["X-Controller-Run"]
     advertise(controller, 0x42, battery=2500)
@@ -847,3 +854,44 @@ async def test_the_rest_list_is_the_model_serialised(controller):
         for address, dotbot in controller.dotbots.items()
     ]
     assert list((await rest_fleet(3)).values()) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_forgotten_robot_is_null_in_the_delta(controller):
+    advertise(controller, 0x42)
+    advertise(controller, 0x43)
+    client = Client(controller.stream)
+    await tick(controller.stream, 0)
+    controller.forget(addr_to_hex(0x42))
+    await tick(controller.stream, 1)
+    (delta,) = client.of_type("delta")
+    assert delta["robots"] == {addr_to_hex(0x42): None}
+    assert set(client.fleet) == {addr_to_hex(0x43)}
+
+
+@pytest.mark.asyncio
+async def test_a_robot_back_after_being_forgotten_comes_whole(controller):
+    advertise(controller, 0x42, x=1000)
+    since = controller.seq
+    controller.forget(addr_to_hex(0x42))
+    advertise(controller, 0x42, x=2000)
+    (delta,) = (json.loads(t) for t in stream.delta_frames(controller, since, 0))
+    robot = delta["robots"][addr_to_hex(0x42)]
+    assert robot["address"] == addr_to_hex(0x42)
+    assert robot["lh2_position"]["x"] == 2000
+    assert controller.forgotten == {}
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_client_is_told_what_was_forgotten(controller):
+    advertise(controller, 0x42)
+    advertise(controller, 0x43)
+    first = Client(controller.stream)
+    await tick(controller.stream, 0)
+    controller.forget(addr_to_hex(0x43))
+    second = Client(controller.stream, since=first.seq, run=controller.run_id)
+    second.fleet = copy.deepcopy(first.fleet)
+    await tick(controller.stream, 1)
+    assert second.hello["resumed"] is True
+    assert second.fleet == await rest_fleet(0)
+    assert addr_to_hex(0x43) not in second.fleet
