@@ -717,6 +717,7 @@ def init(ctx, name, calibration, size, force):
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
+        site_name_as_bytes,
         write_calibration,
     )
     from dotbot.cli._swarm_inject import swarm_connection
@@ -725,6 +726,7 @@ def init(ctx, name, calibration, size, force):
     config = obj.get("config")
     try:
         check_site_name(name)
+        site_name_as_bytes(name)  # the push carries the name to the robots
         existing = resolve_site_entry(config, name)
     except (ValueError, ConfigError) as exc:
         raise click.ClickException(str(exc)) from exc

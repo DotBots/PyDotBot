@@ -428,3 +428,17 @@ def test_site_init_force_replaces_the_site(monkeypatch, lab):
         )
         assert result.exit_code == 0, result.output
     assert site_catalog(lab)["spun"].site().extent_mm == (5000, 5000)
+
+
+def test_site_init_refuses_a_name_too_long_to_reach_the_robots(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "a" * 17, "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    assert result.exit_code != 0 and "1 to 16 characters" in result.output
+    assert not (lab.project_dir / "sites" / ("a" * 17)).exists()
+
