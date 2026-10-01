@@ -442,3 +442,17 @@ def test_site_init_refuses_a_name_too_long_to_reach_the_robots(monkeypatch, lab)
     assert result.exit_code != 0 and "1 to 16 characters" in result.output
     assert not (lab.project_dir / "sites" / ("a" * 17)).exists()
 
+
+def test_after_site_init_the_tag_still_names_the_spin_calibration(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--tag", "floor")
+    assert result.exit_code == 0, result.output
+    for name in ("spun", "again"):
+        result = CliRunner().invoke(
+            site_cmd.cmd,
+            ["init", name, "--from-calibration", "floor"],
+            obj={"config": lab},
+        )
+        assert result.exit_code == 0, result.output
+    placed = load_calibration("floor-spun", site=site_catalog(lab)["spun"].site())
+    assert placed.site.name == "spun"

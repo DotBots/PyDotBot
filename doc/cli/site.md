@@ -164,8 +164,9 @@ robots stood in, grown by a robot's footprint, and its frame is the
 calibration's, so no mark on the floor is needed. The pack goes into the
 nearest home (`sites/` beside the project's `dotbot.toml`, else
 `~/.dotbot/sites/`), and the calibration, re-expressed in the new site, under
-`~/.dotbot/calibrations/<name>/` with a new id. The site name must fit the 16
-characters a robot stores, since `calibrate-lh2 push` sends it to them.
+`~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the
+tag with `-<name>` appended. The site name must fit the 16 characters a robot
+stores, since `calibrate-lh2 push` sends it to them.
 
 ```bash
 dotbot site init spun --from-calibration 6b1a1c96                  # the site is the field

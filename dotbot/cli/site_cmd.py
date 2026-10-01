@@ -711,7 +711,7 @@ def init(ctx, name, calibration, size, force):
     robot's footprint, and the site's frame is the calibration's. The pack
     goes into the nearest site home (sites/ beside the project's dotbot.toml,
     else ~/.dotbot/sites/), and the calibration, re-expressed in the site,
-    under ~/.dotbot/calibrations/NAME/.
+    under ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
     """
     from dotbot.calibration.conics import self_defined_site
     from dotbot.calibration.lighthouse2 import (

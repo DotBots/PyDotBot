@@ -835,7 +835,8 @@ def resolve_calibration_spec(
                 for path in matches
             ]
             raise ValueError(
-                f"{what} {kind} {spec!r} matches several files:\n" + "\n".join(lines)
+                f"{what} {kind} {spec!r} matches several files; name one by "
+                "its id prefix or path:\n" + "\n".join(lines)
             )
         return matches[0] if matches else None
 

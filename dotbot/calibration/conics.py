@@ -767,7 +767,8 @@ def self_defined_site(
     The field is the calibration's own fence, the rectangle around the
     spinning robots. With `size_mm` the site is that big and the field sits in
     its middle, so the calibration is shifted by the field's offset; without,
-    the site is the field.
+    the site is the field. A tag gets `-<name>` appended, so the two files
+    answer to different tags.
     """
     if (
         not calibration.stations
@@ -818,7 +819,7 @@ def self_defined_site(
         stations=stations,
         tracks=calibration.tracks,
         created_at=calibration.created_at,
-        tag=calibration.tag,
+        tag=f"{calibration.tag}-{name}" if calibration.tag else "",
         robot=calibration.robot,
     )
     return site, placed
