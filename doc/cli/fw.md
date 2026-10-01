@@ -9,7 +9,7 @@ other, under the **same file names**:
 
 | | From | Into |
 |---|---|---|
-| `dotbot fw fetch [RELEASE\|ROLE\|APP]...` | a GitHub release | `<release>-<version>/`, e.g. `swarmit-0.10.0/` |
+| `dotbot fw fetch [RELEASE\|ROLE\|APP]...` | a GitHub release | `<release>-<version>/`, e.g. `swarmit-0.11.0/` |
 | `dotbot fw build [ROLE\|APP]...` | your source folders, via SEGGER Embedded Studio | `<source>-<set>/`, e.g. `swarmit-local/` |
 
 Every flash command then picks one with `-f`: a release tag, `latest`, a set
@@ -227,7 +227,7 @@ dotbot fw list
 Every set in the cache with its images, and where it came from:
 
 ```text
-swarmit-0.10.0  release 0.10.0, fetched 2026-09-28T09:12:40+00:00
+swarmit-0.11.0  release 0.11.0, fetched 2026-10-01T09:12:40+00:00
   bootloader-dotbot-v3.hex
   ...
 swarmit-local  built from swarmit@a1b2c3d (dirty)  2h ago
