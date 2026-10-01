@@ -5,9 +5,9 @@ import { LinkState, UnifiedBot } from "./types";
 const MARKER_OPACITY: Record<LinkState, number> = { active: 1, stale: 0.45, lost: 0.25, unknown: 1 };
 const ROW_OPACITY: Record<LinkState, number> = { active: 1, stale: 0.7, lost: 0.5, unknown: 1 };
 
-/** The tier a robot is faded by: a lost one swarmit still reports is drawn as heard. */
+/** The tier a robot is faded by: a lost one swarmit still reports is faded as stale. */
 function fadeTier(bot: Pick<UnifiedBot, "link" | "swarmit">): LinkState {
-  return bot.link === "lost" && bot.swarmit ? "active" : bot.link;
+  return bot.link === "lost" && bot.swarmit ? "stale" : bot.link;
 }
 
 /** How solid a robot is drawn on the map: a stale one is faded, a lost one more so. */

@@ -19,11 +19,11 @@ describe("link tiers", () => {
     expect(nobodyHears(bot("stale"))).toBe(false);
   });
 
-  it("fades a lost robot only when swarmit does not report it either", () => {
+  it("fades a lost robot swarmit reports no more than a stale one", () => {
     expect(markerOpacity(bot("lost"))).toBeLessThan(markerOpacity(bot("stale")));
     expect(markerOpacity(bot("stale"))).toBeLessThan(1);
-    expect(markerOpacity(bot("lost", {} as SwarmitNode))).toBe(1);
-    expect(rowOpacity(bot("lost", {} as SwarmitNode))).toBe(1);
+    expect(markerOpacity(bot("lost", {} as SwarmitNode))).toBe(markerOpacity(bot("stale")));
+    expect(rowOpacity(bot("lost", {} as SwarmitNode))).toBe(rowOpacity(bot("stale")));
   });
 
   it("counts the fleet by tier, naming only the tiers that hold a robot", () => {
