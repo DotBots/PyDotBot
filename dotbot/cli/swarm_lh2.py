@@ -11,7 +11,9 @@ subcommands:
               raw-count capture per point over the air (the robot's button,
               or Enter with --device), solve every visible station by least
               squares, and save a schema 3 calibration under
-              ~/.dotbot/calibrations/<site>/.
+              ~/.dotbot/calibrations/<site>/. With --spin, the robots
+              spin in place instead and the circles they trace are solved
+              (`dotbot.calibration.spin`).
 - `push <path|id>` - check the robots' device info, send a saved
               calibration over the air, and list the robots still on
               another id.
@@ -277,6 +279,29 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "captures built it (and to --device, when given)."
     ),
 )
+@click.option(
+    "--spin",
+    is_flag=True,
+    help=(
+        "Calibrate from robots spinning in place where they stand, with no "
+        "marks on the floor: starts the calibrate-spin app on the robots "
+        "(`dotbot swarm -d` picks them), solves the circles they trace, and "
+        "saves a calibration framed on the rectangle around them. "
+        "Experimental."
+    ),
+)
+@click.option(
+    "--spin-radius",
+    "spin_radius",
+    default=None,
+    type=click.FloatRange(min=1.0, max=200.0),
+    metavar="MM",
+    help=(
+        "With --spin: radius of the photodiode's circle in a spin, in mm, "
+        "which sets the scale of every distance. Default: the robot model's "
+        "measured value (51.4 mm on a DotBot v3)."
+    ),
+)
 @click.pass_context
 def _collect(
     ctx,
@@ -292,7 +317,31 @@ def _collect(
     retries,
     tag,
     push,
+    spin,
+    spin_radius,
 ):
+    if spin:
+        given = [
+            flag
+            for flag, value in (
+                ("--device", device),
+                ("--points", points),
+                ("--over", over),
+                ("--square", square),
+                ("--reads", reads),
+                ("--timeout", timeout),
+                ("--retries", retries),
+            )
+            if value not in (None, ())
+        ]
+        if given:
+            raise click.UsageError(
+                f"--spin takes no {', '.join(given)}: the robots spin where they stand"
+            )
+        _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius)
+        return
+    if spin_radius is not None:
+        raise click.UsageError("--spin-radius goes with --spin")
     try:
         from swarmit.testbed.protocol import LH2_CALIB_TAG
 
@@ -427,6 +476,87 @@ def _collect(
                 f"  dotbot swarm calibrate-lh2 push "
                 f"{calibration.tag or calibration.id8}"
             )
+
+
+def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
+    """`collect --spin`: spin the robots, solve their circles, save, report."""
+    from dotbot.calibration.conics import solve_calibration
+    from dotbot.calibration.lighthouse2 import write_calibration
+    from dotbot.calibration.spin import capture_spins, check_spin_robots, spin_report
+    from dotbot.robots import ROBOT_DEFAULT, robot_geometry
+
+    site, site_source = site_from_context(ctx, site_name)
+    radius_from = "--spin-radius"
+    if spin_radius is None:
+        spin_radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
+        radius_from = f"{ROBOT_DEFAULT}'s measured value"
+    devices = _devices(ctx)
+    client = _swarmit_client(ctx, conn, swarm_id)
+    with client:
+        click.echo("Reading device info...")
+        client.refresh_device_info(devices)
+        status = client.status()
+        if devices:
+            missing = [d for d in devices if d not in status]
+            if missing:
+                raise click.ClickException(
+                    "not heard on the swarm: " + ", ".join(missing)
+                )
+            status = {addr: node for addr, node in status.items() if addr in devices}
+        robots = check_spin_robots(status)
+        refusal = robots.refusal()
+        if refusal:
+            raise click.ClickException(f"spin refused:\n{refusal}")
+        if not robots.robots:
+            raise click.ClickException("no robot answered, so none can spin")
+        click.echo(
+            f"Spin calibration in site {site.name} (from {site_source}): "
+            f"{len(robots.robots)} robot(s), spin radius {spin_radius:g} mm "
+            f"(from {radius_from}). The robots turn in place: keep their "
+            "footprint clear."
+        )
+        try:
+            spins = capture_spins(client, robots, echo=click.echo)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        samples = [s for spin in spins.values() for s in spin.samples(spin_radius)]
+        try:
+            calibration, solutions, unsolved = solve_calibration(
+                samples, site, robot=ROBOT_DEFAULT, tag=tag or ""
+            )
+        except ValueError as exc:
+            for line in spin_report(spins, robots.robots, {}, {}):
+                click.echo(line)
+            raise click.ClickException(f"no calibration written: {exc}") from exc
+        for line in spin_report(spins, robots.robots, solutions, unsolved):
+            click.echo(line)
+        path = write_calibration(calibration)
+        _, _, width, height = calibration.valid_mm
+        click.echo(
+            f"\nThe robots' field is {width} x {height} mm: the calibration's frame "
+            "has its zero at that rectangle's top-left, not at the site's anchor."
+        )
+        click.echo(f"Calibration saved to {path}")
+        click.echo(
+            f"Calibration id {calibration.id}, site {site.name}"
+            + (f", tag {calibration.tag!r}" if calibration.tag else "")
+        )
+        spun = ",".join(robots.robots)
+        if push:
+            _gated_push(client, calibration, devices=robots.robots)
+        click.echo(
+            "\nNext, make the field a site of its own (--size WxH centres it in a "
+            "bigger site):\n"
+            f"  dotbot site init <name> --from-calibration {calibration.id8}\n"
+            + (
+                ""
+                if push
+                else "Or send it as it is:\n"
+                f"  dotbot swarm -d {spun} calibrate-lh2 push {calibration.id8}\n"
+            )
+            + "The robots still hold the calibrate-spin app; before driving them:\n"
+            f"  dotbot swarm -d {spun} flash -y remote-control"
+        )
 
 
 @cmd.command(

@@ -29,6 +29,7 @@ APP_CATALOG = {
     "spin": "spin",  # the DotBots spin in place
     "lights": "rgbled",  # the on-board RGB LED
     "calibrate": "calibrate",  # LH2 capture on the robot's own button
+    "calibrate-spin": "calibrate-spin",  # LH2 spin calibration (collect --spin)
 }
 
 _DEFAULT_BOARD = "dotbot-v3"
