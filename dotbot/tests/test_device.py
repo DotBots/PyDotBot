@@ -1437,24 +1437,67 @@ def test_device_flash_bare_precedence(
 # ── fw fetch ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("names", [[], ["swarmit-sandbox", "spin"]])
+@pytest.mark.parametrize(
+    "names", [[], ["swarmit-sandbox", "spin"], ["swarmit", "dotbot-firmware"]]
+)
 def test_fetch_tag_needs_names_from_one_release(monkeypatch, names):
     from dotbot.cli.fw import cmd as fw_cmd
 
     monkeypatch.setattr(fetch, "fetch_assets", lambda *a: pytest.fail("fetched"))
     res = CliRunner().invoke(fw_cmd, ["fetch", *names, "-f", "0.8.0"])
     assert res.exit_code != 0
-    assert "dotbot fw fetch swarmit-sandbox -f 0.8.0" in res.output
+    output = " ".join(res.output.split())
+    assert "`dotbot fw fetch swarmit -f 0.8.0`" in output
+    assert "`dotbot fw fetch dotbot-firmware -f <tag>`" in output
 
 
-@pytest.mark.parametrize("name", ["swarmit", "mari", "dotbot-firmware"])
-def test_fetch_refuses_a_source_name_before_downloading(monkeypatch, name):
+@pytest.mark.parametrize(
+    "names, expected",
+    [
+        (["swarmit"], ["swarmit"]),
+        (["dotbot-firmware"], ["dotbot-firmware"]),
+        (["swarmit", "dotbot-firmware"], ["swarmit", "dotbot-firmware"]),
+        (["swarmit", "swarmit-sandbox"], ["swarmit"]),
+    ],
+)
+def test_fetch_takes_release_names(monkeypatch, names, expected):
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    calls = []
+    monkeypatch.setattr(fetch, "pinned_version", lambda src: f"PIN-{src}")
+    monkeypatch.setattr(
+        fetch,
+        "fetch_assets",
+        lambda src, version, bin_dir: calls.append((src, version)) or Path("/x"),
+    )
+    res = CliRunner().invoke(fw_cmd, ["fetch", *names])
+    assert res.exit_code == 0, res.output
+    assert calls == [(src, f"PIN-{src}") for src in expected]
+
+
+def test_fetch_release_name_with_a_tag(monkeypatch):
+    from dotbot.cli.fw import cmd as fw_cmd
+
+    calls = []
+    monkeypatch.setattr(
+        fetch,
+        "fetch_assets",
+        lambda src, version, bin_dir: calls.append((src, version)) or Path("/x"),
+    )
+    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot-firmware", "-f", "1.25.0"])
+    assert res.exit_code == 0, res.output
+    assert calls == [("dotbot-firmware", "1.25.0")]
+
+
+def test_fetch_refuses_mari_before_downloading(monkeypatch):
     from dotbot.cli.fw import cmd as fw_cmd
 
     monkeypatch.setattr(fetch, "fetch_assets", lambda *a: pytest.fail("downloaded"))
-    res = CliRunner().invoke(fw_cmd, ["fetch", name])
+    res = CliRunner().invoke(fw_cmd, ["fetch", "mari"])
     assert res.exit_code != 0
-    assert "takes a role (swarmit-sandbox, mari-gateway) or an app" in res.output
+    output = " ".join(res.output.split())
+    assert "mari's releases publish no firmware" in output
+    assert "`dotbot fw fetch swarmit`" in output
 
 
 def test_fetch_both_roles_fetch_the_swarmit_release_once(monkeypatch):
