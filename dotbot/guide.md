@@ -111,7 +111,7 @@ dotbot device flash swarmit-sandbox --probe 77   # each DotBot, one at a time
 dotbot run gateway -p /dev/ttyACM0               # bridge the gateway to MQTT
 dotbot swarm status                              # which robots have joined
 dotbot swarm flash remote-control -ys            # the app the controller drives
-BROWSER=true dotbot run controller --headless    # the same API as the simulator
+BROWSER=true dotbot run controller --headless    # the simulator's API, and a swarm server
 ```
 
 `dotbot config show` prints the config in effect. `dotbot swarm stop` returns

@@ -34,9 +34,17 @@ there).
 | `--headless` | Don't open the web UI in a browser (still served) |
 | `--controller-http-port` | HTTP/REST port (default `8000`) |
 | `--dotbot / --sailbot` | With `--conn simulator`: which robot to simulate |
+| `--no-swarm-serve` | Don't start a local swarm server beside an MQTT connection (see below) |
 
 See `dotbot run controller --help` for the full list (logging, CSV export,
 background map, simulator init state).
+
+With an MQTT connection the controller also starts a local swarm server
+(`dotbot swarm serve --local` on port 8001), which is what shows the console
+robots sitting in their bootloader and runs flashing, start and stop. One
+already running there is reused, so a `dotbot swarm serve` in another
+terminal keeps working, and the one the controller started stops with it.
+The banner's `Swarmit server:` line says which happened.
 
 `dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` - try
 the UI with no DotBot or gateway.
