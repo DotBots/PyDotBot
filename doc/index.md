@@ -16,7 +16,8 @@ own code - one DotBot, or a swarm of hundreds. Pick a starting point:
 
 - **Try it with no hardware** - the simulator runs the full web UI with no
   DotBot or gateway needed: `dotbot run simulator`. See the
-  [simulator guide](guides/simulator.md).
+  [simulator guide](guides/simulator.md), or run `dotbot guide` for a
+  one-page start that also suits AI coding agents.
 - **Get one DotBot moving** - build and cable-flash a single DotBot and gateway,
   then drive it from the browser. See the [one-bot guide](guides/one-bot.md).
 - **Run a swarm experiment** - provision and command many DotBots over the air.

@@ -16,6 +16,7 @@ from one DotBot to a thousand.
 
 ```bash
 dotbot --help
+dotbot guide      # a getting-started page, for people and AI coding agents
 ```
 
 ## The four commands

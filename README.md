@@ -40,6 +40,7 @@ pip install pydotbot
 ```
 
 Then, check your installation with `dotbot --version` and learn what's possible with `dotbot --help`.
+`dotbot guide` prints a getting-started page, written for people and AI coding agents alike.
 
 Every command and flag is documented in the [CLI reference][cli-doc].
 
@@ -193,16 +194,15 @@ its id. Then push it to the whole fleet:
 dotbot swarm calibrate-lh2 push <id>
 ```
 
-Full walkthrough - choosing the points and the cabled alternative - is in the
-[LH2 calibration guide][lh2-doc].
+Choosing the points, checking the result on the map, and upgrading older
+calibration files are in the [LH2 calibration guide][lh2-doc].
 
 ## Going further
 
 - **Drive a single DotBot** end to end - build, flash, and control one DotBot:
   the [one-bot guide][one-bot-doc].
 - **Position tracking with Lighthouse 2** - give the fleet real-world `(x, y)`,
-  calibrated over the air: the [LH2 calibration guide][lh2-doc] (a cabled
-  alternative is covered there too).
+  calibrated over the air: the [LH2 calibration guide][lh2-doc].
 - **The controller + web UI** - drive and visualize a swarm from the browser:
   the [controller guide][controller-doc].
 - **Build firmware from source** instead of `dotbot fw fetch` - needs

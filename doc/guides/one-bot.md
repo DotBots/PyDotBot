@@ -47,6 +47,4 @@ Select the DotBot in the browser and steer it with the joystick. See the
 
 - Operate many DotBots over the air - the [`swarm`](../cli/swarm.md) reference.
 - Add real-world positions - [LH2 calibration](lh2-calibration.md), captured over
-  the air once you've provisioned a swarm. (A
-  [cabled fallback](lh2-calibration-cabled.md) exists for a board with no swarm
-  around it.)
+  the air once you've provisioned a swarm.

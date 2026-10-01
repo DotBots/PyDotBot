@@ -77,7 +77,7 @@ flashing - just a USB-C cable. Plug it in and flash:
 
 ```bash
 # cabled flash of one DotBot (board defaults to dotbot-v3)
-dotbot device flash dotbot --probe 77
+dotbot device flash dotbot --bare --probe 77
 ```
 
 A standalone J-Link is only needed to re-flash the on-board programmer's *own*
@@ -102,14 +102,14 @@ host to the swarm radio.
 
 ```bash
 # flash the gateway role onto a DK (writes the network id + both cores)
-dotbot device flash mari-gateway --swarm-id 0100 -f 0.8.0rc1 --probe 10
+dotbot device flash mari-gateway --swarm-id 0100 --probe 10
 
 # then run the host-side UART<->MQTT bridge
 dotbot run gateway
 ```
 
-Geovane's serial-prefix convention: DotBot v3 boards start `77`, nRF5340-DKs
-start `10` (the `-s` prefix selects which probe to talk to). See
+The serial-prefix convention: DotBot v3 boards start `77`, nRF5340-DKs
+start `10` (`--probe` selects which probe to talk to). See
 [swarm](../cli/swarm.md) for driving the fleet once the gateway is up.
 
 ## Lighthouse 2 base station

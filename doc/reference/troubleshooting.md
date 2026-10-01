@@ -28,3 +28,9 @@ only the browser UI is unavailable. Fixes:
 
 - **From PyPI** - install the wheel, which bundles the console: `pip install pydotbot`.
 - **From a git checkout** - build it once: `cd dotbot/console-web && npm install && npm run build`.
+
+## Calibration refused: `unsupported calibration schema_version 2`
+
+The LH2 calibration file predates PyDotBot 0.32.0. Re-solve it from its stored
+samples and reflash the robots by cable, as in
+[Upgrading from schema 2](../guides/lh2-calibration.md#upgrading-from-schema-2).
