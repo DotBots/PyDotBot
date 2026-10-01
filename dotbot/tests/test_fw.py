@@ -371,6 +371,15 @@ def test_resolve_segger_dir_reads_the_user_file_past_a_project_file(
     assert _fw_helpers.resolve_segger_dir() == Path("/from/user")
 
 
+def test_resolve_segger_dir_reads_a_relative_value_from_the_file_that_sets_it(
+    monkeypatch, isolated_home
+):
+    _write_config(isolated_home, '[fw]\nsegger_dir = "ses"\n')
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
+    expected = (isolated_home / ".dotbot" / "ses").resolve()
+    assert _fw_helpers.resolve_segger_dir().resolve() == expected
+
+
 def test_resolve_segger_dir_uses_macos_glob_when_no_env_or_config(
     tmp_path, monkeypatch, isolated_home
 ):

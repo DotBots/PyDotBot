@@ -88,12 +88,6 @@ def _loaded_config():
         raise click.ClickException(str(exc)) from exc
 
 
-def _config_fw_value(key: str) -> Optional[str]:
-    """Read `[fw].<key>` from the merged config, or None."""
-    val = getattr(_loaded_config().fw, key, None)
-    return str(val) if val else None
-
-
 def _glob_macos_segger() -> Optional[Path]:
     """Pick the lexicographically-latest SES install matching the glob.
 
@@ -118,9 +112,11 @@ def resolve_segger_dir() -> Path:
         env = os.environ.get(name)
         if env:
             return Path(env)
-    cfg = _config_fw_value("segger_dir")
-    if cfg:
-        return Path(cfg).expanduser()
+    cfg = _loaded_config()
+    if cfg.fw.segger_dir:
+        from dotbot.config import resolve_relative
+
+        return resolve_relative(cfg.fw.segger_dir, cfg.origin("fw", "segger_dir"))
     macos = _glob_macos_segger()
     if macos:
         return macos
