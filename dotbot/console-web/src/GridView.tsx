@@ -1,5 +1,6 @@
 import React from "react";
 
+import { rowOpacity } from "./link";
 import { UnifiedBot } from "./types";
 import { BatteryCell, FilterBar, LedDot, Pagination, ResetBadge, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
@@ -71,11 +72,13 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
             return (
               <div
                 key={b.id}
+                data-link={b.link}
                 onClick={(e) => {
                   e.stopPropagation();
                   cardClick(e, b.id);
                 }}
                 style={{
+                  opacity: rowOpacity(b.link),
                   display: "flex",
                   flexDirection: "column",
                   gap: 9,

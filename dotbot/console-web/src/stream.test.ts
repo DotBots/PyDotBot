@@ -11,7 +11,7 @@ const bot = (address: string, over: Partial<PyDotBot> = {}): PyDotBot => ({
   ...over,
 });
 
-const hello = { type: "hello", protocol: 1, run: "r1", seq: 4, hz: 10, unacked_hz: 1, window: 2, trail: 3, acks: true, resumed: false } as const;
+const hello = { type: "hello", protocol: 2, run: "r1", seq: 4, hz: 10, unacked_hz: 1, window: 2, trail: 3, acks: true, resumed: false } as const;
 
 describe("mergePatch (RFC 7396)", () => {
   it("replaces values, recurses into objects and deletes on null", () => {
@@ -49,6 +49,15 @@ describe("FleetStream", () => {
     });
     expect(result).toEqual({ ack: 9, robots: true });
     expect(fleet.robots.a).toEqual(bot("a", { battery: 2.9, mode: 0 }));
+  });
+
+  it("drops a robot the controller forgot, and takes it whole when it is back", () => {
+    const fleet = new FleetStream(3);
+    fleet.apply({ type: "snapshot", seq: 1, part: 1, parts: 1, robots: [bot("a", { battery: 3 }), bot("b")] });
+    expect(fleet.apply({ type: "delta", seq: 2, robots: { a: null } })).toEqual({ ack: 2, robots: true });
+    expect(Object.keys(fleet.robots)).toEqual(["b"]);
+    fleet.apply({ type: "delta", seq: 3, robots: { a: bot("a") as unknown as Record<string, unknown> } });
+    expect(fleet.robots.a).toEqual(bot("a"));
   });
 
   it("appends trail points, keeps the newest, and resets on request", () => {

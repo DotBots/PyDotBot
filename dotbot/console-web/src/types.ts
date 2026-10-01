@@ -15,7 +15,7 @@ export type BotState =
   | "Stopping"
   | "Resetting";
 
-export type LinkState = "active" | "inactive" | "lost" | "unknown";
+export type LinkState = "active" | "stale" | "lost" | "unknown";
 
 export const STATE_ORDER: BotState[] = [
   "Running",
@@ -27,7 +27,7 @@ export const STATE_ORDER: BotState[] = [
 
 export const LINK_LABEL: Record<LinkState, string> = {
   active: "Live",
-  inactive: "Inactive",
+  stale: "Stale",
   lost: "Lost",
   unknown: "Not on the control plane",
 };

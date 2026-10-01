@@ -85,7 +85,7 @@ describe("deriveState (the sandbox axis)", () => {
 describe("deriveLink (the control-plane axis)", () => {
   it("maps PyDotBot's DotBotStatus", () => {
     expect(deriveLink(py({ status: 0 }))).toBe("active");
-    expect(deriveLink(py({ status: 1 }))).toBe("inactive");
+    expect(deriveLink(py({ status: 1 }))).toBe("stale");
     expect(deriveLink(py({ status: 2 }))).toBe("lost");
   });
 
@@ -358,10 +358,12 @@ describe("derivePose (whose pose is live)", () => {
     expect(derivePose(py({ lh2_position: stale }), sw(), "active").position).toEqual(stale);
   });
 
-  it("takes swarmit's once the controller stops hearing the app", () => {
-    for (const link of ["inactive", "lost"] as const) {
-      expect(derivePose(py({ lh2_position: stale }), sw(), link).position).toEqual({ x: 100, y: 200 });
-    }
+  it("keeps the controller's while its link is only stale", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw(), "stale").position).toEqual(stale);
+  });
+
+  it("takes swarmit's once the controller has lost the app", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw(), "lost").position).toEqual({ x: 100, y: 200 });
   });
 
   it("takes swarmit's for a bot in its bootloader the merge still has an app record for", () => {

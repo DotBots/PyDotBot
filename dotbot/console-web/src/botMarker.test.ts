@@ -23,6 +23,7 @@ const pose = (dx = 0, heading = 0): RobotBody => ({
 const bot = (extra: Partial<MarkerBot> = {}): MarkerBot => ({
   id: "a",
   state: "Running",
+  link: "active",
   severity: "normal",
   resetCause: null,
   battery: 2.9,
@@ -44,6 +45,7 @@ describe("sameMarkerBot", () => {
     expect(sameMarkerBot(bot(), bot({ pose: pose(0, 90) }))).toBe(false);
     expect(sameMarkerBot(bot(), bot({ pose: null }))).toBe(false);
     expect(sameMarkerBot(bot(), bot({ state: "Stopping" }))).toBe(false);
+    expect(sameMarkerBot(bot(), bot({ link: "stale" }))).toBe(false);
     expect(sameMarkerBot(bot(), bot({ led: { red: 9, green: 2, blue: 3 } }))).toBe(false);
     expect(sameMarkerBot(bot(), bot({ batteryPct: 20 }))).toBe(false);
     expect(sameMarkerBot(bot(), bot({ severity: "crashed" }))).toBe(false);

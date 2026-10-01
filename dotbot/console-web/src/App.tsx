@@ -28,6 +28,7 @@ import {
 import { isPhoneWidth, sessionRect } from "./calibration";
 import { loadSpanShown, saveSpanShown } from "./calibrationSpan";
 import { siteExtentArea } from "./frame";
+import { fleetSummary, nobodyHears } from "./link";
 import { Footer } from "./Footer";
 import { GridView } from "./GridView";
 import { ListView } from "./ListView";
@@ -214,6 +215,7 @@ export const App: React.FC = () => {
     crashedOnly: false,
     allWaypoints: false,
     calibratedSpan: loadSpanShown(),
+    lostBots: false,
   }));
   const [rightTab, setRightTab] = useState<RightTab>("layers");
   const [rightCollapsed, setRightCollapsed, setRightCollapsedUnsaved] = usePanel("right");
@@ -545,9 +547,14 @@ export const App: React.FC = () => {
 
   // One filter for all three views: "who crashed" is the same question whether
   // you are looking at the map, the list or the grid.
+  // A robot nothing hears is left out of all three unless asked for.
+  const visibleBots = useMemo(
+    () => (layers.lostBots ? bots : bots.filter((b) => !nobodyHears(b))),
+    [bots, layers.lostBots],
+  );
   const shownBots = layers.crashedOnly
-    ? bots.filter((b) => b.severity === "crashed")
-    : bots;
+    ? visibleBots.filter((b) => b.severity === "crashed")
+    : visibleBots;
   const selectedBots = bots.filter((b) => selection.has(b.id));
   const drivableSelected = selectedBots.filter((b) => b.drivable);
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");
@@ -819,6 +826,7 @@ export const App: React.FC = () => {
     { key: "trails", label: "Trails" },
     { key: "allWaypoints", label: "Every robot's waypoints" },
     { key: "crashedOnly", label: "Only crashed bots" },
+    { key: "lostBots", label: "Lost robots" },
   ];
 
   // On a phone the card is the whole screen: a small picture at the top so
@@ -954,7 +962,9 @@ export const App: React.FC = () => {
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1, color: "var(--muted)" }}>
             {wsUp ? "LIVE" : "OFFLINE"}
           </span>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>&middot; {bots.length} bots</span>
+          <span data-testid="fleet-summary" style={{ fontSize: 11, color: "var(--muted)" }}>
+            &middot; {fleetSummary(bots, !!layers.lostBots)}
+          </span>
         </div>
         <div style={{ flex: 1 }} />
         <TestbedControls
@@ -1206,7 +1216,7 @@ export const App: React.FC = () => {
       </div>
 
       <Footer
-        bots={bots}
+        bots={visibleBots}
         flashQueue={orch.queue}
         viewport={viewport}
         site={site}

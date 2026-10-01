@@ -1,6 +1,7 @@
 import React from "react";
 
-import { UnifiedBot } from "./types";
+import { rowOpacity } from "./link";
+import { LINK_LABEL, UnifiedBot } from "./types";
 import { BatteryCell, FilterBar, LedDot, Pagination, ResetBadge, SortKey, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
 
 interface ListViewProps {
@@ -149,8 +150,10 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                     e.stopPropagation();
                     rowClick(e, b.id);
                   }}
+                  data-link={b.link}
                   style={{
                     cursor: "pointer",
+                    opacity: rowOpacity(b.link),
                     background: checked ? "rgba(228,3,46,.07)" : "transparent",
                     borderLeft: checked ? "2px solid var(--accent)" : "2px solid transparent",
                   }}
@@ -207,6 +210,9 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                         }}
                       />
                       <span style={{ fontSize: 12 }}>{b.state}</span>
+                      {(b.link === "stale" || b.link === "lost") && (
+                        <span style={{ fontSize: 11, color: "var(--muted)" }}>{LINK_LABEL[b.link]}</span>
+                      )}
                     </div>
                   </td>
                 </tr>
