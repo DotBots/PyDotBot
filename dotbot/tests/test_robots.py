@@ -89,6 +89,7 @@ def test_an_off_centre_photodiode_is_refused():
             encoder_cpr=V3.encoder_cpr,
             gear_ratio=V3.gear_ratio,
             envelope_mm=V3.envelope_mm,
+            spin_radius_mm=V3.spin_radius_mm,
         )
 
 
