@@ -5,8 +5,8 @@
 
 An area is session configuration, a view into the frame that carries no
 homography: changing it never touches a calibration file. Named areas come
-from the `[sites.<site>.areas.<name>]` tables of a dotbot config file, so a
-fresh install with no config has none.
+from the `[areas.<name>]` tables of a site pack's `site.toml`, so a fresh
+install with no site has none.
 
 An area may carry a role: `field` is where experiments happen and what gets
 calibrated, `staging` is where robots park and charge, `corner` is a small

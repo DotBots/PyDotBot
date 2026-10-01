@@ -28,8 +28,8 @@ import click
 from dotbot import addr_to_hex
 from dotbot.cli._cfg import resolved_from_config
 from dotbot.cli._conn import parse_connection
-from dotbot.cli._site import active_site, connection_banner
-from dotbot.mqtt_tls import Credentials, allow_unverified_broker, broker_credentials
+from dotbot.cli._site import active_site, connection_banner, credentials_for
+from dotbot.mqtt_tls import Credentials, allow_unverified_broker
 
 
 def _run_gateway(
@@ -117,7 +117,7 @@ def cmd(ctx, port, mqtt_url, do_print):
     """Run the gateway bridge."""
     # With no --mqtt-url, the config's conn (the active site's included) is
     # bridged to only when it names a broker; otherwise the bridge prints.
-    conn = resolved_from_config(ctx, "mqtt_url", "conn", "run")
+    conn = resolved_from_config(ctx, "mqtt_url", "conn", None)
     if conn.kind != "flag" and not (
         conn.value and parse_connection(conn.value).kind == "mqtt"
     ):
@@ -125,7 +125,7 @@ def cmd(ctx, port, mqtt_url, do_print):
     credentials = Credentials()
     if conn is not None:
         click.echo(connection_banner(active_site(ctx), conn), err=True)
-        credentials = broker_credentials(conn)
+        credentials = credentials_for(ctx, conn)
         if credentials.withheld:
             click.echo(f"warning: {credentials.withheld}", err=True)
     _run_gateway(port, conn.value if conn else None, do_print, credentials)

@@ -216,3 +216,34 @@ def test_a_non_broker_conn_takes_no_credentials():
         broker_credentials(Resolved("simulator", "flag", "--conn"), _LOGIN)
         == Credentials()
     )
+
+
+# --- a [login] saved for a host ----------------------------------------------
+
+_SAVED = {"Argus.Example": types.SimpleNamespace(user="me", password="hunter2")}
+
+
+def test_a_saved_login_goes_to_its_host_whoever_chose_the_broker():
+    why = "site c405-arena's broker was never approved"
+    got = broker_credentials(_site(_ARGUS, distrust=why), {}, _SAVED)
+    assert (got.username, got.password, got.withheld) == ("me", "hunter2", None)
+    assert got.reason == "your [login] for argus.example"
+
+
+def test_a_saved_login_never_reaches_another_host():
+    conn = Resolved("mqtts://evil.example:8883", "site", "site x", (), "approved")
+    assert broker_credentials(conn, {}, _SAVED) == Credentials()
+
+
+def test_a_saved_login_never_goes_over_plain_mqtt_to_a_remote_host():
+    conn = Resolved("mqtt://argus.example:1883", "flag", "--conn")
+    got = broker_credentials(conn, {}, _SAVED)
+    assert got.username is None
+    assert "not sending your [login] for argus.example" in got.withheld
+
+
+def test_the_env_login_wins_where_it_is_allowed_and_the_saved_one_elsewhere():
+    named = broker_credentials(Resolved(_ARGUS, "flag", "--conn"), _LOGIN, _SAVED)
+    assert named.username == "me" and named.password == "secret"
+    unapproved = broker_credentials(_site(_ARGUS, distrust="no"), _LOGIN, _SAVED)
+    assert unapproved.password == "hunter2" and unapproved.withheld is None

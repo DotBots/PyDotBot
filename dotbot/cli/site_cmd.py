@@ -5,9 +5,9 @@
 
 A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
-config finds it; `use` makes a site the active one; `list` and `show` read;
-`export` writes one as a zip, from a pack or from an inline `[sites.<name>]`
-table. The same folders can be shared with git, cp or unzip.
+folder finds it; `use` makes a site the active one; `list` and `show` read;
+`export` writes one as a zip. The same folders can be shared with git, cp or
+unzip.
 """
 
 import os
@@ -19,10 +19,9 @@ import zipfile
 from pathlib import Path
 
 import click
-import tomlkit
 
-from dotbot import config as _config
-from dotbot.cli._site import SITE_ENV, active_site, config_label
+from dotbot.cli import _config_write as cw
+from dotbot.cli._site import SITE_ENV, active_site
 from dotbot.config import ConfigError
 from dotbot.site import PACK_CALIBRATIONS, check_site_name
 from dotbot.site_packs import (
@@ -52,7 +51,7 @@ def cmd():
 def _catalog(ctx):
     obj = ctx.obj or {}
     try:
-        return site_catalog(obj.get("config"), obj.get("config_path"))
+        return site_catalog(obj.get("config"))
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -65,86 +64,92 @@ def _connection(table):
     return connection.conn, connection.swarm_id
 
 
-def _hiders(config, config_path, table) -> list[str]:
-    """What in the config file or the environment overrides the site's
-    connection, one phrase each."""
-    phrases = []
-    label = config_label(config_path)
-    for key, value in zip(("conn", "swarm_id"), _connection(table)):
-        if value is None:
-            continue
-        if config is not None:
-            if getattr(config, key, None) is not None:
-                phrases.append(f"{label} sets {key} at top level")
-            for section in ("run", "swarm"):
-                if getattr(getattr(config, section), key, None) is not None:
-                    phrases.append(f"{label} sets {key} in [{section}]")
-        for name in (
-            f"DOTBOT_{key.upper()}",
-            f"DOTBOT_RUN_{key.upper()}",
-            f"DOTBOT_SWARM_{key.upper()}",
-        ):
-            if name in os.environ:
-                phrases.append(f"{name} is set")
-    return phrases
+def write_active_site(ctx, name: str, table=None, where: str | None = None) -> Path:
+    """Write `site = "<name>"` to your own config file: dotbot.local.toml
+    beside the project's dotbot.toml when one is in use, else the user file;
+    `where` (`user` / `project`) picks one.
 
-
-def write_active_site(ctx, name: str, table=None) -> Path:
-    """Write `site = "<name>"` into the config file in use, or create the
-    user config holding just that when none is.
-
-    Comments and the rest of the file are kept. Warns when the file or the
-    environment will override the site, or its connection.
+    Comments and the rest of the file are kept. Warns when a higher file or
+    the environment overrides the site, or its connection.
     """
     obj = ctx.obj or {}
-    config_path = obj.get("config_path")
-    target = Path(config_path) if config_path is not None else _config.USER_CONFIG_PATH
-    if target.is_file():
-        document = tomlkit.parse(target.read_text())
-    else:
-        document = tomlkit.document()
-    document["site"] = name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(tomlkit.dumps(document))
+    config = obj.get("config")
+    try:
+        target = cw.target(config, ("site",), where)
+        cw.set_value(target, ("site",), name)
+    except cw.WriteError as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo(f'wrote site = "{name}" to {target}')
+    project = getattr(config, "project_path", None)
+    if project is not None and target.resolve() == Path(project).resolve():
+        click.echo(
+            f"note: {target.name} is the project's file, so the change shows "
+            "in git status",
+            err=True,
+        )
+    for phrase in cw.hiders(config, target, ("site",)):
+        if phrase != f"{SITE_ENV} is set":
+            click.echo(f"warning: {phrase}, which overrides it", err=True)
     if os.environ.get(SITE_ENV) and os.environ[SITE_ENV] != name:
         click.echo(
             f"warning: {SITE_ENV}={os.environ[SITE_ENV]} overrides it; unset "
             f"{SITE_ENV} to work in {name}",
             err=True,
         )
-    config = obj.get("config") if config_path is not None else None
-    for phrase in _hiders(config, target, table):
-        click.echo(
-            f"warning: {phrase}, which overrides {name}'s connection; remove "
-            "it to follow the site",
-            err=True,
-        )
+    for key, value in zip(("conn", "swarm_id"), _connection(table)):
+        if value is None:
+            continue
+        phrases = [
+            f"{item.label} sets {key}"
+            for item in getattr(config, "files", ())
+            if cw.lookup(item.data, (key,)) is not None
+        ]
+        env = f"DOTBOT_{key.upper()}"
+        if env in os.environ:
+            phrases.append(f"{env} is set")
+        for phrase in phrases:
+            click.echo(
+                f"warning: {phrase}, which hides {name}'s {key}; "
+                f"`dotbot config unset {key}` to follow the site",
+                err=True,
+            )
     return target
 
 
 @cmd.command()
 @click.argument("name")
+@cw.where_options(
+    "Change the project's default in its dotbot.toml, which is committed."
+)
 @click.pass_context
-def use(ctx, name):
-    """Make NAME the active site, writing it to the config file in use.
+def use(ctx, name, where):
+    """Make NAME the active site.
 
-    That is the file `dotbot config path` reports; with none in use,
-    ~/.dotbot/dotbot.toml is created. NAME is an inline [sites.<name>] table
-    or a site pack.
+    Writes site = NAME to dotbot.local.toml beside the project's dotbot.toml
+    when one is in use, else to ~/.dotbot/dotbot.toml; --user and --project
+    pick the file. NAME is a site pack in sites/ beside the project file or
+    in ~/.dotbot/sites, or a pack folder's path.
     """
-    catalog = _catalog(ctx)
-    entry = catalog.get(name)
-    if entry is None:
-        known = ", ".join(sorted(catalog)) or "(none)"
-        raise click.ClickException(f"unknown site {name!r}; known sites: {known}")
-    write_active_site(ctx, name, entry.table)
+    from dotbot.site_packs import is_pack_path, pack_at
+
+    if is_pack_path(name):
+        try:
+            entry = pack_at(name)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        target = cw.target((ctx.obj or {}).get("config"), ("site",), where)
+        name = cw.path_value(("site",), name, target)
+    else:
+        catalog = _catalog(ctx)
+        entry = catalog.get(name)
+        if entry is None:
+            known = ", ".join(sorted(catalog)) or "(none)"
+            raise click.ClickException(f"unknown site {name!r}; known sites: {known}")
+    write_active_site(ctx, name, entry.table, where)
 
 
 def _where(entry) -> str:
-    if entry.pack is not None:
-        return str(entry.pack)
-    return "inline" + (f", shadowing {entry.shadows}" if entry.shadows else "")
+    return entry.source
 
 
 @cmd.command(name="list")
@@ -481,7 +486,9 @@ def add(ctx, source, force, use_, yes):
     name is the site's name. A pack naming a broker shows it and asks first,
     and asks again when a re-add changes it. Approving it trusts that broker
     with DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS; if the installed pack's broker
-    later differs, the login is withheld until the site is added again.
+    later differs, that login is withheld until the site is added again. A
+    login saved with `dotbot config login HOST` needs no approval: only
+    that host's broker gets it.
     """
     with tempfile.TemporaryDirectory() as scratch:
         folder, name = _fetch(source, Path(scratch))
@@ -505,26 +512,37 @@ def add(ctx, source, force, use_, yes):
         write_active_site(ctx, name, table)
     elif not shadowed:
         click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
+    _hint_login(ctx, new[0])
+
+
+def _hint_login(ctx, conn: str | None) -> None:
+    """Say how to save a login for the pack's broker when none is saved."""
+    from urllib.parse import urlparse
+
+    from dotbot.mqtt_tls import LOCAL_HOSTS
+
+    if conn is None or not conn.strip().lower().startswith("mqtts://"):
+        return
+    host = (urlparse(conn.strip()).hostname or "").lower()
+    config = (ctx.obj or {}).get("config")
+    saved = {name.lower() for name in getattr(config, "login", {}) or {}}
+    if host and host not in LOCAL_HOSTS and host not in saved:
+        click.echo(f"If its broker needs a login: dotbot config login {host}")
 
 
 def _warn_if_shadowed(ctx, name: str, target: Path) -> bool:
-    """Warn, and return True, when the config in use reads site `name` from
-    somewhere other than the pack just installed at `target`."""
+    """Warn, and return True, when site `name` resolves to a pack other than
+    the one just installed at `target`."""
     obj = ctx.obj or {}
-    config_path = obj.get("config_path")
     try:
-        entry = resolve_site_entry(obj.get("config"), config_path, name)
+        entry = resolve_site_entry(obj.get("config"), name)
     except ConfigError:
         return False
-    if entry is None or (
-        entry.pack is not None and entry.pack.resolve() == target.resolve()
-    ):
+    if entry is None or entry.pack.resolve() == target.resolve():
         return False
-    where = config_path or "the config in use"
     click.echo(
-        f"warning: {where} reads site {name} from {_where(entry)}, "
-        f"not from this pack; rename the pack folder to add it under "
-        f"another name",
+        f"warning: the project's site pack {entry.pack} hides this one; "
+        f"rename the pack folder to add it under another name",
         err=True,
     )
     return True
@@ -532,27 +550,6 @@ def _warn_if_shadowed(ctx, name: str, target: Path) -> bool:
 
 def _files(count: int) -> str:
     return f"{count} calibration file{'' if count == 1 else 's'}"
-
-
-def _site_toml(table) -> str:
-    """An inline `[sites.<name>]` table as a pack's `site.toml`."""
-    data = table.model_dump(exclude_none=True)
-    document = tomlkit.document()
-    for key in ("anchor", "extent_mm"):
-        if key in data:
-            document[key] = data[key]
-    if data.get("connection"):
-        connection = tomlkit.table()
-        connection.update(data["connection"])
-        document["connection"] = connection
-    areas = tomlkit.table()
-    for area_name, area in data.get("areas", {}).items():
-        inline = tomlkit.inline_table()
-        inline.update(area)
-        areas[area_name] = inline
-    if areas:
-        document["areas"] = areas
-    return tomlkit.dumps(document)
 
 
 @cmd.command()
@@ -575,13 +572,13 @@ def _site_toml(table) -> str:
 def export(ctx, name, out_path, with_calibrations, force):
     """Write the site NAME as a site pack zip.
 
-    NAME is an inline [sites.<name>] table of the config or a site pack.
+    NAME is a site pack in one of the two homes.
     """
     from dotbot.calibration.lighthouse2 import calibration_root
 
     obj = ctx.obj or {}
     try:
-        catalog = site_catalog(obj.get("config"), obj.get("config_path"))
+        catalog = site_catalog(obj.get("config"))
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
     entry = catalog.get(name)
@@ -598,10 +595,7 @@ def export(ctx, name, out_path, with_calibrations, force):
             f"{target} already exists. Pass --force to overwrite it."
         )
 
-    if entry.pack is not None:
-        site_toml = (entry.pack / PACK_FILE).read_bytes()
-    else:
-        site_toml = _site_toml(entry.table).encode()
+    site_toml = (entry.pack / PACK_FILE).read_bytes()
     calibrations: dict[str, Path] = {}
     if with_calibrations:
         site = entry.site()

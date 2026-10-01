@@ -1,0 +1,18 @@
+# Zero is the top-left corner of the extent, x right, y down, millimetres.
+anchor = "the north-west corner of the lab's floor marking"
+extent_mm = [20000, 30000]
+
+[connection]       # it exists only in simulation
+conn = "simulator"
+
+[areas.staging]    # a 2 m strip along the north wall
+x = 0
+y = 0
+w = 20000
+h = 2000
+
+[areas.field]      # the field, where the robots start
+x = 2000
+y = 10000
+w = 16000
+h = 16000

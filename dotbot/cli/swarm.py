@@ -68,16 +68,16 @@ def _mount_native_lh2(swarmit_group) -> None:
 
 
 def _settle_connection(ctx, args, swarmit_group) -> None:
-    """Print the banner for a command that acts on robots, and keep the
-    broker login from a broker it is not meant for.
+    """Print the banner for a command that acts on robots, and hand swarmit
+    the broker login meant for its broker, and no other.
 
     swarmit reads `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` from the
-    environment itself, so a withheld login is removed from this process's
-    environment before swarmit runs.
+    environment itself, so this process's environment is set to the login
+    decided here, or cleared, before swarmit runs.
     """
-    from dotbot.cli._site import active_site, connection_banner
+    from dotbot.cli._site import active_site, connection_banner, credentials_for
     from dotbot.config import Resolved
-    from dotbot.mqtt_tls import PASS_ENV, USER_ENV, broker_credentials
+    from dotbot.mqtt_tls import PASS_ENV, USER_ENV
 
     sub = subcommand_index(args, swarmit_group)
     given = group_options(args, swarmit_group)
@@ -90,11 +90,15 @@ def _settle_connection(ctx, args, swarmit_group) -> None:
         swarm_id = Resolved(given["swarm_id"], "flag", "--swarm-id")
     if sub is not None and args[sub] in _ACTING:
         click.echo(connection_banner(active_site(ctx), conn, swarm_id), err=True)
-    credentials = broker_credentials(conn)
+    credentials = credentials_for(ctx, conn)
     if credentials.withheld:
         click.echo(f"warning: {credentials.withheld}", err=True)
-        os.environ.pop(USER_ENV, None)
-        os.environ.pop(PASS_ENV, None)
+    os.environ.pop(USER_ENV, None)
+    os.environ.pop(PASS_ENV, None)
+    if credentials.username is not None:
+        os.environ[USER_ENV] = credentials.username
+    if credentials.password is not None:
+        os.environ[PASS_ENV] = credentials.password
 
 
 def _with_config_injection(swarmit_group):

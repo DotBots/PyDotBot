@@ -55,15 +55,12 @@ def resolved_from_config(
         from dotbot.cli._site import active_site
 
         site = active_site(ctx, site_flag).layer
-    from dotbot.cli._site import config_label
-
     return resolve_source(
         key,
         section=section,
         flag=flag,
         flag_name=_flag_name(ctx, param_name),
         config=obj.get("config"),
-        config_label=config_label(obj.get("config_path")),
         site=site,
         default=default if value is None else value,
     )

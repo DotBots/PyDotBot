@@ -133,7 +133,7 @@ def sheets(out_dir: str, sheet_format: str, per_sheet: bool) -> None:
     default=None,
     help=(
         "The one area this camera covers: a name from the site's "
-        "`[sites.<site>.areas.<name>]` tables, `x,y,w,h` in frame mm, or a "
+        "`[areas.<name>]` tables, `x,y,w,h` in frame mm, or a "
         "`+`-joined composite. The four sheet positions are derived from its "
         "corners. Defaults to the site's field."
     ),

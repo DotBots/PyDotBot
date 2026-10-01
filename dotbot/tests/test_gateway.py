@@ -17,9 +17,9 @@ from dotbot.cli.main import cli
 
 
 def _write_config(tmp_path, text):
-    path = tmp_path / "dotbot.toml"
-    path.write_text(text)
-    return path
+    from dotbot.tests.config_project import write_project
+
+    return write_project(tmp_path / "dotbot.toml", text)
 
 
 def _bridged(run):
@@ -67,9 +67,10 @@ _LAB = 'site = "lab"\n[sites.lab.connection]\nconn = "mqtts://broker:8883"\n'
 
 
 @patch("dotbot.cli.gateway._run_gateway")
-def test_gateway_falls_back_to_the_sites_broker(run, tmp_path):
+def test_gateway_falls_back_to_the_sites_broker(run, tmp_path, monkeypatch):
     """No --mqtt-url -> the active site's broker reaches the bridge, named in
     the banner."""
+    monkeypatch.chdir(tmp_path)
     cfg = _write_config(tmp_path, _LAB)
     result = CliRunner().invoke(cli, ["-c", str(cfg), "run", "gateway"])
     assert result.exit_code == 0, result.output

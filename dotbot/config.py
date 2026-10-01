@@ -1,54 +1,33 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Unified `dotbot` configuration: one file, one precedence chain.
+"""Unified `dotbot` configuration: layered TOML files, one precedence chain.
 
-This is the resolver core for the single `dotbot` config file. It is
-intentionally pure - no Click, no network, no global state - so the whole
-precedence/discovery story is exhaustively unit-testable without hardware.
-The CLI layer feeds it the actual flags and `os.environ`.
+Pure - no Click, no network, no global state - so discovery and precedence
+are unit-testable without hardware. The CLI layer feeds it the flags and
+`os.environ`.
 
-The file mirrors the four-namespace CLI: top-level shared keys plus `[fw]` /
-`[device]` / `[swarm]` / `[run]` tables, and `[sites.<name>]` entries for the
-places you work in. A site may carry its usual way in, a `[connection]`
-table, which site packs carry the same way.
+Three files can be in use, each validated on its own and then merged key by
+key, the closest to you winning:
 
-```toml
-site     = "default"
-swarm_id = "0001"
-site_dirs = ["sites"]    # where site packs are found, in order, before ~/.dotbot/sites
-
-[sites.default]                             # a place: where zero is, how big, its areas
-anchor = "top-left corner of a 5 x 5 m floor; the field starts 1.5 m in from each wall"
-extent_mm = [5000, 5000]
-
-[sites.default.connection]                  # the site's broker, unless you set conn
-conn = "mqtts://broker.local:8883"
-
-[sites.default.areas]                       # a name that is a role has it
-field   = { x = 1500, y = 1500, w = 2000, h = 2000 }
-staging = { x = 1500, y = 3500, w = 2000, h = 600 }
-bench   = { x = 3000, y = 1500, w = 500,  h = 500, role = "corner" }
-
-[fw]
-board = "dotbot-v3"
-
-[run.controller]
-http_port = 8000
-```
+    ./dotbot.local.toml     you, in this project (untracked)
+    ./dotbot.toml           the project (committed; or the -c FILE)
+    ~/.dotbot/dotbot.toml   you, on this machine; the only home of [login]
 
 Precedence for any value, highest wins:
 
     CLI flag  >  env (DOTBOT_<SECTION>_<KEY>, then shared DOTBOT_<KEY>)
-              >  file (section value > top-level)
+              >  dotbot.local.toml  >  dotbot.toml  >  ~/.dotbot/dotbot.toml
               >  the active site's [connection] (conn and swarm_id only)
               >  built-in default
 
-Unknown keys are rejected (`extra='forbid'`) so a typo fails loud.
+Unknown keys are rejected (`extra='forbid'`) so a typo fails loud, and a
+removed key names where it went.
 """
 
 from __future__ import annotations
 
+import difflib
 import os
 import tomllib
 from dataclasses import dataclass
@@ -60,23 +39,41 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     ValidationError,
     model_validator,
 )
 
 from dotbot.area import Role, area_role
 
-# The four CLI namespaces, used to derive env-var names (DOTBOT_<SECTION>_<KEY>).
-SECTIONS = ("fw", "device", "swarm", "run")
+# The sections whose keys derive env-var names (DOTBOT_<SECTION>_<KEY>).
+SECTIONS = ("fw", "device", "run")
 
-# Project-level config, discovered in the current directory only.
+# The project file, discovered in the current directory only.
 PROJECT_CONFIG_NAME = "dotbot.toml"
-# The user-level config, under the same name as a project's.
+# `<stem>.local.toml` beside the project file is your overlay on it.
+LOCAL_CONFIG_SUFFIX = ".local.toml"
+# The user file: you, on this machine.
 USER_CONFIG_PATH = Path.home() / ".dotbot" / PROJECT_CONFIG_NAME
-# The user-level config's former name, refused rather than read.
+# The user file's former name, refused rather than read.
 LEGACY_USER_CONFIG_NAME = "config.toml"
 # The keys a site's `[connection]` table can supply.
 CONNECTION_KEYS = ("conn", "swarm_id")
+
+# DOTBOT_* variables read outside the config schema.
+EXTRA_ENV = frozenset(
+    {
+        "DOTBOT_CONFIG",
+        "DOTBOT_MQTT_USER",
+        "DOTBOT_MQTT_PASS",
+        "DOTBOT_MQTT_INSECURE",
+        "DOTBOT_CONTROLLER_URL",
+        "DOTBOT_CONTROLLER_PORT",
+        "DOTBOT_CONTROLLER_USE_HTTPS",
+        "DOTBOT_SCT_PATH",
+        "DOTBOT_ADDRESS",
+    }
+)
 
 
 class ConfigError(Exception):
@@ -86,7 +83,6 @@ class ConfigError(Exception):
 def _check_conn(value: str | None) -> str | None:
     """Validate a connection string with the same parser the `--conn` flag uses.
 
-    One validator for the file path and the flag path, so they can't drift.
     Imported lazily so merely importing this module doesn't pull in marilib.
     """
     if value is None:
@@ -110,10 +106,18 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# All fields are Optional and default to None: the model captures only what the
+def _refuse_removed(data: Any, removed: Mapping[str, str]) -> Any:
+    """Raise the message for the first removed key `data` still sets."""
+    if isinstance(data, dict):
+        for key, message in removed.items():
+            if key in data:
+                raise ValueError(message)
+    return data
+
+
+# All fields are Optional and default to None: the model captures only what a
 # file *explicitly* set, so the resolver can tell "unset" from "set to the
-# default" and apply the precedence chain correctly. Built-in defaults live in
-# code (dotbot/__init__.py), not here.
+# default". Built-in defaults live in code, not here.
 
 
 class FwSources(_Strict):
@@ -124,11 +128,10 @@ class FwSources(_Strict):
     mari: str | None = None
 
 
-# The `[fw]` keys that became `[fw.sources]` keys.
-_MOVED_SOURCE_KEYS = {
-    "firmware_repo": "dotbot-firmware",
-    "swarmit_repo": "swarmit",
-    "mari_repo": "mari",
+_FW_REMOVED = {
+    "firmware_repo": "[fw].firmware_repo is now the dotbot-firmware key of [fw.sources]",
+    "swarmit_repo": "[fw].swarmit_repo is now the swarmit key of [fw.sources]",
+    "mari_repo": "[fw].mari_repo is now the mari key of [fw.sources]",
 }
 
 
@@ -137,16 +140,13 @@ class FwSection(_Strict):
     bare: bool | None = None
     build_config: str | None = None  # Debug | Release
     segger_dir: str | None = None
+    artifacts_dir: str | None = None
     sources: FwSources = Field(default_factory=FwSources)
 
     @model_validator(mode="before")
     @classmethod
-    def _source_keys_moved(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            for old, new in _MOVED_SOURCE_KEYS.items():
-                if old in data:
-                    raise ValueError(f"[fw].{old} is now the {new} key of [fw.sources]")
-        return data
+    def _removed(cls, data: Any) -> Any:
+        return _refuse_removed(data, _FW_REMOVED)
 
 
 class DeviceSection(_Strict):
@@ -154,14 +154,8 @@ class DeviceSection(_Strict):
     probe: str | None = None
 
 
-class SwarmSection(_Strict):
-    conn: Conn = None
-    swarm_id: str | None = None
-    devices: str | None = None
-
-
 class AreaSection(_Strict):
-    """One `[sites.<site>.areas.<name>]` table: a rectangle in frame millimetres.
+    """One `[areas.<name>]` table of a site: a rectangle in frame millimetres.
 
     `role` is needed only when the name is not already a role.
     """
@@ -196,7 +190,7 @@ class ConnectionSection(_Strict):
             raise ValueError(
                 f"a site's conn is a broker URL (mqtt:// or mqtts://), not "
                 f"{conn!r}: a serial port belongs to one machine, so pass it "
-                "with --conn or set conn in your own dotbot.toml"
+                "with --conn or set conn in your own config"
             )
         from urllib.parse import urlparse
 
@@ -204,13 +198,13 @@ class ConnectionSection(_Strict):
         if parsed.username is not None or parsed.password is not None:
             raise ValueError(
                 "a site's conn carries no credentials; drop the user:pass@ "
-                "part and set DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS instead"
+                "part and save a login with `dotbot config login HOST`"
             )
         return self
 
 
 class SiteSection(_Strict):
-    """One `[sites.<name>]` table: a place, its anchor, extent, areas and
+    """A site pack's `site.toml`: a place, its anchor, extent, areas and
     usual connection.
 
     `anchor` is prose and no code parses it: it is the whole specification
@@ -240,9 +234,22 @@ class SiteSection(_Strict):
         return self
 
 
+_CONTROLLER_REMOVED = {
+    key: f"[run.controller] {key} is gone: pass {flag} instead"
+    for key, flag in (
+        ("background_map", "--background-map"),
+        ("log_output", "--log-output"),
+        ("csv_data_output", "--csv-data-output"),
+        ("gw_address", "--gw-address"),
+        ("simulator_init_state", "--simulator-init-state"),
+    )
+}
+
+
 class ControllerSection(_Strict):
     http_port: int | None = None
     http_host: str | None = None
+    headless: bool | None = None
     lh2_calibration: str | None = None
     # Older than this at load, the LH2 calibration is warned about; 0: never
     lh2_calibration_max_age_days: int | None = Field(None, ge=0)
@@ -250,115 +257,193 @@ class ControllerSection(_Strict):
     camera_detect: bool | None = None
     camera_max_robots: int | None = Field(None, ge=1)
     camera_detect_share: float | None = Field(None, gt=0.0, le=1.0)
-    background_map: str | None = None
-    log_output: str | None = None
-    csv_data_output: str | None = None
-    headless: bool | None = None
-    gw_address: str | None = None
-    simulator_init_state: str | None = None
     simulator_area: str | None = None
     swarmit_url: str | None = None
     mrta_url: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _removed(cls, data: Any) -> Any:
+        return _refuse_removed(data, _CONTROLLER_REMOVED)
 
-class GatewaySection(_Strict):
-    serial_port: str | None = None
-    mqtt: Conn = None
+
+_RUN_REMOVED = {
+    "conn": "[run] conn is now the top-level conn",
+    "swarm_id": "[run] swarm_id is now the top-level swarm_id",
+    "gateway": "[run.gateway] is gone: pass --port / --mqtt-url, or set conn",
+}
 
 
 class RunSection(_Strict):
-    conn: Conn = None
-    swarm_id: str | None = None
     controller: ControllerSection = Field(default_factory=ControllerSection)
-    gateway: GatewaySection = Field(default_factory=GatewaySection)
-
-
-_DEPLOYMENT_GONE = (
-    "{key} is gone: give each site its broker in a [connection] table (its "
-    "site.toml, or [sites.<name>.connection]) and switch sites with "
-    "`dotbot site use <name>`"
-)
-
-
-class DotbotConfig(_Strict):
-    """The whole file: top-level shared keys + the four section tables + sites."""
-
-    log_level: str | None = None
-    conn: Conn = None
-    swarm_id: str | None = None
-    # The active site, and with it the coordinate frame this session's
-    # positions and calibrations live in. Read by `swarm calibrate-lh2` and
-    # by the controller's calibration lookup, so it is shared rather than
-    # per-command.
-    site: str | None = None
-
-    # `[sites.<name>]` tables map to {name: SiteSection}.
-    sites: dict[str, SiteSection] = Field(default_factory=dict)
-    # Folders searched, in order, for site packs (`dotbot.site_packs`);
-    # relative entries are read from this file's folder.
-    site_dirs: list[str] | None = None
-
-    fw: FwSection = Field(default_factory=FwSection)
-    device: DeviceSection = Field(default_factory=DeviceSection)
-    swarm: SwarmSection = Field(default_factory=SwarmSection)
-    run: RunSection = Field(default_factory=RunSection)
 
     @model_validator(mode="before")
     @classmethod
-    def _deployments_gone(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            for key, label in (
-                ("deployment", "[deployment.*]"),
-                ("default_deployment", "default_deployment"),
-            ):
-                if key in data:
-                    raise ValueError(_DEPLOYMENT_GONE.format(key=label))
-        return data
+    def _removed(cls, data: Any) -> Any:
+        return _refuse_removed(data, _RUN_REMOVED)
+
+
+class Login(_Strict):
+    """One `[login."<broker host>"]` table: the login sent to that broker."""
+
+    user: str
+    password: str | None = None
+
+
+_SITE_GONE = (
+    "`dotbot site use <name>` switches sites; give each one its broker in "
+    "the [connection] table of its site.toml"
+)
+_TOP_REMOVED = {
+    "deployment": f"[deployment.*] is gone: {_SITE_GONE}",
+    "default_deployment": f"default_deployment is gone: {_SITE_GONE}",
+    "sites": (
+        "inline [sites.<name>] tables are gone: move each one to "
+        "sites/<name>/site.toml beside this file"
+    ),
+    "site_dirs": (
+        "site_dirs is gone: site packs live in sites/ beside the project's "
+        "dotbot.toml and in ~/.dotbot/sites, and site can name a pack's path"
+    ),
+    "log_level": "log_level is gone: pass --log-level instead",
+    "swarm": "[swarm] is gone: conn and swarm_id are top-level keys",
+}
+
+
+@dataclass(frozen=True)
+class ConfigFile:
+    """One config file in use: which layer it is, where, and what it set.
+
+    `kind` is `user`, `project` or `local`.
+    """
+
+    kind: str
+    path: Path
+    data: dict
+    config: DotbotConfig
+
+    @property
+    def label(self) -> str:
+        return display_path(self.path)
+
+
+class DotbotConfig(_Strict):
+    """A config file's keys, or the merge of every file in use."""
+
+    conn: Conn = None
+    swarm_id: str | None = None
+    # The active site: a pack's name, or the path of a pack folder.
+    site: str | None = None
+
+    fw: FwSection = Field(default_factory=FwSection)
+    device: DeviceSection = Field(default_factory=DeviceSection)
+    run: RunSection = Field(default_factory=RunSection)
+    # Broker logins keyed by host; only the user file may hold them.
+    login: dict[str, Login] = Field(default_factory=dict)
+
+    # The files merged into this config, lowest first, and the file that
+    # set each leaf key.
+    _files: tuple[ConfigFile, ...] = PrivateAttr(default=())
+    _origins: dict[tuple[str, ...], ConfigFile] = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _removed(cls, data: Any) -> Any:
+        return _refuse_removed(data, _TOP_REMOVED)
+
+    @property
+    def files(self) -> tuple[ConfigFile, ...]:
+        return self._files
+
+    def file(self, kind: str) -> ConfigFile | None:
+        for item in self._files:
+            if item.kind == kind:
+                return item
+        return None
+
+    def origin(self, *path: str) -> ConfigFile | None:
+        """The file that set the key at `path` (TOML spelling), if any."""
+        return self._origins.get(tuple(path))
+
+    @property
+    def project_path(self) -> Path | None:
+        found = self.file("project")
+        return found.path if found is not None else None
+
+    @property
+    def project_dir(self) -> Path | None:
+        path = self.project_path
+        return path.resolve().parent if path is not None else None
+
+
+def display_path(path: Path) -> str:
+    """`path` as a person reads it: relative to the cwd when inside it,
+    `~/...` under the home directory, else absolute."""
+    resolved = Path(path).absolute()
+    cwd, home = Path.cwd().absolute(), Path.home().absolute()
+    if resolved.is_relative_to(cwd) and not home.is_relative_to(cwd):
+        return resolved.relative_to(cwd).as_posix()
+    if resolved.is_relative_to(home):
+        return "~/" + resolved.relative_to(home).as_posix()
+    return str(resolved)
 
 
 # --- Discovery --------------------------------------------------------------
 
 
-def discover_config_path(
+def local_path_for(project: Path) -> Path:
+    """The overlay beside a project file: `<stem>.local.toml`."""
+    return project.with_name(project.stem + LOCAL_CONFIG_SUFFIX)
+
+
+def discover_files(
     explicit: os.PathLike[str] | str | None = None,
     *,
     environ: Mapping[str, str] = os.environ,
     start_dir: os.PathLike[str] | str | None = None,
-) -> Path | None:
-    """Find the config file to load, highest priority first.
+) -> list[tuple[str, Path]]:
+    """The config files in use, lowest priority first, as (kind, path).
 
-    1. `explicit` (the `-c/--config PATH` flag) wins outright.
-    2. `DOTBOT_CONFIG` env var (an explicit path by another name).
-    3. A `dotbot.toml` in the current directory (the cwd only - no walking up to
-       parent directories, so the active config is always unambiguous).
-    4. The user file `~/.dotbot/dotbot.toml`.
-    5. None (caller uses built-in defaults).
+    The user file `~/.dotbot/dotbot.toml`; the project file, which is
+    `explicit` (`-c`), else `DOTBOT_CONFIG`, else a `dotbot.toml` in the
+    current directory (no walking up); and `<stem>.local.toml` beside it.
 
-    Raises `ConfigError` when neither 1 nor 2 applies and the user file still
-    has its former name, `~/.dotbot/config.toml`.
+    Raises `ConfigError` when the user file still has its former name.
     """
-    if explicit:
-        return Path(explicit)
-    env_path = environ.get("DOTBOT_CONFIG")
-    if env_path:
-        return Path(env_path)
     check_user_config_name()
-
-    start = Path(start_dir or Path.cwd()).resolve()
-    candidate = start / PROJECT_CONFIG_NAME
-    if candidate.is_file():
-        return candidate
-
-    if USER_CONFIG_PATH.is_file():
-        return USER_CONFIG_PATH
-    return None
+    files: list[tuple[str, Path]] = []
+    user = USER_CONFIG_PATH
+    if user.is_file():
+        files.append(("user", user))
+    project: Path | None = None
+    if explicit:
+        project = Path(explicit)
+    elif environ.get("DOTBOT_CONFIG"):
+        project = Path(environ["DOTBOT_CONFIG"])
+    else:
+        candidate = Path(start_dir or Path.cwd()).resolve() / PROJECT_CONFIG_NAME
+        if candidate.is_file():
+            project = candidate
+    if project is not None and not (
+        user.is_file() and project.exists() and project.resolve() == user.resolve()
+    ):
+        files.append(("project", project))
+        local = local_path_for(project)
+        if local.is_file():
+            files.append(("local", local))
+    return files
 
 
 def _invalid(where: str, exc: ValidationError) -> str:
     """The message for a config that fails validation; one line for a
-    whole-file refusal such as a removed key."""
+    whole-table refusal such as a removed key."""
     errors = exc.errors()
-    if len(errors) == 1 and not errors[0]["loc"]:
+    tables = {"fw", "device", "run", "controller"}
+    if (
+        len(errors) == 1
+        and errors[0]["type"] == "value_error"
+        and set(errors[0]["loc"]) <= tables
+    ):
         message = errors[0]["msg"].removeprefix("Value error, ")
         return f"invalid config {where}: {message}"
     return f"invalid config {where}:\n{exc}"
@@ -374,39 +459,77 @@ def check_user_config_name() -> None:
         )
 
 
+def _read(path: Path) -> dict:
+    try:
+        with open(path, "rb") as handle:
+            return tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigError(f"could not read config {path}: {exc}") from exc
+
+
+def _validate(data: dict, where: str) -> DotbotConfig:
+    try:
+        return DotbotConfig.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(_invalid(where, exc)) from exc
+
+
 def load_config(path: os.PathLike[str] | str | None) -> DotbotConfig:
-    """Load and validate a config file. `None` -> an empty config (all defaults).
+    """Load and validate one config file. `None` -> an empty config.
 
     Raises `ConfigError` (with the file path) on bad TOML, an unknown key, a
     wrong-typed value, or an invalid connection string.
     """
     if path is None:
         return DotbotConfig()
-    path = Path(path)
-    try:
-        with open(path, "rb") as handle:
-            data = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ConfigError(f"could not read config {path}: {exc}") from exc
-    try:
-        return DotbotConfig.model_validate(data)
-    except ValidationError as exc:
-        raise ConfigError(_invalid(str(path), exc)) from exc
+    return _validate(_read(Path(path)), str(path))
 
 
 def load_config_text(text: str, *, source: str = "<text>") -> DotbotConfig:
-    """Validate a config TOML *string*, with the same checks as `load_config`.
-
-    `source` names the origin in error messages.
-    """
+    """Validate a config TOML *string*, with the same checks as `load_config`."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"invalid TOML from {source}: {exc}") from exc
-    try:
-        return DotbotConfig.model_validate(data)
-    except ValidationError as exc:
-        raise ConfigError(_invalid(f"from {source}", exc)) from exc
+    return _validate(data, f"from {source}")
+
+
+def _merge(into: dict, data: dict, file: ConfigFile, origins: dict, path=()) -> None:
+    """Merge `data` into `into` key by key, recording `file` as each leaf's
+    origin."""
+    for key, value in data.items():
+        here = (*path, key)
+        if isinstance(value, dict):
+            target = into.get(key)
+            if not isinstance(target, dict):
+                target = into[key] = {}
+            _merge(target, value, file, origins, here)
+        else:
+            into[key] = value
+            origins[here] = file
+
+
+def load_files(files: list[tuple[str, Path]]) -> DotbotConfig:
+    """Validate each file on its own, then merge them, later ones winning."""
+    loaded = []
+    for kind, path in files:
+        data = _read(path)
+        config = _validate(data, str(path))
+        if kind != "user" and config.login:
+            raise ConfigError(
+                f"invalid config {path}: [login] belongs only in "
+                f"{display_path(USER_CONFIG_PATH)}, which is never committed; "
+                "save one with `dotbot config login HOST`"
+            )
+        loaded.append(ConfigFile(kind, path, data, config))
+    merged: dict = {}
+    origins: dict = {}
+    for item in loaded:
+        _merge(merged, item.data, item, origins)
+    config = _validate(merged, "(the merged files)") if loaded else DotbotConfig()
+    config._files = tuple(loaded)
+    config._origins = origins
+    return config
 
 
 def load_discovered(
@@ -414,10 +537,52 @@ def load_discovered(
     *,
     environ: Mapping[str, str] = os.environ,
     start_dir: os.PathLike[str] | str | None = None,
-) -> tuple[DotbotConfig, Path | None]:
-    """Discover + load in one step. Returns (config, source_path or None)."""
-    path = discover_config_path(explicit, environ=environ, start_dir=start_dir)
-    return load_config(path), path
+) -> DotbotConfig:
+    """Discover and merge every config file in use."""
+    return load_files(discover_files(explicit, environ=environ, start_dir=start_dir))
+
+
+def resolve_relative(value: str, origin: ConfigFile | None) -> Path:
+    """A path a config value names: `~` expanded, a relative one read from
+    the folder of the file that set it (the cwd for env or a flag)."""
+    path = Path(value).expanduser()
+    if not path.is_absolute() and origin is not None:
+        path = origin.path.resolve().parent / path
+    return Path(os.path.normpath(path.absolute()))
+
+
+# --- Env names --------------------------------------------------------------
+
+
+def _model_env_names(model: type[BaseModel], section: str | None) -> set[str]:
+    names: set[str] = set()
+    for name, field in model.model_fields.items():
+        key = field.alias or name
+        annotation = field.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            nested = key if section is None else f"{section}.{key}"
+            names |= _model_env_names(annotation, nested)
+            continue
+        names.update(_env_candidates(section, key))
+    return names
+
+
+def known_env_names() -> frozenset[str]:
+    """Every DOTBOT_* variable dotbot reads."""
+    names = _model_env_names(DotbotConfig, None) - {"DOTBOT_LOGIN"}
+    return frozenset(names | EXTRA_ENV)
+
+
+def unknown_env(environ: Mapping[str, str] = os.environ) -> list[tuple[str, str]]:
+    """The DOTBOT_* variables nothing reads, each with a close known name
+    ("" when none is close)."""
+    known = known_env_names()
+    unknown = []
+    for name in sorted(environ):
+        if name.startswith("DOTBOT_") and name not in known:
+            close = difflib.get_close_matches(name, known, n=1, cutoff=0.8)
+            unknown.append((name, close[0] if close else ""))
+    return unknown
 
 
 # --- Precedence resolution --------------------------------------------------
@@ -432,7 +597,7 @@ def _env_candidates(section: str | None, key: str) -> tuple[str, ...]:
     """
     key_part = key.upper().replace("-", "_")
     if section:
-        section_part = section.upper().replace(".", "_")
+        section_part = section.upper().replace(".", "_").replace("-", "_")
         return (f"DOTBOT_{section_part}_{key_part}", f"DOTBOT_{key_part}")
     return (f"DOTBOT_{key_part}",)
 
@@ -446,6 +611,11 @@ def _coerce(raw: str, like: Any) -> Any:
             return int(raw)
         except ValueError as exc:
             raise ConfigError(f"expected an integer, got {raw!r}") from exc
+    if isinstance(like, float):
+        try:
+            return float(raw)
+        except ValueError as exc:
+            raise ConfigError(f"expected a number, got {raw!r}") from exc
     return raw
 
 
@@ -469,7 +639,7 @@ class Resolved:
     """One resolved value, the layer it came from, and the layers it hides.
 
     `kind` is `flag`, `env`, `file`, `site` or `default`; `source` names the
-    layer for a person (`--conn`, `DOTBOT_SWARM_ID`, `dotbot.toml [run]`,
+    layer for a person (`--conn`, `DOTBOT_SWARM_ID`, `dotbot.local.toml`,
     `site c405-arena`); `hidden` holds the (source, value) pairs of the lower
     layers that set the key too, highest first. `site_trust` and
     `site_distrust` carry the site layer's, for a `site` value.
@@ -492,6 +662,14 @@ class Resolved:
         return None
 
 
+def _lookup(config: DotbotConfig, section: str | None, key: str) -> Any:
+    obj: Any = config
+    if section is not None:
+        for part in section.split("."):
+            obj = getattr(obj, part.replace("-", "_"), None)
+    return getattr(obj, key.replace("-", "_"), None)
+
+
 def _layers(
     config: DotbotConfig | None,
     section: str | None,
@@ -501,19 +679,16 @@ def _layers(
 ) -> list[tuple[str, str, Any]]:
     """The file and site layers for `key`, highest first, as (kind, source, value).
 
-    `section` may be nested (dot-separated, e.g. `run.controller`); each part
-    is walked with getattr. The site layer counts only for `CONNECTION_KEYS`.
+    A merged config contributes one layer per file; a lone one, one layer
+    named `config_label`. The site layer counts only for `CONNECTION_KEYS`.
     """
     layers: list[tuple[str, str, Any]] = []
     if config is not None:
-        if section is not None:
-            section_obj: Any = config
-            for part in section.split("."):
-                section_obj = getattr(section_obj, part, None)
-            layers.append(
-                ("file", f"{config_label} [{section}]", getattr(section_obj, key, None))
-            )
-        layers.append(("file", config_label, getattr(config, key, None)))
+        if config.files:
+            for item in reversed(config.files):
+                layers.append(("file", item.label, _lookup(item.config, section, key)))
+        else:
+            layers.append(("file", config_label, _lookup(config, section, key)))
     if site is not None and site.connection is not None and key in CONNECTION_KEYS:
         layers.append(("site", f"site {site.name}", getattr(site.connection, key)))
     return layers
@@ -533,13 +708,9 @@ def resolve_source(
 ) -> Resolved:
     """Resolve one setting through the full precedence chain, with its source.
 
-    `flag` > env (`DOTBOT_<SECTION>_<KEY>`, then shared `DOTBOT_<KEY>`) >
-    file (section > top-level) > the active site's `[connection]` > `default`.
-
-    `section` is one of `SECTIONS` for a per-namespace key, a dotted path for
-    a nested table (e.g. `run.controller`), or `None` for a top-level shared
-    key (e.g. `conn`, `swarm_id`). Env values are coerced to the type of
-    `default`. `flag_name` and `config_label` only name the layers.
+    `section` is one of `SECTIONS`, a dotted path for a nested table (e.g.
+    `run.controller`), or `None` for a top-level key (`conn`, `swarm_id`).
+    Env values are coerced to the type of `default`.
     """
     found: list[tuple[str, str, Any]] = []
     if flag is not None:

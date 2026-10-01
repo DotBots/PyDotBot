@@ -9,8 +9,7 @@ extent, x growing right, y growing down, millimetres. The frame has no name
 of its own - the site's name identifies it, and `anchor` is the prose that
 re-establishes zero in the physical world.
 
-Sites come from the `[sites.<name>]` tables of a dotbot config file, or from
-site packs (`dotbot.site_packs`). The package default is deliberately empty:
+Sites come from site packs (`dotbot.site_packs`). The package default is deliberately empty:
 a real site is measured, never shipped.
 """
 
@@ -124,19 +123,8 @@ def field_or_fallback(site: Site | None) -> Area:
     return Area(0, 0, FIELD_FALLBACK_MM, FIELD_FALLBACK_MM)
 
 
-def site_from_config(config: Any, name: str) -> Site:
-    """The `[sites.<name>]` table of a loaded config, else an empty site.
-
-    Takes the config duck-typed so the resolver stays independent of the
-    pydantic model.
-    """
-    tables = getattr(config, "sites", None) or {}
-    return site_from_table(name, tables.get(name))
-
-
 def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
-    """A site from one `[sites.<name>]` table or pack `site.toml`; None is an
-    empty site."""
+    """A site from a pack's `site.toml` table; None is an empty site."""
     if table is None:
         return Site(name=name, pack=pack)
     extent = getattr(table, "extent_mm", None)

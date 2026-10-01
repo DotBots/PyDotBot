@@ -7,19 +7,19 @@ A site names a physical place, so the package must not ship one: the neutral
 default is what a fresh install gets, and a real name comes from the config.
 """
 
-from pathlib import Path
+import tomllib
 
 import pytest
 
 from dotbot.area import Area
 from dotbot.cli._site import resolve_site_name
-from dotbot.config import load_config_text
+from dotbot.config import SiteSection, load_config_text
 from dotbot.site import (
     FIELD_FALLBACK_MM,
     SITE_DEFAULT,
     Site,
     field_or_fallback,
-    site_from_config,
+    site_from_table,
 )
 
 
@@ -34,9 +34,6 @@ def test_the_config_names_the_site():
         "inria-aio-c",
         "the config file",
     )
-    assert resolve_site_name(
-        config=config, environ={}, config_path=Path("/lab/dotbot.toml")
-    ) == ("inria-aio-c", "dotbot.toml")
 
 
 def test_the_flag_wins_over_the_config():
@@ -57,16 +54,18 @@ def test_the_environment_wins_over_the_config_and_loses_to_the_flag():
     assert resolve_site_name(config=config, flag="taped", environ=environ)[0] == "taped"
 
 
+def _table(text: str) -> SiteSection:
+    return SiteSection.model_validate(tomllib.loads(text))
+
+
 def test_a_site_table_becomes_its_anchor_extent_and_areas():
-    config = load_config_text(
-        'site = "c405-arena"\n'
-        "[sites.c405-arena]\n"
+    table = _table(
         'anchor = "the arena top-left corner, C405"\n'
         "extent_mm = [2000, 4000]\n"
-        "[sites.c405-arena.areas.field]\n"
+        "[areas.field]\n"
         "x = 0\ny = 0\nw = 2000\nh = 2000\n"
     )
-    site = site_from_config(config, "c405-arena")
+    site = site_from_table("c405-arena", table)
     assert site.anchor == "the arena top-left corner, C405"
     assert site.extent_mm == (2000, 4000)
     assert site.valid_mm == (0, 0, 2000, 4000)
@@ -82,7 +81,7 @@ def test_a_site_table_becomes_its_anchor_extent_and_areas():
 
 def test_a_named_site_with_no_table_is_empty_rather_than_an_error():
     """The default site is exactly this: a name, and nothing measured yet."""
-    site = site_from_config(load_config_text('site = "bench"'), "bench")
+    site = site_from_table("bench", None)
     assert (site.name, site.anchor, site.extent_mm, site.areas) == (
         "bench",
         "",
@@ -92,8 +91,7 @@ def test_a_named_site_with_no_table_is_empty_rather_than_an_error():
 
 
 def _site(areas: str, extent: str = "") -> Site:
-    config = load_config_text(f"[sites.hall]\n{extent}[sites.hall.areas]\n{areas}")
-    return site_from_config(config, "hall")
+    return site_from_table("hall", _table(f"{extent}[areas]\n{areas}"))
 
 
 def test_an_area_named_after_a_role_has_it_unless_it_declares_another():
@@ -184,7 +182,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "dotbot.calibration.lighthouse2.CALIBRATION_DIR", tmp_path / "calibrations"
     )
-    for name in ("DOTBOT_CONFIG", "DOTBOT_SITE", "DOTBOT_CONN", "DOTBOT_RUN_CONN"):
+    for name in ("DOTBOT_CONFIG", "DOTBOT_SITE", "DOTBOT_CONN"):
         monkeypatch.delenv(name, raising=False)
     return home
 
@@ -217,15 +215,36 @@ def _invoke(runner, *args, input=None):
     return runner.invoke(cli, list(args), input=input)
 
 
-def test_use_writes_the_site_and_keeps_comments(runner, tmp_path, home):
+def test_use_writes_the_site_to_your_overlay_and_keeps_comments(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
-    config.write_text('# my lab\nsite = "old"  # the old one\n[fw]\nboard = "x"\n')
+    config.write_text('site = "team"\n')
+    local = tmp_path / "dotbot.local.toml"
+    local.write_text('# mine\nsite = "old"  # the old one\n[fw]\nboard = "x"\n')
     _pack(home / "sites", "arena")
     result = _invoke(runner, "-c", str(config), "site", "use", "arena")
     assert result.exit_code == 0, result.output
-    assert f'wrote site = "arena" to {config}' in result.output
-    text = config.read_text()
-    assert "# my lab" in text and 'site = "arena"' in text and "[fw]" in text
+    assert f'wrote site = "arena" to {local}' in result.output
+    text = local.read_text()
+    assert "# mine" in text and 'site = "arena"' in text and "[fw]" in text
+    assert config.read_text() == 'site = "team"\n'
+
+
+def test_use_project_changes_the_team_default_and_says_so(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('site = "team"\n')
+    _pack(home / "sites", "arena")
+    result = _invoke(runner, "-c", str(config), "site", "use", "arena", "--project")
+    assert result.exit_code == 0, result.output
+    assert config.read_text() == 'site = "arena"\n'
+    assert "shows in git status" in result.output
+
+
+def test_use_accepts_a_pack_path(runner, tmp_path, home):
+    pack = _pack(tmp_path / "elsewhere", "hall-b")
+    with runner.isolated_filesystem():
+        result = _invoke(runner, "site", "use", str(pack))
+    assert result.exit_code == 0, result.output
+    assert tomllib.loads((home / "dotbot.toml").read_text()) == {"site": str(pack)}
 
 
 def test_use_warns_when_your_file_hides_the_sites_connection(runner, tmp_path, home):
@@ -235,8 +254,8 @@ def test_use_warns_when_your_file_hides_the_sites_connection(runner, tmp_path, h
     result = _invoke(runner, "-c", str(config), "site", "use", "arena")
     assert result.exit_code == 0, result.output
     assert (
-        "warning: dotbot.toml sets conn at top level, which overrides arena's "
-        "connection; remove it to follow the site" in result.output
+        "dotbot.toml sets conn, which hides arena's conn; "
+        "`dotbot config unset conn` to follow the site" in result.output
     )
 
 
@@ -254,7 +273,7 @@ def test_use_refuses_an_unknown_site(runner, tmp_path, home):
     result = _invoke(runner, "-c", str(config), "site", "use", "nope")
     assert result.exit_code != 0
     assert "unknown site 'nope'" in result.output
-    assert config.read_text() == ""
+    assert not (tmp_path / "dotbot.local.toml").exists()
 
 
 def test_use_with_no_config_in_use_creates_the_user_config(runner, home):
@@ -385,14 +404,26 @@ def test_add_use_with_no_config_creates_the_user_config(runner, tmp_path, home):
     assert f'wrote site = "arena" to {home / "dotbot.toml"}' in result.output
 
 
-def test_add_use_writes_into_the_config_in_use(runner, tmp_path, home):
+def test_add_use_writes_into_your_overlay(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
     config.write_text('swarm_id = "A001"\n')
     pack = _pack(tmp_path / "src", "arena")
     result = _invoke(runner, "-c", str(config), "site", "add", str(pack), "--use")
     assert result.exit_code == 0, result.output
-    assert config.read_text() == 'swarm_id = "A001"\nsite = "arena"\n'
+    assert config.read_text() == 'swarm_id = "A001"\n'
+    assert (tmp_path / "dotbot.local.toml").read_text() == 'site = "arena"\n'
     assert not (home / "dotbot.toml").exists()
+
+
+def test_add_says_how_to_save_a_login_for_its_broker(runner, tmp_path, home):
+    pack = _pack(tmp_path / "src", "arena", _ARGUS)
+    result = _invoke(runner, "site", "add", str(pack), "--yes")
+    assert "dotbot config login argus.example" in result.output
+    home.joinpath("dotbot.toml").write_text(
+        '[login."argus.example"]\nuser = "me"\npassword = "x"\n'
+    )
+    again = _invoke(runner, "site", "add", str(pack), "--yes", "--force")
+    assert "config login" not in again.output
 
 
 def test_add_from_stdin_asks_on_the_terminal_or_needs_yes(
@@ -422,12 +453,13 @@ def test_add_from_stdin_asks_on_the_terminal_or_needs_yes(
 
 def test_list_marks_the_active_site_and_shows_each_connection(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
-    config.write_text('site = "lab"\n[sites.lab.connection]\nconn = "simulator"\n')
+    config.write_text('site = "lab"\n')
+    lab = _pack(tmp_path / "sites", "lab", '[connection]\nconn = "simulator"\n')
     _pack(home / "sites", "arena", _ARGUS)
     result = _invoke(runner, "-c", str(config), "site", "list")
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
-    assert "* lab    simulator                   inline" in lines
+    assert f"* lab    simulator                   {lab.resolve()}" in lines
     assert f"  arena  mqtts://argus.example:8883  {home / 'sites' / 'arena'}" in lines
 
 

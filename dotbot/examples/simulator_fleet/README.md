@@ -2,10 +2,11 @@
 
 A 20 x 30 m site with room for up to 1000 simulated DotBots.
 
-`dotbot.toml` defines the site `virtual-lab`: its extent and two areas, a
+`sites/virtual-lab/site.toml` is the site pack: its extent and two areas, a
 `staging` strip along the north wall, where robots park and charge, and the
 16 x 16 m `field`. Its connection is the simulator, so here `dotbot run
-controller` and `dotbot run simulator` do the same thing.
+controller` and `dotbot run simulator` do the same thing. `dotbot.toml`
+selects it.
 
 `--robots N` starts N robots in a block centred on the field, 200 mm apart
 centre to centre and all facing the staging strip. The block takes the
@@ -41,7 +42,8 @@ BROWSER=true dotbot run simulator --simulator-init-state fleet.toml --controller
 ```
 
 From another folder, pass the file with
-`-c dotbot/examples/simulator_fleet/dotbot.toml`. Either way it is the whole
-config, and your `~/.dotbot/dotbot.toml` does not apply. The console frames
-the whole site, where the robots are dots at their true size; zoom in to see
-each one's body. Waypoints outside the site are refused.
+`-c dotbot/examples/simulator_fleet/dotbot.toml`. Your `~/.dotbot/dotbot.toml`
+still applies underneath it, so a `conn` you set there hides the site's
+simulator; `--conn simulator` puts it back for one run. The console frames
+the whole site, where the robots are dots at their true size;
+zoom in to see each one's body. Waypoints outside the site are refused.

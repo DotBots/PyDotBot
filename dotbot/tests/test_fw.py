@@ -362,6 +362,15 @@ def test_resolve_segger_dir_falls_back_to_config(monkeypatch, isolated_home):
     assert _fw_helpers.resolve_segger_dir() == Path("/from/config")
 
 
+def test_resolve_segger_dir_reads_the_user_file_past_a_project_file(
+    monkeypatch, isolated_home
+):
+    _write_config(isolated_home, '[fw]\nsegger_dir = "/from/user"\n')
+    Path("dotbot.toml").write_text('swarm_id = "0001"\n')
+    monkeypatch.delenv("SEGGER_DIR", raising=False)
+    assert _fw_helpers.resolve_segger_dir() == Path("/from/user")
+
+
 def test_resolve_segger_dir_uses_macos_glob_when_no_env_or_config(
     tmp_path, monkeypatch, isolated_home
 ):
@@ -398,14 +407,15 @@ def test_resolve_segger_dir_picks_latest_glob_match(
 
 def test_resolve_segger_dir_errors_when_nothing_found(monkeypatch, isolated_home):
     monkeypatch.delenv("SEGGER_DIR", raising=False)
+    monkeypatch.delenv("DOTBOT_FW_SEGGER_DIR", raising=False)
     monkeypatch.setattr("dotbot.cli._fw_helpers.sys.platform", "linux")
     with pytest.raises(click.ClickException) as excinfo:
         _fw_helpers.resolve_segger_dir()
     # Error message must surface BOTH escape hatches so the user can fix
     # whichever they prefer.
     msg = str(excinfo.value)
-    assert "SEGGER_DIR" in msg
-    assert "~/.dotbot/dotbot.toml" in msg
+    assert "DOTBOT_FW_SEGGER_DIR" in msg
+    assert "dotbot config set fw.segger_dir" in msg
 
 
 @pytest.fixture
@@ -481,7 +491,9 @@ def test_mari_source_is_found_by_its_firmware_makefile(repo_env, monkeypatch):
         _fw_helpers.resolve_mari_repo()
 
 
-def test_default_uses_the_config_path_on_the_click_context(repo_env):
+def test_default_uses_the_project_of_the_config_on_the_click_context(repo_env):
+    from dotbot.config import load_files
+
     ws = repo_env / "workspace"
     sw = _repo(ws / "repos" / "swarmit")
     cfg = _config_file(ws / "dotbot.toml", "")
@@ -491,7 +503,7 @@ def test_default_uses_the_config_path_on_the_click_context(repo_env):
         click.echo(_fw_helpers.resolve_swarmit_repo())
 
     result = CliRunner().invoke(
-        probe, [], obj={"config": DotbotConfig(), "config_path": cfg}
+        probe, [], obj={"config": load_files([("project", cfg)])}
     )
     assert result.exit_code == 0, result.output
     assert result.output.strip() == str(sw)
@@ -619,3 +631,27 @@ def test_targets_match_makefile_list_targets():
         f"In CLI but not Makefile: {cli_targets - makefile_targets}\n"
         f"In Makefile but not CLI: {makefile_targets - cli_targets}"
     )
+
+
+def test_segger_dir_reads_the_mechanical_env_name_first(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOTBOT_FW_SEGGER_DIR", str(tmp_path / "a"))
+    monkeypatch.setenv("SEGGER_DIR", str(tmp_path / "b"))
+    assert _fw_helpers.resolve_segger_dir() == tmp_path / "a"
+    monkeypatch.delenv("DOTBOT_FW_SEGGER_DIR")
+    assert _fw_helpers.resolve_segger_dir() == tmp_path / "b"
+
+
+def test_the_artifacts_dir_comes_from_the_config_relative_to_its_file(
+    tmp_path, monkeypatch
+):
+    from dotbot.cli._artifacts import artifacts_dir
+
+    for name in ("DOTBOT_FW_ARTIFACTS_DIR", "DOTBOT_ARTIFACTS_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    project = tmp_path / "lab"
+    project.mkdir()
+    (project / "dotbot.toml").write_text('[fw]\nartifacts_dir = "cache"\n')
+    monkeypatch.chdir(project)
+    assert artifacts_dir() == (project / "cache").resolve()
+    monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path / "env"))
+    assert artifacts_dir() == (tmp_path / "env").resolve()

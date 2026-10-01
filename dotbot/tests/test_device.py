@@ -280,9 +280,9 @@ def test_flash_mari_gateway_calls_engine_with_gateway_role(
 
 
 def _write_cfg(tmp_path, text):
-    path = tmp_path / "dotbot.toml"
-    path.write_text(text)
-    return path
+    from dotbot.tests.config_project import write_project
+
+    return write_project(tmp_path / "dotbot.toml", text)
 
 
 def test_flash_mari_gateway_net_id_from_the_site(

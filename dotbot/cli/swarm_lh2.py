@@ -49,12 +49,11 @@ def _swarmit_client(ctx, conn, swarm_id):
     """
     from dotbot.cli._site import (
         active_site,
-        config_label,
         connection_banner,
+        credentials_for,
         missing_swarm_message,
     )
     from dotbot.config import resolve_source
-    from dotbot.mqtt_tls import broker_credentials
 
     obj = ctx.obj or {}
     site = active_site(ctx)
@@ -64,7 +63,6 @@ def _swarmit_client(ctx, conn, swarm_id):
             flag=flag,
             flag_name=f"--{key.replace('_', '-')}",
             config=obj.get("config"),
-            config_label=config_label(obj.get("config_path")),
             site=site.layer,
         )
         for key, flag in (("conn", conn), ("swarm_id", swarm_id))
@@ -76,7 +74,7 @@ def _swarmit_client(ctx, conn, swarm_id):
         and not swarm_r.value
     ):
         raise click.ClickException(missing_swarm_message(conn_r, site))
-    credentials = broker_credentials(conn_r)
+    credentials = credentials_for(ctx, conn_r)
     if credentials.withheld:
         click.echo(f"warning: {credentials.withheld}", err=True)
 

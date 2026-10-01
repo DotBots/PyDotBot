@@ -192,7 +192,7 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
         "this run (every name must build from the same source). Source "
         "folders otherwise come from [fw.sources] (dotbot-firmware, swarmit, "
         "mari) or DOTBOT_FW_SOURCES_<SOURCE>, defaulting to repos/<name> next "
-        "to the config file."
+        "to the project's dotbot.toml."
     ),
 )
 @click.option(

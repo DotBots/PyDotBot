@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Mapping
 
 import click
 
 from dotbot.config import ConfigError, Resolved, SiteLayer
+from dotbot.mqtt_tls import Credentials, broker_credentials
 from dotbot.site import SITE_DEFAULT, Site
 from dotbot.site_packs import SiteEntry, broker_trust, resolve_site_entry
 
@@ -29,20 +29,14 @@ SITE_ENV = "DOTBOT_SITE"
 _ACTIVE = "active_site"
 
 
-def config_label(config_path: Path | None) -> str:
-    """How a source line names the config file: its file name."""
-    return config_path.name if config_path is not None else "the config file"
-
-
 def resolve_site_name(
     config: Any = None,
     flag: str | None = None,
     environ: Mapping[str, str] = os.environ,
-    config_path: Path | None = None,
 ) -> tuple[str, str]:
-    """The active site's name and the layer it came from.
+    """The active site's name (or pack path) and the layer it came from.
 
-    `--site` > `DOTBOT_SITE` > the config's `site` > the package default.
+    `--site` > `DOTBOT_SITE` > the config files' `site` > the package default.
     """
     if flag:
         return flag, "--site"
@@ -51,7 +45,8 @@ def resolve_site_name(
         return raw, SITE_ENV
     value = getattr(config, "site", None)
     if value:
-        return value, config_label(config_path)
+        origin = config.origin("site")
+        return value, origin.label if origin is not None else "the config file"
     return SITE_DEFAULT, "the default"
 
 
@@ -77,17 +72,23 @@ class ActiveSite:
 
 def active_site(ctx: Any, flag: str | None = None) -> ActiveSite:
     """The active site, from the config the root group stashed on `ctx.obj`:
-    its inline table, else a site pack of that name."""
+    a pack in one of the two homes, or the pack a path names."""
     obj = ctx.obj if isinstance(getattr(ctx, "obj", None), dict) else {}
     if flag is None and _ACTIVE in obj:
         return obj[_ACTIVE]
     config = obj.get("config")
-    config_path = obj.get("config_path")
-    name, source = resolve_site_name(config, flag=flag, config_path=config_path)
+    name, source = resolve_site_name(config, flag=flag)
+    origin = (
+        config.origin("site")
+        if source not in ("--site", SITE_ENV, "the default") and config is not None
+        else None
+    )
     try:
-        entry = resolve_site_entry(config, config_path, name)
+        entry = resolve_site_entry(config, name, origin)
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
+    if entry is not None:
+        name = entry.name
     active = ActiveSite(name, source, entry)
     if flag is None and isinstance(getattr(ctx, "obj", None), dict):
         obj[_ACTIVE] = active
@@ -100,11 +101,19 @@ def site_from_context(ctx: Any, flag: str | None = None) -> tuple[Site, str]:
     entry = active.entry
     if entry is not None and entry.shadows is not None:
         click.echo(
-            f"note: the inline [sites.{active.name}] table shadows the site "
-            f"pack at {entry.shadows}",
+            f"note: the project's site pack {entry.pack} hides the one at "
+            f"{entry.shadows}",
             err=True,
         )
     return active.site(), active.source
+
+
+def credentials_for(ctx: Any, conn: Resolved | None) -> Credentials:
+    """The login the broker `conn` names gets, from the env or the config's
+    `[login]` table."""
+    obj = ctx.obj if isinstance(getattr(ctx, "obj", None), dict) else {}
+    config = obj.get("config")
+    return broker_credentials(conn, logins=getattr(config, "login", None))
 
 
 def connection_banner(
@@ -123,7 +132,10 @@ def connection_banner(
 def missing_swarm_message(conn: Resolved, site: ActiveSite) -> str:
     """The error for an MQTT conn with no swarm id."""
     if conn.kind == "site":
-        return f"site {site.name} names no swarm; set --swarm-id or DOTBOT_SWARM_ID"
+        return (
+            f"site {site.name} names no swarm; pass --swarm-id, or save one "
+            "with `dotbot config set swarm_id <id>`"
+        )
     return (
         f"--conn {conn.value} needs --swarm-id: the broker carries multiple "
         "swarms; --swarm-id selects yours."

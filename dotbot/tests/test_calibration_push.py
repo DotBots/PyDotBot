@@ -21,18 +21,29 @@ from dotbot.calibration.lighthouse2 import (
 )
 from dotbot.calibration.push import PushRefused, check_push, gate_push
 from dotbot.cli import swarm_lh2
-from dotbot.config import load_config_text
+from dotbot.config import load_discovered
 from dotbot.tests.lh2_wire_fixture import FIXTURE_ID, FIXTURE_TOML, MESSAGE_HEX
 
-CONFIG = (
-    'site = "c405-arena"\n'
-    "[sites.c405-arena]\n"
-    'anchor = "arena top-left corner, against the door wall of C405"\n'
-    "extent_mm = [3330, 4000]\n"
-    "[sites.inria-aio-c]\n"
-    'anchor = "floor top-left corner"\n'
-    "extent_mm = [12000, 20000]\n"
-)
+SITES = {
+    "c405-arena": (
+        'anchor = "arena top-left corner, against the door wall of C405"\n'
+        "extent_mm = [3330, 4000]\n"
+    ),
+    "inria-aio-c": 'anchor = "floor top-left corner"\nextent_mm = [12000, 20000]\n',
+}
+LAB = None
+
+
+@pytest.fixture(autouse=True)
+def _lab(tmp_path):
+    """A project working in c405-arena, with both sites as packs."""
+    global LAB
+    lab = tmp_path / "lab"
+    for name, text in SITES.items():
+        (lab / "sites" / name).mkdir(parents=True)
+        (lab / "sites" / name / "site.toml").write_text(text)
+    (lab / "dotbot.toml").write_text('site = "c405-arena"\n')
+    LAB = load_discovered(environ={}, start_dir=lab)
 
 
 def _info(version=2, site="", calibration_id="", gen=1):
@@ -93,7 +104,7 @@ def _push(monkeypatch, fleet, *args):
     return CliRunner().invoke(
         swarm_lh2.cmd,
         ["push", *args],
-        obj={"config": load_config_text(CONFIG)},
+        obj={"config": LAB},
     )
 
 
@@ -207,7 +218,7 @@ def test_reframe_writes_a_new_file_in_the_target_site(
             "--shift",
             "5000,7000",
         ],
-        obj={"config": load_config_text(CONFIG)},
+        obj={"config": LAB},
     )
     assert result.exit_code == 0, result.output
 
@@ -229,7 +240,7 @@ def test_reframe_into_an_undeclared_site_is_refused(calibration_file):
     result = CliRunner().invoke(
         swarm_lh2.cmd,
         ["reframe", str(calibration_file), "--site", "nowhere", "--shift", "1,2"],
-        obj={"config": load_config_text(CONFIG)},
+        obj={"config": LAB},
     )
     assert result.exit_code != 0
     assert "not declared" in result.output
@@ -239,7 +250,7 @@ def test_reframe_takes_two_numbers_for_the_shift(calibration_file):
     result = CliRunner().invoke(
         swarm_lh2.cmd,
         ["reframe", str(calibration_file), "--site", "inria-aio-c", "--shift", "1"],
-        obj={"config": load_config_text(CONFIG)},
+        obj={"config": LAB},
     )
     assert result.exit_code != 0
     assert "x,y" in result.output

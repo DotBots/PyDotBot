@@ -88,11 +88,11 @@ def group_options(args: Sequence[str], group: click.Group) -> dict:
 
 
 def swarm_connection(obj: Optional[dict]) -> tuple:
-    """The `[swarm]` conn and swarm id, each a `Resolved`, the active site's
+    """The conn and swarm id, each a `Resolved`, the active site's
     `[connection]` included."""
     from types import SimpleNamespace
 
-    from dotbot.cli._site import active_site, config_label
+    from dotbot.cli._site import active_site
     from dotbot.config import resolve_source
 
     obj = obj if obj is not None else {}
@@ -100,9 +100,7 @@ def swarm_connection(obj: Optional[dict]) -> tuple:
     return tuple(
         resolve_source(
             key,
-            section="swarm",
             config=obj.get("config"),
-            config_label=config_label(obj.get("config_path")),
             site=site,
         )
         for key in ("conn", "swarm_id")

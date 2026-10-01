@@ -9,6 +9,13 @@ import serial
 from click.testing import CliRunner
 
 from dotbot.controller_app import main
+from dotbot.tests.config_project import write_project as _write_project
+
+
+@pytest.fixture(autouse=True)
+def _in_tmp(tmp_path, monkeypatch):
+    """Run in a scratch folder, so a file in it is named by its name."""
+    monkeypatch.chdir(tmp_path)
 
 
 def test_main_help():
@@ -66,7 +73,7 @@ def test_run_controller_follows_a_sites_simulator(controller, _asyncio_run, tmp_
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(_VIRTUAL)
+    _write_project(config_file, _VIRTUAL)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["-c", str(config_file), "run", "controller"])
@@ -84,7 +91,7 @@ def test_run_controller_banner_names_each_source_once_before_starting(
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(_VIRTUAL)
+    _write_project(config_file, _VIRTUAL)
 
     banner = "site virtual-lab (dotbot.toml), conn simulator (site virtual-lab)"
     printed = []
@@ -112,7 +119,7 @@ def test_run_controller_site_flag_picks_that_sites_connection(
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(_VIRTUAL.replace('site = "virtual-lab"', 'site = "x"'))
+    _write_project(config_file, _VIRTUAL.replace('site = "virtual-lab"', 'site = "x"'))
     runner = CliRunner()
     result = runner.invoke(
         cli, ["-c", str(config_file), "run", "controller", "--site", "virtual-lab"]
@@ -128,12 +135,10 @@ def test_a_site_broker_with_no_swarm_id_names_the_site(tmp_path, monkeypatch):
 
     monkeypatch.delenv("DOTBOT_SWARM_ID", raising=False)
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text('site = "arena"\n' + _ARENA)
+    _write_project(config_file, 'site = "arena"\n' + _ARENA)
     result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
     assert result.exit_code != 0
-    assert "site arena names no swarm; set --swarm-id or DOTBOT_SWARM_ID" in (
-        result.output
-    )
+    assert "site arena names no swarm; pass --swarm-id" in result.output
 
 
 def _arena_pack(tmp_path):
@@ -143,7 +148,7 @@ def _arena_pack(tmp_path):
         '[connection]\nconn = "mqtts://argus.example:8883"\n'
     )
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text('site = "arena"\nsite_dirs = ["sites"]\nswarm_id = "0A1B"\n')
+    _write_project(config_file, 'site = "arena"\nswarm_id = "0A1B"\n')
     return config_file
 
 
@@ -162,7 +167,7 @@ def _installed_arena(tmp_path, monkeypatch, approved):
     if approved is not None:
         site_packs.write_approval(pack, approved)
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text('site = "arena"\nswarm_id = "0A1B"\n')
+    _write_project(config_file, 'site = "arena"\nswarm_id = "0A1B"\n')
     return config_file, pack
 
 
@@ -201,8 +206,8 @@ def test_run_controller_withholds_the_login_from_an_unapproved_broker(
 @patch("dotbot.controller_app.Controller")
 @pytest.mark.parametrize(
     "setup",
-    ["flag", "site_dirs", "approved", "inline"],
-    ids=["you named it", "your own site_dirs", "approved at site add", "inline table"],
+    ["flag", "project", "approved", "login"],
+    ids=["you named it", "a pack beside your project", "approved at site add", "login"],
 )
 def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
     controller, _asyncio_run, tmp_path, monkeypatch, setup
@@ -220,8 +225,13 @@ def test_run_controller_sends_the_login_to_a_broker_it_is_meant_for(
         config_file = _arena_pack(tmp_path)
     if setup == "flag":
         args = ["--conn", "mqtts://argus.example:8883"]
-    if setup == "inline":
-        config_file.write_text('site = "arena"\nswarm_id = "0A1B"\n' + _ARENA)
+    if setup == "login":
+        config_file, _ = _installed_arena(tmp_path / "other", monkeypatch, None)
+        monkeypatch.delenv("DOTBOT_MQTT_USER")
+        monkeypatch.delenv("DOTBOT_MQTT_PASS")
+        user = tmp_path / "home.toml"
+        user.write_text('[login."argus.example"]\nuser = "me"\npassword = "secret"\n')
+        monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", user)
     result = CliRunner().invoke(
         cli, ["-c", str(config_file), "run", "controller", *args]
     )
@@ -255,13 +265,14 @@ def test_run_controller_swarmit_url_from_unified_config(
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(
+    _write_project(
+        config_file,
         """
 conn = "simulator"
 
 [run.controller]
 swarmit_url = "http://lab:9001"
-"""
+""",
     )
 
     runner = CliRunner()
@@ -326,13 +337,14 @@ def test_run_controller_mrta_url_from_unified_config(
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(
+    _write_project(
+        config_file,
         """
 conn = "simulator"
 
 [run.controller]
 mrta_url = "http://lab:9002"
-"""
+""",
     )
 
     runner = CliRunner()
@@ -374,51 +386,6 @@ def test_main_interrupts(run, _):
     result = runner.invoke(main, ["--conn", "/dev/ttyACM0"])
     assert result.exit_code != 0
     assert "Serial error: serial test error" in result.output
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
-@patch("dotbot_utils.serial_interface.serial.Serial.open")
-@patch("dotbot.controller_app.Controller")
-def test_main_with_config(controller, _, tmp_path):
-    """Config file carries `conn` + `swarm_id` (new keys); CLI absent."""
-    log_file = tmp_path / "logfile.log"
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        f"""
-conn = "mqtts://argus:8883"
-swarm_id = "AA26"
-log_level = "debug"
-log_output = "{log_file}"
-"""
-    )
-
-    runner = CliRunner()
-    runner.invoke(main, ["--config-path", config_file.as_posix()])
-    settings = controller.call_args.args[0]
-    assert settings.network_id == "AA26"
-    assert settings.adapter == "cloud"
-    assert settings.mqtt_host == "argus"
-    assert settings.log_level == "debug"
-    assert settings.log_output == str(log_file)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
-@patch("dotbot_utils.serial_interface.serial.Serial.open")
-@patch("dotbot.controller_app.Controller")
-def test_main_warns_on_legacy_config_keys(controller, _, tmp_path):
-    """A config file with old transport keys (adapter/mqtt_host/...) gets a
-    warning, and those keys are dropped (conn/swarm_id drive it)."""
-    config_file = tmp_path / "cfg.toml"
-    config_file.write_text(
-        'conn = "simulator"\nadapter = "serial"\nmqtt_host = "stale"\n'
-    )
-    runner = CliRunner()
-    result = runner.invoke(main, ["--config-path", config_file.as_posix()])
-    assert "legacy config key" in result.output
-    settings = controller.call_args.args[0]
-    # conn=simulator wins; the stale adapter/mqtt_host are ignored.
-    assert settings.adapter == "dotbot-simulator"
-    assert settings.mqtt_host != "stale"
 
 
 def test_scaffold_sim_state_creates_example_when_accepted(tmp_path, monkeypatch):
@@ -492,7 +459,8 @@ def test_run_simulator_keeps_the_site_tables(controller, _asyncio_run, tmp_path)
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(
+    _write_project(
+        config_file,
         """
 site = "hall"
 
@@ -504,7 +472,7 @@ x = 14000
 y = 22000
 w = 2000
 h = 2000
-"""
+""",
     )
 
     runner = CliRunner()
@@ -561,7 +529,7 @@ def _run_simulator(tmp_path, *args, config=FLEET_CONFIG):
     from dotbot.cli.main import cli
 
     config_file = tmp_path / "dotbot.toml"
-    config_file.write_text(config)
+    _write_project(config_file, config)
     return CliRunner().invoke(cli, ["-c", str(config_file), "run", "simulator", *args])
 
 
@@ -667,7 +635,9 @@ def test_area_places_the_fleet_in_a_combined_area(controller, _asyncio_run, tmp_
 @patch("dotbot.controller_app.Controller")
 def test_area_comes_from_the_config_too(controller, _asyncio_run, tmp_path):
     config = ARENA_CONFIG.replace(
-        "[sites.arena]", '[run.controller]\nsimulator_area = "staging"\n\n[sites.arena]'
+        "[sites.arena]",
+        '[run.controller]\nsimulator_area = "staging"\n\n[sites.arena]',
+        1,
     )
     result = _run_simulator(tmp_path, "--robots", "10", config=config)
     assert result.exit_code == 0, result.output
@@ -703,5 +673,42 @@ def test_main_refuses_a_bad_calibration_max_age(run, value, monkeypatch):
     monkeypatch.setenv("DOTBOT_RUN_CONTROLLER_LH2_CALIBRATION_MAX_AGE_DAYS", value)
     result = CliRunner().invoke(main, ["--conn", "simulator"])
     assert result.exit_code != 0
-    assert "whole number of days" in result.output
+    assert "whole number of days" in result.output or "expected an integer" in (
+        result.output
+    )
     run.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_headless_and_the_http_address_come_from_the_config(
+    controller, _asyncio_run, tmp_path, monkeypatch
+):
+    from dotbot.cli.main import cli
+
+    monkeypatch.setenv("DOTBOT_RUN_CONTROLLER_HTTP_PORT", "8100")
+    config_file = _write_project(
+        tmp_path / "dotbot.toml",
+        'conn = "simulator"\n[run.controller]\nheadless = true\n'
+        'http_host = "0.0.0.0"\nhttp_port = 9000\n',
+    )
+    result = CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.headless is True
+    assert (settings.controller_http_host, settings.controller_http_port) == (
+        "0.0.0.0",
+        8100,
+    )
+    result = CliRunner().invoke(
+        cli,
+        ["-c", str(config_file), "run", "controller", "--controller-http-port", "1"],
+    )
+    assert controller.call_args.args[0].controller_http_port == 1
+
+
+def test_run_controller_has_no_config_path_flag():
+    result = CliRunner().invoke(main, ["--config-path", "x.toml"])
+    assert result.exit_code == 2
+    assert "No such option" in result.output
