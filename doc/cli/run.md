@@ -14,7 +14,7 @@ dotbot run --help        # the full list
 | `controller` | Control plane: REST/WS API + web console. The hub everything else talks to. |
 | `gateway` | Host bridge: gateway firmware UART ↔ MQTT broker. |
 | `simulator` | Standalone simulator (no hardware). |
-| `calibrate-lh2` | **Deprecated.** Cabled LH2 calibration on one board (capture / apply). Use [`swarm calibrate-lh2`](swarm.md) instead. |
+| `calibrate-lh2` | **Deprecated.** Cabled LH2 calibration on one board. Use [`swarm calibrate-lh2`](swarm.md) instead. |
 | `calibrate-camera` | Register an overhead camera against four printed ArUco sheets (sheets / collect). |
 | `demo` | Built-in research demos (qrkey phone bridge, …). |
 | `keyboard` | Drive a DotBot from the keyboard. |
@@ -89,20 +89,17 @@ file gives no position.
 `--write-init-state` saves that fleet as a file to edit and reuse with
 `--simulator-init-state`.
 
-## `calibrate-lh2` - capture & apply (cabled, deprecated)
+## `calibrate-lh2` - cabled capture (deprecated)
 
 > **Deprecated.** Use [`swarm calibrate-lh2`](swarm.md), which calibrates
 > over the air with no cable and no firmware swap. This path stays for a
 > single board on the bench, before a swarm exists.
 
 Lighthouse v2 calibration against a single serial-attached board. `collect`
-opens a TUI to capture LH2 counts; `apply` writes the saved calibration out as
-a C header. This is the cabled, bench path - for deployed DotBots, capture over
-the air with [`swarm calibrate-lh2`](swarm.md) instead.
+opens a TUI to capture LH2 counts and saves a calibration file.
 
 ```bash
 dotbot run calibrate-lh2 collect
-dotbot run calibrate-lh2 apply ./lh2_calibration.h
 ```
 
 See [the cabled LH2 calibration guide](../guides/lh2-calibration-cabled.md). To

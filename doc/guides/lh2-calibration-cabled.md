@@ -30,7 +30,7 @@ The `lh2_calibration` app streams raw LH2 counts over serial. Flash it to the
 cabled DotBot (see [device](../cli/device.md) for serial-prefix selection):
 
 ```bash
-dotbot device flash lh2_calibration --probe 77      # board defaults to dotbot-v3
+dotbot device flash lh2_calibration --bare --probe 77      # board defaults to dotbot-v3
 ```
 
 ## 2. Capture the four reference points
@@ -44,8 +44,9 @@ dotbot run calibrate-lh2 collect -p /dev/cu.usbmodem... -d 500
 
 Move the DotBot to each corner - Top left -> Top right -> Bottom left -> Bottom
 right - pressing the matching button in the TUI at each. When all four are
-captured, save. The calibration is written under `~/.dotbot/calibrations/` (a
-`calibration-<UTC>.toml`), the same place the over-the-air flow uses.
+captured, save. The calibration is written under
+`~/.dotbot/calibrations/<site>/` (a schema 3 `calibration-<UTC>-<id>.toml`),
+the same place the over-the-air flow uses.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -63,22 +64,8 @@ over-the-air flow uses - stop any running app first):
 
 ```bash
 dotbot swarm stop
-dotbot swarm calibrate-lh2 push ~/.dotbot/calibrations/calibration-<UTC>.toml
+dotbot swarm calibrate-lh2 push <id>
 ```
-
-### Bake it into the bootloader (header path)
-
-For a fresh board whose bootloader bakes the calibration in at compile time
-(rather than receiving it over the air), export the saved calibration as a C
-header instead:
-
-```bash
-dotbot run calibrate-lh2 apply ./lh2_calibration.h
-```
-
-The swarmit secure bootloader `#include`s this file; rebuild and reflash the
-bootloader for it to take effect. For already-running DotBots, prefer the
-over-the-air push above - no reflash needed.
 
 ## Troubleshooting
 
