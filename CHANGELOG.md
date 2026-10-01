@@ -19,11 +19,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- The console's list and grid show each robot's app and version, sandbox
-  firmware, LH2 calibration, position, heading, area, battery percentage and
-  how long since it was heard, and flag robots to reflash or whose calibration
-  differs from the controller's. The list sorts by every column and can hide
-  columns.
+- The console's list and grid show each robot's app and version, bootloader
+  version, LH2 calibration, position, heading (drawn as on the map), area,
+  battery percentage and how long since its last report, and flag a bootloader
+  too old for the controller's calibrations or a calibration that differs from
+  the controller's. The list sorts by every column and can hide columns; the
+  grid switches between compact and full cards.
+- The console names a robot's REST `status` by its reports: Reporting, Late,
+  Silent, or No reports for a robot only swarmit knows, in place of Live,
+  Stale, Lost and "Not on the control plane". The **Lost robots** layer is now
+  **Silent robots**. The API values are unchanged.
 - `dotbot run controller` with an MQTT connection starts a local swarm server
   (`dotbot swarm serve --local`) and stops it on exit, so the console shows
   robots in their bootloader without a second terminal. One already answering
