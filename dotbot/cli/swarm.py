@@ -101,6 +101,19 @@ def _settle_connection(ctx, args, swarmit_group) -> None:
         os.environ[PASS_ENV] = credentials.password
 
 
+def _lh2_takes(token: str, given: dict) -> bool:
+    """Whether `token`, before `calibrate-lh2`, is one of the swarm options it
+    honours or the value of one."""
+    if not token.startswith("-"):
+        return token in given.values()
+    name = token.split("=", 1)[0]
+    if name in ("-d", "--devices", "-n", "--conn", "--connection", "-s", "--swarm-id"):
+        return True
+    if name == "--no-server":
+        return True
+    return not token.startswith("--") and token[:2] in ("-d", "-n", "-s")
+
+
 def _with_config_injection(swarmit_group):
     """Wrap the swarmit group so `dotbot swarm` injects config-driven conn/swarm_id.
 
@@ -130,12 +143,14 @@ def _with_config_injection(swarmit_group):
             from dotbot.cli.swarm_lh2 import cmd as lh2_group
 
             given = group_options(args[:sub], swarmit_group)
-            unused = sorted(set(given) - {"conn", "swarm_id", "devices"})
+            unused = [tok for tok in args[:sub] if not _lh2_takes(tok, given)]
             if unused:
                 raise click.UsageError(
-                    "calibrate-lh2 takes only -d, -n and -s from `dotbot swarm`; "
-                    f"drop {', '.join(unused)}"
+                    "calibrate-lh2 takes only -d, -n, -s and --no-server from "
+                    f"`dotbot swarm`; drop {' '.join(unused)}"
                 )
+            if "--no-server" in args[:sub]:
+                given = {**given, "no_server": True}
             lh2_group.main(
                 args=args[sub + 1 :],
                 prog_name="dotbot swarm calibrate-lh2",

@@ -142,7 +142,7 @@ def test_the_fleet_builder_drops_verification_before_it_connects(
     monkeypatch.setenv(INSECURE_ENV, "1")
     seen = {}
 
-    def build_client(settings):
+    def build_client(settings, no_server=False):
         seen["verify_mode"] = default_context().verify_mode
         return "client"
 

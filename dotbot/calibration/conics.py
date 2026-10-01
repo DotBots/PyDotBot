@@ -52,6 +52,9 @@ TRACKS_ADVISED = 8
 # Pairs the closed form tries at most; beyond it a fixed random subset.
 CLOSED_FORM_PAIRS_MAX = 400
 
+# Gate-and-refine rounds at most before the kept set must have settled.
+GATE_ROUNDS_MAX = 4
+
 
 @dataclass(eq=False)
 class Track:
@@ -546,9 +549,11 @@ def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolut
         raise ValueError(
             f"the solve needs at least {TRACKS_MIN} circles, got {len(usable)}"
         )
-    Hr0, e0 = closed_form(usable)
-    Hr = Hr0
-    for _ in range(2):
+    Hr, e0 = closed_form(usable)
+    if len(usable) - len(health_gate(usable, Hr)) < TRACKS_MIN:
+        Hr = refine(usable, Hr)
+    fitted_on = None
+    for _ in range(GATE_ROUNDS_MAX):
         gate = health_gate(usable, Hr)
         inliers = [t for t in usable if t not in gate]
         if len(inliers) < TRACKS_MIN:
@@ -556,7 +561,10 @@ def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolut
                 f"only {len(inliers)} of {len(usable)} tracks are circles of one size under "
                 f"the best rectification; at least {TRACKS_MIN} are needed"
             )
+        if inliers == fitted_on:
+            break
         Hr = refine(inliers, Hr)
+        fitted_on = inliers
     why.update(gate)
     Hr = fix_handedness(inliers, Hr)
     s = _scale_to_mm(inliers, Hr)
@@ -687,9 +695,14 @@ def solve_calibration(
         )
         H = S @ own.homography
         own.homography = H / H[2, 2]
-        rejected = set(own.rejected)
-        kept = [t for t in by_station[station] if t.name not in rejected]
-        own.tracks = fit_tracks(kept, own.homography)
+        why = {t.name: t.why for t in own.dropped}
+        own.tracks = fit_tracks(
+            [t for t in by_station[station] if t.name not in why], own.homography
+        )
+        dropped = [t for t in by_station[station] if t.name in why]
+        own.dropped = fit_tracks(
+            dropped, own.homography, {t: why[t.name] for t in dropped}
+        )
         solutions[station] = own
     width, height = solutions[reference].field_mm
     stations = [
@@ -727,8 +740,10 @@ def self_defined_site(
     its middle, so the calibration is shifted by the field's offset; without,
     the site is the field.
     """
-    if not calibration.stations or any(
-        st.solved_from != "conics-free" for st in calibration.stations
+    if (
+        not calibration.stations
+        or calibration.site.anchor != FREE_FRAME_ANCHOR
+        or any(st.solved_from != "conics-free" for st in calibration.stations)
     ):
         raise ValueError(
             f"calibration {calibration.id8} is not a free-mode spin calibration; "

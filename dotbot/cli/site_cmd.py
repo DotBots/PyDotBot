@@ -719,17 +719,17 @@ def init(ctx, name, calibration, size, force):
         resolve_calibration_path,
         write_calibration,
     )
+    from dotbot.cli._swarm_inject import swarm_connection
 
     obj = ctx.obj or {}
     config = obj.get("config")
     try:
         check_site_name(name)
-        catalog = site_catalog(config)
+        existing = resolve_site_entry(config, name)
     except (ValueError, ConfigError) as exc:
         raise click.ClickException(str(exc)) from exc
     _, home = site_homes(config)[0]
     target = home / name
-    existing = catalog.get(name)
     if existing is not None:
         if not force:
             raise click.ClickException(
@@ -749,15 +749,11 @@ def init(ctx, name, calibration, size, force):
         site, placed = self_defined_site(source, name, size)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+    saved = write_calibration(placed)
     target.mkdir(parents=True, exist_ok=True)
     (target / PACK_FILE).write_text(
         _render_site_pack(site, source.id8), encoding="utf-8"
     )
-    try:
-        read_pack(target)
-    except ConfigError as exc:  # pragma: no cover - the render is fixed
-        raise click.ClickException(str(exc)) from exc
-    saved = write_calibration(placed)
     field = site.areas["field"]
     click.echo(f"Wrote site {name} to {target / PACK_FILE}")
     click.echo(
@@ -766,11 +762,14 @@ def init(ctx, name, calibration, size, force):
     )
     click.echo(f"Calibration {placed.id8} (from {source.id8}) saved to {saved}")
     robots = ",".join(sorted({t.name for t in placed.tracks})) or "<addresses>"
+    conn = swarm_connection(obj)[0].value
+    conn_flag = f"-n {conn} " if conn else ""
     click.echo(
         "Next, send it to the robots (--site-changed: they report the site "
         "they were calibrated in), then work in the site:\n"
         f"  dotbot swarm -d {robots} calibrate-lh2 push {placed.id8} "
         f"--site {name} --site-changed\n"
-        f"  dotbot run controller --site {name} --lh2-calibration {placed.id8} "
+        f"  dotbot run controller {conn_flag}--site {name} "
+        f"--lh2-calibration {placed.id8} "
         "--headless"
     )

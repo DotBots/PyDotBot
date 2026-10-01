@@ -107,7 +107,7 @@ class RobotGeometry:
     # The plan-view square for anything that needs a size rather than a shape.
     envelope_mm: float
     # Radius of the photodiode's circle in a spin in place, as measured: the
-    # scale of a spin calibration, which `lever_arm_mm` overstates.
+    # scale of a spin calibration.
     spin_radius_mm: float
 
     def __post_init__(self):
@@ -388,9 +388,7 @@ ROBOTS: dict[str, RobotGeometry] = {
         encoder_cpr=28,
         gear_ratio=51.0,
         envelope_mm=95.0,
-        # Spin centres seen by the field camera against free-mode spin
-        # calibrations, 2026-10-01: 2 mm under the board's 53.5 mm lever arm.
-        spin_radius_mm=51.4,
+        spin_radius_mm=51.4,  # against the field camera, not the board
     ),
 }
 

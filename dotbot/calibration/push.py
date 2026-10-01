@@ -7,9 +7,10 @@ A push reads device info first. It refuses when any robot runs firmware older
 than this host expects (device-info version below 2, or no device info at
 all), naming the robots to reflash, when a robot reports another site
 than the file's unless the operator says the site really changed, and when a
-robot is running an app, since only a robot in its bootloader takes a
-calibration. After the push, the robots whose reported calibration id is not
-the file's are the worklist.
+named robot is in its app, since the net core takes a calibration only in the
+bootloader; a push to the whole fleet leaves such robots out instead. After
+the push, the robots whose reported calibration id is not the file's are the
+worklist.
 
 Everything here takes the `status()` mapping of a swarmit client, duck-typed:
 address to an object with `status`, `info_gen` and `info`, `info` carrying
@@ -28,6 +29,35 @@ DEVICE_INFO_VERSION_MIN = 3
 # Seconds a pushed robot gets to reset, rejoin and report the pushed id.
 PUSH_REJOIN_TIMEOUT = 30.0
 PUSH_POLL_INTERVAL = 1.0
+# Seconds a stopped robot gets to report it left its app.
+STOP_TIMEOUT = 10.0
+STOP_POLL_INTERVAL = 0.5
+
+
+def in_app(node: Any) -> bool:
+    """Whether a robot is anywhere but its bootloader: running, stopping,
+    resetting or programming."""
+    name = getattr(getattr(node, "status", None), "name", "")
+    return name not in ("", "Bootloader")
+
+
+def stop_robots(
+    client: Any,
+    devices: list[str],
+    timeout: float = STOP_TIMEOUT,
+    clock=time.monotonic,
+    sleep=time.sleep,
+) -> list[str]:
+    """Stop `devices` and wait for them to report their bootloader; returns
+    the ones still in their app after `timeout`."""
+    client.stop(devices)
+    deadline = clock() + timeout
+    while True:
+        status = client.status()
+        busy = [d for d in devices if in_app(status.get(d))]
+        if not busy or clock() >= deadline:
+            return busy
+        sleep(STOP_POLL_INTERVAL)
 
 
 class PushRefused(Exception):
@@ -50,6 +80,11 @@ class PushCheck:
     def send_to(self) -> list[str] | None:
         """The `devices` to send to; None, a broadcast, when the fleet was checked."""
         return None if self.fleet else self.addresses
+
+    @property
+    def targets(self) -> list[str]:
+        """The robots that take the push: every checked one not in its app."""
+        return [addr for addr in self.addresses if addr not in self.running]
 
     def refusal(self, site: str, site_changed: bool) -> str:
         """Why the push must not go out, or "" when it may."""
@@ -75,10 +110,10 @@ class PushCheck:
                 f"robots report another site than the file's {site!r}: {listed}. "
                 "Pass --site-changed if the fleet really moved."
             )
-        if self.running:
+        if self.running and not self.fleet:
             devices = ",".join(self.running)
             reasons.append(
-                "running an app, so they would drop the calibration: "
+                "in their app, so they would drop the calibration: "
                 + ", ".join(self.running)
                 + f". Stop them first with `dotbot swarm -d {devices} stop`."
             )
@@ -94,10 +129,7 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
     check = PushCheck(addresses=sorted(status))
     wanted_id = pushed_id(calibration)
     for addr, node in sorted(status.items()):
-        if getattr(getattr(node, "status", None), "name", "") in (
-            "Running",
-            "Stopping",
-        ):
+        if in_app(node):
             check.running.append(addr)
         info = getattr(node, "info", None)
         if info is None:

@@ -103,6 +103,7 @@ def _swarmit_client(ctx, conn, swarm_id):
         swarm_r.value,
         username=credentials.username,
         password=credentials.password,
+        no_server=bool(_swarm_option(ctx, "no_server")),
     )
 
 
@@ -342,6 +343,11 @@ def _collect(
         return
     if spin_radius is not None:
         raise click.UsageError("--spin-radius goes with --spin")
+    if _devices(ctx):
+        raise click.UsageError(
+            "`dotbot swarm -d` picks the robots of push and collect --spin; a "
+            "corner collect takes its captures from whichever robot's button"
+        )
     try:
         from swarmit.testbed.protocol import LH2_CALIB_TAG
 
@@ -469,7 +475,7 @@ def _collect(
         )
 
         if push:
-            _gated_push(client, calibration, devices=session.push_devices)
+            _gated_push(client, calibration, devices=session.push_devices, stop=True)
         else:
             click.echo(
                 "To send it to the robots over the air:\n"
@@ -491,7 +497,12 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
         spin_radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
         radius_from = f"{ROBOT_DEFAULT}'s measured value"
     devices = _devices(ctx)
-    client = _swarmit_client(ctx, conn, swarm_id)
+    try:
+        client = _swarmit_client(ctx, conn, swarm_id)
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Could not reach the swarm: {exc}") from exc
     with client:
         click.echo("Reading device info...")
         client.refresh_device_info(devices)
@@ -543,7 +554,7 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
         )
         spun = ",".join(robots.robots)
         if push:
-            _gated_push(client, calibration, devices=robots.robots)
+            _gated_push(client, calibration, devices=robots.robots, stop=True)
         click.echo(
             "\nNext, make the field a site of its own (--size WxH centres it in a "
             "bigger site):\n"
@@ -625,15 +636,34 @@ def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
         _gated_push(client, loaded, site_changed=site_changed, devices=_devices(ctx))
 
 
-def _gated_push(client, calibration, site_changed=False, devices=None):
-    """Check the robots' device info, push, and print the stale-id worklist."""
+def _gated_push(client, calibration, site_changed=False, devices=None, stop=False):
+    """Check the robots' device info, push, and print the stale-id worklist.
+
+    With `stop`, the named `devices` still in their app are stopped first.
+    """
     from dotbot.calibration.lighthouse2 import calibration_payload
-    from dotbot.calibration.push import PushRefused, gate_push, push_worklist
+    from dotbot.calibration.push import (
+        PushRefused,
+        gate_push,
+        in_app,
+        push_worklist,
+        stop_robots,
+    )
 
     try:
         payload = calibration_payload(calibration)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+    if stop and devices:
+        status = client.status()
+        running = [d for d in devices if in_app(status.get(d))]
+        if running:
+            click.echo(f"Stopping {len(running)} robot(s) in their app for the push...")
+            busy = stop_robots(client, running)
+            if busy:
+                raise click.ClickException(
+                    "still in their app after a stop: " + ", ".join(busy)
+                )
     click.echo("Reading device info...")
     try:
         check = gate_push(client, calibration, site_changed, devices)
@@ -649,9 +679,16 @@ def _gated_push(client, calibration, site_changed=False, devices=None):
         f"({len(payload)} B, id {calibration.id8}, site {calibration.site.name}) "
         f"to the swarm; {len(check.stale)} robot(s) hold another id..."
     )
+    if check.running:
+        click.echo(
+            f"{len(check.running)} robot(s) in their app are left out, since they "
+            "would drop it; stop them and push to them with "
+            f"`dotbot swarm -d {','.join(check.running)} calibrate-lh2 push "
+            f"{calibration.id8}`."
+        )
     client.send_lh2_calibration(payload, check.send_to)
     click.echo("Sent. Waiting for the robots to report the new id...")
-    stale = push_worklist(client, calibration, check.addresses)
+    stale = push_worklist(client, calibration, check.targets)
     if stale:
         click.echo(
             f"Still not on {calibration.id8} ({len(stale)}), push again: "
@@ -706,6 +743,10 @@ def _parse_shift(_ctx, _param, value):
 )
 @click.pass_context
 def _reframe(ctx, calibration, site_name, shift, rotate):
+    if _devices(ctx):
+        raise click.UsageError(
+            "reframe sends nothing, so it takes no `dotbot swarm -d`"
+        )
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         reframe_calibration,

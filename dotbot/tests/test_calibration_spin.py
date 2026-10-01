@@ -15,10 +15,11 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 
-from dotbot.calibration import conics, lighthouse2
+from dotbot.calibration import conics, lighthouse2, push
 from dotbot.calibration import spin as spin_module
 from dotbot.calibration.lighthouse2 import counts_for_camera_point, load_calibration
 from dotbot.calibration.spin import (
+    SPIN_CHUNK_RECORDS,
     SPIN_TAG,
     SpinAssembler,
     check_spin_robots,
@@ -27,6 +28,7 @@ from dotbot.calibration.spin import (
 from dotbot.cli import site_cmd, swarm_lh2
 from dotbot.config import load_discovered
 from dotbot.robots import robot_geometry
+from dotbot.site import Site
 from dotbot.site_packs import site_catalog
 from dotbot.tests.test_calibration_conics import (
     CENTRES,
@@ -87,11 +89,39 @@ def test_spins_from_several_robots_solve_the_station():
     for i, centre in enumerate(CENTRES):
         for event in payloads(spin_records(centre)):
             assembler.add(f"robot{i}", parse_spin_payload(event))
-    tracks = [t for spin in assembler.spins.values() for t in spin.tracks(RADIUS)]
-    sol = conics.solve(tracks)
-    rms, S = similarity_error(sol.homography)
+    samples = [s for spin in assembler.spins.values() for s in spin.samples(RADIUS)]
+    calibration, _, _ = conics.solve_calibration(samples, Site(name="lab"))
+    rms, S = similarity_error(calibration.stations[0].matrix)
     assert rms < 1.0
     assert np.sqrt(abs(np.linalg.det(S[:2, :2]))) == pytest.approx(1.0, abs=0.002)
+
+
+# Two events 8C176EB10C21D115 sent on the bench with the calibrate-spin app:
+# the first of a run's 17 chunks, and its last.
+APP_FIRST_CHUNK = bytes.fromhex(
+    "cc3100110031750000270f01000035750000260f010000387500001d0f0100003b750000140f"
+    "01000045750000070f01000049750000f70e0100004f750000e60e01000051750000d20e0100"
+    "0051750000bc0e01000053750000aa0e01000050750000930e0100004b750000800e01000049"
+    "750000680e0100"
+)
+APP_LAST_CHUNK = bytes.fromhex(
+    "cc31101100ec740000310f010000f9740000260f010000057500001a0f010000107500000f0f"
+    "0100001b750000020f01000024750000f30e01000023750000ea0e01000024750000ec0e0100"
+)
+
+
+def test_the_apps_events_decode():
+    first = parse_spin_payload(APP_FIRST_CHUNK)
+    assert (first.run, first.chunk, first.chunks) == (0x31, 0, 17)
+    assert len(first.records) == SPIN_CHUNK_RECORDS
+    r = first.records[0]
+    assert (r.lh_index, r.count1, r.count2) == (0, 30001, 69415)
+    last = parse_spin_payload(APP_LAST_CHUNK)
+    assert (last.chunk, last.chunks, len(last.records)) == (16, 17, 8)
+
+
+def test_an_event_longer_than_the_app_sends_is_not_a_spin():
+    assert parse_spin_payload(APP_FIRST_CHUNK + APP_FIRST_CHUNK[4:13]) is None
 
 
 # --- collect --spin and site init, end to end over a faked swarm -------------
@@ -128,12 +158,24 @@ class _SpinFleet:
         self.calls.append(("info", devices))
 
     def status(self):
-        return dict(self.nodes)
+        """A snapshot; a robot seen stopping is in its bootloader by the next."""
+        out = {
+            addr: SimpleNamespace(
+                status=SimpleNamespace(name=node.status.name),
+                info=node.info,
+                info_gen=getattr(node, "info_gen", 1),
+            )
+            for addr, node in self.nodes.items()
+        }
+        for node in self.nodes.values():
+            if node.status.name == "Stopping":
+                node.status.name = "Bootloader"
+        return out
 
     def stop(self, devices=None):
         self.calls.append(("stop", devices))
         for addr in devices or self.nodes:
-            self.nodes[addr].status.name = "Bootloader"
+            self.nodes[addr].status.name = "Stopping"
 
     def start(self, devices=None):
         self.calls.append(("start", devices))
@@ -158,6 +200,8 @@ def lab(tmp_path, monkeypatch):
     (folder / "dotbot.toml").write_text('site = "c405"\n')
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
     monkeypatch.setattr(spin_module, "SPIN_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(push, "STOP_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(push, "PUSH_REJOIN_TIMEOUT", 0.0)
     monkeypatch.setattr(spin_module, "SPIN_CAPTURE_TIMEOUT", 5.0)
     monkeypatch.delenv("DOTBOT_SITE", raising=False)
     return load_discovered(environ={}, start_dir=folder)
@@ -299,3 +343,88 @@ def test_spin_takes_no_corner_options(monkeypatch, lab):
     _, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet, "--square", "1000")
     assert result.exit_code != 0 and "--spin takes no --square" in result.output
+
+
+def test_a_spin_push_waits_for_the_robots_to_leave_the_app(monkeypatch, lab):
+    _, fleet = _fleet()
+    sent = []
+    fleet.send_lh2_calibration = lambda payload, devices=None: sent.append(devices)
+    for node in fleet.nodes.values():
+        node.info.info_version = 3
+        node.info.lh2_site_name = "c405"
+        node.info.lh2_calibration_id = ""
+        node.info_gen = 1
+    result = _collect(monkeypatch, lab, fleet, "--push")
+    assert result.exit_code == 0, result.output
+    assert sent == [sorted(fleet.nodes)]
+
+
+class _FailingEvents(_SpinFleet):
+    def watch_log_events(self):
+        raise ConnectionError("broker said no")
+        yield  # pragma: no cover
+
+
+def test_losing_the_log_events_stops_the_robots_and_says_why(monkeypatch, lab):
+    addrs, fleet = _fleet()
+    fleet.__class__ = _FailingEvents
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "lost the robots' log events: broker said no" in result.output
+    assert fleet.calls[-1] == ("stop", sorted(addrs))
+
+
+def test_a_failed_start_still_stops_the_robots(lab):
+    addrs, fleet = _fleet()
+
+    def start(devices=None):
+        fleet.calls.append(("start", devices))
+        raise RuntimeError("gateway gone")
+
+    fleet.start = start
+    robots = check_spin_robots(fleet.status())
+    with pytest.raises(RuntimeError, match="gateway gone"):
+        spin_module.capture_spins(fleet, robots, echo=lambda _: None)
+    assert fleet.calls[-1] == ("stop", sorted(addrs))
+
+
+def test_a_lost_chunk_ends_the_wait_once_the_others_stop_coming(monkeypatch, lab):
+    addrs, fleet = _fleet()
+    fleet.events[addrs[0]] = fleet.events[addrs[0]][1:]
+    monkeypatch.setattr(spin_module, "SPIN_QUIET_TIMEOUT", 0.2)
+    robots = check_spin_robots(fleet.status())
+    spins = spin_module.capture_spins(fleet, robots, timeout=30, echo=lambda _: None)
+    assert not spins[addrs[0]].complete
+    assert all(spins[a].complete for a in addrs[1:])
+
+
+def test_site_init_refuses_a_calibration_it_already_placed(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    placed_id = re.search(r"push (\w+) --site spun", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "again", "--from-calibration", placed_id],
+        obj={"config": lab},
+    )
+    assert result.exit_code != 0 and "not a free-mode spin calibration" in result.output
+
+
+def test_site_init_force_replaces_the_site(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    for size in ("3000x4000", "5000x5000"):
+        result = CliRunner().invoke(
+            site_cmd.cmd,
+            ["init", "spun", "--from-calibration", free_id, "--size", size, "--force"],
+            obj={"config": lab},
+        )
+        assert result.exit_code == 0, result.output
+    assert site_catalog(lab)["spun"].site().extent_mm == (5000, 5000)

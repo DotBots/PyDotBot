@@ -147,10 +147,11 @@ under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
 the whole site shares one calibration. It takes a file path, a `--tag` or an
 id prefix, and refuses robots that report another site or run sandbox
 firmware older than this `dotbot`. (`collect --push` sends only to the robots
-whose captures built it.) A robot running an app drops a
-calibration, so `push` refuses one until it is stopped, and
-`dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those robots
-only.
+whose captures built it, stopping their app first.) A
+robot in its app drops a calibration: `push` refuses a robot you name that is
+in its app, and a push to the whole fleet leaves such robots out and lists
+them. `dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those
+robots only.
 
 ### Spin calibration (experimental)
 

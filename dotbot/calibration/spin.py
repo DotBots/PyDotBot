@@ -17,30 +17,22 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
-
-from dotbot.calibration.conics import (
-    TRACKS_ADVISED,
-    ConicSolution,
-    Track,
-)
-from dotbot.calibration.lighthouse2 import (
-    LH2CalibrationSample,
-    LH2Counts,
-    TrackSample,
-    calculate_camera_point,
-)
+from dotbot.calibration.conics import TRACKS_ADVISED, ConicSolution
+from dotbot.calibration.lighthouse2 import LH2CalibrationSample, TrackSample
 from dotbot.calibration.ota import _is_impossible, _parse_records
+from dotbot.calibration.push import in_app, stop_robots
 
 SPIN_TAG = 0xCC
 SPIN_HEADER_BYTES = 4
+SPIN_RECORD_BYTES = 9
+# What one log event carries at most: 127 bytes less the header.
+SPIN_CHUNK_RECORDS = 13
 # The image name `dotbot swarm flash` records starts with the app's name.
 SPIN_IMAGE = "calibrate-spin"
-# Seconds from the start to the last chunk: a spin took about 29 s on the
-# bench, mostly sending at the node's uplink pace.
+# Seconds from the start to the last chunk, at most.
 SPIN_CAPTURE_TIMEOUT = 90.0
-# Seconds a stopped robot gets to report it left its app.
-SPIN_STOP_TIMEOUT = 10.0
+# Seconds without a new chunk, once chunks flow, after which the rest are lost.
+SPIN_QUIET_TIMEOUT = 15.0
 SPIN_POLL_INTERVAL = 0.5
 
 
@@ -58,7 +50,11 @@ def parse_spin_payload(data: bytes) -> SpinChunk | None:
         return None
     run, chunk, chunks = data[1], data[2], data[3]
     body = data[SPIN_HEADER_BYTES:]
-    if chunk >= chunks or len(body) % 9:
+    if (
+        chunk >= chunks
+        or len(body) % SPIN_RECORD_BYTES
+        or len(body) > SPIN_CHUNK_RECORDS * SPIN_RECORD_BYTES
+    ):
         return None
     return SpinChunk(run=run, chunk=chunk, chunks=chunks, records=_parse_records(body))
 
@@ -96,23 +92,6 @@ class Spin:
                 count2=[r.count2 for r in records],
             )
             for station, records in sorted(by_station.items())
-        ]
-
-    def tracks(self, radius_mm: float) -> list[Track]:
-        """One counter clockwise track per station, in camera points."""
-        return [
-            Track(
-                points=np.array(
-                    [
-                        calculate_camera_point(LH2Counts(s.station, c1, c2))
-                        for c1, c2 in zip(s.count1, s.count2)
-                    ]
-                ),
-                radius_mm=radius_mm,
-                turn=s.turn,
-                name=f"{s.name}/{s.station}",
-            )
-            for s in self.samples(radius_mm)
         ]
 
 
@@ -156,6 +135,7 @@ class SpinRobots:
 
     ready: list[str] = field(default_factory=list)
     running: list[str] = field(default_factory=list)
+    busy: dict[str, str] = field(default_factory=dict)
     wrong_image: dict[str, str] = field(default_factory=dict)
     unanswered: list[str] = field(default_factory=list)
 
@@ -176,6 +156,9 @@ class SpinRobots:
                 f"`dotbot swarm -d {devices} flash -y {SPIN_IMAGE}`, or leave "
                 "them out with `dotbot swarm -d <addresses> ...`."
             )
+        if self.busy:
+            listed = ", ".join(f"{a} ({st})" for a, st in sorted(self.busy.items()))
+            reasons.append(f"resetting or programming: {listed}. Retry once done.")
         if self.unanswered:
             reasons.append(
                 "no device info, so their app cannot be checked: "
@@ -183,10 +166,6 @@ class SpinRobots:
                 + ". Retry once they answer `dotbot swarm status`."
             )
         return "\n".join(reasons)
-
-
-def _status_name(node: Any) -> str:
-    return getattr(getattr(node, "status", None), "name", "")
 
 
 def check_spin_robots(status: Mapping[str, Any]) -> SpinRobots:
@@ -201,32 +180,20 @@ def check_spin_robots(status: Mapping[str, Any]) -> SpinRobots:
         if not name.startswith(SPIN_IMAGE):
             out.wrong_image[addr] = name or "unnamed image"
             continue
-        if _status_name(node) in ("Running", "Stopping"):
+        state = getattr(getattr(node, "status", None), "name", "")
+        if state in ("Resetting", "Programming"):
+            out.busy[addr] = state
+        elif in_app(node):
             out.running.append(addr)
         else:
             out.ready.append(addr)
     return out
 
 
-def _wait_stopped(
-    client: Any, devices: list[str], timeout: float, clock, sleep
-) -> list[str]:
-    """The robots still in their app after `timeout`."""
-    deadline = clock() + timeout
-    while True:
-        status = client.status()
-        busy = [
-            d for d in devices if _status_name(status.get(d)) in ("Running", "Stopping")
-        ]
-        if not busy or clock() >= deadline:
-            return busy
-        sleep(SPIN_POLL_INTERVAL)
-
-
 def capture_spins(
     client: Any,
     robots: SpinRobots,
-    timeout: float = SPIN_CAPTURE_TIMEOUT,
+    timeout: float | None = None,
     echo: Callable[[str], None] = print,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
@@ -235,45 +202,55 @@ def capture_spins(
 
     A robot already in its app is stopped first, so every robot spins anew.
     Returns each robot's spin as far as it arrived; a robot that sent
-    nothing is absent. Every robot is stopped again before returning, so a
-    calibration push reaches them.
+    nothing is absent. Every robot is stopped again before returning, also
+    on an error or an interrupt. Raises RuntimeError when the log events
+    cannot be followed or a robot does not stop.
     """
+    timeout = SPIN_CAPTURE_TIMEOUT if timeout is None else timeout
     devices = robots.robots
     if robots.running:
         echo(f"Stopping {len(robots.running)} robot(s) already in the app...")
-        client.stop(robots.running)
-        busy = _wait_stopped(client, robots.running, SPIN_STOP_TIMEOUT, clock, sleep)
+        busy = stop_robots(client, robots.running, clock=clock, sleep=sleep)
         if busy:
             raise RuntimeError("still in their app after a stop: " + ", ".join(busy))
     assembler = SpinAssembler()
     lock = threading.Lock()
-    started = threading.Event()
+    done = threading.Event()
+    failure: list[BaseException] = []
+    last_chunk: list[float] = []
 
-    def listen(events: Iterable[dict]) -> None:
-        for event in events:
-            if not started.is_set():
-                continue
-            with lock:
-                assembler.add_event(event)
+    def listen() -> None:
+        try:
+            for event in client.watch_log_events():
+                if done.is_set():
+                    return
+                with lock:
+                    if assembler.add_event(event) is not None:
+                        last_chunk[:] = [clock()]
+        except Exception as exc:  # pylint: disable=broad-except
+            failure.append(exc)
 
-    events = client.watch_log_events()
-    threading.Thread(target=listen, args=(events,), daemon=True).start()
+    threading.Thread(target=listen, daemon=True).start()
     # Lets the listener subscribe before the first chunk can be sent; the
     # app counts down for 3 s before it moves, and sends only after.
     sleep(SPIN_POLL_INTERVAL)
-    started.set()
-    client.start(devices)
-    echo(
-        f"Started the {SPIN_IMAGE} app on {len(devices)} robot(s): each spins "
-        "twice in place after a 3 s countdown, then sends its reads."
-    )
     wanted = set(devices)
     reported: set[str] = set()
-    deadline = clock() + timeout
     try:
+        client.start(devices)
+        echo(
+            f"Started the {SPIN_IMAGE} app on {len(devices)} robot(s): each spins "
+            "twice in place after a 3 s countdown, then sends its reads."
+        )
+        deadline = clock() + timeout
         while clock() < deadline:
+            if failure:
+                raise RuntimeError(f"lost the robots' log events: {failure[0]}")
             with lock:
                 spins = {d: s for d, s in assembler.by_device().items() if d in wanted}
+                quiet = (
+                    bool(last_chunk) and clock() - last_chunk[0] > SPIN_QUIET_TIMEOUT
+                )
             for device, spin in sorted(spins.items()):
                 if spin.complete and device not in reported:
                     reported.add(device)
@@ -281,11 +258,14 @@ def capture_spins(
                         f"  {device}: {spin.chunks}/{spin.chunks} chunks, "
                         f"{len(spin.reads())} reads"
                     )
-            if reported == wanted:
+            if reported == wanted or quiet:
                 break
             sleep(SPIN_POLL_INTERVAL)
     finally:
-        client.stop(devices)
+        done.set()
+        busy = stop_robots(client, devices, clock=clock, sleep=sleep)
+    if busy:
+        raise RuntimeError("still in their app after a stop: " + ", ".join(busy))
     with lock:
         return {d: s for d, s in assembler.by_device().items() if d in wanted}
 
@@ -319,8 +299,8 @@ def spin_report(
                 f"rms {t.rms_mm:4.1f} mm  {verdict}"
             )
         lines.append(
-            f"  {len(solution.tracks)} of {len(fits)} circles kept, residual "
-            f"{solution.residual_mm:.1f} mm"
+            f"  {len(solution.tracks)} of {len(fits)} circles kept, rms "
+            f"{solution.residual_mm:.1f} mm over every kept read"
         )
         if len(solution.tracks) < TRACKS_ADVISED:
             lines.append(

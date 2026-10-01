@@ -265,12 +265,34 @@ def _running(**kw):
     return node
 
 
-def test_a_robot_running_an_app_is_refused_with_a_stop(calibration_file):
+def test_a_named_robot_in_its_app_is_refused_with_a_stop(calibration_file):
     calibration = read_calibration_file(calibration_file)
     fleet = _Fleet({"A": _info(), "B": _running()})
     with pytest.raises(PushRefused, match="dotbot swarm -d B stop"):
-        gate_push(fleet, calibration)
+        gate_push(fleet, calibration, devices=["A", "B"])
     assert fleet.pushed == []
+
+
+def test_a_fleet_push_leaves_robots_in_their_app_out(monkeypatch, calibration_file):
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    result = _push(monkeypatch, fleet, str(calibration_file))
+    assert result.exit_code == 0, result.output
+    assert "1 robot(s) in their app are left out" in result.output
+    assert "dotbot swarm -d B calibrate-lh2 push" in result.output
+    assert "Every robot reports" in result.output
+
+
+def test_a_collect_push_stops_its_robots_first(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _running(), "B": _info()})
+
+    def stop(devices=None):
+        for addr in devices:
+            fleet.nodes[addr].status.name = "Bootloader"
+
+    fleet.stop = stop
+    swarm_lh2._gated_push(fleet, calibration, devices=["A", "B"], stop=True)
+    assert fleet.pushed_to == [["A", "B"]]
 
 
 def test_a_running_robot_left_out_by_the_device_filter_does_not_stop_a_push(
@@ -299,14 +321,40 @@ def test_swarm_d_before_calibrate_lh2_limits_the_push(monkeypatch, calibration_f
     assert fleet.refreshed == [["A"]]
 
 
-def test_calibrate_lh2_refuses_swarm_options_it_cannot_honour(calibration_file):
+@pytest.mark.parametrize("args", [["-b", "9600"], ["-v"]])
+def test_calibrate_lh2_refuses_swarm_options_it_cannot_honour(calibration_file, args):
     from dotbot.cli import swarm
     from dotbot.tests.test_cli_swarm_inject import _stub_group
 
     cmd = swarm._with_config_injection(_stub_group())
-    with pytest.raises(click.UsageError, match="drop baudrate"):
+    with pytest.raises(click.UsageError, match=f"drop {args[0]}"):
         cmd.main(
-            args=["-b", "9600", "calibrate-lh2", "push", str(calibration_file)],
+            args=[*args, "calibrate-lh2", "push", str(calibration_file)],
             obj={"config": LAB},
             standalone_mode=False,
         )
+
+
+def test_no_server_before_calibrate_lh2_reaches_the_client(
+    monkeypatch, calibration_file
+):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    seen = {}
+    fleet = _Fleet({"A": _info()})
+
+    def client(ctx, conn, swarm_id):
+        seen["no_server"] = swarm_lh2._swarm_option(ctx, "no_server")
+        return fleet
+
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", client)
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(SystemExit):
+        cmd.main(
+            args=["--no-server", "-dA", "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )
+    assert seen == {"no_server": True}
+    assert fleet.pushed_to == [["A"]]
