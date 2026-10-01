@@ -253,6 +253,7 @@ def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     assert (pack / "site.toml").is_file()
     site = site_catalog(lab)["spun"].site()
     assert site.extent_mm == (3000, 4000)
+    assert site.staging.y == site.field.y_max  # the pack carries staging too
     placed_id = re.search(
         r"push (\w+) --site spun --site-changed", result.output
     ).group(1)

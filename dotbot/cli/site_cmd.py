@@ -24,7 +24,7 @@ import click
 from dotbot.cli import _config_write as cw
 from dotbot.cli._site import SITE_ENV, active_site
 from dotbot.config import ConfigError
-from dotbot.site import PACK_CALIBRATIONS, check_site_name
+from dotbot.site import PACK_CALIBRATIONS, SITE_MARGIN_MM, check_site_name
 from dotbot.site_packs import (
     PACK_FILE,
     read_approval,
@@ -660,21 +660,23 @@ def _parse_size(_ctx, _param, value):
 
 
 def _render_site_pack(site, source_id8: str) -> str:
-    field = site.areas["field"]
+    def area(name: str, note: str) -> str:
+        a = site.areas[name]
+        return (
+            f"[areas.{name}]   # {note}\nx = {a.x}\ny = {a.y}\nw = {a.w}\nh = {a.h}\n"
+        )
+
     width, height = site.extent_mm
     return (
         f"# Site {site.name}: written by `dotbot site init` from spin calibration\n"
         f"# {source_id8}. The frame's zero is the anchor, x right, y down, mm.\n"
-        "# A staging area, if robots park somewhere, is one more [areas.<name>].\n"
         "\n"
         f"anchor = {json.dumps(site.anchor)}\n"
         f"extent_mm = [{width}, {height}]\n"
         "\n"
-        "[areas.field]   # where the robots spun, grown by a robot's footprint\n"
-        f"x = {field.x}\n"
-        f"y = {field.y}\n"
-        f"w = {field.w}\n"
-        f"h = {field.h}\n"
+        + area("field", "where the robots spun, grown by a robot's footprint")
+        + "\n"
+        + area("staging", "where robots park, along the field's bottom edge")
     )
 
 
@@ -697,7 +699,8 @@ def _render_site_pack(site, source_id8: str) -> str:
     metavar="WxH",
     help=(
         "Make the site this many mm wide and high, with the field in its "
-        "middle (e.g. 3000x4000). Default: the site is the field."
+        "middle and staging below it (e.g. 3000x4000). Default: the field "
+        f"with {SITE_MARGIN_MM} mm of floor round it."
     ),
 )
 @click.option(
@@ -709,8 +712,9 @@ def init(ctx, name, calibration, size, force):
 
     The field is the minimum-area rectangle around the robots' spin centres,
     grown by what a spinning robot sweeps; the calibration's frame is aligned
-    to it, zero at its top-left. The site is the field, or with --size a site
-    that big with the field centred in it, in the same frame. The pack
+    to it, zero at its top-left. The site is the starter site `config init`
+    writes, around that field: a margin of floor round it (or a --size site
+    with it centred) and a staging strip along its bottom edge. The pack
     goes into the nearest site home (sites/ beside the project's dotbot.toml,
     else ~/.dotbot/sites/), and the calibration, re-expressed in the site,
     under ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
@@ -758,11 +762,12 @@ def init(ctx, name, calibration, size, force):
     (target / PACK_FILE).write_text(
         _render_site_pack(site, source.id8), encoding="utf-8"
     )
-    field = site.areas["field"]
+    field, staging = site.areas["field"], site.areas["staging"]
     click.echo(f"Wrote site {name} to {target / PACK_FILE}")
     click.echo(
         f"  extent {site.extent_mm[0]} x {site.extent_mm[1]} mm, field "
-        f"{field.w} x {field.h} mm at ({field.x}, {field.y})"
+        f"{field.w} x {field.h} mm at ({field.x}, {field.y}), staging "
+        f"{staging.w} x {staging.h} mm below it"
     )
     click.echo(f"Calibration {placed.id8} (from {source.id8}) saved to {saved}")
     robots = ",".join(sorted({t.name for t in placed.tracks})) or "<addresses>"

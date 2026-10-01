@@ -281,6 +281,9 @@ def test_a_self_defined_site_centres_the_field():
     field = site.areas["field"]
     assert (field.w, field.h) == (field_w, field_h)
     assert (field.x, field.y) == ((3000 - field_w) // 2, (4000 - field_h) // 2)
+    staging = site.areas["staging"]
+    assert (staging.x, staging.y, staging.w) == (field.x, field.y_max, field.w)
+    assert staging.y_max <= 4000
     assert placed.valid_mm == (0, 0, 3000, 4000)
     assert (
         placed.site.anchor
@@ -300,6 +303,27 @@ def test_a_self_defined_site_must_hold_the_field():
     )
     with pytest.raises(ValueError, match="does not fit"):
         conics.self_defined_site(calibration, "spun", size_mm=(100, 100))
+
+
+def test_a_self_defined_site_is_the_starter_site_around_the_field():
+    calibration, _, _ = conics.solve_calibration(
+        track_samples(CENTRES), Site(name="lab")
+    )
+    field_w, field_h = calibration.valid_mm[2:]
+    site, placed = conics.self_defined_site(calibration, "spun")
+    assert site.extent_mm == (field_w + 3000, field_h + 3000)
+    assert (site.field.x, site.field.y) == (1500, 1500)
+    assert site.staging.y == site.field.y_max
+    assert placed.valid_mm == (0, 0, *site.extent_mm)
+
+
+def test_a_self_defined_site_must_hold_the_staging_strip_too():
+    calibration, _, _ = conics.solve_calibration(
+        track_samples(CENTRES), Site(name="lab")
+    )
+    field_w, field_h = calibration.valid_mm[2:]
+    with pytest.raises(ValueError, match="staging strip"):
+        conics.self_defined_site(calibration, "spun", size_mm=(field_w, field_h + 600))
 
 
 def test_a_circle_smaller_than_its_peers_is_left_out():

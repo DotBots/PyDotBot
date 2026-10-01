@@ -25,14 +25,13 @@ from typing import Sequence
 
 import numpy as np
 
-from dotbot.area import Area
 from dotbot.calibration.lighthouse2 import (
     Calibration,
     StationSolution,
     TrackSample,
 )
 from dotbot.robots import ROBOT_DEFAULT, robot_geometry
-from dotbot.site import Site
+from dotbot.site import Site, starter_layout
 
 # Post-rectification minor/major axis ratio under which a track is not a circle.
 TRACK_AXIS_RATIO_MIN = 0.95
@@ -765,10 +764,11 @@ def self_defined_site(
 ) -> tuple[Site, Calibration]:
     """A site pack's site from a free-mode calibration, and the calibration in it.
 
-    The field is the calibration's own fence (see `solve`). Without `size_mm`
-    the site is the field; with it the site is that big and the field sits in
-    its middle, so the calibration is shifted by the field's offset. A tag gets `-<name>` appended, so the two files
-    answer to different tags.
+    The site is the starter site (`starter_layout`) around the calibration's
+    own fence, the field (see `solve`): a margin of floor round it, or a
+    `size_mm` site with it centred, and a staging strip below it. The
+    calibration is shifted by the field's offset, and a tag gets `-<name>`
+    appended, so the two files answer to different tags.
     """
     if (
         not calibration.stations
@@ -784,13 +784,8 @@ def self_defined_site(
         raise ValueError(
             f"a free-mode fence starts at (0, 0), got {list(calibration.valid_mm)}"
         )
-    width, height = size_mm or (field_w, field_h)
-    if width < field_w or height < field_h:
-        raise ValueError(
-            f"the robots span a {field_w} x {field_h} mm field, which does not fit "
-            f"a {width} x {height} mm site"
-        )
-    dx, dy = (width - field_w) // 2, (height - field_h) // 2
+    extent, field_area, staging = starter_layout((field_w, field_h), size_mm)
+    dx, dy = field_area.x, field_area.y
     shift = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1.0]])
     anchor = f"self-defined from spin calibration {calibration.id8}"
     stations = []
@@ -809,12 +804,12 @@ def self_defined_site(
     site = Site(
         name=name,
         anchor=anchor,
-        extent_mm=(width, height),
-        areas={"field": Area(dx, dy, field_w, field_h, "field", role="field")},
+        extent_mm=extent,
+        areas={"field": field_area, "staging": staging},
     )
     placed = Calibration(
         site=Site(name=name, anchor=anchor),
-        valid_mm=(0, 0, width, height),
+        valid_mm=(0, 0, *extent),
         placements=calibration.placements,
         stations=stations,
         tracks=calibration.tracks,

@@ -163,23 +163,26 @@ Writes a site pack around the robots of a spin calibration
 needed. The **field** is the minimum-area rectangle around the robots' spin
 centres, grown by what a spinning robot sweeps; the frame is aligned to the
 field, zero at its top-left and +y along the robots' starting heading. The
-**site** is the field, or with `--size WxH` a W x H mm site with the field
-centred in it. The pack goes into the
-nearest home (`sites/` beside the project's `dotbot.toml`, else
-`~/.dotbot/sites/`), and the calibration, re-expressed in the new site, under
-`~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the
-tag with `-<name>` appended. The site name must fit the 16 characters a robot
+**site** is the same starter site [`config init`](config.md) writes, built
+around that field: 1.5 m of floor round it and a 600 mm `staging` strip along
+its bottom (+y) edge, as wide as the field, so the demos that park robots in
+staging run without editing the pack. With `--size WxH` the site is W x H mm
+with the field centred and the strip below it. The pack goes into the nearest
+home (`sites/` beside the project's `dotbot.toml`, else `~/.dotbot/sites/`),
+and the calibration, re-expressed in the new site, under
+`~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the tag
+with `-<name>` appended. The site name must fit the 16 characters a robot
 stores, since `calibrate-lh2 push` sends it to them.
 
 ```bash
-dotbot site init spun --from-calibration 6b1a1c96                  # the site is the field
+dotbot site init spun --from-calibration 6b1a1c96                  # 1.5 m of floor round the field
 dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field centred in 3 x 4 m
 ```
 
 | Flag | Meaning |
 |---|---|
 | `--from-calibration ID` | The spin calibration: an id prefix, a tag or a path. |
-| `--size WxH` | The site's size in mm, with the field in its middle; refused when the field does not fit. |
+| `--size WxH` | The site's size in mm, with the field in its middle and staging below it; refused when they do not fit. |
 | `-f`, `--force` | Replace the `site.toml` of a site of that name. |
 
 ## See also
