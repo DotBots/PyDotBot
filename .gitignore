@@ -19,3 +19,5 @@ node_modules/
 venv
 .venv
 .venv311
+# your own dotbot settings beside a project's dotbot.toml
+*.local.toml
