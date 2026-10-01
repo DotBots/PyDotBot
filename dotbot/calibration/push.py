@@ -8,9 +8,9 @@ than this host expects (device-info version below 2, or no device info at
 all), naming the robots to reflash, when a robot reports another site
 than the file's unless the operator says the site really changed, and when a
 named robot is in its app, since the net core takes a calibration only in the
-bootloader; a push to the whole fleet leaves such robots out instead. After
-the push, the robots whose reported calibration id is not the file's are the
-worklist.
+bootloader; a push to the whole fleet leaves such robots out instead, unless
+that leaves none. After the push, the robots whose reported calibration id is
+not the file's are the worklist.
 
 Everything here takes the `status()` mapping of a swarmit client, duck-typed:
 address to an object with `status`, `info_gen` and `info`, `info` carrying
@@ -110,7 +110,7 @@ class PushCheck:
                 f"robots report another site than the file's {site!r}: {listed}. "
                 "Pass --site-changed if the fleet really moved."
             )
-        if self.running and not self.fleet:
+        if self.running and (not self.fleet or not self.targets):
             devices = ",".join(self.running)
             reasons.append(
                 "in their app, so they would drop the calibration: "

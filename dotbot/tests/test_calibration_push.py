@@ -282,6 +282,16 @@ def test_a_fleet_push_leaves_robots_in_their_app_out(monkeypatch, calibration_fi
     assert "Every robot reports" in result.output
 
 
+def test_a_fleet_push_with_every_robot_in_its_app_is_refused(
+    monkeypatch, calibration_file
+):
+    fleet = _Fleet({"A": _running(), "B": _running()})
+    result = _push(monkeypatch, fleet, str(calibration_file))
+    assert result.exit_code != 0
+    assert "dotbot swarm -d A,B stop" in result.output
+    assert fleet.pushed == []
+
+
 def test_a_collect_push_stops_its_robots_first(calibration_file):
     calibration = read_calibration_file(calibration_file)
     fleet = _Fleet({"A": _running(), "B": _info()})
