@@ -33,11 +33,15 @@ from one DotBot to a thousand.
 
 ## Install
 
-PyDotBot is available on [PyPi](https://pypi.org/project/pydotbot/), install it with:
+PyDotBot is available on [PyPi](https://pypi.org/project/pydotbot/) and
+**requires Python 3.11 or newer**. Install it with:
 
 ```bash
 pip install pydotbot
 ```
+
+On an older Python, pip does not fail: it installs a years-old pydotbot that
+has no `dotbot` command. Check with `python --version` first.
 
 Then, check your installation with `dotbot --version` and learn what's possible with `dotbot --help`.
 `dotbot guide` prints a getting-started page, written for people and AI coding agents alike.
