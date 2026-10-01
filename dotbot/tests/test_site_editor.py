@@ -176,3 +176,20 @@ def test_site_edit_refuses_an_unknown_site(tmp_path, monkeypatch, served):
     assert result.exit_code != 0
     assert "dotbot site new" in result.output
     assert served == []
+
+
+def test_site_edit_defaults_to_the_active_pack_even_by_path(
+    tmp_path, pack, monkeypatch, served
+):
+    from dotbot.config import load_discovered
+
+    monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", tmp_path / "home-sites")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "dotbot.toml").write_text(f"site = {str(pack)!r}\n")
+    config = load_discovered(environ={}, start_dir=project)
+    result = CliRunner().invoke(site_cmd.cmd, ["edit"], obj={"config": config})
+    assert result.exit_code == 0, result.output
+    assert [(name, path.resolve()) for name, path, _ in served] == [
+        ("arena", pack.resolve())
+    ]
