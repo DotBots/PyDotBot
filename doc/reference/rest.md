@@ -68,7 +68,7 @@ seconds):
 |---|---|---|---|
 | `0` active | under 3 s | listed | accepted |
 | `1` stale | 3 to 10 s | listed | accepted, sent in case it hears them |
-| `2` lost | 10 s to 5 min | listed only with `?include_lost=true` or `?status=2` | accepted |
+| `2` lost | 10 s to 5 min | listed only with `?include_lost=true`, `?status=2` or `?address=` | accepted |
 | forgotten | over 5 min | gone | `404`, as for an address never seen |
 
 A robot that advertises again is active at once. A forgotten one comes back
@@ -79,7 +79,10 @@ to be set again.
 `GET /controller/dotbots/{address}` still answers for a lost robot. The stream
 carries every robot the controller holds, lost ones included, with each
 `status` change as a patch; a forgotten robot arrives as `null` in a delta
-(`{"robots": {"<address>": null}}`), which in RFC 7396 removes it. Only
+(`{"robots": {"<address>": null}}`), which in RFC 7396 removes it. A robot
+patch that carries `address` is the whole robot and replaces what the client
+held: a robot forgotten and back between two frames arrives that way, with no
+`null` before it. Only
 `GET /controller/dotbots?include_lost=true`, with no other filter, carries the
 `X-Controller-Seq` / `X-Controller-Run` headers a stream client can resume from,
 since only that list matches what the stream holds.

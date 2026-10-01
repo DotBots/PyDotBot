@@ -29,7 +29,8 @@ are not layered alternatives, and consumers pick one.
   A `hello`, a `snapshot` of the fleet in parts of 100 robots, then `delta`
   frames whose per-robot patches are RFC 7396 merge patches over the REST
   object (plus `trail_append` / `trail_reset`; `null` for a robot the
-  controller forgot), and `event` frames
+  controller forgot; a patch carrying `address` is the whole robot and
+  replaces it), and `event` frames
   (`robot_models`, `calibration_session`, `camera_detection`). The client answers each frame
   with `{"ack": seq}`; one that never acks is served at 1 Hz, which keeps
   `websocat` usable. Query: `hz` (1-20, default 10), `trail` (points per
