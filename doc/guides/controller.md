@@ -83,6 +83,13 @@ sees. Select one to control it:
   Layers tab to show those too, drawn fainter still. A lost robot swarmit still
   reports stays on the map. The count beside LIVE in the top bar names each
   tier (see [how long a robot is kept](../reference/rest.md#how-long-a-robot-is-kept)).
+- **List** and **Grid** (top right) show each robot's sandbox state, link
+  tier and how long since it was heard, battery, the app it runs, its sandbox
+  firmware, the LH2 calibration it holds, its position, heading and area.
+  **reflash** marks a robot whose sandbox firmware is too old for this
+  controller's calibrations, and **differs** one holding another calibration
+  than the one the controller serves. The list sorts by any column, and
+  **Columns** hides the ones you do not need; hover a row or card for all of it.
 
 ## Firefox websockets note
 
