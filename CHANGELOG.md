@@ -19,6 +19,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The console's list and grid show each robot's app and version, sandbox
+  firmware, LH2 calibration, position, heading, area, battery percentage and
+  how long since it was heard, and flag robots to reflash or whose calibration
+  differs from the controller's. The list sorts by every column and can hide
+  columns.
 - `dotbot run controller` with an MQTT connection starts a local swarm server
   (`dotbot swarm serve --local`) and stops it on exit, so the console shows
   robots in their bootloader without a second terminal. One already answering
