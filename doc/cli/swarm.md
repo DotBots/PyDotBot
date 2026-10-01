@@ -59,14 +59,14 @@ The common demos have short names, so you rarely type a path - see
 
 ## 4. Connect
 
-The connection is given as global options *before* the subcommand, or in a
-`.toml` via `-c`:
+The connection is given as global options *before* the subcommand, or comes
+from your dotbot config:
 
 | Option | Meaning |
 |---|---|
 | `-n`, `--conn`, `--connection` | one string: `mqtts://host:port` (broker) or `/dev/ttyACM0` (serial gateway) |
 | `-s`, `--swarm-id` | hex swarm id - **required for MQTT**, ignored for serial |
-| `-c`, `--config-path` | a `.toml` carrying the same fields |
+| `-c`, `--config-path` | swarmit's own `.toml` carrying the same fields, in place of the dotbot config |
 | `-b`, `--baudrate` | serial baudrate (default `1000000`) |
 | `-d`, `--devices` | restrict to a comma-separated subset of addresses |
 
@@ -76,11 +76,11 @@ See `dotbot swarm --help` for the full list.
 dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
-This writes `./dotbot.toml`; `dotbot swarm` discovers it from the current
-directory like the other `dotbot` commands (pass `--conn` / `--swarm-id` / `-c`
-to override). If the broker needs auth, set `DOTBOT_MQTT_USER` /
-`DOTBOT_MQTT_PASS`; a site pack's broker gets them once you approved it at
-`dotbot site add`. The commands that act on robots
+This writes a site whose broker is that one and selects it, with your swarm
+id, in `~/.dotbot/dotbot.toml`; `dotbot swarm` reads it like the other
+`dotbot` commands (pass `--conn` / `--swarm-id` to override). If the broker
+needs a login, save it once with `dotbot config login argus.paris.inria.fr`,
+or set `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` for one run. The commands that act on robots
 (`flash`, `start`, `stop`, `reset`) first print one line naming the site, broker
 and swarm id they use and where each came from.
 

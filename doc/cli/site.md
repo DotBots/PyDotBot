@@ -3,10 +3,12 @@
 A **site** is a place and its usual way in: its frame and areas, and optionally
 the broker it is reached through. A **site pack** is a site in its own folder,
 so it can be committed, zipped or handed to someone: `<name>/site.toml` holds
-the keys of a `[sites.<name>]` table, and an optional `<name>/calibrations/`
-holds the site's LH2 and camera calibration files. How packs are found, and how
-they relate to inline `[sites.*]` tables, is in the
-[configuration reference](../reference/configuration.md#site-packs).
+its anchor, extent, connection and areas, and an optional
+`<name>/calibrations/` holds the site's LH2 and camera calibration files.
+Packs live in two homes, `sites/` beside a project's `dotbot.toml` and
+`~/.dotbot/sites/`; the
+[configuration reference](../reference/configuration.md#site-packs) has the
+detail.
 
 ## Which command do I want?
 
@@ -16,7 +18,7 @@ they relate to inline `[sites.*]` tables, is in the
 | Switch to another site | `dotbot site use <name>` |
 | See every site, its connection and which is active | `dotbot site list` |
 | See one site in full | `dotbot site show [<name>]` |
-| Share a site, or move an inline table into a pack | `dotbot site export <name>` |
+| Share a site | `dotbot site export <name>` |
 
 Onboarding at a site that publishes a pack is one command, then the controller:
 
@@ -27,11 +29,10 @@ BROWSER=true dotbot run controller --headless
 
 ## `add`
 
-Copies a pack into `~/.dotbot/sites/<name>/`, which every config searches
-after its own `site_dirs`, so any config on this machine can then name the
-site. If the config in use already reads a site of that name from somewhere
-else, such as its own `sites/` folder, `add` still installs the pack and warns
-that this config keeps reading the other one. The source can be:
+Copies a pack into `~/.dotbot/sites/<name>/`, which is seen from every folder
+on this machine. If the project you are in has a pack of that name in its own
+`sites/` folder, `add` still installs the pack and warns that the project's
+hides it. The source can be:
 
 - a pack folder, whose name is the site's name;
 - a zip of one, as `site export` writes it, whose top folder is the site's name;
@@ -62,10 +63,13 @@ Commands in lab will connect there unless you set conn yourself, and send it DOT
 Add site lab? [y/N]:
 ```
 
-Saying yes (or passing `--yes`) is also what trusts that broker with your MQTT
-login: from then on, commands in `lab` send it `DOTBOT_MQTT_USER` /
-`DOTBOT_MQTT_PASS` with nothing else to set. The approved broker is recorded
-beside the pack, in `~/.dotbot/sites/lab/.approved.toml`.
+Saying yes (or passing `--yes`) is also what trusts that broker with the
+login in `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS`: from then on, commands in
+`lab` send it those with nothing else to set. The approved broker is recorded
+beside the pack, in `~/.dotbot/sites/lab/.approved.toml`. A login saved with
+`dotbot config login <host>` needs no approval, since only that host's broker
+ever gets it; when the pack names a TLS broker you have no saved login for,
+`add` ends by printing that command.
 
 A re-add that changes the broker or swarm id asks again, showing the approved
 broker and the new one. A pack with no connection is never asked about. When
@@ -80,9 +84,8 @@ again, which re-adds the pack in place and asks, old against new:
 warning: not sending DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS to evil.example: site lab's broker changed since you approved mqtts://broker.lab.example:8883; approve it with `dotbot site add --force /home/me/.dotbot/sites/lab`
 ```
 
-A pack found in a folder of your own `site_dirs`, such as a `sites/` folder
-committed beside your `dotbot.toml`, needs no approval: you pointed your config
-at it, so it is trusted like the file itself.
+A pack in a project's `sites/` folder, or one you name by its path, needs no
+approval: it is trusted like the project file beside it.
 
 | Flag | Meaning |
 |---|---|
@@ -95,26 +98,34 @@ Without `--use`, select the site with `dotbot site use lab`, `--site lab` or
 
 ## `use`
 
-Makes a site the active one by writing `site = "<name>"` into the config file in
-use, the one `dotbot config path` reports, keeping its comments. With no config
-file in use, it creates `~/.dotbot/dotbot.toml` holding just that line.
+Makes a site the active one by writing `site = "<name>"` to a file git does
+not track, keeping its comments: `./dotbot.local.toml` when a project's
+`dotbot.toml` is in use, else `~/.dotbot/dotbot.toml`. NAME is a pack in one
+of the two homes, or a pack folder's path.
 
 ```bash
 dotbot site use lab
+dotbot site use ../packs/hall-b            # a pack by its path
+dotbot site use c405-arena --project       # change the team's default, in dotbot.toml
 ```
 
-It warns when something will override the site's connection - a `conn` or
-`swarm_id` in your file, or a `DOTBOT_CONN` style variable - since your own
-values beat the site's:
+| Flag | Meaning |
+|---|---|
+| `--user` | Write `~/.dotbot/dotbot.toml`, even in a project. |
+| `--project` | Write the project's `dotbot.toml`, which is committed; it says so. |
+
+It warns when something will hide the site or its connection: a closer file,
+a `conn` or `swarm_id` in any of your files, or `DOTBOT_SITE` / `DOTBOT_CONN`,
+since your own values beat the site's:
 
 ```text
-wrote site = "lab" to ./dotbot.toml
-warning: dotbot.toml sets conn at top level, which overrides lab's connection; remove it to follow the site
+wrote site = "lab" to ./dotbot.local.toml
+warning: dotbot.local.toml sets conn, which hides lab's conn; `dotbot config unset conn` to follow the site
 ```
 
 ## `list` / `show`
 
-`list` prints every site the config can name, marking the active one with `*`,
+`list` prints every site in the two homes, marking the active one with `*`,
 with its connection and where it was read from. `show` prints one site, the
 active one by default: where it is defined, its anchor and extent, its
 connection, its areas with their roles, and its calibration folders.
@@ -127,8 +138,7 @@ dotbot site show lab
 ## `export`
 
 Writes the site `<name>` as a pack zip, `<name>.zip` in the current directory
-by default. The site can be an inline `[sites.<name>]` table, which is written
-out as the pack's `site.toml`, or a pack already.
+by default.
 
 ```bash
 dotbot site export lab                                    # lab.zip
@@ -141,11 +151,12 @@ dotbot site export lab --out ~/share/lab.zip --with-calibrations
 | `--with-calibrations` | Include the site's calibration files, from its pack's `calibrations/` and from `~/.dotbot/calibrations/<name>/`. |
 | `-f`, `--force` | Overwrite an existing zip. |
 
-A pack is plain files, so `unzip`, `git clone` or `cp` into a `site_dirs`
-folder work just as well as `site add`.
+A pack is plain files, so `unzip`, `git clone` or `cp` into a project's
+`sites/` folder work just as well as `site add`: that is how a pack is shared
+with a team.
 
 ## See also
 
-- [Configuration reference: sites](../reference/configuration.md#sites) - the site table, area roles, `site_dirs`.
+- [Configuration reference: sites](../reference/configuration.md#sites) - `site.toml`, area roles, the two homes.
 - [`dotbot config`](config.md) - `config show` names where the site, conn and swarm id came from.
 - [LH2 calibration](../guides/lh2-calibration.md) - calibrating a site.
