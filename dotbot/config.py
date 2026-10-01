@@ -567,9 +567,22 @@ def _model_env_names(model: type[BaseModel], section: str | None) -> set[str]:
     return names
 
 
+# Shared DOTBOT_<KEY> names of keys whose resolvers read only the sectioned
+# name (`segger_dir`, the `[fw.sources]` keys).
+_UNREAD_ENV = frozenset(
+    {
+        "DOTBOT_LOGIN",
+        "DOTBOT_SEGGER_DIR",
+        "DOTBOT_DOTBOT_FIRMWARE",
+        "DOTBOT_SWARMIT",
+        "DOTBOT_MARI",
+    }
+)
+
+
 def known_env_names() -> frozenset[str]:
     """Every DOTBOT_* variable dotbot reads."""
-    names = _model_env_names(DotbotConfig, None) - {"DOTBOT_LOGIN"}
+    names = _model_env_names(DotbotConfig, None) - _UNREAD_ENV
     return frozenset(names | EXTRA_ENV)
 
 

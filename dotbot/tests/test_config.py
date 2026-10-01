@@ -630,7 +630,8 @@ def test_every_schema_key_has_its_env_names():
         "DOTBOT_DEVICE_PROBE",
     ):
         assert name in known
-    assert "DOTBOT_LOGIN" not in known
+    for name in ("DOTBOT_LOGIN", "DOTBOT_SEGGER_DIR", "DOTBOT_SWARMIT", "DOTBOT_MARI"):
+        assert name not in known
 
 
 def test_every_toml_example_in_the_configuration_reference_loads():
