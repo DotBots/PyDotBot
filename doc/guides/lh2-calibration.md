@@ -29,8 +29,7 @@ pip install 'pydotbot[calibrate]'
 
 ```{note}
 **Base-station channels.** Set your base stations to channels 1, 2, ... N,
-with no gaps, one channel per station. Avoid channel 14 for now: it is a known
-issue.
+with no gaps, one channel per station.
 ```
 
 ## Choose the points
@@ -81,7 +80,9 @@ dotbot swarm calibrate-lh2 push <id>  # send it to every robot
 
 `push` takes a file path, the exact `--tag` the calibration was collected
 with, or a prefix of its id. It refuses robots that report another site, and
-lists the robots that still hold another calibration afterwards.
+robots whose sandbox firmware is older than this `dotbot` (reflash those by
+cable, see [Upgrading from schema 2](#upgrading-from-schema-2)), and lists the
+robots that still hold another calibration afterwards.
 
 ```{note}
 `collect --push` is a **shortcut**: it sends the result only to the robots
@@ -116,6 +117,40 @@ from another site, and one whose recorded anchor differs from the site's. To
 move a calibration into another site's frame without capturing again, use
 `dotbot swarm calibrate-lh2 reframe`.
 
+## Upgrading from schema 2
+
+Calibration files are schema 3: positions are solved on the true pinhole
+camera point of each station. A schema 2 file, written before PyDotBot
+0.32.0, is refused with `unsupported calibration schema_version 2`, and robots
+need the matching sandbox firmware (swarmit 0.11.0 or newer). In order:
+
+1. **Re-solve the calibration.** A schema 2 file keeps its raw sweep counts,
+   so it re-solves with no new capture. Save this as `resolve.py`:
+
+   ```python
+   import pathlib, sys, tempfile
+   from dotbot.calibration.lighthouse2 import LighthouseManager, read_calibration_file, write_calibration
+
+   old = pathlib.Path(sys.argv[1])
+   copy = pathlib.Path(tempfile.mkdtemp()) / old.name
+   copy.write_text(old.read_text().replace("schema_version = 2", "schema_version = 3", 1))
+   cal = read_calibration_file(copy)
+   manager = LighthouseManager(cal.placements, cal.site, cal.valid_mm, cal.robot)
+   manager.solve()
+   print(write_calibration(manager.calibration(tag=cal.tag or None)))
+   ```
+
+   `python resolve.py ~/.dotbot/calibrations/<site>/calibration-<old>.toml`
+   writes the schema 3 file under `~/.dotbot/calibrations/<site>/`, with a
+   new id, and prints its path.
+   Or run `collect` again.
+2. **Reflash each robot by cable**, both cores and the calibration at once:
+   `dotbot device flash swarmit-sandbox --lh2-calibration <schema 3 file>`.
+   Never flash the new bootloader alone over an old network core.
+3. **Over the air**, flash the sandbox apps again and check positions.
+
+A reflashed robot reports no position until it holds a schema 3 calibration.
+
 ## `collect` flags
 
 | Flag | Default | Meaning |
@@ -143,3 +178,7 @@ See `dotbot swarm calibrate-lh2 collect --help` for the full list.
   Calibrate over the whole field rather than `--square` or `--over`.
 - **The controller refuses the calibration** - it was made in another site.
   Select that site with `--site`, or calibrate this one.
+- **`unsupported calibration schema_version 2`** - the file predates schema
+  3; see [Upgrading from schema 2](#upgrading-from-schema-2).
+- **`push` refuses robots and asks for a reflash** - their sandbox firmware
+  predates schema 3; reflash them by cable as in step 2 above.

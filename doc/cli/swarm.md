@@ -145,8 +145,9 @@ each when you press the DotBot's button; `--over <area>`, `--square <mm>` and
 `--points` choose other points. It solves every station and saves the result
 under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
 the whole site shares one calibration. It takes a file path, a `--tag` or an
-id prefix, and refuses robots that report another site. (`collect --push` sends
-only to the robots whose captures built it.)
+id prefix, and refuses robots that report another site or run sandbox
+firmware older than this `dotbot`. (`collect --push` sends only to the robots
+whose captures built it.)
 
 ## Two web servers - don't mix them up
 
