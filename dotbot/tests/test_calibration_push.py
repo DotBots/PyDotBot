@@ -10,6 +10,7 @@ surface; none of this is hardware validation.
 import tomllib
 from types import SimpleNamespace
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -279,3 +280,33 @@ def test_a_running_robot_left_out_by_the_device_filter_does_not_stop_a_push(
     fleet = _Fleet({"A": _info(), "B": _running()})
     assert gate_push(fleet, calibration, devices=["A"]).send_to == ["A"]
 
+
+def test_swarm_d_before_calibrate_lh2_limits_the_push(monkeypatch, calibration_file):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a, **k: fleet)
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(SystemExit) as exit_:
+        cmd.main(
+            args=["-d", "a", "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )
+    assert exit_.value.code == 0
+    assert fleet.pushed_to == [["A"]]
+    assert fleet.refreshed == [["A"]]
+
+
+def test_calibrate_lh2_refuses_swarm_options_it_cannot_honour(calibration_file):
+    from dotbot.cli import swarm
+    from dotbot.tests.test_cli_swarm_inject import _stub_group
+
+    cmd = swarm._with_config_injection(_stub_group())
+    with pytest.raises(click.UsageError, match="drop baudrate"):
+        cmd.main(
+            args=["-b", "9600", "calibrate-lh2", "push", str(calibration_file)],
+            obj={"config": LAB},
+            standalone_mode=False,
+        )

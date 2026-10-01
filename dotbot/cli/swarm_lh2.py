@@ -38,6 +38,20 @@ import click
 
 from dotbot.cli._site import site_from_context
 
+# Where `dotbot swarm` hands over the options given before `calibrate-lh2`
+SWARM_OPTIONS = "swarm_options"
+
+
+def _swarm_option(ctx, name):
+    return ((ctx.obj or {}).get(SWARM_OPTIONS) or {}).get(name)
+
+
+def _devices(ctx) -> list[str] | None:
+    """The robots `dotbot swarm -d` named, upper case; None for the swarm."""
+    raw = _swarm_option(ctx, "devices") or ""
+    devices = [d.strip().upper() for d in raw.split(",") if d.strip()]
+    return devices or None
+
 
 def _swarmit_client(ctx, conn, swarm_id):
     """A swarmit client for this CLI invocation.
@@ -57,6 +71,8 @@ def _swarmit_client(ctx, conn, swarm_id):
 
     obj = ctx.obj or {}
     site = active_site(ctx)
+    conn = conn or _swarm_option(ctx, "conn")
+    swarm_id = swarm_id or _swarm_option(ctx, "swarm_id")
     conn_r, swarm_r = (
         resolve_source(
             key,
@@ -420,8 +436,10 @@ def _collect(
         "file path, the exact --tag it was collected with, or the id prefix "
         "of a file under ~/.dotbot/calibrations/<site>/. Reads device info "
         "first: refuses robots on firmware older than this host, which need "
-        "a reflash, and robots that report another site, then lists the "
-        "robots still on another id."
+        "a reflash, robots that report another site, and robots running an "
+        "app, which would drop it, then lists the robots still on another "
+        "id. `dotbot swarm -d <addresses> calibrate-lh2 push` sends to those "
+        "robots only."
     ),
 )
 @click.argument("calibration")
@@ -474,7 +492,7 @@ def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
         raise click.ClickException(str(exc)) from exc
     client = _swarmit_client(ctx, conn, swarm_id)
     with client:
-        _gated_push(client, loaded, site_changed=site_changed)
+        _gated_push(client, loaded, site_changed=site_changed, devices=_devices(ctx))
 
 
 def _gated_push(client, calibration, site_changed=False, devices=None):

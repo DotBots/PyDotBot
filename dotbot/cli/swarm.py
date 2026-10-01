@@ -120,23 +120,32 @@ def _with_config_injection(swarmit_group):
     @click.pass_context
     def cmd(ctx, args):
         args = list(args)
+        sub = subcommand_index(args, swarmit_group)
         # `calibrate-lh2` is PyDotBot-native (the homography solve lives
         # here, not in swarmit), so intercept it before the passthrough and
-        # hand off to our own group, carrying the resolved config along.
-        if args and args[0] == "calibrate-lh2":
+        # hand off to our own group, carrying the resolved config and the
+        # swarm options given before it (`-d`, `-n`, `-s`) along.
+        if sub is not None and args[sub] == "calibrate-lh2":
+            from dotbot.cli.swarm_lh2 import SWARM_OPTIONS
             from dotbot.cli.swarm_lh2 import cmd as lh2_group
 
+            given = group_options(args[:sub], swarmit_group)
+            unused = sorted(set(given) - {"conn", "swarm_id", "devices"})
+            if unused:
+                raise click.UsageError(
+                    "calibrate-lh2 takes only -d, -n and -s from `dotbot swarm`; "
+                    f"drop {', '.join(unused)}"
+                )
             lh2_group.main(
-                args=args[1:],
+                args=args[sub + 1 :],
                 prog_name="dotbot swarm calibrate-lh2",
                 standalone_mode=True,
-                obj=ctx.obj,
+                obj={**(ctx.obj or {}), SWARM_OPTIONS: given},
             )
             return
         # `flash <name>` is PyDotBot sugar: resolve a bundled app name to its
         # fetched .bin path before handing off (an explicit path passes
         # through), and service `--list` without touching the transport.
-        sub = subcommand_index(args, swarmit_group)
         if sub is not None and args[sub] == "flash":
             from dotbot.cli._swarm_flash import flash_help_epilog, resolve_flash_args
 
