@@ -174,8 +174,9 @@ class RobotRecord:
     """What the controller keeps about a robot beside its model.
 
     `revs` maps a field of the model, or "trail", to the controller `seq` it
-    last changed at. `trail` holds the points, each with the `seq` it was
-    added at. `created` and `trail_reset` are the seq the robot appeared at
+    last changed at. `heard` is the `time.monotonic()` of the last advert,
+    the robot's silence is measured from it. `trail` holds the points, each
+    with the `seq` it was added at. `created` and `trail_reset` are the seq the robot appeared at
     and its trail was last cleared at.
     """
 
@@ -183,6 +184,7 @@ class RobotRecord:
     trail: Trail = dataclasses.field(default_factory=Trail)
     created: int = 0
     trail_reset: int = 0
+    heard: float = dataclasses.field(default_factory=time.monotonic)
     # The robot's fields as the stream last dumped them, at `changed` seq
     dump_seq: int = -1
     dump: Dict[str, object] = dataclasses.field(default_factory=dict)
@@ -685,15 +687,16 @@ class Controller:
     async def _dotbots_status_refresh(self):
         """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            await self._refresh_status(time.time())
+            await self._refresh_status(time.monotonic())
             await asyncio.sleep(0.5)
 
     async def _refresh_status(self, now: float):
-        """Mark each robot ACTIVE, STALE or LOST by its silence at `now`, and
-        forget the ones silent past `forget_after_s`."""
+        """Mark each robot ACTIVE, STALE or LOST by its silence at `now`, a
+        `time.monotonic()` value, and forget the ones silent past
+        `forget_after_s`."""
         settings = self.settings
         for dotbot in list(self.dotbots.values()):
-            silent = now - dotbot.last_seen
+            silent = now - self._record(dotbot.address).heard
             if settings.forget_after_s and silent > settings.forget_after_s:
                 self.forget(dotbot.address, now)
                 continue
@@ -721,11 +724,12 @@ class Controller:
         """Drop a robot and what is kept about it, but its last batch id, so
         a batch sent when it comes back as a new robot never repeats one."""
         dotbot = self.dotbots.pop(address)
+        heard = self._record(address).heard
         self.logger.info(
             "Dotbot forgotten",
             source=address,
             application=dotbot.application.name,
-            silent_s=round((now or time.time()) - dotbot.last_seen, 1),
+            silent_s=round((now or time.monotonic()) - heard, 1),
         )
         self.seq += 1
         self.records.pop(address, None)
@@ -830,6 +834,7 @@ class Controller:
         else:
             dotbot.last_seen = time.time()
         record = self._record(source)
+        record.heard = time.monotonic()
         if created:
             record.created = seq
         elif dotbot.status != DotBotStatus.ACTIVE:

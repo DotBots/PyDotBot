@@ -337,7 +337,7 @@ async def test_deltas_are_merge_patches_over_the_rest_object(controller):
         elif action == 4 and known:
             controller.clear_trail(address)
         elif action == 5:
-            await controller._refresh_status(time.time() + STALE_AFTER_S + 1)
+            await controller._refresh_status(time.monotonic() + STALE_AFTER_S + 1)
         elif action == 6 and known:
             controller.forget(address)
         now += 0.05

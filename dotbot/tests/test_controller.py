@@ -4,6 +4,7 @@ import asyncio
 import json
 import pathlib
 import time
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -1523,8 +1524,9 @@ async def test_a_status_change_is_a_patch_not_a_reload(controller):
     )
     since = controller.seq
     dotbot = controller.dotbots[addr_to_hex(BOT)]
-    await controller._refresh_status(dotbot.last_seen + STALE_AFTER_S + 1)
-    await controller._refresh_status(dotbot.last_seen + STALE_AFTER_S + 2)
+    heard = controller.records[addr_to_hex(BOT)].heard
+    await controller._refresh_status(heard + STALE_AFTER_S + 1)
+    await controller._refresh_status(heard + STALE_AFTER_S + 2)
     (delta,) = (json.loads(t) for t in delta_frames(controller, since, 0))
     assert delta["robots"][addr_to_hex(BOT)] == {
         "status": DotBotStatus.STALE,
@@ -1700,7 +1702,7 @@ async def test_silence_moves_a_robot_through_stale_and_lost_then_forgets_it():
     controller = _quiet_controller(stale_after_s=2, lost_after_s=5, forget_after_s=20)
     controller.handle_received_frame(_advertised(BOT, direction=0))
     address = addr_to_hex(BOT)
-    heard = controller.dotbots[address].last_seen
+    heard = controller.records[address].heard
     for silent, status in ((1.9, "ACTIVE"), (2.1, "STALE"), (5.1, "LOST")):
         await controller._refresh_status(heard + silent)
         assert controller.dotbots[address].status.name == status, silent
@@ -1714,11 +1716,26 @@ async def test_silence_moves_a_robot_through_stale_and_lost_then_forgets_it():
 
 
 @pytest.mark.asyncio
+async def test_a_wall_clock_jump_changes_no_status_and_forgets_no_robot():
+    controller = _quiet_controller()
+    controller.handle_received_frame(_advertised(BOT, direction=0))
+    address = addr_to_hex(BOT)
+    wall = time.time()
+    with mock.patch("time.time", return_value=wall + FORGET_AFTER_S * 10):
+        await controller._refresh_status(time.monotonic())
+        assert controller.dotbots[address].status == DotBotStatus.ACTIVE
+        controller.handle_received_frame(_advertised(BOT, direction=0))
+    with mock.patch("time.time", return_value=wall - FORGET_AFTER_S * 10):
+        await controller._refresh_status(time.monotonic() + LOST_AFTER_S + 1)
+    assert controller.dotbots[address].status == DotBotStatus.LOST
+
+
+@pytest.mark.asyncio
 async def test_a_forget_threshold_of_zero_keeps_a_lost_robot():
     controller = _quiet_controller(forget_after_s=0)
     controller.handle_received_frame(_advertised(BOT, direction=0))
     address = addr_to_hex(BOT)
-    await controller._refresh_status(controller.dotbots[address].last_seen + 10**6)
+    await controller._refresh_status(controller.records[address].heard + 10**6)
     assert controller.dotbots[address].status == DotBotStatus.LOST
 
 
@@ -1727,7 +1744,7 @@ async def test_an_advertisement_makes_a_lost_robot_active_at_once():
     controller = _quiet_controller()
     controller.handle_received_frame(_advertised(BOT, direction=0))
     address = addr_to_hex(BOT)
-    await controller._refresh_status(time.time() + LOST_AFTER_S + 1)
+    await controller._refresh_status(time.monotonic() + LOST_AFTER_S + 1)
     assert controller.dotbots[address].status == DotBotStatus.LOST
     since = controller.seq
     controller.handle_received_frame(_advertised(BOT, direction=0))
@@ -1778,7 +1795,7 @@ async def test_robots_forgotten_in_one_pass_are_null_in_seq_order():
     controller = _quiet_controller()
     for source in (0x41, 0x42, 0x43):
         controller.handle_received_frame(_advertised(source, direction=0))
-    await controller._refresh_status(time.time() + FORGET_AFTER_S + 1)
+    await controller._refresh_status(time.monotonic() + FORGET_AFTER_S + 1)
     assert controller.dotbots == {}
     seqs = list(controller.forgotten.values())
     assert seqs == sorted(seqs) and len(set(seqs)) == 3
