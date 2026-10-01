@@ -263,6 +263,7 @@ class ControllerSection(_Strict):
     camera_detect_share: float | None = Field(None, gt=0.0, le=1.0)
     simulator_area: str | None = None
     swarmit_url: str | None = None
+    swarm_serve: bool | None = None
     mrta_url: str | None = None
 
     @model_validator(mode="before")

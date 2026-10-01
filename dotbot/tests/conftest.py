@@ -33,3 +33,24 @@ def no_user_config(monkeypatch, tmp_path_factory):
     from a ~/.dotbot/config.toml still under its former name."""
     home = tmp_path_factory.mktemp("home-dotbot")
     monkeypatch.setattr("dotbot.config.USER_CONFIG_PATH", home / "dotbot.toml")
+
+
+@pytest.fixture(autouse=True)
+def no_swarm_server(monkeypatch):
+    """Keep `run controller` from probing or starting a real swarm server;
+    the fake `start` records its calls in `.calls`."""
+    from unittest.mock import MagicMock
+
+    start = MagicMock(name="swarm_serve.start")
+    for name in (
+        "DOTBOT_SWARMIT_URL",
+        "DOTBOT_SWARM_SERVE",
+        "DOTBOT_RUN_CONTROLLER_SWARM_SERVE",
+        "SWARMIT_SERVER_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr("dotbot.swarm_serve.server_settings", lambda *a, **k: None)
+    monkeypatch.setattr("dotbot.swarm_serve.start", start)
+    monkeypatch.setattr("dotbot.swarm_serve.watch", lambda *a, **k: None)
+    monkeypatch.setattr("dotbot.swarm_serve.port_taken", lambda *a: False)
+    return start
