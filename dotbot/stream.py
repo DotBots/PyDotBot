@@ -12,7 +12,9 @@ larger frames and its backlog is bounded by the fleet size.
 A delta patch is an RFC 7396 merge patch over the REST object: each changed
 field with its whole value (null once it has none), `last_seen`, and the
 trail as `trail_append` (new points, oldest first) and `trail_reset`. A new
-robot arrives as its whole REST object, and a forgotten one as `null`.
+robot arrives as its whole REST object, which replaces whatever the client
+held under that address: a robot forgotten and back between two frames comes
+as that object alone. A forgotten robot is `null`.
 
 A robot's `pose` is its axle and heading only. The body drawn around it is
 its `model`'s shape, which the `robot_models` event carries with every

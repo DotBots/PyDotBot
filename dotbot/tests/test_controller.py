@@ -16,6 +16,7 @@ from dotbot import addr_to_hex
 from dotbot.adapter import DotBotSimulatorAdapter, SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
+    FORGET_AFTER_S,
     LOST_AFTER_S,
     STALE_AFTER_S,
     Controller,
@@ -1755,3 +1756,36 @@ async def test_a_forgotten_robot_comes_back_as_a_new_one_without_its_commands():
     assert dotbot.status == DotBotStatus.ACTIVE
     assert dotbot.lh2_position.x == 2000
     assert controller.forgotten == {}
+
+
+@pytest.mark.parametrize(
+    "thresholds",
+    [
+        {"stale_after_s": 0},
+        {"stale_after_s": 10, "lost_after_s": 5},
+        {"forget_after_s": 5},
+        {"stale_after_s": float("nan")},
+        {"forget_after_s": -1},
+    ],
+)
+def test_settings_refuse_thresholds_out_of_order(thresholds):
+    with pytest.raises(ValueError, match="stale_after_s < lost_after_s"):
+        ControllerSettings(**thresholds)
+
+
+@pytest.mark.asyncio
+async def test_robots_forgotten_in_one_pass_are_null_in_seq_order():
+    controller = _quiet_controller()
+    for source in (0x41, 0x42, 0x43):
+        controller.handle_received_frame(_advertised(source, direction=0))
+    await controller._refresh_status(time.time() + FORGET_AFTER_S + 1)
+    assert controller.dotbots == {}
+    seqs = list(controller.forgotten.values())
+    assert seqs == sorted(seqs) and len(set(seqs)) == 3
+    delta = json.loads(delta_frames(controller, 0, 0)[0])
+    assert delta["robots"] == dict.fromkeys(controller.forgotten)
+
+
+def test_an_address_asks_for_that_robot_even_when_lost(controller):
+    query = DotBotQueryModel(address="0000000000000003")
+    assert controller.matching(query) == ["0000000000000003"]

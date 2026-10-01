@@ -872,6 +872,9 @@ async def test_a_forgotten_robot_is_null_in_the_delta(controller):
 @pytest.mark.asyncio
 async def test_a_robot_back_after_being_forgotten_comes_whole(controller):
     advertise(controller, 0x42, x=1000)
+    controller.update_dotbot(
+        addr_to_hex(0x42), rgb_led=DotBotRgbLedCommandModel(red=9, green=0, blue=0)
+    )
     since = controller.seq
     controller.forget(addr_to_hex(0x42))
     advertise(controller, 0x42, x=2000)
@@ -879,6 +882,7 @@ async def test_a_robot_back_after_being_forgotten_comes_whole(controller):
     robot = delta["robots"][addr_to_hex(0x42)]
     assert robot["address"] == addr_to_hex(0x42)
     assert robot["lh2_position"]["x"] == 2000
+    assert "rgb_led" not in robot
     assert controller.forgotten == {}
 
 
@@ -895,3 +899,24 @@ async def test_a_resumed_client_is_told_what_was_forgotten(controller):
     assert second.hello["resumed"] is True
     assert second.fleet == await rest_fleet(0)
     assert addr_to_hex(0x43) not in second.fleet
+
+
+@pytest.mark.asyncio
+async def test_a_forgotten_robot_is_not_found_and_takes_no_command(controller):
+    advertise(controller, 0x42)
+    address = addr_to_hex(0x42)
+    controller.forget(address)
+    async with AsyncClient(
+        transport=ASGITransport(app=api), base_url="http://test"
+    ) as http:
+        assert (await http.get(f"/controller/dotbots/{address}")).status_code == 404
+        response = await http.put(
+            f"/controller/dotbots/{address}/0/rgb_led",
+            json={"red": 1, "green": 2, "blue": 3},
+        )
+        assert response.status_code == 404
+        response = await http.put(
+            "/controller/dotbots/waypoints",
+            json={"threshold": 50, "dotbots": {address: [{"x": 400, "y": 1600}]}},
+        )
+        assert response.status_code == 404

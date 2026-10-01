@@ -551,7 +551,7 @@ class DotBotQueryModel(BaseModel):
     address: Optional[str] = None
     application: Optional[ApplicationType] = None
     status: Optional[DotBotStatus] = None
-    # Lost robots are left out unless asked for, here or by `status`
+    # Lost robots are left out unless asked for, here, by `status` or `address`
     include_lost: bool = False
     max_battery: Optional[float] = None
     min_battery: Optional[float] = None

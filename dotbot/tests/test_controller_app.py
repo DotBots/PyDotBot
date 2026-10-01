@@ -774,6 +774,7 @@ def test_the_silence_thresholds_default_and_come_from_config(
         "lost_after_s = 2",  # under the default stale_after_s
         "stale_after_s = 5\nlost_after_s = 5",
         "forget_after_s = 10",  # not past the default lost_after_s
+        "forget_after_s = inf",
     ],
 )
 @patch("dotbot.controller_app.asyncio.run")
@@ -784,4 +785,18 @@ def test_silence_thresholds_out_of_order_are_refused(
     result = _run_with_controller_table(tmp_path, table)
     assert result.exit_code != 0
     assert "stale_after_s < lost_after_s < forget_after_s" in result.output
+    controller.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@pytest.mark.parametrize("value", ["nan", "soon"])
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_a_silence_threshold_from_the_environment_must_be_seconds(
+    controller, _asyncio_run, monkeypatch, value
+):
+    monkeypatch.setenv("DOTBOT_RUN_CONTROLLER_STALE_AFTER_S", value)
+    result = CliRunner().invoke(main, ["--conn", "simulator"])
+    assert result.exit_code != 0
+    assert "stale_after_s" in result.output
     controller.assert_not_called()

@@ -2621,15 +2621,3 @@ async def test_a_lost_robot_is_still_served_by_address_and_takes_commands():
         "/controller/dotbots/2/0/rgb_led", json={"red": 1, "green": 2, "blue": 3}
     )
     assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_a_forgotten_robot_is_not_found():
-    _serve(_fleet_with_one_of_each_status())
-    del api.controller.dotbots["2"]
-    response = await client.get("/controller/dotbots/2")
-    assert response.status_code == 404
-    response = await client.put(
-        "/controller/dotbots/2/0/rgb_led", json={"red": 1, "green": 2, "blue": 3}
-    )
-    assert response.status_code == 404

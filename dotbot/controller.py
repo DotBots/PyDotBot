@@ -232,6 +232,21 @@ class ControllerSettings:
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
+    def __post_init__(self):
+        stale, lost, forget = (
+            self.stale_after_s,
+            self.lost_after_s,
+            self.forget_after_s,
+        )
+        if not (
+            0 < stale < lost < math.inf and (forget == 0 or lost < forget < math.inf)
+        ):
+            raise ValueError(
+                "stale_after_s < lost_after_s < forget_after_s is needed, all "
+                f"positive seconds (forget 0 never forgets); got {stale:g}, "
+                f"{lost:g} and {forget:g}"
+            )
+
 
 def _station_mask(stations: set[int]) -> Optional[int]:
     """The `calibrated` bitmask of robots holding exactly `stations`; None
@@ -680,7 +695,7 @@ class Controller:
         for dotbot in list(self.dotbots.values()):
             silent = now - dotbot.last_seen
             if settings.forget_after_s and silent > settings.forget_after_s:
-                self.forget(dotbot.address)
+                self.forget(dotbot.address, now)
                 continue
             if silent > settings.lost_after_s:
                 status = DotBotStatus.LOST
@@ -702,15 +717,15 @@ class Controller:
             status=status.name,
         )
 
-    def forget(self, address: str) -> None:
-        """Drop a robot and everything kept about it; it comes back as a new
-        robot when it next advertises."""
+    def forget(self, address: str, now: Optional[float] = None) -> None:
+        """Drop a robot and what is kept about it, but its last batch id, so
+        a batch sent when it comes back as a new robot never repeats one."""
         dotbot = self.dotbots.pop(address)
         self.logger.info(
             "Dotbot forgotten",
             source=address,
             application=dotbot.application.name,
-            silent_s=round(time.time() - dotbot.last_seen, 1),
+            silent_s=round((now or time.time()) - dotbot.last_seen, 1),
         )
         self.seq += 1
         self.records.pop(address, None)
@@ -722,6 +737,7 @@ class Controller:
         self._dotbot_twins.pop(address, None)
         self._dotbot_twin_timestamps.pop(address, None)
         self._unsolved_held.pop(address, None)
+        self.advertised_batch_ids.pop(address, None)
 
     def _record(self, address: str) -> RobotRecord:
         """The record kept beside `address`'s model, created on first use."""
@@ -1227,7 +1243,11 @@ class Controller:
             if query.status is not None:
                 if dotbot.status.value != query.status:
                     continue
-            elif dotbot.status == DotBotStatus.LOST and not query.include_lost:
+            elif (
+                dotbot.status == DotBotStatus.LOST
+                and not query.include_lost
+                and query.address is None
+            ):
                 continue
             if query.max_battery is not None and dotbot.battery is not None:
                 if dotbot.battery > query.max_battery:

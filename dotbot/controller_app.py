@@ -88,32 +88,15 @@ def _max_age_days(raw, source: str) -> int:
     return days
 
 
-def _staleness(ctx) -> dict:
-    """The three silence thresholds, from config or their defaults, each
-    longer than the last; a forget threshold of 0 never forgets."""
-    values = {}
-    for key, default in (
-        ("stale_after_s", STALE_AFTER_S),
-        ("lost_after_s", LOST_AFTER_S),
-        ("forget_after_s", FORGET_AFTER_S),
-    ):
-        raw, source = _resolve_controller_key(ctx, key, None, default)
-        try:
-            values[key] = float(raw)
-        except ValueError:
-            values[key] = -1.0
-        if values[key] < 0 or (values[key] == 0 and key != "forget_after_s"):
-            raise click.ClickException(
-                f"{key} from {source} is {raw!r}; give a number of seconds"
-                + (", or 0 to never forget" if key == "forget_after_s" else "")
-            )
-    stale, lost, forget = values.values()
-    if lost <= stale or (forget and forget <= lost):
+def _seconds(ctx, key: str, default: float) -> float:
+    """One silence threshold, from config or its default, as seconds."""
+    raw, source = _resolve_controller_key(ctx, key, None, default)
+    try:
+        return float(raw)
+    except ValueError:
         raise click.ClickException(
-            "stale_after_s < lost_after_s < forget_after_s is needed (forget "
-            f"0 never forgets); got {stale:g}, {lost:g} and {forget:g}"
-        )
-    return values
+            f"{key} from {source} is {raw!r}; give a number of seconds"
+        ) from None
 
 
 def _conn_to_settings(
@@ -575,7 +558,11 @@ def main(
         ctx, "lh2_calibration_max_age_days", None, LH2_CALIBRATION_MAX_AGE_DAYS
     )
     max_age_days = _max_age_days(raw_max_age, max_age_source)
-    staleness = _staleness(ctx)
+    staleness = {
+        "stale_after_s": _seconds(ctx, "stale_after_s", STALE_AFTER_S),
+        "lost_after_s": _seconds(ctx, "lost_after_s", LOST_AFTER_S),
+        "forget_after_s": _seconds(ctx, "forget_after_s", FORGET_AFTER_S),
+    }
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -657,7 +644,10 @@ def main(
         data["swarmit_url"] = None
         print("Swarmit server: none (a simulator uses one only with --swarmit-url)")
 
-    controller_settings = ControllerSettings(**data)
+    try:
+        controller_settings = ControllerSettings(**data)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     setup_logging(
         controller_settings.log_output,
