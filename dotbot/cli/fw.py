@@ -5,11 +5,12 @@ files. It never touches hardware: flashing a device lives under `fw`'s
 sibling `dotbot device`, and OTA-flashing the fleet under `dotbot swarm`.
 
 `build` and `fetch` take the same names `dotbot device flash` does: a role
-(`swarmit-sandbox`, `mari-gateway`) or a DotBot-firmware app. They fill the
+(`swarmit-sandbox`, `mari-gateway`) or a DotBot-firmware app; `fetch` also
+takes a release name (`swarmit`, `dotbot-firmware`). They fill the
 cache (`~/.dotbot/artifacts/`) as mirror images, one directory per firmware
 set, under the same release file names:
 
-- `fetch [ROLE|APP]...` downloads a release into `<release>-<tag>/`.
+- `fetch [RELEASE|ROLE|APP]...` downloads a release into `<release>-<tag>/`.
 - `build [ROLE|APP]...` builds from local source folders (DotBot-firmware,
   swarmit, mari) through each one's Makefile, SES underneath, and copies the
   result into
@@ -461,7 +462,7 @@ def _shipped_apps(directory: Path) -> set[str]:
 
 
 @cmd.command()
-@_names_argument
+@click.argument("names", nargs=-1, metavar="[RELEASE|ROLE|APP]...")
 @click.option(
     "--fw-version",
     "-f",
@@ -475,45 +476,51 @@ def _shipped_apps(directory: Path) -> set[str]:
 def fetch(names, fw_version):
     """Download releases into ~/.dotbot/artifacts/<release>-<tag>/.
 
-    ROLE is swarmit-sandbox or mari-gateway: both come from the swarmit
-    release (the bootloaders, the network core and the Mari gateway; its pin
-    is the installed swarmit package's version). Mari's own releases publish
-    no firmware. APP is an app name: apps come from the DotBot-firmware
-    release (every app it ships; its pin is the version pydotbot is tested
-    against). Default: both releases. swarmit releases that include them
-    also ship the per-schedule gateway images, which this gets with the rest;
-    for a release without them, `dotbot fw build mari-gateway --schedule`
-    builds them.
+    RELEASE is swarmit or dotbot-firmware. swarmit carries the bootloaders,
+    the network core and the Mari gateway; its pin is the installed swarmit
+    package's version. dotbot-firmware carries every app; its pin is the
+    version pydotbot is tested against. Mari's own releases publish no
+    firmware. A ROLE (swarmit-sandbox, mari-gateway) or an APP name fetches
+    the release that contains it, and naming an app also checks that the
+    release ships it. Default: both releases. swarmit releases that include
+    them also ship the per-schedule gateway images, which this gets with the
+    rest; for a release without them, `dotbot fw build mari-gateway
+    --schedule` builds them.
     """
     from dotbot import pydotbot_version
     from dotbot.cli._fw_sources import APP_RELEASE, ROLE_RELEASES
     from dotbot.firmware.fetch import (
         DEFAULT_FETCH_SOURCES,
+        RELEASE_SOURCES,
         _short_path,
         fetch_assets,
         pinned_version,
     )
 
     names = list(dict.fromkeys(names))
-    sources = [name for name in names if name in SOURCES]
-    if sources:
+    if "mari" in names:
         raise click.ClickException(
-            f"{', '.join(sources)}: `dotbot fw fetch` takes a role "
-            f"({', '.join(ROLES)}) or an app name, not a source."
+            "mari's releases publish no firmware: the Mari gateway comes from "
+            "the swarmit release (`dotbot fw fetch swarmit` or `dotbot fw fetch "
+            "mari-gateway`), or build it with `dotbot fw build mari-gateway`."
         )
-    apps = [name for name in names if name not in ROLES]
+    apps = [n for n in names if n not in ROLES and n not in RELEASE_SOURCES]
     releases = list(
         dict.fromkeys(
-            [ROLE_RELEASES[name] for name in names if name in ROLES]
+            [
+                n if n in RELEASE_SOURCES else ROLE_RELEASES[n]
+                for n in names
+                if n in RELEASE_SOURCES or n in ROLES
+            ]
             + ([APP_RELEASE] if apps else [])
         )
     ) or list(DEFAULT_FETCH_SOURCES)
     if fw_version not in (None, "latest") and len(releases) != 1:
         raise click.ClickException(
-            f"-f {fw_version} names one release, and the swarmit release "
-            "(swarmit-sandbox, mari-gateway) and the DotBot-firmware release "
-            "(apps) version independently: fetch one at a time, e.g. "
-            f"`dotbot fw fetch swarmit-sandbox -f {fw_version}`."
+            f"-f {fw_version} names one release, and the swarmit and "
+            "DotBot-firmware releases version independently: fetch one at a "
+            f"time, e.g. `dotbot fw fetch swarmit -f {fw_version}` and "
+            "`dotbot fw fetch dotbot-firmware -f <tag>`."
         )
     fetched: list[Path] = []
     for release in releases:

@@ -31,7 +31,7 @@ path = "utils/hooks/sdist.py"
 
 [project]
 name = "pydotbot"
-version = "0.31.0"
+version = "0.32.0"
 authors = [
     { name="Alexandre Abadie", email="alexandre.abadie@inria.fr" },
     { name="Theo Akbas", email="theo.akbas@inria.fr" },
@@ -60,7 +60,7 @@ dependencies = [
     "intelhex       >= 2.3.0",
     "marilib-pkg    >= 0.11.0",
     "pydotbot-utils >= 0.3.0",
-    "swarmit        >= 0.10.0",
+    "swarmit        >= 0.11.0",
     "toml           >= 0.10.2",
     "tomlkit        >= 0.13.0",
     # Runs the simulator's firmware control core. Majors ship monthly; the

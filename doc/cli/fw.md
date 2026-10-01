@@ -9,7 +9,7 @@ other, under the **same file names**:
 
 | | From | Into |
 |---|---|---|
-| `dotbot fw fetch [ROLE\|APP]...` | a GitHub release | `<release>-<version>/`, e.g. `swarmit-0.10.0/` |
+| `dotbot fw fetch [RELEASE\|ROLE\|APP]...` | a GitHub release | `<release>-<version>/`, e.g. `swarmit-0.11.0/` |
 | `dotbot fw build [ROLE\|APP]...` | your source folders, via SEGGER Embedded Studio | `<source>-<set>/`, e.g. `swarmit-local/` |
 
 Every flash command then picks one with `-f`: a release tag, `latest`, a set
@@ -71,7 +71,7 @@ it, and the flash commands fetch what they need.
 | Goal | Command |
 |---|---|
 | Download the pinned releases | `dotbot fw fetch` |
-| Download the sandbox host and gateway at another version | `dotbot fw fetch swarmit-sandbox -f 0.10.0` |
+| Download the sandbox host and gateway at another version | `dotbot fw fetch swarmit -f 0.10.0` |
 | Build everything from your source folders into `<source>-local/` | `dotbot fw build` |
 | Build one app | `dotbot fw build spin` |
 | Build the Mari gateway for one schedule, or all four | `dotbot fw build mari-gateway --schedule tiny` / `--schedule all` |
@@ -186,14 +186,18 @@ Two different gateways, not to be confused:
 `dotbot fw fetch` downloads prebuilt firmware from two releases, **swarmit**
 (the sandbox host and the Mari gateway) and **DotBot-firmware** (the apps),
 into `~/.dotbot/artifacts/<release>-<version>/`, each with a `manifest.json`
-recording where it came from. A role fetches the swarmit release and an app
-fetches the DotBot-firmware release, whole: naming an app also checks that the
-release ships it.
+recording where it came from. Name a release (`swarmit`, `dotbot-firmware`),
+or a role or an app to fetch the release that contains it: a role fetches the
+swarmit release and an app the DotBot-firmware release, whole, and naming an
+app also checks that the release ships it. `mari` is not a release here: Mari's
+releases publish no firmware, and the gateway comes with swarmit.
 
 With no `-f` it fetches the **exact versions this `dotbot` is pinned to**:
 
 - **swarmit** is also a Python dependency, so its firmware version is the
-  installed `swarmit` package's.
+  installed `swarmit` package's. An editable install reports the version it
+  had when it was installed, so after pulling a new swarmit, reinstall it
+  (`pip install -e <swarmit folder>`) or pass `-f`.
 - **DotBot-firmware** is not a Python package, so the version `dotbot` is built
   and tested against is declared in `dotbot` and bumped deliberately.
 
@@ -201,8 +205,9 @@ The two version independently, so a tag takes names from one release:
 
 ```bash
 dotbot fw fetch                              # pinned versions, both releases
-dotbot fw fetch spin -f latest               # newest DotBot-firmware release
-dotbot fw fetch swarmit-sandbox -f 0.10.0    # a specific swarmit release
+dotbot fw fetch dotbot-firmware -f latest    # newest DotBot-firmware release
+dotbot fw fetch swarmit -f 0.10.0            # a specific swarmit release
+dotbot fw fetch spin                         # the release that ships spin
 ```
 
 swarmit releases that include them also ship the per-schedule gateway images
@@ -222,7 +227,7 @@ dotbot fw list
 Every set in the cache with its images, and where it came from:
 
 ```text
-swarmit-0.10.0  release 0.10.0, fetched 2026-09-28T09:12:40+00:00
+swarmit-0.11.0  release 0.11.0, fetched 2026-10-01T09:12:40+00:00
   bootloader-dotbot-v3.hex
   ...
 swarmit-local  built from swarmit@a1b2c3d (dirty)  2h ago

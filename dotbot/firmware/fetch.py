@@ -43,7 +43,7 @@ DEFAULT_FETCH_SOURCES = ("swarmit", "dotbot-firmware")
 # Python package - so the expected version is declared here and bumped
 # deliberately when pydotbot adopts a new release. `dotbot fw fetch` (no -f)
 # pulls exactly this; -f overrides it.
-DOTBOT_FIRMWARE_VERSION = "1.24.0"
+DOTBOT_FIRMWARE_VERSION = "1.25.0"
 
 # Transient HTTP statuses worth retrying (GitHub's asset CDN 502s now and
 # then under concurrent load; 429 is rate-limiting).
