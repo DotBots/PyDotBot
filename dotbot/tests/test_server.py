@@ -17,6 +17,7 @@ from dotbot.models import (
     DotBotModel,
     DotBotMoveRawCommandModel,
     DotBotRgbLedCommandModel,
+    DotBotStatus,
     DotBotWaypoints,
     DotBotWheelVelocityCommandModel,
     WSMoveRaw,
@@ -591,7 +592,11 @@ async def test_get_dotbot_returns_the_newest_trail_points(query, expected):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "path", ["/controller/dotbots", "/controller/dotbots?trail=5&body=1"]
+    "path",
+    [
+        "/controller/dotbots?include_lost=true",
+        "/controller/dotbots?include_lost=1&trail=5&body=1",
+    ],
 )
 async def test_the_whole_fleet_names_its_seq_and_run(path):
     _serve({"12345": DotBotModel(address="12345", last_seen=123.4)})
@@ -606,7 +611,8 @@ async def test_the_whole_fleet_names_its_seq_and_run(path):
     "path",
     [
         "/controller/dotbots/12345",
-        "/controller/dotbots?address=12345",
+        "/controller/dotbots",
+        "/controller/dotbots?address=12345&include_lost=true",
         "/controller/dotbots?limit=1",
         "/controller/dotbots?min_battery=1",
     ],
@@ -2577,3 +2583,41 @@ async def test_a_bulk_request_lists_the_robots_it_could_not_send_to():
     assert response.status_code == 200
     assert response.json() == {"applied": ["4242"], "unknown": [], "failed": ["4343"]}
     assert api.controller.dotbots["4343"].waypoints == []
+
+
+def _fleet_with_one_of_each_status():
+    return {
+        f"{status.value}": DotBotModel(
+            address=f"{status.value}", last_seen=123.4, status=status
+        )
+        for status in DotBotStatus
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,addresses",
+    [
+        ("", ["0", "1"]),
+        ("?include_lost=true", ["0", "1", "2"]),
+        ("?status=2", ["2"]),
+        ("?status=1", ["1"]),
+    ],
+)
+async def test_the_fleet_leaves_lost_robots_out_unless_asked(query, addresses):
+    _serve(_fleet_with_one_of_each_status())
+    response = await client.get(f"/controller/dotbots{query}")
+    assert response.status_code == 200
+    assert [robot["address"] for robot in response.json()] == addresses
+
+
+@pytest.mark.asyncio
+async def test_a_lost_robot_is_still_served_by_address_and_takes_commands():
+    _serve(_fleet_with_one_of_each_status())
+    response = await client.get("/controller/dotbots/2")
+    assert response.status_code == 200
+    assert response.json()["status"] == DotBotStatus.LOST
+    response = await client.put(
+        "/controller/dotbots/2/0/rgb_led", json={"red": 1, "green": 2, "blue": 3}
+    )
+    assert response.status_code == 200

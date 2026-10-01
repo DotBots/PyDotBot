@@ -110,6 +110,7 @@ const Harness: React.FC = () => {
           dotBots: true,
           trails: false,
           crashedOnly: false,
+          lostBots: false,
           allWaypoints: false,
           calibratedSpan: true,
         }}

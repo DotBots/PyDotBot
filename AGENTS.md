@@ -28,7 +28,9 @@ are not layered alternatives, and consumers pick one.
 - **Pushed** - `/controller/ws/stream`, server to client (`dotbot/stream.py`).
   A `hello`, a `snapshot` of the fleet in parts of 100 robots, then `delta`
   frames whose per-robot patches are RFC 7396 merge patches over the REST
-  object (plus `trail_append` / `trail_reset`), and `event` frames
+  object (plus `trail_append` / `trail_reset`; `null` for a robot the
+  controller forgot; a patch carrying `address` is the whole robot and
+  replaces it), and `event` frames
   (`robot_models`, `calibration_session`, `camera_detection`). The client answers each frame
   with `{"ack": seq}`; one that never acks is served at 1 Hz, which keeps
   `websocat` usable. Query: `hz` (1-20, default 10), `trail` (points per
@@ -38,9 +40,10 @@ are not layered alternatives, and consumers pick one.
   runs on this.
 - **Polled** - `GET /controller/dotbots`. What the Python examples use when they
   batch waypoints and wait for "done". `?trail=N` adds the newest N trail
-  points (default none). On the unfiltered list, `X-Controller-Seq` /
-  `X-Controller-Run` name the state the body reflects, so a stream client can
-  resume from it; a single robot or a filtered list carries neither.
+  points (default none). Lost robots (`status` 2) are left out unless
+  `?include_lost=true`; only that whole list carries `X-Controller-Seq` /
+  `X-Controller-Run`, naming the state the body reflects, so a stream client
+  can resume from it.
 
 **A robot's `pose` is four numbers, not its body**: `x`, `y` (the axle
 midpoint, to 0.1 mm), `heading_deg` and `heading_source`. The body is the

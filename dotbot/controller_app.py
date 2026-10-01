@@ -36,7 +36,10 @@ from dotbot.cli._site import (
 )
 from dotbot.config import ConfigError, Resolved, resolve_source
 from dotbot.controller import (
+    FORGET_AFTER_S,
     LH2_CALIBRATION_MAX_AGE_DAYS,
+    LOST_AFTER_S,
+    STALE_AFTER_S,
     Controller,
     ControllerSettings,
 )
@@ -83,6 +86,17 @@ def _max_age_days(raw, source: str) -> int:
             "whole number of days, or 0 to never warn"
         )
     return days
+
+
+def _seconds(ctx, key: str, default: float) -> float:
+    """One silence threshold, from config or its default, as seconds."""
+    raw, source = _resolve_controller_key(ctx, key, None, default)
+    try:
+        return float(raw)
+    except ValueError:
+        raise click.ClickException(
+            f"{key} from {source} is {raw!r}; give a number of seconds"
+        ) from None
 
 
 def _conn_to_settings(
@@ -544,6 +558,11 @@ def main(
         ctx, "lh2_calibration_max_age_days", None, LH2_CALIBRATION_MAX_AGE_DAYS
     )
     max_age_days = _max_age_days(raw_max_age, max_age_source)
+    staleness = {
+        "stale_after_s": _seconds(ctx, "stale_after_s", STALE_AFTER_S),
+        "lost_after_s": _seconds(ctx, "lost_after_s", LOST_AFTER_S),
+        "forget_after_s": _seconds(ctx, "forget_after_s", FORGET_AFTER_S),
+    }
     camera_max_robots = int(camera_max_robots)
     camera_detect_share = float(camera_detect_share)
     if camera_calibration:
@@ -600,6 +619,7 @@ def main(
         "site": site,
         "lh2_calibration": lh2_calibration,
         "lh2_calibration_max_age_days": max_age_days,
+        **staleness,
         "camera_calibration": camera_calibration,
         "camera_detect": camera_detect,
         "camera_max_robots": camera_max_robots,
@@ -624,7 +644,10 @@ def main(
         data["swarmit_url"] = None
         print("Swarmit server: none (a simulator uses one only with --swarmit-url)")
 
-    controller_settings = ControllerSettings(**data)
+    try:
+        controller_settings = ControllerSettings(**data)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     setup_logging(
         controller_settings.log_output,

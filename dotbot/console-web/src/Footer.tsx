@@ -4,6 +4,7 @@ import { batteryColor, batteryPct, stateColor, stateLabel } from "./viewChrome";
 
 import { putRgbLed } from "./api";
 import { Pad } from "./Joystick";
+import { heard, nobodyHears } from "./link";
 import { Camera, ViewGeom } from "./MapView";
 import { Minimap } from "./Minimap";
 import {
@@ -86,7 +87,7 @@ const StateDot: React.FC<{ state: BotState | null; glow?: boolean; size?: number
 function notDrivableReason(one: UnifiedBot | null | undefined): string {
   if (!one) return "nothing selected";
   if (one.link === "unknown") return "not on the control plane";
-  if (one.link !== "active") return `the control plane is not hearing it (${one.link})`;
+  if (!heard(one.link)) return `the control plane is not hearing it (${one.link})`;
   if (one.state && one.state !== "Running") return `its sandbox is ${one.state.toLowerCase()}, not running`;
   return "no DBP in the running image";
 }
@@ -676,7 +677,7 @@ export const Footer: React.FC<FooterProps> = (props) => {
           <div style={{ height: "100%", display: "flex", alignItems: "center", gap: 26, padding: "0 22px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <div style={{ ...mono, fontSize: 34, fontWeight: 600, lineHeight: 1 }}>
-                {props.bots.length}
+                {props.bots.filter((b) => !nobodyHears(b)).length}
                 <span style={{ fontSize: 15, color: "var(--muted)" }}> / 1000</span>
               </div>
               <div style={{ ...label, fontSize: 11 }}>DotBots online</div>

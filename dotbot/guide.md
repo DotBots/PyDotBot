@@ -93,7 +93,9 @@ waypoints.
 Ask the API, then read this for what it will not say. `/openapi.json` is the
 full schema; Swagger is at http://localhost:8000/api (not `/docs`). Not in it:
 units are mm and mm/s, `move_raw` stops about 0.5 s after the last command,
-and `status` is 0 active, 1 inactive, 2 lost. To watch instead of polling: the
+and `status` is 0 active, 1 stale (silent 3 s), 2 lost (silent 10 s, left out
+of `GET /controller/dotbots` unless `?include_lost=true`); after 5 minutes of
+silence a robot is forgotten (404). To watch instead of polling: the
 WebSocket `/controller/ws/stream`.
 
 ## 4. Real hardware

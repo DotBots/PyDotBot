@@ -1,6 +1,6 @@
 // The controller stream, /controller/ws/stream: a hello, a snapshot of the
 // fleet in parts, then deltas (RFC 7396 merge patches over the REST object,
-// plus trail_append / trail_reset) and events. Every applied frame is acked,
+// plus trail_append / trail_reset; null for a robot forgotten) and events. Every applied frame is acked,
 // which is what lets the controller serve this client above 1 Hz.
 
 import { PyDotBot } from "./types";
@@ -34,7 +34,7 @@ export type RobotPatch = Record<string, unknown> & {
 export interface StreamDelta {
   type: "delta";
   seq: number;
-  robots: Record<string, RobotPatch>;
+  robots: Record<string, RobotPatch | null>;
 }
 
 export interface StreamEvent {
@@ -120,7 +120,10 @@ export class FleetStream {
         return { ack: frame.seq, robots: true };
       case "delta":
         for (const [address, patch] of Object.entries(frame.robots)) {
-          if (this.robots[address] === undefined || "address" in patch) {
+          if (patch === null) {
+            // Forgotten by the controller
+            delete this.robots[address];
+          } else if (this.robots[address] === undefined || "address" in patch) {
             // A robot new to this client arrives as its whole object
             this.robots[address] = { ...(patch as unknown as PyDotBot) };
           } else {

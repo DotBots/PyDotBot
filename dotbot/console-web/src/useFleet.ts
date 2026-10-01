@@ -9,6 +9,7 @@ import {
   fetchSwarmitStatus,
 } from "./api";
 import { robotBody, RobotShapes } from "./body";
+import { heard } from "./link";
 import { connectStream, FleetStream, StreamEvent } from "./stream";
 import { AREA_FALLBACK, siteViewport } from "./frame";
 import {
@@ -47,12 +48,23 @@ export function deriveState(sw: SwarmitNode | undefined): BotState | null {
     : null;
 }
 
+// Failed swarmit polls in a row that keep its last answer, so one hiccup does
+// not hide every lost robot swarmit reports.
+export const SWARMIT_MISSES_KEPT = 3;
+
+export function swarmitAfterMiss(
+  last: Record<string, SwarmitNode>,
+  misses: number,
+): Record<string, SwarmitNode> {
+  return misses < SWARMIT_MISSES_KEPT ? last : {};
+}
+
 // Whether the control plane still hears the bot, from PyDotBot alone.
 // "unknown" is a bot swarmit reports but PyDotBot has never seen.
 export function deriveLink(py: PyDotBot | undefined): LinkState {
   if (!py) return "unknown";
   if (py.status === 0) return "active";
-  return py.status === 2 ? "lost" : "inactive";
+  return py.status === 2 ? "lost" : "stale";
 }
 
 // A device type's pose moved onto `at`, which is where its photodiode goes.
@@ -94,7 +106,7 @@ export function derivePose(
   const pyHeading =
     py?.direction !== undefined && py.direction !== -1000 ? py.direction : null;
   const pyPose = py?.pose ? robotBody(py.pose, py.model, shapes) : null;
-  if (inApp && link === "active" && py?.lh2_position) {
+  if (inApp && heard(link) && py?.lh2_position) {
     return { position: py.lh2_position, heading: pyHeading, pose: pyPose };
   }
   if (sw && (sw.pos_x !== 0 || sw.pos_y !== 0)) {
@@ -142,7 +154,7 @@ export function merge(
       // Drivable = a DBP-speaking image is running. The control plane must be
       // hearing the bot, and either its sandbox is Running or it has no
       // sandbox at all (a bare-mode bot swarmit does not manage).
-      drivable: link === "active" && (state === null || state === "Running"),
+      drivable: heard(link) && (state === null || state === "Running"),
       nav: py?.mode === 1 ? "auto" : "drive",
       waypoints: py?.waypoints ?? [],
       mission: missionReport(py),
@@ -258,11 +270,14 @@ export function useFleet(): {
 
   // SwarmIT status poll (read-only orchestration plane), 1 Hz.
   useEffect(() => {
+    let misses = 0;
     const tick = async () => {
       try {
         swRef.current = await fetchSwarmitStatus();
+        misses = 0;
       } catch {
-        swRef.current = {};
+        misses += 1;
+        swRef.current = swarmitAfterMiss(swRef.current, misses);
       }
       rebuild();
     };

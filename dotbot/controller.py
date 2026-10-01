@@ -96,8 +96,10 @@ from dotbot.swarm_client import build_swarmit_client, conn_string
 from dotbot.trail import Trail
 from dotbot.twin import DotBotTwin
 
-INACTIVE_DELAY = 5  # seconds
-LOST_DELAY = 60  # seconds
+# Silent this many seconds, a robot is STALE, then LOST, then forgotten
+STALE_AFTER_S = 3.0
+LOST_AFTER_S = 10.0
+FORGET_AFTER_S = 300.0  # 0: never
 # A robot silent this long no longer names what a camera sees.
 CAMERA_PRIOR_MAX_AGE_S = 2.0
 LH2_POSITION_DISTANCE_THRESHOLD = 20  # mm
@@ -172,8 +174,9 @@ class RobotRecord:
     """What the controller keeps about a robot beside its model.
 
     `revs` maps a field of the model, or "trail", to the controller `seq` it
-    last changed at. `trail` holds the points, each with the `seq` it was
-    added at. `created` and `trail_reset` are the seq the robot appeared at
+    last changed at. `heard` is the `time.monotonic()` of the last advert,
+    the robot's silence is measured from it. `trail` holds the points, each
+    with the `seq` it was added at. `created` and `trail_reset` are the seq the robot appeared at
     and its trail was last cleared at.
     """
 
@@ -181,6 +184,7 @@ class RobotRecord:
     trail: Trail = dataclasses.field(default_factory=Trail)
     created: int = 0
     trail_reset: int = 0
+    heard: float = dataclasses.field(default_factory=time.monotonic)
     # The robot's fields as the stream last dumped them, at `changed` seq
     dump_seq: int = -1
     dump: Dict[str, object] = dataclasses.field(default_factory=dict)
@@ -209,6 +213,9 @@ class ControllerSettings:
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
     lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
+    stale_after_s: float = STALE_AFTER_S
+    lost_after_s: float = LOST_AFTER_S
+    forget_after_s: float = FORGET_AFTER_S  # 0: never
     camera_calibration: Optional[str] = None
     camera_detect: bool = True
     camera_max_robots: int = MAX_ROBOTS
@@ -226,6 +233,21 @@ class ControllerSettings:
     simulator_area: Optional[Area] = None
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
+
+    def __post_init__(self):
+        stale, lost, forget = (
+            self.stale_after_s,
+            self.lost_after_s,
+            self.forget_after_s,
+        )
+        if not (
+            0 < stale < lost < math.inf and (forget == 0 or lost < forget < math.inf)
+        ):
+            raise ValueError(
+                "stale_after_s < lost_after_s < forget_after_s is needed, all "
+                f"positive seconds (forget 0 never forgets); got {stale:g}, "
+                f"{lost:g} and {forget:g}"
+            )
 
 
 def _station_mask(stations: set[int]) -> Optional[int]:
@@ -294,6 +316,9 @@ class Controller:
         self.records: Dict[str, RobotRecord] = {}
         # Each robot's address with the seq of its last change, oldest first
         self.changed: Dict[str, int] = {}
+        # Each forgotten robot's address with the seq it was forgotten at,
+        # oldest first; an address leaves it when the robot comes back
+        self.forgotten: Dict[str, int] = {}
         # The seq of the newest trail point any robot dropped
         self.max_evicted = 0
         # State that is not a robot's, by key: (seq, event name, data)
@@ -662,28 +687,61 @@ class Controller:
     async def _dotbots_status_refresh(self):
         """Coroutine that periodically updates the status of known dotbot."""
         while 1:
-            await self._refresh_status(time.time())
-            await asyncio.sleep(1)
+            await self._refresh_status(time.monotonic())
+            await asyncio.sleep(0.5)
 
     async def _refresh_status(self, now: float):
-        """Mark each robot ACTIVE, INACTIVE or LOST by its silence at `now`."""
+        """Mark each robot ACTIVE, STALE or LOST by its silence at `now`, a
+        `time.monotonic()` value, and forget the ones silent past
+        `forget_after_s`."""
+        settings = self.settings
         for dotbot in list(self.dotbots.values()):
-            if dotbot.last_seen + LOST_DELAY < now:
+            silent = now - self._record(dotbot.address).heard
+            if settings.forget_after_s and silent > settings.forget_after_s:
+                self.forget(dotbot.address, now)
+                continue
+            if silent > settings.lost_after_s:
                 status = DotBotStatus.LOST
-            elif dotbot.last_seen + INACTIVE_DELAY < now:
-                status = DotBotStatus.INACTIVE
+            elif silent > settings.stale_after_s:
+                status = DotBotStatus.STALE
             else:
                 status = DotBotStatus.ACTIVE
             if status == dotbot.status:
                 continue
-            self.logger.info(
-                "Dotbot status changed",
-                source=dotbot.address,
-                application=dotbot.application.name,
-                previous_status=dotbot.status.name,
-                status=status.name,
-            )
+            self._log_status(dotbot, status)
             self.update_dotbot(dotbot.address, status=status)
+
+    def _log_status(self, dotbot: DotBotModel, status: DotBotStatus) -> None:
+        self.logger.info(
+            "Dotbot status changed",
+            source=dotbot.address,
+            application=dotbot.application.name,
+            previous_status=dotbot.status.name,
+            status=status.name,
+        )
+
+    def forget(self, address: str, now: Optional[float] = None) -> None:
+        """Drop a robot and what is kept about it, but its last batch id, so
+        a batch sent when it comes back as a new robot never repeats one."""
+        dotbot = self.dotbots.pop(address)
+        heard = self._record(address).heard
+        self.logger.info(
+            "Dotbot forgotten",
+            source=address,
+            application=dotbot.application.name,
+            silent_s=round((now or time.monotonic()) - heard, 1),
+        )
+        self.seq += 1
+        self.records.pop(address, None)
+        self.changed.pop(address, None)
+        self.forgotten.pop(address, None)
+        self.forgotten[address] = self.seq
+        for key in [key for key in self.pending_commands if key[0] == address]:
+            del self.pending_commands[key]
+        self._dotbot_twins.pop(address, None)
+        self._dotbot_twin_timestamps.pop(address, None)
+        self._unsolved_held.pop(address, None)
+        self.advertised_batch_ids.pop(address, None)
 
     def _record(self, address: str) -> RobotRecord:
         """The record kept beside `address`'s model, created on first use."""
@@ -772,11 +830,16 @@ class Controller:
             )
             dotbot = DotBotModel(address=source, last_seen=time.time())
             self.dotbots[source] = dotbot
+            self.forgotten.pop(source, None)
         else:
             dotbot.last_seen = time.time()
         record = self._record(source)
+        record.heard = time.monotonic()
         if created:
             record.created = seq
+        elif dotbot.status != DotBotStatus.ACTIVE:
+            self._log_status(dotbot, DotBotStatus.ACTIVE)
+            self._set(dotbot, record, "status", DotBotStatus.ACTIVE, seq)
 
         if payload_type == PayloadType.ADVERTISEMENT:
             self._set(
@@ -1182,7 +1245,14 @@ class Controller:
                 and dotbot.application.value != query.application
             ):
                 continue
-            if query.status is not None and dotbot.status.value != query.status:
+            if query.status is not None:
+                if dotbot.status.value != query.status:
+                    continue
+            elif (
+                dotbot.status == DotBotStatus.LOST
+                and not query.include_lost
+                and query.address is None
+            ):
                 continue
             if query.max_battery is not None and dotbot.battery is not None:
                 if dotbot.battery > query.max_battery:

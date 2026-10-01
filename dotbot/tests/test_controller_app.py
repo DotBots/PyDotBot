@@ -731,3 +731,72 @@ def test_run_simulator_banner_names_itself_and_no_swarm(
         "site hall (dotbot.toml), conn simulator (dotbot run simulator)\n"
         in result.output
     )
+
+
+def _run_with_controller_table(tmp_path, table: str):
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    _write_project(config_file, f'conn = "simulator"\n\n[run.controller]\n{table}\n')
+    return CliRunner().invoke(cli, ["-c", str(config_file), "run", "controller"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_the_silence_thresholds_default_and_come_from_config(
+    controller, _asyncio_run, tmp_path
+):
+    result = CliRunner().invoke(main, ["--conn", "simulator"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert (settings.stale_after_s, settings.lost_after_s, settings.forget_after_s) == (
+        3.0,
+        10.0,
+        300.0,
+    )
+    result = _run_with_controller_table(
+        tmp_path, "stale_after_s = 1.5\nlost_after_s = 4\nforget_after_s = 0"
+    )
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert (settings.stale_after_s, settings.lost_after_s, settings.forget_after_s) == (
+        1.5,
+        4.0,
+        0.0,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@pytest.mark.parametrize(
+    "table",
+    [
+        "lost_after_s = 2",  # under the default stale_after_s
+        "stale_after_s = 5\nlost_after_s = 5",
+        "forget_after_s = 10",  # not past the default lost_after_s
+        "forget_after_s = inf",
+    ],
+)
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_silence_thresholds_out_of_order_are_refused(
+    controller, _asyncio_run, tmp_path, table
+):
+    result = _run_with_controller_table(tmp_path, table)
+    assert result.exit_code != 0
+    assert "stale_after_s < lost_after_s < forget_after_s" in result.output
+    controller.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@pytest.mark.parametrize("value", ["nan", "soon"])
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_a_silence_threshold_from_the_environment_must_be_seconds(
+    controller, _asyncio_run, monkeypatch, value
+):
+    monkeypatch.setenv("DOTBOT_RUN_CONTROLLER_STALE_AFTER_S", value)
+    result = CliRunner().invoke(main, ["--conn", "simulator"])
+    assert result.exit_code != 0
+    assert "stale_after_s" in result.output
+    controller.assert_not_called()

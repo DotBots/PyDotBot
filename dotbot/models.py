@@ -533,10 +533,14 @@ class DotBotBackgroundMapModel(BaseModel):
 
 
 class DotBotStatus(IntEnum):
-    """Status of a DotBot."""
+    """How recently a DotBot was last heard, by the controller's thresholds.
+
+    A robot silent past the forget threshold is no status at all: the
+    controller drops it until it advertises again.
+    """
 
     ACTIVE: int = 0
-    INACTIVE: int = 1
+    STALE: int = 1
     LOST: int = 2
 
 
@@ -547,6 +551,8 @@ class DotBotQueryModel(BaseModel):
     address: Optional[str] = None
     application: Optional[ApplicationType] = None
     status: Optional[DotBotStatus] = None
+    # Lost robots are left out unless asked for, here, by `status` or `address`
+    include_lost: bool = False
     max_battery: Optional[float] = None
     min_battery: Optional[float] = None
     # The newest points of each robot's trail to return

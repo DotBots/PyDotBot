@@ -3,6 +3,7 @@ import React, { useCallback } from "react";
 import { BodyColorMode, bodyColorFor } from "./bodyColor";
 import { BotGlyph, TRAVEL_BODY_OPACITY, botFootprintPx, robotDraw } from "./BotGlyph";
 import { headingToGlyphRotation } from "./frame";
+import { markerOpacity } from "./link";
 import type { RobotDrawing } from "./robotDrawing";
 import { shortId } from "./types";
 import type { RobotBody, LH2Position, RgbLed, UnifiedBot } from "./types";
@@ -27,7 +28,7 @@ const SAME_MM = 1e-6;
 /** What a robot's marker draws of it. Where it is drawn is the animator's. */
 export type MarkerBot = Pick<
   UnifiedBot,
-  "id" | "state" | "severity" | "resetCause" | "battery" | "batteryPct" | "batteryLevel" | "led" | "pose" | "axle"
+  "id" | "state" | "link" | "swarmit" | "severity" | "resetCause" | "battery" | "batteryPct" | "batteryLevel" | "led" | "pose" | "axle"
 >;
 
 /**
@@ -120,6 +121,8 @@ export function sameMarkerBot(a: MarkerBot, b: MarkerBot): boolean {
   if (
     a.id !== b.id ||
     a.state !== b.state ||
+    a.link !== b.link ||
+    !a.swarmit !== !b.swarmit ||
     a.severity !== b.severity ||
     a.resetCause !== b.resetCause ||
     a.batteryLevel !== b.batteryLevel ||
@@ -187,7 +190,8 @@ export const BotMarker = React.memo(function BotMarker({
   const bodyDy = draw.centre.y * perMm;
   // A body built on the travel bearing is an estimate: it is right while the
   // robot drives straight and wrong the rest of the time, so it is drawn as one.
-  const bodySolid = solid * (draw.estimate ? TRAVEL_BODY_OPACITY : 1);
+  // A robot the controller has not heard from lately is faded with it.
+  const bodySolid = solid * (draw.estimate ? TRAVEL_BODY_OPACITY : 1) * markerOpacity(b);
   // The board turns with the heading; the ring around it turns too, so it
   // hugs the board whichever way the robot faces.
   const turned = draw.turned;

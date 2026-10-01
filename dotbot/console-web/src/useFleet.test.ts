@@ -8,6 +8,8 @@ import {
   deriveState,
   merge,
   severityOf,
+  swarmitAfterMiss,
+  SWARMIT_MISSES_KEPT,
   withDetection,
 } from "./useFleet";
 
@@ -85,7 +87,7 @@ describe("deriveState (the sandbox axis)", () => {
 describe("deriveLink (the control-plane axis)", () => {
   it("maps PyDotBot's DotBotStatus", () => {
     expect(deriveLink(py({ status: 0 }))).toBe("active");
-    expect(deriveLink(py({ status: 1 }))).toBe("inactive");
+    expect(deriveLink(py({ status: 1 }))).toBe("stale");
     expect(deriveLink(py({ status: 2 }))).toBe("lost");
   });
 
@@ -358,10 +360,12 @@ describe("derivePose (whose pose is live)", () => {
     expect(derivePose(py({ lh2_position: stale }), sw(), "active").position).toEqual(stale);
   });
 
-  it("takes swarmit's once the controller stops hearing the app", () => {
-    for (const link of ["inactive", "lost"] as const) {
-      expect(derivePose(py({ lh2_position: stale }), sw(), link).position).toEqual({ x: 100, y: 200 });
-    }
+  it("keeps the controller's while its link is only stale", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw(), "stale").position).toEqual(stale);
+  });
+
+  it("takes swarmit's once the controller has lost the app", () => {
+    expect(derivePose(py({ lh2_position: stale }), sw(), "lost").position).toEqual({ x: 100, y: 200 });
   });
 
   it("takes swarmit's for a bot in its bootloader the merge still has an app record for", () => {
@@ -405,5 +409,14 @@ describe("derivePose (whose pose is live)", () => {
 
   it("does not draw swarmit's unlocated origin", () => {
     expect(derivePose(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown").position).toBeNull();
+  });
+});
+
+describe("a failed swarmit poll", () => {
+  it("keeps the last answer until several fail in a row", () => {
+    const last = { badcafe111111111: sw() };
+    expect(swarmitAfterMiss(last, 1)).toBe(last);
+    expect(swarmitAfterMiss(last, SWARMIT_MISSES_KEPT - 1)).toBe(last);
+    expect(swarmitAfterMiss(last, SWARMIT_MISSES_KEPT)).toEqual({});
   });
 });
