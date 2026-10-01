@@ -901,7 +901,13 @@ def edit(ctx, site, port, headless):
             raise click.ClickException(str(exc)) from exc
         _serve_editor(entry.name, entry.pack, port, headless)
         return
-    name = site or active_site(ctx).name
+    if site is None:
+        active = active_site(ctx)
+        if active.entry is not None:
+            _serve_editor(active.name, active.entry.pack, port, headless)
+            return
+        site = active.name
+    name = site
     entry = _catalog(ctx).get(name)
     if entry is None:
         raise click.ClickException(
