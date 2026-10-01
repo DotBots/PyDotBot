@@ -480,6 +480,21 @@ def _after_write(ctx, target: Path, key) -> None:
         click.echo(f"warning: {phrase}, which overrides it", err=True)
 
 
+def _refuse_conn_login(conn: str) -> None:
+    """Refuse a broker URL carrying a login, which belongs in `config login`."""
+    from urllib.parse import urlparse
+
+    if not conn.strip().lower().startswith(("mqtt://", "mqtts://")):
+        return
+    parsed = urlparse(conn.strip())
+    if parsed.username is not None or parsed.password is not None:
+        raise click.ClickException(
+            "conn carries no credentials: a password typed here stays in your "
+            "shell history; drop the user:pass@ part and save the login with "
+            f"`dotbot config login {parsed.hostname or 'HOST'}`"
+        )
+
+
 @cmd.command(name="set")
 @click.argument("key")
 @click.argument("value")
@@ -501,9 +516,15 @@ def set_(ctx, key, value, where):
             f"`dotbot config login {path[1] if len(path) > 2 else 'HOST'}`"
         )
     try:
+        cw.check_key(path)
+    except cw.WriteError as exc:
+        raise click.BadParameter(str(exc), param_hint="'KEY'") from exc
+    try:
         typed = cw.coerce(path, value)
     except cw.WriteError as exc:
         raise click.BadParameter(str(exc), param_hint="'VALUE'") from exc
+    if path == ("conn",):
+        _refuse_conn_login(typed)
     target = _route(ctx, path, where)
     if path == ("site",):
         from dotbot.site_packs import is_pack_path, pack_at

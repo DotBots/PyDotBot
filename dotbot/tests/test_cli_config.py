@@ -338,7 +338,11 @@ def test_set_types_the_value_by_the_schema_and_refuses_a_bad_one(
         "fw": {"sources": {"dotbot-firmware": "repos/wt-x"}},
     }
     for key, value, error in (
-        ("swarmid", "1", "is not a config key"),
+        ("swarmid", "1", "Invalid value for 'KEY': swarmid is not a config key"),
+        ("swarmid", "1", "did you mean swarm_id?"),
+        ("site_dirs", "x", "site_dirs is gone"),
+        ("run.conn", "simulator", "[run] conn is now the top-level conn"),
+        ("deployment.lab.conn", "simulator", "[deployment.*] is gone"),
         ("fw", "x", "is a table"),
         ("run.controller.lh2_calibration_max_age_days", "soon", "whole number"),
         ("conn", "ftp://nope", "invalid config"),
@@ -379,6 +383,15 @@ def test_set_refuses_a_password(runner, tmp_path):
     result = runner.invoke(cli, ["config", "set", 'login."argus".password', "hunter2"])
     assert result.exit_code != 0
     assert "dotbot config login argus" in result.output
+
+
+def test_set_refuses_a_conn_carrying_a_login(runner, tmp_path, home):
+    result = runner.invoke(
+        cli, ["config", "set", "conn", "mqtts://me:hunter2@broker.example:8883"]
+    )
+    assert result.exit_code != 0
+    assert "dotbot config login broker.example" in result.output
+    assert not (home / "dotbot.toml").exists()
 
 
 def test_unset_removes_the_key_and_any_table_it_empties(runner, tmp_path):

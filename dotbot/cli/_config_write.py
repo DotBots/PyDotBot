@@ -10,6 +10,7 @@ beside the project file when one is in use, else to the user file.
 
 from __future__ import annotations
 
+import difflib
 import os
 import tomllib
 import typing
@@ -67,7 +68,25 @@ def key_text(path: tuple[str, ...]) -> str:
     return ".".join(tomlkit.key(part).as_string() for part in path)
 
 
-def _field(path: tuple[str, ...]) -> Any:
+# The keys config loading refuses with a pointer, by the table they sat in.
+_REMOVED = {
+    (): _config._TOP_REMOVED,
+    ("fw",): _config._FW_REMOVED,
+    ("run",): _config._RUN_REMOVED,
+    ("run", "controller"): _config._CONTROLLER_REMOVED,
+}
+
+
+def _unknown(path: tuple[str, ...], i: int, known) -> WriteError:
+    removed = _REMOVED.get(path[:i], {}).get(path[i])
+    if removed is not None:
+        return WriteError(removed)
+    close = difflib.get_close_matches(path[i], list(known), n=1)
+    hint = f"; did you mean {key_text((*path[:i], close[0]))}?" if close else ""
+    return WriteError(f"{key_text(path)} is not a config key{hint}")
+
+
+def check_key(path: tuple[str, ...]) -> Any:
     """The annotation of the schema field at `path`; WriteError if unknown."""
     model: Any = _config.DotbotConfig
     i = 0
@@ -75,7 +94,7 @@ def _field(path: tuple[str, ...]) -> Any:
         fields = {(f.alias or name): f for name, f in model.model_fields.items()}
         field = fields.get(path[i])
         if field is None:
-            raise WriteError(f"{key_text(path)} is not a config key")
+            raise _unknown(path, i, fields)
         annotation = field.annotation
         i += 1
         if typing.get_origin(annotation) is dict:
@@ -93,7 +112,7 @@ def _field(path: tuple[str, ...]) -> Any:
 
 def coerce(path: tuple[str, ...], raw: str) -> Any:
     """`raw` as the type the schema gives the key at `path`."""
-    annotation = _field(path)
+    annotation = check_key(path)
     kinds = set(typing.get_args(annotation)) or {annotation}
     if bool in kinds:
         lowered = raw.strip().lower()
