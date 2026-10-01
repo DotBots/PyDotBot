@@ -147,7 +147,32 @@ under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
 the whole site shares one calibration. It takes a file path, a `--tag` or an
 id prefix, and refuses robots that report another site or run sandbox
 firmware older than this `dotbot`. (`collect --push` sends only to the robots
-whose captures built it.)
+whose captures built it.) A robot running an app drops a
+calibration, so `push` refuses one until it is stopped, and
+`dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those robots
+only.
+
+### Spin calibration (experimental)
+
+The corner method above stays the default and the reference. `collect --spin`
+is another way that needs no marks on the floor: each robot spins twice in
+place where it stands, and the circles its photodiode traces fix the floor up
+to a rotation and an origin; the spin radius sets the scale.
+
+```bash
+dotbot swarm -d <addresses> flash -y calibrate-spin
+dotbot swarm -d <addresses> calibrate-lh2 collect --spin
+dotbot site init <name> --from-calibration <id> --size 3000x4000
+dotbot swarm -d <addresses> calibrate-lh2 push <new id> --site <name> --site-changed
+dotbot swarm -d <addresses> flash -y remote-control
+```
+
+Spread the robots about 250 mm apart over the area to calibrate; at least 3
+circles must pass the health check (round, and the size of their peers) and 8
+or more hold the frame better. The calibration's frame is the rectangle around
+the robots, not the site's anchor, so `dotbot site init` turns it into a site
+of its own. `--spin-radius MM` overrides the robot model's measured radius
+(51.4 mm on a DotBot v3), which every distance scales with.
 
 ## Two web servers - don't mix them up
 

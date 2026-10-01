@@ -19,6 +19,7 @@ detail.
 | See every site, its connection and which is active | `dotbot site list` |
 | See one site in full | `dotbot site show [<name>]` |
 | Share a site | `dotbot site export <name>` |
+| Make a site around a spin calibration's robots | `dotbot site init <name> --from-calibration <id>` |
 
 Onboarding at a site that publishes a pack is one command, then the controller:
 
@@ -154,6 +155,27 @@ dotbot site export lab --out ~/share/lab.zip --with-calibrations
 A pack is plain files, so `unzip`, `git clone` or `cp` into a project's
 `sites/` folder work just as well as `site add`: that is how a pack is shared
 with a team.
+
+## `init`
+
+Writes a site pack around the robots of a spin calibration
+(`dotbot swarm calibrate-lh2 collect --spin`): its field is the rectangle the
+robots stood in, grown by a robot's footprint, and its frame is the
+calibration's, so no mark on the floor is needed. The pack goes into the
+nearest home (`sites/` beside the project's `dotbot.toml`, else
+`~/.dotbot/sites/`), and the calibration, re-expressed in the new site, under
+`~/.dotbot/calibrations/<name>/` with a new id.
+
+```bash
+dotbot site init spun --from-calibration 6b1a1c96                  # the site is the field
+dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field centred in 3 x 4 m
+```
+
+| Flag | Meaning |
+|---|---|
+| `--from-calibration ID` | The spin calibration: an id prefix, a tag or a path. |
+| `--size WxH` | The site's size in mm, with the field in its middle; refused when the field does not fit. |
+| `-f`, `--force` | Replace the `site.toml` of a site of that name. |
 
 ## See also
 
