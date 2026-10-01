@@ -7,8 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+Upgrading from 0.31.0? Read [Upgrading from 0.31.0](#upgrading-from-0310) first:
+the config file, site definitions, LH2 calibration files and the robots'
+sandbox firmware all change.
+
 ### Added
 
+- `dotbot guide` prints a getting-started page for people and AI coding agents,
+  and `dotbot --help` points at it; `guide --install` writes an agent skill
+  that points coding agents at it.
 - The config is up to three layered TOML files, merged key by key, the closest
   to you winning: `./dotbot.local.toml` (you, in a project; untracked) over
   `./dotbot.toml` (the project) over `~/.dotbot/dotbot.toml` (you, on this
@@ -40,6 +47,124 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `dotbot run simulator --robots N` generates a fleet of N robots 200 mm
   apart, centred in the site's `field` area; `--write-init-state FILE` saves
   it as an init-state file to edit and reuse with `--simulator-init-state`.
+- Site areas take a role: `field` (where experiments happen and what a
+  calibration covers), `staging` (where robots park) or `corner`. The
+  simulator, `swarm calibrate-lh2 collect`, the camera and the console default
+  to the field. `dotbot config init` writes a site with a field and a staging
+  strip (`--field` sizes it).
+- `swarm calibrate-lh2 collect --over AREA` and `--square MM` choose the
+  calibration points; the console draws the calibrated span and hatches the
+  extrapolated rest of the site.
+- `dotbot site add` and `site export` share a site as a pack folder, zip or
+  git repository.
+- `fw build` and `fw fetch` take the same role and app names, `fw list` shows
+  where each set came from, and every flash command picks a set with `-f`.
+- `PUT /controller/dotbots/waypoints` and `DELETE /controller/dotbots/waypoints`
+  set or clear many robots' waypoints in one request; `GET
+  /controller/robot_models` serves each robot model's body.
+- The simulator runs the firmware's control code, compiled to WebAssembly, and
+  the controller, simulator and console keep up with 1000 robots.
+
+### Changed
+
+- **Breaking:** LH2 calibrations are solved on the true pinhole camera point
+  of each station. Calibration files are schema 3, so every calibration id
+  changes, and a schema 2 file is refused. Robots need the matching swarmit
+  sandbox (0.11.0 or newer); `swarm calibrate-lh2 push` refuses robots on older
+  firmware and names them for a cable reflash.
+- **Breaking:** the user config is `~/.dotbot/dotbot.toml`, the same name as a
+  project's. A `~/.dotbot/config.toml` with no `dotbot.toml` beside it is
+  refused with the rename to make.
+- **Breaking:** site packs live in two homes, `sites/` beside the project's
+  `dotbot.toml` and `~/.dotbot/sites/`; the project's wins a clash.
+- **Breaking:** `dotbot config init` writes the site pack to `~/.dotbot/sites/`
+  and selects it in `~/.dotbot/dotbot.toml`, keeping the rest of that file;
+  `--global` is gone. A broker `--conn` becomes the site's `[connection]`.
+- **Breaking:** `dotbot site use` writes `./dotbot.local.toml` in a project,
+  never the committed `dotbot.toml` unless given `--project`.
+- **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
+  when you named it yourself (flag, env, one of your files), approved it at
+  `dotbot site add`, it comes from a pack beside your project or one named by
+  path, or it is local; never over plain `mqtt://` to another host. `site add`
+  records the approved broker, and a pack whose broker later differs gets no
+  env login until it is approved again.
+- `dotbot config show` prints the files in use, where the site, `conn` and
+  `swarm_id` each came from and what they hide, and which login the broker
+  gets (`--json` for scripts); `config path` lists the files. The list of
+  sites moved to `dotbot site list`.
+- **Breaking:** `/controller/ws/status` is replaced by `/controller/ws/stream`
+  (`hello`, `snapshot`, `delta`, `event` frames; a client faster than 1 Hz
+  acks them). `position_history` is `trail`, `?trail=N` returns the newest N
+  points (default 0) and `max_positions` is gone. `pose` is `{x, y,
+  heading_deg, heading_source}`. Waypoints of the wrong kind for the robot are
+  refused with 422. `dotbot run demo qr` publishes stream frames on
+  `/notify`.
+- **Breaking:** the "arena" defaults are gone: a site whose experiment area is
+  called `arena` renames it `field` or gives it `role = "field"`. Two fields in
+  one site is an error. The controller refuses a calibration made in another
+  site. The `motions` example takes `--area` instead of `--arena-size`, the
+  charging example needs a staging area, and the simulator example's site is
+  `virtual-lab`.
+- **Breaking:** firmware commands use role and app names. `fw artifacts` is
+  folded into `fw build`; `fw build -a` is `--part`, `--repo` / `--checkout` is
+  `--path`; `fw fetch -S`, `-f local` and `--local-root` are gone.
+  `device flash-mari-gateway`, `flash-swarmit-sandbox` and `flash-programmer`
+  are `device flash mari-gateway`, `swarmit-sandbox` and `programmer`;
+  `swarm flash rc-car` is `swarm flash remote-control`. Apps are sandboxed by
+  default (`--bare` / `--sandboxed`, `[fw].bare` replaces `[fw].sandbox`), and
+  `device flash <app>` never builds. `[fw].firmware_repo` is `[fw.sources]
+  dotbot-firmware` (`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`).
+- LH2 channel 14 uses the 901000 rotor period. A site calibrated on channel
+  14 recalibrates once.
+
+### Removed
+
+- **Breaking:** `dotbot deployment`, the root `--deployment` flag,
+  `DOTBOT_DEPLOYMENT` and the `[deployment.*]` / `default_deployment` config
+  keys. A config that still has them fails to load and says where the keys
+  went: a site's `[connection]` and `dotbot site use`.
+- **Breaking:** inline `[sites.<name>]` tables and `site_dirs`; a site is a
+  pack. The `[run]` / `[swarm]` copies of `conn` and `swarm_id` (the top-level
+  keys remain), and the keys nothing read: `log_level`, `[swarm] devices`,
+  `[run.gateway]`, and the `[run.controller]` keys `background_map`,
+  `log_output`, `csv_data_output`, `gw_address` and `simulator_init_state`
+  (their flags remain). Each fails to load with one line saying where it went.
+- **Breaking:** `dotbot run controller --config-path`, the flat legacy TOML.
+  `dotbot swarm -c`, swarmit's own file, stays.
+- **The classic web UI** (`dotbot/frontend/`, served at `/PyDotBot`). The
+  console at `/console` is the only browser UI; `/PyDotBot` now answers 404,
+  so update bookmarks. Its classic-only views go with it: the REST demo page,
+  the SailBot map and the qrkey phone page. The phone page is retired pending
+  a qrkey mode in the console: `dotbot run demo qr` still relays the
+  controller stream to MQTT and shows the QR, but no phone page reads what it
+  relays yet.
+- `config_sample.toml`, replaced by `dotbot.example.toml`, which is what
+  `config init --project` writes.
+
+### Upgrading from 0.31.0
+
+1. Rename `~/.dotbot/config.toml` to `~/.dotbot/dotbot.toml`. Move each inline
+   `[sites.<name>]` table into `~/.dotbot/sites/<name>/site.toml` (or `sites/`
+   beside a project's `dotbot.toml`), drop `site_dirs`, and put a deployment's
+   broker in its site's `[connection]`. `[fw].firmware_repo` becomes
+   `[fw.sources] dotbot-firmware`. Each removed key fails to load with a line
+   saying where it went; `dotbot config show` checks the result.
+2. Re-solve every LH2 calibration as schema 3 from its stored samples (no new
+   capture), as in the LH2 calibration guide, or collect a new one.
+3. Reflash every robot by cable with the swarmit 0.11.0 sandbox, both cores and
+   the calibration at once: `dotbot device flash swarmit-sandbox
+   --lh2-calibration <schema 3 file>`. Never flash the new bootloader alone
+   over an old network core.
+4. Over the air, flash the sandbox apps again (`dotbot swarm flash ...`), then
+   check positions.
+5. Move clients of `/controller/ws/status` to `/controller/ws/stream`.
+
+## 0.31.0 and earlier
+
+Changes up to 0.31.0 were not split by release.
+
+### Added
+
 - Unified `dotbot` CLI dispatcher that mounts every workflow (controller,
   simulator, testbed ops, calibration, demos, keyboard/joystick) under one
   command. Subcommand modules are loaded lazily so `dotbot --help` stays
@@ -85,26 +210,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- **Breaking:** the user config is `~/.dotbot/dotbot.toml`, the same name as a
-  project's. A `~/.dotbot/config.toml` with no `dotbot.toml` beside it is
-  refused with the rename to make.
-- **Breaking:** site packs live in two homes, `sites/` beside the project's
-  `dotbot.toml` and `~/.dotbot/sites/`; the project's wins a clash.
-- **Breaking:** `dotbot config init` writes the site pack to `~/.dotbot/sites/`
-  and selects it in `~/.dotbot/dotbot.toml`, keeping the rest of that file;
-  `--global` is gone. A broker `--conn` becomes the site's `[connection]`.
-- **Breaking:** `dotbot site use` writes `./dotbot.local.toml` in a project,
-  never the committed `dotbot.toml` unless given `--project`.
-- **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
-  when you named it yourself (flag, env, one of your files), approved it at
-  `dotbot site add`, it comes from a pack beside your project or one named by
-  path, or it is local; never over plain `mqtt://` to another host. `site add`
-  records the approved broker, and a pack whose broker later differs gets no
-  env login until it is approved again.
-- `dotbot config show` prints the files in use, where the site, `conn` and
-  `swarm_id` each came from and what they hide, and which login the broker
-  gets (`--json` for scripts); `config path` lists the files. The list of
-  sites moved to `dotbot site list`.
 - **Breaking - the controller binds loopback by default.** `dotbot run
   controller` served the REST/WebSocket API on `0.0.0.0`, putting an
   unauthenticated API on every interface; the new `/swarmit/*` proxy would
@@ -145,25 +250,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
-- **Breaking:** `dotbot deployment`, the root `--deployment` flag,
-  `DOTBOT_DEPLOYMENT` and the `[deployment.*]` / `default_deployment` config
-  keys. A config that still has them fails to load and says where the keys
-  went: a site's `[connection]` and `dotbot site use`.
-- **Breaking:** inline `[sites.<name>]` tables and `site_dirs`; a site is a
-  pack. The `[run]` / `[swarm]` copies of `conn` and `swarm_id` (the top-level
-  keys remain), and the keys nothing read: `log_level`, `[swarm] devices`,
-  `[run.gateway]`, and the `[run.controller]` keys `background_map`,
-  `log_output`, `csv_data_output`, `gw_address` and `simulator_init_state`
-  (their flags remain). Each fails to load with one line saying where it went.
-- **Breaking:** `dotbot run controller --config-path`, the flat legacy TOML.
-  `dotbot swarm -c`, swarmit's own file, stays.
-- **The classic web UI** (`dotbot/frontend/`, served at `/PyDotBot`). The
-  console at `/console` is the only browser UI; `/PyDotBot` now answers 404,
-  so update bookmarks. Its classic-only views go with it: the REST demo page,
-  the SailBot map and the qrkey phone page. The phone page is retired pending
-  a qrkey mode in the console: `dotbot run demo qr` still relays the
-  controller stream to MQTT and shows the QR, but no phone page reads what it
-  relays yet.
 - `dotbot-qrkey` console script — use `python -m dotbot.examples.qrkey_demo`
   or `dotbot run demo qr` instead.
 - `dotbot-edge-gateway` console script — the referenced module
