@@ -649,7 +649,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               <CheckRow
                 key={row.key}
                 label={row.label}
-                on={!!props.layers[row.key]}
+                on={props.layers[row.key]}
                 onToggle={() => props.onLayerToggle(row.key)}
               />
             ))}

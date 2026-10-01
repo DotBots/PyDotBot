@@ -153,7 +153,7 @@ export const ListView: React.FC<ListViewProps> = ({ bots, selection, onSelect })
                   data-link={b.link}
                   style={{
                     cursor: "pointer",
-                    opacity: rowOpacity(b.link),
+                    opacity: rowOpacity(b),
                     background: checked ? "rgba(228,3,46,.07)" : "transparent",
                     borderLeft: checked ? "2px solid var(--accent)" : "2px solid transparent",
                   }}

@@ -94,7 +94,7 @@ export interface RobotBody {
 export interface PyDotBot {
   address: string;
   application: number; // ApplicationType: 0 = DotBot
-  status: number; // 0 ACTIVE, 1 INACTIVE, 2 LOST
+  status: number; // 0 ACTIVE, 1 STALE, 2 LOST
   mode?: number; // ControlModeType: 0 MANUAL, 1 AUTO (navigating waypoints)
   direction?: number;
   lh2_position?: LH2Position;

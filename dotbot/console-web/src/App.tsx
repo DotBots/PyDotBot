@@ -552,10 +552,17 @@ export const App: React.FC = () => {
     () => (layers.lostBots ? bots : bots.filter((b) => !nobodyHears(b))),
     [bots, layers.lostBots],
   );
+  // A robot hidden as lost leaves the selection, so nothing acts on it unseen.
+  useEffect(() => {
+    const visible = new Set(visibleBots.map((b) => b.id));
+    setSelection((prev) =>
+      [...prev].every((id) => visible.has(id)) ? prev : new Set([...prev].filter((id) => visible.has(id))),
+    );
+  }, [visibleBots]);
   const shownBots = layers.crashedOnly
     ? visibleBots.filter((b) => b.severity === "crashed")
     : visibleBots;
-  const selectedBots = bots.filter((b) => selection.has(b.id));
+  const selectedBots = visibleBots.filter((b) => selection.has(b.id));
   const drivableSelected = selectedBots.filter((b) => b.drivable);
   const selKey = drivableSelected.map((b) => b.id).sort().join("-");
   const selPlanned = planned.find((m) => m.key === selKey);
@@ -1024,7 +1031,7 @@ export const App: React.FC = () => {
           fleetPct={orch.fleetPct}
           flashing={orch.flashing}
           clearLogs={orch.clearLogs}
-          targetCount={selection.size || bots.length}
+          targetCount={selection.size || visibleBots.length}
           onFlash={(image) =>
             orch.flash(
               image,

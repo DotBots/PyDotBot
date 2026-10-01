@@ -107,7 +107,7 @@ export interface Layers {
   // Where the loaded LH2 calibration was fitted, and the rest hatched.
   calibratedSpan: boolean;
   // Robots nothing hears any more; drawn only when asked for.
-  lostBots?: boolean;
+  lostBots: boolean;
 }
 
 export interface SpreadPreviewLeg {

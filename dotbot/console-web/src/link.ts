@@ -2,13 +2,18 @@
 
 import { LinkState, UnifiedBot } from "./types";
 
-/** How solid a robot is drawn: a stale one is faded, a lost one more so. */
-export const LINK_OPACITY: Record<LinkState, number> = {
-  active: 1,
-  stale: 0.45,
-  lost: 0.25,
-  unknown: 1,
-};
+const MARKER_OPACITY: Record<LinkState, number> = { active: 1, stale: 0.45, lost: 0.25, unknown: 1 };
+const ROW_OPACITY: Record<LinkState, number> = { active: 1, stale: 0.7, lost: 0.5, unknown: 1 };
+
+/** The tier a robot is faded by: a lost one swarmit still reports is drawn as heard. */
+function fadeTier(bot: Pick<UnifiedBot, "link" | "swarmit">): LinkState {
+  return bot.link === "lost" && bot.swarmit ? "active" : bot.link;
+}
+
+/** How solid a robot is drawn on the map: a stale one is faded, a lost one more so. */
+export function markerOpacity(bot: Pick<UnifiedBot, "link" | "swarmit">): number {
+  return MARKER_OPACITY[fadeTier(bot)];
+}
 
 /** Heard recently enough that its pose stands and it is sent commands. */
 export function heard(link: LinkState): boolean {
@@ -32,6 +37,6 @@ export function fleetSummary(bots: Pick<UnifiedBot, "link" | "swarmit">[], showL
 }
 
 /** How solid a robot's row or card is in the list and grid views. */
-export function rowOpacity(link: LinkState): number {
-  return link === "stale" ? 0.7 : link === "lost" ? 0.5 : 1;
+export function rowOpacity(bot: Pick<UnifiedBot, "link" | "swarmit">): number {
+  return ROW_OPACITY[fadeTier(bot)];
 }

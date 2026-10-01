@@ -35,6 +35,7 @@ const Harness: React.FC<{ cam: Camera; siteExtent?: Area | null }> = ({
       dotBots: true,
       trails: false,
       crashedOnly: false,
+      lostBots: false,
       allWaypoints: false,
       calibratedSpan: true,
     }}

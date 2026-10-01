@@ -24,6 +24,7 @@ const bot = (extra: Partial<MarkerBot> = {}): MarkerBot => ({
   id: "a",
   state: "Running",
   link: "active",
+  swarmit: null,
   severity: "normal",
   resetCause: null,
   battery: 2.9,

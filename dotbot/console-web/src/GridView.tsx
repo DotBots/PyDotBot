@@ -78,7 +78,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
                   cardClick(e, b.id);
                 }}
                 style={{
-                  opacity: rowOpacity(b.link),
+                  opacity: rowOpacity(b),
                   display: "flex",
                   flexDirection: "column",
                   gap: 9,

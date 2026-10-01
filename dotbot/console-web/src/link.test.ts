@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fleetSummary, heard, nobodyHears } from "./link";
+import { fleetSummary, heard, markerOpacity, nobodyHears, rowOpacity } from "./link";
 import { LinkState, SwarmitNode } from "./types";
 
 const bot = (link: LinkState, swarmit: SwarmitNode | null = null) => ({ link, swarmit });
@@ -17,6 +17,13 @@ describe("link tiers", () => {
     expect(nobodyHears(bot("lost"))).toBe(true);
     expect(nobodyHears(bot("lost", {} as SwarmitNode))).toBe(false);
     expect(nobodyHears(bot("stale"))).toBe(false);
+  });
+
+  it("fades a lost robot only when swarmit does not report it either", () => {
+    expect(markerOpacity(bot("lost"))).toBeLessThan(markerOpacity(bot("stale")));
+    expect(markerOpacity(bot("stale"))).toBeLessThan(1);
+    expect(markerOpacity(bot("lost", {} as SwarmitNode))).toBe(1);
+    expect(rowOpacity(bot("lost", {} as SwarmitNode))).toBe(1);
   });
 
   it("counts the fleet by tier, naming only the tiers that hold a robot", () => {
