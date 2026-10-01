@@ -359,7 +359,7 @@ def test_resolve_segger_dir_falls_back_to_config(monkeypatch, isolated_home):
     """When SEGGER_DIR is unset, `[fw].segger_dir` from the config wins."""
     _write_config(isolated_home, '[fw]\nsegger_dir = "/from/config"\n')
     monkeypatch.delenv("SEGGER_DIR", raising=False)
-    assert _fw_helpers.resolve_segger_dir() == Path("/from/config")
+    assert _fw_helpers.resolve_segger_dir() == Path("/from/config").absolute()
 
 
 def test_resolve_segger_dir_reads_the_user_file_past_a_project_file(
@@ -368,7 +368,7 @@ def test_resolve_segger_dir_reads_the_user_file_past_a_project_file(
     _write_config(isolated_home, '[fw]\nsegger_dir = "/from/user"\n')
     Path("dotbot.toml").write_text('swarm_id = "0001"\n')
     monkeypatch.delenv("SEGGER_DIR", raising=False)
-    assert _fw_helpers.resolve_segger_dir() == Path("/from/user")
+    assert _fw_helpers.resolve_segger_dir() == Path("/from/user").absolute()
 
 
 def test_resolve_segger_dir_reads_a_relative_value_from_the_file_that_sets_it(
