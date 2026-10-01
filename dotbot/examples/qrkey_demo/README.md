@@ -6,7 +6,7 @@ the DotBots. The PIN encoded in the QR rotates periodically; an
 encrypted topic prefix isolates each rotation.
 
 **This is an example, not a core controller feature.** The controller
-(`dotbot-controller`) knows nothing about qrkey. The example is a
+(`dotbot run controller`) knows nothing about qrkey. The example is a
 separate process that consumes the controller's REST/WebSocket API
 exactly like any third-party script would.
 
@@ -15,13 +15,13 @@ exactly like any third-party script would.
 Two terminals. In one, the controller (production / testbed service):
 
 ```bash
-dotbot-controller -a cloud -H argus.paris.inria.fr -s 1234
+dotbot run controller --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 ```
 
 In the other, the demo:
 
 ```bash
-python -m dotbot.examples.qrkey_demo
+dotbot run demo qr        # or: python -m dotbot.examples.qrkey_demo
 ```
 
 The demo's FastAPI serves on `http://localhost:8080` by default:
