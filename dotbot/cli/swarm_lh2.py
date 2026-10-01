@@ -167,7 +167,8 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "you through the points of one placement, takes each point's reads "
         "from the robot's button (calibrate app running) or, with --device, "
         "from Enter, solves every visible station, and saves the "
-        "calibration."
+        "calibration. With --spin, the robots spin in place instead "
+        "(experimental)."
     ),
 )
 @click.option(
