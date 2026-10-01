@@ -116,6 +116,7 @@ export interface PyDotBot {
   rgb_led?: RgbLed;
   battery?: number; // volts
   calibrated?: number;
+  last_seen?: number; // unix seconds
 }
 
 // --- what a camera sees on its own area ------------------------------------
@@ -333,6 +334,7 @@ export interface UnifiedBot {
   batteryPct: number | null; // served by swarmit; null for a bot it does not know
   batteryLevel: string | null; // full | ok | low
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
+  lastSeen?: number | null; // unix seconds, the later of the two planes' last word
 }
 
 export type MissionState = "in_progress" | "arrived" | "failed" | "aborted";

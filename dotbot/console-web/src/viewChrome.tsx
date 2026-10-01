@@ -1,10 +1,24 @@
 import React, { useMemo, useState } from "react";
 
+import { appLabel, areaLabel, calibrationLabel, FleetContext, sandboxLabel } from "./botFacts";
 import { BotState, STATE_ORDER, UnifiedBot } from "./types";
 
 export const PAGE_SIZE = 50;
 
-export type SortKey = "id" | "fw" | "image" | "battery" | "state";
+export type SortKey =
+  | "id"
+  | "fw"
+  | "image"
+  | "sandbox"
+  | "calibration"
+  | "battery"
+  | "state"
+  | "position"
+  | "heading"
+  | "area"
+  | "seen";
+
+const LINK_RANK = { active: 0, stale: 1, lost: 2, unknown: 3 } as const;
 
 export interface ViewQuery {
   search: string;
@@ -25,7 +39,39 @@ export function useViewQuery() {
   return { q, setQ };
 }
 
-export function applyQuery(bots: UnifiedBot[], q: ViewQuery): { rows: UnifiedBot[]; total: number; pages: number } {
+// What a column sorts on, a number or a string per key.
+function sortValue(b: UnifiedBot, key: SortKey, ctx: FleetContext | null): string | number {
+  switch (key) {
+    case "battery":
+      return b.battery;
+    case "state":
+      return stateLabel(b.state);
+    case "fw":
+      return b.deviceType;
+    case "image":
+      return appLabel(b);
+    case "sandbox":
+      return sandboxLabel(b);
+    case "calibration":
+      return calibrationLabel(b);
+    case "position":
+      return b.position ? b.position.y * 1e6 + b.position.x : Number.MAX_VALUE;
+    case "heading":
+      return b.pose && b.pose.heading_source !== "none" ? b.pose.heading_deg : Number.MAX_VALUE;
+    case "area":
+      return areaLabel(b, ctx?.site ?? null);
+    case "seen":
+      return LINK_RANK[b.link] * 1e12 - (b.lastSeen ?? 0);
+    default:
+      return b.id;
+  }
+}
+
+export function applyQuery(
+  bots: UnifiedBot[],
+  q: ViewQuery,
+  ctx: FleetContext | null = null,
+): { rows: UnifiedBot[]; total: number; pages: number } {
   let rows = bots;
   if (q.search) {
     const s = q.search.toLowerCase();
@@ -34,18 +80,11 @@ export function applyQuery(bots: UnifiedBot[], q: ViewQuery): { rows: UnifiedBot
   if (q.stateFilter !== "all") rows = rows.filter((b) => b.state === q.stateFilter);
   const dir = q.sortDir;
   rows = [...rows].sort((a, b) => {
-    switch (q.sortKey) {
-      case "battery":
-        return dir * (a.battery - b.battery);
-      case "state":
-        return dir * stateLabel(a.state).localeCompare(stateLabel(b.state));
-      case "fw":
-        return dir * a.deviceType.localeCompare(b.deviceType);
-      case "image":
-        return dir * (a.image ?? "").localeCompare(b.image ?? "");
-      default:
-        return dir * a.id.localeCompare(b.id);
-    }
+    const va = sortValue(a, q.sortKey, ctx);
+    const vb = sortValue(b, q.sortKey, ctx);
+    const order =
+      typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+    return dir * order || a.id.localeCompare(b.id);
   });
   const total = rows.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -270,11 +309,36 @@ export const BatteryCell: React.FC<{ bot: UnifiedBot; width?: number; fill?: boo
           }}
         />
       </div>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{volts.toFixed(2)} V</span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, whiteSpace: "nowrap" }}>
+        {volts.toFixed(2)} V{bot.batteryPct !== null ? ` · ${pct}%` : ""}
+      </span>
     </div>
   );
 };
 
-export function useQueriedBots(bots: UnifiedBot[], q: ViewQuery) {
-  return useMemo(() => applyQuery(bots, q), [bots, q]);
+export function useQueriedBots(bots: UnifiedBot[], q: ViewQuery, ctx: FleetContext | null = null) {
+  return useMemo(() => applyQuery(bots, q, ctx), [bots, q, ctx]);
 }
+
+/** A small pill: a fact, or a warning when `tone` is "warn". */
+export const Badge: React.FC<{ children: React.ReactNode; title?: string; tone?: "warn" | "plain" }> = ({
+  children,
+  title,
+  tone = "plain",
+}) => (
+  <span
+    title={title}
+    style={{
+      fontFamily: "var(--font-mono)",
+      fontSize: 10,
+      lineHeight: "16px",
+      padding: "0 6px",
+      borderRadius: 8,
+      whiteSpace: "nowrap",
+      color: tone === "warn" ? "var(--s-Stopping)" : "var(--muted)",
+      border: `1px solid ${tone === "warn" ? "var(--s-Stopping)" : "var(--hairline)"}`,
+    }}
+  >
+    {children}
+  </span>
+);

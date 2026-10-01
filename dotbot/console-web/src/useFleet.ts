@@ -124,6 +124,11 @@ export function derivePose(
   };
 }
 
+function lastSeen(py: PyDotBot | undefined, sw: SwarmitNode | undefined): number | null {
+  const times = [py?.last_seen, sw?.last_updated_at].filter((t): t is number => typeof t === "number");
+  return times.length ? Math.max(...times) : null;
+}
+
 export function merge(
   pyBots: Record<string, PyDotBot>,
   swNodes: Record<string, SwarmitNode>,
@@ -166,6 +171,7 @@ export function merge(
       batteryPct: sw?.battery_pct ?? null,
       batteryLevel: sw?.battery_level ?? null,
       swarmit: sw ?? null,
+      lastSeen: lastSeen(py, sw),
     });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));

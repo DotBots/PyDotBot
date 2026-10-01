@@ -1,18 +1,40 @@
 import React from "react";
 
+import {
+  appLabel,
+  areaLabel,
+  calibrationDiffers,
+  calibrationLabel,
+  detailText,
+  FleetContext,
+  firmwareTooOld,
+  linkLabel,
+  positionLabel,
+} from "./botFacts";
 import { rowOpacity } from "./link";
 import { UnifiedBot } from "./types";
-import { BatteryCell, FilterBar, LedDot, Pagination, ResetBadge, stateColor, useQueriedBots, useViewQuery } from "./viewChrome";
+import {
+  Badge,
+  BatteryCell,
+  FilterBar,
+  LedDot,
+  Pagination,
+  ResetBadge,
+  stateColor,
+  useQueriedBots,
+  useViewQuery,
+} from "./viewChrome";
 
 interface GridViewProps {
   bots: UnifiedBot[];
   selection: Set<string>;
   onSelect: (ids: string[], mode: "replace" | "toggle" | "add") => void;
+  ctx: FleetContext;
 }
 
-export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect }) => {
+export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect, ctx }) => {
   const { q, setQ } = useViewQuery();
-  const { rows, total, pages } = useQueriedBots(bots, q);
+  const { rows, total, pages } = useQueriedBots(bots, q, ctx);
   // File-manager selection: click = single, shift+click = range from the
   // anchor in the current card order, cmd/ctrl = toggle.
   const anchorRef = React.useRef<string | null>(null);
@@ -72,6 +94,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
             return (
               <div
                 key={b.id}
+                title={detailText(b, ctx)}
                 data-link={b.link}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -106,10 +129,38 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect })
                   />
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>{b.state}</span>
                 </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{b.id}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, color: "var(--muted)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{b.id}</span>
+                  <span>{linkLabel(b, ctx.now)}</span>
+                </div>
                 <BatteryCell bot={b} fill />
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                  Device <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{b.deviceType}</span>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {positionLabel(b) || "no fix"}
+                  {b.pose && b.pose.heading_source !== "none" && ` · ${Math.round(b.pose.heading_deg)}°`}
+                  {areaLabel(b, ctx.site) && ` · ${areaLabel(b, ctx.site)}`}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {appLabel(b) && <Badge title={`App ${appLabel(b)}`}>{b.swarmit?.info?.image_name || "app"}</Badge>}
+                  {calibrationLabel(b) && <Badge title="LH2 calibration held">cal {calibrationLabel(b)}</Badge>}
+                  {firmwareTooOld(b) && (
+                    <Badge tone="warn" title="Too old for this controller's calibrations: reflash swarmit-sandbox">
+                      reflash
+                    </Badge>
+                  )}
+                  {calibrationDiffers(b, ctx.calibrationId) && (
+                    <Badge tone="warn" title={`The controller serves ${ctx.calibrationId.slice(0, 8)}`}>
+                      cal differs
+                    </Badge>
+                  )}
                 </div>
               </div>
             );
