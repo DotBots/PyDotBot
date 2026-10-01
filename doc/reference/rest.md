@@ -38,7 +38,7 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/controller/dotbots` | List connected DotBots |
+| `GET` | `/controller/dotbots` | List the DotBots heard from; lost ones only with `?include_lost=true` (see [how long a robot is kept](#how-long-a-robot-is-kept)) |
 | `GET` | `/controller/dotbots/{address}` | One DotBot's state |
 | `GET` | `/controller/map_size` | Controller map size |
 | `GET` | `/controller/background_map` | Background map image (base64) |
@@ -58,12 +58,42 @@ snapshot, then merge-patch deltas, each answered with `{"ack": seq}`), and
 `/controller/ws/dotbots` takes `move_raw` / `rgb_led` / `waypoints` commands as
 JSON.
 
+## How long a robot is kept
+
+A DotBot advertises about twice a second. Its `status` says how long ago the
+controller last heard from it, and `last_seen` says exactly when (Unix
+seconds):
+
+| `status` | Silent for | `GET /controller/dotbots` | Commands |
+|---|---|---|---|
+| `0` active | under 3 s | listed | accepted |
+| `1` stale | 3 to 10 s | listed | accepted, sent in case it hears them |
+| `2` lost | 10 s to 5 min | listed only with `?include_lost=true` or `?status=2` | accepted |
+| forgotten | over 5 min | gone | `404`, as for an address never seen |
+
+A robot that advertises again is active at once. A forgotten one comes back
+as a new robot: its trail and the commands the controller was still resending
+to it are gone, and anything set on it from here, such as an LED colour, has
+to be set again.
+
+`GET /controller/dotbots/{address}` still answers for a lost robot. The stream
+carries every robot the controller holds, lost ones included, with each
+`status` change as a patch; a forgotten robot arrives as `null` in a delta
+(`{"robots": {"<address>": null}}`), which in RFC 7396 removes it. Only
+`GET /controller/dotbots?include_lost=true`, with no other filter, carries the
+`X-Controller-Seq` / `X-Controller-Run` headers a stream client can resume from,
+since only that list matches what the stream holds.
+
+The thresholds are `[run.controller] stale_after_s`, `lost_after_s` and
+`forget_after_s` in the [configuration](configuration.md) (`forget_after_s = 0`
+never forgets).
+
 ## Quick examples
 
 Install [requests](https://pypi.org/project/requests/): `pip install requests`.
 
 **List DotBots** - `address` identifies a bot; `status` is `0` active, `1`
-inactive, `2` lost.
+stale, `2` lost (lost ones are left out unless you add `?include_lost=true`).
 
 ```py
 import requests

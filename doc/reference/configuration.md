@@ -200,6 +200,9 @@ var is `DOTBOT_FW_SOURCES_<KEY>` (`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`).
 | `http_host` | The interface the API binds to (default `127.0.0.1`). `0.0.0.0` exposes it to the network; the API is unauthenticated. |
 | `lh2_calibration` | The LH2 calibration to run on: a file path, the exact `--tag` it was collected with, or an id prefix of one of the site's calibrations (see [where calibrations are found](#where-calibrations-are-found)). |
 | `lh2_calibration_max_age_days` | Warn at load when the LH2 calibration is older than this many days (default 30, `0` never warns). |
+| `stale_after_s` | Seconds without an advertisement before a robot is stale (default 3). See [how long a robot is kept](rest.md#how-long-a-robot-is-kept). |
+| `lost_after_s` | Seconds before a robot is lost and left out of `GET /controller/dotbots` (default 10). Longer than `stale_after_s`. |
+| `forget_after_s` | Seconds before a robot is forgotten (default 300, `0` never forgets). Longer than `lost_after_s`. |
 | `camera_calibration` | The overhead camera registration to draw on the map, in the same forms. Written by `dotbot run calibrate-camera collect`. |
 | `camera_detect` | Run the robot detector on a registered camera (default true). False serves the layer as a picture only. |
 | `camera_max_robots` | The most robots one camera frame reports. |

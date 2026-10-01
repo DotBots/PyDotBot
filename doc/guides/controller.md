@@ -70,6 +70,11 @@ sees. Select one to control it:
 - **Waypoints** - set waypoints on the map for the selected DotBots to drive to.
 - If you flashed Lighthouse 2 localization, DotBots report their `(x, y)` position
   on the map (see [LH2 calibration](lh2-calibration.md)).
+- A DotBot the controller has not heard from for 3 s is drawn faded (stale),
+  and one silent for 10 s is lost and hidden; tick **Lost robots** in the
+  Layers tab to show those too, drawn fainter still. A lost robot swarmit still
+  reports stays on the map. The count beside LIVE in the top bar names each
+  tier (see [how long a robot is kept](../reference/rest.md#how-long-a-robot-is-kept)).
 
 ## Firefox websockets note
 
