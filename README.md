@@ -40,6 +40,7 @@ pip install pydotbot
 ```
 
 Then, check your installation with `dotbot --version` and learn what's possible with `dotbot --help`.
+`dotbot guide` prints a getting-started page, written for people and AI coding agents alike.
 
 Every command and flag is documented in the [CLI reference][cli-doc].
 
