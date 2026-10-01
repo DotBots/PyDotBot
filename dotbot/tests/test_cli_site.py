@@ -483,7 +483,8 @@ def test_show_prints_the_site_its_connection_areas_and_calibrations(
     assert "anchor:      the door" in result.output
     assert "extent:      2000 x 3000 mm" in result.output
     assert "connection:  mqtts://argus.example:8883" in result.output
-    assert "swarm id:    (none; set swarm_id yourself)" in result.output
+    assert "swarm id:    (none in the pack)" in result.output
+    assert "yours: none; `dotbot config set swarm_id <id>`" in result.output
     assert "field  field (from its name)" in result.output
     assert "bench  corner" in result.output
     assert "0 calibration files" in result.output
@@ -501,3 +502,21 @@ def test_show_and_list_follow_an_active_pack_named_by_its_path(runner, tmp_path,
     result = _invoke(runner, "-c", str(config), "site", "list")
     assert result.exit_code == 0, result.output
     assert not any(line.startswith("*") for line in result.output.splitlines())
+
+
+def test_show_names_your_swarm_id_beside_a_pack_that_has_none(runner, tmp_path, home):
+    config = tmp_path / "dotbot.toml"
+    config.write_text('site = "arena"\n')
+    (tmp_path / "dotbot.local.toml").write_text('swarm_id = "A001"\n')
+    _pack(home / "sites", "arena", _ARGUS)
+    result = _invoke(runner, "-c", str(config), "site", "show")
+    assert result.exit_code == 0, result.output
+    assert "yours: A001 (from " in result.output
+    assert "dotbot.local.toml)" in result.output
+
+
+def test_show_with_no_site_active_says_so(runner, home):
+    with runner.isolated_filesystem():
+        result = _invoke(runner, "site", "show")
+    assert result.exit_code == 1
+    assert "no site is active; `dotbot site use <name>`" in result.output

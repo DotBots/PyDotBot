@@ -214,11 +214,17 @@ def _calibration_folders(entry) -> list[Path]:
 def show(ctx, name):
     """Print one site: where it is defined, its anchor, extent, connection,
     areas and calibrations. NAME defaults to the active site."""
-    active = active_site(ctx).entry
+    current = active_site(ctx)
+    active = current.entry
+    if name is None and active is None and current.source == "the default":
+        raise click.ClickException(
+            "no site is active; `dotbot site use <name>` picks one, and "
+            "`dotbot site list` names them"
+        )
     if name is None and active is not None:
         entry = active
     else:
-        name = name or active_site(ctx).name
+        name = name or current.name
         entry = _catalog(ctx).get(name)
     if entry is None:
         raise click.ClickException(
@@ -236,7 +242,18 @@ def show(ctx, name):
     conn, swarm_id = _connection(table)
     click.echo(f"connection:  {conn or '(none)'}")
     if conn is not None:
-        click.echo(f"swarm id:    {swarm_id or '(none; set swarm_id yourself)'}")
+        click.echo(f"swarm id:    {swarm_id or '(none in the pack)'}")
+    if is_active and conn is not None and swarm_id is None:
+        from dotbot.config import resolve_source
+
+        yours = resolve_source(
+            "swarm_id", config=(ctx.obj or {}).get("config"), site=current.layer
+        )
+        click.echo(
+            f"             yours: {yours.value} (from {yours.source})"
+            if yours.value is not None
+            else "             yours: none; `dotbot config set swarm_id <id>`"
+        )
     _echo_areas(entry)
     click.echo("calibrations:")
     for folder in _calibration_folders(entry):
