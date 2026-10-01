@@ -487,3 +487,17 @@ def test_show_prints_the_site_its_connection_areas_and_calibrations(
     assert "field  field (from its name)" in result.output
     assert "bench  corner" in result.output
     assert "0 calibration files" in result.output
+
+
+def test_show_and_list_follow_an_active_pack_named_by_its_path(runner, tmp_path, home):
+    pack = _pack(tmp_path / "elsewhere", "arena", '[connection]\nconn = "simulator"\n')
+    _pack(home / "sites", "arena", _ARGUS)
+    config = tmp_path / "dotbot.toml"
+    config.write_text(f"site = {str(pack)!r}\n")
+    result = _invoke(runner, "-c", str(config), "site", "show")
+    assert result.exit_code == 0, result.output
+    assert "site:        arena (active)" in result.output
+    assert "connection:  simulator" in result.output
+    result = _invoke(runner, "-c", str(config), "site", "list")
+    assert result.exit_code == 0, result.output
+    assert not any(line.startswith("*") for line in result.output.splitlines())

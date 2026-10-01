@@ -164,14 +164,18 @@ def list_sites(ctx):
     if not catalog:
         click.echo("(no sites; add one with `dotbot site add` or `dotbot config init`)")
         return
-    active = active_site(ctx).name
+    active = active_site(ctx).entry
     width = max(len(name) for name in catalog)
     conns = {
         name: _connection(entry.table)[0] or "-" for name, entry in catalog.items()
     }
     conn_width = max(len(conn) for conn in conns.values())
     for name, entry in catalog.items():
-        marker = "*" if name == active else " "
+        marker = (
+            "*"
+            if active is not None and entry.pack.resolve() == active.pack.resolve()
+            else " "
+        )
         click.echo(
             f"{marker} {name:<{width}}  {conns[name]:<{conn_width}}  {_where(entry)}"
         )
@@ -210,15 +214,20 @@ def _calibration_folders(entry) -> list[Path]:
 def show(ctx, name):
     """Print one site: where it is defined, its anchor, extent, connection,
     areas and calibrations. NAME defaults to the active site."""
-    active = active_site(ctx).name
-    name = name or active
-    entry = _catalog(ctx).get(name)
+    active = active_site(ctx).entry
+    if name is None and active is not None:
+        entry = active
+    else:
+        name = name or active_site(ctx).name
+        entry = _catalog(ctx).get(name)
     if entry is None:
         raise click.ClickException(
             f"unknown site {name!r}; `dotbot site list` names the known ones"
         )
+    name = entry.name
+    is_active = active is not None and entry.pack.resolve() == active.pack.resolve()
     table = entry.table
-    click.echo(f"site:        {name}{' (active)' if name == active else ''}")
+    click.echo(f"site:        {name}{' (active)' if is_active else ''}")
     click.echo(f"defined in:  {_where(entry)}")
     if table.anchor:
         click.echo(f"anchor:      {table.anchor}")
