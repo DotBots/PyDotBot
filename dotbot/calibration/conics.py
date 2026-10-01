@@ -532,8 +532,9 @@ def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolut
     """Camera-to-site homography from circle tracks of known radius (free mode).
 
     Scale from the tracks' radius; axes along the minimum-area rectangle of
-    the circle centres (`field_angle`), turned to stay nearest the
-    `station_frame`; zero at the top-left of that rectangle grown by
+    the circle centres (`field_angle`), turned a quarter at a time so the
+    robots' starting headings point along +y (`upright_turns`); zero at the
+    top-left of that rectangle grown by
     `margin_mm` (default: what a spinning robot sweeps), which is the field
     (`field_mm`).
     """
@@ -574,6 +575,9 @@ def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolut
     angle = field_angle(centres)
     c, sn = np.cos(-angle), np.sin(-angle)
     H = np.array([[c, -sn, 0], [sn, c, 0], [0, 0, 1.0]]) @ H
+    c, sn = np.cos(np.pi / 2), np.sin(np.pi / 2)
+    quarter = np.array([[c, -sn, 0], [sn, c, 0], [0, 0, 1.0]])
+    H = np.linalg.matrix_power(quarter, upright_turns(inliers, H)) @ H
     centres = np.array([_circle_fit(apply(H, t.points))[0] for t in inliers])
     lo = centres.min(axis=0) - margin_mm
     size = np.ceil(centres.max(axis=0) + margin_mm - lo)
@@ -607,6 +611,31 @@ def _hull(points: np.ndarray) -> np.ndarray:
             upper.pop()
         upper.append(p)
     return np.array(lower[:-1] + upper[:-1])
+
+
+def upright_turns(tracks: Sequence[Track], H: np.ndarray) -> int:
+    """Quarter turns (+90 degrees each, as drawn) that point the robots along +y.
+
+    +y is the firmware's heading zero, so robots that start their spin at
+    heading zero read heading zero in the new frame too.
+
+    A track's first read is the photodiode as the spin starts, ahead of the
+    axle on the robot's centreline, so the circle's centre to that read is the
+    robot's starting heading. When the headings do not agree, the field is
+    stood with its long side along y instead.
+    """
+    dirs = []
+    for t in tracks:
+        p = apply(H, t.points)
+        d = p[0] - _circle_fit(p)[0]
+        dirs.append(d / np.linalg.norm(d))
+    mean = np.mean(dirs, axis=0)
+    if np.linalg.norm(mean) >= 0.5:
+        heading = np.arctan2(mean[1], mean[0])
+        return int(np.round((np.pi / 2 - heading) / (np.pi / 2))) % 4
+    centres = np.array([_circle_fit(apply(H, t.points))[0] for t in tracks])
+    width, height = np.ptp(centres, axis=0)
+    return 1 if width > height else 0
 
 
 def field_angle(centres: np.ndarray) -> float:

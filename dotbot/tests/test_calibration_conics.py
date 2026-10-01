@@ -166,6 +166,38 @@ def test_free_mode_axes_follow_rows_of_robots():
     )
 
 
+@pytest.mark.parametrize("facing_deg", [0, 90, 180, 270])
+def test_free_mode_points_the_robots_starting_headings_along_y(facing_deg):
+    # every robot starts its spin facing the same way on the floor; whichever
+    # way that is, the frame comes out with their noses towards +y (to within
+    # the turn that squares the axes on the rectangle around the centres)
+    turn = np.radians(facing_deg)
+    rot = np.array([[np.cos(turn), -np.sin(turn)], [np.sin(turn), np.cos(turn)]])
+    mid = np.array([1000, 1500])
+    tracks = [
+        Track(
+            points=apply(FLOOR_TO_CAM, (circle(c) - c) @ rot.T + c),
+            radius_mm=RADIUS,
+            turn=1,
+            name=f"c{i}",
+        )
+        for i, c in enumerate((np.array(c) - mid) @ rot.T + mid for c in CENTRES)
+    ]
+    sol = conics.solve(tracks)
+    for track in tracks:
+        p = apply(sol.homography, track.points)
+        d = p[0] - p.mean(axis=0)
+        assert np.degrees(np.arctan2(d[1], d[0])) == pytest.approx(90, abs=10)
+
+
+def test_free_mode_stands_the_field_upright_when_headings_disagree():
+    tracks = tracks_at([(300 + 500 * i, 1000 + 40 * (i % 2)) for i in range(4)])
+    for i, track in enumerate(tracks):
+        track.points = np.roll(track.points, 30 * i, axis=0)
+    sol = conics.solve(tracks)
+    assert sol.field_mm[1] > sol.field_mm[0]
+
+
 def test_free_mode_mirrors_when_the_tracks_turn_the_other_way():
     sol = conics.solve(tracks_at(CENTRES, turn=-1))
     _, S = similarity_error(sol.homography)
