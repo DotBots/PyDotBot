@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `dotbot config init --conn <broker>` on a site whose pack already exists
+  writes the broker into that pack's `[connection]` instead of dropping it.
+- The package declares the Python 3.11 it needs (`requires-python`), and the
+  README says so next to `pip install`.
+- Releases publish the wheel to PyPI, not only the sdist.
+- `dotbot swarm serve` starts from a plain `pip install pydotbot`: PyDotBot
+  depends on `swarmit[dashboard]`, whose PyJWT and SQLAlchemy the server needs.
+
+### Changed
+
+- `dotbot run controller` with an MQTT connection starts a local swarm server
+  (`dotbot swarm serve --local`) and stops it on exit, so the console shows
+  robots in their bootloader without a second terminal. One already answering
+  at `swarmit_url` is reused. `--no-swarm-serve` or `[run.controller]
+  swarm_serve = false` turns it off.
+
 ## [0.32.0] - 2026-10-01
 
 Upgrading from 0.31.0? Read [Upgrading from 0.31.0](#upgrading-from-0310) first:
