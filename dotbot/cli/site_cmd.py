@@ -137,7 +137,10 @@ def use(ctx, name, where):
             entry = pack_at(name)
         except ConfigError as exc:
             raise click.ClickException(str(exc)) from exc
-        target = cw.target((ctx.obj or {}).get("config"), ("site",), where)
+        try:
+            target = cw.target((ctx.obj or {}).get("config"), ("site",), where)
+        except cw.WriteError as exc:
+            raise click.ClickException(str(exc)) from exc
         name = cw.path_value(("site",), name, target)
     else:
         catalog = _catalog(ctx)

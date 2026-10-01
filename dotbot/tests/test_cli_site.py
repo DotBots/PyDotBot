@@ -247,6 +247,14 @@ def test_use_accepts_a_pack_path(runner, tmp_path, home):
     assert tomllib.loads((home / "dotbot.toml").read_text()) == {"site": str(pack)}
 
 
+def test_use_project_with_a_pack_path_and_no_project_is_refused(runner, tmp_path, home):
+    pack = _pack(tmp_path / "elsewhere", "hall-b")
+    with runner.isolated_filesystem():
+        result = _invoke(runner, "site", "use", str(pack), "--project")
+    assert result.exit_code == 1, result.output
+    assert "no project dotbot.toml is in use here" in result.output
+
+
 def test_use_warns_when_your_file_hides_the_sites_connection(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
     config.write_text('conn = "mqtts://mine:8883"\n')
