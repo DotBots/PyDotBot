@@ -5,12 +5,14 @@
 
 A push reads device info first. It refuses when any robot runs firmware older
 than this host expects (device-info version below 2, or no device info at
-all), naming the robots to reflash, and when a robot reports another site
-than the file's unless the operator says the site really changed. After the push, the robots whose
-reported calibration id is not the file's are the worklist.
+all), naming the robots to reflash, when a robot reports another site
+than the file's unless the operator says the site really changed, and when a
+robot is running an app, since only a robot in its bootloader takes a
+calibration. After the push, the robots whose reported calibration id is not
+the file's are the worklist.
 
 Everything here takes the `status()` mapping of a swarmit client, duck-typed:
-address to an object with `info_gen` and `info`, `info` carrying
+address to an object with `status`, `info_gen` and `info`, `info` carrying
 `info_version`, `lh2_site_name` and `lh2_calibration_id`, or None.
 """
 
@@ -40,6 +42,7 @@ class PushCheck:
     old_firmware: list[str] = field(default_factory=list)
     unanswered: list[str] = field(default_factory=list)
     other_site: dict[str, str] = field(default_factory=dict)
+    running: list[str] = field(default_factory=list)
     stale: list[str] = field(default_factory=list)
     fleet: bool = False
 
@@ -72,6 +75,13 @@ class PushCheck:
                 f"robots report another site than the file's {site!r}: {listed}. "
                 "Pass --site-changed if the fleet really moved."
             )
+        if self.running:
+            devices = ",".join(self.running)
+            reasons.append(
+                "running an app, so they would drop the calibration: "
+                + ", ".join(self.running)
+                + f". Stop them first with `dotbot swarm -d {devices} stop`."
+            )
         return "\n".join(reasons)
 
 
@@ -84,6 +94,11 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
     check = PushCheck(addresses=sorted(status))
     wanted_id = pushed_id(calibration)
     for addr, node in sorted(status.items()):
+        if getattr(getattr(node, "status", None), "name", "") in (
+            "Running",
+            "Stopping",
+        ):
+            check.running.append(addr)
         info = getattr(node, "info", None)
         if info is None:
             # A zero generation counter is firmware that predates device info

@@ -256,3 +256,26 @@ def test_reframe_takes_two_numbers_for_the_shift(calibration_file):
     )
     assert result.exit_code != 0
     assert "x,y" in result.output
+
+
+def _running(**kw):
+    node = _info(**kw)
+    node.status = SimpleNamespace(name="Running")
+    return node
+
+
+def test_a_robot_running_an_app_is_refused_with_a_stop(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    with pytest.raises(PushRefused, match="dotbot swarm -d B stop"):
+        gate_push(fleet, calibration)
+    assert fleet.pushed == []
+
+
+def test_a_running_robot_left_out_by_the_device_filter_does_not_stop_a_push(
+    calibration_file,
+):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _info(), "B": _running()})
+    assert gate_push(fleet, calibration, devices=["A"]).send_to == ["A"]
+
