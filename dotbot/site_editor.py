@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from dotbot import site_toml
 from dotbot.site import PACK_CALIBRATIONS
@@ -104,6 +105,8 @@ def create_app(
 ) -> FastAPI:
     """The editor's app for `state`; `on_done` runs when the page says Done."""
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
+    # A page from another site that rebinds its name to 127.0.0.1 is refused.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
 
     def read() -> tuple[bytes, str]:
         try:

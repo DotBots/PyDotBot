@@ -32,7 +32,10 @@ def page(tmp_path):
 @pytest.fixture
 def client(pack, page, tmp_path):
     calibrations = tmp_path / "home-calibrations" / "arena"
-    return TestClient(create_app(EditorState("arena", pack, [calibrations]), page))
+    return TestClient(
+        create_app(EditorState("arena", pack, [calibrations]), page),
+        base_url="http://127.0.0.1",
+    )
 
 
 def _loaded(client):
@@ -116,7 +119,8 @@ def test_the_preview_is_the_file_as_it_would_be_written(client, pack):
 def test_done_runs_the_callback(pack, page):
     calls = []
     app = create_app(EditorState("arena", pack), page, on_done=lambda: calls.append(1))
-    assert TestClient(app).post("/api/done").status_code == 200
+    client = TestClient(app, base_url="http://127.0.0.1")
+    assert client.post("/api/done").status_code == 200
     assert calls == [1]
 
 
@@ -193,3 +197,8 @@ def test_site_edit_defaults_to_the_active_pack_even_by_path(
     assert [(name, path.resolve()) for name, path, _ in served] == [
         ("arena", pack.resolve())
     ]
+
+
+def test_a_request_for_another_host_is_refused(client):
+    response = client.get("/api/site", headers={"host": "evil.example"})
+    assert response.status_code == 400
