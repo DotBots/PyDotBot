@@ -61,10 +61,10 @@ own `--swarm-id` or serial `--conn` then go to `./dotbot.local.toml`.
 |---|---|
 | `--field` | The field's size (default `2m`): one value for a square, `WxH` for a rectangle. A bare number is mm, and `1500mm`, `1.5m` and `2x3m` also work; decimals only with `m`. From 100 mm to 100 m. Above 5 m on a side it warns that one LH2 station rarely covers that well. |
 | `--site` | The site's name (default `default`); its calibrations are kept under `~/.dotbot/calibrations/<site>/`. |
-| `--conn` | A broker URL becomes the site's `[connection]`; a serial path or `simulator` is your own `conn`, since it belongs to this machine. |
+| `--conn` | A broker URL becomes the site's `[connection]`, in a pack that already exists too (replacing the broker it named, which the output says), with a warning when your own `conn` or `DOTBOT_CONN` hides it; a serial path or `simulator` is your own `conn`, since it belongs to this machine. |
 | `--swarm-id` | Your own `swarm_id`. |
 | `--project` | Start a project in the current folder, as above. |
-| `-f`, `--force` | Overwrite an existing `./dotbot.toml` or site pack. Without it an existing pack is kept. |
+| `-f`, `--force` | Overwrite an existing `./dotbot.toml` or site pack. Without it an existing pack is kept, apart from the broker a `--conn` puts in its `[connection]`. |
 
 ## `set` / `unset`
 
