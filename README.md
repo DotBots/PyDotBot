@@ -47,17 +47,17 @@ Every command and flag is documented in the [CLI reference][cli-doc].
 
 See the whole thing run with nothing but Python!
 
-First, in an empty folder, write a config:
+First, give yourself a place to work in:
 
 ```bash
 dotbot config init
 ```
 
-This writes `./dotbot.toml` with a site named `default`: a 2 x 2 m **field**,
-where experiments happen, and a **staging** strip below it, where robots park.
-`--field 1.5m` or `--field 2x3m` sizes the field, and the rest follows from it.
-Commands run from this folder read the file, and it is yours to edit once you
-measure a real room.
+This writes a site named `default` to `~/.dotbot/sites/` and selects it: a
+2 x 2 m **field**, where experiments happen, and a **staging** strip below it,
+where robots park. `--field 1.5m` or `--field 2x3m` sizes the field, and the
+rest follows from it. Every folder sees it, and its `site.toml` is yours to
+edit once you measure a real room.
 
 Then run a simulated swarm, which you can observe in the web console at http://localhost:8000/console/ :
 
@@ -106,9 +106,13 @@ dotbot config init --conn mqtts://argus.paris.inria.fr:8883 --swarm-id 1234
 > your swarm. Running your own handful of DotBots? Pick any swarm
 > id - the example points `--conn` at our Inria Paris broker so it works out of
 > the box, but swap in your own broker once you have one. (On a shared testbed,
-> your admin gives you the broker and swarm id to use.) This writes
-> `./dotbot.toml`; commands run from this directory pick it up, so you don't
-> repeat the flags. Full schema: the [configuration reference][config-doc].
+> your admin gives you the broker and swarm id to use, or a site pack that
+> carries the broker: `dotbot site add <pack> --use`.) This writes a site
+> whose connection is the broker, and your swarm id, under `~/.dotbot/`;
+> every command picks them up, so you don't repeat the flags. If the broker
+> needs a login, save it once with `dotbot config login argus.paris.inria.fr`.
+> `dotbot config show` says where each setting came from, and the
+> [configuration reference][config-doc] has the rest.
 
 The swarm mode also requires a special "sandbox" firmware in each DotBot.
 We also need a more powerful gateway firmware. Let's flash both - the network
@@ -140,7 +144,7 @@ You can flash as many DotBots as you want, all at once! First, how about making 
 dotbot swarm flash spin -ys
 ```
 
-(`dotbot swarm` reads the same `dotbot.toml` as the rest - pass `--conn` /
+(`dotbot swarm` reads the same config as the rest - pass `--conn` /
 `--swarm-id` to override it for one run. `spin` is a bundled app name -
 `dotbot swarm flash --list` shows them all, and an explicit `.bin` path still
 works. Names resolve to what `dotbot fw fetch` cached; `dotbot fw list` shows

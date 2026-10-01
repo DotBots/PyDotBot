@@ -312,12 +312,12 @@ def test_the_simulator_example_puts_a_thousand_robots_in_its_field():
     from pathlib import Path
 
     import dotbot
-    from dotbot.config import load_config
-    from dotbot.site import site_from_config
+    from dotbot.config import load_files
+    from dotbot.site_packs import resolve_site_entry
 
     path = Path(dotbot.__file__).parent / "examples" / "simulator_fleet" / "dotbot.toml"
-    config = load_config(path)
-    site = site_from_config(config, config.site)
+    config = load_files([("project", path)])
+    site = resolve_site_entry(config, config.site).site()
     assert site.staging.name == "staging"
     assert [a.name for a in site.areas.values() if a.role == "staging"] == ["staging"]
     field = site.field

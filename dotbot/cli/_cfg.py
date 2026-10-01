@@ -17,7 +17,7 @@ own default flows straight through `resolve(..., default=value)`).
 
 import click
 
-from dotbot.config import resolve
+from dotbot.config import CONNECTION_KEYS, Resolved, resolve_source
 
 
 def on_commandline(ctx: click.Context, param_name: str) -> bool:
@@ -27,27 +27,60 @@ def on_commandline(ctx: click.Context, param_name: str) -> bool:
     )
 
 
-def from_config(
-    ctx: click.Context, param_name: str, key: str, section: str, default=None
-):
-    """CLI flag if given on the command line, else config > env > the option's default.
+def _flag_name(ctx: click.Context, param_name: str) -> str:
+    for param in ctx.command.params:
+        if param.name == param_name and isinstance(param, click.Option):
+            return max(param.opts, key=len)
+    return "the command line"
 
-    `param_name` is the Click parameter name (what `ctx.params` keys on);
-    `key` / `section` address the value in the config resolver. When the
-    option was set on the command line we return it verbatim; otherwise we let
-    the resolver fall through config (section > deployment > top-level) and env,
-    using the option's current value as the built-in default. `default`
-    stands in when that value is None, so a tri-state flag still resolves
-    (and coerces env strings) to its real type.
+
+def resolved_from_config(
+    ctx: click.Context,
+    param_name: str,
+    key: str,
+    section: str | None,
+    default=None,
+    site_flag: str | None = None,
+) -> Resolved:
+    """`from_config`, with the layer the value came from.
+
+    For `conn` and `swarm_id` the active site's `[connection]` is the lowest
+    config layer; `site_flag` is the command's `--site`, if it has one.
     """
     value = ctx.params.get(param_name)
-    if on_commandline(ctx, param_name):
-        return value
     obj = ctx.obj or {}
-    return resolve(
+    flag = value if on_commandline(ctx, param_name) else None
+    site = None
+    if key in CONNECTION_KEYS:
+        from dotbot.cli._site import active_site
+
+        site = active_site(ctx, site_flag).layer
+    return resolve_source(
         key,
         section=section,
+        flag=flag,
+        flag_name=_flag_name(ctx, param_name),
         config=obj.get("config"),
-        deployment=obj.get("deployment"),
+        site=site,
         default=default if value is None else value,
     )
+
+
+def from_config(
+    ctx: click.Context,
+    param_name: str,
+    key: str,
+    section: str | None,
+    default=None,
+    site_flag: str | None = None,
+):
+    """CLI flag if given on the command line, else env > config > the option's default.
+
+    `param_name` is the Click parameter name (what `ctx.params` keys on);
+    `key` / `section` address the value in the config resolver. An option
+    still at its built-in default yields to the env and config layers, with
+    that value as the resolver's default; `default` stands in when the value
+    is None, so a tri-state flag still resolves (and coerces env strings) to
+    its real type.
+    """
+    return resolved_from_config(ctx, param_name, key, section, default, site_flag).value

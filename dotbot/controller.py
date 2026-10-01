@@ -984,7 +984,10 @@ class Controller:
 
             return SimulatedCaptureClient(device, self._outstanding_point)
         return build_swarmit_client(
-            conn_string(self.settings), self.settings.network_id
+            conn_string(self.settings),
+            self.settings.network_id,
+            username=self.settings.mqtt_username,
+            password=self.settings.mqtt_password,
         )
 
     def _outstanding_point(self):

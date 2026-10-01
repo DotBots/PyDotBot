@@ -20,6 +20,7 @@ included - resolves as if no config file existed.
 
 import click
 
+from dotbot.controller_app import IMPLIED_CONN
 from dotbot.controller_app import main as _controller_main
 
 
@@ -41,9 +42,12 @@ def cmd(ctx):
     `dotbot run simulator --help` for the full option list.
     """
     args = ["--conn", "simulator", *ctx.args]
+    obj = dict(ctx.obj or {})
+    if not {"-n", "--conn", "--connection"} & set(ctx.args):
+        obj[IMPLIED_CONN] = "dotbot run simulator"
     _controller_main.main(
         args=args,
         prog_name="dotbot run simulator",
         standalone_mode=True,
-        obj=ctx.obj,
+        obj=obj,
     )

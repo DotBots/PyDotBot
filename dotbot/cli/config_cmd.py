@@ -1,27 +1,35 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""`dotbot config` - scaffold and inspect the dotbot configuration.
+"""`dotbot config` - scaffold, inspect and change the dotbot configuration.
 
-A management group (like `git config` / `kubectl config`): `init` writes a
-starter config file holding a site to work in (optionally pre-filling `conn` /
-`swarm_id`); `path` and
-`show` are read-only inspectors over what the root group resolved onto the
-Click context (`ctx.obj`): the loaded `DotbotConfig`, its source path, and the
-selected deployment. There is no per-key `set` - edit the file, it is yours.
+A management group (like `git config`): `init` scaffolds a site and the keys
+that select it; `path` and `show` read what the root group merged onto the
+Click context (`ctx.obj["config"]`); `set`, `unset` and `login` change one
+key, in an untracked file unless told otherwise (`dotbot.cli._config_write`).
 """
 
+import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import click
 import tomlkit
 
-from dotbot.cli._site import resolve_site_name
-from dotbot.config import USER_CONFIG_PATH, ConfigError
+from dotbot import config as _config
+from dotbot.cli import _config_write as cw
+from dotbot.cli._site import active_site, credentials_for
+from dotbot.config import display_path, resolve_source, unknown_env
+from dotbot.mqtt_tls import LOCAL_HOSTS
 from dotbot.site import SITE_DEFAULT, check_site_name
-from dotbot.site_packs import site_catalog
+from dotbot.site_packs import (
+    PACK_FILE,
+    PROJECT_SITES_DIR,
+    user_sites_dir,
+    write_approval,
+)
 
 _CONFIG_DOCS_URL = (
     "https://pydotbot.readthedocs.io/en/latest/reference/configuration.html"
@@ -112,9 +120,10 @@ def parse_field_size(spec: str) -> tuple[int, int]:
     return (sizes[0], sizes[-1])
 
 
-def default_site_toml(name: str, field_mm: tuple[int, int]) -> str:
-    """The `[sites.<name>]` table `init` writes: a field with a margin of floor
-    round it and a staging strip along its bottom edge."""
+def default_site_toml(field_mm: tuple[int, int], broker: str | None = None) -> str:
+    """The `site.toml` `init` writes: a field with a margin of floor round it
+    and a staging strip along its bottom edge, and `broker` as its
+    `[connection]`."""
     width, height = field_mm
     extent = (width + 2 * SITE_MARGIN_MM, height + 2 * SITE_MARGIN_MM)
     x = y = SITE_MARGIN_MM
@@ -122,62 +131,110 @@ def default_site_toml(name: str, field_mm: tuple[int, int]) -> str:
         f"top-left corner of a {_metres(extent[0])} x {_metres(extent[1])} m "
         f"floor; the field starts {_metres(SITE_MARGIN_MM)} m in from each wall"
     )
+    connection = f'[connection]\nconn = "{broker}"\n\n' if broker else ""
     return (
         "# Zero is the top-left corner of the extent, x right, y down, millimetres.\n"
-        f"[sites.{name}]\n"
         f'anchor = "{anchor}"\n'
         f"extent_mm = [{extent[0]}, {extent[1]}]\n"
-        "\n"
-        f"[sites.{name}.areas]\n"
+        "\n" + connection + "[areas]\n"
         f"field   = {{ x = {x}, y = {y}, w = {width}, h = {height} }}\n"
         f"staging = {{ x = {x}, y = {y + height}, w = {width}, "
         f"h = {STAGING_DEPTH_MM} }}\n"
     )
 
 
-# `dotbot config init` writes a *minimal* file: the keys you pass, the site
-# your robots work in, and a one-line pointer to the full reference. No wall
-# of commented options - the schema lives in the docs, not in everyone's file.
-def _starter_template(
-    conn: str | None = None,
-    swarm_id: str | None = None,
-    site: str = SITE_DEFAULT,
-    field_mm: tuple[int, int] = FIELD_DEFAULT_MM,
-) -> str:
-    header = (
-        f"# dotbot config. Options + examples: {_CONFIG_DOCS_URL}\n"
-        "# (MQTT credentials are env-only: DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS.)\n"
+def _project_template(site: str) -> str:
+    return (
+        f"# The project's dotbot config, shared by everyone who clones it.\n"
+        f"# Your own settings go in dotbot.local.toml (`dotbot config set`).\n"
+        f"# Options: {_CONFIG_DOCS_URL}\n"
+        "\n"
+        f'site = "{site}"   # a pack in sites/ beside this file\n'
     )
-    keys = []
-    if conn:
-        keys.append(f'conn = "{conn}"')
-    if swarm_id:
-        keys.append(f'swarm_id = "{swarm_id}"')
-    keys.append(f'site = "{site}"')
-    return header + "\n" + "\n".join(keys) + "\n\n" + default_site_toml(site, field_mm)
+
+
+def _ignore_local(folder: Path) -> str | None:
+    """Add dotbot.local.toml to the .gitignore of the git repository `folder`
+    is in, unless git already ignores it; the line added, or None."""
+    local = folder / ("dotbot" + _config.LOCAL_CONFIG_SUFFIX)
+    try:
+        inside = subprocess.run(
+            ["git", "-C", str(folder), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if inside.returncode != 0:
+            return None
+        ignored = subprocess.run(
+            ["git", "-C", str(folder), "check-ignore", "-q", str(local)],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if ignored.returncode == 0:
+        return None
+    gitignore = folder / ".gitignore"
+    text = gitignore.read_text() if gitignore.is_file() else ""
+    if text and not text.endswith("\n"):
+        text += "\n"
+    gitignore.write_text(text + local.name + "\n")
+    return f"added {local.name} to {gitignore}"
 
 
 @click.group(
     name="config",
-    help="Show the resolved config + where it came from; scaffold one with init.",
+    help="Show the resolved config and where it came from; change one key.",
 )
 def cmd():
     pass
 
 
+def _check_init_conn(conn: str | None) -> bool:
+    """Validate `--conn`; True when it names a broker."""
+    if conn is None:
+        return False
+    from dotbot.cli._conn import ConnError, parse_connection
+
+    try:
+        parsed = parse_connection(conn)
+    except ConnError as exc:
+        raise click.ClickException(f"invalid --conn: {exc}") from exc
+    if parsed.kind != "mqtt":
+        return False
+    from pydantic import ValidationError
+
+    try:
+        _config.ConnectionSection(conn=conn)
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"].removeprefix("Value error, ")
+        raise click.ClickException(f"invalid --conn: {message}") from exc
+    return True
+
+
+def _write(target: Path, key: tuple[str, ...], value) -> None:
+    try:
+        cw.set_value(target, key, value)
+    except cw.WriteError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"wrote {cw.key_text(key)} = {json.dumps(value)} to {target}")
+
+
 @cmd.command()
 @click.option(
-    "--global",
-    "global_",
+    "--project",
     is_flag=True,
-    help="Write the user-level ~/.dotbot/config.toml instead of ./dotbot.toml.",
+    help="Start a project here: ./dotbot.toml and its site in ./sites/, "
+    "instead of your user file and ~/.dotbot/sites/.",
 )
 @click.option("--force", "-f", is_flag=True, help="Overwrite an existing file.")
 @click.option(
     "--conn",
-    help="Pre-fill the shared connection (broker URL, serial path, or 'simulator').",
+    help="The connection: a broker URL becomes the site's, a serial path or "
+    "'simulator' is yours.",
 )
-@click.option("--swarm-id", help="Pre-fill the shared swarm id.")
+@click.option("--swarm-id", help="Your swarm id.")
 @click.option(
     "--site",
     default=SITE_DEFAULT,
@@ -192,15 +249,15 @@ def cmd():
     help="The field's size: one value for a square, WxH for a rectangle. "
     "A bare number is mm; 1.5m and 1500mm also work.",
 )
-def init(global_, force, conn, swarm_id, site, field_spec):
-    """Write a starter config file you can edit.
+def init(project, force, conn, swarm_id, site, field_spec):
+    """Scaffold a site with a field and select it.
 
-    Defaults to ./dotbot.toml in the current directory; --global writes your
-    user-level ~/.dotbot/config.toml. Refuses to overwrite unless --force.
-    The file names a site with a field, where experiments happen and what
-    calibration covers, and a staging strip along its bottom edge, with a
-    margin of floor round both. `--field` sizes the field, and the rest
-    follows from it. `--conn` / `--swarm-id` pre-fill those top-level keys.
+    Writes the site pack (~/.dotbot/sites/<site>/site.toml) and sets site,
+    and your --swarm-id and a serial --conn, in ~/.dotbot/dotbot.toml,
+    keeping the rest of that file. With --project, writes ./dotbot.toml and
+    ./sites/<site>/site.toml for everyone who clones this folder, puts your
+    own keys in ./dotbot.local.toml, and keeps that file out of git. A
+    broker --conn becomes the site's [connection].
     """
     try:
         check_site_name(site)
@@ -211,26 +268,42 @@ def init(global_, force, conn, swarm_id, site, field_spec):
     except click.BadParameter as exc:
         exc.param_hint = "'--field'"
         raise
-    if conn is not None:
-        from dotbot.cli._conn import ConnError, parse_connection
+    broker = conn if _check_init_conn(conn) else None
 
-        try:
-            parse_connection(conn)
-        except ConnError as exc:
-            raise click.ClickException(f"invalid --conn: {exc}") from exc
-
-    target = USER_CONFIG_PATH if global_ else Path.cwd() / "dotbot.toml"
-    if target.exists() and not force:
+    cwd = Path.cwd()
+    project_file = cwd / _config.PROJECT_CONFIG_NAME
+    if project and project_file.exists() and not force:
         raise click.ClickException(
-            f"{target} already exists. Pass --force to overwrite it."
+            f"{project_file} already exists. Pass --force to overwrite it."
         )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_starter_template(conn, swarm_id, site, field_mm))
-    click.echo(f"Wrote {target}")
-    click.echo(
-        f"Site {site}: a {_metres(field_mm[0])} x {_metres(field_mm[1])} m field "
-        f"with a staging strip below it."
-    )
+    home = cwd / PROJECT_SITES_DIR if project else user_sites_dir()
+    pack = home / site
+    pack_file = pack / PACK_FILE
+    if pack_file.exists() and not force:
+        click.echo(f"Kept the site pack at {pack} (--force replaces it)")
+    else:
+        pack.mkdir(parents=True, exist_ok=True)
+        pack_file.write_text(default_site_toml(field_mm, broker))
+        if broker and not project:
+            write_approval(pack, broker.strip())
+        click.echo(
+            f"Wrote {pack_file}: a {_metres(field_mm[0])} x "
+            f"{_metres(field_mm[1])} m field with a staging strip below it."
+        )
+    personal = _config.USER_CONFIG_PATH
+    if project:
+        project_file.write_text(_project_template(site))
+        click.echo(f"Wrote {project_file}")
+        personal = _config.local_path_for(project_file)
+        note = _ignore_local(cwd)
+        if note:
+            click.echo(note)
+    else:
+        _write(personal, ("site",), site)
+    if conn and broker is None:
+        _write(personal, ("conn",), conn)
+    if swarm_id:
+        _write(personal, ("swarm_id",), swarm_id)
     if max(field_mm) > FIELD_COVERAGE_MM:
         click.echo(
             "Warning: one LH2 base station rarely covers a field over "
@@ -239,25 +312,21 @@ def init(global_, force, conn, swarm_id, site, field_spec):
             "`dotbot swarm calibrate-lh2 collect --over` or `--square`.",
             err=True,
         )
-    if conn or swarm_id:
-        filled = " and ".join(
-            label for label, val in (("conn", conn), ("swarm_id", swarm_id)) if val
-        )
-        click.echo(f"Set {filled}; review it, then run `dotbot config show`.")
-    else:
-        click.echo("Edit it to taste (see the link inside), then `dotbot config show`.")
+    click.echo("Check it with `dotbot config show`.")
 
 
 @cmd.command()
 @click.pass_context
 def path(ctx):
-    """Print the resolved config file path (or note the built-in defaults)."""
-    config_path = (ctx.obj or {}).get("config_path")
-    if config_path is None:
+    """Print the config files in use, lowest priority first, with their kind."""
+    config = (ctx.obj or {}).get("config")
+    files = config.files if config is not None else ()
+    if not files:
         click.echo("(none; using built-in defaults)")
         click.echo("Create one with: dotbot config init", err=True)
-    else:
-        click.echo(str(config_path))
+        return
+    for item in files:
+        click.echo(f"{item.kind:<8} {item.path}")
 
 
 def _prune(value: Any) -> Any:
@@ -268,71 +337,260 @@ def _prune(value: Any) -> Any:
     return value
 
 
-def _echo_areas(entry) -> None:
-    """One line per area of a site: its name and its role, saying when the
-    role is implied by the name."""
-    declared = entry.table.areas
-    areas = entry.site().areas
-    if not areas:
-        return
-    width = max(len(name) for name in areas)
-    for name, area in areas.items():
-        if area.role is None:
-            role = "no role"
-        elif declared[name].role is None:
-            role = f"{area.role} (from its name)"
-        else:
-            role = area.role
-        click.echo(f"    {name:<{width}}  {role}")
+def _merged_keys(config) -> dict:
+    """The merged config's set keys, with login passwords masked."""
+    data = _prune(config.model_dump(by_alias=True))
+    for login in data.get("login", {}).values():
+        if "password" in login:
+            login["password"] = "********"
+    return data
+
+
+def _entry_source(active) -> str:
+    entry = active.entry
+    if entry is None:
+        return "no site pack of that name"
+    where = {"project": "project pack", "user": "pack", "path": "pack"}[entry.home]
+    hides = f", hiding {entry.shadows}" if entry.shadows else ""
+    return f"{where} {display_path(entry.pack)}{hides}"
+
+
+def _login(ctx, conn) -> dict:
+    """Which login the conn's broker gets, for `show`."""
+    url = conn.value if isinstance(conn.value, str) else ""
+    if not url.strip().lower().startswith(("mqtt://", "mqtts://")):
+        return {"sent": False, "text": "none needed (conn is not a broker)"}
+    from marilib.communication_adapter import parse_mqtt_url
+
+    host = parse_mqtt_url(url)[0]
+    decision = credentials_for(ctx, conn)
+    if decision.username is not None:
+        text = f"{host}: {decision.reason}"
+    elif decision.withheld:
+        text = f"{host}: withheld: {decision.withheld}"
+    elif host in LOCAL_HOSTS:
+        text = f"{host}: none"
+    else:
+        text = f"{host}: none (save one with `dotbot config login {host}`)"
+    return {
+        "host": host,
+        "sent": decision.username is not None,
+        "reason": decision.reason,
+        "withheld": decision.withheld,
+        "text": text,
+    }
 
 
 @cmd.command()
+@click.option("--json", "as_json", is_flag=True, help="Print it as JSON.")
 @click.pass_context
-def show(ctx):
-    """Print the source path, the active deployment, each site and where it
-    was read from, and the loaded config.
+def show(ctx, as_json):
+    """Print the config files in use, where the site, conn and swarm id each
+    came from and what they hide, the login the broker gets, then every key
+    the files set, merged."""
+    config = (ctx.obj or {}).get("config") or _config.DotbotConfig()
+    active = active_site(ctx)
+    site = resolve_source("site", config=config, default=SITE_DEFAULT)
+    resolved = {
+        key: resolve_source(key, config=config, site=active.layer)
+        for key in ("conn", "swarm_id")
+    }
+    login = _login(ctx, resolved["conn"])
+    unknown = unknown_env()
 
-    None-valued fields are skipped so only what is actually set shows up.
-    """
-    obj = ctx.obj or {}
-    config = obj.get("config")
-    config_path = obj.get("config_path")
-    deployment_name = obj.get("deployment_name")
-
-    source = (
-        str(config_path)
-        if config_path is not None
-        else "(none; built-in defaults. Create one with: dotbot config init)"
-    )
-    click.echo(f"source:  {source}")
-    click.echo(f"deployment: {deployment_name or '(none)'}")
-    site_name, site_source = resolve_site_name(
-        config=config, deployment=obj.get("deployment")
-    )
-    try:
-        catalog = site_catalog(config, config_path)
-    except ConfigError as exc:
-        raise click.ClickException(str(exc)) from exc
-    known = "" if site_name in catalog else ", which no config or pack defines"
-    click.echo(f"site:    {site_name} (from {site_source}{known})")
-    if catalog:
-        click.echo("sites:")
-        width = max(len(name) for name in catalog)
-        for name, entry in catalog.items():
-            click.echo(f"  {name:<{width}}  {entry.source}")
-            _echo_areas(entry)
-    click.echo("")
-
-    if config is None:
-        click.echo("(no config loaded)")
+    if as_json:
+        report = {
+            "files": [{"kind": f.kind, "path": str(f.path)} for f in config.files],
+            "site": {
+                "name": active.name,
+                "source": active.source,
+                "pack": str(active.entry.pack) if active.entry else None,
+                "hides": [{"source": src, "value": val} for src, val in site.hidden],
+            },
+            **{
+                key: {
+                    "value": item.value,
+                    "source": item.source,
+                    "hides": [
+                        {"source": src, "value": val} for src, val in item.hidden
+                    ],
+                }
+                for key, item in resolved.items()
+            },
+            "login": {k: v for k, v in login.items() if k != "text"},
+            "unknown_env": [name for name, _ in unknown],
+            "merged": _merged_keys(config),
+        }
+        click.echo(json.dumps(report, indent=2))
         return
 
-    # Prune unset Optionals so the dump shows only what the file explicitly set
-    # (matches the resolver's "unset vs default" model), then render via tomlkit
-    # so the output is real, round-trippable TOML.
-    data = _prune(config.model_dump())
+    files = (
+        "  ".join(f"{f.label} ({f.kind})" for f in config.files)
+        or "(none; built-in defaults. Create one with: dotbot config init)"
+    )
+    click.echo(f"{'files:':<10} {files}")
+    click.echo(
+        f"{'site:':<10} {active.name}  from {active.source}  {_entry_source(active)}"
+    )
+    for src, val in site.hidden:
+        click.echo(f"{'':<10} hides {src} site = {json.dumps(val)}")
+    for key, item in resolved.items():
+        value = item.value if item.value is not None else "(unset)"
+        where = f"  from {item.source}" if item.value is not None else ""
+        click.echo(f"{key + ':':<10} {value}{where}")
+        for src, val in item.hidden:
+            click.echo(f"{'':<10} hides {src} {key} = {json.dumps(val)}")
+    click.echo(f"{'login:':<10} {login['text']}")
+    for name, close in unknown:
+        hint = f" (did you mean {close}?)" if close else ""
+        click.echo(f"{'unknown:':<10} {name}{hint}: nothing reads it")
+    click.echo("")
+    data = _merged_keys(config)
     if not data:
-        if config_path is not None:
-            click.echo("(the file sets nothing yet; all built-in defaults)")
+        if config.files:
+            click.echo("(the files set nothing yet; all built-in defaults)")
         return
     click.echo(tomlkit.dumps(data).rstrip())
+
+
+def _key(text: str) -> tuple[str, ...]:
+    try:
+        return cw.parse_key(text)
+    except cw.WriteError as exc:
+        raise click.BadParameter(str(exc), param_hint="'KEY'") from exc
+
+
+def _route(ctx, key, where) -> Path:
+    try:
+        return cw.target((ctx.obj or {}).get("config"), key, where)
+    except cw.WriteError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _after_write(ctx, target: Path, key) -> None:
+    config = (ctx.obj or {}).get("config")
+    project = getattr(config, "project_path", None)
+    if project is not None and target.resolve() == Path(project).resolve():
+        click.echo(
+            f"note: {target.name} is the project's file, so the change shows "
+            "in git status",
+            err=True,
+        )
+    for phrase in cw.hiders(config, target, key):
+        click.echo(f"warning: {phrase}, which overrides it", err=True)
+
+
+def _refuse_conn_login(conn: str) -> None:
+    """Refuse a broker URL carrying a login, which belongs in `config login`."""
+    from urllib.parse import urlparse
+
+    if not conn.strip().lower().startswith(("mqtt://", "mqtts://")):
+        return
+    parsed = urlparse(conn.strip())
+    if parsed.username is not None or parsed.password is not None:
+        raise click.ClickException(
+            "conn carries no credentials: a password typed here stays in your "
+            "shell history; drop the user:pass@ part and save the login with "
+            f"`dotbot config login {parsed.hostname or 'HOST'}`"
+        )
+
+
+@cmd.command(name="set")
+@click.argument("key")
+@click.argument("value")
+@cw.where_options("Write the project's dotbot.toml, which is committed.")
+@click.pass_context
+def set_(ctx, key, value, where):
+    """Set KEY to VALUE in your own config file.
+
+    KEY is spelled as in TOML: swarm_id, fw.segger_dir,
+    run.controller.lh2_calibration. Keys true of this machine (fw.segger_dir,
+    device.probe, ...) go to ~/.dotbot/dotbot.toml; any other key goes to
+    dotbot.local.toml beside the project's dotbot.toml when one is in use,
+    else to ~/.dotbot/dotbot.toml. --user and --project pick the file.
+    """
+    path = _key(key)
+    if path[0] == "login" and path[-1] == "password":
+        raise click.ClickException(
+            "a password typed here stays in your shell history; save it with "
+            f"`dotbot config login {path[1] if len(path) > 2 else 'HOST'}`"
+        )
+    try:
+        cw.check_key(path)
+    except cw.WriteError as exc:
+        raise click.BadParameter(str(exc), param_hint="'KEY'") from exc
+    try:
+        typed = cw.coerce(path, value)
+    except cw.WriteError as exc:
+        raise click.BadParameter(str(exc), param_hint="'VALUE'") from exc
+    if path == ("conn",):
+        _refuse_conn_login(typed)
+    target = _route(ctx, path, where)
+    if path == ("site",):
+        from dotbot.site_packs import is_pack_path, pack_at
+
+        if is_pack_path(typed):
+            try:
+                pack_at(typed)
+            except _config.ConfigError as exc:
+                raise click.ClickException(str(exc)) from exc
+    if isinstance(typed, str):
+        typed = cw.path_value(path, typed, target)
+    _write(target, path, typed)
+    _after_write(ctx, target, path)
+
+
+@cmd.command()
+@click.argument("key")
+@cw.where_options("Write the project's dotbot.toml, which is committed.")
+@click.pass_context
+def unset(ctx, key, where):
+    """Remove KEY from your own config file, so a lower layer applies.
+
+    The file is chosen as `dotbot config set` chooses it.
+    """
+    path = _key(key)
+    target = _route(ctx, path, where)
+    try:
+        removed = cw.unset_value(target, path)
+    except cw.WriteError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if removed:
+        click.echo(f"removed {cw.key_text(path)} from {target}")
+        _after_write(ctx, target, path)
+        return
+    config = (ctx.obj or {}).get("config")
+    others = [
+        item.label
+        for item in getattr(config, "files", ())
+        if cw.lookup(item.data, path) is not None
+    ]
+    where_set = f"; it is set in {', '.join(others)}" if others else ""
+    raise click.ClickException(f"{cw.key_text(path)} is not set in {target}{where_set}")
+
+
+@cmd.command()
+@click.argument("host")
+def login(host):
+    """Save the login sent to the broker at HOST.
+
+    HOST is the broker's host name, or its mqtts:// URL. The user name and
+    password are asked for and kept in ~/.dotbot/dotbot.toml, made readable
+    by you alone, and only that host's broker ever gets them.
+    """
+    if "://" in host:
+        from urllib.parse import urlparse
+
+        host = urlparse(host).hostname or ""
+    host = host.strip().lower()
+    if not host or any(char.isspace() or char in "/@:" for char in host):
+        raise click.BadParameter("give a host name, e.g. broker.lab.example")
+    user = click.prompt("User", err=True)
+    password = click.prompt("Password", hide_input=True, err=True)
+    target = _config.USER_CONFIG_PATH
+    try:
+        cw.set_value(target, ("login", host, "user"), user)
+        cw.set_value(target, ("login", host, "password"), password)
+    except cw.WriteError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"saved the login for {host} to {target}")

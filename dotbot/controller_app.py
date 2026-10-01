@@ -8,14 +8,12 @@
 """Main module of the Dotbot controller command line tool."""
 
 import asyncio
-import os
 import shutil
 import sys
 from pathlib import Path
 
 import click
 import serial
-import toml
 
 from dotbot import (
     CONTROLLER_HTTP_HOST_DEFAULT,
@@ -28,9 +26,15 @@ from dotbot import (
 )
 from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.rate import DETECT_SHARE
-from dotbot.cli._cfg import from_config
+from dotbot.cli._cfg import from_config, resolved_from_config
 from dotbot.cli._conn import ConnError, needs_swarm_id, parse_connection
-from dotbot.cli._site import site_from_context
+from dotbot.cli._site import (
+    active_site,
+    connection_banner,
+    missing_swarm_message,
+    site_from_context,
+)
+from dotbot.config import ConfigError, Resolved, resolve_source
 from dotbot.controller import (
     LH2_CALIBRATION_MAX_AGE_DAYS,
     Controller,
@@ -38,38 +42,33 @@ from dotbot.controller import (
 )
 from dotbot.logger import setup_logging
 
-# Old transport/identity config keys replaced by `conn` / `swarm_id`.
-# Present-in-config triggers a warning and is dropped.
-_LEGACY_TOML_KEYS = {
-    "adapter",
-    "mqtt_host",
-    "mqtt_port",
-    "mqtt_use_tls",
-    "network_id",
-    "swarmit_network_id",
-    "port",
-    "baudrate",
-}
+# The `ctx.obj` key under which a command that implies `--conn` names itself.
+IMPLIED_CONN = "implied_conn"
 
 
-def _resolve_controller_key(key, flag, config, default):
-    """One `[run.controller]` key with the layer it came from.
+def _swarm_applies(conn) -> bool:
+    """Whether a swarm id applies to `conn`: anything but the simulator."""
+    try:
+        return conn is None or parse_connection(conn).kind != "simulator"
+    except ConnError:
+        return True
 
-    Explicit flag, then the environment, then the config table, then the
-    built-in default. The top-level config is deliberately not consulted:
-    it carries the sites, not a selection within one.
-    """
-    if flag is not None:
-        return flag, "the command line"
-    env_name = f"DOTBOT_RUN_CONTROLLER_{key.upper()}"
-    raw = os.environ.get(env_name)
-    if raw is not None:
-        return ([raw] if isinstance(default, str) else raw), env_name
-    section = getattr(getattr(config, "run", None), "controller", None)
-    value = getattr(section, key, None)
-    if value is not None:
-        return ([value] if isinstance(default, str) else value), "the config file"
-    return ([default] if isinstance(default, str) else default), "the default"
+
+def _resolve_controller_key(ctx, key, flag, default):
+    """One `[run.controller]` key and the layer it came from: the flag, the
+    environment, the config files, then `default`."""
+    try:
+        resolved = resolve_source(
+            key,
+            section="run.controller",
+            flag=flag,
+            flag_name="the command line",
+            config=(ctx.obj or {}).get("config"),
+            default=default,
+        )
+    except ConfigError as exc:
+        raise click.ClickException(f"{key}: {exc}") from exc
+    return resolved.value, resolved.source
 
 
 def _max_age_days(raw, source: str) -> int:
@@ -86,17 +85,23 @@ def _max_age_days(raw, source: str) -> int:
     return days
 
 
-def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
+def _conn_to_settings(
+    conn, swarm_id, sim_is_dotbot, conn_source=None, site=None, logins=None
+):
     """Map `--conn` + `--swarm-id` into internal ControllerSettings fields.
 
     The internal `adapter` enum (`cloud`/`edge`/`dotbot-simulator`/…) is
-    an implementation detail; the CLI only ever sees `--conn`. Broker
-    credentials come from the environment (`DOTBOT_MQTT_USER` /
-    `DOTBOT_MQTT_PASS`), never the URL or a flag.
+    an implementation detail; the CLI only ever sees `--conn`. A broker
+    login comes from the environment or from `logins` (the config's
+    `[login]` table), never the URL or a flag, and only reaches a broker
+    `broker_credentials` allows. `conn_source` is the `Resolved` conn came
+    from (None: typed by the person) and `site` the active site.
 
     Raises `click.ClickException` for a malformed `--conn` or a missing
     `--swarm-id` on an mqtt connection.
     """
+    from dotbot.mqtt_tls import broker_credentials
+
     if conn is None:
         raise click.ClickException(
             "no connection given. Pass --conn (-n) with one of:\n"
@@ -109,20 +114,21 @@ def _conn_to_settings(conn, swarm_id, sim_is_dotbot):
     except ConnError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    source = conn_source or Resolved(conn, "flag", "--conn")
     if needs_swarm_id(parsed) and not swarm_id:
-        raise click.ClickException(
-            f"--conn {conn} needs --swarm-id: the broker carries multiple "
-            "swarms; --swarm-id selects yours."
-        )
+        raise click.ClickException(missing_swarm_message(source, site))
 
     if parsed.kind == "mqtt":
+        credentials = broker_credentials(source, logins=logins)
+        if credentials.withheld:
+            click.echo(f"warning: {credentials.withheld}", err=True)
         settings = {
             "adapter": "cloud",
             "mqtt_host": parsed.host,
             "mqtt_port": parsed.port,
             "mqtt_use_tls": parsed.use_tls,
-            "mqtt_username": os.environ.get("DOTBOT_MQTT_USER"),
-            "mqtt_password": os.environ.get("DOTBOT_MQTT_PASS"),
+            "mqtt_username": credentials.username,
+            "mqtt_password": credentials.password,
         }
         if swarm_id:
             settings["network_id"] = swarm_id
@@ -311,11 +317,6 @@ def _generated_fleet(
     help="Filename where CSV data logs are stored. If not set, CSV data logging is disabled.",
 )
 @click.option(
-    "--config-path",
-    type=click.Path(exists=True, dir_okay=False),
-    help="Path to a .toml configuration file.",
-)
-@click.option(
     "--site",
     "site",
     type=str,
@@ -406,7 +407,7 @@ def _generated_fleet(
     default=None,
     help=(
         "With a simulator: the area its robots are placed in, a name from "
-        "the site's `[sites.<site>.areas.<name>]` tables, `x,y,w,h` in "
+        "the site's `[areas.<name>]` tables, `x,y,w,h` in "
         "frame mm, or a `+`-joined composite. Defaults to the site's field."
     ),
 )
@@ -474,41 +475,56 @@ def main(
     log_level,
     log_output,
     csv_data_output,
-    config_path,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
     print(f"Welcome to the DotBots controller (version: {pydotbot_version()}).")
 
-    # The priority order is CLI > ConfigFile (optional) > Defaults.
-    # The config file may carry `conn` / `swarm_id` too; CLI wins.
-    file_data = {}
-    if config_path:
-        file_data = toml.load(config_path)
-
-    # Unified config / selected deployment, slotted in above the legacy
-    # `--config-path` file. Resolves CLI > env > unified-config (run >
-    # deployment > top-level) for each key; falls through to the param
-    # default (None) when no root context is present, preserving the
-    # legacy `--config-path` fallback that follows.
-    conn = from_config(ctx, "conn", "conn", "run")
-    swarm_id = from_config(ctx, "swarm_id", "swarm_id", "run")
+    # CLI > env > the config files > the active site's [connection] > None.
+    site_flag = site
+    conn_r, swarm_r = (
+        resolved_from_config(ctx, key, key, None, site_flag=site_flag)
+        for key in ("conn", "swarm_id")
+    )
+    implied = (ctx.obj or {}).get(IMPLIED_CONN)
+    if implied and conn_r.kind == "flag":
+        conn_r = Resolved(conn_r.value, "flag", implied)
     swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
     mrta_url = from_config(ctx, "mrta_url", "mrta_url", "run.controller")
+    controller_http_port = from_config(
+        ctx,
+        "controller_http_port",
+        "http_port",
+        "run.controller",
+        default=CONTROLLER_HTTP_PORT_DEFAULT,
+    )
+    controller_http_host = from_config(
+        ctx,
+        "controller_http_host",
+        "http_host",
+        "run.controller",
+        default=CONTROLLER_HTTP_HOST_DEFAULT,
+    )
+    headless = from_config(ctx, "headless", "headless", "run.controller", default=False)
 
     unified = (ctx.obj or {}).get("config")
-    site, site_source = site_from_context(ctx, site)
+    active = active_site(ctx, site_flag)
+    site, site_source = site_from_context(ctx, site_flag)
     lh2_calibration, calibration_source = _resolve_controller_key(
-        "lh2_calibration", lh2_calibration, unified, None
+        ctx, "lh2_calibration", lh2_calibration, None
     )
-    print(f"Site: {site.name} (from {site_source})")
+    print(
+        connection_banner(
+            active, conn_r, swarm_r if _swarm_applies(conn_r.value) else None
+        )
+    )
     print(
         f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
         if lh2_calibration
         else "LH2 calibration: none selected"
     )
     camera_calibration, camera_source = _resolve_controller_key(
-        "camera_calibration", camera_calibration, unified, None
+        ctx, "camera_calibration", camera_calibration, None
     )
     print(
         f"Camera calibration: {camera_calibration} (from {camera_source})"
@@ -516,16 +532,16 @@ def main(
         else "Camera calibration: none selected"
     )
     camera_detect, detect_source = _resolve_controller_key(
-        "camera_detect", camera_detect, unified, True
+        ctx, "camera_detect", camera_detect, True
     )
     camera_max_robots, _ = _resolve_controller_key(
-        "camera_max_robots", camera_max_robots, unified, MAX_ROBOTS
+        ctx, "camera_max_robots", camera_max_robots, MAX_ROBOTS
     )
     camera_detect_share, _ = _resolve_controller_key(
-        "camera_detect_share", camera_detect_share, unified, DETECT_SHARE
+        ctx, "camera_detect_share", camera_detect_share, DETECT_SHARE
     )
     raw_max_age, max_age_source = _resolve_controller_key(
-        "lh2_calibration_max_age_days", None, unified, LH2_CALIBRATION_MAX_AGE_DAYS
+        ctx, "lh2_calibration_max_age_days", None, LH2_CALIBRATION_MAX_AGE_DAYS
     )
     max_age_days = _max_age_days(raw_max_age, max_age_source)
     camera_max_robots = int(camera_max_robots)
@@ -542,28 +558,23 @@ def main(
             )
         )
 
-    conn = conn if conn is not None else file_data.get("conn")
-    swarm_id = swarm_id if swarm_id is not None else file_data.get("swarm_id")
-
-    # Warn (and drop) legacy transport keys in a config file — they're
-    # superseded by `conn` / `swarm_id` and silently flowing them through
-    # would mask a stale config.
-    legacy = sorted(_LEGACY_TOML_KEYS & set(file_data))
-    if legacy:
-        click.echo(
-            f"warning: ignoring legacy config key(s) {legacy}; "
-            "use `conn` and `swarm_id` instead.",
-            err=True,
-        )
+    conn, swarm_id = conn_r.value, swarm_r.value
 
     # Translate the single `--conn` connection string into the internal
     # adapter + transport settings. The internal `adapter` enum stays an
     # implementation detail — the CLI never exposes it.
-    conn_settings = _conn_to_settings(conn, swarm_id, sim_is_dotbot)
+    conn_settings = _conn_to_settings(
+        conn,
+        swarm_id,
+        sim_is_dotbot,
+        conn_source=conn_r,
+        site=active,
+        logins=getattr(unified, "login", None),
+    )
 
     dotbot_simulator = conn_settings.get("adapter") == "dotbot-simulator"
     area_spec, area_source = _resolve_controller_key(
-        "simulator_area", simulator_area, unified, None
+        ctx, "simulator_area", simulator_area, None
     )
     simulator_area = _simulator_area(area_spec, area_source, site, dotbot_simulator)
     robots, simulator_init_state = _generated_fleet(
@@ -580,9 +591,7 @@ def main(
     # world file in the cwd. resolve_init_state_path then picks up the
     # freshly-written file (or the packaged world if declined/non-tty).
     if robots is None and conn_settings.get("adapter", "").endswith("simulator"):
-        _maybe_scaffold_sim_state(
-            simulator_init_state or file_data.get("simulator_init_state")
-        )
+        _maybe_scaffold_sim_state(simulator_init_state)
 
     cli_args = {
         "gw_address": gw_address,
@@ -608,11 +617,7 @@ def main(
         "csv_data_output": csv_data_output,
     }
 
-    # Settings precedence: defaults < config-file (non-conn/legacy keys) <
-    # conn translation < other CLI flags.
-    dropped = _LEGACY_TOML_KEYS | {"conn", "swarm_id"}
-    data = {k: v for k, v in file_data.items() if k not in dropped}
-    data.update(conn_settings)
+    data = dict(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
     if data.get("adapter", "").endswith("simulator") and "swarmit_url" not in data:
         # The default swarmit server is the one serving the real robots

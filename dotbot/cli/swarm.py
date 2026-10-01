@@ -15,14 +15,24 @@ what used to be `swarm provision …`) lives under `dotbot device`.
 swarmit has its own config loader, so the unified `dotbot.toml` is bridged in
 at the mount boundary: `conn` / `swarm_id` resolved by the root group are
 translated into swarmit's flags (see `_swarm_inject`), so `dotbot swarm status`
-inherits a saved deployment like every other command. An explicit swarmit
-`--conn` / `--swarm-id` / `-c` still wins.
+inherits the active site's connection like every other command. An explicit
+swarmit `--conn` / `--swarm-id` / `-c` still wins.
 """
+
+import os
 
 import click
 
 from dotbot.cli._lazy import lazy_subcommand
-from dotbot.cli._swarm_inject import inject_config, subcommand_index
+from dotbot.cli._swarm_inject import (
+    group_options,
+    inject_config,
+    subcommand_index,
+    swarm_connection,
+)
+
+# The subcommands that act on robots, which name their connection first
+_ACTING = {"flash", "start", "stop", "reset"}
 
 _HELP = (
     "Fleet ops over the air: status, start/stop, OTA-flash, monitor, "
@@ -55,6 +65,40 @@ def _mount_native_lh2(swarmit_group) -> None:
     from dotbot.cli.swarm_lh2 import cmd as lh2_group
 
     swarmit_group.add_command(lh2_group)
+
+
+def _settle_connection(ctx, args, swarmit_group) -> None:
+    """Print the banner for a command that acts on robots, and hand swarmit
+    the broker login meant for its broker, and no other.
+
+    swarmit reads `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` from the
+    environment itself, so this process's environment is set to the login
+    decided here, or cleared, before swarmit runs.
+    """
+    from dotbot.cli._site import active_site, connection_banner, credentials_for
+    from dotbot.config import Resolved
+    from dotbot.mqtt_tls import PASS_ENV, USER_ENV
+
+    sub = subcommand_index(args, swarmit_group)
+    given = group_options(args, swarmit_group)
+    if "config_path" in given:
+        return
+    conn, swarm_id = swarm_connection(ctx.obj)
+    if "conn" in given:
+        conn = Resolved(given["conn"], "flag", "--conn")
+    if "swarm_id" in given:
+        swarm_id = Resolved(given["swarm_id"], "flag", "--swarm-id")
+    if sub is not None and args[sub] in _ACTING:
+        click.echo(connection_banner(active_site(ctx), conn, swarm_id), err=True)
+    credentials = credentials_for(ctx, conn)
+    if credentials.withheld:
+        click.echo(f"warning: {credentials.withheld}", err=True)
+    os.environ.pop(USER_ENV, None)
+    os.environ.pop(PASS_ENV, None)
+    if credentials.username is not None:
+        os.environ[USER_ENV] = credentials.username
+    if credentials.password is not None:
+        os.environ[PASS_ENV] = credentials.password
 
 
 def _with_config_injection(swarmit_group):
@@ -103,6 +147,8 @@ def _with_config_injection(swarmit_group):
             if handled:
                 return
             args = [*args[: sub + 1], *rest]
+        if args and not any(arg in ("-h", "--help") for arg in args):
+            _settle_connection(ctx, args, swarmit_group)
         final = inject_config(args, ctx.obj, swarmit_group) if args else args
         _run_swarmit(swarmit_group, final)
 

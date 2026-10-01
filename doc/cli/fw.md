@@ -35,29 +35,28 @@ release, while `-f local` reads what `dotbot fw build mari-gateway` put in
 ## Setup
 
 `fw build` needs SEGGER Embedded Studio (SES) and your source folders. SES is
-auto-detected only on macOS (a standard `/Applications/SEGGER/` install); set it
-once per machine in `~/.dotbot/config.toml`:
+auto-detected only on macOS (a standard `/Applications/SEGGER/` install); save
+it once per machine:
 
-```toml
-# ~/.dotbot/config.toml  (once per machine)
-[fw]
-segger_dir = "/path/to/SEGGER Embedded Studio X.YY"
+```bash
+dotbot config set fw.segger_dir "/path/to/SEGGER Embedded Studio X.YY"
 ```
+
+That writes `~/.dotbot/dotbot.toml` from wherever you run it, so it applies in
+every folder. `DOTBOT_FW_SEGGER_DIR` (or `SEGGER_DIR`) overrides it for one
+shell.
 
 The source folders default to `repos/DotBot-firmware`, `repos/swarmit` and
-`repos/mari` next to the `dotbot.toml` in use. Point elsewhere per project, with
-a path relative to that file:
+`repos/mari` next to the project's `dotbot.toml`. A project points elsewhere
+in its `[fw.sources]`, and you point at your own worktree without touching it:
 
-```toml
-# ./dotbot.toml  (per project)
-[fw.sources]
-dotbot-firmware = "../DotBot-firmware"
-swarmit = "../swarmit"
-mari = "../mari"
+```bash
+dotbot config set fw.sources.dotbot-firmware repos/wt-DotBot-firmware-x   # ./dotbot.local.toml
 ```
 
-or with `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE` / `DOTBOT_FW_SOURCES_SWARMIT` /
-`DOTBOT_FW_SOURCES_MARI`, or for one run with `--path`.
+A relative path is read from the file that sets it.
+`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE` / `DOTBOT_FW_SOURCES_SWARMIT` /
+`DOTBOT_FW_SOURCES_MARI` override it for one shell, and `--path` for one run.
 
 > **First SES build needs the nRF + CMSIS_5 packages.** A fresh SES install has
 > no chip headers, so the build fails with `fatal error: 'nrf.h' file not found`.

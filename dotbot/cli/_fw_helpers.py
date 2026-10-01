@@ -12,22 +12,18 @@ contract in one place.
 
 ## Configuration
 
-`SEGGER_DIR` can be persisted in `~/.dotbot/config.toml` so it doesn't
-have to ride in every shell:
-
-```toml
-[fw]
-segger_dir = "/Applications/SEGGER/SEGGER Embedded Studio 8.30"
-```
+The SES install is saved once per machine with
+`dotbot config set fw.segger_dir "<install root>"`, which writes
+`~/.dotbot/dotbot.toml`.
 
 Resolution order (first match wins):
-- SEGGER: `SEGGER_DIR` env var → `[fw].segger_dir` in config → glob
-  `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
+- SEGGER: `DOTBOT_FW_SEGGER_DIR`, then `SEGGER_DIR` → `[fw] segger_dir` →
+  glob `/Applications/SEGGER/SEGGER Embedded Studio*` on macOS.
 - source folders (`resolve_repo`): `DOTBOT_FW_SOURCES_<SOURCE>` (e.g.
   `DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`) → the `[fw.sources]` table, keyed
   `dotbot-firmware` / `swarmit` / `mari`, a relative value resolving against
   the directory of the config file that set it → `repos/<name>` next to the
-  config file in use → error.
+  project's dotbot.toml → error.
 """
 
 import difflib
@@ -74,30 +70,22 @@ DEFAULT_BOARD = "dotbot-v3"
 
 
 def _loaded_config():
-    """The resolved unified config and the file it came from.
+    """The merged config files in use.
 
     Uses the config the root `dotbot` group already resolved onto the Click
-    context when one is active (so `-c`, the cwd `dotbot.toml`, the
-    `~/.dotbot/config.toml` fallback, and flag precedence all apply); for
-    direct (non-CLI) calls it discovers and loads the config fresh.
+    context when one is active; for direct (non-CLI) calls it discovers and
+    loads the files fresh.
     """
     ctx = click.get_current_context(silent=True)
     obj = ctx.obj if (ctx is not None and isinstance(ctx.obj, dict)) else None
     if obj is not None and obj.get("config") is not None:
-        return obj["config"], obj.get("config_path")
+        return obj["config"]
     from dotbot import config as _config
 
     try:
         return _config.load_discovered()
     except _config.ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
-
-
-def _config_fw_value(key: str) -> Optional[str]:
-    """Read `[fw].<key>` from the resolved unified config, or None."""
-    cfg, _ = _loaded_config()
-    val = getattr(cfg.fw, key, None)
-    return str(val) if val else None
 
 
 def _glob_macos_segger() -> Optional[Path]:
@@ -118,22 +106,26 @@ def _glob_macos_segger() -> Optional[Path]:
 
 
 def resolve_segger_dir() -> Path:
-    """SEGGER_DIR env → config → macOS glob → error."""
-    env = os.environ.get("SEGGER_DIR")
-    if env:
-        return Path(env)
-    cfg = _config_fw_value("segger_dir")
-    if cfg:
-        return Path(cfg)
+    """DOTBOT_FW_SEGGER_DIR, then SEGGER_DIR, then `[fw] segger_dir`, then the
+    macOS glob, else an error."""
+    for name in ("DOTBOT_FW_SEGGER_DIR", "SEGGER_DIR"):
+        env = os.environ.get(name)
+        if env:
+            return Path(env)
+    cfg = _loaded_config()
+    if cfg.fw.segger_dir:
+        from dotbot.config import resolve_relative
+
+        return resolve_relative(cfg.fw.segger_dir, cfg.origin("fw", "segger_dir"))
     macos = _glob_macos_segger()
     if macos:
         return macos
     raise click.ClickException(
         "Building firmware from source needs SEGGER Embedded Studio (SES), "
         "which wasn't found.\n"
-        "  • Export SEGGER_DIR, or add to ~/.dotbot/config.toml:\n"
-        "      [fw]\n"
-        '      segger_dir = "/path/to/SEGGER Embedded Studio X.YY"\n'
+        "  • Save it once for this machine:\n"
+        '      dotbot config set fw.segger_dir "/path/to/SEGGER Embedded Studio X.YY"\n'
+        "    or export DOTBOT_FW_SEGGER_DIR (SEGGER_DIR also works).\n"
         "  • You do NOT need SES to run firmware: `dotbot fw fetch -f <version>` "
         "downloads pre-built release binaries and `dotbot device flash` flashes "
         "them.\n"
@@ -183,10 +175,12 @@ REPO_SPECS = {spec.key: spec for spec in (FIRMWARE_REPO, SWARMIT_REPO, MARI_REPO
 def resolve_repo(spec: RepoSpec) -> Path:
     """Locate a source folder (a directory holding `spec.marker`).
 
-    env var → `[fw.sources]` (relative to the config file's directory) →
-    `repos/<dirname>` next to the config file in use → error. The folder
-    returned is absolute.
+    env var (relative to the cwd) → `[fw.sources]` (relative to the file
+    that set it) → `repos/<dirname>` beside the project's dotbot.toml →
+    error. The folder returned is absolute.
     """
+    from dotbot.config import resolve_relative
+
     env = os.environ.get(spec.env_var)
     if env:
         candidate = Path(env).expanduser().absolute()
@@ -195,34 +189,33 @@ def resolve_repo(spec: RepoSpec) -> Path:
         raise click.ClickException(
             f"{spec.env_var}={env!r} does not contain {spec.marker}."
         )
-    cfg, cfg_path = _loaded_config()
-    base = Path(cfg_path).resolve().parent if cfg_path is not None else None
+    cfg = _loaded_config()
     value = getattr(cfg.fw.sources, spec.key.replace("-", "_"), None)
     if value:
-        candidate = Path(value).expanduser()
-        if not candidate.is_absolute() and base is not None:
-            candidate = base / candidate
-        candidate = candidate.absolute()
+        origin = cfg.origin("fw", "sources", spec.key)
+        candidate = resolve_relative(value, origin)
         if (candidate / spec.marker).is_file():
             return candidate
-        where = f" (set in {cfg_path})" if cfg_path is not None else ""
+        where = f" (set in {origin.path})" if origin else ""
         raise click.ClickException(
             f"{spec.setting} = {value!r}{where} resolves to {candidate}, "
             f"which does not contain {spec.marker}."
         )
+    base = cfg.project_dir
     if base is not None:
         candidate = base / "repos" / spec.dirname
         if (candidate / spec.marker).is_file():
             return candidate
-        looked = f"{candidate} (next to {cfg_path}) has no {spec.marker}"
+        looked = f"{candidate} (next to {cfg.project_path}) has no {spec.marker}"
     else:
-        looked = "no dotbot.toml is in use, so there is no repos/ to look in"
+        looked = "no project dotbot.toml is in use, so there is no repos/ to look in"
     raise click.ClickException(
         f"Could not find your {spec.dirname} source folder: {looked}. Either:\n"
-        f"  - set {spec.key} under [fw.sources] in your config (a relative "
-        "path resolves against the config file's directory), or\n"
+        f"  - set {spec.key} under [fw.sources]: dotbot config set "
+        f"fw.sources.{spec.key} /path/to/{spec.dirname}, or\n"
         f"  - export {spec.env_var}=/path/to/{spec.dirname}, or\n"
-        f"  - keep the clone at repos/{spec.dirname} next to your dotbot.toml."
+        f"  - keep the clone at repos/{spec.dirname} next to your project's "
+        "dotbot.toml."
     )
 
 

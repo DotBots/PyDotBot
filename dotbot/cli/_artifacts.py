@@ -31,15 +31,21 @@ DEFAULT_ARTIFACTS_DISPLAY = "~/" + "/".join(_DEFAULT_ARTIFACTS_PARTS)
 def artifacts_dir() -> Path:
     """The firmware cache: ``~/.dotbot/artifacts/`` by default.
 
-    User-level and shared across working directories (like other tools cache
-    downloaded firmware), so you don't re-download a release per directory and
-    the launch dir stays clean. Override with ``$DOTBOT_ARTIFACTS_DIR``.
+    ``$DOTBOT_FW_ARTIFACTS_DIR`` (or ``$DOTBOT_ARTIFACTS_DIR``), then
+    ``[fw] artifacts_dir``, relative to the file that sets it.
     """
-    override = os.environ.get("DOTBOT_ARTIFACTS_DIR")
-    base = (
-        Path(override) if override else Path.home().joinpath(*_DEFAULT_ARTIFACTS_PARTS)
-    )
-    return base.expanduser().resolve()
+    for name in ("DOTBOT_FW_ARTIFACTS_DIR", "DOTBOT_ARTIFACTS_DIR"):
+        override = os.environ.get(name)
+        if override:
+            return Path(override).expanduser().resolve()
+    from dotbot.cli._fw_helpers import _loaded_config
+    from dotbot.config import resolve_relative
+
+    config = _loaded_config()
+    value = config.fw.artifacts_dir
+    if value:
+        return resolve_relative(value, config.origin("fw", "artifacts_dir")).resolve()
+    return Path.home().joinpath(*_DEFAULT_ARTIFACTS_PARTS).resolve()
 
 
 def echo_artifact_path(path: Path, *, action: str = "using") -> None:

@@ -238,8 +238,8 @@ def flash(
         if swarm_id is None:
             raise click.ClickException(
                 "no swarm id. Pass --swarm-id (a 16-bit hex value, e.g. "
-                "--swarm-id 0100), or set swarm_id (or a deployment) in your "
-                "config."
+                "--swarm-id 0100), or set swarm_id in your config or the "
+                "site's [connection]."
             )
         ensure_nrfjprog()
         flash_role(

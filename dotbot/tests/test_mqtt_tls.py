@@ -17,7 +17,14 @@ import paho.mqtt.client as mqtt
 import pytest
 from click.testing import CliRunner
 
-from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker, insecure_requested
+from dotbot.config import Resolved
+from dotbot.mqtt_tls import (
+    INSECURE_ENV,
+    Credentials,
+    allow_unverified_broker,
+    broker_credentials,
+    insecure_requested,
+)
 
 
 @pytest.fixture
@@ -87,7 +94,7 @@ def test_the_dispatcher_arms_the_opt_out_for_every_subcommand(
 
     monkeypatch.setenv(INSECURE_ENV, "1")
     config = tmp_path / "dotbot.toml"
-    config.write_text('[deployment.bench]\nconn = "simulator"\n')
+    config.write_text('conn = "simulator"\n')
 
     result = CliRunner().invoke(cli, ["-c", str(config), "fw", "--help"])
 
@@ -153,3 +160,90 @@ def test_asking_twice_does_not_wrap_twice(monkeypatch, paho_restored):
     assert allow_unverified_broker() is True
 
     assert mqtt.Client.tls_set_context is once
+
+
+# --- which broker gets the credentials ---------------------------------------
+
+_LOGIN = {"DOTBOT_MQTT_USER": "me", "DOTBOT_MQTT_PASS": "secret"}
+_ARGUS = "mqtts://argus.example:8883"
+
+
+def _site(conn, trust=None, distrust=None):
+    return Resolved(conn, "site", "site c405-arena", (), trust, distrust)
+
+
+@pytest.mark.parametrize(
+    "conn, reason",
+    [
+        (Resolved(_ARGUS, "flag", "--conn"), "you named it (--conn)"),
+        (Resolved(_ARGUS, "file", "dotbot.toml"), "you named it (dotbot.toml)"),
+        (_site(_ARGUS, "approved at site add"), "approved at site add"),
+        (_site("mqtt://localhost:1883"), "it runs on this machine"),
+        (_site("mqtt://127.0.0.1"), "it runs on this machine"),
+    ],
+    ids=["a flag", "your file", "an approved site", "localhost", "loopback"],
+)
+def test_credentials_are_sent(conn, reason):
+    got = broker_credentials(conn, _LOGIN)
+    assert (got.username, got.password, got.withheld) == ("me", "secret", None)
+    assert got.reason == reason
+
+
+def test_credentials_are_refused_to_a_broker_a_site_chose_without_approval():
+    why = "site c405-arena's broker was never approved; approve it with ..."
+    got = broker_credentials(_site(_ARGUS, distrust=why), _LOGIN)
+    assert got.username is None and got.password is None
+    assert (
+        got.withheld
+        == f"not sending DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS to argus.example: {why}"
+    )
+
+
+@pytest.mark.parametrize("kind", ["flag", "site"])
+def test_credentials_never_go_over_plain_mqtt_to_a_remote_host(kind):
+    conn = Resolved("mqtt://argus.example:1883", kind, "x", (), "approved at site add")
+    got = broker_credentials(conn, _LOGIN)
+    assert got.username is None
+    assert "plain mqtt://" in got.withheld
+
+
+def test_no_login_in_the_env_is_nothing_to_decide():
+    assert broker_credentials(_site("mqtts://h"), {}) == Credentials()
+
+
+def test_a_non_broker_conn_takes_no_credentials():
+    assert (
+        broker_credentials(Resolved("simulator", "flag", "--conn"), _LOGIN)
+        == Credentials()
+    )
+
+
+# --- a [login] saved for a host ----------------------------------------------
+
+_SAVED = {"Argus.Example": types.SimpleNamespace(user="me", password="hunter2")}
+
+
+def test_a_saved_login_goes_to_its_host_whoever_chose_the_broker():
+    why = "site c405-arena's broker was never approved"
+    got = broker_credentials(_site(_ARGUS, distrust=why), {}, _SAVED)
+    assert (got.username, got.password, got.withheld) == ("me", "hunter2", None)
+    assert got.reason == "your [login] for argus.example"
+
+
+def test_a_saved_login_never_reaches_another_host():
+    conn = Resolved("mqtts://evil.example:8883", "site", "site x", (), "approved")
+    assert broker_credentials(conn, {}, _SAVED) == Credentials()
+
+
+def test_a_saved_login_never_goes_over_plain_mqtt_to_a_remote_host():
+    conn = Resolved("mqtt://argus.example:1883", "flag", "--conn")
+    got = broker_credentials(conn, {}, _SAVED)
+    assert got.username is None
+    assert "not sending your [login] for argus.example" in got.withheld
+
+
+def test_the_env_login_wins_where_it_is_allowed_and_the_saved_one_elsewhere():
+    named = broker_credentials(Resolved(_ARGUS, "flag", "--conn"), _LOGIN, _SAVED)
+    assert named.username == "me" and named.password == "secret"
+    unapproved = broker_credentials(_site(_ARGUS, distrust="no"), _LOGIN, _SAVED)
+    assert unapproved.password == "hunter2" and unapproved.withheld is None

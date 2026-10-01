@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Site packs: discovery, the inline-wins rule, pack-first calibration lookup,
+"""Site packs: the two homes, pack paths, pack-first calibration lookup,
 and `dotbot site add` / `export`. Every folder is a temporary one."""
 
 import subprocess
@@ -16,13 +16,14 @@ from dotbot.calibration import lighthouse2
 from dotbot.calibration.lighthouse2 import load_calibration, resolve_calibration_path
 from dotbot.cli import site_cmd
 from dotbot.cli.main import cli
-from dotbot.config import ConfigError, load_config, load_config_text
+from dotbot.config import ConfigError, load_discovered
 from dotbot.site import Site
 from dotbot.site_packs import (
     find_packs,
+    pack_at,
     resolve_site_entry,
     site_catalog,
-    site_dirs,
+    site_homes,
 )
 from dotbot.tests.lh2_wire_fixture import FIXTURE_ID, FIXTURE_TOML
 
@@ -67,32 +68,67 @@ def runner():
 # --- discovery --------------------------------------------------------------
 
 
-def test_site_dirs_default_and_relative_entries_read_from_the_config_folder(
-    tmp_path, home
-):
-    config_path = tmp_path / "lab" / "dotbot.toml"
-    assert site_dirs(load_config_text(""), config_path) == [
-        tmp_path / "lab" / "sites",
-        home / ".dotbot" / "sites",
+def _project(folder: Path, text: str = ""):
+    """The merged config of a project whose dotbot.toml is in `folder`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "dotbot.toml").write_text(text)
+    return load_discovered(environ={}, start_dir=folder)
+
+
+def test_the_two_homes_are_the_project_sites_then_the_user_sites(tmp_path, home):
+    config = _project(tmp_path / "lab")
+    assert site_homes(config) == [
+        ("project", (tmp_path / "lab" / "sites").resolve()),
+        ("user", home / ".dotbot" / "sites"),
     ]
-    absolute = tmp_path / "abs" / "packs"
-    config = load_config_text(f'site_dirs = ["packs", "{absolute.as_posix()}"]')
-    assert site_dirs(config, config_path) == [tmp_path / "lab" / "packs", absolute]
+    assert site_homes(load_discovered(environ={}, start_dir=tmp_path)) == [
+        ("user", home / ".dotbot" / "sites")
+    ]
 
 
-def test_the_first_site_dir_wins_a_name_clash(tmp_path):
-    first = _pack(tmp_path / "a", "c405-arena")
-    _pack(tmp_path / "b", "c405-arena")
-    _pack(tmp_path / "b", "aio")
-    (tmp_path / "b" / "not-a-pack").mkdir()
-    packs = find_packs([tmp_path / "missing", tmp_path / "a", tmp_path / "b"])
-    assert packs == {"c405-arena": first, "aio": tmp_path / "b" / "aio"}
+def test_an_added_pack_is_found_from_a_project(runner, tmp_path, home):
+    config = tmp_path / "lab" / "dotbot.toml"
+    _pack(tmp_path / "lab" / "sites", "c405-arena")
+    config.parent.mkdir(exist_ok=True)
+    config.write_text('site = "c405-arena"\n')
+    added = runner.invoke(
+        cli, ["-c", str(config), "site", "add", str(_pack(tmp_path / "src", "hall"))]
+    )
+    assert added.exit_code == 0, added.output
+    assert "warning" not in added.output
+    listed = runner.invoke(cli, ["-c", str(config), "site", "list"])
+    assert str(home / ".dotbot" / "sites" / "hall") in listed.output
 
 
-def test_a_pack_is_a_site(tmp_path):
+def test_add_warns_when_a_project_pack_hides_the_added_one(runner, tmp_path, home):
+    config = tmp_path / "lab" / "dotbot.toml"
+    project = _pack(tmp_path / "lab" / "sites", "c405-arena")
+    config.write_text("")
+    source = _pack(tmp_path / "src", "c405-arena", anchor="elsewhere")
+    result = runner.invoke(cli, ["-c", str(config), "site", "add", str(source)])
+    assert result.exit_code == 0, result.output
+    assert (home / ".dotbot" / "sites" / "c405-arena" / "site.toml").is_file()
+    assert f"the project's site pack {project.resolve()} hides this one" in (
+        result.output
+    )
+    assert "site use" not in result.output
+
+
+def test_the_project_home_wins_a_name_clash_and_names_the_hidden_pack(tmp_path, home):
+    first = _pack(tmp_path / "lab" / "sites", "c405-arena")
+    hidden = _pack(home / ".dotbot" / "sites", "c405-arena")
+    _pack(home / ".dotbot" / "sites", "aio")
+    (home / ".dotbot" / "sites" / "not-a-pack").mkdir()
+    packs = find_packs(_project(tmp_path / "lab"))
+    assert packs == {
+        "c405-arena": (first.resolve(), "project", hidden),
+        "aio": (home / ".dotbot" / "sites" / "aio", "user", None),
+    }
+
+
+def test_a_pack_is_a_site(tmp_path, home):
     pack = _pack(tmp_path / "sites", "c405-arena")
-    config_path = tmp_path / "dotbot.toml"
-    entry = resolve_site_entry(load_config_text(""), config_path, "c405-arena")
+    entry = resolve_site_entry(_project(tmp_path), "c405-arena")
     site = entry.site()
     assert (site.name, site.anchor, site.extent_mm) == (
         "c405-arena",
@@ -100,50 +136,45 @@ def test_a_pack_is_a_site(tmp_path):
         (2000, 4000),
     )
     assert site.field.name == "field" and site.staging.name == "staging"
-    assert site.pack == pack
-    assert entry.source == str(pack)
+    assert site.pack == pack.resolve()
+    assert entry.home == "project"
 
 
-def test_an_inline_table_wins_over_a_pack_and_names_it(tmp_path):
-    pack = _pack(tmp_path / "sites", "c405-arena")
-    config = load_config_text(
-        "[sites.c405-arena.areas]\nfield = { x = 0, y = 0, w = 10, h = 10 }\n"
-    )
-    entry = resolve_site_entry(config, tmp_path / "dotbot.toml", "c405-arena")
-    assert entry.pack is None and entry.shadows == pack
-    assert entry.site().field.w == 10
-    assert entry.source == f"inline, shadowing {pack}"
+def test_a_site_may_name_a_pack_by_its_path(tmp_path, home):
+    pack = _pack(tmp_path / "elsewhere", "hall-b")
+    config = _project(tmp_path / "lab", 'site = "../elsewhere/hall-b"\n')
+    entry = resolve_site_entry(config, config.site, config.origin("site"))
+    assert (entry.name, entry.home, entry.pack) == ("hall-b", "path", pack)
+    with pytest.raises(ConfigError, match="holds no site.toml"):
+        pack_at(str(tmp_path / "missing"))
 
 
-def test_an_invalid_pack_fails_loud(tmp_path):
+def test_an_invalid_pack_fails_loud(tmp_path, home):
     pack = _pack(tmp_path / "sites", "broken")
     (pack / "site.toml").write_text("extent = [1, 2]\n")
     with pytest.raises(ConfigError, match="invalid site pack"):
-        site_catalog(load_config_text(""), tmp_path / "dotbot.toml")
+        site_catalog(_project(tmp_path))
 
 
-def test_the_active_site_comes_from_a_pack_with_a_notice_when_shadowed(
+def test_the_active_site_comes_from_a_pack_with_a_notice_when_hiding_one(
     runner, tmp_path, home
 ):
     _pack(tmp_path / "sites", "c405-arena")
     config = tmp_path / "dotbot.toml"
     config.write_text('site = "c405-arena"\n')
-    result = runner.invoke(cli, ["-c", str(config), "config", "show"])
+    result = runner.invoke(cli, ["-c", str(config), "site", "list"])
     assert result.exit_code == 0, result.output
-    assert f"c405-arena  {tmp_path / 'sites' / 'c405-arena'}" in result.output
+    assert f"* c405-arena  -  {(tmp_path / 'sites' / 'c405-arena').resolve()}" in (
+        result.output
+    )
 
     from dotbot.cli._site import site_from_context
 
     class Ctx:
-        obj = {"config": load_config(config), "config_path": config}
+        obj = {"config": load_discovered(environ={}, start_dir=tmp_path)}
 
     site, _ = site_from_context(Ctx())
-    assert site.pack == tmp_path / "sites" / "c405-arena"
-
-    config.write_text('site = "c405-arena"\n[sites.c405-arena]\nanchor = "elsewhere"\n')
-    Ctx.obj = {"config": load_config(config), "config_path": config}
-    site, _ = site_from_context(Ctx())
-    assert site.anchor == "elsewhere" and site.pack is None
+    assert site.pack == (tmp_path / "sites" / "c405-arena").resolve()
 
 
 # --- calibrations -----------------------------------------------------------
@@ -185,16 +216,19 @@ def test_a_calibration_from_another_site_or_anchor_is_refused(tmp_path, home):
 # --- dotbot site add / export ------------------------------------------------
 
 
-def test_export_an_inline_site_with_its_calibrations_then_add_it(
+def test_export_a_project_site_with_its_calibrations_then_add_it(
     runner, tmp_path, home
 ):
     calibrations = home / ".dotbot" / "calibrations" / "c405-arena"
     calibrations.mkdir(parents=True)
     (calibrations / CALIBRATION_NAME).write_text(FIXTURE_TOML)
     config = tmp_path / "dotbot.toml"
-    config.write_text(
-        '[sites.c405-arena]\nanchor = "a corner"\nextent_mm = [2000, 4000]\n'
-        "[sites.c405-arena.areas]\n"
+    config.write_text("")
+    pack = tmp_path / "sites" / "c405-arena"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        'anchor = "a corner"\nextent_mm = [2000, 4000]\n'
+        "[areas]\n"
         "field = { x = 0, y = 0, w = 2000, h = 2000 }\n"
         'bench = { x = 1000, y = 0, w = 1000, h = 1000, role = "corner" }\n'
     )
@@ -225,13 +259,13 @@ def test_export_an_inline_site_with_its_calibrations_then_add_it(
     added = home / ".dotbot" / "sites" / "c405-arena"
     assert (added / "calibrations" / CALIBRATION_NAME).is_file()
 
-    # The added pack is a site the next config finds, bench role and all.
+    # The added pack is a site the next project finds, bench role and all.
     other = tmp_path / "elsewhere" / "dotbot.toml"
     other.parent.mkdir()
     other.write_text("")
-    result = runner.invoke(cli, ["-c", str(other), "config", "show"])
-    assert f"c405-arena  {added}" in result.output
-    site = resolve_site_entry(load_config(other), other, "c405-arena").site()
+    result = runner.invoke(cli, ["-c", str(other), "site", "list"])
+    assert f"c405-arena  -  {added}" in result.output
+    site = resolve_site_entry(_project(other.parent), "c405-arena").site()
     assert site.areas["bench"].role == "corner"
     assert site.extent_mm == (2000, 4000)
 
@@ -277,9 +311,9 @@ def test_a_failed_forced_add_keeps_the_old_pack(runner, tmp_path, home, monkeypa
     assert [path.name for path in sites.iterdir()] == ["lab"]
 
 
-def test_a_hidden_folder_is_not_a_pack(tmp_path):
-    _pack(tmp_path, ".lab-x1y2")
-    assert find_packs([tmp_path]) == {}
+def test_a_hidden_folder_is_not_a_pack(tmp_path, home):
+    _pack(tmp_path / "sites", ".lab-x1y2")
+    assert find_packs(_project(tmp_path)) == {}
 
 
 def _zipped(pack: Path, root: Path) -> bytes:
@@ -338,7 +372,8 @@ def test_add_refuses_what_is_not_a_pack(runner, tmp_path, home):
 
 def test_export_names_the_known_sites_when_asked_for_another(runner, tmp_path, home):
     config = tmp_path / "dotbot.toml"
-    config.write_text("[sites.lab]\n")
+    config.write_text("")
+    _pack(tmp_path / "sites", "lab")
     result = runner.invoke(cli, ["-c", str(config), "site", "export", "nope"])
     assert result.exit_code != 0
     assert "known sites: lab" in result.output
@@ -359,7 +394,7 @@ def test_add_refuses_a_git_url_that_names_no_usable_site(runner, tmp_path, home)
     (repo / "sub").mkdir()
     (repo / "sub" / "keep").write_text("")
     _commit(repo)
-    kept = home / ".dotbot" / "config.toml"
+    kept = home / ".dotbot" / "dotbot.toml"
     kept.parent.mkdir()
     kept.write_text("")
     url = f"git+{repo.as_uri()}/sub/.."

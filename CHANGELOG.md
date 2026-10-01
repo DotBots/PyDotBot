@@ -9,6 +9,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- The config is up to three layered TOML files, merged key by key, the closest
+  to you winning: `./dotbot.local.toml` (you, in a project; untracked) over
+  `./dotbot.toml` (the project) over `~/.dotbot/dotbot.toml` (you, on this
+  machine). A flag or a `DOTBOT_*` variable beats all three for one run.
+  `-c FILE` takes `<stem>.local.toml` beside it as its overlay.
+- `dotbot config set KEY VALUE` and `config unset KEY` change one key in a file
+  git does not track: a machine key (`fw.segger_dir`, `device.probe`, ...) in
+  `~/.dotbot/dotbot.toml`, any other in `./dotbot.local.toml` in a project,
+  else in the user file. `--user` / `--project` pick the file.
+- `dotbot config login HOST` saves a broker login as `[login."HOST"]` in
+  `~/.dotbot/dotbot.toml`, readable by you alone; only that host's broker ever
+  gets it.
+- `config init --project` starts a project: `./dotbot.toml`, its site in
+  `./sites/`, and `dotbot.local.toml` in `.gitignore`.
+- A site carries its usual way in: a `[connection]` table (`conn`, a broker
+  URL, and optionally `swarm_id`) in its pack's `site.toml`, the lowest layer
+  for `conn` and `swarm_id`; a site that exists only in simulation takes
+  `conn = "simulator"`.
+- `dotbot site use`, `site list` and `site show`, and `site add --use`; `site
+  add` shows a pack's broker and asks before adding it (`--yes` to skip).
+- `site` may name a pack folder by its path.
+- `[fw] artifacts_dir`, and `DOTBOT_FW_SEGGER_DIR` beside `SEGGER_DIR`.
+- `[run.controller] headless`, `http_port` and `http_host` are read; they were
+  accepted and ignored.
+- A `DOTBOT_*` variable nothing reads is named in a warning, with the close
+  name when there is one.
+- `run controller`, `run gateway` and the swarm commands that act on robots
+  print one line naming the site, conn and swarm id and where each came from.
 - `dotbot run simulator --robots N` generates a fleet of N robots 200 mm
   apart, centred in the site's `field` area; `--write-init-state FILE` saves
   it as an init-state file to edit and reuse with `--simulator-init-state`.
@@ -57,6 +85,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking:** the user config is `~/.dotbot/dotbot.toml`, the same name as a
+  project's. A `~/.dotbot/config.toml` with no `dotbot.toml` beside it is
+  refused with the rename to make.
+- **Breaking:** site packs live in two homes, `sites/` beside the project's
+  `dotbot.toml` and `~/.dotbot/sites/`; the project's wins a clash.
+- **Breaking:** `dotbot config init` writes the site pack to `~/.dotbot/sites/`
+  and selects it in `~/.dotbot/dotbot.toml`, keeping the rest of that file;
+  `--global` is gone. A broker `--conn` becomes the site's `[connection]`.
+- **Breaking:** `dotbot site use` writes `./dotbot.local.toml` in a project,
+  never the committed `dotbot.toml` unless given `--project`.
+- **Breaking:** `DOTBOT_MQTT_USER` / `DOTBOT_MQTT_PASS` go to a broker only
+  when you named it yourself (flag, env, one of your files), approved it at
+  `dotbot site add`, it comes from a pack beside your project or one named by
+  path, or it is local; never over plain `mqtt://` to another host. `site add`
+  records the approved broker, and a pack whose broker later differs gets no
+  env login until it is approved again.
+- `dotbot config show` prints the files in use, where the site, `conn` and
+  `swarm_id` each came from and what they hide, and which login the broker
+  gets (`--json` for scripts); `config path` lists the files. The list of
+  sites moved to `dotbot site list`.
 - **Breaking - the controller binds loopback by default.** `dotbot run
   controller` served the REST/WebSocket API on `0.0.0.0`, putting an
   unauthenticated API on every interface; the new `/swarmit/*` proxy would
@@ -97,6 +145,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- **Breaking:** `dotbot deployment`, the root `--deployment` flag,
+  `DOTBOT_DEPLOYMENT` and the `[deployment.*]` / `default_deployment` config
+  keys. A config that still has them fails to load and says where the keys
+  went: a site's `[connection]` and `dotbot site use`.
+- **Breaking:** inline `[sites.<name>]` tables and `site_dirs`; a site is a
+  pack. The `[run]` / `[swarm]` copies of `conn` and `swarm_id` (the top-level
+  keys remain), and the keys nothing read: `log_level`, `[swarm] devices`,
+  `[run.gateway]`, and the `[run.controller]` keys `background_map`,
+  `log_output`, `csv_data_output`, `gw_address` and `simulator_init_state`
+  (their flags remain). Each fails to load with one line saying where it went.
+- **Breaking:** `dotbot run controller --config-path`, the flat legacy TOML.
+  `dotbot swarm -c`, swarmit's own file, stays.
 - **The classic web UI** (`dotbot/frontend/`, served at `/PyDotBot`). The
   console at `/console` is the only browser UI; `/PyDotBot` now answers 404,
   so update bookmarks. Its classic-only views go with it: the REST demo page,

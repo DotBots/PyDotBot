@@ -11,9 +11,9 @@ The top level is the four object-namespaces, each one *kind of thing*:
   run     — host-side processes (software you launch on your computer)
 
 Three are nouns (things you manage); `run` is the verb (the thing you do).
-Alongside them sit the read-only management commands - `config` (what
-config is in effect, and where it came from) and `deployment` (which
-deployments are defined, and which is active).
+Alongside them sit the management commands - `config` (what config is in
+effect, and where each value came from) and `site` (the places you work in,
+and which one is active).
 
 Each group lives in its own module under `dotbot.cli.<name>` exposing a
 `cmd` attribute. The root lists the groups eagerly (so `dotbot --help` is
@@ -26,6 +26,8 @@ Adding a new top-level group:
   3. If the backend lives in an optional sibling package, wrap it with
      `dotbot.cli._lazy.lazy_subcommand` inside that module.
 """
+
+import os
 
 import click
 
@@ -67,14 +69,9 @@ _SUBCOMMANDS = (
         "Show the resolved config + where it came from.",
     ),
     (
-        "deployment",
-        "dotbot.cli.deployment_cmd",
-        "List / show configured deployments.",
-    ),
-    (
         "site",
         "dotbot.cli.site_cmd",
-        "Add a site pack to this machine, or export one to share.",
+        "Sites: add a pack, switch with use, list / show, export one to share.",
     ),
 )
 
@@ -121,16 +118,9 @@ def _reads_config(ctx) -> bool:
     type=click.Path(dir_okay=False),
     default=None,
     help=(
-        "Config file to use (default: a dotbot.toml in the current directory, "
-        "else ~/.dotbot/config.toml)."
+        "Project config file to use in place of ./dotbot.toml; "
+        "<stem>.local.toml beside it and ~/.dotbot/dotbot.toml still apply."
     ),
-)
-@click.option(
-    "--deployment",
-    "deployment_name",
-    default=None,
-    metavar="NAME",
-    help="Which configured deployment to target; overrides default_deployment.",
 )
 @click.version_option(
     version=pydotbot_version(),
@@ -138,18 +128,13 @@ def _reads_config(ctx) -> bool:
     message="%(prog)s %(version)s",
 )
 @click.pass_context
-def cli(ctx, config_path, deployment_name):
-    """Load the unified config + select the deployment, then dispatch.
+def cli(ctx, config_path):
+    """Load the config files, then dispatch.
 
-    The resolved config and the selected deployment are stashed on the Click
-    context (`ctx.obj`) so each subcommand can read its defaults from them;
-    flags and env vars still override the file (see `dotbot.config`).
-
-    Discovery order: `-c` / `DOTBOT_CONFIG` > a `dotbot.toml` in the cwd >
-    `~/.dotbot/config.toml` (the per-machine fallback). `fw` reads its `[fw]`
-    keys (`segger_dir`, `[fw.sources]`, ...) through this same resolver.
-
-    Certificate checking is settled here, before any subcommand runs.
+    The merged config is stashed on the Click context (`ctx.obj["config"]`)
+    so each subcommand reads its defaults from it; flags and env vars still
+    override the files (see `dotbot.config`). Certificate checking is
+    settled here, before any subcommand runs.
     """
     allow_unverified_broker()
 
@@ -157,32 +142,48 @@ def cli(ctx, config_path, deployment_name):
         PROJECT_CONFIG_NAME,
         USER_CONFIG_PATH,
         ConfigError,
-        discover_config_path,
-        load_config,
-        select_deployment,
+        discover_files,
+        display_path,
+        load_files,
+        unknown_env,
     )
 
     ctx.ensure_object(dict)
     try:
-        path = discover_config_path(config_path)
-        config = load_config(path)
-        deployment, deployment_resolved = select_deployment(
-            config, cli_name=deployment_name
-        )
+        config = load_files(discover_files(config_path))
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
 
     if _reads_config(ctx):
-        if path is not None:
-            click.echo(f"Using config file at {path}", err=True)
+        if config.files:
+            names = " + ".join(item.label for item in config.files)
+            click.echo(f"Using config {names}", err=True)
         else:
             click.echo(
                 f"No config file found (looked for ./{PROJECT_CONFIG_NAME} and "
-                f"{USER_CONFIG_PATH}); using built-in defaults",
+                f"{display_path(USER_CONFIG_PATH)}); using built-in defaults",
                 err=True,
             )
+        for name, close in unknown_env():
+            hint = f" (did you mean {close}?)" if close else ""
+            click.echo(f"warning: nothing reads {name}{hint}", err=True)
+        _warn_if_readable(config)
 
     ctx.obj["config"] = config
-    ctx.obj["config_path"] = path
-    ctx.obj["deployment"] = deployment
-    ctx.obj["deployment_name"] = deployment_resolved
+
+
+def _warn_if_readable(config) -> None:
+    """Warn when the user file holds a login others on this machine can read."""
+    user = config.file("user")
+    if user is None or not user.config.login or os.name == "nt":
+        return
+    try:
+        mode = user.path.stat().st_mode
+    except OSError:
+        return
+    if mode & 0o077:
+        click.echo(
+            f"warning: {user.label} holds a [login] and others can read it; "
+            f"chmod 600 {user.path}",
+            err=True,
+        )

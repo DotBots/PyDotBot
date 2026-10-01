@@ -52,17 +52,12 @@ def inject_config(args, obj):
 @pytest.fixture(autouse=True)
 def _clean_conn_env(monkeypatch):
     # The resolver also reads env; clear the swarm/conn vars for determinism.
-    for var in (
-        "DOTBOT_CONN",
-        "DOTBOT_SWARM_CONN",
-        "DOTBOT_SWARM_ID",
-        "DOTBOT_SWARM_SWARM_ID",
-    ):
+    for var in ("DOTBOT_CONN", "DOTBOT_SWARM_ID"):
         monkeypatch.delenv(var, raising=False)
 
 
 def _obj(**kw):
-    return {"config": DotbotConfig(**kw), "deployment": None}
+    return {"config": DotbotConfig(**kw)}
 
 
 def test_injects_conn_and_swarm_id():
@@ -132,6 +127,8 @@ def test_subcommand_flags_do_not_block_swarm_id(args):
         ["--swarm-id", "A001", "flash", "x.bin", "-ys"],
         ["--swarm-id=A001", "-d", "ABC", "flash", "x.bin", "-y", "-s"],
         ["-sA001", "status"],
+        ["-vs", "A001", "status"],
+        ["-vsA001", "status"],
     ],
 )
 def test_explicit_group_swarm_id_wins(args):
@@ -163,3 +160,135 @@ def test_flash_name_resolved_after_group_options(tmp_path, monkeypatch):
 
     bin_path = str(fw / "spin-sandbox-dotbot-v3.bin")
     assert seen == [["--swarm-id", "1234", "-d", "ABC", "flash", bin_path, "-ys"]]
+
+
+# --- the active site's connection, the banner and the credentials ------------
+
+
+def _project_obj(folder, **kw):
+    """A project in `folder` working in site arena, a pack beside it whose
+    broker is argus; `kw` are top-level keys of its dotbot.toml."""
+    from dotbot.config import load_discovered
+
+    pack = folder / "sites" / "arena"
+    pack.mkdir(parents=True, exist_ok=True)
+    (pack / "site.toml").write_text(
+        '[connection]\nconn = "mqtts://argus.example:8883"\n'
+    )
+    lines = ['site = "arena"', *(f'{key} = "{value}"' for key, value in kw.items())]
+    (folder / "dotbot.toml").write_text("\n".join(lines) + "\n")
+    return {"config": load_discovered(environ={}, start_dir=folder)}
+
+
+def test_injects_the_sites_broker_under_your_swarm_id(tmp_path):
+    out = inject_config(["status"], _project_obj(tmp_path, swarm_id="A001"))
+    assert out == [
+        "--conn",
+        "mqtts://argus.example:8883",
+        "--swarm-id",
+        "A001",
+        "status",
+    ]
+
+
+def _settle(args, obj, monkeypatch, capsys):
+    ctx = click.Context(click.Command("swarm"), obj=obj)
+    swarm._settle_connection(ctx, args, _stub_group())
+    return capsys.readouterr().err
+
+
+def _unapproved_obj(tmp_path, monkeypatch, **kw):
+    """The same site, from a pack in ~/.dotbot/sites that was never approved."""
+    from dotbot import site_packs
+    from dotbot.config import load_discovered
+
+    monkeypatch.setattr(site_packs, "USER_SITES_DIR", tmp_path / "home-sites")
+    pack = tmp_path / "home-sites" / "arena"
+    pack.mkdir(parents=True)
+    (pack / "site.toml").write_text(
+        '[connection]\nconn = "mqtts://argus.example:8883"\n'
+    )
+    lines = ['site = "arena"', *(f'{key} = "{value}"' for key, value in kw.items())]
+    (tmp_path / "dotbot.toml").write_text("\n".join(lines) + "\n")
+    return {"config": load_discovered(environ={}, start_dir=tmp_path)}
+
+
+def test_credentials_withheld_from_an_unapproved_broker_leave_the_env(
+    monkeypatch, capsys, tmp_path
+):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    obj = _unapproved_obj(tmp_path, monkeypatch, swarm_id="A001")
+    err = _settle(["status"], obj, monkeypatch, capsys)
+    assert "site arena's broker was never approved" in err
+    assert "DOTBOT_MQTT_USER" not in os.environ
+    assert "DOTBOT_MQTT_PASS" not in os.environ
+
+
+@pytest.mark.parametrize(
+    "args",
+    [["status"], ["--conn", "mqtts://argus.example:8883", "status"]],
+    ids=["a pack beside your project", "--conn"],
+)
+def test_credentials_kept_for_a_trusted_or_named_broker(
+    monkeypatch, capsys, tmp_path, args
+):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    err = _settle(args, _project_obj(tmp_path, swarm_id="A001"), monkeypatch, capsys)
+    assert "warning" not in err
+    assert os.environ["DOTBOT_MQTT_USER"] == "me"
+
+
+def test_a_saved_login_for_the_broker_reaches_swarmit_through_the_env(
+    monkeypatch, capsys, tmp_path
+):
+    import os
+
+    from dotbot.config import Login
+
+    monkeypatch.delenv("DOTBOT_MQTT_USER", raising=False)
+    monkeypatch.delenv("DOTBOT_MQTT_PASS", raising=False)
+    obj = _unapproved_obj(tmp_path, monkeypatch, swarm_id="A001")
+    obj["config"].login["argus.example"] = Login(user="me", password="s3cret")
+    err = _settle(["status"], obj, monkeypatch, capsys)
+    assert "warning" not in err
+    assert (os.environ["DOTBOT_MQTT_USER"], os.environ["DOTBOT_MQTT_PASS"]) == (
+        "me",
+        "s3cret",
+    )
+    obj["config"].login.clear()
+    obj["config"].login["other.example"] = Login(user="me", password="s3cret")
+    _settle(["status"], obj, monkeypatch, capsys)
+    assert "DOTBOT_MQTT_USER" not in os.environ
+
+
+def test_a_conn_inside_a_short_cluster_is_the_one_judged(monkeypatch, capsys):
+    import os
+
+    monkeypatch.setenv("DOTBOT_MQTT_USER", "me")
+    monkeypatch.setenv("DOTBOT_MQTT_PASS", "secret")
+    args = ["-vn", "mqtt://remote.example:1883", "status"]
+    obj = _obj(conn="mqtts://mine.example:8883", swarm_id="A001")
+    assert inject_config(args, obj) == ["--swarm-id", "A001", *args]
+    err = _settle(args, obj, monkeypatch, capsys)
+    assert "plain mqtt://" in err
+    assert "DOTBOT_MQTT_USER" not in os.environ
+
+
+def test_the_banner_prints_for_commands_that_act_on_robots(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.delenv("DOTBOT_MQTT_USER", raising=False)
+    monkeypatch.chdir(tmp_path)
+    obj = _project_obj(tmp_path, swarm_id="A001")
+    assert _settle(["status"], obj, monkeypatch, capsys) == ""
+    err = _settle(["flash", "app.bin"], obj, monkeypatch, capsys)
+    assert err.strip() == (
+        "site arena (dotbot.toml), conn mqtts://argus.example:8883 "
+        "(site arena), swarm A001 (dotbot.toml)"
+    )

@@ -33,7 +33,6 @@ there).
 | `-s, --swarm-id` | Swarm id in hex (required for MQTT, ignored otherwise) |
 | `--headless` | Don't open the web UI in a browser (still served) |
 | `--controller-http-port` | HTTP/REST port (default `8000`) |
-| `--config-path` | Path to a `.toml` config file |
 | `--dotbot / --sailbot` | With `--conn simulator`: which robot to simulate |
 
 See `dotbot run controller --help` for the full list (logging, CSV export, map
@@ -42,24 +41,25 @@ size, background map, simulator init state).
 `dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` - try
 the UI with no DotBot or gateway.
 
-## Use a config file
+## Save your settings
 
 Save your connection once instead of repeating flags:
 
 ```bash
-# save where to connect (writes ./dotbot.toml)
+# a site whose broker is this one, and your swarm id (writes ~/.dotbot/)
 dotbot config init --conn mqtts://broker:8883 --swarm-id 1234
 
-# the controller picks it up automatically when run from here
-dotbot run controller
+# the controller picks it up from any folder
+BROWSER=true dotbot run controller --headless
 
 # override the saved connection for one run (a simulator instead)
-dotbot run controller --conn simulator
+BROWSER=true dotbot run controller --conn simulator --headless
 ```
 
-CLI flags override config-file values when both are given. See the
-[configuration reference](../reference/configuration.md) for how the file is
-discovered and the full schema.
+A flag beats a saved value. To keep the browser from opening every time,
+`dotbot config set run.controller.headless true`. See the
+[configuration reference](../reference/configuration.md) for the three files
+and every key.
 
 ## The web UI
 
