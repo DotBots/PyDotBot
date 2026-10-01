@@ -612,6 +612,10 @@ def test_config_init_puts_a_broker_in_the_site_and_swarm_id_in_your_file(runner,
 
     connection = read_pack(home / "sites" / "default").connection
     assert (connection.conn, connection.swarm_id) == ("mqtts://broker:8883", None)
+    from dotbot.site_packs import broker_trust, resolve_site_entry
+
+    entry = resolve_site_entry(None, "default")
+    assert broker_trust(entry) == ("approved at site add", None)
 
 
 @pytest.mark.parametrize("conn", ["/dev/ttyACM0", "simulator"])

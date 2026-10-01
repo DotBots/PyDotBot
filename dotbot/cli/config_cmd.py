@@ -24,7 +24,12 @@ from dotbot.cli._site import active_site, credentials_for
 from dotbot.config import display_path, resolve_source, unknown_env
 from dotbot.mqtt_tls import LOCAL_HOSTS
 from dotbot.site import SITE_DEFAULT, check_site_name
-from dotbot.site_packs import PACK_FILE, PROJECT_SITES_DIR, user_sites_dir
+from dotbot.site_packs import (
+    PACK_FILE,
+    PROJECT_SITES_DIR,
+    user_sites_dir,
+    write_approval,
+)
 
 _CONFIG_DOCS_URL = (
     "https://pydotbot.readthedocs.io/en/latest/reference/configuration.html"
@@ -279,6 +284,8 @@ def init(project, force, conn, swarm_id, site, field_spec):
     else:
         pack.mkdir(parents=True, exist_ok=True)
         pack_file.write_text(default_site_toml(field_mm, broker))
+        if broker and not project:
+            write_approval(pack, broker.strip())
         click.echo(
             f"Wrote {pack_file}: a {_metres(field_mm[0])} x "
             f"{_metres(field_mm[1])} m field with a staging strip below it."
