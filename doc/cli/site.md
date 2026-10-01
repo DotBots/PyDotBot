@@ -167,7 +167,10 @@ field, zero at its top-left and +y along the robots' starting heading. The
 around that field: 1.5 m of floor round it and a 600 mm `staging` strip along
 its bottom (+y) edge, as wide as the field, so the demos that park robots in
 staging run without editing the pack. With `--size WxH` the site is W x H mm
-with the field centred and the strip below it. The pack goes into the nearest
+with the field centred and the strip below it, so it must be at least 1200 mm
+taller than the field. The pack carries no `[connection]`: pass `-n` to
+commands run in it, as the ones `init` prints do, or add one to its
+`site.toml`. The pack goes into the nearest
 home (`sites/` beside the project's `dotbot.toml`, else `~/.dotbot/sites/`),
 and the calibration, re-expressed in the new site, under
 `~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the tag
@@ -182,7 +185,7 @@ dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field c
 | Flag | Meaning |
 |---|---|
 | `--from-calibration ID` | The spin calibration: an id prefix, a tag or a path. |
-| `--size WxH` | The site's size in mm, with the field in its middle and staging below it; refused when they do not fit. |
+| `--size WxH` | The site's size in mm, with the field in its middle and staging below it; refused when they do not fit (at least the field's width, and its height plus 1200 mm). |
 | `-f`, `--force` | Replace the `site.toml` of a site of that name. |
 
 ## See also

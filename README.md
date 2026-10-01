@@ -202,7 +202,8 @@ calibration files are in the [LH2 calibration guide][lh2-doc].
 - **Drive a single DotBot** end to end - build, flash, and control one DotBot:
   the [one-bot guide][one-bot-doc].
 - **Position tracking with Lighthouse 2** - give the fleet real-world `(x, y)`,
-  calibrated over the air: the [LH2 calibration guide][lh2-doc].
+  calibrated over the air: the [LH2 calibration guide][lh2-doc], which also
+  points at an experimental calibration from robots spinning in place.
 - **The controller + web UI** - drive and visualize a swarm from the browser:
   the [controller guide][controller-doc].
 - **Build firmware from source** instead of `dotbot fw fetch` - needs

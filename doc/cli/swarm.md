@@ -147,10 +147,10 @@ under `~/.dotbot/calibrations/<site>/`. `push` then sends it to every robot -
 the whole site shares one calibration. It takes a file path, a `--tag` or an
 id prefix, and refuses robots that report another site or run sandbox
 firmware older than this `dotbot`. (`collect --push` sends only to the robots
-whose captures built it, stopping their app first.) A
-robot in its app drops a calibration: `push` refuses a robot you name that is
-in its app, and a push to the whole fleet leaves such robots out and lists
-them. `dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those
+whose captures built it, stopping their app first.) A robot in its app drops a
+calibration: `push` refuses a robot you name that is in its app, and a push to
+the whole fleet leaves such robots out and lists them, or refuses when none is
+left. `dotbot swarm -d <addresses> calibrate-lh2 push <id>` sends to those
 robots only.
 
 ### Spin calibration (experimental)
@@ -163,10 +163,18 @@ to a rotation and an origin; the spin radius sets the scale.
 ```bash
 dotbot swarm -d <addresses> flash -y calibrate-spin
 dotbot swarm -d <addresses> calibrate-lh2 collect --spin
-dotbot site init <name> --from-calibration <id> --size 3000x4000
+dotbot site init <name> --from-calibration <id>
 dotbot swarm -d <addresses> calibrate-lh2 push <new id> --site <name> --site-changed
 dotbot swarm -d <addresses> flash -y remote-control
 ```
+
+`collect --spin` checks that every robot holds the `calibrate-spin` app and
+refuses before anything moves if one does not, printing the `flash` line for
+it. It then starts the app, collects each robot's reads, stops the robots
+again, and prints the commands that follow.
+Without `-d` it spins every robot of the swarm. `--tag` and `--push` work as
+for the corner method; `--device`, `--points`, `--over`, `--square`,
+`--reads`, `--timeout` and `--retries` do not apply.
 
 Spread the robots about 250 mm apart over the area to calibrate; at least 3
 circles must pass the health check (round, and the size of their peers) and 8
