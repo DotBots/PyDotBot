@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-01
+
 Upgrading from 0.31.0? Read [Upgrading from 0.31.0](#upgrading-from-0310) first:
 the config file, site definitions, LH2 calibration files and the robots'
 sandbox firmware all change.
@@ -69,6 +71,10 @@ sandbox firmware all change.
   /controller/robot_models` serves each robot model's body.
 - The simulator runs the firmware's control code, compiled to WebAssembly, and
   the controller, simulator and console keep up with 1000 robots.
+- `[run.controller] stale_after_s`, `lost_after_s` and `forget_after_s`
+  (default 3, 10 and 300 s; `0` never forgets) set when a silent robot turns
+  stale, lost and forgotten. The console fades a stale robot and hides a lost
+  one; **Lost robots** in the Layers tab shows them.
 
 ### Changed
 
@@ -122,6 +128,17 @@ sandbox firmware all change.
 - `swarm calibrate-lh2 push` refuses a named robot that is in its app, which
   would drop the calibration; a push to the whole fleet leaves such robots out
   and lists them.
+- **Breaking:** a robot the controller stops hearing is stale, then lost,
+  then forgotten (dropped, so its routes answer 404 and it comes back as a new
+  robot). `DotBotStatus.INACTIVE` is `DotBotStatus.STALE`, still `1`. `GET
+  /controller/dotbots` leaves lost robots out unless given
+  `?include_lost=true`, `status=` or `address=`, and sends the resume headers
+  only with `?include_lost=true`. A forgotten robot arrives on the stream as
+  `null` in a delta, and `hello.protocol` is 2.
+- `dotbot fw fetch` pulls DotBot-firmware 1.25.0 (with `calibrate-spin`) and
+  the installed swarmit's release, now at least 0.11.0.
+- `dotbot fw fetch` takes a release name, `swarmit` or `dotbot-firmware`, as
+  well as a role or an app: `dotbot fw fetch dotbot-firmware -f 1.25.0`.
 - LH2 channel 14 uses the 901000 rotor period. A site calibrated on channel
   14 recalibrates once.
 
@@ -166,6 +183,9 @@ sandbox firmware all change.
 4. Over the air, flash the sandbox apps again (`dotbot swarm flash ...`), then
    check positions.
 5. Move clients of `/controller/ws/status` to `/controller/ws/stream`.
+6. Scripts that need lost robots from `GET /controller/dotbots` pass
+   `?include_lost=true`; replace `DotBotStatus.INACTIVE` with
+   `DotBotStatus.STALE`; stream clients accept a `null` robot in a delta.
 
 ## 0.31.0 and earlier
 
