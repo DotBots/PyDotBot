@@ -78,18 +78,32 @@ sees. Select one to control it:
 - **Waypoints** - set waypoints on the map for the selected DotBots to drive to.
 - If you flashed Lighthouse 2 localization, DotBots report their `(x, y)` position
   on the map (see [LH2 calibration](lh2-calibration.md)).
-- A DotBot the controller has not heard from for 3 s is drawn faded (stale),
-  and one silent for 10 s is lost and hidden; tick **Lost robots** in the
-  Layers tab to show those too, drawn fainter still. A lost robot swarmit still
-  reports stays on the map. The count beside LIVE in the top bar names each
-  tier (see [how long a robot is kept](../reference/rest.md#how-long-a-robot-is-kept)).
-- **List** and **Grid** (top right) show each robot's sandbox state, link
-  tier and how long since it was heard, battery, the app it runs, its sandbox
-  firmware, the LH2 calibration it holds, its position, heading and area.
-  **reflash** marks a robot whose sandbox firmware is too old for this
-  controller's calibrations, and **differs** one holding another calibration
-  than the one the controller serves. The list sorts by any column, and
-  **Columns** hides the ones you do not need; hover a row or card for all of it.
+- A DotBot's app reports its position and battery to the controller about
+  twice a second. **Reports** says how that is going:
+
+  | Reports | REST `status` | Meaning |
+  |---|---|---|
+  | Reporting | `0` active | heard within 3 s |
+  | Late | `1` stale | silent 3 to 10 s: drawn faded, still sent commands |
+  | Silent | `2` lost | silent over 10 s: hidden from the map unless **Silent robots** is ticked in the Layers tab |
+  | No reports | absent | only swarmit knows it: in its bootloader, or running an app that does not report |
+
+  A silent robot swarmit still hears stays on the map. The count beside LIVE
+  (the console's own connection) in the top bar names the late and silent ones
+  (see [how long a robot is kept](../reference/rest.md#how-long-a-robot-is-kept)).
+- **List** and **Grid** (top right) show each robot. The list has a column
+  per fact: sandbox state, reports and how long since the last one, battery,
+  app, bootloader version (and the net core's when it differs), LH2
+  calibration, position, heading and area; it sorts by any column, and
+  **Columns** hides the ones you do not need. The grid's **Compact** cards show
+  state, battery, where the robot is, its app and bootloader, and only what
+  needs attention; **Full** cards add the address, reports, version digests,
+  calibration and device type. The browser remembers the choice. Heading is
+  drawn as on the map, a circle with a line toward where the robot faces,
+  empty while it has reported none. **too old** marks a bootloader older than
+  this controller's calibrations need (reflash `swarmit-sandbox`), and
+  **differs** a robot holding another calibration than the controller serves.
+  Hover a row, card or value for the rest.
 
 ## Firefox websockets note
 
