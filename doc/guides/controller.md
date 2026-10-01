@@ -35,8 +35,8 @@ there).
 | `--controller-http-port` | HTTP/REST port (default `8000`) |
 | `--dotbot / --sailbot` | With `--conn simulator`: which robot to simulate |
 
-See `dotbot run controller --help` for the full list (logging, CSV export, map
-size, background map, simulator init state).
+See `dotbot run controller --help` for the full list (logging, CSV export,
+background map, simulator init state).
 
 `dotbot run simulator` is shorthand for `dotbot run controller --conn simulator` - try
 the UI with no DotBot or gateway.

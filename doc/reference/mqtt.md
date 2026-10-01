@@ -32,7 +32,7 @@ base64 string derived from the current PIN code (see [Secured brokers](#secured-
 |---|---|---|
 | `/command/<swarm-id>/<address>/<app>/<cmd>` | you publish | drive a DotBot (`move_raw`, `rgb_led`, `waypoints`, `clear_position_history`) |
 | `/notify` | you subscribe | controller state changes + position updates |
-| `/request` / `/reply/<id>` | request/reply | one-shot queries (e.g. list of DotBots, map size) |
+| `/request` / `/reply/<id>` | request/reply | one-shot queries (the list of DotBots, the site) |
 
 Command-topic fields:
 
@@ -67,9 +67,11 @@ mosquitto_pub -h <broker> \
 mosquitto_sub -h <broker> -t '/pydotbot/<secret-topic>/notify' | jq
 ```
 
-Notifications carry a `cmd` field: `RELOAD` (refetch all DotBots), `UPDATE`
-(per-DotBot state delta, incl. LH2 position), `PIN_CODE_UPDATE` (the secret topic
-and key are about to rotate - see below).
+`/notify` carries the controller's `/controller/ws/stream` frames (see the
+[REST reference](rest.md)), each with a `type`: a `snapshot` of the fleet, then
+`delta` frames with only what changed (incl. LH2 position), plus `event`
+frames. A `cmd` of `PIN_CODE_UPDATE` says the secret topic and key are about
+to rotate - see below.
 
 ## Secured brokers
 

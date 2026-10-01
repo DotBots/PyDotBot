@@ -56,7 +56,7 @@ you talk to the controller over REST/WebSocket/MQTT.
 
 ```bash
 dotbot run demo --list   # what's available
-dotbot run demo qr       # phone-as-joystick over QrKey
+dotbot run demo qr       # relay the controller stream over QrKey MQTT
 ```
 
 Richer multi-DotBot scenarios - work-and-charge, charging-station, labyrinth, the
