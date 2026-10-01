@@ -631,6 +631,81 @@ def test_config_init_puts_a_broker_in_the_site_and_swarm_id_in_your_file(runner,
     assert broker_trust(entry) == ("approved at site add", None)
 
 
+def _keep(runner, *args):
+    result = runner.invoke(cli, ["config", "init", *args])
+    assert result.exit_code == 0, result.output
+    return result
+
+
+def test_config_init_puts_a_broker_in_a_kept_pack(runner, home):
+    from dotbot.site_packs import broker_trust, read_pack, resolve_site_entry
+
+    pack = home / "sites" / "default"
+    with runner.isolated_filesystem():
+        _init(runner, "--field", "1m")
+        (pack / "site.toml").write_text(
+            "# measured\n"
+            + (pack / "site.toml").read_text()
+            + '\n[connection]\n# the lab\'s\nswarm_id = "0B0B"\n'
+        )
+        result = _keep(runner, "--conn", "mqtts://broker:8883", "--swarm-id", "A001")
+    assert "Kept the site pack" in result.output
+    assert f'conn = "mqtts://broker:8883" to {pack / "site.toml"}' in result.output
+    assert (pack / "site.toml").read_text().startswith("# measured\n")
+    assert "# the lab's" in (pack / "site.toml").read_text()
+    assert read_pack(pack).connection.swarm_id == "0B0B"
+    assert _site_of(pack).field.w == 1000
+    assert read_pack(pack).connection.conn == "mqtts://broker:8883"
+    assert load_config(home / "dotbot.toml").conn is None
+    assert broker_trust(resolve_site_entry(None, "default")) == (
+        "approved at site add",
+        None,
+    )
+
+
+def test_config_init_replaces_a_kept_packs_broker_and_says_so(runner, home):
+    from dotbot.site_packs import broker_trust, read_pack, resolve_site_entry
+
+    pack = home / "sites" / "default"
+    with runner.isolated_filesystem():
+        _init(runner, "--conn", "mqtts://old:8883")
+        result = _keep(runner, "--conn", "mqtts://new:8883")
+        same = _keep(runner, "--conn", "mqtts://new:8883")
+    assert "(was mqtts://old:8883)" in result.output
+    assert "already names mqtts://new:8883" in same.output
+    assert read_pack(pack).connection.conn == "mqtts://new:8883"
+    assert broker_trust(resolve_site_entry(None, "default"))[0] is not None
+
+
+def test_config_init_warns_when_your_conn_hides_the_broker(runner, home):
+    (home / "dotbot.toml").write_text('conn = "/dev/ttyACM0"\n')
+    with runner.isolated_filesystem():
+        result = _init(runner, "--conn", "mqtts://broker:8883")
+    assert "sets conn, which hides default's conn" in result.output
+
+
+def test_config_init_force_rewrites_the_pack_with_the_broker(runner, home):
+    from dotbot.site_packs import read_pack
+
+    pack = home / "sites" / "default"
+    with runner.isolated_filesystem():
+        _init(runner, "--field", "1m", "--conn", "mqtts://old:8883")
+        _init(runner, "--field", "3m", "--conn", "mqtts://new:8883")
+    assert _site_of(pack).field.w == 3000
+    assert read_pack(pack).connection.conn == "mqtts://new:8883"
+
+
+@pytest.mark.parametrize("conn", ["/dev/ttyACM0", "simulator"])
+def test_config_init_keeps_a_serial_conn_out_of_a_kept_pack(runner, home, conn):
+    from dotbot.site_packs import read_pack
+
+    with runner.isolated_filesystem():
+        _init(runner)
+        _keep(runner, "--conn", conn)
+    assert load_config(home / "dotbot.toml").conn == conn
+    assert read_pack(home / "sites" / "default").connection is None
+
+
 @pytest.mark.parametrize("conn", ["/dev/ttyACM0", "simulator"])
 def test_config_init_keeps_a_serial_path_or_the_simulator_yours(runner, home, conn):
     with runner.isolated_filesystem():

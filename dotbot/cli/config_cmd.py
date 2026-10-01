@@ -10,8 +10,10 @@ key, in an untracked file unless told otherwise (`dotbot.cli._config_write`).
 """
 
 import json
+import os
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +219,50 @@ def _write(target: Path, key: tuple[str, ...], value) -> None:
     click.echo(f"wrote {cw.key_text(key)} = {json.dumps(value)} to {target}")
 
 
+def _warn_conn_hidden(config, site: str) -> None:
+    """Warn about each file or env variable whose `conn` hides the site's."""
+    phrases = [
+        f"{item.label} sets conn"
+        for item in getattr(config, "files", ())
+        if cw.lookup(item.data, ("conn",)) is not None
+    ]
+    if "DOTBOT_CONN" in os.environ:
+        phrases.append("DOTBOT_CONN is set")
+    for phrase in phrases:
+        click.echo(
+            f"warning: {phrase}, which hides {site}'s conn; "
+            "`dotbot config unset conn` to follow the site",
+            err=True,
+        )
+
+
+def _set_pack_broker(pack_file: Path, broker: str) -> None:
+    """Make `broker` the `[connection]` conn of the pack at `pack_file`,
+    keeping its comments and other keys."""
+    from pydantic import ValidationError
+
+    document = tomlkit.parse(pack_file.read_text())
+    connection = document.get("connection")
+    previous = connection.get("conn") if isinstance(connection, dict) else None
+    if previous is not None and str(previous).strip() == broker:
+        click.echo(f"The site's [connection] already names {broker}")
+        return
+    if not isinstance(connection, dict):
+        connection = tomlkit.table()
+        document["connection"] = connection
+    connection["conn"] = broker
+    text = tomlkit.dumps(document)
+    try:
+        _config.SiteSection.model_validate(tomllib.loads(text))
+    except ValidationError as exc:
+        raise click.ClickException(f"invalid site pack {pack_file}:\n{exc}") from exc
+    staged = pack_file.with_name(pack_file.name + ".tmp")
+    staged.write_text(text)
+    staged.replace(pack_file)
+    was = f" (was {previous})" if previous is not None else ""
+    click.echo(f"wrote [connection] conn = {json.dumps(broker)} to {pack_file}{was}")
+
+
 @cmd.command()
 @click.option(
     "--project",
@@ -245,7 +291,8 @@ def _write(target: Path, key: tuple[str, ...], value) -> None:
     help="The field's size: one value for a square, WxH for a rectangle. "
     "A bare number is mm; 1.5m and 1500mm also work.",
 )
-def init(project, force, conn, swarm_id, site, field_spec):
+@click.pass_context
+def init(ctx, project, force, conn, swarm_id, site, field_spec):
     """Scaffold a site with a field and select it.
 
     Writes the site pack (~/.dotbot/sites/<site>/site.toml) and sets site,
@@ -253,7 +300,7 @@ def init(project, force, conn, swarm_id, site, field_spec):
     keeping the rest of that file. With --project, writes ./dotbot.toml and
     ./sites/<site>/site.toml for everyone who clones this folder, puts your
     own keys in ./dotbot.local.toml, and keeps that file out of git. A
-    broker --conn becomes the site's [connection].
+    broker --conn becomes the site's [connection], in an existing pack too.
     """
     try:
         check_site_name(site)
@@ -277,6 +324,10 @@ def init(project, force, conn, swarm_id, site, field_spec):
     pack_file = pack / PACK_FILE
     if pack_file.exists() and not force:
         click.echo(f"Kept the site pack at {pack} (--force replaces it)")
+        if broker:
+            _set_pack_broker(pack_file, broker.strip())
+            if not project:
+                write_approval(pack, broker.strip())
     else:
         pack.mkdir(parents=True, exist_ok=True)
         pack_file.write_text(default_site_toml(field_mm, broker))
@@ -300,6 +351,8 @@ def init(project, force, conn, swarm_id, site, field_spec):
         _write(personal, ("conn",), conn)
     if swarm_id:
         _write(personal, ("swarm_id",), swarm_id)
+    if broker:
+        _warn_conn_hidden((ctx.obj or {}).get("config"), site)
     if max(field_mm) > FIELD_COVERAGE_MM:
         click.echo(
             "Warning: one LH2 base station rarely covers a field over "
