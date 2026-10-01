@@ -42,6 +42,17 @@ from dotbot.controller import (
 )
 from dotbot.logger import setup_logging
 
+# The `ctx.obj` key under which a command that implies `--conn` names itself.
+IMPLIED_CONN = "implied_conn"
+
+
+def _swarm_applies(conn) -> bool:
+    """Whether a swarm id applies to `conn`: anything but the simulator."""
+    try:
+        return conn is None or parse_connection(conn).kind != "simulator"
+    except ConnError:
+        return True
+
 
 def _resolve_controller_key(ctx, key, flag, default):
     """One `[run.controller]` key and the layer it came from: the flag, the
@@ -475,6 +486,9 @@ def main(
         resolved_from_config(ctx, key, key, None, site_flag=site_flag)
         for key in ("conn", "swarm_id")
     )
+    implied = (ctx.obj or {}).get(IMPLIED_CONN)
+    if implied and conn_r.kind == "flag":
+        conn_r = Resolved(conn_r.value, "flag", implied)
     swarmit_url = from_config(ctx, "swarmit_url", "swarmit_url", "run.controller")
     mrta_url = from_config(ctx, "mrta_url", "mrta_url", "run.controller")
     controller_http_port = from_config(
@@ -499,7 +513,11 @@ def main(
     lh2_calibration, calibration_source = _resolve_controller_key(
         ctx, "lh2_calibration", lh2_calibration, None
     )
-    print(connection_banner(active, conn_r, swarm_r))
+    print(
+        connection_banner(
+            active, conn_r, swarm_r if _swarm_applies(conn_r.value) else None
+        )
+    )
     print(
         f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
         if lh2_calibration

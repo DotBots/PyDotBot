@@ -712,3 +712,22 @@ def test_run_controller_has_no_config_path_flag():
     result = CliRunner().invoke(main, ["--config-path", "x.toml"])
     assert result.exit_code == 2
     assert "No such option" in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_run_simulator_banner_names_itself_and_no_swarm(
+    controller, _asyncio_run, tmp_path
+):
+    from dotbot.cli.main import cli
+
+    config_file = tmp_path / "dotbot.toml"
+    _write_project(config_file, 'site = "hall"\nswarm_id = "A001"\n\n[sites.hall]\n')
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-c", str(config_file), "run", "simulator"])
+    assert result.exit_code == 0, result.output
+    assert (
+        "site hall (dotbot.toml), conn simulator (dotbot run simulator)\n"
+        in result.output
+    )
