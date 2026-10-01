@@ -5,11 +5,12 @@
 
 A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
-folder finds it; `use` makes a site the active one; `list` and `show` read;
-`export` writes one as a zip. The same folders can be shared with git, cp or
-unzip.
+folder finds it; `init` writes one around a spin calibration's robots; `use`
+makes a site the active one; `list` and `show` read; `export` writes one as a
+zip. The same folders can be shared with git, cp or unzip.
 """
 
+import json
 import os
 import re
 import shutil
@@ -30,6 +31,7 @@ from dotbot.site_packs import (
     read_pack,
     resolve_site_entry,
     site_catalog,
+    site_homes,
     user_sites_dir,
     write_approval,
 )
@@ -642,4 +644,133 @@ def export(ctx, name, out_path, with_calibrations, force):
     click.echo(
         f"Wrote {target}: site {name}"
         + (f" and {_files(len(calibrations))}" if with_calibrations else "")
+    )
+
+
+def _parse_size(_ctx, _param, value):
+    if value is None:
+        return None
+    try:
+        width, height = (int(v) for v in value.lower().split("x"))
+    except ValueError as exc:
+        raise click.BadParameter("takes a width and a height in mm, `WxH`") from exc
+    if width <= 0 or height <= 0:
+        raise click.BadParameter("takes a positive width and height")
+    return (width, height)
+
+
+def _render_site_pack(site, source_id8: str) -> str:
+    field = site.areas["field"]
+    width, height = site.extent_mm
+    return (
+        f"# Site {site.name}: written by `dotbot site init` from spin calibration\n"
+        f"# {source_id8}. The frame's zero is the anchor, x right, y down, mm.\n"
+        "# A staging area, if robots park somewhere, is one more [areas.<name>].\n"
+        "\n"
+        f"anchor = {json.dumps(site.anchor)}\n"
+        f"extent_mm = [{width}, {height}]\n"
+        "\n"
+        "[areas.field]   # where the robots spun, grown by a robot's footprint\n"
+        f"x = {field.x}\n"
+        f"y = {field.y}\n"
+        f"w = {field.w}\n"
+        f"h = {field.h}\n"
+    )
+
+
+@cmd.command()
+@click.argument("name")
+@click.option(
+    "--from-calibration",
+    "calibration",
+    required=True,
+    metavar="ID",
+    help=(
+        "The spin calibration (`dotbot swarm calibrate-lh2 collect --spin`) "
+        "whose robots define the field: an id prefix, a tag or a path."
+    ),
+)
+@click.option(
+    "--size",
+    default=None,
+    callback=_parse_size,
+    metavar="WxH",
+    help=(
+        "Make the site this many mm wide and high, with the field in its "
+        "middle (e.g. 3000x4000). Default: the site is the field."
+    ),
+)
+@click.option(
+    "--force", "-f", is_flag=True, help="Replace the site.toml of a site of that name."
+)
+@click.pass_context
+def init(ctx, name, calibration, size, force):
+    """Write a site pack NAME around the robots of a spin calibration.
+
+    The field is the rectangle the robots stood in when they spun, grown by a
+    robot's footprint, and the site's frame is the calibration's. The pack
+    goes into the nearest site home (sites/ beside the project's dotbot.toml,
+    else ~/.dotbot/sites/), and the calibration, re-expressed in the site,
+    under ~/.dotbot/calibrations/NAME/.
+    """
+    from dotbot.calibration.conics import self_defined_site
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
+        write_calibration,
+    )
+
+    obj = ctx.obj or {}
+    config = obj.get("config")
+    try:
+        check_site_name(name)
+        catalog = site_catalog(config)
+    except (ValueError, ConfigError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    _, home = site_homes(config)[0]
+    target = home / name
+    existing = catalog.get(name)
+    if existing is not None:
+        if not force:
+            raise click.ClickException(
+                f"site {name} already exists ({existing.pack}). Pass --force to "
+                "replace its site.toml, or pick another name."
+            )
+        target = existing.pack
+    entry = active_site(ctx).entry
+    try:
+        try:
+            path = resolve_calibration_path(
+                calibration, site=entry.site() if entry else None
+            )
+        except ValueError:
+            path = resolve_calibration_path(calibration)
+        source = read_calibration_file(path)
+        site, placed = self_defined_site(source, name, size)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    target.mkdir(parents=True, exist_ok=True)
+    (target / PACK_FILE).write_text(
+        _render_site_pack(site, source.id8), encoding="utf-8"
+    )
+    try:
+        read_pack(target)
+    except ConfigError as exc:  # pragma: no cover - the render is fixed
+        raise click.ClickException(str(exc)) from exc
+    saved = write_calibration(placed)
+    field = site.areas["field"]
+    click.echo(f"Wrote site {name} to {target / PACK_FILE}")
+    click.echo(
+        f"  extent {site.extent_mm[0]} x {site.extent_mm[1]} mm, field "
+        f"{field.w} x {field.h} mm at ({field.x}, {field.y})"
+    )
+    click.echo(f"Calibration {placed.id8} (from {source.id8}) saved to {saved}")
+    robots = ",".join(sorted({t.name for t in placed.tracks})) or "<addresses>"
+    click.echo(
+        "Next, send it to the robots (--site-changed: they report the site "
+        "they were calibrated in), then work in the site:\n"
+        f"  dotbot swarm -d {robots} calibrate-lh2 push {placed.id8} "
+        f"--site {name} --site-changed\n"
+        f"  dotbot run controller --site {name} --lh2-calibration {placed.id8} "
+        "--headless"
     )

@@ -17,15 +17,17 @@ from click.testing import CliRunner
 
 from dotbot.calibration import conics, lighthouse2
 from dotbot.calibration import spin as spin_module
-from dotbot.calibration.lighthouse2 import counts_for_camera_point
+from dotbot.calibration.lighthouse2 import counts_for_camera_point, load_calibration
 from dotbot.calibration.spin import (
     SPIN_TAG,
     SpinAssembler,
     check_spin_robots,
     parse_spin_payload,
 )
-from dotbot.cli import swarm_lh2
+from dotbot.cli import site_cmd, swarm_lh2
 from dotbot.config import load_discovered
+from dotbot.robots import robot_geometry
+from dotbot.site_packs import site_catalog
 from dotbot.tests.test_calibration_conics import (
     CENTRES,
     FLOOR_TO_CAM,
@@ -184,6 +186,77 @@ def test_robots_without_the_spin_app_are_refused_with_the_flash_line():
     )
     assert robots.ready == ["A"]
     assert "dotbot swarm -d B flash -y calibrate-spin" in robots.refusal()
+
+
+def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
+    addrs, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert f"spin radius {RADIUS:g} mm" in result.output
+    assert f"{len(CENTRES)} of {len(CENTRES)} circles kept" in result.output
+    assert "warning: 6 circles" in result.output
+    # started once, stopped after, so a push reaches them
+    assert [c for c, _ in fleet.calls] == ["info", "start", "stop"]
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id, "--size", "3000x4000"],
+        obj={"config": lab},
+    )
+    assert result.exit_code == 0, result.output
+    pack = lab.project_dir / "sites" / "spun"
+    assert (pack / "site.toml").is_file()
+    site = site_catalog(lab)["spun"].site()
+    assert site.extent_mm == (3000, 4000)
+    placed_id = re.search(
+        r"push (\w+) --site spun --site-changed", result.output
+    ).group(1)
+
+    # what `run controller --site spun --lh2-calibration <id>` loads
+    calibration = load_calibration(placed_id, site=site)
+    cam = conics.apply(FLOOR_TO_CAM, np.array(CENTRES, dtype=float))
+    placed = conics.apply(calibration.stations[0].matrix, cam)
+    truth = np.array(CENTRES, dtype=float)
+    d_placed = np.linalg.norm(placed[:, None] - placed[None], axis=2)
+    d_truth = np.linalg.norm(truth[:, None] - truth[None], axis=2)
+    assert np.max(np.abs(d_placed - d_truth)) < 1.0
+    field = site.field
+    reach = robot_geometry().axle_reach_mm
+    assert np.all(placed[:, 0] >= field.x + reach - 1) and np.all(
+        placed[:, 0] <= field.x + field.w - reach + 1
+    )
+    assert np.all(placed[:, 1] >= field.y + reach - 1) and np.all(
+        placed[:, 1] <= field.y + field.h - reach + 1
+    )
+    assert (field.x * 2 + field.w, field.y * 2 + field.h) == pytest.approx(
+        (3000, 4000), abs=1
+    )
+
+
+def test_site_init_refuses_an_existing_name(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "c405", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    assert result.exit_code != 0 and "already exists" in result.output
+
+
+def test_site_init_refuses_a_corner_calibration(lab, tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "corner.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", str(path)],
+        obj={"config": lab},
+    )
+    assert result.exit_code != 0 and "not a free-mode spin calibration" in result.output
 
 
 def test_a_robot_already_in_the_app_is_stopped_before_it_spins(monkeypatch, lab):
