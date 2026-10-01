@@ -8,6 +8,8 @@ import {
   deriveState,
   merge,
   severityOf,
+  swarmitAfterMiss,
+  SWARMIT_MISSES_KEPT,
   withDetection,
 } from "./useFleet";
 
@@ -407,5 +409,14 @@ describe("derivePose (whose pose is live)", () => {
 
   it("does not draw swarmit's unlocated origin", () => {
     expect(derivePose(undefined, sw({ pos_x: 0, pos_y: 0 }), "unknown").position).toBeNull();
+  });
+});
+
+describe("a failed swarmit poll", () => {
+  it("keeps the last answer until several fail in a row", () => {
+    const last = { badcafe111111111: sw() };
+    expect(swarmitAfterMiss(last, 1)).toBe(last);
+    expect(swarmitAfterMiss(last, SWARMIT_MISSES_KEPT - 1)).toBe(last);
+    expect(swarmitAfterMiss(last, SWARMIT_MISSES_KEPT)).toEqual({});
   });
 });

@@ -48,6 +48,17 @@ export function deriveState(sw: SwarmitNode | undefined): BotState | null {
     : null;
 }
 
+// Failed swarmit polls in a row that keep its last answer, so one hiccup does
+// not hide every lost robot swarmit reports.
+export const SWARMIT_MISSES_KEPT = 3;
+
+export function swarmitAfterMiss(
+  last: Record<string, SwarmitNode>,
+  misses: number,
+): Record<string, SwarmitNode> {
+  return misses < SWARMIT_MISSES_KEPT ? last : {};
+}
+
 // Whether the control plane still hears the bot, from PyDotBot alone.
 // "unknown" is a bot swarmit reports but PyDotBot has never seen.
 export function deriveLink(py: PyDotBot | undefined): LinkState {
@@ -259,11 +270,14 @@ export function useFleet(): {
 
   // SwarmIT status poll (read-only orchestration plane), 1 Hz.
   useEffect(() => {
+    let misses = 0;
     const tick = async () => {
       try {
         swRef.current = await fetchSwarmitStatus();
+        misses = 0;
       } catch {
-        swRef.current = {};
+        misses += 1;
+        swRef.current = swarmitAfterMiss(swRef.current, misses);
       }
       rebuild();
     };
