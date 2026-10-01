@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 
+import { reportsWire } from "./botFacts";
 import { stateLabel } from "./viewChrome";
 
-import { CameraDetection, CameraRobot, LINK_LABEL, UnifiedBot } from "./types";
+import { CameraDetection, CameraRobot, REPORTS_LABEL, UnifiedBot } from "./types";
 
 // Right-side inspector: the low-level layer next to the map's high-level one.
 // Renders what `dotbot swarm info` prints, from the same /status payload, and
@@ -77,7 +78,7 @@ export function infoText(bot: UnifiedBot): string {
   const out: string[] = [bot.id];
   out.push(`Type              ${bot.deviceType}`);
   out.push(`Sandbox           ${stateLabel(bot.state)}`);
-  out.push(`Control plane     ${LINK_LABEL[bot.link]}`);
+  out.push(`Reports           ${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`);
   out.push(`Battery           ${bot.battery.toFixed(2)}V`);
   out.push(
     `Position          ${bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}`,
@@ -185,7 +186,7 @@ const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boo
 
       <Row k="Type" v={bot.deviceType} />
       <Row k="Sandbox" v={stateLabel(bot.state)} />
-      <Row k="Control plane" v={LINK_LABEL[bot.link]} />
+      <Row k="Reports" v={`${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`} />
       <Row k="Battery" v={`${bot.battery.toFixed(2)}V`} />
       <Row
         k="Position"

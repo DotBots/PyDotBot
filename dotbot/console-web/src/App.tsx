@@ -839,7 +839,7 @@ export const App: React.FC = () => {
     { key: "trails", label: "Trails" },
     { key: "allWaypoints", label: "Every robot's waypoints" },
     { key: "crashedOnly", label: "Only crashed bots" },
-    { key: "lostBots", label: "Lost robots" },
+    { key: "lostBots", label: "Silent robots" },
   ];
 
   // On a phone the card is the whole screen: a small picture at the top so
@@ -972,7 +972,10 @@ export const App: React.FC = () => {
               boxShadow: wsUp ? "0 0 8px var(--s-Running)" : "none",
             }}
           />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1, color: "var(--muted)" }}>
+          <span
+            title="Whether this console is receiving the controller's stream"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1, color: "var(--muted)" }}
+          >
             {wsUp ? "LIVE" : "OFFLINE"}
           </span>
           <span data-testid="fleet-summary" style={{ fontSize: 11, color: "var(--muted)" }}>

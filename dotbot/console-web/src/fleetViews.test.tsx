@@ -1,6 +1,6 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ageLabel,
@@ -11,8 +11,9 @@ import {
   FleetContext,
   firmwareTooOld,
   headingLabel,
-  linkLabel,
-  sandboxLabel,
+  bootloaderLabel,
+  reportsDetail,
+  reportsLabel,
 } from "./botFacts";
 import { GridView } from "./GridView";
 import { ListView } from "./ListView";
@@ -62,7 +63,7 @@ const bot = (id: string, over: Partial<UnifiedBot> = {}): UnifiedBot => ({
   batteryPct: 80,
   batteryLevel: "ok",
   swarmit: { device: "DotBotV3", status: "Running", battery: 2900, pos_x: 0, pos_y: 0, info: info() },
-  lastSeen: 1000,
+  lastReport: 1000,
   ...over,
 });
 
@@ -74,10 +75,11 @@ describe("botFacts", () => {
     expect(appLabel(bot("A", { swarmit: null }))).toBe("");
   });
 
-  it("collapses matching bootloader and net core versions", () => {
-    expect(sandboxLabel(bot("A"))).toBe("1.25.0");
+  it("names the bootloader version, and the net core's only when it differs", () => {
+    expect(bootloaderLabel(bot("A"))).toBe("1.25.0");
     const split = bot("A", { swarmit: { ...bot("A").swarmit!, info: info({ net_version: "1.24.0" }) } });
-    expect(sandboxLabel(split)).toBe("bl 1.25.0 · net 1.24.0");
+    expect(bootloaderLabel(split)).toBe("1.25.0 · net 1.24.0");
+    expect(bootloaderLabel(bot("A", { swarmit: null }))).toBe("");
   });
 
   it("flags firmware too old for the controller's calibrations, not a calibration mismatch", () => {
@@ -108,9 +110,18 @@ describe("botFacts", () => {
   it("adds how long a robot has been silent once it slips", () => {
     expect(ageLabel(990, 1000)).toBe("10 s");
     expect(ageLabel(1000 - 600, 1000)).toBe("10 min");
-    expect(linkLabel(bot("A"), 1000)).toBe("Live");
-    expect(linkLabel(bot("A", { link: "stale", lastSeen: 988 }), 1000)).toBe("Stale 12 s");
-    expect(linkLabel(bot("A", { link: "unknown", lastSeen: 1000 }), 1000)).toBe("Swarmit only");
+    expect(reportsLabel(bot("A"), 1000)).toBe("Reporting");
+    expect(reportsLabel(bot("A", { link: "stale", lastReport: 988 }), 1000)).toBe("Late 12 s");
+    expect(reportsLabel(bot("A", { link: "lost", lastReport: 760 }), 1000)).toBe("Silent 4 min");
+    expect(reportsLabel(bot("A", { link: "unknown", lastReport: null }), 1000)).toBe("No reports");
+  });
+
+  it("spells a reports label out down to the REST status behind it", () => {
+    expect(reportsDetail(bot("A", { link: "stale", lastReport: 994 }), 1000)).toMatch(
+      /^Late\. Last report 6 s ago.*\(status 1, stale\)$/,
+    );
+    expect(reportsDetail(bot("A", { link: "lost", lastReport: 900 }), 1000)).toContain("Swarmit still hears");
+    expect(reportsDetail(bot("A", { link: "unknown" }), 1000)).toContain("not in GET /controller/dotbots");
   });
 
   it("lists the facts and warnings for a tooltip", () => {
@@ -118,7 +129,8 @@ describe("botFacts", () => {
     const text = detailText(old, ctx);
     expect(text).toContain("Position: 1200, 800 mm");
     expect(text).toContain("Area: field");
-    expect(text).toContain("! firmware too old");
+    expect(text).toContain("Reports: Reporting");
+    expect(text).toContain("! bootloader too old");
   });
 });
 
@@ -136,14 +148,28 @@ describe("ListView", () => {
   const renderList = () =>
     render(<ListView bots={fleet} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
 
-  it("shows the operator's columns and flags the robot to reflash", () => {
+  it("shows the operator's columns and flags the robot whose bootloader is too old", () => {
     renderList();
-    for (const h of ["App", "Sandbox fw", "LH2 cal", "Position", "Heading", "Area", "Link"]) {
+    for (const h of ["Reports", "App", "Bootloader", "LH2 cal", "Position", "Heading", "Area"]) {
       expect(screen.getByRole("columnheader", { name: new RegExp(`^${h}`) })).toBeTruthy();
     }
     const rows = screen.getAllByRole("row").slice(1);
-    expect(within(rows[1]).getByText("reflash")).toBeTruthy();
-    expect(within(rows[0]).queryByText("reflash")).toBeNull();
+    expect(within(rows[1]).getByText("too old")).toBeTruthy();
+    expect(within(rows[0]).queryByText("too old")).toBeNull();
+  });
+
+  it("draws the heading as a glyph beside its degrees, and an empty one without a heading", () => {
+    render(
+      <ListView
+        bots={[bot("AAAA000000000001"), bot("AAAA000000000002", { pose: null })]}
+        selection={new Set()}
+        onSelect={() => {}}
+        ctx={ctx}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "heading 92° ekf" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "no heading yet" })).toBeTruthy();
+    expect(screen.getByText("92°")).toBeTruthy();
   });
 
   it("sorts by a column and hides one, remembering it", () => {
@@ -160,15 +186,47 @@ describe("ListView", () => {
 });
 
 describe("GridView", () => {
+  beforeEach(() => window.localStorage.clear());
   afterEach(cleanup);
 
-  it("carries position, app and warning badges on each card", () => {
-    const other = bot("BBBB000000000001", {
-      swarmit: { ...bot("A").swarmit!, info: info({ lh2_calibration_id: "0000" }) },
-    });
-    render(<GridView bots={[other]} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
-    expect(screen.getByText(/1200, 800 mm · 92° · field/)).toBeTruthy();
-    expect(screen.getByText("dotbot")).toBeTruthy();
+  const other = bot("BBBB000000000001", {
+    swarmit: { ...bot("A").swarmit!, info: info({ lh2_calibration_id: "0000", net_version: "1.24.0" }) },
+  });
+  const late = bot("BBBB000000000002", { link: "stale", lastReport: 994 });
+  const renderGrid = () =>
+    render(<GridView bots={[other, late]} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
+
+  it("starts compact: where it is, its app and bootloader, and only the exceptions", () => {
+    renderGrid();
+    expect(screen.getAllByText(/1200, 800 mm · field/)).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "heading 92° ekf" })).toHaveLength(2);
+    expect(screen.getAllByText("dotbot")).toHaveLength(2);
+    expect(screen.getByText("bl 1.25.0 · net 1.24.0")).toBeTruthy();
     expect(screen.getByText("cal differs")).toBeTruthy();
+    expect(screen.getByText("Late 6 s")).toBeTruthy();
+    expect(screen.queryByText("Reporting")).toBeNull();
+    expect(screen.queryByText("App")).toBeNull();
+  });
+
+  it("switches to full cards, which name every fact, and remembers it", () => {
+    renderGrid();
+    fireEvent.click(screen.getByRole("button", { name: "Full" }));
+    expect(screen.getAllByText("App")).toHaveLength(2);
+    expect(screen.getByText("Reporting")).toBeTruthy();
+    expect(screen.getAllByText("dotbot 1.4 · 3f9a21c0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1200, 800 mm · 92° ekf · field/).length).toBeGreaterThan(0);
+    expect(screen.getByText("differs")).toBeTruthy();
+    cleanup();
+    renderGrid();
+    expect(screen.getByRole("button", { name: "Full" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("falls back to compact when storage throws", () => {
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    renderGrid();
+    expect(screen.getByRole("button", { name: "Compact" }).getAttribute("aria-pressed")).toBe("true");
+    spy.mockRestore();
   });
 });

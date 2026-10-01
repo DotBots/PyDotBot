@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 
-import { appLabel, areaLabel, calibrationLabel, FleetContext, sandboxLabel } from "./botFacts";
+import { appLabel, areaLabel, bootloaderLabel, calibrationLabel, FleetContext, headingLabel } from "./botFacts";
+import { TRAVEL_BODY_OPACITY } from "./BotGlyph";
+import { headingToGlyphRotation } from "./frame";
 import { BotState, STATE_ORDER, UnifiedBot } from "./types";
 
 export const PAGE_SIZE = 50;
@@ -9,14 +11,14 @@ export type SortKey =
   | "id"
   | "fw"
   | "image"
-  | "sandbox"
+  | "bootloader"
   | "calibration"
   | "battery"
   | "state"
   | "position"
   | "heading"
   | "area"
-  | "seen";
+  | "reports";
 
 const LINK_RANK = { active: 0, stale: 1, lost: 2, unknown: 3 } as const;
 
@@ -50,8 +52,8 @@ function sortValue(b: UnifiedBot, key: SortKey, ctx: FleetContext | null): strin
       return b.deviceType;
     case "image":
       return appLabel(b);
-    case "sandbox":
-      return sandboxLabel(b);
+    case "bootloader":
+      return bootloaderLabel(b);
     case "calibration":
       return calibrationLabel(b);
     case "position":
@@ -60,8 +62,8 @@ function sortValue(b: UnifiedBot, key: SortKey, ctx: FleetContext | null): strin
       return b.pose && b.pose.heading_source !== "none" ? b.pose.heading_deg : Number.MAX_VALUE;
     case "area":
       return areaLabel(b, ctx?.site ?? null);
-    case "seen":
-      return LINK_RANK[b.link] * 1e12 - (b.lastSeen ?? 0);
+    case "reports":
+      return LINK_RANK[b.link] * 1e12 - (b.lastReport ?? 0);
     default:
       return b.id;
   }
@@ -341,4 +343,50 @@ export const Badge: React.FC<{ children: React.ReactNode; title?: string; tone?:
   >
     {children}
   </span>
+);
+
+/**
+ * The robot's heading as the map draws it: a circle with a radius toward the
+ * way it faces, dimmed for a travel bearing, and an empty dashed circle while
+ * it has reported no heading.
+ */
+export const HeadingGlyph: React.FC<{ bot: UnifiedBot; size?: number }> = ({ bot, size = 14 }) => {
+  const label = headingLabel(bot);
+  const pose = bot.pose;
+  return (
+    <svg
+      role="img"
+      aria-label={label ? `heading ${label}` : "no heading yet"}
+      width={size}
+      height={size}
+      viewBox="-8 -8 16 16"
+      style={{ flex: "none", display: "inline-block", verticalAlign: "middle", overflow: "visible" }}
+    >
+      <title>{label ? `Heading ${label}` : "No heading reported yet"}</title>
+      {pose && label ? (
+        <g opacity={pose.heading_source === "travel" ? TRAVEL_BODY_OPACITY : 1}>
+          <circle r={6.5} fill="none" stroke="currentColor" strokeWidth={1.4} />
+          <line
+            x1={0}
+            y1={0}
+            x2={0}
+            y2={-6.5}
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            transform={`rotate(${headingToGlyphRotation(pose.heading_deg)})`}
+          />
+        </g>
+      ) : (
+        <circle r={6.5} fill="none" stroke="var(--muted)" strokeWidth={1.2} strokeDasharray="2.4 2" />
+      )}
+    </svg>
+  );
+};
+
+/** The badge on a robot whose bootloader is too old for this controller. */
+export const TooOld: React.FC = () => (
+  <Badge tone="warn" title="Too old for this controller's calibrations: reflash swarmit-sandbox">
+    too old
+  </Badge>
 );

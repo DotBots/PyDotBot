@@ -3,15 +3,16 @@ import React from "react";
 import {
   appLabel,
   areaLabel,
+  bootloaderLabel,
   calibrationDiffers,
   calibrationLabel,
   detailText,
   FleetContext,
   firmwareTooOld,
   headingLabel,
-  linkLabel,
   positionLabel,
-  sandboxLabel,
+  reportsDetail,
+  reportsLabel,
   warnings,
 } from "./botFacts";
 import { rowOpacity } from "./link";
@@ -21,11 +22,13 @@ import {
   Badge,
   BatteryCell,
   FilterBar,
+  HeadingGlyph,
   LedDot,
   Pagination,
   ResetBadge,
   SortKey,
   stateColor,
+  TooOld,
   useQueriedBots,
   useViewQuery,
 } from "./viewChrome";
@@ -75,7 +78,16 @@ export const COLUMNS: Column[] = [
       </div>
     ),
   },
-  { key: "seen", label: "Link", shown: true, cell: (b, ctx) => <span style={{ fontSize: 12 }}>{linkLabel(b, ctx.now)}</span> },
+  {
+    key: "reports",
+    label: "Reports",
+    shown: true,
+    cell: (b, ctx) => (
+      <span title={reportsDetail(b, ctx.now)} style={{ fontSize: 12 }}>
+        {reportsLabel(b, ctx.now)}
+      </span>
+    ),
+  },
   { key: "battery", label: "Battery", shown: true, cell: (b) => <BatteryCell bot={b} /> },
   {
     key: "image",
@@ -88,17 +100,15 @@ export const COLUMNS: Column[] = [
     ),
   },
   {
-    key: "sandbox",
-    label: "Sandbox fw",
+    key: "bootloader",
+    label: "Bootloader",
     shown: true,
     cell: (b) => (
       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
-        <span style={muted}>{sandboxLabel(b) || dash}</span>
-        {firmwareTooOld(b) && (
-          <Badge tone="warn" title="Too old for this controller's calibrations: reflash swarmit-sandbox">
-            reflash
-          </Badge>
-        )}
+        <span title="Sandbox firmware: the bootloader, and the net core when it differs" style={muted}>
+          {bootloaderLabel(b) || dash}
+        </span>
+        {firmwareTooOld(b) && <TooOld />}
       </span>
     ),
   },
@@ -118,7 +128,17 @@ export const COLUMNS: Column[] = [
     ),
   },
   { key: "position", label: "Position", shown: true, cell: (b) => <span style={muted}>{positionLabel(b) || dash}</span> },
-  { key: "heading", label: "Heading", shown: true, cell: (b) => <span style={muted}>{headingLabel(b) || dash}</span> },
+  {
+    key: "heading",
+    label: "Heading",
+    shown: true,
+    cell: (b) => (
+      <span style={{ ...muted, display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <HeadingGlyph bot={b} />
+        {headingLabel(b).split(" ")[0]}
+      </span>
+    ),
+  },
   { key: "area", label: "Area", shown: true, cell: (b, ctx) => <span style={muted}>{areaLabel(b, ctx.site) || dash}</span> },
   { key: "fw", label: "Device", shown: false, cell: (b) => <span style={muted}>{b.deviceType}</span> },
 ];

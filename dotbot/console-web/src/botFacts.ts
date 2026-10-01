@@ -1,5 +1,5 @@
 import { DEVICE_INFO_VERSION_MIN } from "./localization";
-import { Area, LINK_LABEL, Site, UnifiedBot } from "./types";
+import { Area, LinkState, REPORTS_LABEL, Site, UnifiedBot } from "./types";
 
 // What the list and grid views say about one robot, as plain strings, so the
 // wording and the warnings are testable without rendering.
@@ -23,12 +23,12 @@ export function appLabel(bot: UnifiedBot): string {
   return parts.join(" ") + digest;
 }
 
-/** "bl 1.22.0 · net 1.22.0", or "bl 1.22.0" when both match. */
-export function sandboxLabel(bot: UnifiedBot): string {
+/** "1.25.0", or "1.25.0 · net 1.24.0" when the net core runs another version. */
+export function bootloaderLabel(bot: UnifiedBot): string {
   const info = bot.swarmit?.info;
   if (!info) return "";
   if (info.bl_version === info.net_version) return info.bl_version;
-  return `bl ${info.bl_version} · net ${info.net_version}`;
+  return `${info.bl_version} · net ${info.net_version}`;
 }
 
 /** Whether the robot's sandbox firmware predates what this controller's
@@ -79,29 +79,66 @@ export function areaLabel(bot: UnifiedBot, site: Site | null): string {
   return best?.name ?? "";
 }
 
-/** "now", "12 s", "4 min", "2 h": how long since either plane heard the robot. */
-export function ageLabel(lastSeen: number | null | undefined, now: number): string {
-  if (lastSeen === null || lastSeen === undefined) return "";
-  const s = Math.max(0, now - lastSeen);
+/** "now", "12 s", "4 min", "2 h": how long ago `then` was. */
+export function ageLabel(then: number | null | undefined, now: number): string {
+  if (then === null || then === undefined) return "";
+  const s = Math.max(0, now - then);
   if (s < 2) return "now";
   if (s < 90) return `${Math.round(s)} s`;
   if (s < 5400) return `${Math.round(s / 60)} min`;
   return `${Math.round(s / 3600)} h`;
 }
 
-/** "Live", "Stale 12 s", "Swarmit only": the control-plane tier and, once
- * it slips, how long since either plane heard the robot. */
-export function linkLabel(bot: UnifiedBot, now: number): string {
-  const label = bot.link === "unknown" ? "Swarmit only" : LINK_LABEL[bot.link];
-  const age = ageLabel(bot.lastSeen, now);
-  if (bot.link === "active" || !age || age === "now") return label;
+/** "Reporting", "Late 12 s", "Silent 4 min", "No reports": whether the robot's
+ * app is sending the controller its position and battery, and how long since
+ * its last report once it slips. */
+export function reportsLabel(bot: UnifiedBot, now: number): string {
+  const label = REPORTS_LABEL[bot.link];
+  const age = ageLabel(bot.lastReport, now);
+  if (bot.link === "active" || bot.link === "unknown" || !age || age === "now") return label;
   return `${label} ${age}`;
+}
+
+/** The REST `status` behind each label, for the reader who goes on to the API. */
+const WIRE: Record<LinkState, string> = {
+  active: "status 0, active",
+  stale: "status 1, stale",
+  lost: "status 2, lost",
+  unknown: "not in GET /controller/dotbots",
+};
+
+/** The REST value behind a robot's reports label: "status 1, stale". */
+export function reportsWire(bot: Pick<UnifiedBot, "link">): string {
+  return WIRE[bot.link];
+}
+
+/** `reportsLabel` spelled out: what it means for the robot, and the REST value behind it. */
+export function reportsDetail(bot: UnifiedBot, now: number): string {
+  const age = ageLabel(bot.lastReport, now);
+  const ago = age === "now" ? "just now" : `${age} ago`;
+  let meaning: string;
+  switch (bot.link) {
+    case "active":
+      meaning = "Its app sends position and battery about twice a second.";
+      break;
+    case "stale":
+      meaning = `Last report ${ago}: its position may lag, and commands are still sent.`;
+      break;
+    case "lost":
+      meaning = bot.swarmit
+        ? `Last report ${ago}. Swarmit still hears its sandbox.`
+        : `Last report ${ago}. Off the map unless Silent robots is ticked.`;
+      break;
+    default:
+      meaning = "The controller has not heard its app: it sits in its bootloader, or runs an app that does not report.";
+  }
+  return `${REPORTS_LABEL[bot.link]}. ${meaning} (${reportsWire(bot)})`;
 }
 
 /** The warnings worth a badge, in words. */
 export function warnings(bot: UnifiedBot, ctx: FleetContext): string[] {
   const out: string[] = [];
-  if (firmwareTooOld(bot)) out.push("firmware too old for this controller: reflash swarmit-sandbox");
+  if (firmwareTooOld(bot)) out.push("bootloader too old for this controller: reflash swarmit-sandbox");
   else if (calibrationDiffers(bot, ctx.calibrationId)) {
     const held = calibrationLabel(bot) || "none";
     out.push(`holds calibration ${held}, not ${ctx.calibrationId.slice(0, 8)}: push it`);
@@ -112,15 +149,15 @@ export function warnings(bot: UnifiedBot, ctx: FleetContext): string[] {
 /** Everything above as one tooltip, a line per fact, empty facts left out. */
 export function detailText(bot: UnifiedBot, ctx: FleetContext): string {
   const rows: [string, string][] = [
-    ["App", appLabel(bot)],
-    ["Sandbox fw", sandboxLabel(bot)],
-    ["LH2 calibration", calibrationLabel(bot)],
     ["State", bot.state ?? "No sandbox"],
+    ["Reports", reportsLabel(bot, ctx.now)],
     ["Battery", `${bot.battery.toFixed(2)} V${bot.batteryPct !== null ? ` · ${bot.batteryPct}%` : ""}`],
     ["Position", positionLabel(bot)],
-    ["Heading", headingLabel(bot)],
+    ["Heading", headingLabel(bot) || "none yet"],
     ["Area", areaLabel(bot, ctx.site)],
-    ["Control plane", linkLabel(bot, ctx.now)],
+    ["App", appLabel(bot)],
+    ["Bootloader", bootloaderLabel(bot)],
+    ["LH2 calibration", calibrationLabel(bot)],
   ];
   const lines = [bot.id, ...rows.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)];
   return [...lines, ...warnings(bot, ctx).map((w) => `! ${w}`)].join("\n");

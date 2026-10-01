@@ -29,8 +29,8 @@ describe("link tiers", () => {
   it("counts the fleet by tier, naming only the tiers that hold a robot", () => {
     expect(fleetSummary([bot("active"), bot("active")], false)).toBe("2 bots");
     expect(fleetSummary([bot("active"), bot("stale"), bot("lost"), bot("lost")], false)).toBe(
-      "2 bots · 1 stale · 2 lost (hidden)",
+      "2 bots · 1 late · 2 silent (hidden)",
     );
-    expect(fleetSummary([bot("active"), bot("lost")], true)).toBe("1 bot · 1 lost");
+    expect(fleetSummary([bot("active"), bot("lost")], true)).toBe("1 bot · 1 silent");
   });
 });
