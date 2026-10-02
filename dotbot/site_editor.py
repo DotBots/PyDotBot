@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from dotbot import site_toml
 from dotbot.site import PACK_CALIBRATIONS
 from dotbot.site_packs import PACK_FILE
+from dotbot.site_placement import create_router
 
 EDITOR_DIR = Path(__file__).parent / "console-web" / "dist"
 EDITOR_PAGE = "site-editor.html"
@@ -219,6 +220,8 @@ def create_app(
         if on_done is not None:
             on_done()
         return {"ok": True}
+
+    app.include_router(create_router(state.name, state.pack, lambda: read()[1]))
 
     @app.get("/", include_in_schema=False)
     def page():
