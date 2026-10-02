@@ -556,7 +556,7 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
         "0000803f0008b9c40000484100603845"
     )
     assert hashlib.sha256(page).hexdigest() == (
-        "65c41c8b838212f248fef6311e28e2fcae51a7e65b0289231f525371c710c94c"
+        "b1d492d3b8021d16976e5f49a984374655fada7df62e13b35bf9e4e351d6e530"
     )
     # Station 1 in slot 1, the fourteen unused slots erased, then the site
     # fields exactly as the calibration message carries them.

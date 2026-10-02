@@ -307,6 +307,30 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "forward). Re-measure it on a different floor."
     ),
 )
+@click.option(
+    "--drop-station",
+    "drop_stations",
+    multiple=True,
+    type=click.IntRange(min=0, max=15),
+    metavar="N",
+    help=(
+        "With --spin: leave station N (0 to 15, channel N+1) out of the "
+        "solve, repeatable. For a station that is not tied to the others by "
+        "shared circles, which otherwise stops the solve."
+    ),
+)
+@click.option(
+    "--append",
+    "append",
+    default=None,
+    metavar="CALIBRATION",
+    help=(
+        "With --spin: collect another round onto a saved spin calibration "
+        "(a path, its tag or its id prefix) and solve both rounds together; "
+        "saved as a new file, the old one kept. For a station not yet tied "
+        "to the others, or a weak tie the report names."
+    ),
+)
 @click.pass_context
 def _collect(
     ctx,
@@ -324,6 +348,8 @@ def _collect(
     push,
     spin,
     spin_radius,
+    drop_stations,
+    append,
 ):
     if spin:
         given = [
@@ -343,10 +369,24 @@ def _collect(
             raise click.UsageError(
                 f"--spin takes no {', '.join(given)}: the robots spin where they stand"
             )
-        _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius)
+        _collect_spin(
+            ctx,
+            conn,
+            swarm_id,
+            site_name,
+            tag,
+            push,
+            spin_radius,
+            drop_stations,
+            append,
+        )
         return
     if spin_radius is not None:
         raise click.UsageError("--spin-radius goes with --spin")
+    if drop_stations:
+        raise click.UsageError("--drop-station goes with --spin")
+    if append is not None:
+        raise click.UsageError("--append goes with --spin")
     if _devices(ctx):
         raise click.UsageError(
             "`dotbot swarm -d` picks the robots of push and collect --spin; a "
@@ -488,14 +528,40 @@ def _collect(
             )
 
 
-def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
+def _collect_spin(
+    ctx,
+    conn,
+    swarm_id,
+    site_name,
+    tag,
+    push,
+    spin_radius,
+    drop_stations=(),
+    append=None,
+):
     """`collect --spin`: spin the robots, solve their circles, save, report."""
     from dotbot.calibration.conics import solve_calibration
-    from dotbot.calibration.lighthouse2 import write_calibration
+    from dotbot.calibration.lighthouse2 import load_calibration, write_calibration
+    from dotbot.calibration.multi_station import (
+        appendable_rounds,
+        multi_station_report,
+    )
     from dotbot.calibration.spin import capture_spins, check_spin_robots, spin_report
     from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 
     site, site_source = site_from_context(ctx, site_name)
+    earlier, round_ = [], 0
+    if append is not None:
+        try:
+            base = load_calibration(append, site=site.name)
+            round_ = appendable_rounds(base)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+        earlier = base.tracks
+        click.echo(
+            f"Appending round {round_} to {base.id8} ({len(earlier)} tracks from "
+            f"{round_} earlier round(s))."
+        )
     radius_from = "--spin-radius"
     if spin_radius is None:
         spin_radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
@@ -534,22 +600,33 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
             spins = capture_spins(client, robots, echo=click.echo)
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
-        samples = [s for spin in spins.values() for s in spin.samples(spin_radius)]
+        samples = list(earlier) + [
+            s for spin in spins.values() for s in spin.samples(spin_radius, round_)
+        ]
         try:
-            calibration, solutions, unsolved = solve_calibration(
-                samples, site, robot=ROBOT_DEFAULT, tag=tag or ""
+            calibration, joint, unsolved = solve_calibration(
+                samples,
+                site,
+                robot=ROBOT_DEFAULT,
+                tag=tag or "",
+                drop_stations=drop_stations,
             )
         except ValueError as exc:
             for line in spin_report(spins, robots.robots, {}, {}):
                 click.echo(line)
             raise click.ClickException(f"no calibration written: {exc}") from exc
-        for line in spin_report(spins, robots.robots, solutions, unsolved):
+        for line in spin_report(spins, robots.robots, joint.solutions, unsolved):
             click.echo(line)
+        if len({s.station for s in samples}) > 1 or earlier:
+            click.echo("")
+            for line in multi_station_report(calibration, joint):
+                click.echo(line)
         path = write_calibration(calibration)
-        _, _, width, height = calibration.valid_mm
+        width, height = joint.field_mm
         click.echo(
             f"\nThe robots' field is {width} x {height} mm: the calibration's frame "
-            "is aligned to it, zero at its top-left, not at the site's anchor."
+            "is aligned to it, zero at its top-left, not at the site's anchor. "
+            f"Robots take fixes inside {list(calibration.valid_mm)}."
         )
         click.echo(f"Calibration saved to {path}")
         click.echo(
@@ -700,6 +777,54 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
         )
     else:
         click.echo(f"Every robot reports {calibration.id8}.")
+
+
+@cmd.command(
+    name="show",
+    help=(
+        "Print a saved LH2 calibration: its stations and their rectangles, "
+        "the links tying them and the predicted error map, from the file "
+        "alone (no robot, no broker). Takes a file path, its tag or its id "
+        "prefix."
+    ),
+)
+@click.argument("calibration")
+@click.option(
+    "--site",
+    "site_name",
+    default=None,
+    help="The site to look the id up under. Defaults to `site` in the dotbot config.",
+)
+@click.pass_context
+def _show(ctx, calibration, site_name):
+    if _devices(ctx):
+        raise click.UsageError("show reads a file, so it takes no `dotbot swarm -d`")
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
+    )
+    from dotbot.calibration.multi_station import multi_station_report
+
+    site, _ = site_from_context(ctx, site_name)
+    try:
+        path = resolve_calibration_path(calibration, site=site)
+        loaded = read_calibration_file(path)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    rounds = sorted({t.round for t in loaded.tracks})
+    click.echo(f"Calibration {loaded.id}, site {loaded.site.name}, {path}")
+    click.echo(
+        f"Created {loaded.created_at or 'at an unknown time'}"
+        + (f", tag {loaded.tag!r}" if loaded.tag else "")
+        + (
+            f", {len(loaded.tracks)} tracks over {len(rounds)} round(s)"
+            if loaded.tracks
+            else ""
+        )
+        + f", fence {list(loaded.valid_mm)}"
+    )
+    for line in multi_station_report(loaded):
+        click.echo(line)
 
 
 def _parse_shift(_ctx, _param, value):
