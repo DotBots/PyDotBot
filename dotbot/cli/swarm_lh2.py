@@ -891,15 +891,32 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
     default=None,
     help="The site to look the id up under. Defaults to `site` in the dotbot config.",
 )
+@click.option(
+    "--next-round",
+    "next_robots",
+    type=click.IntRange(min=1, max=64),
+    default=None,
+    metavar="N",
+    help=(
+        "Also say where N robots should spin in another round (collect "
+        "--spin --append) to strengthen the weakest ties and the worst "
+        "predicted error; points in this calibration's frame."
+    ),
+)
 @click.pass_context
-def _show(ctx, calibration, site_name):
+def _show(ctx, calibration, site_name, next_robots):
     if _devices(ctx):
         raise click.UsageError("show reads a file, so it takes no `dotbot swarm -d`")
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
     )
-    from dotbot.calibration.multi_station import multi_station_report
+    from dotbot.calibration.multi_station import (
+        error_map_from_calibration,
+        multi_station_report,
+        next_round,
+        next_round_lines,
+    )
 
     site, _ = site_from_context(ctx, site_name)
     try:
@@ -921,6 +938,21 @@ def _show(ctx, calibration, site_name):
     )
     for line in multi_station_report(loaded):
         click.echo(line)
+    if next_robots:
+        error_map = error_map_from_calibration(loaded)
+        if error_map is None:
+            raise click.ClickException(
+                f"{loaded.id8} is not a spin calibration, so it has no error map "
+                "to plan a round from"
+            )
+        targets = next_round(
+            error_map,
+            {s.index: s.valid_mm for s in loaded.stations},
+            loaded.links,
+            robots=next_robots,
+        )
+        for line in next_round_lines(targets):
+            click.echo(line)
 
 
 def _parse_shift(_ctx, _param, value):
