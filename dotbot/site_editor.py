@@ -53,6 +53,17 @@ class BarrierModel(BaseModel):
     was: int | None = None
 
 
+class ObjectModel(BaseModel):
+    name: str
+    kind: Literal["charger", "dock", "landmark", "camera"]
+    x: int
+    y: int
+    heading_deg: float = 0.0
+    comment: str | None = None
+    # The object's name in the file when the page loaded it; None for a new one
+    was: str | None = None
+
+
 class SiteModel(BaseModel):
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
@@ -60,6 +71,7 @@ class SiteModel(BaseModel):
     # None leaves the file's table as it is
     walls: list[BarrierModel] | None = None
     obstacles: list[BarrierModel] | None = None
+    objects: list[ObjectModel] | None = None
 
 
 class SaveRequest(BaseModel):

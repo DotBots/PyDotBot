@@ -22,6 +22,11 @@ from tomlkit.toml_document import TOMLDocument
 from dotbot.config import SiteSection
 
 AREA_KEYS = ("x", "y", "w", "h")
+# Each table of named tables the editor models, and its keys in file order;
+# the first may be left out (None), the rest are whole millimetres
+NAMED = {"areas": ("role", *AREA_KEYS), "objects": ("kind", "x", "y")}
+# An object's optional heading, written only when not zero
+HEADING = "heading_deg"
 # The arrays of tables of barriers, and the fewest points each entry takes
 BARRIERS = {"walls": 2, "obstacles": 3}
 
@@ -40,18 +45,22 @@ def _comment(item: Any) -> str | None:
     return comment or None
 
 
-def _areas_table(doc: TOMLDocument) -> Table | None:
-    if "areas" not in doc:
+def _named_table(doc: TOMLDocument, key: str) -> Table | None:
+    if key not in doc:
         return None
-    areas = doc["areas"]
-    if not isinstance(areas, Table):
+    table = doc[key]
+    if not isinstance(table, Table):
         raise SiteTomlError(
-            "the site editor edits areas written as one run of [areas.<name>] "
-            "tables, or as one [areas] table; this file writes them otherwise "
+            f"the site editor edits {key} written as one run of [{key}.<name>] "
+            f"tables, or as one [{key}] table; this file writes them otherwise "
             "(split by another table, as dotted keys or inline), so edit it by "
             "hand or gather them first"
         )
-    return areas
+    return table
+
+
+def _areas_table(doc: TOMLDocument) -> Table | None:
+    return _named_table(doc, "areas")
 
 
 def site_model(doc: TOMLDocument) -> dict[str, Any]:
@@ -75,6 +84,17 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
         "areas": areas,
         "connection": dict(connection) if connection is not None else None,
         **{key: _barriers_model(doc, key) for key in BARRIERS},
+        "objects": [
+            {
+                "name": name,
+                "kind": item.get("kind"),
+                "x": int(item["x"]),
+                "y": int(item["y"]),
+                HEADING: float(item.get(HEADING, 0.0)),
+                "comment": _comment(item),
+            }
+            for name, item in (_named_table(doc, "objects") or {}).items()
+        ],
     }
 
 
@@ -133,30 +153,33 @@ def _set_comment(item: Any, comment: str | None) -> None:
         item.trivia.comment_ws = ""
 
 
-def _new_area(inline: bool, area: dict[str, Any]) -> Table | InlineTable:
+def _new_entry(key: str, inline: bool, entry: dict[str, Any]) -> Table | InlineTable:
     item = tomlkit.inline_table() if inline else tomlkit.table()
-    if area.get("role") is not None:
-        item["role"] = area["role"]
-    for key in AREA_KEYS:
-        item[key] = area[key]
-    _set_comment(item, area.get("comment"))
+    first, *numbers = NAMED[key]
+    if entry.get(first) is not None:
+        item[first] = entry[first]
+    for field in numbers:
+        item[field] = entry[field]
+    if entry.get(HEADING):
+        item[HEADING] = entry[HEADING]
+    _set_comment(item, entry.get("comment"))
     return item
 
 
-def _check_names(areas: list[dict[str, Any]]) -> None:
+def _check_names(entries: list[dict[str, Any]], what: str = "area") -> None:
     seen = set()
-    for area in areas:
-        name = area["name"]
+    for entry in entries:
+        name = entry["name"]
         if not isinstance(name, str) or not name.strip():
-            raise SiteTomlError("an area needs a name")
+            raise SiteTomlError(f"an {what} needs a name")
         if name != name.strip():
-            raise SiteTomlError(f"area {name!r}: no spaces around the name")
+            raise SiteTomlError(f"{what} {name!r}: no spaces around the name")
         if "," in name:
             raise SiteTomlError(
-                f"area {name!r}: a comma makes the name read as an x,y,w,h literal"
+                f"{what} {name!r}: a comma makes the name read as an x,y,w,h literal"
             )
         if name in seen:
-            raise SiteTomlError(f"two areas are named {name!r}")
+            raise SiteTomlError(f"two {what}s are named {name!r}")
         seen.add(name)
 
 
@@ -230,12 +253,20 @@ def _rename(table: Table, was: str, name: str) -> None:
 
 
 def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
-    table = _areas_table(doc)
+    _patch_named(doc, "areas", areas)
+
+
+def _patch_named(doc: TOMLDocument, key: str, areas: list[dict[str, Any]]) -> None:
+    """Write one table of named tables (`areas`, `objects`); an entry's `was`
+    names it as the file does, so a rename is told from a delete and an add."""
+    table = _named_table(doc, key)
     if table is None:
         if not areas:
             return
         table = tomlkit.table(is_super_table=True)
-        doc["areas"] = table
+        if not tomlkit.dumps(doc).endswith("\n\n"):
+            doc.add(tomlkit.nl())
+        doc[key] = table
     inline = any(isinstance(item, InlineTable) for item in table.values())
     renames = {
         area["was"]: area["name"]
@@ -244,11 +275,11 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
     }
     kept = {area.get("was") or area["name"] for area in areas}
     for name in [name for name in table if name not in kept]:
-        _delete_table(doc, "areas", table, name)
+        _delete_table(doc, key, table, name)
     for was in renames:
         if was not in table:
-            raise SiteTomlError(f"area {was!r} is not in the file")
-    # A swap or a chain goes through names no area has, so it never meets itself
+            raise SiteTomlError(f"{key} entry {was!r} is not in the file")
+    # A swap or a chain goes through names no entry has, so it never meets itself
     clash = any(name in table for name in renames.values())
     passing = {
         was: f"\0rename-{i}" if clash else name
@@ -261,25 +292,28 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
             if through != renames[was]:
                 _rename(table, through, renames[was])
     except (KeyError, ValueError) as exc:
-        raise SiteTomlError(f"could not rename the areas in this file: {exc}") from exc
+        raise SiteTomlError(f"could not rename the {key} in this file: {exc}") from exc
     for area in areas:
         name = area["name"]
         if name not in table:
             last = table[list(table)[-1]] if table else None
             tail = _split_trailing(last) if isinstance(last, Table) else ""
-            table[name] = _new_area(inline, area)
+            table[name] = _new_entry(key, inline, area)
             if isinstance(table[name], Table):
                 _end_with(table[name], tail)
             elif isinstance(last, Table):
                 _end_with(last, tail)
             continue
         item = table[name]
-        _set(item, "role", area.get("role"))
-        for key in AREA_KEYS:
-            _set(item, key, area[key])
+        first, *numbers = NAMED[key]
+        _set(item, first, area.get(first))
+        for field in numbers:
+            _set(item, field, area[field])
+        if key == "objects":
+            _set(item, HEADING, area.get(HEADING) or None)
         _set_comment(item, area.get("comment"))
     if not table:
-        del doc["areas"]
+        del doc[key]
 
 
 def _normal(model: dict[str, Any]) -> dict[str, Any]:
@@ -311,6 +345,23 @@ def _normal(model: dict[str, Any]) -> dict[str, Any]:
             for key in BARRIERS
             if key in model
         },
+        **(
+            {
+                "objects": sorted(
+                    (
+                        item["name"],
+                        item.get("kind"),
+                        int(item["x"]),
+                        int(item["y"]),
+                        float(item.get(HEADING) or 0.0),
+                        (item.get("comment") or "").strip() or None,
+                    )
+                    for item in model.get("objects") or []
+                )
+            }
+            if "objects" in model
+            else {}
+        ),
     }
 
 
@@ -385,6 +436,9 @@ def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
         array.clear()
         array.extend(int(v) for v in extent)
     _patch_areas(doc, areas)
+    if "objects" in model:
+        _check_names(model["objects"] or [], "object")
+        _patch_named(doc, "objects", model["objects"] or [])
     for key in BARRIERS:
         if key in model:
             _patch_barriers(doc, key, model[key] or [])
