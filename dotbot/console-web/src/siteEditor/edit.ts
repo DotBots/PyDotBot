@@ -1,5 +1,8 @@
 import type { AreaRole } from "../types";
-import type { EditArea, SiteModel } from "./types";
+import type { BarrierKind, EditArea, SiteModel } from "./types";
+
+/** The fewest points a wall and an obstacle take, as site.toml's schema. */
+export const BARRIER_MIN_POINTS: Record<BarrierKind, number> = { walls: 2, obstacles: 3 };
 
 // The editor's geometry and checks, apart from any drawing: snapping, moving,
 // resizing and drawing a rectangle in frame millimetres, and what a site must
@@ -175,7 +178,43 @@ export function siteIssues(site: SiteModel): Issue[] {
       }
     }
   }
+  for (const kind of ["walls", "obstacles"] as BarrierKind[]) {
+    (site[kind] ?? []).forEach((b, i) => {
+      const label = b.name || `${kind === "walls" ? "wall" : "obstacle"} ${i + 1}`;
+      if (b.points.length < BARRIER_MIN_POINTS[kind]) {
+        issues.push({ level: "error", message: `${label} needs at least ${BARRIER_MIN_POINTS[kind]} points` });
+      }
+      if (extent && b.points.some(([x, y]) => x < 0 || y < 0 || x > extent[0] || y > extent[1])) {
+        issues.push({ level: "warning", message: `${label} reaches outside the extent` });
+      }
+    });
+  }
   return issues;
+}
+
+/** `points` moved by (dx, dy), its first point on the snap grid. */
+export function movePoints(points: [number, number][], dx: number, dy: number, step: number): [number, number][] {
+  if (points.length === 0) return points;
+  const ox = snap(points[0][0] + dx, step) - points[0][0];
+  const oy = snap(points[0][1] + dy, step) - points[0][1];
+  return points.map(([x, y]) => [x + ox, y + oy]);
+}
+
+/** A drawn polyline without the repeats a double-click leaves at its end. */
+export function finishPoints(points: [number, number][]): [number, number][] {
+  return points.filter((p, i) => i === 0 || p[0] !== points[i - 1][0] || p[1] !== points[i - 1][1]);
+}
+
+/** `x, y` per line, as the inspector shows points; null when a line does not read. */
+export function parsePoints(text: string): [number, number][] | null {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const out: [number, number][] = [];
+  for (const line of lines) {
+    const parts = line.split(/[\s,]+/).filter(Boolean).map(Number);
+    if (parts.length !== 2 || parts.some((v) => !Number.isFinite(v))) return null;
+    out.push([Math.round(parts[0]), Math.round(parts[1])]);
+  }
+  return out;
 }
 
 /** Whether the anchor or the extent differ, which a calibration depends on. */
@@ -194,6 +233,12 @@ export function sameSite(a: SiteModel, b: SiteModel): boolean {
       extent_mm: s.extent_mm,
       areas: s.areas.map(({ name, x, y, w, h, role, comment, was }) => ({
         name, x, y, w, h, role, comment: comment || null, was: was ?? null,
+      })),
+      walls: (s.walls ?? []).map(({ name, points, comment, was }) => ({
+        name: name || null, points, comment: comment || null, was: was ?? null,
+      })),
+      obstacles: (s.obstacles ?? []).map(({ name, points, comment, was }) => ({
+        name: name || null, points, comment: comment || null, was: was ?? null,
       })),
     });
   return strip(a) === strip(b);
