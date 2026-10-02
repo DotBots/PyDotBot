@@ -1213,6 +1213,35 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 <title>{a.name}</title>
               </rect>
             ))}
+            {/* The site's walls and obstacles, solid: they are the floor's,
+                not a view of it. */}
+            {(props.site?.obstacles ?? []).map((o, i) => (
+              <polygon
+                key={`obstacle-${i}`}
+                data-testid={`obstacle-${o.name || i}`}
+                points={pointsPx(o.points)}
+                fill="var(--muted)"
+                fillOpacity={0.35}
+                stroke="var(--text)"
+                strokeWidth={chrome}
+              >
+                <title>{o.name || "obstacle"}</title>
+              </polygon>
+            ))}
+            {(props.site?.walls ?? []).map((w, i) => (
+              <polyline
+                key={`wall-${i}`}
+                data-testid={`wall-${w.name || i}`}
+                points={pointsPx(w.points)}
+                fill="none"
+                stroke="var(--text)"
+                strokeWidth={3 * chrome}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <title>{w.name || "wall"}</title>
+              </polyline>
+            ))}
             {/* The loaded calibration: each placement's span outlined, and
                 the rest of the site hatched, where positions are
                 extrapolated. The hatch is the site masked by the spans, so
