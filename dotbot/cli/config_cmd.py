@@ -219,13 +219,25 @@ def _write(target: Path, key: tuple[str, ...], value) -> None:
     click.echo(f"wrote {cw.key_text(key)} = {json.dumps(value)} to {target}")
 
 
+def _same(path: Path, other: Path | None) -> bool:
+    """Whether `path` and `other` name one existing file, however spelled."""
+    try:
+        return other is not None and os.path.samefile(path, other)
+    except OSError:
+        return False
+
+
 def _warn_conn_hidden(config, site: str, broker: str, replaced: Path | None) -> None:
     """Warn about each file or env variable whose `conn` hides the site's
     `broker`, leaving out the file at `replaced`."""
     phrases = []
     for item in getattr(config, "files", ()):
         conn = cw.lookup(item.data, ("conn",))
-        if conn is not None and str(conn).strip() != broker and item.path != replaced:
+        if (
+            conn is not None
+            and str(conn).strip() != broker
+            and not _same(item.path, replaced)
+        ):
             phrases.append(f"{item.label} sets conn")
     if os.environ.get("DOTBOT_CONN", broker).strip() != broker:
         phrases.append("DOTBOT_CONN is set")
