@@ -105,3 +105,97 @@ describe("SiteEditor", () => {
     expect(screen.getByLabelText("y")).toHaveValue(0);
   });
 });
+
+describe("SiteEditor calibration placement", () => {
+  const overlay = (free: boolean) => ({
+    id: "3f2a91c0aaaaaaaa",
+    id8: "3f2a91c0",
+    free,
+    fence: [0, 0, 1000, 800],
+    stations: [
+      {
+        index: 0,
+        channel: 1,
+        rect: [0, 0, 1000, 800],
+        centres: [[200, 300]],
+        circles: [{ name: "robot0", x: 200, y: 300, radius_mm: 51.4 }],
+        solved_from: free ? "conics-free" : "direct",
+      },
+    ],
+    links: [],
+    tag: "",
+    created_at: "2026-10-01T10:00:00Z",
+    site: "lab",
+    anchor: "free mode",
+  });
+
+  function placementServer(free: boolean) {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "api/site") return json(200, loaded());
+      if (url === "api/calibrations")
+        return json(200, [
+          { id: "3f2a91c0aaaaaaaa", id8: "3f2a91c0", created_at: "", free, stations: [0], tag: "", site: "lab", path: "" },
+        ]);
+      if (url === "api/calibrations/3f2a91c0") return json(200, overlay(free));
+      if (url === "api/calibrations/3f2a91c0aaaaaaaa/place" && init?.method === "POST")
+        return json(200, {
+          ...overlay(free),
+          id8: "7c0d5e12",
+          path: "/home/cal/arena/calibration-7c0d5e12.toml",
+          source: "3f2a91c0",
+          push: "dotbot swarm calibrate-lh2 push 7c0d5e12 --site arena --site-changed",
+          warnings: [],
+        });
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  async function loadIt() {
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-area-field");
+    fireEvent.click(screen.getByText("Calibration"));
+    fireEvent.change(await screen.findByLabelText("calibration id"), { target: { value: "3f2a91c0" } });
+    await act(async () => fireEvent.click(screen.getByText("Load")));
+  }
+
+  it("draws a loaded calibration and saves it moved as a new one", async () => {
+    const fetch = placementServer(true);
+    await loadIt();
+    expect(await screen.findByTestId("placement-circle-0-robot0")).toBeInTheDocument();
+    expect(screen.getByTestId("placement-turn")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("shift x (mm)"), { target: { value: "500" } });
+    fireEvent.change(screen.getByLabelText("turn (deg)"), { target: { value: "90" } });
+    await act(async () => fireEvent.click(screen.getByText("Save calibration")));
+    const post = fetch.mock.calls.find(([url]) => url === "api/calibrations/3f2a91c0aaaaaaaa/place")!;
+    expect(JSON.parse(post[1]!.body as string)).toEqual({ dx_mm: 500, dy_mm: 0, theta_deg: 90, reanchor: false });
+    expect(await screen.findByTestId("placement-saved")).toHaveTextContent(
+      "dotbot swarm calibrate-lh2 push 7c0d5e12 --site arena",
+    );
+  });
+
+  it("refuses to move a corner-collected calibration until Re-anchor is ticked", async () => {
+    placementServer(false);
+    await loadIt();
+    expect(await screen.findByTestId("placement-refused")).toBeInTheDocument();
+    expect(screen.getByText("Save calibration")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("re-anchor"));
+    expect(screen.getByText("Save calibration")).not.toBeDisabled();
+  });
+
+  it("drags the calibration on the snap grid", async () => {
+    placementServer(true);
+    await loadIt();
+    const body = await screen.findByTestId("placement-body");
+    const canvas = screen.getByTestId("site-canvas");
+    fireEvent.pointerDown(body, { button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 337, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 337, clientY: 300, pointerId: 1 });
+    const dx = Number((screen.getByLabelText("shift x (mm)") as HTMLInputElement).value);
+    expect(dx % 50).toBe(0);
+    expect(dx).toBeGreaterThan(0);
+  });
+});

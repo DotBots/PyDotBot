@@ -1,4 +1,11 @@
-import type { SiteModel, SiteResponse } from "./types";
+import type { Rigid2D } from "./rigid";
+import type {
+  CalibrationListing,
+  CalibrationOverlay,
+  PlacedCalibration,
+  SiteModel,
+  SiteResponse,
+} from "./types";
 
 // The editor's server, relative to the page so it works wherever it is mounted.
 
@@ -66,4 +73,32 @@ export async function saveSite(revision: string, site: SiteModel): Promise<SiteR
 
 export async function stopEditor(): Promise<void> {
   await fetch("api/done", { method: "POST" });
+}
+
+export async function fetchCalibrations(): Promise<CalibrationListing[]> {
+  const res = await fetch("api/calibrations");
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
+}
+
+export async function fetchCalibration(spec: string): Promise<CalibrationOverlay> {
+  const res = await fetch(`api/calibrations/${encodeURIComponent(spec)}`);
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
+}
+
+/** Save `calibration` moved by `move` as a new calibration of this site. */
+export async function placeCalibration(
+  id: string,
+  move: Rigid2D,
+  reanchor: boolean,
+): Promise<PlacedCalibration> {
+  const res = await fetch(`api/calibrations/${encodeURIComponent(id)}/place`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...move, reanchor }),
+  });
+  if (res.status === 422) throw new RefusedSiteError(await detail(res));
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
 }
