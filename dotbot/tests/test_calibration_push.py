@@ -157,7 +157,7 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
     # Device info is read once for the gate and never polled after the push.
     assert fleet.refreshed == [None]
     assert "2 robot(s) hold another id" in result.output
-    assert "Still not on 19ed0cdb (1), push again: LAGGARD" in result.output
+    assert "Still not on 80285c9b (1), push again: LAGGARD" in result.output
 
 
 def test_a_push_checked_for_named_robots_goes_to_exactly_them(calibration_file):
@@ -193,7 +193,7 @@ def test_push_to_another_site_is_refused_without_site_changed(
     moved = _push(monkeypatch, fleet, str(calibration_file), "--site-changed")
     assert moved.exit_code == 0, moved.output
     assert len(fleet.pushed) == 1
-    assert "Every robot reports 19ed0cdb." in moved.output
+    assert "Every robot reports 80285c9b." in moved.output
 
 
 @pytest.mark.parametrize("version", [1, 2])
