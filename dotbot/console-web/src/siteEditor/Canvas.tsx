@@ -16,17 +16,32 @@ import {
 } from "../grid";
 import type { Area } from "../types";
 import { FRAME_CAMERA, viewGeom } from "../zoom";
-import { HANDLES, effectiveRole, moveRect, rectFromDrag, resizeRect, snap } from "./edit";
+import { BARRIER_MIN_POINTS, HANDLES, effectiveRole, finishPoints, movePoints, moveRect, rectFromDrag, resizeRect, snap } from "./edit";
 import type { Handle, Rect } from "./edit";
 import { applyMove, movedBox, movedCorners, snapAngle, turnAbout } from "./rigid";
 import type { Point, Rigid2D } from "./rigid";
-import type { CalibrationBackdrop, CalibrationOverlay, CameraBackdrop, EditArea } from "./types";
+import type {
+  BarrierKind,
+  CalibrationBackdrop,
+  CalibrationOverlay,
+  CameraBackdrop,
+  EditArea,
+  EditBarrier,
+} from "./types";
 
 // The site drawn to scale: the extent, the metric grid and its rulers, and
 // every area in its role colour. Areas are moved, resized and drawn here; the
 // numbers themselves live in the inspector.
 
-export type Tool = "select" | "area" | "calibration";
+export type Tool = "select" | "area" | "calibration" | "wall" | "obstacle";
+
+/** A selected wall or obstacle. */
+export interface BarrierRef {
+  kind: BarrierKind;
+  index: number;
+}
+
+const TOOL_KIND: Partial<Record<Tool, BarrierKind>> = { wall: "walls", obstacle: "obstacles" };
 
 /** A calibration drawn over the site, and the move that places it. */
 export interface Placement {
@@ -48,6 +63,8 @@ type Drag =
   | { kind: "resize"; index: number; start: Rect; handle: Handle }
   | { kind: "draw"; from: { x: number; y: number }; to: { x: number; y: number } }
   | { kind: "place-move"; start: Rigid2D; from: { x: number; y: number } }
+  | { kind: "barrier-move"; ref: BarrierRef; start: [number, number][]; from: { x: number; y: number } }
+  | { kind: "barrier-vertex"; ref: BarrierRef; vertex: number }
   | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number };
 
 export interface CanvasProps {
@@ -63,6 +80,13 @@ export interface CanvasProps {
   onDraw: (rect: Rect) => void;
   placement?: Placement | null;
   onPlacement?: (move: Rigid2D) => void;
+  walls?: EditBarrier[];
+  obstacles?: EditBarrier[];
+  selectedBarrier?: BarrierRef | null;
+  onSelectBarrier?: (ref: BarrierRef | null) => void;
+  /** `key` names the gesture, so one drag undoes as one step. */
+  onBarrierChange?: (ref: BarrierRef, points: [number, number][], key: string) => void;
+  onBarrierDraw?: (kind: BarrierKind, points: [number, number][]) => void;
   /** Read-only layers under the areas: only the ones switched on. */
   backdrops?: { calibrations: CalibrationBackdrop[]; cameras: CameraBackdrop[] };
 }
@@ -89,6 +113,33 @@ export function Canvas(props: CanvasProps) {
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [drag, setDrag] = useState<Drag | null>(null);
   const [altHeld, setAltHeld] = useState(false);
+  // A wall or obstacle being drawn, point by point, and where the pointer is
+  const [draft, setDraft] = useState<{ kind: BarrierKind; points: [number, number][] } | null>(null);
+  const [hover, setHover] = useState<[number, number] | null>(null);
+  const draftKind = TOOL_KIND[props.tool] ?? null;
+
+  useEffect(() => {
+    if (!draftKind) setDraft(null);
+  }, [draftKind]);
+
+  const finishDraft = () => {
+    if (!draft) return;
+    const points = finishPoints(draft.points);
+    if (points.length >= BARRIER_MIN_POINTS[draft.kind]) props.onBarrierDraw?.(draft.kind, points);
+    setDraft(null);
+  };
+
+  useEffect(() => {
+    if (!draft) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") finishDraft();
+      else if (e.key === "Escape") setDraft(null);
+      else return;
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -148,12 +199,33 @@ export function Canvas(props: CanvasProps) {
 
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    if (draftKind) {
+      const p = toFrame(e);
+      const s = snapNow(e);
+      const point: [number, number] = [snap(p.x, s), snap(p.y, s)];
+      setDraft((d) => (d && d.kind === draftKind ? { ...d, points: [...d.points, point] } : { kind: draftKind, points: [point] }));
+      return;
+    }
     if (props.tool === "area") {
       const p = toFrame(e);
       begin(e, { kind: "draw", from: p, to: p });
     } else {
       props.onSelect(null);
+      props.onSelectBarrier?.(null);
     }
+  };
+
+  const onBarrierDown = (e: React.PointerEvent, ref: BarrierRef) => {
+    if (e.button !== 0 || props.tool !== "select") return;
+    const b = (ref.kind === "walls" ? props.walls : props.obstacles)?.[ref.index];
+    if (!b) return;
+    props.onSelectBarrier?.(ref);
+    begin(e, { kind: "barrier-move", ref, start: b.points, from: toFrame(e) });
+  };
+
+  const onVertexDown = (e: React.PointerEvent, ref: BarrierRef, vertex: number) => {
+    if (e.button !== 0) return;
+    begin(e, { kind: "barrier-vertex", ref, vertex });
   };
 
   const onAreaDown = (e: React.PointerEvent, index: number) => {
@@ -196,10 +268,23 @@ export function Canvas(props: CanvasProps) {
 
   const onMove = (e: React.PointerEvent) => {
     setAltHeld(e.altKey);
+    if (draft) {
+      const p = toFrame(e);
+      const s = snapNow(e);
+      setHover([snap(p.x, s), snap(p.y, s)]);
+    }
     if (!drag) return;
     const p = toFrame(e);
     const s = snapNow(e);
-    if (drag.kind === "place-move") {
+    if (drag.kind === "barrier-move") {
+      props.onBarrierChange?.(drag.ref, movePoints(drag.start, p.x - drag.from.x, p.y - drag.from.y, s), `canvas-${gesture.current}`);
+    } else if (drag.kind === "barrier-vertex") {
+      const b = (drag.ref.kind === "walls" ? props.walls : props.obstacles)?.[drag.ref.index];
+      if (b) {
+        const points = b.points.map((q, i): [number, number] => (i === drag.vertex ? [snap(p.x, s), snap(p.y, s)] : q));
+        props.onBarrierChange?.(drag.ref, points, `canvas-${gesture.current}`);
+      }
+    } else if (drag.kind === "place-move") {
       const dx = snap(drag.start.dx_mm + p.x - drag.from.x, s);
       const dy = snap(drag.start.dy_mm + p.y - drag.from.y, s);
       props.onPlacement?.({ ...drag.start, dx_mm: dx, dy_mm: dy });
@@ -248,6 +333,7 @@ export function Canvas(props: CanvasProps) {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={() => setDrag(null)}
+      onDoubleClick={finishDraft}
       style={{
         position: "relative",
         flex: 1,
@@ -255,7 +341,7 @@ export function Canvas(props: CanvasProps) {
         minHeight: 0,
         overflow: "hidden",
         background: "var(--canvas)",
-        cursor: props.tool === "area" ? "crosshair" : "default",
+        cursor: props.tool === "area" || draftKind ? "crosshair" : "default",
         touchAction: "none",
         userSelect: "none",
       }}
@@ -375,6 +461,77 @@ export function Canvas(props: CanvasProps) {
             </g>
           );
         })}
+        {(["obstacles", "walls"] as BarrierKind[]).map((kind) =>
+          ((kind === "walls" ? props.walls : props.obstacles) ?? []).map((b, i) => {
+            const ref = { kind, index: i };
+            const chosen = props.selectedBarrier?.kind === kind && props.selectedBarrier.index === i;
+            const pts = b.points.map(([x, y]) => `${px("x", x)},${px("y", y)}`).join(" ");
+            const common = {
+              points: pts,
+              stroke: chosen ? "var(--accent)" : "var(--text)",
+              style: { cursor: props.tool === "select" ? "move" : undefined },
+              onPointerDown: (e: React.PointerEvent) => onBarrierDown(e, ref),
+            };
+            return kind === "walls" ? (
+              <polyline
+                key={`w${i}`}
+                data-testid={`edit-wall-${i}`}
+                {...common}
+                fill="none"
+                strokeWidth={chosen ? 5 : 4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <title>{b.name || `wall ${i + 1}`}</title>
+              </polyline>
+            ) : (
+              <polygon
+                key={`o${i}`}
+                data-testid={`edit-obstacle-${i}`}
+                {...common}
+                fill="var(--muted)"
+                fillOpacity={0.35}
+                strokeWidth={chosen ? 2.5 : 1.5}
+              >
+                <title>{b.name || `obstacle ${i + 1}`}</title>
+              </polygon>
+            );
+          }),
+        )}
+        {props.selectedBarrier && props.tool === "select" &&
+          ((props.selectedBarrier.kind === "walls" ? props.walls : props.obstacles) ?? [])[props.selectedBarrier.index]?.points.map(
+            ([x, y], v) => (
+              <rect
+                key={`v${v}`}
+                data-testid={`vertex-${v}`}
+                x={px("x", x) - HANDLE_PX / 2}
+                y={px("y", y) - HANDLE_PX / 2}
+                width={HANDLE_PX}
+                height={HANDLE_PX}
+                fill="var(--surface)"
+                stroke="var(--accent)"
+                strokeWidth={1.2}
+                style={{ cursor: "move" }}
+                onPointerDown={(e) => onVertexDown(e, props.selectedBarrier!, v)}
+              />
+            ),
+          )}
+        {draft && (
+          <g data-testid="barrier-draft" style={{ pointerEvents: "none" }}>
+            <polyline
+              points={[...draft.points, ...(hover ? [hover] : []), ...(draft.kind === "obstacles" && draft.points.length > 1 ? [draft.points[0]] : [])]
+                .map(([x, y]) => `${px("x", x)},${px("y", y)}`)
+                .join(" ")}
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+            />
+            {draft.points.map(([x, y], k) => (
+              <circle key={k} cx={px("x", x)} cy={px("y", y)} r={3} fill="var(--accent)" />
+            ))}
+          </g>
+        )}
         {placement && fence && placedBox && placeCentre && (
           <g data-testid="placement">
             {placement.overlay.stations.map((st, k) => {
@@ -559,7 +716,9 @@ export function Canvas(props: CanvasProps) {
           pointerEvents: "none",
         }}
       >
-        {altHeld
+        {draftKind
+          ? `click to add points, double-click or Enter to finish, Esc to cancel; snap ${props.snapMm} mm, Alt for free`
+          : altHeld
           ? "free placement (Alt)"
           : props.tool === "calibration"
             ? `snap ${props.snapMm} mm and 90 deg, Alt for free; scale is locked`

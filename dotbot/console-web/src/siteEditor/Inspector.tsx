@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 
 import type { AreaRole } from "../types";
-import { ROLES, declaredRole, effectiveRole } from "./edit";
+import type { BarrierRef } from "./Canvas";
+import { BARRIER_MIN_POINTS, ROLES, declaredRole, effectiveRole, parsePoints } from "./edit";
 import type { Issue } from "./edit";
-import type { Backdrops, EditArea, SiteModel } from "./types";
+import type { Backdrops, BarrierKind, EditArea, EditBarrier, SiteModel } from "./types";
 
 // The right pane: every field is a key of site.toml, and what it shows is
 // what Save writes.
@@ -74,10 +75,93 @@ export interface InspectorProps {
   onAdd: () => void;
   /** Shown at the top of the pane, for a tool with its own controls. */
   extra?: React.ReactNode;
+  selectedBarrier?: BarrierRef | null;
+  onSelectBarrier?: (ref: BarrierRef | null) => void;
+  onBarrier?: (ref: BarrierRef, patch: Partial<EditBarrier>, key: string) => void;
+  onDeleteBarrier?: (ref: BarrierRef) => void;
   backdrops?: Backdrops | null;
   /** Keys `cal:<id8>` and `cam:<id8>` of the backdrops switched on. */
   shownBackdrops?: Set<string>;
   onToggleBackdrop?: (key: string) => void;
+}
+
+const KIND_LABEL: Record<BarrierKind, string> = { walls: "wall", obstacles: "obstacle" };
+
+function BarrierInspector(props: {
+  barrier: EditBarrier;
+  kind: BarrierKind;
+  index: number;
+  onChange: (patch: Partial<EditBarrier>, key: string) => void;
+  onDelete: () => void;
+}) {
+  const { barrier, kind } = props;
+  const shown = barrier.points.map(([x, y]) => `${x}, ${y}`).join("\n");
+  const [text, setText] = useState(shown);
+  const [editing, setEditing] = useState(false);
+  const parsed = parsePoints(text);
+  const tooFew = !!parsed && parsed.length < BARRIER_MIN_POINTS[kind];
+  return (
+    <div style={section} data-testid="barrier-inspector">
+      <div style={heading}>{KIND_LABEL[kind]}</div>
+      <label>
+        <span style={label}>name (optional)</span>
+        <input
+          aria-label="barrier name"
+          value={barrier.name ?? ""}
+          onChange={(e) => props.onChange({ name: e.target.value || null }, `barrier-name`)}
+          style={input}
+        />
+      </label>
+      <label>
+        <span style={label}>points, x, y in mm, one per line{kind === "obstacles" ? " (the last joins the first)" : ""}</span>
+        <textarea
+          aria-label="barrier points"
+          rows={Math.min(10, barrier.points.length + 1)}
+          value={editing ? text : shown}
+          onFocus={() => {
+            setText(shown);
+            setEditing(true);
+          }}
+          onBlur={() => setEditing(false)}
+          onChange={(e) => {
+            setText(e.target.value);
+            const points = parsePoints(e.target.value);
+            if (points && points.length >= BARRIER_MIN_POINTS[kind]) props.onChange({ points }, "barrier-points");
+          }}
+          style={{ ...input, resize: "vertical" }}
+        />
+      </label>
+      {editing && (!parsed || tooFew) && (
+        <div style={{ fontSize: 11, color: "var(--s-Stopping)", marginTop: 4 }}>
+          {!parsed ? "each line is two numbers, x and y" : `a ${KIND_LABEL[kind]} takes at least ${BARRIER_MIN_POINTS[kind]} points`}
+        </div>
+      )}
+      <label>
+        <span style={label}>comment (kept in the file)</span>
+        <input
+          aria-label="barrier comment"
+          value={barrier.comment ?? ""}
+          onChange={(e) => props.onChange({ comment: e.target.value }, "barrier-comment")}
+          style={{ ...input, fontFamily: "var(--font-ui)" }}
+        />
+      </label>
+      <button
+        type="button"
+        onClick={props.onDelete}
+        style={{
+          marginTop: 12,
+          background: "transparent",
+          color: "var(--accent)",
+          border: "1px solid var(--accent)",
+          borderRadius: 4,
+          padding: "4px 10px",
+          cursor: "pointer",
+        }}
+      >
+        Delete {KIND_LABEL[kind]}
+      </button>
+    </div>
+  );
 }
 
 export function Inspector(props: InspectorProps) {
@@ -208,6 +292,19 @@ export function Inspector(props: InspectorProps) {
         </div>
       )}
 
+      {props.selectedBarrier && site[props.selectedBarrier.kind]?.[props.selectedBarrier.index] && (
+        <BarrierInspector
+          key={`${props.selectedBarrier.kind}-${props.selectedBarrier.index}`}
+          kind={props.selectedBarrier.kind}
+          index={props.selectedBarrier.index}
+          barrier={site[props.selectedBarrier.kind]![props.selectedBarrier.index]}
+          onChange={(patch, key) =>
+            props.onBarrier?.(props.selectedBarrier!, patch, `${key}-${props.selectedBarrier!.kind}-${props.selectedBarrier!.index}`)
+          }
+          onDelete={() => props.onDeleteBarrier?.(props.selectedBarrier!)}
+        />
+      )}
+
       <div style={section}>
         <div style={{ display: "flex", alignItems: "center" }}>
           <div style={{ ...heading, flex: 1 }}>Areas</div>
@@ -256,6 +353,40 @@ export function Inspector(props: InspectorProps) {
           </div>
         ))}
       </div>
+
+      {((site.walls ?? []).length > 0 || (site.obstacles ?? []).length > 0) && (
+        <div style={section} data-testid="barriers">
+          <div style={heading}>Walls and obstacles</div>
+          {(["walls", "obstacles"] as BarrierKind[]).flatMap((kind) =>
+            (site[kind] ?? []).map((b, i) => {
+              const chosen = props.selectedBarrier?.kind === kind && props.selectedBarrier.index === i;
+              return (
+                <div
+                  key={`${kind}-${i}`}
+                  onClick={() => props.onSelectBarrier?.({ kind, index: i })}
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    padding: "4px 6px",
+                    marginTop: 4,
+                    borderRadius: 4,
+                    background: chosen ? "var(--elevated)" : "transparent",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ flex: 1, fontFamily: "var(--font-mono)" }}>
+                    {b.name || `${KIND_LABEL[kind]} ${i + 1}`}
+                  </span>
+                  <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                    {KIND_LABEL[kind]}, {b.points.length} points
+                  </span>
+                </div>
+              );
+            }),
+          )}
+        </div>
+      )}
 
       {props.backdrops && (props.backdrops.calibrations.length > 0 || props.backdrops.cameras.length > 0) && (
         <div style={section} data-testid="backdrops">
