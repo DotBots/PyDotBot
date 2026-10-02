@@ -80,8 +80,9 @@ class Spin:
         """The records of every chunk received, in order; a lost chunk is a gap."""
         return [r for k in sorted(self.received) for r in self.received[k]]
 
-    def samples(self, radius_mm: float) -> list[TrackSample]:
-        """One counter clockwise track per station, as raw counts."""
+    def samples(self, radius_mm: float, round_: int = 0) -> list[TrackSample]:
+        """One counter clockwise track per station, as raw counts, of
+        collection round `round_`."""
         by_station: dict[int, list[LH2CalibrationSample]] = {}
         for record in self.reads():
             if not _is_impossible(record):
@@ -94,6 +95,7 @@ class Spin:
                 turn=1,
                 count1=[r.count1 for r in records],
                 count2=[r.count2 for r in records],
+                round=round_,
             )
             for station, records in sorted(by_station.items())
         ]
