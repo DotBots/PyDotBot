@@ -3,7 +3,7 @@ import React from "react";
 import type { AreaRole } from "../types";
 import { ROLES, declaredRole, effectiveRole } from "./edit";
 import type { Issue } from "./edit";
-import type { EditArea, SiteModel } from "./types";
+import type { Backdrops, EditArea, SiteModel } from "./types";
 
 // The right pane: every field is a key of site.toml, and what it shows is
 // what Save writes.
@@ -65,14 +65,19 @@ export interface InspectorProps {
   selected: number | null;
   hidden: Set<string>;
   issues: Issue[];
-  onSite: (site: SiteModel) => void;
-  onArea: (index: number, area: EditArea) => void;
+  /** `key` names the field, so typing into one undoes as one step. */
+  onSite: (site: SiteModel, key: string) => void;
+  onArea: (index: number, area: EditArea, key: string) => void;
   onSelect: (index: number | null) => void;
   onDelete: (index: number) => void;
   onToggle: (name: string) => void;
   onAdd: () => void;
   /** Shown at the top of the pane, for a tool with its own controls. */
   extra?: React.ReactNode;
+  backdrops?: Backdrops | null;
+  /** Keys `cal:<id8>` and `cam:<id8>` of the backdrops switched on. */
+  shownBackdrops?: Set<string>;
+  onToggleBackdrop?: (key: string) => void;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -82,11 +87,11 @@ export function Inspector(props: InspectorProps) {
   const setExtent = (i: 0 | 1, v: number) => {
     const next: [number, number] = [extent[0], extent[1]];
     next[i] = v;
-    props.onSite({ ...site, extent_mm: next });
+    props.onSite({ ...site, extent_mm: next }, `extent-${i}`);
   };
   const setArea = (patch: Partial<EditArea>) => {
     if (props.selected === null || !area) return;
-    props.onArea(props.selected, { ...area, ...patch });
+    props.onArea(props.selected, { ...area, ...patch }, `area-${props.selected}-${Object.keys(patch).sort().join(",")}`);
   };
   const role = area ? effectiveRole(area) : null;
   const nameIsRole = !!area && (ROLES as string[]).includes(area.name);
@@ -116,7 +121,7 @@ export function Inspector(props: InspectorProps) {
             aria-label="anchor"
             rows={3}
             value={site.anchor ?? ""}
-            onChange={(e) => props.onSite({ ...site, anchor: e.target.value })}
+            onChange={(e) => props.onSite({ ...site, anchor: e.target.value }, "anchor")}
             style={{ ...input, fontFamily: "var(--font-ui)", resize: "vertical" }}
           />
         </label>
@@ -251,6 +256,35 @@ export function Inspector(props: InspectorProps) {
           </div>
         ))}
       </div>
+
+      {props.backdrops && (props.backdrops.calibrations.length > 0 || props.backdrops.cameras.length > 0) && (
+        <div style={section} data-testid="backdrops">
+          <div style={heading}>Backdrops (read-only)</div>
+          {[
+            ...props.backdrops.calibrations.map((c) => ({
+              key: `cal:${c.id8}`,
+              label: `LH2 ${c.id8}${c.tag ? ` ${c.tag}` : ""}`,
+              note: c.placements.length ? "where it was fitted" : "its spin centres",
+            })),
+            ...props.backdrops.cameras.map((c) => ({
+              key: `cam:${c.id8}`,
+              label: `camera ${c.id8} on ${c.area}`,
+              note: c.still ? "its still" : "no still saved",
+            })),
+          ].map((b) => (
+            <label key={b.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, marginTop: 6 }}>
+              <input
+                type="checkbox"
+                aria-label={`backdrop ${b.label}`}
+                checked={props.shownBackdrops?.has(b.key) ?? false}
+                onChange={() => props.onToggleBackdrop?.(b.key)}
+              />
+              <span style={{ flex: 1, fontFamily: "var(--font-mono)" }}>{b.label}</span>
+              <span style={{ color: "var(--muted)", fontSize: 11 }}>{b.note}</span>
+            </label>
+          ))}
+        </div>
+      )}
 
       {props.issues.length > 0 && (
         <div style={section} data-testid="issues">

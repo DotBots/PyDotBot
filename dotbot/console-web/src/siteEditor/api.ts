@@ -1,5 +1,6 @@
 import type { Rigid2D } from "./rigid";
 import type {
+  Backdrops,
   CalibrationListing,
   CalibrationOverlay,
   PlacedCalibration,
@@ -99,6 +100,12 @@ export async function placeCalibration(
     body: JSON.stringify({ ...move, reanchor }),
   });
   if (res.status === 422) throw new RefusedSiteError(await detail(res));
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
+}
+
+export async function fetchBackdrops(): Promise<Backdrops> {
+  const res = await fetch("api/backdrops");
   if (!res.ok) throw new Error(await detail(res));
   return res.json();
 }
