@@ -442,6 +442,19 @@ export interface Site {
   calibration?: SiteCalibration | null;
   walls?: Barrier[];
   obstacles?: Barrier[];
+  objects?: SiteObject[];
+}
+
+// A thing on the floor at a pose in frame mm; `heading_deg` follows the
+// robots' convention (0 faces +y).
+export type SiteObjectKind = "charger" | "dock" | "landmark" | "camera";
+
+export interface SiteObject {
+  name: string;
+  kind: SiteObjectKind;
+  x: number;
+  y: number;
+  heading_deg: number;
 }
 
 // Where robots cannot go, in frame mm: a wall is a polyline, an obstacle a
