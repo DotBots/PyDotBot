@@ -186,7 +186,7 @@ def test_start_hands_the_child_exactly_the_login(monkeypatch, tmp_path):
 
     class Popen:
         def __init__(self, command, env, **kwargs):
-            seen.update(command=command, env=env)
+            seen.update(command=command, env=env, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", Popen)
     monkeypatch.setattr("atexit.register", lambda func: None)
@@ -198,6 +198,8 @@ def test_start_hands_the_child_exactly_the_login(monkeypatch, tmp_path):
     assert "DOTBOT_MQTT_USER" not in seen["env"]
     assert "DOTBOT_MQTT_PASS" not in seen["env"]
     assert seen["command"][1:3] == ["-m", "dotbot.swarm_serve"]
+    assert seen["stdin"] == subprocess.PIPE
+    assert seen["env"][swarm_serve.LIFELINE_ENV] == "1"
     assert seen["command"][-6:] == [
         "serve",
         "--local",
@@ -236,3 +238,75 @@ def test_watch_reports_a_server_that_exits_on_its_own(tmp_path):
             break
         time.sleep(0.02)
     assert exits == [3]
+
+
+_LIFELINE_CHILD = (
+    "import time; from dotbot.swarm_serve import exit_with_parent; "
+    "exit_with_parent(); print('up', flush=True); time.sleep(60)"
+)
+
+
+def _lifeline_env():
+    import os
+
+    return {**os.environ, swarm_serve.LIFELINE_ENV: "1"}
+
+
+def test_the_child_exits_when_its_stdin_closes():
+    child = subprocess.Popen(
+        [sys.executable, "-c", _LIFELINE_CHILD],
+        env=_lifeline_env(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    try:
+        assert child.stdout.readline().strip() == b"up"
+        child.stdin.close()
+        child.wait(timeout=10)
+    finally:
+        child.kill()
+        child.wait()
+
+
+def _running(pid: int) -> bool:
+    """Whether `pid` runs, a zombie nobody has reaped yet counting as ended."""
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:
+        with open(f"/proc/{pid}/stat") as stat:
+            return stat.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL is POSIX")
+def test_the_child_exits_when_the_controller_is_killed():
+    import os
+    import signal
+
+    controller = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import subprocess, sys, time; "
+            "child = subprocess.Popen([sys.executable, '-c', sys.argv[1]], "
+            "stdin=subprocess.PIPE, stdout=subprocess.PIPE); "
+            "child.stdout.readline(); print(child.pid, flush=True); time.sleep(60)",
+            _LIFELINE_CHILD,
+        ],
+        env=_lifeline_env(),
+        stdout=subprocess.PIPE,
+    )
+    child_pid = int(controller.stdout.readline())
+    controller.send_signal(signal.SIGKILL)
+    controller.wait()
+    for _ in range(100):
+        if not _running(child_pid):
+            return
+        time.sleep(0.1)
+    os.kill(child_pid, signal.SIGKILL)
+    pytest.fail("the swarm server outlived the controller")

@@ -5,7 +5,8 @@
 
 Run as `python -m dotbot.swarm_serve <swarmit args>`, this module is the
 child `start` launches: swarmit's CLI, with `DOTBOT_MQTT_INSECURE` applied and
-the broker login already in its environment.
+the broker login already in its environment. Its stdin is a pipe from the
+controller, and it exits when that pipe closes, however the controller ends.
 """
 
 from __future__ import annotations
@@ -28,8 +29,8 @@ from dotbot.mqtt_tls import LOCAL_HOSTS, PASS_ENV, USER_ENV
 
 # How long a stopping server gets before it is killed
 STOP_TIMEOUT_S = 5.0
-# The pid the child exits with when its parent is gone
-PARENT_ENV = "DOTBOT_SWARM_SERVE_PARENT"
+# Set in the child's environment: exit when stdin reaches end of file
+LIFELINE_ENV = "DOTBOT_SWARM_SERVE_LIFELINE"
 
 
 def server_settings(url: str, timeout: float = 0.5) -> dict | None:
@@ -72,6 +73,8 @@ class SwarmServer:
 
     def stop(self) -> None:
         self.stopping = True
+        if self.process.stdin is not None:
+            self.process.stdin.close()
         if self.process.poll() is not None:
             return
         self.process.terminate()
@@ -100,7 +103,7 @@ def start(
         env[USER_ENV] = username
     if password is not None:
         env[PASS_ENV] = password
-    env[PARENT_ENV] = str(os.getpid())
+    env[LIFELINE_ENV] = "1"
     command = [
         sys.executable,
         "-m",
@@ -123,7 +126,7 @@ def start(
         process = subprocess.Popen(
             command,
             env=env,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE,
             stdout=log,
             stderr=subprocess.STDOUT,
             start_new_session=sys.platform != "win32",
@@ -145,23 +148,25 @@ def watch(server: SwarmServer, on_exit) -> None:
     threading.Thread(target=wait, name="swarm server watch", daemon=True).start()
 
 
-def _follow_parent() -> None:  # pragma: no cover - runs in the child
-    """Exit with the parent: on Linux a SIGTERM when it dies, everywhere an
-    exit now if it is already gone."""
-    parent = os.environ.get(PARENT_ENV)
-    if sys.platform == "linux":
-        try:
-            import ctypes
+def exit_with_parent() -> None:
+    """Under `LIFELINE_ENV`, end this process once stdin reaches end of file,
+    which happens when the process holding the pipe's other end exits."""
+    if os.environ.get(LIFELINE_ENV) != "1" or sys.stdin is None:
+        return
+    stdin = sys.stdin.buffer
 
-            ctypes.CDLL("libc.so.6").prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
-        except (OSError, AttributeError):
+    def wait():
+        while stdin.read(1024):
             pass
-    if parent is not None and os.getppid() != int(parent):
-        sys.exit(0)
+        if sys.platform == "win32":
+            os._exit(0)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=wait, name="swarm server lifeline", daemon=True).start()
 
 
 def main(args: list[str]) -> None:  # pragma: no cover - needs a broker
-    _follow_parent()
+    exit_with_parent()
     from swarmit.cli.main import main as swarmit_group
 
     from dotbot.mqtt_tls import allow_unverified_broker
