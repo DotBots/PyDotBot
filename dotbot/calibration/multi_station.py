@@ -48,6 +48,7 @@ from dotbot.calibration.lighthouse2 import (
 from dotbot.robots import robot_geometry
 
 __all__ = [
+    "Anchor",
     "CircleKey",
     "ErrorMap",
     "JointSolution",
@@ -77,6 +78,10 @@ TIE_SIGMA_FLOOR_MM = 1.0
 # Tied circles needed before the typical disagreement means anything.
 TIE_GATE_MIN = 4
 TIE_ROUNDS_MAX = 4
+
+# Anchors spread less than this share of the fence's diagonal hold the
+# frame's yaw over too short a baseline.
+ANCHOR_SPAN_SHARE = 0.5
 
 # Huber threshold on the radial residual, mm.
 ROBUST_MM = 5.0
@@ -164,10 +169,27 @@ class JointSolution:
     # Per link (a, b): rms centre disagreement after the seed, before refinement.
     seed_disagreement_mm: dict[tuple[int, int], float] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # Per anchor: its known point and how far the solve puts its spin from it.
+    anchor_residuals: dict[CircleKey, float] = field(default_factory=dict)
+    # Scale of the best similarity from the solved anchors to the known
+    # points: 1 when the spin radius and the floor agree.
+    anchor_scale_ratio: float | None = None
+
+    @property
+    def anchored(self) -> bool:
+        return bool(self.anchor_residuals)
 
     @property
     def joint(self) -> bool:
         return len(self.homographies) > 1
+
+
+@dataclass(frozen=True)
+class Anchor:
+    """A robot that spun with its pivot on a known floor point, site mm."""
+
+    key: CircleKey
+    point_mm: tuple[float, float]
 
 
 class MultiStationError(ValueError):
@@ -717,6 +739,30 @@ def solve_joint(
     margin_mm: float | None = None,
     rect_margin_mm: int = RECT_MARGIN_MM,
     drop: Collection[int] = (),
+    anchors: Sequence[Anchor] = (),
+) -> JointSolution:
+    """Every station's homography in one metric frame, from circle tracks.
+
+    Without `anchors` the frame is free mode's (see `_solve_free`). With two
+    or more, the free solution is moved by the one rigid motion that best
+    puts the anchors' spin centres on their known points: the spin radius
+    keeps setting the scale, and how far the anchors disagree with it is
+    reported, never absorbed.
+    """
+    joint = _solve_free(
+        tracks, margin_mm=margin_mm, rect_margin_mm=rect_margin_mm, drop=drop
+    )
+    if not anchors:
+        return joint
+    return _anchored(joint, tracks, anchors, rect_margin_mm)
+
+
+def _solve_free(
+    tracks: Mapping[int, Sequence[Track]],
+    *,
+    margin_mm: float | None = None,
+    rect_margin_mm: int = RECT_MARGIN_MM,
+    drop: Collection[int] = (),
 ) -> JointSolution:
     """Every station's homography in one metric frame, from circle tracks.
 
@@ -874,6 +920,98 @@ def solve_joint(
     )
 
 
+def _anchored(
+    joint: JointSolution,
+    tracks: Mapping[int, Sequence[Track]],
+    anchors: Sequence[Anchor],
+    rect_margin_mm: int,
+) -> JointSolution:
+    if len(anchors) < 2:
+        raise ValueError(
+            f"{len(anchors)} anchor(s): two or more fix the frame to the floor"
+        )
+    missing = [a for a in anchors if a.key not in joint.centres]
+    if missing:
+        raise ValueError(
+            "no station kept the spin of anchor(s) "
+            + ", ".join(_key_text(a.key) for a in missing)
+        )
+    got = np.array([joint.centres[a.key] for a in anchors])
+    want = np.array([a.point_mm for a in anchors], dtype=float)
+    T = similarity(got, want, scale=False)
+    S = similarity(got, want, scale=True)
+    H = {s: (T @ Hs) / (T @ Hs)[2, 2] for s, Hs in joint.homographies.items()}
+    centres = {k: apply(T, v[None, :])[0] for k, v in joint.centres.items()}
+    kept = {
+        s: [t for t in tracks[s] if t.key in {f.key for f in sol.tracks}]
+        for s, sol in joint.solutions.items()
+    }
+    rectangles = {}
+    for s, sol in joint.solutions.items():
+        why = {t.key: t.why for t in sol.dropped}
+        out = [t for t in tracks[s] if t.key in why]
+        sol.homography = H[s]
+        sol.tracks = fit_tracks(kept[s], H[s])
+        sol.dropped = fit_tracks(out, H[s], {t: why[t.key] for t in out})
+        rectangles[s] = _rect_around(
+            np.array([t.centre_mm for t in sol.tracks], dtype=float), rect_margin_mm
+        )
+    valid = union_rect(rectangles.values())
+    warnings = list(joint.warnings)
+    span = _spread(want)
+    diagonal = math.hypot(valid[2] - valid[0], valid[3] - valid[1])
+    if span < ANCHOR_SPAN_SHARE * diagonal:
+        warnings.append(
+            f"the anchors span {span:.0f} mm, under half the fence's "
+            f"{diagonal:.0f} mm diagonal: the frame's yaw is held over a short "
+            "baseline; put anchors at the ends of the longest path across "
+            "the stations"
+        )
+    residuals = {
+        a.key: float(np.linalg.norm(apply(T, g[None, :])[0] - w))
+        for a, g, w in zip(anchors, got, want)
+    }
+    return JointSolution(
+        homographies=H,
+        centres=centres,
+        rectangles=rectangles,
+        valid_mm=valid,
+        field_mm=joint.field_mm,
+        graph=joint.graph,
+        loops=joint.loops,
+        station_rms_mm=joint.station_rms_mm,
+        scale_ratio=joint.scale_ratio,
+        dropped=joint.dropped,
+        error_map=_map_from(H, kept, rectangles),
+        solutions=joint.solutions,
+        unsolved=joint.unsolved,
+        seed_disagreement_mm=joint.seed_disagreement_mm,
+        warnings=warnings,
+        anchor_residuals=residuals,
+        anchor_scale_ratio=float(math.sqrt(abs(np.linalg.det(S[:2, :2])))),
+    )
+
+
+def _map_from(
+    H: Mapping[int, np.ndarray],
+    kept: Mapping[int, Sequence[Track]],
+    rectangles: Mapping[int, Sequence[int]],
+    cell_mm: float = ERROR_MAP_CELL_MM,
+) -> ErrorMap:
+    """The error map of homographies `H` over the kept tracks, every circle
+    seen by several stations tying them."""
+    world = {
+        s: {t.key: _circle_fit(apply(H[s], t.points))[0] for t in kept[s]} for s in kept
+    }
+    tied: dict[CircleKey, set[int]] = {}
+    for s, centres in world.items():
+        for k in centres:
+            tied.setdefault(k, set()).add(s)
+    root = min(kept, key=lambda s: (-len(kept[s]), s))
+    problem, x = _build_problem(kept, world, tied, dict(H), root)
+    return _error_map(problem, x, rectangles, cell_mm)
+
+
 def _depth(parent: Mapping[int, int], s: int) -> int:
     depth = 0
     while parent[s] != s:
@@ -976,24 +1114,17 @@ def error_map_from_calibration(
     }
     if not by_station:
         return None
-    kept, world = {}, {}
+    kept = {}
     for s, tracks in by_station.items():
         H = stations[s].matrix
         gate = health_gate(tracks, H)
         kept[s] = [t for t in tracks if t not in gate and len(t.points) >= 6]
-        world[s] = {t.key: _circle_fit(apply(H, t.points))[0] for t in kept[s]}
     kept = {s: t for s, t in kept.items() if t}
     if not kept:
         return None
-    tied: dict[CircleKey, set[int]] = {}
-    for s, centres in world.items():
-        for k in centres:
-            tied.setdefault(k, set()).add(s)
     H = {s: stations[s].matrix for s in kept}
-    root = min(kept, key=lambda s: (-len(kept[s]), s))
-    problem, x = _build_problem(kept, world, tied, H, root)
     rectangles = {s: stations[s].valid_mm for s in kept}
-    return _error_map(problem, x, rectangles, cell_mm)
+    return _map_from(H, kept, rectangles, cell_mm)
 
 
 def appendable_rounds(calibration: Calibration) -> int:
@@ -1100,6 +1231,16 @@ def multi_station_report(
                 before = joint.seed_disagreement_mm.get((link.a, link.b))
             lines.append(_link_line(link, before))
     if joint is not None:
+        for key, residual in joint.anchor_residuals.items():
+            lines.append(
+                f"anchor {_key_text(key)}: its spin is {residual:.1f} mm from "
+                "its known point"
+            )
+        if joint.anchor_scale_ratio is not None:
+            lines.append(
+                f"anchor scale ratio {joint.anchor_scale_ratio:.4f}: 1 when the "
+                "spin radius and the floor agree"
+            )
         for cycle, closure in joint.loops:
             path = " - ".join(str(s) for s in cycle + cycle[:1])
             lines.append(f"loop {path}: closure {closure:.1f} mm")
