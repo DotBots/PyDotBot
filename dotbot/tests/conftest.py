@@ -38,7 +38,7 @@ def no_user_config(monkeypatch, tmp_path_factory):
 @pytest.fixture(autouse=True)
 def no_swarm_server(monkeypatch):
     """Keep `run controller` from probing or starting a real swarm server;
-    the fake `start` records its calls in `.calls`."""
+    returns the mock standing in for `swarm_serve.start`."""
     from unittest.mock import MagicMock
 
     start = MagicMock(name="swarm_serve.start")
