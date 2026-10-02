@@ -12,6 +12,7 @@ import {
   siteIssues,
   snap,
 } from "./edit";
+import { finishPoints, movePoints, parsePoints } from "./edit";
 import type { EditArea, SiteModel } from "./types";
 
 const area = (name: string, x: number, y: number, w: number, h: number, role: EditArea["role"] = null): EditArea => ({
@@ -130,5 +131,34 @@ describe("change tracking", () => {
     expect(frameChanged(site, { ...site, anchor: "elsewhere" })).toBe(true);
     expect(sameSite(site, moved)).toBe(false);
     expect(sameSite(site, { ...site, anchor: "the door corner" })).toBe(true);
+  });
+});
+
+describe("barriers", () => {
+  it("reads points one per line and refuses a line that does not read", () => {
+    expect(parsePoints("0, 0\n1000 0\n\n 1000,  500 ")).toEqual([
+      [0, 0],
+      [1000, 0],
+      [1000, 500],
+    ]);
+    expect(parsePoints("0, 0\n12")).toBeNull();
+  });
+
+  it("moves points with the first on the snap grid, and drops a double-click's repeat", () => {
+    expect(movePoints([[10, 10], [110, 10]], 37, 0, 50)).toEqual([[50, 0], [150, 0]]);
+    expect(finishPoints([[0, 0], [100, 0], [100, 0]])).toEqual([[0, 0], [100, 0]]);
+  });
+
+  it("flags a barrier with too few points and one outside the extent", () => {
+    const site = {
+      anchor: null,
+      extent_mm: [2000, 2000] as [number, number],
+      areas: [],
+      walls: [{ name: "w", points: [[0, 0]] as [number, number][], comment: null }],
+      obstacles: [{ name: null, points: [[0, 0], [3000, 0], [0, 100]] as [number, number][], comment: null }],
+    };
+    const messages = siteIssues(site).map((i) => `${i.level}: ${i.message}`);
+    expect(messages).toContain("error: w needs at least 2 points");
+    expect(messages).toContain("warning: obstacle 1 reaches outside the extent");
   });
 });

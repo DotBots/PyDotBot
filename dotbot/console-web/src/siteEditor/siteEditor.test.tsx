@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SiteEditor } from "./SiteEditor";
@@ -264,5 +264,52 @@ describe("SiteEditor comfort", () => {
     expect(screen.queryByTestId("backdrop-calibration-b54cb043")).toBeNull();
     fireEvent.click(box);
     expect(screen.getByTestId("backdrop-calibration-b54cb043")).toBeInTheDocument();
+  });
+});
+
+describe("SiteEditor walls and obstacles", () => {
+  const withBarriers = (): SiteResponse => ({
+    ...loaded(),
+    site: {
+      ...loaded().site,
+      walls: [],
+      obstacles: [{ name: "pillar", points: [[100, 100], [300, 100], [300, 300]], comment: null }],
+    },
+  });
+
+  it("draws a wall point by point and saves it as a new entry", async () => {
+    const fetch = server(withBarriers(), { status: 200, body: { ...withBarriers(), revision: "r2", written: true } });
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-obstacle-0");
+    fireEvent.click(screen.getByText("Wall"));
+    const canvas = screen.getByTestId("site-canvas");
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 200, pointerId: 1 });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 200, pointerId: 1 });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 200, pointerId: 1 });
+    expect(screen.getByTestId("barrier-draft")).toBeInTheDocument();
+    fireEvent.doubleClick(canvas);
+    expect(await screen.findByTestId("edit-wall-0")).toBeInTheDocument();
+    expect(screen.getByTestId("barrier-inspector")).toHaveTextContent("wall");
+    await act(async () => fireEvent.click(screen.getByText("Save")));
+    const put = fetch.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    const sent = JSON.parse(put[1]!.body as string).site;
+    expect(sent.walls).toHaveLength(1);
+    expect(sent.walls[0].points).toHaveLength(2);
+    expect(sent.walls[0].was).toBeNull();
+    expect(sent.obstacles[0].was).toBe(0);
+  });
+
+  it("edits an obstacle's points as text and deletes it", async () => {
+    server(withBarriers(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    fireEvent.click(within(await screen.findByTestId("barriers")).getByText("pillar"));
+    const points = screen.getByLabelText("barrier points");
+    fireEvent.focus(points);
+    fireEvent.change(points, { target: { value: "100, 100\n500, 100\n500, 500\n100, 500" } });
+    expect(screen.getByTestId("edit-obstacle-0").getAttribute("points")!.split(" ")).toHaveLength(4);
+    fireEvent.change(points, { target: { value: "100, 100\nnot a point" } });
+    expect(screen.getByText("each line is two numbers, x and y")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Delete obstacle"));
+    expect(screen.queryByTestId("edit-obstacle-0")).toBeNull();
   });
 });
