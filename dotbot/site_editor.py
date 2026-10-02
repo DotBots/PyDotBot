@@ -52,12 +52,24 @@ class BarrierModel(BaseModel):
     was: int | None = None
 
 
+class ObjectModel(BaseModel):
+    name: str
+    kind: Literal["charger", "dock", "landmark", "camera"]
+    x: int
+    y: int
+    heading_deg: float = 0.0
+    comment: str | None = None
+    # The object's name in the file when the page loaded it; None for a new one
+    was: str | None = None
+
+
 class SiteModel(BaseModel):
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: list[AreaModel] = Field(default_factory=list)
     walls: list[BarrierModel] = Field(default_factory=list)
     obstacles: list[BarrierModel] = Field(default_factory=list)
+    objects: list[ObjectModel] = Field(default_factory=list)
 
 
 class SaveRequest(BaseModel):

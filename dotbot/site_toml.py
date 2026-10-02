@@ -22,6 +22,11 @@ from tomlkit.toml_document import TOMLDocument
 from dotbot.config import SiteSection
 
 AREA_KEYS = ("x", "y", "w", "h")
+# Each table of named tables the editor models, and its keys in file order;
+# the first may be left out (None), the rest are whole millimetres
+NAMED = {"areas": ("role", *AREA_KEYS), "objects": ("kind", "x", "y")}
+# An object's optional heading, written only when not zero
+HEADING = "heading_deg"
 # The arrays of tables of barriers, and the fewest points each entry takes
 BARRIERS = {"walls": 2, "obstacles": 3}
 
@@ -40,9 +45,13 @@ def _comment(item: Any) -> str | None:
     return comment or None
 
 
+def _named_table(doc: TOMLDocument, key: str) -> Table | None:
+    table = doc.get(key)
+    return table if isinstance(table, Table) else None
+
+
 def _areas_table(doc: TOMLDocument) -> Table | None:
-    areas = doc.get("areas")
-    return areas if isinstance(areas, Table) else None
+    return _named_table(doc, "areas")
 
 
 def site_model(doc: TOMLDocument) -> dict[str, Any]:
@@ -66,6 +75,17 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
         "areas": areas,
         "connection": dict(connection) if connection is not None else None,
         **{key: _barriers_model(doc, key) for key in BARRIERS},
+        "objects": [
+            {
+                "name": name,
+                "kind": item.get("kind"),
+                "x": int(item["x"]),
+                "y": int(item["y"]),
+                HEADING: float(item.get(HEADING, 0.0)),
+                "comment": _comment(item),
+            }
+            for name, item in (_named_table(doc, "objects") or {}).items()
+        ],
     }
 
 
@@ -104,40 +124,51 @@ def _set_comment(item: Any, comment: str | None) -> None:
         item.trivia.comment_ws = ""
 
 
-def _new_area(inline: bool, area: dict[str, Any]) -> Table | InlineTable:
+def _new_entry(key: str, inline: bool, entry: dict[str, Any]) -> Table | InlineTable:
     item = tomlkit.inline_table() if inline else tomlkit.table()
-    if area.get("role") is not None:
-        item["role"] = area["role"]
-    for key in AREA_KEYS:
-        item[key] = area[key]
-    _set_comment(item, area.get("comment"))
+    first, *numbers = NAMED[key]
+    if entry.get(first) is not None:
+        item[first] = entry[first]
+    for field in numbers:
+        item[field] = entry[field]
+    if entry.get(HEADING):
+        item[HEADING] = entry[HEADING]
+    _set_comment(item, entry.get("comment"))
     return item
 
 
-def _check_names(areas: list[dict[str, Any]]) -> None:
+def _check_names(entries: list[dict[str, Any]], what: str = "area") -> None:
     seen = set()
-    for area in areas:
-        name = area["name"]
+    for entry in entries:
+        name = entry["name"]
         if not isinstance(name, str) or not name.strip():
-            raise SiteTomlError("an area needs a name")
+            raise SiteTomlError(f"an {what} needs a name")
         if name != name.strip():
-            raise SiteTomlError(f"area {name!r}: no spaces around the name")
+            raise SiteTomlError(f"{what} {name!r}: no spaces around the name")
         if "," in name:
             raise SiteTomlError(
-                f"area {name!r}: a comma makes the name read as an x,y,w,h literal"
+                f"{what} {name!r}: a comma makes the name read as an x,y,w,h literal"
             )
         if name in seen:
-            raise SiteTomlError(f"two areas are named {name!r}")
+            raise SiteTomlError(f"two {what}s are named {name!r}")
         seen.add(name)
 
 
 def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
-    table = _areas_table(doc)
+    _patch_named(doc, "areas", areas)
+
+
+def _patch_named(doc: TOMLDocument, key: str, areas: list[dict[str, Any]]) -> None:
+    """Write one table of named tables (`areas`, `objects`); an entry's `was`
+    names it as the file does, so a rename is told from a delete and an add."""
+    table = _named_table(doc, key)
     if table is None:
         if not areas:
             return
         table = tomlkit.table(is_super_table=True)
-        doc["areas"] = table
+        if not tomlkit.dumps(doc).endswith("\n\n"):
+            doc.add(tomlkit.nl())
+        doc[key] = table
     inline = any(isinstance(item, InlineTable) for item in table.values())
     renames = {
         area["was"]: area["name"]
@@ -149,7 +180,7 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
         del table[name]
     for was, name in renames.items():
         if was not in table:
-            raise SiteTomlError(f"area {was!r} is not in the file")
+            raise SiteTomlError(f"{key} entry {was!r} is not in the file")
         # tomlkit has no public rename; this keeps the area's place, comment
         # and layout
         item = table[was]
@@ -163,15 +194,18 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
     for area in areas:
         name = area["name"]
         if name not in table:
-            table[name] = _new_area(inline, area)
+            table[name] = _new_entry(key, inline, area)
             continue
         item = table[name]
-        _set(item, "role", area.get("role"))
-        for key in AREA_KEYS:
-            _set(item, key, area[key])
+        first, *numbers = NAMED[key]
+        _set(item, first, area.get(first))
+        for field in numbers:
+            _set(item, field, area[field])
+        if key == "objects":
+            _set(item, HEADING, area.get(HEADING) or None)
         _set_comment(item, area.get("comment"))
     if not table:
-        del doc["areas"]
+        del doc[key]
 
 
 def _patch_barriers(doc: TOMLDocument, key: str, items: list[dict[str, Any]]) -> None:
@@ -233,6 +267,9 @@ def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
         array.clear()
         array.extend(int(v) for v in extent)
     _patch_areas(doc, areas)
+    if "objects" in model:
+        _check_names(model["objects"] or [], "object")
+        _patch_named(doc, "objects", model["objects"] or [])
     for key in BARRIERS:
         if key in model:
             _patch_barriers(doc, key, model[key] or [])
