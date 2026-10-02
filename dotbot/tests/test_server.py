@@ -1384,6 +1384,8 @@ async def test_get_controller_site():
         "field": "field",
         "calibration": None,
         "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 
@@ -1460,6 +1462,8 @@ async def test_get_controller_site_with_nothing_measured():
         "field": None,
         "calibration": None,
         "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 
