@@ -729,8 +729,8 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
 
     calibration = _wire_fixture(tmp_path)
     message = calibration_messages(calibration)[1]
-    count, index = struct.unpack_from("<II", message, 0)
-    assert (count, index) == (2, 1)
+    mask, index = struct.unpack_from("<II", message, 0)
+    assert (mask, index) == (0b11, 1)
     assert np.allclose(
         np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3),
         calibration.station(1).homography,
@@ -742,15 +742,48 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     assert lighthouse2.message_site(message) == ("c405-arena", "80285c9b7db82732")
 
 
-def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
-    """The receiver trusts slots 0 to count - 1, so station 2 alone leaves slot 0 empty."""
+def _stations_2_and_8(tmp_path):
+    calibration = _wire_fixture(tmp_path)
+    two, eight = calibration.stations
+    calibration.stations = [
+        replace(two, index=2, valid_mm=(0, 0, 3330, 2500)),
+        replace(eight, index=8, valid_mm=(1200, 10, 3330, 4000)),
+    ]
+    calibration.stored_id = ""
+    return calibration
+
+
+def test_stations_2_and_8_encode_byte_for_byte_as_the_frozen_layout(tmp_path):
+    """0xA3 payload: mask u32 @0, index u32 @4, float32 H[3][3] @8, this
+    station's u32 valid_mm[4] @44, site_name[16] @60, calibration_id[8] @76."""
+    import struct
+
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _stations_2_and_8(tmp_path)
+    messages = calibration_messages(calibration)
+    assert [len(m) for m in messages] == [84, 84]
+    for message, station in zip(messages, calibration.stations):
+        expected = (
+            (0x0104).to_bytes(4, "little")
+            + station.index.to_bytes(4, "little")
+            + b"".join(struct.pack("<f", v) for row in station.homography for v in row)
+            + b"".join(v.to_bytes(4, "little") for v in station.valid_mm)
+            + b"c405-arena".ljust(16, b"\x00")
+            + bytes.fromhex(calibration.id[:16])
+        )
+        assert message == expected
+    assert lighthouse2.station_mask(calibration) == 0x0104
+
+
+@pytest.mark.parametrize("index", [16, -1])
+def test_a_station_outside_0_to_15_is_refused(tmp_path, index):
     from dotbot.calibration.lighthouse2 import calibration_messages
 
     calibration = _wire_fixture(tmp_path)
-    calibration.stations = [replace(calibration.stations[1], index=2)]
+    calibration.stations = [replace(calibration.stations[1], index=index)]
     calibration.stored_id = ""
-
-    with pytest.raises(ValueError, match="numbered from zero without gaps"):
+    with pytest.raises(ValueError, match="outside 0 to 15"):
         calibration_messages(calibration)
 
 

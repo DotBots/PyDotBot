@@ -359,7 +359,7 @@ def test_a_spin_push_waits_for_the_robots_to_leave_the_app(monkeypatch, lab):
     sent = []
     fleet.send_lh2_calibration = lambda payload, devices=None: sent.append(devices)
     for node in fleet.nodes.values():
-        node.info.info_version = 3
+        node.info.info_version = 4
         node.info.lh2_site_name = "c405"
         node.info.lh2_calibration_id = ""
         node.info_gen = 1

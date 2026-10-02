@@ -379,8 +379,10 @@ def reprojection_residual_mm(
 # --- Wire -------------------------------------------------------------------
 
 # One calibration message per station, `swrmt_lh2_calibration_data_t` in the
-# swarmit netcore: count, index, the matrix, then the site fields every
-# message of a push repeats. swarmit's `helpers.py` packs the same bytes; the
+# swarmit netcore: the station mask, the station's index, its matrix and its
+# rectangle, then the site name and calibration id every message of a push
+# repeats. The net core commits once every station of the mask has arrived,
+# keyed by mask and id. swarmit's `helpers.py` packs the same bytes; the
 # fixture test in each repo pins them.
 LH2_SITE_NAME_BYTES = 16
 LH2_CALIBRATION_ID_BYTES = 8
@@ -483,11 +485,10 @@ def station_label(index: int) -> str:
 
 
 def pushable_stations(calibration: Calibration) -> list[StationSolution]:
-    """The stations in index order, refused when a robot would mis-key them.
+    """The stations in index order, refused when a robot could not hold them.
 
-    The receiver stores a matrix at its index and takes the count as "slots
-    0 to count - 1 are valid", so a gap in the numbering would leave a slot
-    the count claims and nothing filled.
+    A robot stores each station in the slot of its index, 0 to 15, so any
+    set of indices in that range will do.
     """
     ordered = sorted(calibration.stations, key=lambda s: s.index)
     if not ordered:
@@ -497,30 +498,30 @@ def pushable_stations(calibration: Calibration) -> list[StationSolution]:
             f"{len(ordered)} stations exceeds the LH2 limit "
             f"({LH2_BASESTATION_COUNT_MAX})"
         )
-    if [s.index for s in ordered] != list(range(len(ordered))):
-        got = ", ".join(str(s.index) for s in ordered)
+    outside = [s.index for s in ordered if not 0 <= s.index < LH2_BASESTATION_COUNT_MAX]
+    if outside:
         raise ValueError(
-            f"stations must be numbered from zero without gaps to be pushed, got {got}"
+            f"station index {outside} is outside 0 to {LH2_BASESTATION_COUNT_MAX - 1}"
         )
     return ordered
 
 
 def site_fields_as_bytes(calibration: Calibration) -> bytes:
-    """valid_mm, site name and id: the 40 bytes after every matrix."""
-    return (
-        valid_mm_as_bytes(calibration.valid_mm)
-        + site_name_as_bytes(calibration.site.name)
-        + calibration_id_as_bytes(pushed_id(calibration))
+    """Site name and id: the 24 bytes that close every message and the page."""
+    return site_name_as_bytes(calibration.site.name) + calibration_id_as_bytes(
+        pushed_id(calibration)
     )
 
 
 def calibration_messages(calibration: Calibration) -> list[bytes]:
     """One 84-byte calibration message per station, in index order."""
     stations = pushable_stations(calibration)
+    mask = station_mask(calibration)
     site_fields = site_fields_as_bytes(calibration)
     return [
-        struct.pack("<II", len(stations), station.index)
+        struct.pack("<II", mask, station.index)
         + homography_as_float32(station.homography)
+        + valid_mm_as_bytes(station.valid_mm)
         + site_fields
         for station in stations
     ]

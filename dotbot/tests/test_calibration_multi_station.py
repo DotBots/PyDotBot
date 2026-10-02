@@ -447,3 +447,43 @@ def test_the_file_rules_are_enforced(tmp_path):
         path.write_text(broken, encoding="utf-8")
         with pytest.raises(ValueError, match=match):
             read_calibration_file(path)
+
+
+def test_stations_2_and_8_reach_the_wire_and_the_page_by_slot(tmp_path):
+    """Channels 3 and 9 end to end: solve, file, two 0xA3 payloads, baked page."""
+    import struct
+
+    from dotbot.calibration.lighthouse2 import calibration_messages
+    from dotbot.firmware import flash
+
+    two = F.station(2)
+    eight = F.station(8, F.rigid(2200, 0, 0), aspect=0.9)
+    samples = F.samples(F.spins([two, eight], floor_grid([two, eight])))
+    calibration, _, _ = conics.solve_calibration(samples, Site(name="arena"))
+    path = tmp_path / "cal.toml"
+    path.write_text(render_calibration(calibration), encoding="utf-8")
+    back = read_calibration_file(path)
+
+    messages = calibration_messages(back)
+    assert len(messages) == 2
+    for message, station in zip(messages, back.stations):
+        mask, index = struct.unpack_from("<II", message, 0)
+        assert (mask, index) == (0x0104, station.index)
+        assert struct.unpack_from("<4I", message, 44) == station.valid_mm
+        H = np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3)
+        assert np.allclose(H, station.matrix, rtol=1e-6)
+
+    page = flash.swarmit_config_page(0x42, flash.load_calibration_file(path))
+    assert len(page) == 872
+    assert struct.unpack_from("<4I", page, 0) == (0x57535250, 1, 0x42, 0x0104)
+    for slot in range(16):
+        matrix = page[16 + 36 * slot : 16 + 36 * (slot + 1)]
+        rect = page[592 + 16 * slot : 592 + 16 * (slot + 1)]
+        station = back.station(slot)
+        if station is None:
+            assert matrix == b"\xff" * 36 and rect == b"\xff" * 16
+            continue
+        assert matrix == messages[[2, 8].index(slot)][8:44]
+        assert struct.unpack("<4I", rect) == station.valid_mm
+    assert page[848:864] == b"arena".ljust(16, b"\x00")
+    assert page[864:872] == bytes.fromhex(back.id[:16])
