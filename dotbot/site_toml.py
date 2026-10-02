@@ -22,6 +22,8 @@ from tomlkit.toml_document import TOMLDocument
 from dotbot.config import SiteSection
 
 AREA_KEYS = ("x", "y", "w", "h")
+# The arrays of tables of barriers, and the fewest points each entry takes
+BARRIERS = {"walls": 2, "obstacles": 3}
 
 
 class SiteTomlError(ValueError):
@@ -72,7 +74,22 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
         "extent_mm": [int(v) for v in extent] if extent is not None else None,
         "areas": areas,
         "connection": dict(connection) if connection is not None else None,
+        **{key: _barriers_model(doc, key) for key in BARRIERS},
     }
+
+
+def _barriers_model(doc: TOMLDocument, key: str) -> list[dict[str, Any]]:
+    items = doc.get(key)
+    if not isinstance(items, AoT):
+        return []
+    return [
+        {
+            "name": item.get("name"),
+            "points": [[int(x), int(y)] for x, y in item["points"]],
+            "comment": _comment(item),
+        }
+        for item in items
+    ]
 
 
 def _set(container: Any, key: str, value: Any) -> None:
@@ -270,6 +287,45 @@ def _normal(model: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _patch_barriers(doc: TOMLDocument, key: str, items: list[dict[str, Any]]) -> None:
+    """Write one array of tables; an entry's `was` is its index in the file."""
+    least = BARRIERS[key]
+    for item in items:
+        if len(item.get("points") or []) < least:
+            raise SiteTomlError(f"each of {key} needs at least {least} points")
+    table = doc.get(key)
+    if not isinstance(table, AoT):
+        if not items:
+            return
+        table = tomlkit.aot()
+        if not tomlkit.dumps(doc).endswith("\n\n"):
+            doc.add(tomlkit.nl())
+        doc[key] = table
+    kept = sorted({item["was"] for item in items if item.get("was") is not None})
+    if any(was >= len(table) for was in kept):
+        raise SiteTomlError(f"{key} changed in the file since the page loaded it")
+    for index in sorted(set(range(len(table))) - set(kept), reverse=True):
+        del table[index]
+    position = {was: k for k, was in enumerate(kept)}
+    for item in items:
+        points = [[int(x), int(y)] for x, y in item["points"]]
+        if item.get("was") is None:
+            entry = tomlkit.table()
+            if item.get("name"):
+                entry["name"] = item["name"]
+            entry["points"] = points
+            _set_comment(entry, item.get("comment"))
+            table.append(entry)
+            continue
+        entry = table[position[item["was"]]]
+        _set(entry, "name", item.get("name") or None)
+        if [[int(x), int(y)] for x, y in entry["points"]] != points:
+            entry["points"] = points
+        _set_comment(entry, item.get("comment"))
+    if not table:
+        del doc[key]
+
+
 def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
     """Write `model` into `doc` in place, changing only what differs.
 
@@ -290,6 +346,9 @@ def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
         array.clear()
         array.extend(int(v) for v in extent)
     _patch_areas(doc, areas)
+    for key in BARRIERS:
+        if key in model:
+            _patch_barriers(doc, key, model[key] or [])
     return doc
 
 
