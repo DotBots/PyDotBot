@@ -15,10 +15,23 @@ export interface EditArea {
   was?: string | null;
 }
 
+/** A wall (polyline) or an obstacle (closed polygon), frame mm. */
+export interface EditBarrier {
+  name: string | null;
+  points: [number, number][];
+  comment: string | null;
+  /** The entry's index in the file when the page loaded it; null for a new one. */
+  was?: number | null;
+}
+
+export type BarrierKind = "walls" | "obstacles";
+
 export interface SiteModel {
   anchor: string | null;
   extent_mm: [number, number] | null;
   areas: EditArea[];
+  walls?: EditBarrier[];
+  obstacles?: EditBarrier[];
   connection?: { conn?: string | null; swarm_id?: string | null } | null;
 }
 

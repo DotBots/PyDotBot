@@ -28,6 +28,8 @@ function outgoing(site: SiteModel) {
     anchor: site.anchor || null,
     extent_mm: site.extent_mm,
     areas: site.areas.map((a) => ({ ...a, comment: a.comment || null })),
+    walls: (site.walls ?? []).map((b) => ({ ...b, name: b.name || null, comment: b.comment || null })),
+    obstacles: (site.obstacles ?? []).map((b) => ({ ...b, name: b.name || null, comment: b.comment || null })),
   };
 }
 
@@ -35,7 +37,12 @@ function outgoing(site: SiteModel) {
 export function withOrigins(body: SiteResponse): SiteResponse {
   return {
     ...body,
-    site: { ...body.site, areas: body.site.areas.map((a) => ({ ...a, was: a.name })) },
+    site: {
+      ...body.site,
+      areas: body.site.areas.map((a) => ({ ...a, was: a.name })),
+      walls: (body.site.walls ?? []).map((b, i) => ({ ...b, was: i })),
+      obstacles: (body.site.obstacles ?? []).map((b, i) => ({ ...b, was: i })),
+    },
   };
 }
 
