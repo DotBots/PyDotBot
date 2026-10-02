@@ -4,6 +4,7 @@ The stations are the measured c405 one moved over the floor (see
 `lh2_multi_fixture`), so every number here is in floor millimetres.
 """
 
+import math
 import tomllib
 from pathlib import Path
 
@@ -571,3 +572,78 @@ def test_anchored_multi_needs_two_anchors_the_stations_kept():
                 ms.Anchor(ms.CircleKey("NOPE"), (1, 1)),
             ],
         )
+
+
+def _weak_tie():
+    """Two stations tied by two spins only 350 mm apart, six spins each of their own."""
+    a, b = two_stations()
+    own_a = [(x, y) for x in (200, 600) for y in (900, 1500, 2100)]
+    own_b = [(x, y) for x in (3200, 3600) for y in (900, 1500, 2100)]
+    tie = [(1900, 1300), (1900, 1650)]
+    return a, b, own_a + own_b + tie
+
+
+def _to_floor(joint, stations, p):
+    for st in stations:
+        x0, y0, x1, y1 = joint.rectangles[st.index]
+        if x0 <= p[0] <= x1 and y0 <= p[1] <= y1:
+            cam = apply(np.linalg.inv(joint.homographies[st.index]), np.array([p]))
+            return tuple(apply(st.cam_to_floor, cam)[0])
+    raise AssertionError(f"{p} is in no rectangle")
+
+
+def test_active_next_round_ties_the_weak_link_first():
+    a, b, centres = _weak_tie()
+    joint = ms.solve_joint(F.spins([a, b], centres, noise=1.0, seed=1))
+    (link,) = joint.graph.links
+    assert ms.link_holds(link) and not ms.link_advised(link)
+    targets = ms.next_round(
+        joint.error_map, joint.rectangles, joint.graph.links, robots=4
+    )
+    assert len(targets) == 4
+    assert targets[0].stations == targets[1].stations == (0, 1)
+    assert "ties station 0 (channel 1) and station 1 (channel 2)" in targets[0].why
+    assert math.dist(targets[0].point_mm, targets[1].point_mm) >= 600
+    for t in targets:
+        assert all(
+            math.dist(t.point_mm, u.point_mm) >= ms.NEXT_ROUND_SPACING_MM
+            for u in targets
+            if u is not t
+        )
+
+
+def test_active_spins_where_suggested_beat_random_spins():
+    """In simulation: the worst predicted error after a second round."""
+    a, b, centres = _weak_tie()
+    first = F.spins([a, b], centres, noise=1.0, seed=1)
+    joint = ms.solve_joint(first)
+
+    def after(points):
+        second = F.spins(
+            [a, b],
+            points,
+            noise=1.0,
+            seed=5,
+            round_=1,
+            names=[f"N{i}" for i in range(len(points))],
+        )
+        both = {s: first.get(s, []) + second.get(s, []) for s in (0, 1)}
+        return ms.solve_joint(both).error_map.worst_mm
+
+    targets = ms.next_round(
+        joint.error_map, joint.rectangles, joint.graph.links, robots=4
+    )
+    planned = after([_to_floor(joint, [a, b], t.point_mm) for t in targets])
+    seen = [
+        (x, y)
+        for x in range(-300, 3600, 50)
+        for y in range(0, 3000, 50)
+        if a.sees((x, y)) or b.sees((x, y))
+    ]
+    rng = np.random.default_rng(0)
+    random = [
+        after([seen[i] for i in rng.choice(len(seen), 4, replace=False)])
+        for _ in range(5)
+    ]
+    assert planned < joint.error_map.worst_mm
+    assert planned < np.mean(random)
