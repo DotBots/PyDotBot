@@ -706,6 +706,14 @@ class DotBotSimulatorCommunicationInterface:
                 max(0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T),
             )
 
+    def use_site(self, site: Optional[Site]) -> None:
+        """Take a changed site's walls, obstacles and chargers, robots where they are."""
+        self.plant.barriers = Barriers.from_site(site)
+        chargers = site.objects_of("charger") if site is not None else []
+        self._chargers = (
+            np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
+        )
+
     def on_charger(self) -> np.ndarray:
         """Whether each robot's axle midpoint is on one of the site's chargers."""
         if self._chargers is None:
