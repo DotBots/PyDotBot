@@ -18,7 +18,7 @@ from dotbot.area import Area, Role
 from dotbot.calibration.points import PointsKind
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
-from dotbot.site import Obstacle, Site, Wall
+from dotbot.site import Obstacle, Site, SiteObject, Wall
 
 # Points of trail the controller keeps per robot
 MAX_TRAIL_SIZE = 1000
@@ -203,6 +203,17 @@ class DotBotBarrierModel(BaseModel):
     points: List[List[int]]
 
 
+class DotBotSiteObjectModel(BaseModel):
+    """A thing on the floor at a pose, frame mm: a charger, a dock, a
+    landmark or a camera."""
+
+    name: str
+    kind: str
+    x: int
+    y: int
+    heading_deg: float = 0.0
+
+
 class DotBotPointsFromModel(BaseModel):
     """How a placement's points were chosen: the field's corners, the corners
     of `area`, a `side_mm` square centred in the field, or given by hand."""
@@ -258,7 +269,8 @@ class DotBotSiteModel(BaseModel):
     name, an `x,y,w,h` literal for a site with an extent and no areas, or
     None for a site that declares neither. `calibration` is the LH2
     calibration the controller loaded, if any. `walls` (polylines) and
-    `obstacles` (closed polygons) are where robots cannot go.
+    `obstacles` (closed polygons) are where robots cannot go; `objects` are
+    the things on the floor, such as chargers.
     """
 
     name: str
@@ -269,6 +281,7 @@ class DotBotSiteModel(BaseModel):
     calibration: Optional[DotBotCalibrationSpanModel] = None
     walls: List[DotBotBarrierModel] = []
     obstacles: List[DotBotBarrierModel] = []
+    objects: List[DotBotSiteObjectModel] = []
 
     @classmethod
     def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
@@ -286,6 +299,12 @@ class DotBotSiteModel(BaseModel):
             obstacles=[
                 DotBotBarrierModel(name=o.name, points=[list(p) for p in o.points])
                 for o in site.obstacles
+            ],
+            objects=[
+                DotBotSiteObjectModel(
+                    name=o.name, kind=o.kind, x=o.x, y=o.y, heading_deg=o.heading_deg
+                )
+                for o in site.objects.values()
             ],
             calibration=(
                 DotBotCalibrationSpanModel.from_calibration(calibration)
@@ -309,6 +328,10 @@ class DotBotSiteModel(BaseModel):
                 Obstacle(tuple(tuple(p) for p in o.points), o.name)
                 for o in self.obstacles
             ],
+            objects={
+                o.name: SiteObject(o.name, o.kind, o.x, o.y, o.heading_deg)
+                for o in self.objects
+            },
         )
 
 
