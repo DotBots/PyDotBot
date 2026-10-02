@@ -415,3 +415,22 @@ describe("SiteEditor objects", () => {
     expect(sent.x % 50).toBe(0);
   });
 });
+
+describe("SiteEditor in the console", () => {
+  it("talks to the controller's routes and closes without stopping a server", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "/controller/site-editor/api/site") return json(200, loaded());
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const onClose = vi.fn();
+    render(<SiteEditor base="/controller/site-editor/" onClose={onClose} theme="light" />);
+    expect(await screen.findByTestId("edit-area-field")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Close"));
+    expect(onClose).toHaveBeenCalled();
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain("api/done");
+    expect(fetch.mock.calls.every(([url]) => String(url).startsWith("/controller/site-editor/"))).toBe(true);
+  });
+});
