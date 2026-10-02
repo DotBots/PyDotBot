@@ -794,6 +794,7 @@ def init(ctx, name, calibration, size, force):
         site_name_as_bytes,
         write_calibration,
     )
+    from dotbot.calibration.placement import Rigid2D, place_calibration
     from dotbot.cli._swarm_inject import swarm_connection
 
     obj = ctx.obj or {}
@@ -822,7 +823,9 @@ def init(ctx, name, calibration, size, force):
         except ValueError:
             path = resolve_calibration_path(calibration)
         source = read_calibration_file(path)
-        site, placed = self_defined_site(source, name, size)
+        site, _ = self_defined_site(source, name, size)
+        field = site.areas["field"]
+        placed = place_calibration(source, site, Rigid2D(field.x, field.y, 0.0))
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     saved = write_calibration(placed)
