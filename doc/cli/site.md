@@ -166,7 +166,8 @@ field, zero at its top-left and +y along the robots' starting heading. The
 **site** is the same starter site [`config init`](config.md) writes, built
 around that field: 1.5 m of floor round it and a 600 mm `staging` strip along
 its bottom (+y) edge, as wide as the field, so the demos that park robots in
-staging run without editing the pack. With `--size WxH` the site is W x H mm
+staging run without editing the pack. It adds a `field+staging` area, the
+rectangle the two make together, for a fleet spread over both. With `--size WxH` the site is W x H mm
 with the field centred and the strip below it, so it must be at least 1200 mm
 taller than the field. The pack carries no `[connection]`: pass `-n` to
 commands run in it, as the ones `init` prints do, or add one to its
