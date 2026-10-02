@@ -34,6 +34,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   robots in their bootloader without a second terminal. One already answering
   at `swarmit_url` is reused. `--no-swarm-serve` or `[run.controller]
   swarm_serve = false` turns it off.
+- `dotbot site init NAME --from-calibration ID` also writes a `field+staging`
+  area, the bounding box of the field and staging.
 
 ## [0.32.0] - 2026-10-01
 
