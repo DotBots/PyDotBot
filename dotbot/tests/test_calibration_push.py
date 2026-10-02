@@ -368,3 +368,22 @@ def test_no_server_before_calibrate_lh2_reaches_the_client(
         )
     assert seen == {"no_server": True}
     assert fleet.pushed_to == [["A"]]
+
+
+def test_a_dry_run_prints_the_messages_and_needs_no_swarm(
+    monkeypatch, calibration_file
+):
+    def no_client(*_args, **_kwargs):
+        raise AssertionError("a dry run opens no swarm connection")
+
+    monkeypatch.setattr(swarm_lh2, "_swarmit_client", no_client)
+    result = CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["push", str(calibration_file), "--dry-run"],
+        obj={"config": LAB},
+    )
+    assert result.exit_code == 0, result.output
+    assert "Would send 2 message(s), 168 B" in result.output
+    assert "station mask 0x0003" in result.output
+    for hexed in MESSAGE_HEX:
+        assert hexed in result.output
