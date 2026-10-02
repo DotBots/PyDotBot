@@ -115,19 +115,19 @@ export function reportsWire(bot: Pick<UnifiedBot, "link">): string {
 /** `reportsLabel` spelled out: what it means for the robot, and the REST value behind it. */
 export function reportsDetail(bot: UnifiedBot, now: number): string {
   const age = ageLabel(bot.lastReport, now);
-  const ago = age === "now" ? "just now" : `${age} ago`;
+  const last = !age ? "Last report unknown" : age === "now" ? "Last report just now" : `Last report ${age} ago`;
   let meaning: string;
   switch (bot.link) {
     case "active":
       meaning = "Its app sends position and battery about twice a second.";
       break;
     case "stale":
-      meaning = `Last report ${ago}: its position may lag, and commands are still sent.`;
+      meaning = `${last}: its position may lag, and commands are still sent.`;
       break;
     case "lost":
       meaning = bot.swarmit
-        ? `Last report ${ago}. Swarmit still hears its sandbox.`
-        : `Last report ${ago}. Off the map unless Silent robots is ticked.`;
+        ? `${last}. Swarmit still hears its sandbox.`
+        : `${last}. Off the map unless Silent robots is ticked.`;
       break;
     default:
       meaning = "The controller has not heard its app: it sits in its bootloader, or runs an app that does not report.";

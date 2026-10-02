@@ -122,6 +122,7 @@ describe("botFacts", () => {
     );
     expect(reportsDetail(bot("A", { link: "lost", lastReport: 900 }), 1000)).toContain("Swarmit still hears");
     expect(reportsDetail(bot("A", { link: "unknown" }), 1000)).toContain("not in GET /controller/dotbots");
+    expect(reportsDetail(bot("A", { link: "lost", lastReport: null }), 1000)).toMatch(/^Silent\. Last report unknown\./);
   });
 
   it("lists the facts and warnings for a tooltip", () => {
