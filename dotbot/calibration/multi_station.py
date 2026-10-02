@@ -996,6 +996,28 @@ def error_map_from_calibration(
     return _error_map(problem, x, rectangles, cell_mm)
 
 
+def appendable_rounds(calibration: Calibration) -> int:
+    """The round a new collection appended to `calibration` takes.
+
+    Refused unless it is a free-mode spin calibration: a placed or corner
+    calibration is in a frame a re-solve would not keep.
+    """
+    # pylint: disable=import-outside-toplevel
+    from dotbot.calibration.conics import FREE_FRAME_ANCHOR
+
+    if (
+        not calibration.tracks
+        or calibration.site.anchor != FREE_FRAME_ANCHOR
+        or not all(st.solved_from.startswith("conics") for st in calibration.stations)
+    ):
+        raise ValueError(
+            f"calibration {calibration.id8} is not a free-mode spin calibration, "
+            "so a round cannot be appended to it; append to the spin calibration "
+            "it was made from"
+        )
+    return max(t.round for t in calibration.tracks) + 1
+
+
 # --- Report -----------------------------------------------------------------
 
 
@@ -1056,8 +1078,11 @@ def multi_station_report(
             sol = joint.solutions[st.index]
             kept = f"{len(sol.tracks)} kept, {len(sol.dropped)} dropped circles"
             scale = f", scale {joint.scale_ratio.get(st.index, 1.0):.3f}"
-        else:
+        elif st.solved_from.startswith("conics"):
             kept = f"{circles.get(st.index, 0)} circles"
+            scale = ""
+        else:
+            kept = f"{st.points} marked points"
             scale = ""
         lines.append(
             f"  {station_label(st.index)}: {kept}, rms {st.residual_mm:.1f} mm, "
