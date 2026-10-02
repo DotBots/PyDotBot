@@ -632,3 +632,16 @@ def test_one_anchor_is_refused(monkeypatch, lab):
     assert result.exit_code != 0 and "two or more" in result.output
     result = _collect(monkeypatch, lab, fleet, "--anchor", "nonsense")
     assert result.exit_code != 0 and "ADDRESS=X,Y" in result.output
+
+
+def test_show_next_round_says_where_to_spin(monkeypatch, lab):
+    a, b = _two_stations()
+    _, fleet = _two_station_fleet([a, b], _floor_grid([a, b])[:40])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "two")
+    assert result.exit_code == 0, result.output
+    shown = CliRunner().invoke(
+        swarm_lh2.cmd, ["show", "two", "--next-round", "3"], obj={"config": lab}
+    )
+    assert shown.exit_code == 0, shown.output
+    assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
+    assert shown.output.count("mm, seen by station(s)") == 3
