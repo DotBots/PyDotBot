@@ -699,8 +699,16 @@ def _collect_spin(
         "report another one."
     ),
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help=(
+        "Print the messages the push would send, one per station, and send "
+        "nothing; needs no swarm connection."
+    ),
+)
 @click.pass_context
-def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
+def _push(ctx, calibration, conn, swarm_id, site_name, site_changed, dry_run):
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
@@ -712,9 +720,37 @@ def _push(ctx, calibration, conn, swarm_id, site_name, site_changed):
         loaded = read_calibration_file(path)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+    if dry_run:
+        _print_messages(loaded)
+        return
     client = _swarmit_client(ctx, conn, swarm_id)
     with client:
         _gated_push(client, loaded, site_changed=site_changed, devices=_devices(ctx))
+
+
+def _print_messages(calibration):
+    """What a push of `calibration` sends, message by message."""
+    from dotbot.calibration.lighthouse2 import (
+        calibration_messages,
+        station_label,
+        station_mask,
+    )
+
+    try:
+        messages = calibration_messages(calibration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    stations = sorted(calibration.stations, key=lambda s: s.index)
+    click.echo(
+        f"Would send {len(messages)} message(s), {sum(map(len, messages))} B: "
+        f"id {calibration.id8}, site {calibration.site.name}, station mask "
+        f"0x{station_mask(calibration):04X}"
+    )
+    for station, message in zip(stations, messages):
+        click.echo(
+            f"  {station_label(station.index)}, rectangle {list(station.valid_mm)}: "
+            f"{message.hex()}"
+        )
 
 
 def _gated_push(client, calibration, site_changed=False, devices=None, stop=False):
@@ -722,7 +758,7 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
 
     With `stop`, the named `devices` still in their app are stopped first.
     """
-    from dotbot.calibration.lighthouse2 import calibration_payload
+    from dotbot.calibration.lighthouse2 import calibration_payload, station_label
     from dotbot.calibration.push import (
         PushRefused,
         gate_push,
@@ -755,8 +791,12 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
             f"{len(check.other_site)} robot(s) move to site "
             f"{calibration.site.name} (--site-changed)."
         )
+    stations = ", ".join(
+        station_label(s.index)
+        for s in sorted(calibration.stations, key=lambda s: s.index)
+    )
     click.echo(
-        f"Sending {len(calibration.stations)} calibration matrix/matrices "
+        f"Sending {stations} "
         f"({len(payload)} B, id {calibration.id8}, site {calibration.site.name}) "
         f"to the swarm; {len(check.stale)} robot(s) hold another id..."
     )
