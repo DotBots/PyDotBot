@@ -63,7 +63,7 @@ class RecordingSocket:
 class Scenario:
     """A controller and a simulated fleet sharing a stepped clock."""
 
-    def __init__(self, tmp_path, dotbots: List[dict], seed: int = 0):
+    def __init__(self, tmp_path, dotbots: List[dict], seed: int = 0, site=None):
         random.seed(seed)
         world = tmp_path / "world.toml"
         world.write_text(toml.dumps({"dotbots": dotbots}))
@@ -82,10 +82,11 @@ class Scenario:
                 headless=True,
                 simulator_init_state=str(world),
                 log_output=str(tmp_path / "pydotbot.log"),
+                site=site,
             )
         )
         self.sim = DotBotSimulatorCommunicationInterface(
-            self.controller.handle_received_frame, str(world)
+            self.controller.handle_received_frame, str(world), site=site
         )
         adapter = DotBotSimulatorAdapter(str(world))
         adapter.simulator = self.sim
