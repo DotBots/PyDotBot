@@ -39,7 +39,7 @@ export interface Coverage {
 }
 
 /** The device-info version of firmware that takes this host's calibrations; older needs a reflash. */
-export const DEVICE_INFO_VERSION_MIN = 3;
+export const DEVICE_INFO_VERSION_MIN = 4;
 
 /** Who carries `savedId`, from the calibration id each robot's device info reports. */
 export function calibrationCoverage(bots: UnifiedBot[], savedId: string): Coverage {
