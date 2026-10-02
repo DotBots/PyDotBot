@@ -1,4 +1,4 @@
-import type { AreaRole } from "../types";
+import type { AreaRole, SiteObjectKind } from "../types";
 
 // The editor's model of a site pack's `site.toml`, as GET /api/site serves it.
 
@@ -26,12 +26,25 @@ export interface EditBarrier {
 
 export type BarrierKind = "walls" | "obstacles";
 
+/** One `[objects.<name>]` table: a thing on the floor at a pose, frame mm. */
+export interface EditObject {
+  name: string;
+  kind: SiteObjectKind;
+  x: number;
+  y: number;
+  heading_deg: number;
+  comment: string | null;
+  /** The object's name in the file when the page loaded it; null for a new one. */
+  was?: string | null;
+}
+
 export interface SiteModel {
   anchor: string | null;
   extent_mm: [number, number] | null;
   areas: EditArea[];
   walls?: EditBarrier[];
   obstacles?: EditBarrier[];
+  objects?: EditObject[];
   connection?: { conn?: string | null; swarm_id?: string | null } | null;
 }
 
