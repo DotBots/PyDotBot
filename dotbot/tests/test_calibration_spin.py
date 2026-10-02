@@ -600,3 +600,35 @@ def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
     assert shown.exit_code == 0, shown.output
     assert "station 2 (channel 3): 4 marked points" in shown.output
     assert "predicted error" not in shown.output
+
+
+def test_collect_spin_with_anchors_writes_a_calibration_in_the_site_frame(
+    monkeypatch, lab
+):
+    a, b = _two_stations()
+    centres = _floor_grid([a, b])[:40]
+    addrs, fleet = _two_station_fleet([a, b], centres)
+    ends = [0, len(centres) - 1, 5, len(centres) - 6]
+    flags = []
+    for i in ends:
+        flags += ["--anchor", f"{addrs[i]}={centres[i][0]},{centres[i][1]}"]
+    result = _collect(monkeypatch, lab, fleet, *flags)
+    assert result.exit_code == 0, result.output
+    assert "anchor scale ratio" in result.output
+    assert "site c405's own frame" in result.output
+    assert "--from-calibration" not in result.output
+    path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+    saved = lighthouse2.read_calibration_file(path)
+    assert {s.solved_from for s in saved.stations} == {"conics-anchored"}
+    assert saved.site.anchor == "the door corner"
+    cam = conics.apply(a.floor_to_cam, np.array([centres[ends[0]]], dtype=float))
+    got = conics.apply(saved.station(0).matrix, cam)[0]
+    assert np.linalg.norm(got - centres[ends[0]]) < 2.0
+
+
+def test_one_anchor_is_refused(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--anchor", "B0B0B0B0B0B0B0B0=1,2")
+    assert result.exit_code != 0 and "two or more" in result.output
+    result = _collect(monkeypatch, lab, fleet, "--anchor", "nonsense")
+    assert result.exit_code != 0 and "ADDRESS=X,Y" in result.output
