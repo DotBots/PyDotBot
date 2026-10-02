@@ -38,12 +38,13 @@ from dotbot.site import SITE_DEFAULT, Site
 CALIBRATION_DIR = Path.home() / ".dotbot"
 CALIBRATION_SUBDIR = "calibrations"
 CALIBRATION_TOML_GLOB = "calibration-*.toml"
-CALIBRATION_SCHEMA_VERSION = 3
+CALIBRATION_SCHEMA_VERSION = 4
 
 # [x_min, y_min, x_max, y_max] in frame mm: outside it a reported position is
 # implausible and the bot drops it. A site with a known extent supplies its
 # own fence; this is what a site without one falls back to.
 VALID_MM_DEFAULT = (0, 0, 10000, 10000)
+VALID_MM_MAX = 0xFFFFFFFF
 
 LH2_BASESTATION_COUNT_MAX = 16
 
@@ -182,8 +183,9 @@ class TrackSample:
     """The reads one station took along one circle a robot traced.
 
     `radius_mm` is the circle's true radius and `turn` +1 when the robot
-    turned counter clockwise as drawn, -1 clockwise; `name` tells the
-    circles of one capture apart.
+    turned counter clockwise as drawn, -1 clockwise. A circle is the robot
+    `name` in collection `round`: the same circle seen by several stations
+    ties them together.
     """
 
     station: int
@@ -192,6 +194,7 @@ class TrackSample:
     turn: int
     count1: list[int] = field(default_factory=list)
     count2: list[int] = field(default_factory=list)
+    round: int = 0
 
     def camera_points(self) -> np.ndarray:
         return camera_points_from_counts(
@@ -204,17 +207,39 @@ class TrackSample:
 
 @dataclass
 class StationSolution:
-    """One station's solved homography and how well it fits its own evidence."""
+    """One station's solved homography and how well it fits its own evidence.
+
+    `valid_mm` is where this station's fixes are believed, frame mm.
+    """
 
     index: int
     homography: list[list[float]]
     points: int
     residual_mm: float
     solved_from: str = "direct"
+    valid_mm: tuple[int, int, int, int] = VALID_MM_DEFAULT
 
     @property
     def matrix(self) -> np.ndarray:
         return np.array(self.homography, dtype=np.float64)
+
+
+@dataclass
+class LinkRecord:
+    """How strongly two stations are tied by the circles both kept.
+
+    `a` < `b`. `spread_mm` is the largest distance between two shared
+    centres, `disagreement_mm` the rms distance between the two stations'
+    centres of the shared circles, `yaw_sigma_mrad` the relative yaw that
+    leaves.
+    """
+
+    a: int
+    b: int
+    shared: int
+    spread_mm: float
+    disagreement_mm: float
+    yaw_sigma_mrad: float
 
 
 @dataclass
@@ -228,6 +253,7 @@ class Calibration:
     placements: list[Placement] = field(default_factory=list)
     stations: list[StationSolution] = field(default_factory=list)
     tracks: list[TrackSample] = field(default_factory=list)
+    links: list[LinkRecord] = field(default_factory=list)
     created_at: str = ""
     tag: str = ""
     robot: str = ROBOT_DEFAULT
@@ -425,6 +451,37 @@ def pushed_id(calibration: Calibration) -> str:
     return calibration.id
 
 
+def union_rect(rects: Iterable[Sequence[int]]) -> tuple[int, int, int, int]:
+    """The smallest `[x_min, y_min, x_max, y_max]` holding every rectangle."""
+    rects = [tuple(int(v) for v in r) for r in rects]
+    if not rects:
+        raise ValueError("no rectangle to take the union of")
+    return (
+        min(r[0] for r in rects),
+        min(r[1] for r in rects),
+        max(r[2] for r in rects),
+        max(r[3] for r in rects),
+    )
+
+
+def station_mask(calibration: Calibration) -> int:
+    """Bit i set for every station i the calibration solved."""
+    mask = 0
+    for station in calibration.stations:
+        if not 0 <= station.index < LH2_BASESTATION_COUNT_MAX:
+            raise ValueError(
+                f"station {station.index} is outside 0 to "
+                f"{LH2_BASESTATION_COUNT_MAX - 1}"
+            )
+        mask |= 1 << station.index
+    return mask
+
+
+def station_label(index: int) -> str:
+    """How a station is named to an operator: its index and its channel."""
+    return f"station {index} (channel {index + 1})"
+
+
 def pushable_stations(calibration: Calibration) -> list[StationSolution]:
     """The stations in index order, refused when a robot would mis-key them.
 
@@ -535,7 +592,7 @@ def canonical_serialisation(calibration: Calibration) -> str:
             lines.append(base + ".count1=" + ",".join(str(c) for c in sample.count1))
             lines.append(base + ".count2=" + ",".join(str(c) for c in sample.count2))
     for track in calibration.tracks:
-        key = f"track.{track.name}.{track.station}"
+        key = f"track.{track.name}.{track.round}.{track.station}"
         lines.append(f"{key}.radius_mm={toml_num(track.radius_mm)}")
         lines.append(f"{key}.turn={track.turn}")
         lines.append(f"{key}.count1=" + ",".join(str(c) for c in track.count1))
@@ -545,10 +602,17 @@ def canonical_serialisation(calibration: Calibration) -> str:
         lines.append(f"{key}.solved_from={station.solved_from}")
         lines.append(f"{key}.points={station.points}")
         lines.append(f"{key}.residual_mm={toml_num(station.residual_mm)}")
+        lines.append(f"{key}.valid_mm=" + ",".join(str(v) for v in station.valid_mm))
         lines.append(
             f"{key}.homography="
             + ";".join(",".join(toml_num(v) for v in row) for row in station.homography)
         )
+    for link in sorted(calibration.links, key=lambda k: (k.a, k.b)):
+        key = f"link.{link.a}.{link.b}"
+        lines.append(f"{key}.shared={link.shared}")
+        lines.append(f"{key}.spread_mm={toml_num(link.spread_mm)}")
+        lines.append(f"{key}.disagreement_mm={toml_num(link.disagreement_mm)}")
+        lines.append(f"{key}.yaw_sigma_mrad={toml_num(link.yaw_sigma_mrad)}")
     return "\n".join(sorted(lines))
 
 
@@ -609,7 +673,7 @@ def toml_escape(text: str) -> str:
 
 
 def render_calibration(calibration: Calibration) -> str:
-    """The schema 3 file, as text."""
+    """The schema 4 file, as text."""
     site = calibration.site
     out = [
         f"schema_version = {CALIBRATION_SCHEMA_VERSION}",
@@ -660,6 +724,7 @@ def render_calibration(calibration: Calibration) -> str:
             "[[track]]",
             f"station = {track.station}",
             f'name = "{toml_escape(track.name)}"',
+            f"round = {track.round}",
             f"radius_mm = {toml_num(track.radius_mm)}",
             f"turn = {track.turn}",
             f"count1 = [{', '.join(str(c) for c in track.count1)}]",
@@ -673,16 +738,30 @@ def render_calibration(calibration: Calibration) -> str:
             f'solved_from = "{station.solved_from}"',
             f"points = {station.points}",
             f"residual_mm = {toml_num(station.residual_mm)}",
+            f"valid_mm = {_toml_int_list(station.valid_mm)}",
             f"homography = {toml_matrix(station.homography)}",
+        ]
+    for link in sorted(calibration.links, key=lambda k: (k.a, k.b)):
+        out += [
+            "",
+            "[[link]]",
+            f"a = {link.a}",
+            f"b = {link.b}",
+            f"shared = {link.shared}",
+            f"spread_mm = {toml_num(link.spread_mm)}",
+            f"disagreement_mm = {toml_num(link.disagreement_mm)}",
+            f"yaw_sigma_mrad = {toml_num(link.yaw_sigma_mrad)}",
         ]
     return "\n".join(out) + "\n"
 
 
 def read_calibration_file(path: Path) -> Calibration:
-    """Parse a schema 3 calibration file.
+    """Parse a schema 4 calibration file.
 
-    A file of any other schema version is rejected: schema 2 homographies
-    were solved on another camera point, and schema 1 has no site.
+    A file of any other schema version is rejected: schema 3 carries one
+    fence for every station and keys circles by robot alone, schema 2
+    homographies were solved on another camera point, and schema 1 has no
+    site.
     """
     path = Path(path)
     with open(path, "rb") as handle:
@@ -691,7 +770,8 @@ def read_calibration_file(path: Path) -> Calibration:
     if schema != CALIBRATION_SCHEMA_VERSION:
         raise ValueError(
             f"{path}: unsupported calibration schema_version {schema} "
-            f"(this build supports {CALIBRATION_SCHEMA_VERSION})"
+            f"(this build supports {CALIBRATION_SCHEMA_VERSION}); collect the "
+            "calibration again"
         )
     if "frame" in data:
         raise ValueError(
@@ -733,16 +813,23 @@ def read_calibration_file(path: Path) -> Calibration:
             )
         )
 
-    stations = [
-        StationSolution(
-            index=int(raw["index"]),
-            homography=[[float(v) for v in row] for row in raw["homography"]],
-            points=int(raw.get("points", 0)),
-            residual_mm=float(raw.get("residual_mm", 0.0)),
-            solved_from=raw.get("solved_from", "direct"),
+    stations = []
+    for raw in data.get("station", []):
+        if "valid_mm" not in raw:
+            raise ValueError(
+                f"{path}: station {raw.get('index')} has no valid_mm, which "
+                f"schema {CALIBRATION_SCHEMA_VERSION} requires"
+            )
+        stations.append(
+            StationSolution(
+                index=int(raw["index"]),
+                homography=[[float(v) for v in row] for row in raw["homography"]],
+                points=int(raw.get("points", 0)),
+                residual_mm=float(raw.get("residual_mm", 0.0)),
+                solved_from=raw.get("solved_from", "direct"),
+                valid_mm=_checked_rect(raw["valid_mm"], path),
+            )
         )
-        for raw in data.get("station", [])
-    ]
 
     tracks = [
         TrackSample(
@@ -752,9 +839,22 @@ def read_calibration_file(path: Path) -> Calibration:
             turn=int(raw.get("turn", 0)),
             count1=[int(c) for c in raw["count1"]],
             count2=[int(c) for c in raw["count2"]],
+            round=int(raw.get("round", 0)),
         )
         for raw in data.get("track", [])
     ]
+    links = [
+        LinkRecord(
+            a=int(raw["a"]),
+            b=int(raw["b"]),
+            shared=int(raw["shared"]),
+            spread_mm=float(raw["spread_mm"]),
+            disagreement_mm=float(raw["disagreement_mm"]),
+            yaw_sigma_mrad=float(raw["yaw_sigma_mrad"]),
+        )
+        for raw in data.get("link", [])
+    ]
+    _check_stations(stations, links, _checked_rect(valid_mm, path), path)
 
     calibration = Calibration(
         site=site,
@@ -762,6 +862,7 @@ def read_calibration_file(path: Path) -> Calibration:
         placements=placements,
         stations=stations,
         tracks=tracks,
+        links=links,
         created_at=metadata.get("created_at", ""),
         tag=metadata.get("tag", ""),
         robot=metadata.get("robot", ROBOT_DEFAULT),
@@ -769,6 +870,39 @@ def read_calibration_file(path: Path) -> Calibration:
     )
     calibration.stored_id = str(metadata.get("id", ""))
     return calibration
+
+
+def _checked_rect(values, path) -> tuple[int, int, int, int]:
+    """A `valid_mm` read from `path`, refused unless it is a uint32 rectangle."""
+    rect = tuple(int(v) for v in values)
+    if (
+        len(rect) != 4
+        or any(v < 0 or v > VALID_MM_MAX for v in rect)
+        or rect[0] >= rect[2]
+        or rect[1] >= rect[3]
+    ):
+        raise ValueError(
+            f"{path}: valid_mm {list(values)} is not [x_min, y_min, x_max, y_max] "
+            "with x_min < x_max and y_min < y_max, in 0 to 2^32-1"
+        )
+    return rect
+
+
+def _check_stations(stations, links, valid_mm, path) -> None:
+    """The schema 4 rules between stations, links and the fence."""
+    indices = [s.index for s in stations]
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"{path}: a station index appears twice: {indices}")
+    if stations and union_rect(s.valid_mm for s in stations) != valid_mm:
+        raise ValueError(
+            f"{path}: [validity] valid_mm {list(valid_mm)} is not the union of "
+            f"the station rectangles {list(union_rect(s.valid_mm for s in stations))}"
+        )
+    joint = [s for s in stations if s.solved_from.startswith("conics")]
+    if len(joint) > 1 and not links:
+        raise ValueError(
+            f"{path}: {len(joint)} spin-solved stations but no [[link]] between them"
+        )
 
 
 def resolve_calibration_path(
@@ -975,6 +1109,7 @@ class LighthouseManager:
             homography=[[float(v) for v in row] for row in homography],
             points=len(camera_points),
             residual_mm=residual,
+            valid_mm=self.valid_mm,
         )
 
     def solve(self) -> list[StationSolution]:

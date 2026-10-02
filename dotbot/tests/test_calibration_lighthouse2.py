@@ -1,4 +1,4 @@
-"""Tests for the LH2 calibration solve, the schema 3 file and the identity.
+"""Tests for the LH2 calibration solve, the schema 4 file and the identity.
 
 Synthetic captures are built by inverting one chosen station matrix, so the
 correspondences are exactly consistent and the solver's own error is the only
@@ -250,12 +250,12 @@ def _saved(monkeypatch, tmp_path, tag=None, **kwargs):
     return manager, manager.save_calibration(tag=tag)
 
 
-def test_save_writes_schema_3_into_the_site_directory(monkeypatch, tmp_path):
+def test_save_writes_schema_4_into_the_site_directory(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
 
     assert path.parent == tmp_path / "calibrations" / "default"
     parsed = tomllib.loads(path.read_text())
-    assert parsed["schema_version"] == 3
+    assert parsed["schema_version"] == 4
     assert parsed["site"]["name"] == "default"
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
@@ -322,7 +322,7 @@ def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
 def test_points_from_written_as_a_string_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        "schema_version = 3\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        "schema_version = 4\n[[placement]]\nindex = 0\npoints_mm = []\n"
         'points_from = "over dev-corner"\n',
         encoding="utf-8",
     )
@@ -357,7 +357,7 @@ def test_schema_1_file_is_rejected(tmp_path):
 def test_a_file_carrying_a_frame_table_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        'schema_version = 3\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
+        'schema_version = 4\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
     )
     with pytest.raises(ValueError, match=r"\[frame\] is not a table"):
         read_calibration_file(path)
@@ -686,41 +686,6 @@ def test_slug_tag_rules():
     assert lighthouse2.slug_tag("***") == ""
 
 
-# The same schema 3 fixture swarmit's test_helpers.py carries, so the two
-# packers cannot drift.
-FIXTURE_TOML = """\
-schema_version = 3
-
-[metadata]
-created_at = "2026-09-10T09:12:00Z"
-id = "3f9a1c07e2b845d6"
-robot = "dotbot-v3"
-
-[site]
-name = "inria-aio-c"
-anchor = "the arena's top-left corner, against the door wall of C405"
-
-[validity]
-valid_mm = [0, 0, 4000, 4500]
-
-[[placement]]
-index = 0
-at = "arena:corners"
-points_mm = [[50.0, 20.0], [2000.0, 20.0], [50.0, 2000.0], [2000.0, 2000.0]]
-captured_at = "2026-09-10T09:10:41Z"
-samples = [
-  { station = 0, point = 0, count1 = [41290], count2 = [51728] },
-]
-
-[[station]]
-index = 0
-solved_from = "direct"
-points = 4
-residual_mm = 0.0
-homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
-"""
-
-
 def _wire_fixture(tmp_path):
     from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML as WIRE_TOML
 
@@ -773,8 +738,8 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     )
     assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
-    assert message[76:84] == bytes.fromhex("19ed0cdb738cdfe5")
-    assert lighthouse2.message_site(message) == ("c405-arena", "19ed0cdb738cdfe5")
+    assert message[76:84] == bytes.fromhex("80285c9b7db82732")
+    assert lighthouse2.message_site(message) == ("c405-arena", "80285c9b7db82732")
 
 
 def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
