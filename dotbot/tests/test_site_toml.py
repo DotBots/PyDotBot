@@ -67,14 +67,36 @@ staging = { x = 0, y = 1000, w = 1000, h = 500 }
 """
 
 
+WALLED = (
+    ARENA
+    + """
+[[walls]]   # the door wall
+name = "door"
+points = [[0, 0], [0, 4000]]
+
+[[walls]]
+points = [[2000, 0], [2000, 4000]]   # the far wall
+
+[[obstacles]]
+name = "pillar"
+points = [[1500, 2500], [1700, 2500], [1700, 2700]]
+"""
+)
+
+
 def _loaded(text):
     model = site_model(tomlkit.parse(text))
     for area in model["areas"]:
         area["was"] = area["name"]
+    for key in site_toml.BARRIERS:
+        for index, item in enumerate(model[key]):
+            item["was"] = index
     return model
 
 
-@pytest.mark.parametrize("text", [ARENA, HALL, INLINE, default_site_toml((2000, 2000))])
+@pytest.mark.parametrize(
+    "text", [ARENA, HALL, INLINE, WALLED, default_site_toml((2000, 2000))]
+)
 def test_an_unchanged_model_writes_the_file_back_byte_for_byte(text):
     assert patched_text(text, _loaded(text)) == text
 
@@ -327,3 +349,61 @@ def test_two_areas_can_swap_names():
         "# Staging: the strip below.",
         "# Second line.",
     ]
+
+
+def test_walls_and_obstacles_are_modelled_with_their_comments():
+    model = _loaded(WALLED)
+    assert [(w["name"], w["points"], w["comment"]) for w in model["walls"]] == [
+        ("door", [[0, 0], [0, 4000]], "the door wall"),
+        (None, [[2000, 0], [2000, 4000]], None),
+    ]
+    assert model["obstacles"][0]["points"][2] == [1700, 2700]
+
+
+def test_moving_a_wall_point_changes_that_point_only():
+    model = _loaded(WALLED)
+    model["walls"][1]["points"][1] = [2000, 3500]
+    result = patched_text(WALLED, model)
+    assert result == WALLED.replace(
+        "points = [[2000, 0], [2000, 4000]]   # the far wall",
+        "points = [[2000, 0], [2000, 3500]]   # the far wall",
+    )
+
+
+def test_a_barrier_is_added_and_one_deleted_keeping_the_others():
+    model = _loaded(WALLED)
+    del model["walls"][0]
+    model["obstacles"].append(
+        {"name": "box", "points": [[100, 100], [300, 100], [300, 300]], "was": None}
+    )
+    result = patched_text(WALLED, model)
+    assert "# the door wall" not in result and "# the far wall" in result
+    back = site_model(tomlkit.parse(result))
+    assert [o["name"] for o in back["obstacles"]] == ["pillar", "box"]
+    assert len(back["walls"]) == 1
+
+
+def test_the_first_wall_of_a_pack_and_the_last_removed():
+    model = _loaded(ARENA)
+    model["walls"] = [{"points": [[0, 0], [100, 0]], "was": None}]
+    walled = patched_text(ARENA, model)
+    assert walled.startswith(ARENA) and "[[walls]]" in walled
+    model = _loaded(walled)
+    model["walls"] = []
+    assert patched_text(walled, model).rstrip() == ARENA.rstrip()
+
+
+def test_a_barrier_with_too_few_points_is_refused():
+    model = _loaded(WALLED)
+    model["obstacles"][0]["points"] = [[0, 0], [1, 1]]
+    with pytest.raises(SiteTomlError, match="at least 3"):
+        patched_text(WALLED, model)
+
+
+def test_a_new_array_of_tables_starts_after_a_blank_line():
+    model = _loaded(INLINE)
+    model["walls"] = [{"points": [[0, 0], [100, 0]], "was": None}]
+    model["obstacles"] = [{"points": [[0, 0], [100, 0], [0, 100]], "was": None}]
+    result = patched_text(INLINE, model)
+    assert "500 }\n\n[[walls]]" in result
+    assert "\n\n[[obstacles]]" in result

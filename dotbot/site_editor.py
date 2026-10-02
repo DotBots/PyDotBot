@@ -45,10 +45,20 @@ class AreaModel(BaseModel):
     was: str | None = None
 
 
+class BarrierModel(BaseModel):
+    name: str | None = None
+    points: list[tuple[int, int]]
+    comment: str | None = None
+    # The entry's index in the file when the page loaded it; None for a new one
+    was: int | None = None
+
+
 class SiteModel(BaseModel):
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: list[AreaModel] = Field(default_factory=list)
+    walls: list[BarrierModel] = Field(default_factory=list)
+    obstacles: list[BarrierModel] = Field(default_factory=list)
 
 
 class SaveRequest(BaseModel):
