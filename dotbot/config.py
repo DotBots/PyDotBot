@@ -32,7 +32,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Mapping, Optional
+from typing import Annotated, Any, Literal, Mapping, Optional
 
 from pydantic import (
     AfterValidator,
@@ -184,6 +184,21 @@ class ObstacleSection(_Strict):
     points: list[tuple[int, int]] = Field(min_length=3)
 
 
+ObjectKind = Literal["charger", "dock", "landmark", "camera"]
+
+
+class ObjectSection(_Strict):
+    """One `[objects.<name>]` table: a thing on the floor at a pose, frame mm.
+
+    `heading_deg` follows the robots' convention.
+    """
+
+    kind: ObjectKind
+    x: int
+    y: int
+    heading_deg: float = 0.0
+
+
 def _is_simulator(conn: str) -> bool:
     return conn.strip().lower() in ("simulator", "sim")
 
@@ -236,6 +251,7 @@ class SiteSection(_Strict):
     areas: dict[str, AreaSection] = Field(default_factory=dict)
     walls: list[WallSection] = Field(default_factory=list)
     obstacles: list[ObstacleSection] = Field(default_factory=list)
+    objects: dict[str, ObjectSection] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _one_field(self) -> SiteSection:

@@ -1385,6 +1385,7 @@ async def test_get_controller_site():
         "calibration": None,
         "walls": [],
         "obstacles": [],
+        "objects": [],
     }
 
 
@@ -1461,6 +1462,7 @@ async def test_get_controller_site_with_nothing_measured():
         "calibration": None,
         "walls": [],
         "obstacles": [],
+        "objects": [],
     }
 
 
