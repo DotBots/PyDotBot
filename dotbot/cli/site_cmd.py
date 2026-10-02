@@ -7,7 +7,8 @@ A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
 folder finds it; `init` writes one around a spin calibration's robots; `use`
 makes a site the active one; `list` and `show` read; `export` writes one as a
-zip. The same folders can be shared with git, cp or unzip.
+zip; `new` and `edit` open the site editor on a pack. The same folders can be
+shared with git, cp or unzip.
 """
 
 import json
@@ -43,7 +44,7 @@ _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
     name="site",
     help=(
         "The places you work in: add a site pack, switch with use, "
-        "list / show, export one to share."
+        "list / show, export one to share, new / edit to draw one."
     ),
 )
 def cmd():
@@ -681,6 +682,61 @@ def _render_site_pack(site, source_id8: str) -> str:
     )
 
 
+def _serve_editor(name: str, pack: Path, port: int, headless: bool) -> None:
+    """Serve the editor on `pack` at 127.0.0.1 until Ctrl-C or Done."""
+    import socket
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from dotbot.calibration.lighthouse2 import calibration_root
+    from dotbot.site_editor import EDITOR_DIR, EDITOR_PAGE, EditorState, create_app
+
+    if not (EDITOR_DIR / EDITOR_PAGE).is_file():
+        raise click.ClickException(
+            f"the site editor page is not built ({EDITOR_DIR / EDITOR_PAGE} is "
+            "missing). Build it with: npm --prefix dotbot/console-web install && "
+            "npm --prefix dotbot/console-web run build"
+        )
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError as exc:
+        sock.close()
+        raise click.ClickException(f"cannot listen on 127.0.0.1:{port}: {exc}") from exc
+    sock.listen()
+    url = f"http://127.0.0.1:{sock.getsockname()[1]}/"
+    state = EditorState(name, pack, [calibration_root() / name])
+    server = None
+
+    def done():
+        server.should_exit = True
+
+    app = create_app(state, on_done=done)
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    click.echo(f"Editing site {name} ({pack / PACK_FILE})")
+    click.echo(f"Site editor at {url} - Ctrl-C or Done to stop")
+    if not headless:
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+    try:
+        server.run(sockets=[sock])
+    finally:
+        sock.close()
+
+
+_PORT = click.option(
+    "--port",
+    type=int,
+    default=0,
+    show_default="a free port",
+    help="Port on 127.0.0.1 to serve the editor on.",
+)
+_HEADLESS = click.option(
+    "--headless", is_flag=True, help="Print the editor's URL; don't open a browser."
+)
+
+
 @cmd.command()
 @click.argument("name")
 @click.option(
@@ -728,6 +784,7 @@ def init(ctx, name, calibration, size, force):
         site_name_as_bytes,
         write_calibration,
     )
+    from dotbot.calibration.placement import Rigid2D, place_calibration
     from dotbot.cli._swarm_inject import swarm_connection
 
     obj = ctx.obj or {}
@@ -756,7 +813,9 @@ def init(ctx, name, calibration, size, force):
         except ValueError:
             path = resolve_calibration_path(calibration)
         source = read_calibration_file(path)
-        site, placed = self_defined_site(source, name, size)
+        site, _ = self_defined_site(source, name, size)
+        field = site.areas["field"]
+        placed = place_calibration(source, site, Rigid2D(field.x, field.y, 0.0))
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     saved = write_calibration(placed)
@@ -784,3 +843,78 @@ def init(ctx, name, calibration, size, force):
         f"--lh2-calibration {placed.id8} "
         "--headless"
     )
+
+
+@cmd.command()
+@click.argument("name")
+@click.option(
+    "--field",
+    "field_spec",
+    default="2m",
+    show_default=True,
+    help="The starter field, as for `dotbot config init`: 2m, 2x3m, 1500mm.",
+)
+@_PORT
+@_HEADLESS
+@click.pass_context
+def new(ctx, name, field_spec, port, headless):
+    """Write a new site pack, then open the editor on it.
+
+    The pack goes in sites/NAME/ beside the project's dotbot.toml when one is
+    in use, else in ~/.dotbot/sites/NAME/, so `dotbot site use NAME` finds it
+    at once. It starts as `dotbot config init` starts a site: a field with
+    floor round it and a staging strip below. It is not made the active site.
+    """
+    from dotbot.cli.config_cmd import default_site_toml, parse_field_size
+    from dotbot.site_packs import site_homes
+
+    try:
+        check_site_name(name)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    field_mm = parse_field_size(field_spec)
+    _, home = site_homes((ctx.obj or {}).get("config"))[0]
+    target = home / name
+    if target.exists():
+        raise click.ClickException(f"{target} already exists")
+    target.mkdir(parents=True)
+    (target / PACK_FILE).write_text(default_site_toml(field_mm))
+    click.echo(f"Wrote {target / PACK_FILE}")
+    _serve_editor(name, target, port, headless)
+    click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
+
+
+@cmd.command()
+@click.argument("site", required=False)
+@_PORT
+@_HEADLESS
+@click.pass_context
+def edit(ctx, site, port, headless):
+    """Open the site editor on a site pack, at 127.0.0.1.
+
+    SITE is a site name or a pack folder's path; it defaults to the active
+    site.
+    """
+    from dotbot.site_packs import is_pack_path, pack_at
+
+    if site is not None and is_pack_path(site):
+        try:
+            entry = pack_at(site)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        _serve_editor(entry.name, entry.pack, port, headless)
+        return
+    if site is None:
+        active = active_site(ctx)
+        if active.entry is not None:
+            _serve_editor(active.name, active.entry.pack, port, headless)
+            return
+        site = active.name
+    name = site
+    entry = _catalog(ctx).get(name)
+    if entry is None:
+        raise click.ClickException(
+            f"unknown site {name!r}; `dotbot site list` names the known ones, "
+            "and `dotbot site new` makes one"
+        )
+    _serve_editor(name, entry.pack, port, headless)

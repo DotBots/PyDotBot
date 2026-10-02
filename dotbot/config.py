@@ -167,6 +167,23 @@ class AreaSection(_Strict):
     role: Role | None = None
 
 
+class WallSection(_Strict):
+    """One `[[walls]]` entry: a polyline robots cannot cross, in frame mm."""
+
+    name: str | None = None
+    points: list[tuple[int, int]] = Field(min_length=2)
+
+
+class ObstacleSection(_Strict):
+    """One `[[obstacles]]` entry: a polygon robots cannot enter, in frame mm.
+
+    The last point joins the first.
+    """
+
+    name: str | None = None
+    points: list[tuple[int, int]] = Field(min_length=3)
+
+
 def _is_simulator(conn: str) -> bool:
     return conn.strip().lower() in ("simulator", "sim")
 
@@ -217,6 +234,8 @@ class SiteSection(_Strict):
     extent_mm: tuple[int, int] | None = None
     connection: ConnectionSection | None = None
     areas: dict[str, AreaSection] = Field(default_factory=dict)
+    walls: list[WallSection] = Field(default_factory=list)
+    obstacles: list[ObstacleSection] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _one_field(self) -> SiteSection:

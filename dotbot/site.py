@@ -36,6 +36,25 @@ SITE_MARGIN_MM = 1500
 STAGING_DEPTH_MM = 600
 
 
+Point = tuple[int, int]
+
+
+@dataclass(frozen=True)
+class Wall:
+    """A polyline robots cannot cross, in frame mm."""
+
+    points: tuple[Point, ...]
+    name: str = ""
+
+
+@dataclass(frozen=True)
+class Obstacle:
+    """A polygon robots cannot enter, in frame mm; the last point joins the first."""
+
+    points: tuple[Point, ...]
+    name: str = ""
+
+
 @dataclass
 class Site:
     """A site as the config declares it.
@@ -51,6 +70,8 @@ class Site:
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
     pack: Path | None = None
+    walls: list[Wall] = field(default_factory=list)
+    obstacles: list[Obstacle] = field(default_factory=list)
 
     @property
     def extent(self) -> Area | None:
@@ -171,4 +192,12 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
             )
             for area_name, area in (getattr(table, "areas", None) or {}).items()
         },
+        walls=[
+            Wall(tuple(tuple(p) for p in wall.points), wall.name or "")
+            for wall in getattr(table, "walls", None) or []
+        ],
+        obstacles=[
+            Obstacle(tuple(tuple(p) for p in obstacle.points), obstacle.name or "")
+            for obstacle in getattr(table, "obstacles", None) or []
+        ],
     )

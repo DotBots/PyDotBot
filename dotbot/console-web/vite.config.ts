@@ -6,18 +6,30 @@ import react from "@vitejs/plugin-react";
 //   /controller -> PyDotBot controller (REST + WS), default :8000
 //   /swarmit    -> swarmit status server (real or fake), default :8001
 //   /mrta       -> MRTA mode server (dotbot-logistics, or the fake), default :8002
-// Override with CONTROLLER_TARGET / SWARMIT_TARGET / MRTA_TARGET env vars when
-// the default ports are occupied by another instance.
+//   /api        -> a `dotbot site edit --port 8010` site editor server
+// Override with CONTROLLER_TARGET / SWARMIT_TARGET / MRTA_TARGET /
+// SITE_EDITOR_TARGET env vars when the default ports are occupied by another
+// instance.
 const controllerTarget =
   process.env.CONTROLLER_TARGET ?? "http://localhost:8000";
 const swarmitTarget = process.env.SWARMIT_TARGET ?? "http://localhost:8001";
 const mrtaTarget = process.env.MRTA_TARGET ?? "http://localhost:8002";
+const siteEditorTarget = process.env.SITE_EDITOR_TARGET ?? "http://127.0.0.1:8010";
 
 export default defineConfig({
   // Relative asset URLs: the production build is mounted at /console by the
   // controller; the dev server stays at /. API paths are absolute either way.
   base: "./",
   plugins: [react()],
+  // Two pages: the console, and the site editor `dotbot site new|edit` serves.
+  build: {
+    rollupOptions: {
+      input: {
+        console: "index.html",
+        siteEditor: "site-editor.html",
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -29,6 +41,7 @@ export default defineConfig({
         target: swarmitTarget,
         rewrite: (path) => path.replace(/^\/swarmit/, ""),
       },
+      "/api": siteEditorTarget,
       "/mrta": {
         target: mrtaTarget,
         rewrite: (path) => path.replace(/^\/mrta/, ""),
