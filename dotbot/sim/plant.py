@@ -54,6 +54,7 @@ class FleetPlant:
         noise_mm=None,
         rng: np.random.Generator = None,
         collisions: bool = True,
+        barriers=None,
     ):
         self.x = np.array(x, dtype=float)
         self.y = np.array(y, dtype=float)
@@ -72,6 +73,8 @@ class FleetPlant:
         self.rng = rng if rng is not None else np.random.default_rng()
         # Whether robots block one another, see `dotbot.sim.collisions`
         self.collisions = collisions
+        # A site's walls and obstacles (`dotbot.sim.barriers`); None: open floor
+        self.barriers = barriers if barriers else None
         self.mm_per_count = robot_geometry().mm_per_count
         self.speed = np.zeros((2, count))
         self.pwm = np.zeros((2, count))
@@ -113,7 +116,21 @@ class FleetPlant:
         )
         travel = (self.speed + speed) / 2.0 * TICK_S
         travel[:, self.held] = 0.0
-        pose = move(self.x, self.y, self.heading_deg, travel[0], travel[1])
+        x, y, heading = move(self.x, self.y, self.heading_deg, travel[0], travel[1])
+        if self.barriers is not None:
+            # A body that would meet a barrier stays where it was, its wheels
+            # stalled; one already in contact may still move off it
+            hit = self.barriers.blocked(x, y, heading)
+            if hit.any():
+                hit[hit] = ~self.barriers.blocked(
+                    self.x[hit], self.y[hit], self.heading_deg[hit]
+                )
+                x = np.where(hit, self.x, x)
+                y = np.where(hit, self.y, y)
+                heading = np.where(hit, self.heading_deg, heading)
+                travel[:, hit] = 0.0
+                speed[:, hit] = 0.0
+        pose = (x, y, heading)
         if self.collisions:
             # A robot whose move is refused stalls: its wheels do not turn
             pose, refused = contact.resolve((self.x, self.y, self.heading_deg), pose)
