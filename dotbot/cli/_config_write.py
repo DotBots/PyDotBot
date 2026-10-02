@@ -37,6 +37,7 @@ MACHINE_KEYS = frozenset(
                 "camera_max_robots",
                 "camera_detect_share",
                 "swarmit_url",
+                "swarm_serve",
                 "mrta_url",
                 "http_port",
                 "http_host",

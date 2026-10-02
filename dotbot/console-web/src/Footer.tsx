@@ -18,7 +18,7 @@ import {
 } from "./arrival";
 import { isPose, normDeg } from "./poseGesture";
 import { ACTION_KEY } from "./shortcuts";
-import { Area, BotState, canRedoMission, LINK_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint, shortId } from "./types";
+import { Area, BotState, canRedoMission, REPORTS_LABEL, STATE_ORDER, Site, UnifiedBot, Waypoint, shortId } from "./types";
 import { FlashJob } from "./useOrchestration";
 
 // v1 swatch palette.
@@ -86,8 +86,8 @@ const StateDot: React.FC<{ state: BotState | null; glow?: boolean; size?: number
 // The two axes fail differently, so the hint names which one is blocking.
 function notDrivableReason(one: UnifiedBot | null | undefined): string {
   if (!one) return "nothing selected";
-  if (one.link === "unknown") return "not on the control plane";
-  if (!heard(one.link)) return `the control plane is not hearing it (${one.link})`;
+  if (one.link === "unknown") return "its app sends the controller no reports";
+  if (!heard(one.link)) return "its app has gone silent";
   if (one.state && one.state !== "Running") return `its sandbox is ${one.state.toLowerCase()}, not running`;
   return "no DBP in the running image";
 }
@@ -757,10 +757,10 @@ export const Footer: React.FC<FooterProps> = (props) => {
                 <span style={{ fontSize: 13, fontWeight: 500 }}>{stateLabel(one.state)}</span>
                 {one.link !== "active" && (
                   <span
-                    title="The control plane is not hearing this bot; the sandbox state above is the last one SwarmIT reported."
+                    title="Its app's reports to the controller are late or missing; the sandbox state beside it is what swarmit reports."
                     style={{ ...mono, fontSize: 9, letterSpacing: ".5px", color: "var(--muted)", border: "1px solid var(--hairline)", borderRadius: 5, padding: "1px 5px" }}
                   >
-                    {LINK_LABEL[one.link].toUpperCase()}
+                    {REPORTS_LABEL[one.link].toUpperCase()}
                   </span>
                 )}
               </div>

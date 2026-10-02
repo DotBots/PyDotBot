@@ -60,7 +60,7 @@ dependencies = [
     "intelhex       >= 2.3.0",
     "marilib-pkg    >= 0.11.0",
     "pydotbot-utils >= 0.3.0",
-    "swarmit        >= 0.11.0",
+    "swarmit[dashboard] >= 0.11.0",
     "toml           >= 0.10.2",
     "tomlkit        >= 0.13.0",
     # Runs the simulator's firmware control core. Majors ship monthly; the
@@ -73,7 +73,7 @@ dependencies = [
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
 license = { text="BSD" }
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 classifiers = [
     'Programming Language :: C',
     "Programming Language :: Python :: 3",

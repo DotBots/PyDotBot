@@ -661,10 +661,9 @@ def _parse_size(_ctx, _param, value):
 
 def _render_site_pack(site, source_id8: str) -> str:
     def area(name: str, note: str) -> str:
-        a = site.areas[name]
-        return (
-            f"[areas.{name}]   # {note}\nx = {a.x}\ny = {a.y}\nw = {a.w}\nh = {a.h}\n"
-        )
+        a = site.registry().resolve(name)
+        key = json.dumps(name) if "+" in name else name
+        return f"[areas.{key}]   # {note}\nx = {a.x}\ny = {a.y}\nw = {a.w}\nh = {a.h}\n"
 
     width, height = site.extent_mm
     return (
@@ -677,6 +676,8 @@ def _render_site_pack(site, source_id8: str) -> str:
         + area("field", "where the robots spun, grown by a robot's footprint")
         + "\n"
         + area("staging", "where robots park, along the field's bottom edge")
+        + "\n"
+        + area("field+staging", "the field and staging together")
     )
 
 
@@ -714,10 +715,11 @@ def init(ctx, name, calibration, size, force):
     grown by what a spinning robot sweeps; the calibration's frame is aligned
     to it, zero at its top-left. The site is the starter site `config init`
     writes, around that field: a margin of floor round it (or a --size site
-    with it centred) and a staging strip along its bottom edge. The pack
-    goes into the nearest site home (sites/ beside the project's dotbot.toml,
-    else ~/.dotbot/sites/), and the calibration, re-expressed in the site,
-    under ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
+    with it centred), a staging strip along its bottom edge, and a
+    field+staging area spanning both. The pack goes into the nearest site
+    home (sites/ beside the project's dotbot.toml, else ~/.dotbot/sites/),
+    and the calibration, re-expressed in the site, under
+    ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
     """
     from dotbot.calibration.conics import self_defined_site
     from dotbot.calibration.lighthouse2 import (

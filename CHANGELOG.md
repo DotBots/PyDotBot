@@ -7,6 +7,38 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `dotbot config init --conn <broker>` on a site whose pack already exists
+  writes the broker into that pack's `[connection]` instead of dropping it.
+- The package declares the Python 3.11 it needs (`requires-python`), and the
+  README says so next to `pip install`.
+- Releases publish the wheel to PyPI, not only the sdist.
+- `dotbot swarm serve` starts from a plain `pip install pydotbot`: PyDotBot
+  depends on `swarmit[dashboard]`, whose PyJWT and SQLAlchemy the server needs.
+- `dotbot run controller --log-output PATH` creates PATH's folder when it is
+  missing, and names a log file it cannot write instead of crashing.
+
+### Changed
+
+- The console's list and grid show each robot's app and version, bootloader
+  version, LH2 calibration, position, heading (drawn as on the map), area,
+  battery percentage and how long since its last report, and flag a bootloader
+  too old for the controller's calibrations or a calibration that differs from
+  the controller's. The list sorts by every column and can hide columns; the
+  grid switches between compact and full cards.
+- The console names a robot's REST `status` by its reports: Reporting, Late,
+  Silent, or No reports for a robot only swarmit knows, in place of Live,
+  Stale, Lost and "Not on the control plane". The **Lost robots** layer is now
+  **Silent robots**. The API values are unchanged.
+- `dotbot run controller` with an MQTT connection starts a local swarm server
+  (`dotbot swarm serve --local`) and stops it on exit, so the console shows
+  robots in their bootloader without a second terminal. One already answering
+  at `swarmit_url` is reused. `--no-swarm-serve` or `[run.controller]
+  swarm_serve = false` turns it off.
+- `dotbot site init NAME --from-calibration ID` also writes a `field+staging`
+  area, the bounding box of the field and staging.
+
 ## [0.32.0] - 2026-10-01
 
 Upgrading from 0.31.0? Read [Upgrading from 0.31.0](#upgrading-from-0310) first:

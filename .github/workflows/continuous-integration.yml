@@ -100,7 +100,7 @@ jobs:
 
   package:
     needs: [test, doc, console]
-    name: build source package
+    name: build packages
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -127,12 +127,15 @@ jobs:
       run: twine check dist/*
     - name: Check package data files
       run: python utils/check_wheel_contents.py
-    - name: Upload source package as artifact
+    - name: Upload the sdist and wheel as an artifact
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: sdist
-        path: ./dist/*.tar.gz
+        name: dist
+        path: |
+          ./dist/*.tar.gz
+          ./dist/*.whl
+        if-no-files-found: error
 
   release:
     needs: [package]
@@ -141,10 +144,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Download sdist
+    - name: Download the sdist and wheel
       uses: actions/download-artifact@v4
       with:
-        name: sdist
+        name: dist
         path: ./dist
     - name: Check dist/ content
       run: ls -lR ./dist

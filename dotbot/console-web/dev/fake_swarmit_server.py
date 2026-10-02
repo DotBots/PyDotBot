@@ -183,7 +183,8 @@ def device_info(addr: str) -> dict:
         else f"{homographies} {noun} (valid, from flash)"
     )
     return {
-        "info_version": 3,
+        # A few run sandbox firmware too old for this host's calibrations.
+        "info_version": 2 if seed % 7 == 0 else 3,
         "info_gen": 4,
         "boot_count": 2 + seed % 30,
         "uptime_s": 60 + seed % 9000,

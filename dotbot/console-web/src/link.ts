@@ -1,4 +1,4 @@
-// How the console treats a robot by how recently the controller heard it.
+// How the console treats a robot by how recently its app reported to the controller.
 
 import { LinkState, UnifiedBot } from "./types";
 
@@ -25,14 +25,14 @@ export function nobodyHears(bot: Pick<UnifiedBot, "link" | "swarmit">): boolean 
   return bot.link === "lost" && !bot.swarmit;
 }
 
-/** "12 bots · 2 stale · 3 lost", naming only the tiers that hold a robot. */
+/** "12 bots · 2 late · 3 silent", naming only the tiers that hold a robot. */
 export function fleetSummary(bots: Pick<UnifiedBot, "link" | "swarmit">[], showLost: boolean): string {
   const lost = bots.filter(nobodyHears).length;
   const stale = bots.filter((b) => b.link === "stale").length;
   const heardOf = bots.length - lost;
   const parts = [`${heardOf} ${heardOf === 1 ? "bot" : "bots"}`];
-  if (stale) parts.push(`${stale} stale`);
-  if (lost) parts.push(`${lost} lost${showLost ? "" : " (hidden)"}`);
+  if (stale) parts.push(`${stale} late`);
+  if (lost) parts.push(`${lost} silent${showLost ? "" : " (hidden)"}`);
   return parts.join(" · ");
 }
 

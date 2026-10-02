@@ -5,9 +5,11 @@
 // running bare, with no sandbox) has no value here at all, which is why the
 // merged object carries `state: BotState | null` rather than inventing one.
 //
-// LinkState is PyDotBot's DotBotStatus: whether the control plane is still
-// hearing the bot. Orthogonal to the sandbox - a bot can be mid-Programming
-// and unheard at the same time, and collapsing the two lost exactly that.
+// LinkState is PyDotBot's DotBotStatus: whether the robot's app is still
+// sending the controller its reports. Orthogonal to the sandbox - a bot can be
+// mid-Programming and silent at the same time, and collapsing the two lost
+// exactly that. The values follow the REST `status`; REPORTS_LABEL is what the
+// console calls them.
 export type BotState =
   | "Running"
   | "Programming"
@@ -25,11 +27,11 @@ export const STATE_ORDER: BotState[] = [
   "Resetting",
 ];
 
-export const LINK_LABEL: Record<LinkState, string> = {
-  active: "Live",
-  stale: "Stale",
-  lost: "Lost",
-  unknown: "Not on the control plane",
+export const REPORTS_LABEL: Record<LinkState, string> = {
+  active: "Reporting",
+  stale: "Late",
+  lost: "Silent",
+  unknown: "No reports",
 };
 
 // PyDotBot REST/WS shapes (subset the console consumes).
@@ -116,6 +118,7 @@ export interface PyDotBot {
   rgb_led?: RgbLed;
   battery?: number; // volts
   calibrated?: number;
+  last_seen?: number; // unix seconds
 }
 
 // --- what a camera sees on its own area ------------------------------------
@@ -333,6 +336,7 @@ export interface UnifiedBot {
   batteryPct: number | null; // served by swarmit; null for a bot it does not know
   batteryLevel: string | null; // full | ok | low
   swarmit: SwarmitNode | null; // the orchestration record, for the inspector
+  lastReport?: number | null; // unix seconds, the controller's last report from the app
 }
 
 export type MissionState = "in_progress" | "arrived" | "failed" | "aborted";

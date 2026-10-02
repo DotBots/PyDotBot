@@ -74,6 +74,7 @@ import {
   shortId,
   Waypoint,
 } from "./types";
+import type { FleetContext } from "./botFacts";
 import { useCalibration, useCapturer } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
@@ -178,6 +179,11 @@ export const App: React.FC = () => {
   // ?sel=<addr-suffix>[,<addr-suffix>] preselects bots (handy for dev/screenshots).
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const calibration = useCalibration(setSession, selection);
+  // What the list and grid compare each robot against; `now` follows the fleet's updates.
+  const fleetCtx = useMemo<FleetContext>(
+    () => ({ calibrationId: session?.saved_id ?? "", site, now: Date.now() / 1000 }),
+    [session?.saved_id, site, bots],
+  );
   // The robot chosen to capture: clicked on the map, typed in the card, or
   // the one whose button took the last point.
   const [capturer, setCapturer] = useCapturer(session);
@@ -833,7 +839,7 @@ export const App: React.FC = () => {
     { key: "trails", label: "Trails" },
     { key: "allWaypoints", label: "Every robot's waypoints" },
     { key: "crashedOnly", label: "Only crashed bots" },
-    { key: "lostBots", label: "Lost robots" },
+    { key: "lostBots", label: "Silent robots" },
   ];
 
   // On a phone the card is the whole screen: a small picture at the top so
@@ -966,7 +972,10 @@ export const App: React.FC = () => {
               boxShadow: wsUp ? "0 0 8px var(--s-Running)" : "none",
             }}
           />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1, color: "var(--muted)" }}>
+          <span
+            title="Whether this console is receiving the controller's stream"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1, color: "var(--muted)" }}
+          >
             {wsUp ? "LIVE" : "OFFLINE"}
           </span>
           <span data-testid="fleet-summary" style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -1121,8 +1130,8 @@ export const App: React.FC = () => {
               allBots={bots}
             />
           )}
-          {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} />}
-          {view === "grid" && <GridView bots={shownBots} selection={selection} onSelect={onSelect} />}
+          {view === "list" && <ListView bots={shownBots} selection={selection} onSelect={onSelect} ctx={fleetCtx} />}
+          {view === "grid" && <GridView bots={shownBots} selection={selection} onSelect={onSelect} ctx={fleetCtx} />}
 
           {/* shared view switcher */}
           <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "center", zIndex: 12 }}>

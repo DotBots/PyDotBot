@@ -8,7 +8,9 @@
 """Main module of the Dotbot controller command line tool."""
 
 import asyncio
+import os
 import shutil
+import signal
 import sys
 from pathlib import Path
 
@@ -44,6 +46,10 @@ from dotbot.controller import (
     ControllerSettings,
 )
 from dotbot.logger import setup_logging
+from dotbot.mqtt_tls import LOCAL_HOSTS
+
+# Where swarmit's own clients look for a swarm server
+SWARMIT_SERVER_ENV = "SWARMIT_SERVER_URL"
 
 # The `ctx.obj` key under which a command that implies `--conn` names itself.
 IMPLIED_CONN = "implied_conn"
@@ -72,6 +78,74 @@ def _resolve_controller_key(ctx, key, flag, default):
     except ConfigError as exc:
         raise click.ClickException(f"{key}: {exc}") from exc
     return resolved.value, resolved.source
+
+
+def _swarm_server(ctx, flag, settings: ControllerSettings):
+    """Reuse or start the swarm server the console reads, saying which; the
+    one started, or None."""
+    from dotbot import swarm_serve
+    from dotbot.swarm_client import conn_string
+
+    url = settings.swarmit_url
+    if url is None:
+        return None
+    wanted, source = _resolve_controller_key(ctx, "swarm_serve", flag, True)
+    if not wanted:
+        print(f"Swarmit server: {url}, not started (swarm_serve off, from {source})")
+        return None
+    answering = swarm_serve.server_settings(url)
+    if answering is not None:
+        print(f"Swarmit server: reusing the one at {url}")
+        os.environ.setdefault(SWARMIT_SERVER_ENV, url)
+        network = answering["network_id"]
+        if settings.adapter in ("cloud", "edge") and isinstance(network, int):
+            if network != int(settings.network_id, 16):
+                click.echo(
+                    f"warning: the swarm server at {url} is on swarm "
+                    f"{network:04X}, not {settings.network_id}",
+                    err=True,
+                )
+        return None
+    address = swarm_serve.local_address(url)
+    why = None
+    if settings.adapter != "cloud":
+        why = "one is started only beside a broker connection"
+    elif address is None:
+        why = "it is not an http:// address on this machine"
+    elif settings.controller_http_host not in LOCAL_HOSTS:
+        why = (
+            f"the controller listens on {settings.controller_http_host}, which "
+            "would expose its unauthenticated /swarmit/* to the network"
+        )
+    elif swarm_serve.port_taken(*address):
+        why = f"something other than a swarm server holds port {address[1]}"
+    if why is not None:
+        if source != "the default" or settings.adapter == "cloud":
+            print(f"Swarmit server: {url}, not started: {why}")
+        return None
+    log_path = Path(settings.log_output).parent / "swarm-serve.log"
+    server = swarm_serve.start(
+        *address,
+        conn_string(settings),
+        settings.network_id,
+        settings.mqtt_username,
+        settings.mqtt_password,
+        log_path,
+    )
+    os.environ.setdefault(SWARMIT_SERVER_ENV, url)
+    print(
+        f"Swarmit server: started at {url}, stopping with the controller "
+        f"(log: {log_path})"
+    )
+
+    def exited(code):
+        click.echo(
+            f"warning: the swarm server stopped (exit {code}); see {log_path}",
+            err=True,
+        )
+
+    swarm_serve.watch(server, exited)
+    return server
 
 
 def _max_age_days(raw, source: str) -> int:
@@ -462,6 +536,15 @@ def _generated_fleet(
         f"typically '{MRTA_URL_DEFAULT}' (dotbot-logistics' own default port)."
     ),
 )
+@click.option(
+    "--swarm-serve/--no-swarm-serve",
+    default=None,
+    help=(
+        "Start a local swarm server (`dotbot swarm serve --local`) at "
+        "--swarmit-url for the console, on by default with a broker. One "
+        "already answering there is reused; it stops with the controller."
+    ),
+)
 @click.pass_context
 def main(
     ctx,
@@ -484,6 +567,7 @@ def main(
     write_init_state,
     swarmit_url,
     mrta_url,
+    swarm_serve,
     headless,
     verbose,
     log_level,
@@ -649,22 +733,33 @@ def main(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    setup_logging(
-        controller_settings.log_output,
-        controller_settings.log_level,
-        ["console", "file"],
-    )
+    try:
+        setup_logging(
+            controller_settings.log_output,
+            controller_settings.log_level,
+            ["console", "file"],
+        )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(
+            f"cannot write the log file {controller_settings.log_output}: {exc}"
+        ) from exc
     try:
         # A calibration that cannot be found, or belongs to another site
         controller = Controller(controller_settings)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+    swarm_server = _swarm_server(ctx, swarm_serve, controller_settings)
+    if swarm_server is not None:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         asyncio.run(controller.run())
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except (SystemExit, KeyboardInterrupt):
         sys.exit(0)
+    finally:
+        if swarm_server is not None:
+            swarm_server.stop()
 
 
 if __name__ == "__main__":

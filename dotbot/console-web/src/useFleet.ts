@@ -166,6 +166,7 @@ export function merge(
       batteryPct: sw?.battery_pct ?? null,
       batteryLevel: sw?.battery_level ?? null,
       swarmit: sw ?? null,
+      lastReport: py?.last_seen ?? null,
     });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));

@@ -203,6 +203,7 @@ peer-size check and is left out.
 
 `dotbot swarm` auto-discovers a running `serve` daemon; pass `--no-server` to
 skip the probe and run an in-process controller for that one invocation. Use
-`serve --local` for a zero-config local backend.
+`serve --local` for a zero-config local backend; `dotbot run controller`
+starts one by itself beside an MQTT connection, or reuses the one running.
 
 See `dotbot swarm <command> --help` for every flag.
