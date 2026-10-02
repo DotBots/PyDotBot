@@ -56,6 +56,7 @@ __all__ = [
     "StationGraph",
     "error_map_from_calibration",
     "multi_station_report",
+    "next_round",
     "solve_joint",
     "station_graph",
 ]
@@ -1186,6 +1187,117 @@ def appendable_rounds(calibration: Calibration) -> int:
             "it was made from"
         )
     return max(t.round for t in calibration.tracks) + 1
+
+
+# --- Active collection ------------------------------------------------------
+
+# Least distance between two suggested spins, mm: closer ones tell the
+# solve little more than one.
+NEXT_ROUND_SPACING_MM = 400.0
+# How far inside an overlap its suggested ends sit, mm.
+NEXT_ROUND_INSET_MM = 150.0
+
+
+@dataclass(frozen=True)
+class SpinTarget:
+    """Where one robot should spin in the next round, and why."""
+
+    point_mm: tuple[float, float]
+    stations: tuple[int, ...]
+    why: str
+
+
+def _covering(
+    rectangles: Mapping[int, Sequence[int]], p, inset: float = 0.0
+) -> tuple[int, ...]:
+    """The stations whose rectangle, shrunk by `inset`, holds `p`."""
+    return tuple(
+        s
+        for s, (x0, y0, x1, y1) in sorted(rectangles.items())
+        if x0 + inset <= p[0] <= x1 - inset and y0 + inset <= p[1] <= y1 - inset
+    )
+
+
+def next_round(
+    error_map: ErrorMap,
+    rectangles: Mapping[int, Sequence[int]],
+    links: Sequence[LinkRecord],
+    robots: int = 4,
+    spacing_mm: float = NEXT_ROUND_SPACING_MM,
+) -> list[SpinTarget]:
+    """Where `robots` robots should spin next to strengthen the calibration.
+
+    First the two far ends of every overlap whose link is under the advised
+    strength (or missing), since a spread pair is what ties two stations;
+    then the cells the error map predicts worst, no two closer than
+    `spacing_mm` and none on a rectangle's edge, where a spinning robot
+    would leave it. Points are in the calibration's frame.
+    """
+    targets: list[SpinTarget] = []
+
+    def free(p) -> bool:
+        return all(math.dist(p, t.point_mm) >= spacing_mm for t in targets)
+
+    strength = {(k.a, k.b): k for k in links}
+    stations = sorted(rectangles)
+    for i, a in enumerate(stations):
+        for b in stations[i + 1 :]:
+            ra, rb = rectangles[a], rectangles[b]
+            ox0, oy0 = max(ra[0], rb[0]), max(ra[1], rb[1])
+            ox1, oy1 = min(ra[2], rb[2]), min(ra[3], rb[3])
+            if (
+                ox1 - ox0 <= 2 * NEXT_ROUND_INSET_MM
+                or oy1 - oy0 <= 2 * NEXT_ROUND_INSET_MM
+            ):
+                continue
+            link = strength.get((a, b))
+            if link is not None and link_advised(link):
+                continue
+            inset = NEXT_ROUND_INSET_MM
+            if ox1 - ox0 >= oy1 - oy0:
+                mid = (oy0 + oy1) / 2
+                ends = [(ox0 + inset, mid), (ox1 - inset, mid)]
+            else:
+                mid = (ox0 + ox1) / 2
+                ends = [(mid, oy0 + inset), (mid, oy1 - inset)]
+            why = f"ties {station_label(a)} and {station_label(b)}, " + (
+                f"now {link.shared} circle(s) over {link.spread_mm:.0f} mm"
+                if link is not None
+                else "not tied yet"
+            )
+            for p in ends:
+                if len(targets) < robots and free(p):
+                    targets.append(SpinTarget(p, _covering(rectangles, p), why))
+    sigma = error_map.sigma_mm
+    order = np.argsort(np.where(np.isnan(sigma), -np.inf, sigma), axis=None)[::-1]
+    for flat in order:
+        if len(targets) >= robots:
+            break
+        row, col = np.unravel_index(flat, sigma.shape)
+        value = sigma[row, col]
+        if np.isnan(value):
+            break
+        p = error_map.centre(int(row), int(col))
+        covering = _covering(rectangles, p, NEXT_ROUND_INSET_MM)
+        if covering and free(p):
+            targets.append(
+                SpinTarget(p, covering, f"predicted error {value:.1f} mm here")
+            )
+    return targets
+
+
+def next_round_lines(targets: Sequence[SpinTarget]) -> list[str]:
+    """The suggestions as the operator reads them."""
+    if not targets:
+        return ["next round: nothing to suggest"]
+    lines = [f"next round, {len(targets)} spin(s), in this calibration's frame:"]
+    for t in targets:
+        seen = ", ".join(str(s) for s in t.stations)
+        lines.append(
+            f"  ({t.point_mm[0]:6.0f}, {t.point_mm[1]:6.0f}) mm, seen by station(s) "
+            f"{seen}: {t.why}"
+        )
+    return lines
 
 
 # --- Report -----------------------------------------------------------------
