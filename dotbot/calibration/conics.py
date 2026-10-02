@@ -35,7 +35,7 @@ from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 from dotbot.site import Site, starter_layout
 
 if TYPE_CHECKING:
-    from dotbot.calibration.multi_station import JointSolution
+    from dotbot.calibration.multi_station import Anchor, JointSolution
 
 # Post-rectification minor/major axis ratio under which a track is not a circle.
 TRACK_AXIS_RATIO_MIN = 0.95
@@ -702,6 +702,7 @@ def solve_calibration(
     robot: str = ROBOT_DEFAULT,
     tag: str = "",
     drop_stations: Sequence[int] = (),
+    anchors: Sequence[Anchor] = (),
 ) -> tuple[Calibration, JointSolution, dict[int, str]]:
     """A free-mode calibration from circle tracks, every station in one frame.
 
@@ -710,7 +711,8 @@ def solve_calibration(
     is not tied to the rest raises `MultiStationError` unless it is in
     `drop_stations`. Returns the calibration, the joint solution, and why
     each station with tracks was not solved. The calibration records
-    `site`'s name only, with `FREE_FRAME_ANCHOR` for its anchor.
+    `site`'s name only, with `FREE_FRAME_ANCHOR` for its anchor; with
+    `anchors` it is in `site`'s own frame and records `site`'s anchor.
     """
     # pylint: disable=import-outside-toplevel,cyclic-import
     from dotbot.calibration.multi_station import solve_joint, tracks_by_station
@@ -722,8 +724,12 @@ def solve_calibration(
         by_station,
         margin_mm=robot_geometry(robot).axle_reach_mm,
         drop=drop_stations,
+        anchors=anchors,
     )
     solved_from = "conics-joint" if joint.joint else "conics-free"
+    anchor = FREE_FRAME_ANCHOR
+    if joint.anchored:
+        solved_from, anchor = "conics-anchored", site.anchor
     stations = [
         StationSolution(
             index=station,
@@ -737,7 +743,7 @@ def solve_calibration(
     ]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     calibration = Calibration(
-        site=Site(name=site.name, anchor=FREE_FRAME_ANCHOR),
+        site=Site(name=site.name, anchor=anchor),
         valid_mm=joint.valid_mm,
         stations=stations,
         tracks=list(samples),
