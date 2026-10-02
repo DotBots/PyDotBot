@@ -549,24 +549,22 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
     page = swarmit_config_page(0x1234, load_calibration_file(path))
 
     assert len(page) == 872
-    assert page[:64].hex() == (
-        "50525357010000003412000003000000"
-        "cd6cbe44cdcc18c2cd2c7d449a992742"
-        "9a79bf443313774488855a3e7c61b2bd"
-        "0000803f0008b9c40000484100603845"
-    )
+    assert page[:16].hex() == "50525357010000003412000004010000"
     assert hashlib.sha256(page).hexdigest() == (
-        "deda154c7d1991dc043e38a7cac5b4461ffd381d0d16fa53a2d79e045348880f"
+        "c96414cbab5c61fc2bd78d0559dad586d2270c57ea87f10054c1e79f62d1b791"
     )
-    # Station 1 in slot 1, the fourteen unused slots erased; each station's
-    # rectangle in its slot, the rest erased; then the site name and id
-    # exactly as the calibration message carries them.
+    # Stations 2 and 8 in their slots, every other slot erased; each
+    # station's rectangle in its slot; then the site name and id exactly as
+    # the calibration message carries them.
     message = [bytes.fromhex(h) for h in MESSAGE_HEX]
-    assert page[16 + 36 : 16 + 72] == message[1][8:44]
-    assert page[88:592] == b"\xff" * 504
-    assert page[592:608] == message[0][44:60]
-    assert page[608:624] == message[1][44:60]
-    assert page[624:848] == b"\xff" * 224
+    matrix = [page[16 + 36 * i : 16 + 36 * (i + 1)] for i in range(16)]
+    rect = [page[592 + 16 * i : 592 + 16 * (i + 1)] for i in range(16)]
+    for i in range(16):
+        if i in (2, 8):
+            m = message[(2, 8).index(i)]
+            assert matrix[i] == m[8:44] and rect[i] == m[44:60]
+        else:
+            assert matrix[i] == b"\xff" * 36 and rect[i] == b"\xff" * 16
     assert page[848:872] == message[0][60:84]
 
 

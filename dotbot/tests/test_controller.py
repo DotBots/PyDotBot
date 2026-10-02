@@ -1586,11 +1586,17 @@ async def test_a_resend_that_fails_drops_the_command(controller, clock):
 
 
 def _old_calibration_settings(tmp_path, **kwargs):
-    """Settings loading the wire fixture, made 2026-09-10, by path."""
+    """Settings loading the wire fixture, made 2026-09-10, by path, with its
+    stations renumbered 0 and 1: a robot advertises the stations it holds in
+    one byte, stations 0 to 7."""
     from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
 
     path = tmp_path / "calibration.toml"
-    path.write_text(FIXTURE_TOML)
+    path.write_text(
+        FIXTURE_TOML.replace("index = 2\n", "index = 0\n").replace(
+            "index = 8\n", "index = 1\n"
+        )
+    )
     return ControllerSettings(
         port="/dev/null",
         baudrate=115200,
