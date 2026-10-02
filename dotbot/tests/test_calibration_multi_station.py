@@ -548,3 +548,87 @@ def test_stations_2_and_8_reach_the_wire_and_the_page_by_slot(tmp_path):
         assert struct.unpack("<4I", rect) == station.valid_mm
     assert page[848:864] == b"arena".ljust(16, b"\x00")
     assert page[864:872] == bytes.fromhex(back.id[:16])
+
+
+def _absolute_error(joint, stations, centres):
+    """rms mm between the solve and the true floor, with no alignment at all."""
+    errors = []
+    for st in stations:
+        P = F.grid_in(st)
+        seen = np.array([c for c in centres if st.sees(c)])
+        P = P[np.min(np.linalg.norm(P[:, None] - seen[None], axis=2), axis=1) <= 500]
+        got = apply(joint.homographies[st.index], apply(st.floor_to_cam, P))
+        errors.append(np.linalg.norm(got - P, axis=1))
+    return float(np.sqrt(np.mean(np.concatenate(errors) ** 2)))
+
+
+def test_anchored_multi_spread_anchors_recover_the_true_frame():
+    a, b = two_stations()
+    centres = floor_grid([a, b])
+    tracks = F.spins([a, b], centres, noise=1.0, seed=6)
+    # four robots at the far corners of the floor, two under each station
+    corners = []
+    for target in ((0, 300), (0, 2800), (3500, 300), (3500, 2800)):
+        i = int(
+            np.argmin([np.hypot(c[0] - target[0], c[1] - target[1]) for c in centres])
+        )
+        corners.append(i)
+    anchors = [
+        ms.Anchor(ms.CircleKey(f"R{i:02d}", 0), tuple(centres[i])) for i in corners
+    ]
+    assert {a.sees(centres[i]) for i in corners} == {True, False}
+    joint = ms.solve_joint(tracks, anchors=anchors)
+    assert joint.anchored
+    assert _absolute_error(joint, [a, b], centres) < 2.0
+    assert all(r < 5.0 for r in joint.anchor_residuals.values())
+    assert joint.anchor_scale_ratio == pytest.approx(1.0, abs=0.002)
+    assert not any("anchors span" in w for w in joint.warnings)
+
+
+def test_anchored_multi_clustered_anchors_are_warned_about():
+    a, b = two_stations()
+    centres = floor_grid([a, b])
+    tracks = F.spins([a, b], centres, noise=1.0, seed=6)
+    near = sorted(
+        range(len(centres)),
+        key=lambda i: np.hypot(*np.subtract(centres[i], (300, 800))),
+    )[:4]
+    anchors = [ms.Anchor(ms.CircleKey(f"R{i:02d}", 0), tuple(centres[i])) for i in near]
+    joint = ms.solve_joint(tracks, anchors=anchors)
+    assert any("anchors span" in w for w in joint.warnings)
+
+
+def test_anchored_multi_report_shows_a_scale_disagreement():
+    a, b = two_stations()
+    centres = floor_grid([a, b])
+    tracks = F.spins([a, b], centres, noise=0.5, seed=7)
+    corners = [0, len(centres) - 1, 3, len(centres) - 4]
+    # the floor marks are 1 % further apart than the robots' circles say
+    anchors = [
+        ms.Anchor(ms.CircleKey(f"R{i:02d}", 0), tuple(1.01 * np.array(centres[i])))
+        for i in corners
+    ]
+    joint = ms.solve_joint(tracks, anchors=anchors)
+    assert joint.anchor_scale_ratio == pytest.approx(1.01, abs=0.002)
+    calibration, _, _ = conics.solve_calibration(
+        F.samples(tracks), Site(name="arena", anchor="door corner"), anchors=anchors
+    )
+    assert {s.solved_from for s in calibration.stations} == {"conics-anchored"}
+    assert calibration.site.anchor == "door corner"
+    text = "\n".join(ms.multi_station_report(calibration, joint))
+    assert "anchor scale ratio 1.01" in text
+
+
+def test_anchored_multi_needs_two_anchors_the_stations_kept():
+    a, b = two_stations()
+    tracks = F.spins([a, b], floor_grid([a, b]))
+    with pytest.raises(ValueError, match="two or more"):
+        ms.solve_joint(tracks, anchors=[ms.Anchor(ms.CircleKey("R00"), (0, 0))])
+    with pytest.raises(ValueError, match="NOPE"):
+        ms.solve_joint(
+            tracks,
+            anchors=[
+                ms.Anchor(ms.CircleKey("R00"), (0, 0)),
+                ms.Anchor(ms.CircleKey("NOPE"), (1, 1)),
+            ],
+        )
