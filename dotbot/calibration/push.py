@@ -25,7 +25,7 @@ from typing import Any, Mapping
 
 from dotbot.calibration.lighthouse2 import Calibration, pushed_id
 
-DEVICE_INFO_VERSION_MIN = 3
+DEVICE_INFO_VERSION_MIN = 4
 # Seconds a pushed robot gets to reset, rejoin and report the pushed id.
 PUSH_REJOIN_TIMEOUT = 30.0
 PUSH_POLL_INTERVAL = 1.0
