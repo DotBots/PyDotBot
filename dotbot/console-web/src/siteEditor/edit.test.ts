@@ -12,7 +12,7 @@ import {
   siteIssues,
   snap,
 } from "./edit";
-import { finishPoints, movePoints, parsePoints } from "./edit";
+import { finishPoints, freshObjectName, movePoints, parsePoints } from "./edit";
 import type { EditArea, SiteModel } from "./types";
 
 const area = (name: string, x: number, y: number, w: number, h: number, role: EditArea["role"] = null): EditArea => ({
@@ -160,5 +160,23 @@ describe("barriers", () => {
     const messages = siteIssues(site).map((i) => `${i.level}: ${i.message}`);
     expect(messages).toContain("error: w needs at least 2 points");
     expect(messages).toContain("warning: obstacle 1 reaches outside the extent");
+  });
+});
+
+describe("objects", () => {
+  it("names a new object after the ones taken, and checks names", () => {
+    expect(freshObjectName(["charger-1"], "charger")).toBe("charger-2");
+    const site = {
+      anchor: null,
+      extent_mm: [2000, 2000] as [number, number],
+      areas: [],
+      objects: [
+        { name: "a", kind: "charger" as const, x: 0, y: 0, heading_deg: 0, comment: null },
+        { name: "a", kind: "dock" as const, x: 2500, y: 0, heading_deg: 0, comment: null },
+      ],
+    };
+    const messages = siteIssues(site).map((i) => i.message);
+    expect(messages).toContain("two objects are named a");
+    expect(messages).toContain("a is outside the extent");
   });
 });

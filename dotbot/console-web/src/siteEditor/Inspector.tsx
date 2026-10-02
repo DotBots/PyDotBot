@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 
-import type { AreaRole } from "../types";
+import { OBJECT_KINDS } from "../siteObjects";
+import type { AreaRole, SiteObjectKind } from "../types";
 import type { BarrierRef } from "./Canvas";
 import { BARRIER_MIN_POINTS, ROLES, declaredRole, effectiveRole, parsePoints } from "./edit";
 import type { Issue } from "./edit";
-import type { Backdrops, BarrierKind, EditArea, EditBarrier, SiteModel } from "./types";
+import type { Backdrops, BarrierKind, EditArea, EditBarrier, EditObject, SiteModel } from "./types";
 
 // The right pane: every field is a key of site.toml, and what it shows is
 // what Save writes.
@@ -79,6 +80,10 @@ export interface InspectorProps {
   onSelectBarrier?: (ref: BarrierRef | null) => void;
   onBarrier?: (ref: BarrierRef, patch: Partial<EditBarrier>, key: string) => void;
   onDeleteBarrier?: (ref: BarrierRef) => void;
+  selectedObject?: number | null;
+  onSelectObject?: (index: number | null) => void;
+  onObject?: (index: number, patch: Partial<EditObject>, key: string) => void;
+  onDeleteObject?: (index: number) => void;
   backdrops?: Backdrops | null;
   /** Keys `cal:<id8>` and `cam:<id8>` of the backdrops switched on. */
   shownBackdrops?: Set<string>;
@@ -159,6 +164,76 @@ function BarrierInspector(props: {
         }}
       >
         Delete {KIND_LABEL[kind]}
+      </button>
+    </div>
+  );
+}
+
+function ObjectInspector(props: {
+  object: EditObject;
+  onChange: (patch: Partial<EditObject>, key: string) => void;
+  onDelete: () => void;
+}) {
+  const o = props.object;
+  return (
+    <div style={section} data-testid="object-inspector">
+      <div style={heading}>Object</div>
+      <label>
+        <span style={label}>name</span>
+        <input
+          aria-label="object name"
+          value={o.name}
+          onChange={(e) => props.onChange({ name: e.target.value }, "object-name")}
+          style={input}
+        />
+      </label>
+      <label>
+        <span style={label}>kind</span>
+        <select
+          aria-label="object kind"
+          value={o.kind}
+          onChange={(e) => props.onChange({ kind: e.target.value as SiteObjectKind }, "object-kind")}
+          style={input}
+        >
+          {OBJECT_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <NumberField name="object x" value={o.x} onChange={(x) => props.onChange({ x }, "object-x")} />
+        <NumberField name="object y" value={o.y} onChange={(y) => props.onChange({ y }, "object-y")} />
+      </div>
+      <NumberField
+        name="heading (deg, 0 faces +y)"
+        value={o.heading_deg}
+        onChange={(heading_deg) => props.onChange({ heading_deg }, "object-heading")}
+      />
+      <label>
+        <span style={label}>comment (kept in the file)</span>
+        <input
+          aria-label="object comment"
+          value={o.comment ?? ""}
+          onChange={(e) => props.onChange({ comment: e.target.value }, "object-comment")}
+          style={{ ...input, fontFamily: "var(--font-ui)" }}
+        />
+      </label>
+      <button
+        type="button"
+        onClick={props.onDelete}
+        style={{
+          marginTop: 12,
+          background: "transparent",
+          color: "var(--accent)",
+          border: "1px solid var(--accent)",
+          borderRadius: 4,
+          padding: "4px 10px",
+          cursor: "pointer",
+        }}
+      >
+        Delete object
       </button>
     </div>
   );
@@ -305,6 +380,14 @@ export function Inspector(props: InspectorProps) {
         />
       )}
 
+      {props.selectedObject !== null && props.selectedObject !== undefined && site.objects?.[props.selectedObject] && (
+        <ObjectInspector
+          object={site.objects[props.selectedObject]}
+          onChange={(patch, key) => props.onObject?.(props.selectedObject!, patch, `${key}-${props.selectedObject}`)}
+          onDelete={() => props.onDeleteObject?.(props.selectedObject!)}
+        />
+      )}
+
       <div style={section}>
         <div style={{ display: "flex", alignItems: "center" }}>
           <div style={{ ...heading, flex: 1 }}>Areas</div>
@@ -353,6 +436,31 @@ export function Inspector(props: InspectorProps) {
           </div>
         ))}
       </div>
+
+      {(site.objects ?? []).length > 0 && (
+        <div style={section} data-testid="objects">
+          <div style={heading}>Objects</div>
+          {(site.objects ?? []).map((o, i) => (
+            <div
+              key={i}
+              onClick={() => props.onSelectObject?.(i)}
+              style={{
+                display: "flex",
+                gap: 6,
+                padding: "4px 6px",
+                marginTop: 4,
+                borderRadius: 4,
+                background: props.selectedObject === i ? "var(--elevated)" : "transparent",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              <span style={{ flex: 1, fontFamily: "var(--font-mono)" }}>{o.name || "(no name)"}</span>
+              <span style={{ color: "var(--muted)", fontSize: 11 }}>{o.kind}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {((site.walls ?? []).length > 0 || (site.obstacles ?? []).length > 0) && (
         <div style={section} data-testid="barriers">

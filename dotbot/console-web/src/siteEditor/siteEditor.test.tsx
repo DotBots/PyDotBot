@@ -313,3 +313,21 @@ describe("SiteEditor walls and obstacles", () => {
     expect(screen.queryByTestId("edit-obstacle-0")).toBeNull();
   });
 });
+
+describe("SiteEditor objects", () => {
+  it("places a charger, turns it into a dock and saves it", async () => {
+    const fetch = server(loaded(), { status: 200, body: { ...loaded(), revision: "r2", written: true } });
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-area-field");
+    fireEvent.click(screen.getByText("Object"));
+    fireEvent.pointerDown(screen.getByTestId("site-canvas"), { button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    expect(await screen.findByTestId("edit-object-charger-1")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("object kind"), { target: { value: "dock" } });
+    fireEvent.change(screen.getByLabelText("object name"), { target: { value: "dock-a" } });
+    await act(async () => fireEvent.click(screen.getByText("Save")));
+    const put = fetch.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    const [sent] = JSON.parse(put[1]!.body as string).site.objects;
+    expect(sent).toMatchObject({ name: "dock-a", kind: "dock", heading_deg: 0, was: null });
+    expect(sent.x % 50).toBe(0);
+  });
+});

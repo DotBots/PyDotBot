@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { areaColor } from "../areaColor";
 import { convexHull } from "../calibrationSpan";
+import { OBJECT_COLOUR, OBJECT_SIZE_MM, facing } from "../siteObjects";
 import { AREA_FALLBACK, siteViewMarginMm, withMargin } from "../frame";
 import {
   axisTicks,
@@ -27,13 +28,14 @@ import type {
   CameraBackdrop,
   EditArea,
   EditBarrier,
+  EditObject,
 } from "./types";
 
 // The site drawn to scale: the extent, the metric grid and its rulers, and
 // every area in its role colour. Areas are moved, resized and drawn here; the
 // numbers themselves live in the inspector.
 
-export type Tool = "select" | "area" | "calibration" | "wall" | "obstacle";
+export type Tool = "select" | "area" | "calibration" | "wall" | "obstacle" | "object";
 
 /** A selected wall or obstacle. */
 export interface BarrierRef {
@@ -63,6 +65,7 @@ type Drag =
   | { kind: "place-move"; start: Rigid2D; from: { x: number; y: number } }
   | { kind: "barrier-move"; ref: BarrierRef; start: [number, number][]; from: { x: number; y: number } }
   | { kind: "barrier-vertex"; ref: BarrierRef; vertex: number }
+  | { kind: "object-move"; index: number; start: { x: number; y: number }; from: { x: number; y: number } }
   | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number };
 
 export interface CanvasProps {
@@ -85,6 +88,11 @@ export interface CanvasProps {
   /** `key` names the gesture, so one drag undoes as one step. */
   onBarrierChange?: (ref: BarrierRef, points: [number, number][], key: string) => void;
   onBarrierDraw?: (kind: BarrierKind, points: [number, number][]) => void;
+  objects?: EditObject[];
+  selectedObject?: number | null;
+  onSelectObject?: (index: number | null) => void;
+  onObjectChange?: (index: number, at: { x: number; y: number }, key: string) => void;
+  onObjectPlace?: (at: { x: number; y: number }) => void;
   /** Read-only layers under the areas: only the ones switched on. */
   backdrops?: { calibrations: CalibrationBackdrop[]; cameras: CameraBackdrop[] };
 }
@@ -204,13 +212,28 @@ export function Canvas(props: CanvasProps) {
       setDraft((d) => (d && d.kind === draftKind ? { ...d, points: [...d.points, point] } : { kind: draftKind, points: [point] }));
       return;
     }
+    if (props.tool === "object") {
+      const p = toFrame(e);
+      const s = snapNow(e);
+      props.onObjectPlace?.({ x: snap(p.x, s), y: snap(p.y, s) });
+      return;
+    }
     if (props.tool === "area") {
       const p = toFrame(e);
       begin(e, { kind: "draw", from: p, to: p });
     } else {
       props.onSelect(null);
       props.onSelectBarrier?.(null);
+      props.onSelectObject?.(null);
     }
+  };
+
+  const onObjectDown = (e: React.PointerEvent, index: number) => {
+    if (e.button !== 0 || props.tool !== "select") return;
+    const o = props.objects?.[index];
+    if (!o) return;
+    props.onSelectObject?.(index);
+    begin(e, { kind: "object-move", index, start: { x: o.x, y: o.y }, from: toFrame(e) });
   };
 
   const onBarrierDown = (e: React.PointerEvent, ref: BarrierRef) => {
@@ -268,7 +291,13 @@ export function Canvas(props: CanvasProps) {
     if (!drag) return;
     const p = toFrame(e);
     const s = snapNow(e);
-    if (drag.kind === "barrier-move") {
+    if (drag.kind === "object-move") {
+      props.onObjectChange?.(
+        drag.index,
+        { x: snap(drag.start.x + p.x - drag.from.x, s), y: snap(drag.start.y + p.y - drag.from.y, s) },
+        `canvas-${gesture.current}`,
+      );
+    } else if (drag.kind === "barrier-move") {
       props.onBarrierChange?.(drag.ref, movePoints(drag.start, p.x - drag.from.x, p.y - drag.from.y, s), `canvas-${gesture.current}`);
     } else if (drag.kind === "barrier-vertex") {
       const b = (drag.ref.kind === "walls" ? props.walls : props.obstacles)?.[drag.ref.index];
@@ -331,7 +360,7 @@ export function Canvas(props: CanvasProps) {
         minHeight: 0,
         overflow: "hidden",
         background: "var(--canvas)",
-        cursor: props.tool === "area" || draftKind ? "crosshair" : "default",
+        cursor: props.tool === "area" || props.tool === "object" || draftKind ? "crosshair" : "default",
         touchAction: "none",
         userSelect: "none",
       }}
@@ -506,6 +535,43 @@ export function Canvas(props: CanvasProps) {
               />
             ),
           )}
+        {(props.objects ?? []).map((o, i) => {
+          const r = Math.max(5, (OBJECT_SIZE_MM / 2) * scale);
+          const [cx, cy] = [px("x", o.x), px("y", o.y)];
+          const [dx, dy] = facing(o.heading_deg);
+          const chosen = props.selectedObject === i;
+          return (
+            <g
+              key={`obj-${i}`}
+              data-testid={`edit-object-${o.name}`}
+              style={{ cursor: props.tool === "select" ? "move" : undefined }}
+              onPointerDown={(e) => onObjectDown(e, i)}
+            >
+              <rect
+                x={cx - r}
+                y={cy - r}
+                width={2 * r}
+                height={2 * r}
+                rx={r / 3}
+                fill={OBJECT_COLOUR[o.kind]}
+                fillOpacity={0.25}
+                stroke={chosen ? "var(--accent)" : OBJECT_COLOUR[o.kind]}
+                strokeWidth={chosen ? 2.5 : 1.5}
+              />
+              <line x1={cx} y1={cy} x2={cx + dx * r} y2={cy + dy * r} stroke={OBJECT_COLOUR[o.kind]} strokeWidth={1.5} />
+              <text
+                x={cx + r + 4}
+                y={cy + 4}
+                fontSize={10}
+                fontFamily="var(--font-mono)"
+                fill={OBJECT_COLOUR[o.kind]}
+                style={{ pointerEvents: "none" }}
+              >
+                {o.name}
+              </text>
+            </g>
+          );
+        })}
         {draft && (
           <g data-testid="barrier-draft" style={{ pointerEvents: "none" }}>
             <polyline

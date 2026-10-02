@@ -192,7 +192,27 @@ export function siteIssues(site: SiteModel): Issue[] {
       }
     });
   }
+  const objectNames = new Map<string, number>();
+  for (const o of site.objects ?? []) objectNames.set(o.name, (objectNames.get(o.name) ?? 0) + 1);
+  for (const o of site.objects ?? []) {
+    if (!o.name.trim() || o.name !== o.name.trim()) {
+      issues.push({ level: "error", message: `an object needs a name with no spaces around it` });
+    } else if ((objectNames.get(o.name) ?? 0) > 1) {
+      issues.push({ level: "error", message: `two objects are named ${o.name}` });
+    }
+    if (extent && (o.x < 0 || o.y < 0 || o.x > extent[0] || o.y > extent[1])) {
+      issues.push({ level: "warning", message: `${o.name} is outside the extent` });
+    }
+  }
   return issues;
+}
+
+/** A name not yet taken among `names`: `base-1`, `base-2`, ... */
+export function freshObjectName(names: string[], base: string): string {
+  const taken = new Set(names);
+  for (let n = 1; ; n += 1) {
+    if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  }
 }
 
 /** `points` moved by (dx, dy), its first point on the snap grid. */
@@ -242,6 +262,9 @@ export function sameSite(a: SiteModel, b: SiteModel): boolean {
       })),
       obstacles: (s.obstacles ?? []).map(({ name, points, comment, was }) => ({
         name: name || null, points, comment: comment || null, was: was ?? null,
+      })),
+      objects: (s.objects ?? []).map(({ name, kind, x, y, heading_deg, comment, was }) => ({
+        name, kind, x, y, heading_deg, comment: comment || null, was: was ?? null,
       })),
     });
   return strip(a) === strip(b);
