@@ -1386,6 +1386,7 @@ async def test_get_controller_site():
         "spin_radius_mm": None,
         "walls": [],
         "obstacles": [],
+        "objects": [],
     }
 
 
@@ -1464,6 +1465,7 @@ async def test_get_controller_site_with_nothing_measured():
         "spin_radius_mm": None,
         "walls": [],
         "obstacles": [],
+        "objects": [],
     }
 
 

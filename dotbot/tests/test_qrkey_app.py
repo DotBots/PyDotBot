@@ -143,4 +143,5 @@ def test_a_site_request_replies_with_the_whole_site(site_client):
         "spin_radius_mm": None,
         "walls": [],
         "obstacles": [],
+        "objects": [],
     }
