@@ -1016,7 +1016,9 @@ def _parse_shift(_ctx, _param, value):
         "Re-express a saved calibration in another site's frame, without a "
         "capture: shift (and turn) every placement's points, re-solve every "
         "station from the stored samples, and save a new file with a new id "
-        "under ~/.dotbot/calibrations/<site>/."
+        "under ~/.dotbot/calibrations/<site>/. A spin calibration has no "
+        "placements: it is moved as one rigid body instead, every station "
+        "with it, as the site editor places one."
     ),
 )
 @click.argument("calibration")
@@ -1042,7 +1044,8 @@ def _parse_shift(_ctx, _param, value):
     show_default=True,
     help=(
         "Degrees to turn the points about the first placement's first point "
-        "before shifting; positive turns x toward y."
+        "(a spin calibration: about its zero) before shifting; positive turns "
+        "x toward y."
     ),
 )
 @click.pass_context
@@ -1057,6 +1060,11 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         resolve_calibration_path,
         write_calibration,
     )
+    from dotbot.calibration.placement import (
+        Rigid2D,
+        place_calibration,
+        solved_in_own_frame,
+    )
 
     site, _ = site_from_context(ctx, site_name)
     if site.extent_mm is None and not site.anchor:
@@ -1066,7 +1074,12 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         )
     try:
         source = read_calibration_file(resolve_calibration_path(calibration))
-        reframed = reframe_calibration(source, site, shift, rotate)
+        if solved_in_own_frame(source):
+            reframed = place_calibration(
+                source, site, Rigid2D(shift[0], shift[1], rotate)
+            )
+        else:
+            reframed = reframe_calibration(source, site, shift, rotate)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     path = write_calibration(reframed)
