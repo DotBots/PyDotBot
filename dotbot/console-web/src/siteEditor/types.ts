@@ -87,3 +87,30 @@ export interface PlacedCalibration extends CalibrationOverlay {
   push: string;
   warnings: string[];
 }
+
+/** One LH2 calibration of this site, drawn read-only under the areas. */
+export interface CalibrationBackdrop {
+  id8: string;
+  tag: string;
+  created_at: string;
+  /** Each placement's points, frame mm. */
+  placements: [number, number][][];
+  /** Spin centres, frame mm. */
+  centres: [number, number][];
+}
+
+/** One registered camera of this site. */
+export interface CameraBackdrop {
+  id8: string;
+  area: string;
+  /** The area it is registered on, [x, y, w, h]; null when the site lacks it. */
+  rect: [number, number, number, number] | null;
+  span: [number, number][];
+  /** The still warped onto `rect`, when one was saved beside the file. */
+  still: string | null;
+}
+
+export interface Backdrops {
+  calibrations: CalibrationBackdrop[];
+  cameras: CameraBackdrop[];
+}
