@@ -331,6 +331,20 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "to the others, or a weak tie the report names."
     ),
 )
+@click.option(
+    "--anchor",
+    "anchors",
+    multiple=True,
+    callback=lambda _ctx, _param, values: [_parse_anchor(v) for v in values],
+    metavar="ADDRESS=X,Y",
+    help=(
+        "With --spin: this robot spins with its pivot on the known site "
+        "point X,Y mm, repeatable. Two or more put the calibration in the "
+        "site's own frame instead of free mode's; spread them across the "
+        "whole site, since anchors bunched together leave the far end's yaw "
+        "loose."
+    ),
+)
 @click.pass_context
 def _collect(
     ctx,
@@ -350,6 +364,7 @@ def _collect(
     spin_radius,
     drop_stations,
     append,
+    anchors,
 ):
     if spin:
         given = [
@@ -379,6 +394,7 @@ def _collect(
             spin_radius,
             drop_stations,
             append,
+            anchors,
         )
         return
     if spin_radius is not None:
@@ -387,6 +403,8 @@ def _collect(
         raise click.UsageError("--drop-station goes with --spin")
     if append is not None:
         raise click.UsageError("--append goes with --spin")
+    if anchors:
+        raise click.UsageError("--anchor goes with --spin")
     if _devices(ctx):
         raise click.UsageError(
             "`dotbot swarm -d` picks the robots of push and collect --spin; a "
@@ -528,6 +546,17 @@ def _collect(
             )
 
 
+def _parse_anchor(value: str) -> tuple[str, tuple[float, float]]:
+    try:
+        address, point = value.split("=", 1)
+        x, y = (float(v) for v in point.split(","))
+    except ValueError as exc:
+        raise click.BadParameter(
+            f"{value!r} is not ADDRESS=X,Y, a robot and its pivot's point in mm"
+        ) from exc
+    return address.strip().upper(), (x, y)
+
+
 def _collect_spin(
     ctx,
     conn,
@@ -538,11 +567,14 @@ def _collect_spin(
     spin_radius,
     drop_stations=(),
     append=None,
+    anchors=(),
 ):
     """`collect --spin`: spin the robots, solve their circles, save, report."""
     from dotbot.calibration.conics import solve_calibration
     from dotbot.calibration.lighthouse2 import load_calibration, write_calibration
     from dotbot.calibration.multi_station import (
+        Anchor,
+        CircleKey,
         appendable_rounds,
         multi_station_report,
     )
@@ -550,6 +582,8 @@ def _collect_spin(
     from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 
     site, site_source = site_from_context(ctx, site_name)
+    if len(anchors) == 1:
+        raise click.UsageError("--anchor takes two or more robots")
     earlier, round_ = [], 0
     if append is not None:
         try:
@@ -600,6 +634,9 @@ def _collect_spin(
             spins = capture_spins(client, robots, echo=click.echo)
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
+        anchored = [
+            Anchor(CircleKey(address, round_), point) for address, point in anchors
+        ]
         samples = list(earlier) + [
             s for spin in spins.values() for s in spin.samples(spin_radius, round_)
         ]
@@ -610,6 +647,7 @@ def _collect_spin(
                 robot=ROBOT_DEFAULT,
                 tag=tag or "",
                 drop_stations=drop_stations,
+                anchors=anchored,
             )
         except ValueError as exc:
             for line in spin_report(spins, robots.robots, {}, {}):
@@ -617,17 +655,23 @@ def _collect_spin(
             raise click.ClickException(f"no calibration written: {exc}") from exc
         for line in spin_report(spins, robots.robots, joint.solutions, unsolved):
             click.echo(line)
-        if len({s.station for s in samples}) > 1 or earlier:
+        if len({s.station for s in samples}) > 1 or earlier or anchors:
             click.echo("")
             for line in multi_station_report(calibration, joint):
                 click.echo(line)
         path = write_calibration(calibration)
         width, height = joint.field_mm
-        click.echo(
-            f"\nThe robots' field is {width} x {height} mm: the calibration's frame "
-            "is aligned to it, zero at its top-left, not at the site's anchor. "
-            f"Robots take fixes inside {list(calibration.valid_mm)}."
-        )
+        if joint.anchored:
+            click.echo(
+                f"\nThe anchors put the calibration in site {site.name}'s own "
+                f"frame. Robots take fixes inside {list(calibration.valid_mm)}."
+            )
+        else:
+            click.echo(
+                f"\nThe robots' field is {width} x {height} mm: the calibration's "
+                "frame is aligned to it, zero at its top-left, not at the site's "
+                f"anchor. Robots take fixes inside {list(calibration.valid_mm)}."
+            )
         click.echo(f"Calibration saved to {path}")
         click.echo(
             f"Calibration id {calibration.id}, site {site.name}"
@@ -637,9 +681,13 @@ def _collect_spin(
         if push:
             _gated_push(client, calibration, devices=robots.robots, stop=True)
         click.echo(
-            "\nNext, make the field a site of its own (--size WxH centres it in a "
-            "bigger site):\n"
-            f"  dotbot site init <name> --from-calibration {calibration.id8}\n"
+            (
+                "\n"
+                if joint.anchored
+                else "\nNext, make the field a site of its own (--size WxH "
+                "centres it in a bigger site):\n"
+                f"  dotbot site init <name> --from-calibration {calibration.id8}\n"
+            )
             + (
                 ""
                 if push
