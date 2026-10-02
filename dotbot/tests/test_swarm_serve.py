@@ -217,6 +217,26 @@ def test_start_hands_the_child_exactly_the_login(monkeypatch, tmp_path):
     )
 
 
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
+def test_start_keeps_a_terminal_ctrl_c_from_the_child(monkeypatch, tmp_path, platform):
+    seen = {}
+
+    class Popen:
+        def __init__(self, command, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", Popen)
+    monkeypatch.setattr("atexit.register", lambda func: None)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
+    real_start(
+        "localhost", 8123, "mqtts://b:8883", "A001", None, None, tmp_path / "s.log"
+    )
+    windows = platform == "win32"
+    assert seen["start_new_session"] is not windows
+    assert seen["creationflags"] == (0x200 if windows else 0)
+
+
 def test_stop_ends_the_child_without_reporting_it_as_a_crash(tmp_path):
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     server = SwarmServer(process, tmp_path / "s.log")

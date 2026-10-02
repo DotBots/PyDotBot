@@ -121,15 +121,17 @@ def start(
     ]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "wb") as log:
-        # Its own session, so a terminal Ctrl-C reaches only the controller,
-        # which then stops it.
+        # Its own session or process group, so a terminal Ctrl-C reaches only
+        # the controller, which then stops it.
+        windows = sys.platform == "win32"
         process = subprocess.Popen(
             command,
             env=env,
             stdin=subprocess.PIPE,
             stdout=log,
             stderr=subprocess.STDOUT,
-            start_new_session=sys.platform != "win32",
+            start_new_session=not windows,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
         )
     server = SwarmServer(process, log_path)
     atexit.register(server.stop)
