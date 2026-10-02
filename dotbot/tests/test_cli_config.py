@@ -684,6 +684,31 @@ def test_config_init_warns_when_your_conn_hides_the_broker(runner, home):
     assert "sets conn, which hides default's conn" in result.output
 
 
+def test_config_init_does_not_warn_about_the_same_broker(runner, home, monkeypatch):
+    (home / "dotbot.toml").write_text('conn = "mqtts://broker:8883"\n')
+    monkeypatch.setenv("DOTBOT_CONN", "mqtts://broker:8883")
+    with runner.isolated_filesystem():
+        result = _init(runner, "--conn", "mqtts://broker:8883")
+    assert "hides" not in result.output
+
+
+def test_config_init_warns_about_dotbot_conn(runner, home, monkeypatch):
+    monkeypatch.setenv("DOTBOT_CONN", "/dev/ttyACM0")
+    with runner.isolated_filesystem():
+        result = _init(runner, "--conn", "mqtts://broker:8883")
+    assert "DOTBOT_CONN is set, which hides default's conn" in result.output
+
+
+def test_config_init_project_force_does_not_warn_about_the_file_it_replaces(
+    runner, home
+):
+    with runner.isolated_filesystem():
+        Path("dotbot.toml").write_text('conn = "/dev/ttyACM0"\n')
+        result = _init(runner, "--project", "--conn", "mqtts://broker:8883")
+        assert "conn" not in load_config(Path("dotbot.toml")).model_fields_set
+    assert "hides" not in result.output
+
+
 def test_config_init_force_rewrites_the_pack_with_the_broker(runner, home):
     from dotbot.site_packs import read_pack
 

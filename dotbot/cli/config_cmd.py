@@ -219,14 +219,15 @@ def _write(target: Path, key: tuple[str, ...], value) -> None:
     click.echo(f"wrote {cw.key_text(key)} = {json.dumps(value)} to {target}")
 
 
-def _warn_conn_hidden(config, site: str) -> None:
-    """Warn about each file or env variable whose `conn` hides the site's."""
-    phrases = [
-        f"{item.label} sets conn"
-        for item in getattr(config, "files", ())
-        if cw.lookup(item.data, ("conn",)) is not None
-    ]
-    if "DOTBOT_CONN" in os.environ:
+def _warn_conn_hidden(config, site: str, broker: str, replaced: Path | None) -> None:
+    """Warn about each file or env variable whose `conn` hides the site's
+    `broker`, leaving out the file at `replaced`."""
+    phrases = []
+    for item in getattr(config, "files", ()):
+        conn = cw.lookup(item.data, ("conn",))
+        if conn is not None and str(conn).strip() != broker and item.path != replaced:
+            phrases.append(f"{item.label} sets conn")
+    if os.environ.get("DOTBOT_CONN", broker).strip() != broker:
         phrases.append("DOTBOT_CONN is set")
     for phrase in phrases:
         click.echo(
@@ -352,7 +353,12 @@ def init(ctx, project, force, conn, swarm_id, site, field_spec):
     if swarm_id:
         _write(personal, ("swarm_id",), swarm_id)
     if broker:
-        _warn_conn_hidden((ctx.obj or {}).get("config"), site)
+        _warn_conn_hidden(
+            (ctx.obj or {}).get("config"),
+            site,
+            broker.strip(),
+            project_file if project else None,
+        )
     if max(field_mm) > FIELD_COVERAGE_MM:
         click.echo(
             "Warning: one LH2 base station rarely covers a field over "
