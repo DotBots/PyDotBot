@@ -650,3 +650,16 @@ def test_an_anchor_that_would_not_spin_is_refused_before_the_spin(monkeypatch, l
     assert "B0B0B0B0B0B0B0B0 would not spin" in result.output
     assert addrs[0] not in result.output.split("would not spin")[0]
     assert "start" not in [c for c, _ in fleet.calls]
+
+
+def test_show_next_round_says_where_to_spin(monkeypatch, lab):
+    a, b = _two_stations()
+    _, fleet = _two_station_fleet([a, b], _floor_grid([a, b])[:40])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "two")
+    assert result.exit_code == 0, result.output
+    shown = CliRunner().invoke(
+        swarm_lh2.cmd, ["show", "two", "--next-round", "3"], obj={"config": lab}
+    )
+    assert shown.exit_code == 0, shown.output
+    assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
+    assert shown.output.count("mm, seen by station(s)") == 3
