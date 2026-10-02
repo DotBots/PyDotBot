@@ -35,3 +35,55 @@ export interface SiteResponse {
   calibrations: CalibrationFolder[];
   written?: boolean;
 }
+
+/** One LH2 calibration file, as GET /api/calibrations lists it. */
+export interface CalibrationListing {
+  id: string;
+  id8: string;
+  created_at: string;
+  /** Solved in its own frame by spinning robots, so it may be moved. */
+  free: boolean;
+  /** The solved stations' lh_index. */
+  stations: number[];
+  tag: string;
+  site: string;
+  path: string;
+}
+
+/** One spin circle, its centre in the calibration's frame. */
+export interface SpinCircle {
+  name: string;
+  x: number;
+  y: number;
+  radius_mm: number;
+}
+
+/** A calibration as the editor draws it, every number in its own frame. */
+export interface CalibrationOverlay {
+  id: string;
+  id8: string;
+  free: boolean;
+  fence: [number, number, number, number];
+  stations: {
+    index: number;
+    channel: number;
+    /** The station's own rectangle, else the fence. */
+    rect: [number, number, number, number];
+    centres: [number, number][];
+    circles: SpinCircle[];
+    solved_from: string;
+  }[];
+  links: { a: number; b: number; shared: number; weak: boolean }[];
+  tag: string;
+  created_at: string;
+  site: string;
+  anchor: string;
+}
+
+/** What POST /api/calibrations/{id}/place answers: the new calibration. */
+export interface PlacedCalibration extends CalibrationOverlay {
+  path: string;
+  source: string;
+  push: string;
+  warnings: string[];
+}

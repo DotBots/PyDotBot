@@ -1,8 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { RefusedSiteError, StaleSiteError, fetchSite, previewSite, saveSite, stopEditor } from "./api";
+import {
+  RefusedSiteError,
+  StaleSiteError,
+  fetchCalibration,
+  fetchCalibrations,
+  fetchSite,
+  placeCalibration,
+  previewSite,
+  saveSite,
+  stopEditor,
+} from "./api";
+import { CalibrationPanel } from "./CalibrationPanel";
 import { Canvas } from "./Canvas";
-import type { Tool } from "./Canvas";
+import type { Placement, Tool } from "./Canvas";
 import {
   SNAP_DEFAULT_MM,
   SNAP_STEPS_MM,
@@ -13,7 +24,8 @@ import {
 } from "./edit";
 import type { Rect } from "./edit";
 import { Inspector } from "./Inspector";
-import type { EditArea, SiteModel, SiteResponse } from "./types";
+import { IDENTITY } from "./rigid";
+import type { CalibrationListing, EditArea, PlacedCalibration, SiteModel, SiteResponse } from "./types";
 
 // The site editor: one site pack's site.toml, drawn. It talks only to the
 // small server `dotbot site new|edit` starts, never to a controller.
@@ -49,6 +61,7 @@ const button: React.CSSProperties = {
 const TOOLS: { key: Tool | "wall" | "obstacle" | "charger"; label: string; hint: string }[] = [
   { key: "select", label: "Select", hint: "V: select, move and resize" },
   { key: "area", label: "Area", hint: "A: drag out a new area" },
+  { key: "calibration", label: "Calibration", hint: "C: place a spin calibration on the site" },
   { key: "wall", label: "Wall", hint: "needs a walls table in site.toml first" },
   { key: "obstacle", label: "Obstacle", hint: "needs an obstacles table in site.toml first" },
   { key: "charger", label: "Charger", hint: "needs an objects table in site.toml first" },
@@ -71,6 +84,10 @@ export function SiteEditor() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [stopped, setStopped] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [listing, setListing] = useState<CalibrationListing[]>([]);
+  const [placement, setPlacement] = useState<Placement | null>(null);
+  const [reanchor, setReanchor] = useState(false);
+  const [placed, setPlaced] = useState<PlacedCalibration | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -87,6 +104,37 @@ export function SiteEditor() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (tool !== "calibration") return;
+    fetchCalibrations()
+      .then(setListing)
+      .catch((err) => setNotice({ kind: "error", text: `could not list calibrations: ${(err as Error).message}` }));
+  }, [tool]);
+
+  const loadCalibration = async (spec: string) => {
+    try {
+      const overlay = await fetchCalibration(spec);
+      setPlacement({ overlay, move: IDENTITY });
+      setReanchor(false);
+      setPlaced(null);
+    } catch (err) {
+      setNotice({ kind: "error", text: (err as Error).message });
+    }
+  };
+
+  const savePlacement = async () => {
+    if (!placement) return;
+    try {
+      const result = await placeCalibration(placement.overlay.id, placement.move, reanchor);
+      setPlaced(result);
+      // The new calibration is in this site's frame: drawn where it landed
+      setPlacement({ overlay: result, move: IDENTITY });
+      setNotice({ kind: "info", text: `saved calibration ${result.id8}; push it with: ${result.push}` });
+    } catch (err) {
+      setNotice({ kind: "error", text: `calibration not saved: ${(err as Error).message}` });
+    }
+  };
 
   const issues = useMemo(() => (site ? siteIssues(site) : []), [site]);
   const errors = issues.filter((i) => i.level === "error");
@@ -117,6 +165,7 @@ export function SiteEditor() {
       if (saving || typing(e.target) || e.ctrlKey || e.metaKey) return;
       if (e.key === "v" || e.key === "V") setTool("select");
       else if (e.key === "a" || e.key === "A") setTool("area");
+      else if (e.key === "c" || e.key === "C") setTool("calibration");
       else if (e.key === "Escape") setSelected(null);
       else if ((e.key === "Delete" || e.key === "Backspace") && selected !== null) deleteArea(selected);
     };
@@ -303,7 +352,7 @@ export function SiteEditor() {
           }}
         >
           {TOOLS.map((t) => {
-            const enabled = t.key === "select" || t.key === "area";
+            const enabled = t.key === "select" || t.key === "area" || t.key === "calibration";
             const active = t.key === tool;
             return (
               <button
@@ -339,6 +388,8 @@ export function SiteEditor() {
             onSelect={setSelected}
             onChange={(i, r) => updateArea(i, r)}
             onDraw={addArea}
+            placement={placement}
+            onPlacement={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
           />
         ) : (
           <div style={{ flex: 1 }} />
@@ -365,6 +416,29 @@ export function SiteEditor() {
               })
             }
             onAdd={addDefaultArea}
+            extra={
+              tool === "calibration" || placement || placed ? (
+                <CalibrationPanel
+                  listing={listing}
+                  placement={placement}
+                  reanchor={reanchor}
+                  placed={placed}
+                  blocked={
+                    frameChanged(site, loaded.site)
+                      ? "Save site.toml first: the calibration takes the anchor and extent from the file."
+                      : null
+                  }
+                  onLoad={(spec) => void loadCalibration(spec)}
+                  onMove={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
+                  onReanchor={setReanchor}
+                  onSave={() => void savePlacement()}
+                  onClear={() => {
+                    setPlacement(null);
+                    setPlaced(null);
+                  }}
+                />
+              ) : null
+            }
           />
         )}
       </div>

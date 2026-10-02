@@ -15,15 +15,27 @@ import {
 } from "../grid";
 import type { Area } from "../types";
 import { FRAME_CAMERA, viewGeom } from "../zoom";
-import { HANDLES, effectiveRole, moveRect, rectFromDrag, resizeRect } from "./edit";
+import { HANDLES, effectiveRole, moveRect, rectFromDrag, resizeRect, snap } from "./edit";
 import type { Handle, Rect } from "./edit";
-import type { EditArea } from "./types";
+import { applyMove, movedBox, movedCorners, snapAngle, turnAbout } from "./rigid";
+import type { Point, Rigid2D } from "./rigid";
+import type { CalibrationOverlay, EditArea } from "./types";
 
 // The site drawn to scale: the extent, the metric grid and its rulers, and
 // every area in its role colour. Areas are moved, resized and drawn here; the
 // numbers themselves live in the inspector.
 
-export type Tool = "select" | "area";
+export type Tool = "select" | "area" | "calibration";
+
+/** A calibration drawn over the site, and the move that places it. */
+export interface Placement {
+  overlay: CalibrationOverlay;
+  move: Rigid2D;
+}
+
+// One colour per station, in station order
+const STATION_COLOURS = ["var(--accent)", "var(--s-Running)", "var(--s-Programming)", "var(--s-Bootloader)"];
+const ROTATE_HANDLE_PX = 28;
 
 const HANDLE_PX = 9;
 const AREA_TINT = 0.12;
@@ -33,7 +45,9 @@ const DRAG_THRESHOLD_PX = 3;
 type Drag =
   | { kind: "move"; index: number; start: Rect; from: { x: number; y: number }; px: { x: number; y: number } }
   | { kind: "resize"; index: number; start: Rect; handle: Handle }
-  | { kind: "draw"; from: { x: number; y: number }; to: { x: number; y: number } };
+  | { kind: "draw"; from: { x: number; y: number }; to: { x: number; y: number } }
+  | { kind: "place-move"; start: Rigid2D; from: { x: number; y: number } }
+  | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number };
 
 export interface CanvasProps {
   extent: [number, number] | null;
@@ -45,6 +59,8 @@ export interface CanvasProps {
   onSelect: (index: number | null) => void;
   onChange: (index: number, rect: Rect) => void;
   onDraw: (rect: Rect) => void;
+  placement?: Placement | null;
+  onPlacement?: (move: Rigid2D) => void;
 }
 
 function handlePoint(r: Rect, h: Handle): { x: number; y: number } {
@@ -135,7 +151,7 @@ export function Canvas(props: CanvasProps) {
   };
 
   const onAreaDown = (e: React.PointerEvent, index: number) => {
-    if (e.button !== 0 || props.tool === "area") return;
+    if (e.button !== 0 || props.tool !== "select") return;
     const a = props.areas[index];
     props.onSelect(index);
     begin(e, {
@@ -153,12 +169,44 @@ export function Canvas(props: CanvasProps) {
     begin(e, { kind: "resize", index, start: { x: a.x, y: a.y, w: a.w, h: a.h }, handle });
   };
 
+  const placement = props.placement ?? null;
+  const fence = placement ? placement.overlay.fence : null;
+  const placedBox = placement && fence ? movedBox(placement.move, fence) : null;
+  const placeCentre: Point | null = placedBox
+    ? [(placedBox[0] + placedBox[2]) / 2, (placedBox[1] + placedBox[3]) / 2]
+    : null;
+  const angleTo = (c: Point, p: { x: number; y: number }) =>
+    (Math.atan2(p.y - c[1], p.x - c[0]) * 180) / Math.PI;
+
+  const onPlacementDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || props.tool !== "calibration" || !placement) return;
+    begin(e, { kind: "place-move", start: placement.move, from: toFrame(e) });
+  };
+
+  const onTurnDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !placement || !placeCentre) return;
+    begin(e, { kind: "place-turn", start: placement.move, pivot: placeCentre, angle: angleTo(placeCentre, toFrame(e)) });
+  };
+
   const onMove = (e: React.PointerEvent) => {
     setAltHeld(e.altKey);
     if (!drag) return;
     const p = toFrame(e);
     const s = snapNow(e);
-    if (drag.kind === "move") {
+    if (drag.kind === "place-move") {
+      const dx = snap(drag.start.dx_mm + p.x - drag.from.x, s);
+      const dy = snap(drag.start.dy_mm + p.y - drag.from.y, s);
+      props.onPlacement?.({ ...drag.start, dx_mm: dx, dy_mm: dy });
+    } else if (drag.kind === "place-turn") {
+      const total = snapAngle(drag.start.theta_deg + angleTo(drag.pivot, p) - drag.angle, e.altKey);
+      const turned = turnAbout(drag.start, drag.pivot, total - drag.start.theta_deg);
+      // The zero lands on the snap grid too, so the numbers stay round
+      props.onPlacement?.({
+        theta_deg: total,
+        dx_mm: s > 1 ? snap(turned.dx_mm, s) : Math.round(turned.dx_mm * 10) / 10,
+        dy_mm: s > 1 ? snap(turned.dy_mm, s) : Math.round(turned.dy_mm * 10) / 10,
+      });
+    } else if (drag.kind === "move") {
       // A click that selects is not a move, however the pointer jitters
       if (Math.hypot(e.clientX - drag.px.x, e.clientY - drag.px.y) < DRAG_THRESHOLD_PX) return;
       props.onChange(drag.index, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s));
@@ -280,6 +328,122 @@ export function Canvas(props: CanvasProps) {
             </g>
           );
         })}
+        {placement && fence && placedBox && placeCentre && (
+          <g data-testid="placement">
+            {placement.overlay.stations.map((st, k) => {
+              const colour = STATION_COLOURS[k % STATION_COLOURS.length];
+              const corners = movedCorners(placement.move, st.rect)
+                .map(([x, y]) => `${px("x", x)},${px("y", y)}`)
+                .join(" ");
+              return (
+                <g key={st.index} data-testid={`placement-station-${st.index}`}>
+                  <polygon points={corners} fill="none" stroke={colour} strokeWidth={1.5} strokeDasharray="6 4" />
+                  {placement.overlay.stations.length > 1 && (
+                    <text
+                      x={px("x", movedBox(placement.move, st.rect)[0]) + 4}
+                      y={px("y", movedBox(placement.move, st.rect)[3]) - 4 - 12 * k}
+                      fontSize={10}
+                      fontFamily="var(--font-mono)"
+                      fill={colour}
+                      style={{ pointerEvents: "none" }}
+                    >
+                      {`station ${st.index} (channel ${st.channel})`}
+                    </text>
+                  )}
+                  {st.circles.map((c) => {
+                    const [x, y] = applyMove(placement.move, [c.x, c.y]);
+                    return (
+                      <g key={c.name} data-testid={`placement-circle-${st.index}-${c.name}`}>
+                        <circle
+                          cx={px("x", x)}
+                          cy={px("y", y)}
+                          r={Math.max(2, c.radius_mm * scale)}
+                          fill="none"
+                          stroke={colour}
+                          strokeWidth={1}
+                        />
+                        <circle cx={px("x", x)} cy={px("y", y)} r={2.5} fill={colour} />
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+            {placement.overlay.links.map((link) => {
+              const a = placement.overlay.stations.find((st) => st.index === link.a);
+              const b = placement.overlay.stations.find((st) => st.index === link.b);
+              if (!a || !b) return null;
+              const centre = (rect: number[]) =>
+                applyMove(placement.move, [(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2]);
+              const [ax, ay] = centre(a.rect);
+              const [bx, by] = centre(b.rect);
+              return (
+                <line
+                  key={`${link.a}-${link.b}`}
+                  data-testid={`placement-link-${link.a}-${link.b}`}
+                  x1={px("x", ax)}
+                  y1={px("y", ay)}
+                  x2={px("x", bx)}
+                  y2={px("y", by)}
+                  stroke={link.weak ? "var(--s-Stopping)" : "var(--muted)"}
+                  strokeOpacity={0.5}
+                  strokeDasharray={link.weak ? "2 3" : undefined}
+                >
+                  <title>{`${link.shared} shared circle${link.shared === 1 ? "" : "s"}${link.weak ? ", weak" : ""}`}</title>
+                </line>
+              );
+            })}
+            <polygon
+              data-testid="placement-body"
+              points={movedCorners(placement.move, fence)
+                .map(([x, y]) => `${px("x", x)},${px("y", y)}`)
+                .join(" ")}
+              fill="var(--accent)"
+              fillOpacity={props.tool === "calibration" ? 0.06 : 0}
+              stroke="none"
+              style={{
+                cursor: props.tool === "calibration" ? "move" : "default",
+                pointerEvents: props.tool === "calibration" ? "all" : "none",
+              }}
+              onPointerDown={onPlacementDown}
+            />
+            <text
+              x={px("x", placedBox[0])}
+              y={px("y", placedBox[3]) + 14}
+              fontSize={11}
+              fontFamily="var(--font-mono)"
+              fill="var(--accent)"
+              style={{ pointerEvents: "none" }}
+            >
+              {`${placement.overlay.id8} ${placement.move.theta_deg} deg`}
+            </text>
+            {props.tool === "calibration" && (
+              <g>
+                <line
+                  x1={px("x", placeCentre[0])}
+                  y1={px("y", placedBox[1])}
+                  x2={px("x", placeCentre[0])}
+                  y2={px("y", placedBox[1]) - ROTATE_HANDLE_PX}
+                  stroke="var(--accent)"
+                  strokeWidth={1}
+                />
+                <circle
+                  data-testid="placement-turn"
+                  cx={px("x", placeCentre[0])}
+                  cy={px("y", placedBox[1]) - ROTATE_HANDLE_PX}
+                  r={7}
+                  fill="var(--surface)"
+                  stroke="var(--accent)"
+                  strokeWidth={1.5}
+                  style={{ cursor: "grab" }}
+                  onPointerDown={onTurnDown}
+                >
+                  <title>turn: 90 degree steps, Alt for free</title>
+                </circle>
+              </g>
+            )}
+          </g>
+        )}
         {sel && props.selected !== null && props.tool === "select" && (
           <g data-testid="selection">
             <text
@@ -348,7 +512,11 @@ export function Canvas(props: CanvasProps) {
           pointerEvents: "none",
         }}
       >
-        {altHeld ? "free placement (Alt)" : `snap ${props.snapMm} mm, Alt for free`}
+        {altHeld
+          ? "free placement (Alt)"
+          : props.tool === "calibration"
+            ? `snap ${props.snapMm} mm and 90 deg, Alt for free; scale is locked`
+            : `snap ${props.snapMm} mm, Alt for free`}
       </div>
     </div>
   );
