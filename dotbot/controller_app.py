@@ -733,11 +733,16 @@ def main(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    setup_logging(
-        controller_settings.log_output,
-        controller_settings.log_level,
-        ["console", "file"],
-    )
+    try:
+        setup_logging(
+            controller_settings.log_output,
+            controller_settings.log_level,
+            ["console", "file"],
+        )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(
+            f"cannot write the log file {controller_settings.log_output}: {exc}"
+        ) from exc
     try:
         # A calibration that cannot be found, or belongs to another site
         controller = Controller(controller_settings)

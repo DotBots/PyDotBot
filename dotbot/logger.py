@@ -7,6 +7,7 @@
 
 import logging
 import logging.config
+from pathlib import Path
 
 import structlog
 
@@ -38,7 +39,7 @@ SUPPORTED_HANDLERS_DEFAULT = {
 
 
 def setup_logging(filename, level, handlers):
-    """Setup logging."""
+    """Setup logging, creating the folder `filename` goes in."""
     processors = [
         # First, so an event below the level costs no processing
         structlog.stdlib.filter_by_level,
@@ -64,6 +65,7 @@ def setup_logging(filename, level, handlers):
             if filename is None:
                 continue
             else:
+                Path(filename).parent.mkdir(parents=True, exist_ok=True)
                 value["filename"] = filename
         stdlib_handlers.update({handler: value})
 
