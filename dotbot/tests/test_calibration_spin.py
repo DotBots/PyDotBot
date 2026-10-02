@@ -254,6 +254,13 @@ def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     site = site_catalog(lab)["spun"].site()
     assert site.extent_mm == (3000, 4000)
     assert site.staging.y == site.field.y_max  # the pack carries staging too
+    both = site.areas["field+staging"]
+    assert (both.x, both.y, both.w, both.h) == (
+        site.field.x,
+        site.field.y,
+        site.field.w,
+        site.staging.y_max - site.field.y,
+    )
     placed_id = re.search(
         r"push (\w+) --site spun --site-changed", result.output
     ).group(1)
