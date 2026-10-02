@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { areaColor } from "../areaColor";
+import { convexHull } from "../calibrationSpan";
 import { AREA_FALLBACK, siteViewMarginMm, withMargin } from "../frame";
 import {
   axisTicks,
@@ -19,7 +20,7 @@ import { HANDLES, effectiveRole, moveRect, rectFromDrag, resizeRect, snap } from
 import type { Handle, Rect } from "./edit";
 import { applyMove, movedBox, movedCorners, snapAngle, turnAbout } from "./rigid";
 import type { Point, Rigid2D } from "./rigid";
-import type { CalibrationOverlay, EditArea } from "./types";
+import type { CalibrationBackdrop, CalibrationOverlay, CameraBackdrop, EditArea } from "./types";
 
 // The site drawn to scale: the extent, the metric grid and its rulers, and
 // every area in its role colour. Areas are moved, resized and drawn here; the
@@ -55,10 +56,13 @@ export interface CanvasProps {
   tool: Tool;
   snapMm: number;
   onSelect: (index: number | null) => void;
-  onChange: (index: number, rect: Rect) => void;
+  /** `key` names the gesture, so one drag undoes as one step. */
+  onChange: (index: number, rect: Rect, key: string) => void;
   onDraw: (rect: Rect) => void;
   placement?: Placement | null;
   onPlacement?: (move: Rigid2D) => void;
+  /** Read-only layers under the areas: only the ones switched on. */
+  backdrops?: { calibrations: CalibrationBackdrop[]; cameras: CameraBackdrop[] };
 }
 
 function handlePoint(r: Rect, h: Handle): { x: number; y: number } {
@@ -132,7 +136,9 @@ export function Canvas(props: CanvasProps) {
     return { x: mm("x", e.clientX - r.left), y: mm("y", e.clientY - r.top) };
   };
 
+  const gesture = useRef(0);
   const begin = (e: React.PointerEvent, next: Drag) => {
+    gesture.current += 1;
     e.stopPropagation();
     wrapRef.current?.setPointerCapture?.(e.pointerId);
     setDrag(next);
@@ -199,9 +205,9 @@ export function Canvas(props: CanvasProps) {
         dy_mm: s > 1 ? snap(turned.dy_mm, s) : Math.round(turned.dy_mm * 10) / 10,
       });
     } else if (drag.kind === "move") {
-      props.onChange(drag.index, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s));
+      props.onChange(drag.index, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s), `canvas-${gesture.current}`);
     } else if (drag.kind === "resize") {
-      props.onChange(drag.index, resizeRect(drag.start, drag.handle, p, s));
+      props.onChange(drag.index, resizeRect(drag.start, drag.handle, p, s), `canvas-${gesture.current}`);
     } else {
       setDrag({ ...drag, to: p });
     }
@@ -281,6 +287,47 @@ export function Canvas(props: CanvasProps) {
             </text>
           ))}
         </g>
+        {props.backdrops?.cameras.map((cam) =>
+          cam.rect && cam.still ? (
+            <image
+              key={`cam-${cam.id8}`}
+              data-testid={`backdrop-camera-${cam.id8}`}
+              href={cam.still}
+              {...rectPx({ x: cam.rect[0], y: cam.rect[1], w: cam.rect[2], h: cam.rect[3] })}
+              preserveAspectRatio="none"
+              opacity={0.7}
+              style={{ pointerEvents: "none" }}
+            />
+          ) : null,
+        )}
+        {props.backdrops?.calibrations.map((cal) => {
+          const outline = (pts: [number, number][]) =>
+            convexHull(pts)
+              .map(([x, y]) => `${px("x", x)},${px("y", y)}`)
+              .join(" ");
+          return (
+            <g key={`cal-${cal.id8}`} data-testid={`backdrop-calibration-${cal.id8}`} style={{ pointerEvents: "none" }}>
+              {cal.placements
+                .filter((pts) => pts.length >= 3)
+                .map((pts, k) => (
+                  <polygon
+                    key={k}
+                    points={outline(pts)}
+                    fill="var(--s-Programming)"
+                    fillOpacity={0.06}
+                    stroke="var(--s-Programming)"
+                    strokeDasharray="2 3"
+                  />
+                ))}
+              {cal.centres.length >= 3 && (
+                <polygon points={outline(cal.centres)} fill="none" stroke="var(--s-Programming)" strokeDasharray="2 3" />
+              )}
+              {cal.centres.map(([x, y], k) => (
+                <circle key={k} cx={px("x", x)} cy={px("y", y)} r={2.5} fill="var(--s-Programming)" />
+              ))}
+            </g>
+          );
+        })}
         {order.map((i) => {
           const a = props.areas[i];
           const colour = areaColor(colourAreas[i], colourAreas);

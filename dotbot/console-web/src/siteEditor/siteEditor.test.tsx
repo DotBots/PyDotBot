@@ -199,3 +199,70 @@ describe("SiteEditor calibration placement", () => {
     expect(dx).toBeGreaterThan(0);
   });
 });
+
+describe("SiteEditor comfort", () => {
+  const xOf = () => Number((screen.getByLabelText("x") as HTMLInputElement).value);
+
+  it("undoes and redoes an edit, a field's typing as one step", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    fireEvent.click(screen.getByLabelText("show dev-corner").parentElement!);
+    fireEvent.change(screen.getByLabelText("x"), { target: { value: "9" } });
+    fireEvent.change(screen.getByLabelText("x"), { target: { value: "95" } });
+    fireEvent.change(screen.getByLabelText("x"), { target: { value: "950" } });
+    expect(xOf()).toBe(950);
+    fireEvent.click(screen.getByText("Undo"));
+    expect(xOf()).toBe(1000);
+    expect(screen.getByText("Undo")).toBeDisabled();
+    fireEvent.click(screen.getByText("Redo"));
+    expect(xOf()).toBe(950);
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(xOf()).toBe(1000);
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(xOf()).toBe(950);
+  });
+
+  it("nudges the selected area by a snap step, Alt by a millimetre", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    fireEvent.click(screen.getByLabelText("show dev-corner").parentElement!);
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(xOf()).toBe(1050);
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
+    expect(xOf()).toBe(1049);
+    fireEvent.keyDown(window, { key: "ArrowLeft", shiftKey: true });
+    expect(xOf()).toBe(549);
+    fireEvent.click(screen.getByText("Undo"));
+    expect(xOf()).toBe(1000);
+  });
+
+  it("offers a backdrop only for what the site has, and draws it when ticked", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "api/site") return json(200, loaded());
+      if (url === "api/backdrops")
+        return json(200, {
+          calibrations: [
+            {
+              id8: "b54cb043",
+              tag: "",
+              created_at: "",
+              placements: [[[0, 0], [2000, 0], [2000, 2000], [0, 2000]]],
+              centres: [],
+            },
+          ],
+          cameras: [],
+        });
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(<SiteEditor />);
+    const box = await screen.findByLabelText("backdrop LH2 b54cb043");
+    expect(screen.queryByTestId("backdrop-calibration-b54cb043")).toBeNull();
+    fireEvent.click(box);
+    expect(screen.getByTestId("backdrop-calibration-b54cb043")).toBeInTheDocument();
+  });
+});

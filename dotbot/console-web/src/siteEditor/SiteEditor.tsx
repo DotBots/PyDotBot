@@ -4,6 +4,7 @@ import {
   RefusedSiteError,
   StaleSiteError,
   fetchCalibration,
+  fetchBackdrops,
   fetchCalibrations,
   fetchSite,
   placeCalibration,
@@ -23,9 +24,18 @@ import {
   siteIssues,
 } from "./edit";
 import type { Rect } from "./edit";
+import { record, redo, startHistory, undo } from "./history";
+import type { History } from "./history";
 import { Inspector } from "./Inspector";
 import { IDENTITY } from "./rigid";
-import type { CalibrationListing, EditArea, PlacedCalibration, SiteModel, SiteResponse } from "./types";
+import type {
+  Backdrops,
+  CalibrationListing,
+  EditArea,
+  PlacedCalibration,
+  SiteModel,
+  SiteResponse,
+} from "./types";
 
 // The site editor: one site pack's site.toml, drawn. It talks only to the
 // small server `dotbot site new|edit` starts, never to a controller.
@@ -75,7 +85,15 @@ function typing(target: EventTarget | null): boolean {
 export function SiteEditor() {
   const theme = useTheme();
   const [loaded, setLoaded] = useState<SiteResponse | null>(null);
-  const [site, setSite] = useState<SiteModel | null>(null);
+  const [history, setHistory] = useState<History<SiteModel> | null>(null);
+  const site = history?.present ?? null;
+  /** Change the site; edits sharing `key` (one drag, one field) undo as one. */
+  const setSite = (next: SiteModel | ((s: SiteModel) => SiteModel), key: string | null = null) =>
+    setHistory((h) => {
+      if (!h) return h;
+      const value = typeof next === "function" ? next(h.present) : next;
+      return JSON.stringify(value) === JSON.stringify(h.present) ? h : record(h, value, key);
+    });
   const [selected, setSelected] = useState<number | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState<Tool>("select");
@@ -87,12 +105,14 @@ export function SiteEditor() {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [reanchor, setReanchor] = useState(false);
   const [placed, setPlaced] = useState<PlacedCalibration | null>(null);
+  const [backdrops, setBackdrops] = useState<Backdrops | null>(null);
+  const [shownBackdrops, setShownBackdrops] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
       const body = await fetchSite();
       setLoaded(body);
-      setSite(body.site);
+      setHistory(startHistory(body.site));
       setSelected(null);
       setNotice(null);
     } catch (err) {
@@ -103,6 +123,13 @@ export function SiteEditor() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Read again after a placement, which adds a calibration to the site
+  useEffect(() => {
+    fetchBackdrops()
+      .then(setBackdrops)
+      .catch(() => setBackdrops(null));
+  }, [placed]);
 
   useEffect(() => {
     if (tool !== "calibration") return;
@@ -140,8 +167,8 @@ export function SiteEditor() {
   const dirty = !!site && !!loaded && !sameSite(site, loaded.site);
   const calibrations = loaded?.calibrations.reduce((n, c) => n + c.count, 0) ?? 0;
 
-  const updateArea = (index: number, patch: Partial<EditArea>) => {
-    setSite((s) => (s ? { ...s, areas: s.areas.map((a, i) => (i === index ? { ...a, ...patch } : a)) } : s));
+  const updateArea = (index: number, patch: Partial<EditArea>, key: string | null = null) => {
+    setSite((s) => ({ ...s, areas: s.areas.map((a, i) => (i === index ? { ...a, ...patch } : a)) }), key);
   };
   const addArea = (rect: Rect) => {
     if (!site) return;
@@ -151,7 +178,7 @@ export function SiteEditor() {
     setTool("select");
   };
   const deleteArea = (index: number) => {
-    setSite((s) => (s ? { ...s, areas: s.areas.filter((_, i) => i !== index) } : s));
+    setSite((s) => ({ ...s, areas: s.areas.filter((_, i) => i !== index) }));
     setSelected(null);
   };
   const addDefaultArea = () => {
@@ -159,9 +186,39 @@ export function SiteEditor() {
     addArea({ x: 0, y: 0, w: Math.min(1000, w), h: Math.min(1000, h) });
   };
 
+  const nudge = (dx: number, dy: number) => {
+    if (tool === "calibration" && placement) {
+      setPlacement({ ...placement, move: { ...placement.move, dx_mm: placement.move.dx_mm + dx, dy_mm: placement.move.dy_mm + dy } });
+    } else if (selected !== null && site?.areas[selected]) {
+      const a = site.areas[selected];
+      updateArea(selected, { x: a.x + dx, y: a.y + dy }, `nudge-${selected}`);
+    }
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target) || e.ctrlKey || e.metaKey) return;
+      if (typing(e.target)) return;
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        if (key === "z" && !e.shiftKey) setHistory((h) => (h ? undo(h) : h));
+        else if ((key === "z" && e.shiftKey) || key === "y") setHistory((h) => (h ? redo(h) : h));
+        else return;
+        e.preventDefault();
+        return;
+      }
+      const arrows: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      if (arrows[e.key]) {
+        // A snap step; Alt one millimetre, Shift ten steps
+        const step = (e.altKey ? 1 : snapMm) * (e.shiftKey ? 10 : 1);
+        nudge(arrows[e.key][0] * step, arrows[e.key][1] * step);
+        e.preventDefault();
+        return;
+      }
       if (e.key === "v" || e.key === "V") setTool("select");
       else if (e.key === "a" || e.key === "A") setTool("area");
       else if (e.key === "c" || e.key === "C") setTool("calibration");
@@ -170,7 +227,7 @@ export function SiteEditor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
+  });
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
@@ -186,7 +243,8 @@ export function SiteEditor() {
     try {
       const body = await saveSite(loaded.revision, site);
       setLoaded(body);
-      setSite(body.site);
+      // The file's names are the areas' origins now, so older steps no longer apply
+      setHistory(startHistory(body.site));
       setNotice({ kind: "info", text: body.written ? `saved ${body.path}` : "nothing to save" });
     } catch (err) {
       if (err instanceof StaleSiteError) {
@@ -279,6 +337,24 @@ export function SiteEditor() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          style={button}
+          title="undo (Ctrl+Z)"
+          disabled={!history || history.past.length === 0}
+          onClick={() => setHistory((h) => (h ? undo(h) : h))}
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          style={button}
+          title="redo (Ctrl+Shift+Z)"
+          disabled={!history || history.future.length === 0}
+          onClick={() => setHistory((h) => (h ? redo(h) : h))}
+        >
+          Redo
+        </button>
         <button type="button" style={button} onClick={onViewToml} disabled={!site}>
           View TOML
         </button>
@@ -376,10 +452,18 @@ export function SiteEditor() {
             tool={tool}
             snapMm={snapMm}
             onSelect={setSelected}
-            onChange={(i, r) => updateArea(i, r)}
+            onChange={(i, r, key) => updateArea(i, r, key)}
             onDraw={addArea}
             placement={placement}
             onPlacement={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
+            backdrops={
+              backdrops
+                ? {
+                    calibrations: backdrops.calibrations.filter((c) => shownBackdrops.has(`cal:${c.id8}`)),
+                    cameras: backdrops.cameras.filter((c) => shownBackdrops.has(`cam:${c.id8}`)),
+                  }
+                : undefined
+            }
           />
         ) : (
           <div style={{ flex: 1 }} />
@@ -393,8 +477,8 @@ export function SiteEditor() {
             selected={selected}
             hidden={hidden}
             issues={issues}
-            onSite={setSite}
-            onArea={(i, a) => updateArea(i, a)}
+            onSite={(next, key) => setSite(next, key)}
+            onArea={(i, a, key) => updateArea(i, a, key)}
             onSelect={setSelected}
             onDelete={deleteArea}
             onToggle={(name) =>
@@ -406,6 +490,16 @@ export function SiteEditor() {
               })
             }
             onAdd={addDefaultArea}
+            backdrops={backdrops}
+            shownBackdrops={shownBackdrops}
+            onToggleBackdrop={(key) =>
+              setShownBackdrops((shown) => {
+                const next = new Set(shown);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              })
+            }
             extra={
               tool === "calibration" || placement || placed ? (
                 <CalibrationPanel
