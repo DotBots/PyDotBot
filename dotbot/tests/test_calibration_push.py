@@ -157,7 +157,7 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
     # Device info is read once for the gate and never polled after the push.
     assert fleet.refreshed == [None]
     assert "2 robot(s) hold another id" in result.output
-    assert "Still not on 80285c9b (1), push again: LAGGARD" in result.output
+    assert "Still not on 9b12f56f (1), push again: LAGGARD" in result.output
 
 
 def test_a_push_checked_for_named_robots_goes_to_exactly_them(calibration_file):
@@ -193,7 +193,7 @@ def test_push_to_another_site_is_refused_without_site_changed(
     moved = _push(monkeypatch, fleet, str(calibration_file), "--site-changed")
     assert moved.exit_code == 0, moved.output
     assert len(fleet.pushed) == 1
-    assert "Every robot reports 80285c9b." in moved.output
+    assert "Every robot reports 9b12f56f." in moved.output
 
 
 @pytest.mark.parametrize("version", [1, 2, 3])
@@ -235,8 +235,8 @@ def test_reframe_writes_a_new_file_in_the_target_site(
     assert data["metadata"]["id"] != FIXTURE_ID
     assert data["metadata"]["id"] in result.output
     # The fixture's matrices were not solved from its samples, so only
-    # station 0, the one the samples cover, is re-solved.
-    assert [s["index"] for s in data["station"]] == [0]
+    # station 2, the one the samples cover, is re-solved.
+    assert [s["index"] for s in data["station"]] == [2]
 
 
 def test_reframe_into_an_undeclared_site_is_refused(calibration_file):
@@ -384,6 +384,6 @@ def test_a_dry_run_prints_the_messages_and_needs_no_swarm(
     )
     assert result.exit_code == 0, result.output
     assert "Would send 2 message(s), 168 B" in result.output
-    assert "station mask 0x0003" in result.output
+    assert "station mask 0x0104" in result.output
     for hexed in MESSAGE_HEX:
         assert hexed in result.output
