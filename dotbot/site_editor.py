@@ -122,10 +122,13 @@ def _model_dict(model: SiteModel) -> dict:
 
 def create_app(
     state: EditorState,
-    page_dir: Path = EDITOR_DIR,
+    page_dir: Path | None = EDITOR_DIR,
     on_done: Callable[[], None] | None = None,
+    on_saved: Callable[[], None] | None = None,
 ) -> FastAPI:
-    """The editor's app for `state`; `on_done` runs when the page says Done."""
+    """The editor's app for `state`; `on_done` runs when the page says Done,
+    `on_saved` after a save wrote the file. Without `page_dir` it serves the
+    JSON routes only, as the console's panel uses them."""
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
     # A page from another site that rebinds its name to 127.0.0.1 is refused.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
@@ -175,6 +178,8 @@ def create_app(
             _write_atomic(state.path, result)
             data = result.encode("utf-8")
             text = result
+            if on_saved is not None:
+                on_saved()
         return {**body(data, text), "written": written}
 
     @app.post("/api/done")
@@ -193,6 +198,9 @@ def create_app(
             lambda: read()[1],
         )
     )
+
+    if page_dir is None:
+        return app
 
     @app.get("/", include_in_schema=False)
     def page():
