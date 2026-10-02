@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Releases publish the wheel to PyPI, not only the sdist.
 - `dotbot swarm serve` starts from a plain `pip install pydotbot`: PyDotBot
   depends on `swarmit[dashboard]`, whose PyJWT and SQLAlchemy the server needs.
+- `dotbot run controller --log-output PATH` creates PATH's folder when it is
+  missing, and names a log file it cannot write instead of crashing.
 
 ### Changed
 
