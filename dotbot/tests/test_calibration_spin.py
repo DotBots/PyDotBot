@@ -525,3 +525,78 @@ def test_collect_spin_refuses_an_island_until_it_is_dropped(monkeypatch, lab):
     assert result.exit_code == 0, result.output
     path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
     assert [s.index for s in lighthouse2.read_calibration_file(path).stations] == [0, 1]
+
+
+def test_append_a_round_ties_a_station_the_first_round_left_out(monkeypatch, lab):
+    a, b = _two_stations()
+    # round 0: station 1 sees its own robots and one robot in the overlap only
+    own_a = [c for c in _floor_grid([a]) if not b.sees(c)][:12]
+    own_b = [c for c in _floor_grid([b]) if not a.sees(c)][:8]
+    overlap = [c for c in _floor_grid([a, b]) if a.sees(c) and b.sees(c)]
+    _, fleet = _two_station_fleet([a, b], own_a + own_b + overlap[:1])
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "station 1 (channel 2) is not tied" in result.output
+    _, fleet = _two_station_fleet([a, b], own_a + own_b + overlap[:1])
+    result = _collect(monkeypatch, lab, fleet, "--drop-station", "1", "--tag", "r0")
+    assert result.exit_code == 0, result.output
+    first = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+    assert [s.index for s in lighthouse2.read_calibration_file(first).stations] == [0]
+
+    # round 1: the same robots (same addresses) spread along the overlap
+    _, fleet = _two_station_fleet([a, b], overlap[1:6])
+    result = _collect(monkeypatch, lab, fleet, "--append", "r0")
+    assert result.exit_code == 0, result.output
+    assert "Appending round 1 to" in result.output
+    assert "station 0 (channel 1) - station 1 (channel 2):" in result.output
+    second = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+    assert second != first and first.exists()
+    saved = lighthouse2.read_calibration_file(second)
+    assert [s.index for s in saved.stations] == [0, 1]
+    assert sorted({t.round for t in saved.tracks}) == [0, 1]
+    names = {(t.name, t.round) for t in saved.tracks}
+    assert any((n, 0) in names and (n, 1) in names for n, _ in names)
+
+
+def test_append_refuses_a_corner_calibration(monkeypatch, lab, tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "corner.toml"
+    path.write_text(FIXTURE_TOML.replace('"c405-arena"', '"c405"'), encoding="utf-8")
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--append", str(path))
+    assert result.exit_code != 0
+    assert "not a free-mode spin calibration" in result.output
+    assert fleet.calls == []
+
+
+def test_append_and_drop_station_go_with_spin(lab):
+    for flags in (["--append", "x"], ["--drop-station", "2"]):
+        result = CliRunner().invoke(
+            swarm_lh2.cmd, ["collect", *flags], obj={"config": lab}
+        )
+        assert result.exit_code != 0 and "goes with --spin" in result.output
+
+
+def test_show_prints_the_stations_links_and_error_map(monkeypatch, lab):
+    a, b = _two_stations()
+    _, fleet = _two_station_fleet([a, b], _floor_grid([a, b])[:40])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "two")
+    assert result.exit_code == 0, result.output
+    shown = CliRunner().invoke(swarm_lh2.cmd, ["show", "two"], obj={"config": lab})
+    assert shown.exit_code == 0, shown.output
+    assert "over 1 round(s)" in shown.output
+    assert "station 1 (channel 2): " in shown.output
+    assert "station 0 (channel 1) - station 1 (channel 2):" in shown.output
+    assert "predicted error (100 mm cells): worst" in shown.output
+
+
+def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "corner.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    shown = CliRunner().invoke(swarm_lh2.cmd, ["show", str(path)], obj={"config": lab})
+    assert shown.exit_code == 0, shown.output
+    assert "station 0 (channel 1): 4 marked points" in shown.output
+    assert "predicted error" not in shown.output
