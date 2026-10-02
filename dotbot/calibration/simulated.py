@@ -115,7 +115,7 @@ class SimulatedCaptureClient:
                 self.pushed[-1][:LH2_CALIBRATION_MESSAGE_BYTES]
             )
         info = SimpleNamespace(
-            info_version=3, lh2_site_name=site, lh2_calibration_id=calibration_id
+            info_version=4, lh2_site_name=site, lh2_calibration_id=calibration_id
         )
         return {self.device: SimpleNamespace(info_gen=1, info=info)}
 
