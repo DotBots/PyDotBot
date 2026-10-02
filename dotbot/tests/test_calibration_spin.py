@@ -598,5 +598,5 @@ def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
     path.write_text(FIXTURE_TOML, encoding="utf-8")
     shown = CliRunner().invoke(swarm_lh2.cmd, ["show", str(path)], obj={"config": lab})
     assert shown.exit_code == 0, shown.output
-    assert "station 0 (channel 1): 4 marked points" in shown.output
+    assert "station 2 (channel 3): 4 marked points" in shown.output
     assert "predicted error" not in shown.output

@@ -730,16 +730,17 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     calibration = _wire_fixture(tmp_path)
     message = calibration_messages(calibration)[1]
     mask, index = struct.unpack_from("<II", message, 0)
-    assert (mask, index) == (0b11, 1)
+    assert (mask, index) == (0x0104, 8)
     assert np.allclose(
         np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3),
-        calibration.station(1).homography,
+        calibration.station(8).homography,
         rtol=1e-7,
     )
-    assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
+    # station 8's own rectangle, not the union
+    assert struct.unpack_from("<4I", message, 44) == (800, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
-    assert message[76:84] == bytes.fromhex("80285c9b7db82732")
-    assert lighthouse2.message_site(message) == ("c405-arena", "80285c9b7db82732")
+    assert message[76:84] == bytes.fromhex("9b12f56f622f0fb6")
+    assert lighthouse2.message_site(message) == ("c405-arena", "9b12f56f622f0fb6")
 
 
 def _stations_2_and_8(tmp_path):
