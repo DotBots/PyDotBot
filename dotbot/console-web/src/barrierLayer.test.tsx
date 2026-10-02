@@ -11,10 +11,11 @@ const SITE: Site = {
   areas: [],
   walls: [{ name: "door", points: [[0, 0], [0, 4000]] }],
   obstacles: [{ name: "", points: [[1500, 2500], [1700, 2500], [1700, 2700]] }],
+  objects: [{ name: "charger-1", kind: "charger", x: 800, y: 3800, heading_deg: 180 }],
 };
 
-describe("MapView barriers", () => {
-  it("draws the site's walls and obstacles", () => {
+describe("MapView barriers and objects", () => {
+  it("draws the site's walls, obstacles and objects", () => {
     render(
       <MapView
         bots={[]}
@@ -46,5 +47,6 @@ describe("MapView barriers", () => {
     );
     expect(screen.getByTestId("wall-door").getAttribute("points")?.split(" ")).toHaveLength(2);
     expect(screen.getByTestId("obstacle-0").getAttribute("points")?.split(" ")).toHaveLength(3);
+    expect(screen.getByTestId("object-charger-1")).toHaveTextContent("charger-1 (charger)");
   });
 });

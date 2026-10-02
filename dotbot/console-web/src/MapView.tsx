@@ -2,6 +2,7 @@ import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
+import { OBJECT_COLOUR, OBJECT_SIZE_MM, facing } from "./siteObjects";
 import { CalibrationLayer } from "./CalibrationLayer";
 import { calibrationSpans, hatchBox, spanTitle } from "./calibrationSpan";
 import {
@@ -1242,6 +1243,38 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 <title>{w.name || "wall"}</title>
               </polyline>
             ))}
+            {(props.site?.objects ?? []).map((o) => {
+              const { fx, fy } = areaToFraction({ x: o.x, y: o.y }, props.viewport);
+              const cx = fx * boxW;
+              const cy = fy * boxH;
+              const r = (OBJECT_SIZE_MM / 2) * (boxW / props.viewport.w);
+              const [dx, dy] = facing(o.heading_deg);
+              return (
+                <g key={`object-${o.name}`} data-testid={`object-${o.name}`}>
+                  <rect
+                    x={cx - r}
+                    y={cy - r}
+                    width={2 * r}
+                    height={2 * r}
+                    rx={r / 3}
+                    fill={OBJECT_COLOUR[o.kind]}
+                    fillOpacity={0.25}
+                    stroke={OBJECT_COLOUR[o.kind]}
+                    strokeWidth={chrome * 1.5}
+                  >
+                    <title>{`${o.name} (${o.kind})`}</title>
+                  </rect>
+                  <line
+                    x1={cx}
+                    y1={cy}
+                    x2={cx + dx * r}
+                    y2={cy + dy * r}
+                    stroke={OBJECT_COLOUR[o.kind]}
+                    strokeWidth={chrome * 1.5}
+                  />
+                </g>
+              );
+            })}
             {/* The loaded calibration: each placement's span outlined, and
                 the rest of the site hatched, where positions are
                 extrapolated. The hatch is the site masked by the spans, so
