@@ -440,6 +440,28 @@ export interface Site {
   areas: Area[];
   field?: string | null;
   calibration?: SiteCalibration | null;
+  walls?: Barrier[];
+  obstacles?: Barrier[];
+  objects?: SiteObject[];
+}
+
+// A thing on the floor at a pose in frame mm; `heading_deg` follows the
+// robots' convention (0 faces +y).
+export type SiteObjectKind = "charger" | "dock" | "landmark" | "camera";
+
+export interface SiteObject {
+  name: string;
+  kind: SiteObjectKind;
+  x: number;
+  y: number;
+  heading_deg: number;
+}
+
+// Where robots cannot go, in frame mm: a wall is a polyline, an obstacle a
+// polygon whose last point joins its first.
+export interface Barrier {
+  name: string;
+  points: [number, number][];
 }
 
 // The LH2 calibration the controller loaded: each placement's points in

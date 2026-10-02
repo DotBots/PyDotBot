@@ -67,6 +67,7 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
+    DotBotSiteModel,
     DotBotStatus,
 )
 from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
@@ -1058,6 +1059,25 @@ class Controller:
         session = self.calibration_session.session
         point = session.outstanding if session else None
         return None if point is None else point.mm
+
+    def reload_site(self) -> None:
+        """Read the site's pack again, as after the site editor saved it: the
+        map (a `site` event) and a running simulator take the change at once."""
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        if self.site.pack is None:
+            return
+        self.site = site_from_table(
+            self.site.name, read_pack(self.site.pack), self.site.pack
+        )
+        self.settings.site = self.site
+        simulator = getattr(self.adapter, "simulator", None)
+        if hasattr(simulator, "use_site"):
+            simulator.use_site(self.site)
+        model = DotBotSiteModel.from_site(self.site, self.calibration)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        self.logger.info("Site reloaded from its pack", site=self.site.name)
 
     async def _notify_calibration_session(self, state):
         """A `calibration_session` event per session state change.

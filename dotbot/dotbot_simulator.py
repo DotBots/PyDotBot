@@ -37,8 +37,12 @@ from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import DIRECTION_NONE
 from dotbot.sim import core as control
+from dotbot.sim.barriers import Barriers
 from dotbot.sim.plant import (
+    CHARGE_FULL_S,
+    CHARGER_REACH_MM,
     INITIAL_BATTERY_VOLTAGE,
+    MAX_BATTERY_DURATION_S,
     FleetPlant,
     battery_discharge_model,
 )
@@ -504,8 +508,14 @@ class DotBotSimulatorCommunicationInterface:
             ],
             noise_mm=[s.lh2_noise_mm for s in settings],
             rng=np.random.default_rng(random.getrandbits(64)),
+            barriers=Barriers.from_site(site),
         )
         self.visible = np.ones(count, dtype=bool)
+        chargers = site.objects_of("charger") if site is not None else []
+        # The site's chargers, (n, 2) mm; None for a site without one
+        self._chargers = (
+            np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
+        )
         self.battery = np.full(count, float(INITIAL_BATTERY_VOLTAGE))
         self._inputs = np.zeros(count, dtype=control.INPUT)
         self._inputs["elapsed_ticks"] = 1
@@ -657,11 +667,15 @@ class DotBotSimulatorCommunicationInterface:
             reports = self.reports()
             for index, model in self._gru.items():
                 self._gru_residual(index, model, reports[index])
-        linear = battery_discharge_model(self.time_elapsed_s)
+        if self._chargers is None:
+            linear = battery_discharge_model(self.time_elapsed_s)
+        else:
+            linear = self._charged()
         if not self._battery_models:
             self.battery[:] = linear
             return
-        self.battery[~self._battery_modelled] = linear
+        unmodelled = ~self._battery_modelled
+        self.battery[unmodelled] = linear if np.isscalar(linear) else linear[unmodelled]
         import torch
 
         reports = self.reports()
@@ -687,6 +701,32 @@ class DotBotSimulatorCommunicationInterface:
             self.battery[index] = max(
                 0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T
             )
+
+    def use_site(self, site: Optional[Site]) -> None:
+        """Take a changed site's walls, obstacles and chargers, robots where they are."""
+        self.plant.barriers = Barriers.from_site(site)
+        chargers = site.objects_of("charger") if site is not None else []
+        self._chargers = (
+            np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
+        )
+
+    def on_charger(self) -> np.ndarray:
+        """Whether each robot's axle midpoint is on one of the site's chargers."""
+        if self._chargers is None:
+            return np.zeros(self.plant.count, dtype=bool)
+        dx = self.plant.x[:, None] - self._chargers[None, :, 0]
+        dy = self.plant.y[:, None] - self._chargers[None, :, 1]
+        return (dx * dx + dy * dy < CHARGER_REACH_MM**2).any(axis=1)
+
+    def _charged(self) -> np.ndarray:
+        """Each robot's battery one tick on: draining at the rate of
+        `battery_discharge_model`, charging while on a charger."""
+        drain = INITIAL_BATTERY_VOLTAGE / MAX_BATTERY_DURATION_S
+        charge = INITIAL_BATTERY_VOLTAGE / CHARGE_FULL_S
+        rate = np.where(self.on_charger(), charge, -drain)
+        return np.clip(
+            self.battery + rate * SIMULATOR_STEP_DELTA_T, 0, INITIAL_BATTERY_VOLTAGE
+        )
 
     def _gru_residual(self, index: int, model, report):
         """Add the GRU's predicted (dx, dy, d_enc_left, d_enc_right) to the truth."""
