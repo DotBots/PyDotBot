@@ -1383,6 +1383,8 @@ async def test_get_controller_site():
         ],
         "field": "field",
         "calibration": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 
@@ -1457,6 +1459,8 @@ async def test_get_controller_site_with_nothing_measured():
         "areas": [],
         "field": None,
         "calibration": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 

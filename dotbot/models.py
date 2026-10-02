@@ -18,7 +18,7 @@ from dotbot.area import Area, Role
 from dotbot.calibration.points import PointsKind
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
-from dotbot.site import Site
+from dotbot.site import Obstacle, Site, Wall
 
 # Points of trail the controller keeps per robot
 MAX_TRAIL_SIZE = 1000
@@ -196,6 +196,13 @@ class DotBotAreaModel(BaseModel):
     role: Optional[Role] = None
 
 
+class DotBotBarrierModel(BaseModel):
+    """A wall (a polyline) or an obstacle (a closed polygon), in frame mm."""
+
+    name: str = ""
+    points: List[List[int]]
+
+
 class DotBotPointsFromModel(BaseModel):
     """How a placement's points were chosen: the field's corners, the corners
     of `area`, a `side_mm` square centred in the field, or given by hand."""
@@ -250,7 +257,8 @@ class DotBotSiteModel(BaseModel):
     area experiments and calibration default to (`Site.field`): an area's
     name, an `x,y,w,h` literal for a site with an extent and no areas, or
     None for a site that declares neither. `calibration` is the LH2
-    calibration the controller loaded, if any.
+    calibration the controller loaded, if any. `walls` (polylines) and
+    `obstacles` (closed polygons) are where robots cannot go.
     """
 
     name: str
@@ -259,6 +267,8 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
     field: Optional[str] = None
     calibration: Optional[DotBotCalibrationSpanModel] = None
+    walls: List[DotBotBarrierModel] = []
+    obstacles: List[DotBotBarrierModel] = []
 
     @classmethod
     def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
@@ -269,6 +279,14 @@ class DotBotSiteModel(BaseModel):
             extent_mm=list(site.extent_mm) if site.extent_mm else None,
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
+            walls=[
+                DotBotBarrierModel(name=w.name, points=[list(p) for p in w.points])
+                for w in site.walls
+            ],
+            obstacles=[
+                DotBotBarrierModel(name=o.name, points=[list(p) for p in o.points])
+                for o in site.obstacles
+            ],
             calibration=(
                 DotBotCalibrationSpanModel.from_calibration(calibration)
                 if calibration is not None
@@ -286,6 +304,11 @@ class DotBotSiteModel(BaseModel):
             areas={
                 a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
             },
+            walls=[Wall(tuple(tuple(p) for p in w.points), w.name) for w in self.walls],
+            obstacles=[
+                Obstacle(tuple(tuple(p) for p in o.points), o.name)
+                for o in self.obstacles
+            ],
         )
 
 
