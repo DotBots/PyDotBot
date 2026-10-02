@@ -78,7 +78,7 @@ def _press(lh_index: int, count1: int, count2: int, n: int = 1) -> ButtonCapture
     )
 
 
-def _info(version=3, site="", calibration_id=""):
+def _info(version=4, site="", calibration_id=""):
     """A robot's device info as swarmit decodes it."""
     return SimpleNamespace(
         info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
@@ -115,7 +115,7 @@ class _FakeClient:
         for addr, info in self.infos.items():
             if devices is not None and addr not in devices:
                 continue
-            if info is not None and info.info_version >= 3:
+            if info is not None and info.info_version >= 4:
                 info.lh2_site_name, info.lh2_calibration_id = message_site(
                     payload[:LH2_CALIBRATION_MESSAGE_BYTES]
                 )
