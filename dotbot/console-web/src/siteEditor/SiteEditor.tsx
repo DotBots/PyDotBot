@@ -85,8 +85,20 @@ function typing(target: EventTarget | null): boolean {
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
 }
 
-export function SiteEditor() {
-  const theme = useTheme();
+export interface SiteEditorProps {
+  /** Where the editor's server is, ending in "/"; the page's own folder by default. */
+  base?: string;
+  /** Embedded in another page (the console): Close calls this instead of stopping the server. */
+  onClose?: () => void;
+  /** The host page's theme, when it has its own. */
+  theme?: "dark" | "light";
+}
+
+export function SiteEditor(props: SiteEditorProps = {}) {
+  const base = props.base ?? "";
+  const embedded = !!props.onClose;
+  const ownTheme = useTheme();
+  const theme = props.theme ?? ownTheme;
   const [loaded, setLoaded] = useState<SiteResponse | null>(null);
   const [history, setHistory] = useState<History<SiteModel> | null>(null);
   const site = history?.present ?? null;
@@ -138,7 +150,7 @@ export function SiteEditor() {
 
   const load = useCallback(async () => {
     try {
-      const body = await fetchSite();
+      const body = await fetchSite(base);
       setLoaded(body);
       setHistory(startHistory(body.site));
       setSelected(null);
@@ -146,7 +158,7 @@ export function SiteEditor() {
     } catch (err) {
       setNotice({ kind: "error", text: `could not load the site: ${(err as Error).message}` });
     }
-  }, []);
+  }, [base]);
 
   useEffect(() => {
     void load();
@@ -154,21 +166,21 @@ export function SiteEditor() {
 
   // Read again after a placement, which adds a calibration to the site
   useEffect(() => {
-    fetchBackdrops()
+    fetchBackdrops(base)
       .then(setBackdrops)
       .catch(() => setBackdrops(null));
-  }, [placed]);
+  }, [placed, base]);
 
   useEffect(() => {
     if (tool !== "calibration") return;
-    fetchCalibrations()
+    fetchCalibrations(base)
       .then(setListing)
       .catch((err) => setNotice({ kind: "error", text: `could not list calibrations: ${(err as Error).message}` }));
-  }, [tool]);
+  }, [tool, base]);
 
   const loadCalibration = async (spec: string) => {
     try {
-      const overlay = await fetchCalibration(spec);
+      const overlay = await fetchCalibration(spec, base);
       setPlacement({ overlay, move: IDENTITY });
       setReanchor(false);
       setPlaced(null);
@@ -180,7 +192,7 @@ export function SiteEditor() {
   const savePlacement = async () => {
     if (!placement) return;
     try {
-      const result = await placeCalibration(placement.overlay.id, placement.move, reanchor);
+      const result = await placeCalibration(placement.overlay.id, placement.move, reanchor, base);
       setPlaced(result);
       // The new calibration is in this site's frame: drawn where it landed
       setPlacement({ overlay: result, move: IDENTITY });
@@ -327,7 +339,7 @@ export function SiteEditor() {
     if (!site || !loaded) return;
     setDialog(null);
     try {
-      const body = await saveSite(loaded.revision, site);
+      const body = await saveSite(loaded.revision, site, base);
       setLoaded(body);
       // The file's names are the areas' origins now, so older steps no longer apply
       setHistory(startHistory(body.site));
@@ -355,7 +367,7 @@ export function SiteEditor() {
   const onViewToml = async () => {
     if (!site) return;
     try {
-      const { text } = await previewSite(site);
+      const { text } = await previewSite(site, base);
       setDialog({ kind: "toml", text });
     } catch (err) {
       setNotice({ kind: "error", text: (err as Error).message });
@@ -363,14 +375,19 @@ export function SiteEditor() {
   };
 
   const onDone = async () => {
+    if (embedded) {
+      if (dirty && !window.confirm("Close the editor without saving your changes?")) return;
+      props.onClose?.();
+      return;
+    }
     if (dirty && !window.confirm("Stop the editor without saving your changes?")) return;
-    await stopEditor();
+    await stopEditor(base);
     setStopped(true);
   };
 
   const shell: React.CSSProperties = {
-    height: "100vh",
-    width: "100vw",
+    height: embedded ? "100%" : "100vh",
+    width: embedded ? "100%" : "100vw",
     display: "flex",
     flexDirection: "column",
     background: "var(--canvas)",
@@ -459,7 +476,7 @@ export function SiteEditor() {
           Save
         </button>
         <button type="button" style={button} onClick={onDone}>
-          Done
+          {embedded ? "Close" : "Done"}
         </button>
       </div>
 

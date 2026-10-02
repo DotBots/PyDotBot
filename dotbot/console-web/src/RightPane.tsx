@@ -512,6 +512,8 @@ interface RightPaneProps {
   site: Site | null;
   hiddenAreas: Set<string>;
   onAreaToggle: (name: string) => void;
+  // Open the site editor, when the controller lets this browser edit its site
+  onEditSite?: () => void;
   // Zoom the map to a named area: the row is where the area's name lives.
   onZoom?: (name: string) => void;
   layers: Layers;
@@ -663,7 +665,27 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               />
             )}
 
-            <div style={{ ...label10, margin: "14px 0 4px" }}>Areas</div>
+            <div style={{ display: "flex", alignItems: "center", margin: "14px 0 4px" }}>
+              <div style={{ ...label10, flex: 1 }}>Areas</div>
+              {props.onEditSite && (
+                <button
+                  type="button"
+                  onClick={props.onEditSite}
+                  title="Edit the site's areas, walls and objects; the map follows on save"
+                  style={{
+                    background: "transparent",
+                    color: "var(--text)",
+                    border: "1px solid var(--hairline)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  Edit site
+                </button>
+              )}
+            </div>
             {siteAreas.length === 0 && (
               <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
                 This site defines no areas.
