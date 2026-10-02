@@ -71,6 +71,8 @@ export interface InspectorProps {
   onDelete: (index: number) => void;
   onToggle: (name: string) => void;
   onAdd: () => void;
+  /** Shown at the top of the pane, for a tool with its own controls. */
+  extra?: React.ReactNode;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -100,6 +102,7 @@ export function Inspector(props: InspectorProps) {
         borderLeft: "1px solid var(--hairline)",
       }}
     >
+      {props.extra}
       <div style={section}>
         <div style={heading}>Site</div>
         <span style={label}>name (the pack folder)</span>
