@@ -20,6 +20,7 @@ import {
   SNAP_STEPS_MM,
   frameChanged,
   freshName,
+  freshObjectName,
   sameSite,
   siteIssues,
 } from "./edit";
@@ -33,6 +34,7 @@ import type {
   BarrierKind,
   CalibrationListing,
   EditArea,
+  EditObject,
   PlacedCalibration,
   SiteModel,
   SiteResponse,
@@ -69,13 +71,13 @@ const button: React.CSSProperties = {
   fontFamily: "var(--font-ui)",
 };
 
-const TOOLS: { key: Tool | "charger"; label: string; hint: string }[] = [
+const TOOLS: { key: Tool; label: string; hint: string }[] = [
   { key: "select", label: "Select", hint: "V: select, move and resize" },
   { key: "area", label: "Area", hint: "A: drag out a new area" },
   { key: "calibration", label: "Calibration", hint: "C: place a spin calibration on the site" },
   { key: "wall", label: "Wall", hint: "W: click the points of a wall, double-click to finish" },
   { key: "obstacle", label: "Obstacle", hint: "O: click the corners of an obstacle, double-click to finish" },
-  { key: "charger", label: "Charger", hint: "needs an objects table in site.toml first" },
+  { key: "object", label: "Object", hint: "B: click to place a charger, dock, landmark or camera" },
 ];
 
 const NOT_TYPED = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"]);
@@ -101,15 +103,29 @@ export function SiteEditor() {
     });
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
   const [selectedBarrier, setSelectedBarrier] = useState<BarrierRef | null>(null);
+  const [selectedObject, setSelectedObject] = useState<number | null>(null);
   const selected = selectedArea;
-  // One thing is selected at a time: an area or a barrier
+  // One thing is selected at a time: an area, a barrier or an object
   const setSelected = (index: number | null) => {
     setSelectedArea(index);
-    if (index !== null) setSelectedBarrier(null);
+    if (index !== null) {
+      setSelectedBarrier(null);
+      setSelectedObject(null);
+    }
   };
   const selectBarrier = (ref: BarrierRef | null) => {
     setSelectedBarrier(ref);
-    if (ref !== null) setSelectedArea(null);
+    if (ref !== null) {
+      setSelectedArea(null);
+      setSelectedObject(null);
+    }
+  };
+  const selectObject = (index: number | null) => {
+    setSelectedObject(index);
+    if (index !== null) {
+      setSelectedArea(null);
+      setSelectedBarrier(null);
+    }
   };
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState<Tool>("select");
@@ -236,6 +252,27 @@ export function SiteEditor() {
     setSite((s) => ({ ...s, [ref.kind]: (s[ref.kind] ?? []).filter((_, i) => i !== ref.index) }));
     setSelectedBarrier(null);
   };
+  const updateObject = (index: number, patch: Partial<EditObject>, key: string | null = null) => {
+    setSite((s) => ({ ...s, objects: (s.objects ?? []).map((o, i) => (i === index ? { ...o, ...patch } : o)) }), key);
+  };
+  const addObject = (at: { x: number; y: number }) => {
+    const list = site?.objects ?? [];
+    const object: EditObject = {
+      name: freshObjectName(list.map((o) => o.name), "charger"),
+      kind: "charger",
+      ...at,
+      heading_deg: 0,
+      comment: null,
+      was: null,
+    };
+    setSite((s) => ({ ...s, objects: [...(s.objects ?? []), object] }));
+    selectObject(list.length);
+    setTool("select");
+  };
+  const deleteObject = (index: number) => {
+    setSite((s) => ({ ...s, objects: (s.objects ?? []).filter((_, i) => i !== index) }));
+    setSelectedObject(null);
+  };
   const addDefaultArea = () => {
     const [w, h] = site?.extent_mm ?? [2000, 2000];
     addArea({ x: 0, y: 0, w: Math.min(1000, w), h: Math.min(1000, h) });
@@ -247,6 +284,9 @@ export function SiteEditor() {
     } else if (selected !== null && site?.areas[selected]) {
       const a = site.areas[selected];
       updateArea(selected, { x: a.x + dx, y: a.y + dy }, `nudge-${selected}`);
+    } else if (selectedObject !== null && site?.objects?.[selectedObject]) {
+      const o = site.objects[selectedObject];
+      updateObject(selectedObject, { x: o.x + dx, y: o.y + dy }, `nudge-object-${selectedObject}`);
     } else if (selectedBarrier && site?.[selectedBarrier.kind]?.[selectedBarrier.index]) {
       const b = site[selectedBarrier.kind]![selectedBarrier.index];
       updateBarrier(
@@ -286,12 +326,15 @@ export function SiteEditor() {
       else if (e.key === "c" || e.key === "C") setTool("calibration");
       else if (e.key === "w" || e.key === "W") setTool("wall");
       else if (e.key === "o" || e.key === "O") setTool("obstacle");
+      else if (e.key === "b" || e.key === "B") setTool("object");
       else if (e.key === "Escape") {
         setSelected(null);
         setSelectedBarrier(null);
+        setSelectedObject(null);
       } else if ((e.key === "Delete" || e.key === "Backspace") && tool === "select") {
         if (selected !== null) deleteArea(selected);
         else if (selectedBarrier) deleteBarrier(selectedBarrier);
+        else if (selectedObject !== null) deleteObject(selectedObject);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -496,7 +539,7 @@ export function SiteEditor() {
           }}
         >
           {TOOLS.map((t) => {
-            const enabled = t.key !== "charger";
+            const enabled = true;
             const active = t.key === tool;
             return (
               <button
@@ -538,6 +581,11 @@ export function SiteEditor() {
             onSelectBarrier={selectBarrier}
             onBarrierChange={(ref, points, key) => updateBarrier(ref, points, key)}
             onBarrierDraw={addBarrier}
+            objects={site.objects ?? []}
+            selectedObject={selectedObject}
+            onSelectObject={selectObject}
+            onObjectChange={(i, at, key) => updateObject(i, at, key)}
+            onObjectPlace={addObject}
             placement={placement}
             onPlacement={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
             backdrops={
@@ -578,6 +626,10 @@ export function SiteEditor() {
             onSelectBarrier={selectBarrier}
             onBarrier={(ref, patch, key) => updateBarrier(ref, null, key, patch)}
             onDeleteBarrier={deleteBarrier}
+            selectedObject={selectedObject}
+            onSelectObject={selectObject}
+            onObject={(i, patch, key) => updateObject(i, patch, key)}
+            onDeleteObject={deleteObject}
             backdrops={backdrops}
             shownBackdrops={shownBackdrops}
             onToggleBackdrop={(key) =>
