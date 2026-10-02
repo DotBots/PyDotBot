@@ -1,4 +1,4 @@
-"""Tests for the LH2 calibration solve, the schema 3 file and the identity.
+"""Tests for the LH2 calibration solve, the schema 4 file and the identity.
 
 Synthetic captures are built by inverting one chosen station matrix, so the
 correspondences are exactly consistent and the solver's own error is the only
@@ -250,12 +250,12 @@ def _saved(monkeypatch, tmp_path, tag=None, **kwargs):
     return manager, manager.save_calibration(tag=tag)
 
 
-def test_save_writes_schema_3_into_the_site_directory(monkeypatch, tmp_path):
+def test_save_writes_schema_4_into_the_site_directory(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
 
     assert path.parent == tmp_path / "calibrations" / "default"
     parsed = tomllib.loads(path.read_text())
-    assert parsed["schema_version"] == 3
+    assert parsed["schema_version"] == 4
     assert parsed["site"]["name"] == "default"
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
@@ -322,7 +322,7 @@ def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
 def test_points_from_written_as_a_string_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        "schema_version = 3\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        "schema_version = 4\n[[placement]]\nindex = 0\npoints_mm = []\n"
         'points_from = "over dev-corner"\n',
         encoding="utf-8",
     )
@@ -357,7 +357,7 @@ def test_schema_1_file_is_rejected(tmp_path):
 def test_a_file_carrying_a_frame_table_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        'schema_version = 3\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
+        'schema_version = 4\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
     )
     with pytest.raises(ValueError, match=r"\[frame\] is not a table"):
         read_calibration_file(path)
@@ -686,41 +686,6 @@ def test_slug_tag_rules():
     assert lighthouse2.slug_tag("***") == ""
 
 
-# The same schema 3 fixture swarmit's test_helpers.py carries, so the two
-# packers cannot drift.
-FIXTURE_TOML = """\
-schema_version = 3
-
-[metadata]
-created_at = "2026-09-10T09:12:00Z"
-id = "3f9a1c07e2b845d6"
-robot = "dotbot-v3"
-
-[site]
-name = "inria-aio-c"
-anchor = "the arena's top-left corner, against the door wall of C405"
-
-[validity]
-valid_mm = [0, 0, 4000, 4500]
-
-[[placement]]
-index = 0
-at = "arena:corners"
-points_mm = [[50.0, 20.0], [2000.0, 20.0], [50.0, 2000.0], [2000.0, 2000.0]]
-captured_at = "2026-09-10T09:10:41Z"
-samples = [
-  { station = 0, point = 0, count1 = [41290], count2 = [51728] },
-]
-
-[[station]]
-index = 0
-solved_from = "direct"
-points = 4
-residual_mm = 0.0
-homography = [[1523.4, -38.2, 1012.7], [41.9, 1531.8, 988.3], [0.2134, -0.0871, 1.0]]
-"""
-
-
 def _wire_fixture(tmp_path):
     from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML as WIRE_TOML
 
@@ -764,28 +729,62 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
 
     calibration = _wire_fixture(tmp_path)
     message = calibration_messages(calibration)[1]
-    count, index = struct.unpack_from("<II", message, 0)
-    assert (count, index) == (2, 1)
+    mask, index = struct.unpack_from("<II", message, 0)
+    assert (mask, index) == (0x0104, 8)
     assert np.allclose(
         np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3),
-        calibration.station(1).homography,
+        calibration.station(8).homography,
         rtol=1e-7,
     )
-    assert struct.unpack_from("<4I", message, 44) == (0, 0, 3330, 4000)
+    # station 8's own rectangle, not the union
+    assert struct.unpack_from("<4I", message, 44) == (800, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
-    assert message[76:84] == bytes.fromhex("19ed0cdb738cdfe5")
-    assert lighthouse2.message_site(message) == ("c405-arena", "19ed0cdb738cdfe5")
+    assert message[76:84] == bytes.fromhex("9b12f56f622f0fb6")
+    assert lighthouse2.message_site(message) == ("c405-arena", "9b12f56f622f0fb6")
 
 
-def test_a_gap_in_the_station_numbering_is_refused(tmp_path):
-    """The receiver trusts slots 0 to count - 1, so station 2 alone leaves slot 0 empty."""
+def _stations_2_and_8(tmp_path):
+    calibration = _wire_fixture(tmp_path)
+    two, eight = calibration.stations
+    calibration.stations = [
+        replace(two, index=2, valid_mm=(0, 0, 3330, 2500)),
+        replace(eight, index=8, valid_mm=(1200, 10, 3330, 4000)),
+    ]
+    calibration.stored_id = ""
+    return calibration
+
+
+def test_stations_2_and_8_encode_byte_for_byte_as_the_frozen_layout(tmp_path):
+    """0xA3 payload: mask u32 @0, index u32 @4, float32 H[3][3] @8, this
+    station's u32 valid_mm[4] @44, site_name[16] @60, calibration_id[8] @76."""
+    import struct
+
+    from dotbot.calibration.lighthouse2 import calibration_messages
+
+    calibration = _stations_2_and_8(tmp_path)
+    messages = calibration_messages(calibration)
+    assert [len(m) for m in messages] == [84, 84]
+    for message, station in zip(messages, calibration.stations):
+        expected = (
+            (0x0104).to_bytes(4, "little")
+            + station.index.to_bytes(4, "little")
+            + b"".join(struct.pack("<f", v) for row in station.homography for v in row)
+            + b"".join(v.to_bytes(4, "little") for v in station.valid_mm)
+            + b"c405-arena".ljust(16, b"\x00")
+            + bytes.fromhex(calibration.id[:16])
+        )
+        assert message == expected
+    assert lighthouse2.station_mask(calibration) == 0x0104
+
+
+@pytest.mark.parametrize("index", [16, -1])
+def test_a_station_outside_0_to_15_is_refused(tmp_path, index):
     from dotbot.calibration.lighthouse2 import calibration_messages
 
     calibration = _wire_fixture(tmp_path)
-    calibration.stations = [replace(calibration.stations[1], index=2)]
+    calibration.stations = [replace(calibration.stations[1], index=index)]
     calibration.stored_id = ""
-
-    with pytest.raises(ValueError, match="numbered from zero without gaps"):
+    with pytest.raises(ValueError, match="outside 0 to 15"):
         calibration_messages(calibration)
 
 

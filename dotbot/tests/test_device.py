@@ -532,13 +532,13 @@ def test_the_sandbox_page_without_a_calibration_is_erased_past_the_net_id():
     from dotbot.firmware.flash import swarmit_config_page
 
     page = swarmit_config_page(0x1234)
-    assert len(page) == 632
-    assert page[:12] == bytes.fromhex("4f525357" "01000000" "34120000")
-    assert page[12:] == b"\xff" * 620
+    assert len(page) == 872
+    assert page[:12] == bytes.fromhex("50525357" "01000000" "34120000")
+    assert page[12:] == b"\xff" * 860
 
 
 def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
-    """swarmit_config_t, 632 bytes, for the fixture file shared with swarmit."""
+    """swarmit_config_t, 872 bytes, for the fixture file shared with swarmit."""
     import hashlib
 
     from dotbot.firmware.flash import load_calibration_file, swarmit_config_page
@@ -548,22 +548,24 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
     path.write_text(FIXTURE_TOML, encoding="utf-8")
     page = swarmit_config_page(0x1234, load_calibration_file(path))
 
-    assert len(page) == 632
-    assert page[:64].hex() == (
-        "4f525357010000003412000002000000"
-        "cd6cbe44cdcc18c2cd2c7d449a992742"
-        "9a79bf443313774488855a3e7c61b2bd"
-        "0000803f0008b9c40000484100603845"
-    )
+    assert len(page) == 872
+    assert page[:16].hex() == "50525357010000003412000004010000"
     assert hashlib.sha256(page).hexdigest() == (
-        "65c41c8b838212f248fef6311e28e2fcae51a7e65b0289231f525371c710c94c"
+        "c96414cbab5c61fc2bd78d0559dad586d2270c57ea87f10054c1e79f62d1b791"
     )
-    # Station 1 in slot 1, the fourteen unused slots erased, then the site
-    # fields exactly as the calibration message carries them.
+    # Stations 2 and 8 in their slots, every other slot erased; each
+    # station's rectangle in its slot; then the site name and id exactly as
+    # the calibration message carries them.
     message = [bytes.fromhex(h) for h in MESSAGE_HEX]
-    assert page[16 + 36 : 16 + 72] == message[1][8:44]
-    assert page[88:592] == b"\xff" * 504
-    assert page[592:632] == message[0][44:84]
+    matrix = [page[16 + 36 * i : 16 + 36 * (i + 1)] for i in range(16)]
+    rect = [page[592 + 16 * i : 592 + 16 * (i + 1)] for i in range(16)]
+    for i in range(16):
+        if i in (2, 8):
+            m = message[(2, 8).index(i)]
+            assert matrix[i] == m[8:44] and rect[i] == m[44:60]
+        else:
+            assert matrix[i] == b"\xff" * 36 and rect[i] == b"\xff" * 16
+    assert page[848:872] == message[0][60:84]
 
 
 def test_the_sandbox_page_has_a_slot_per_station_the_calibration_allows():
@@ -598,9 +600,9 @@ def test_the_manifest_cache_misses_on_the_old_magic(tmp_path):
     from dotbot.firmware.flash import build_manifest_payload, manifest_matches
 
     payload = build_manifest_payload(tmp_path / "c.hex", "dotbot-v3", "local", "1234")
-    assert payload["magic"] == "0x5753524F"
+    assert payload["magic"] == "0x57535250"
     assert manifest_matches(payload, "dotbot-v3", "local", "1234")
-    for old in ("0x5753524E", "0x5753524D"):
+    for old in ("0x5753524F", "0x5753524E", "0x5753524D"):
         payload["magic"] = old
         assert not manifest_matches(payload, "dotbot-v3", "local", "1234")
     gateway = build_manifest_payload(tmp_path / "g.hex", "gateway", "local", "1234")
