@@ -33,6 +33,10 @@ FIX_MAX_MM = 0xFFFFFFFF
 # Battery: a linear discharge over three hours
 INITIAL_BATTERY_VOLTAGE = 3000  # mV
 MAX_BATTERY_DURATION_S = 60 * 60 * 3
+# A robot whose axle midpoint is this close to a charger's point charges,
+# from empty to full in CHARGE_FULL_S
+CHARGER_REACH_MM = 100.0
+CHARGE_FULL_S = 120.0
 
 
 def battery_discharge_model(time_elapsed_s: float) -> int:
