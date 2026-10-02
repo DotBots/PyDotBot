@@ -30,6 +30,7 @@ function outgoing(site: SiteModel) {
     areas: site.areas.map((a) => ({ ...a, comment: a.comment || null })),
     walls: (site.walls ?? []).map((b) => ({ ...b, name: b.name || null, comment: b.comment || null })),
     obstacles: (site.obstacles ?? []).map((b) => ({ ...b, name: b.name || null, comment: b.comment || null })),
+    objects: (site.objects ?? []).map((o) => ({ ...o, comment: o.comment || null })),
   };
 }
 
@@ -42,6 +43,7 @@ export function withOrigins(body: SiteResponse): SiteResponse {
       areas: body.site.areas.map((a) => ({ ...a, was: a.name })),
       walls: (body.site.walls ?? []).map((b, i) => ({ ...b, was: i })),
       obstacles: (body.site.obstacles ?? []).map((b, i) => ({ ...b, was: i })),
+      objects: (body.site.objects ?? []).map((o) => ({ ...o, was: o.name })),
     },
   };
 }
