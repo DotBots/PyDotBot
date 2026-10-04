@@ -37,6 +37,7 @@ from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import DIRECTION_NONE
 from dotbot.sim import core as control
+from dotbot.sim.barriers import Barriers
 from dotbot.sim.plant import (
     INITIAL_BATTERY_VOLTAGE,
     FleetPlant,
@@ -504,6 +505,7 @@ class DotBotSimulatorCommunicationInterface:
             ],
             noise_mm=[s.lh2_noise_mm for s in settings],
             rng=np.random.default_rng(random.getrandbits(64)),
+            barriers=Barriers.from_site(site),
         )
         self.visible = np.ones(count, dtype=bool)
         self.battery = np.full(count, float(INITIAL_BATTERY_VOLTAGE))
