@@ -289,8 +289,10 @@ export function SiteEditor() {
       else if (e.key === "Escape") {
         setSelected(null);
         setSelectedBarrier(null);
-      } else if ((e.key === "Delete" || e.key === "Backspace") && selected !== null) deleteArea(selected);
-      else if ((e.key === "Delete" || e.key === "Backspace") && selectedBarrier) deleteBarrier(selectedBarrier);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && tool === "select") {
+        if (selected !== null) deleteArea(selected);
+        else if (selectedBarrier) deleteBarrier(selectedBarrier);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
