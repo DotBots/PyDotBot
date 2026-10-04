@@ -30,6 +30,7 @@ from dotbot.config import load_discovered
 from dotbot.robots import robot_geometry
 from dotbot.site import Site
 from dotbot.site_packs import site_catalog
+from dotbot.tests import lh2_multi_fixture as M
 from dotbot.tests.test_calibration_conics import (
     CENTRES,
     FLOOR_TO_CAM,
@@ -464,3 +465,63 @@ def test_after_site_init_the_tag_still_names_the_spin_calibration(monkeypatch, l
         assert result.exit_code == 0, result.output
     placed = load_calibration("floor-spun", site=site_catalog(lab)["spun"].site())
     assert placed.site.name == "spun"
+
+
+# --- collect --spin with several stations ------------------------------------
+
+
+def _two_stations():
+    return M.station(0), M.station(1, M.rigid(2200, 0, 0), aspect=0.9)
+
+
+def _floor_grid(stations):
+    centres = [(x, y) for x in range(-200, 3500, 450) for y in range(300, 2800, 500)]
+    return [c for c in centres if any(s.sees(c) for s in stations)]
+
+
+def _two_station_fleet(stations, centres):
+    """Robots whose spins carry every station that sees them, station by station."""
+    addrs = [f"{0xA0 + i:02X}" * 8 for i in range(len(centres))]
+    events = {}
+    for i, (addr, centre) in enumerate(zip(addrs, centres)):
+        records = []
+        for st in stations:
+            if not st.sees(centre):
+                continue
+            for x, y in conics.apply(st.floor_to_cam, M.circle(centre, n=200)):
+                c = counts_for_camera_point(x, y, st.index)
+                records.append((st.index, round(c.count1), round(c.count2)))
+        events[addr] = payloads(records, run=i)
+    return addrs, _SpinFleet({a: _node() for a in addrs}, events)
+
+
+def test_collect_spin_solves_two_stations_and_prints_the_report(monkeypatch, lab):
+    a, b = _two_stations()
+    centres = _floor_grid([a, b])[:40]
+    _, fleet = _two_station_fleet([a, b], centres)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert "station 0 (channel 1) - station 1 (channel 2):" in result.output
+    assert "predicted error (100 mm cells)" in result.output
+    path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+    saved = lighthouse2.read_calibration_file(path)
+    assert [s.index for s in saved.stations] == [0, 1]
+    assert [(k.a, k.b) for k in saved.links] == [(0, 1)]
+
+
+def test_collect_spin_refuses_an_island_until_it_is_dropped(monkeypatch, lab):
+    a, b = _two_stations()
+    far = M.station(8, M.rigid(0, 6000, 0))
+    centres = _floor_grid([a, b])[:30] + [
+        tuple(far.patch + d) for d in ((0, 0), (500, 0), (0, 500), (-400, -300))
+    ]
+    _, fleet = _two_station_fleet([a, b, far], centres)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "station 8 (channel 9) is not tied to the others" in result.output
+    assert "no calibration written" in result.output
+    _, fleet = _two_station_fleet([a, b, far], centres)
+    result = _collect(monkeypatch, lab, fleet, "--drop-station", "8")
+    assert result.exit_code == 0, result.output
+    path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+    assert [s.index for s in lighthouse2.read_calibration_file(path).stations] == [0, 1]
