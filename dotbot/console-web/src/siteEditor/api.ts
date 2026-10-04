@@ -1,6 +1,6 @@
 import type { SiteModel, SiteResponse } from "./types";
 
-// The editor's server, relative to the page so it works wherever it is mounted.
+// The editor's server, addressed relative to the page.
 
 export class StaleSiteError extends Error {}
 export class RefusedSiteError extends Error {}

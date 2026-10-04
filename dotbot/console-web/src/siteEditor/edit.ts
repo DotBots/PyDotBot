@@ -11,7 +11,8 @@ export const ROLES: AreaRole[] = ["field", "staging", "corner"];
 export const SNAP_STEPS_MM = [1, 10, 50, 100, 250, 500];
 export const SNAP_DEFAULT_MM = 50;
 
-/** Above this, one LH2 base station rarely covers the field (as `config init` warns). */
+/** Above this, one LH2 base station rarely covers the field; keep in step with
+ * FIELD_COVERAGE_MM in dotbot/cli/config_cmd.py. */
 export const FIELD_COVERAGE_MM = 5000;
 
 export interface Rect {
@@ -76,10 +77,7 @@ export function effectiveRole(area: Pick<EditArea, "name" | "role">): AreaRole |
   return (ROLES as string[]).includes(area.name) ? (area.name as AreaRole) : null;
 }
 
-/**
- * The role to declare for a chosen role: none when the name already implies
- * it, so the file stays as short as a hand-written one.
- */
+/** The role to declare for a chosen role: none when the name already implies it. */
 export function declaredRole(name: string, chosen: AreaRole | null): AreaRole | null {
   if (chosen === null) return null;
   return (ROLES as string[]).includes(name) && name === chosen ? null : chosen;
@@ -107,10 +105,7 @@ function bbox(rects: Rect[]): Rect {
   return { x, y, w: x1 - x, h: y1 - y };
 }
 
-/**
- * What stops a save (errors) and what is worth knowing (warnings). The errors
- * are the ones the server's schema would refuse, found before the round trip.
- */
+/** What stops a save (errors) and what is worth knowing (warnings). */
 export function siteIssues(site: SiteModel): Issue[] {
   const issues: Issue[] = [];
   const names = new Map<string, number>();
@@ -124,7 +119,7 @@ export function siteIssues(site: SiteModel): Issue[] {
     });
   }
   const extent = site.extent_mm;
-  if (extent && (!(extent[0] > 0) || !(extent[1] > 0))) {
+  if (extent && (!Number.isFinite(extent[0]) || !Number.isFinite(extent[1]) || !(extent[0] > 0) || !(extent[1] > 0))) {
     issues.push({ level: "error", message: "the extent needs a width and a height" });
   }
   for (const a of site.areas) {
@@ -143,7 +138,9 @@ export function siteIssues(site: SiteModel): Issue[] {
     if ((names.get(name) ?? 0) > 1) {
       issues.push({ level: "error", area: name, message: `two areas are named ${name}` });
     }
-    if (!(a.w > 0) || !(a.h > 0)) {
+    if (![a.x, a.y, a.w, a.h].every(Number.isFinite)) {
+      issues.push({ level: "error", area: name, message: `${name}: x, y, w and h must be numbers` });
+    } else if (!(a.w > 0) || !(a.h > 0)) {
       issues.push({ level: "error", area: name, message: `${name} needs a width and a height` });
     }
     if (

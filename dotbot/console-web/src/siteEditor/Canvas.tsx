@@ -28,8 +28,10 @@ export type Tool = "select" | "area";
 const HANDLE_PX = 9;
 const AREA_TINT = 0.12;
 
+const DRAG_THRESHOLD_PX = 3;
+
 type Drag =
-  | { kind: "move"; index: number; start: Rect; from: { x: number; y: number } }
+  | { kind: "move"; index: number; start: Rect; from: { x: number; y: number }; px: { x: number; y: number } }
   | { kind: "resize"; index: number; start: Rect; handle: Handle }
   | { kind: "draw"; from: { x: number; y: number }; to: { x: number; y: number } };
 
@@ -136,7 +138,13 @@ export function Canvas(props: CanvasProps) {
     if (e.button !== 0 || props.tool === "area") return;
     const a = props.areas[index];
     props.onSelect(index);
-    begin(e, { kind: "move", index, start: { x: a.x, y: a.y, w: a.w, h: a.h }, from: toFrame(e) });
+    begin(e, {
+      kind: "move",
+      index,
+      start: { x: a.x, y: a.y, w: a.w, h: a.h },
+      from: toFrame(e),
+      px: { x: e.clientX, y: e.clientY },
+    });
   };
 
   const onHandleDown = (e: React.PointerEvent, index: number, handle: Handle) => {
@@ -151,6 +159,8 @@ export function Canvas(props: CanvasProps) {
     const p = toFrame(e);
     const s = snapNow(e);
     if (drag.kind === "move") {
+      // A click that selects is not a move, however the pointer jitters
+      if (Math.hypot(e.clientX - drag.px.x, e.clientY - drag.px.y) < DRAG_THRESHOLD_PX) return;
       props.onChange(drag.index, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s));
     } else if (drag.kind === "resize") {
       props.onChange(drag.index, resizeRect(drag.start, drag.handle, p, s));
