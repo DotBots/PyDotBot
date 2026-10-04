@@ -29,13 +29,15 @@ def page(tmp_path):
     return folder
 
 
+def local_client(app) -> TestClient:
+    """A client calling `app` from this machine, as the editor's page does."""
+    return TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
+
+
 @pytest.fixture
 def client(pack, page, tmp_path):
     calibrations = tmp_path / "home-calibrations" / "arena"
-    return TestClient(
-        create_app(EditorState("arena", pack, [calibrations]), page),
-        base_url="http://127.0.0.1",
-    )
+    return local_client(create_app(EditorState("arena", pack, [calibrations]), page))
 
 
 def _loaded(client):
@@ -119,7 +121,7 @@ def test_the_preview_is_the_file_as_it_would_be_written(client, pack):
 def test_done_runs_the_callback(pack, page):
     calls = []
     app = create_app(EditorState("arena", pack), page, on_done=lambda: calls.append(1))
-    client = TestClient(app, base_url="http://127.0.0.1")
+    client = local_client(app)
     assert client.post("/api/done").status_code == 200
     assert calls == [1]
 
@@ -201,4 +203,52 @@ def test_site_edit_defaults_to_the_active_pack_even_by_path(
 
 def test_a_request_for_another_host_is_refused(client):
     response = client.get("/api/site", headers={"host": "evil.example"})
-    assert response.status_code == 400
+    assert response.status_code == 403
+
+
+def test_a_request_from_another_machine_is_refused_whatever_its_host(pack, page):
+    app = create_app(EditorState("arena", pack), page)
+    remote = TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.7", 5))
+    assert remote.get("/api/site").status_code == 403
+    assert remote.post("/api/done").status_code == 403
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"origin": "https://evil.example"},
+        {"origin": "null"},
+        {"origin": "http://127.0.0.1:9999"},
+        {"sec-fetch-site": "cross-site"},
+        {"sec-fetch-site": "same-site"},
+    ],
+)
+def test_a_save_from_another_page_is_refused(client, pack, headers):
+    body = _loaded(client)
+    body["site"]["anchor"] = "moved"
+    response = client.put(
+        "/api/site",
+        json={"revision": body["revision"], "site": body["site"]},
+        headers=headers,
+    )
+    assert response.status_code == 403
+    assert (pack / "site.toml").read_text() == ARENA
+
+
+def test_a_save_from_the_editors_own_page_is_taken(client, pack):
+    body = _loaded(client)
+    body["site"]["anchor"] = "moved"
+    response = client.put(
+        "/api/site",
+        json={"revision": body["revision"], "site": body["site"]},
+        headers={"origin": "http://127.0.0.1", "sec-fetch-site": "same-origin"},
+    )
+    assert response.status_code == 200
+    assert 'anchor = "moved"' in (pack / "site.toml").read_text()
+
+
+def test_a_request_from_an_ipv6_loopback_client_is_taken(pack, page):
+    app = create_app(EditorState("arena", pack), page)
+    for address in ("::1", "::ffff:127.0.0.1"):
+        local = TestClient(app, base_url="http://localhost", client=(address, 5))
+        assert local.get("/api/site").status_code == 200
