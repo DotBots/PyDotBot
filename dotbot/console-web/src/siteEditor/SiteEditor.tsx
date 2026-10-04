@@ -128,8 +128,9 @@ export function SiteEditor() {
     try {
       const result = await placeCalibration(placement.overlay.id, placement.move, reanchor);
       setPlaced(result);
-      // The new calibration is in this site's frame: drawn where it landed
-      setPlacement({ overlay: result, move: IDENTITY });
+      fetchCalibrations()
+        .then(setListing)
+        .catch(() => undefined);
       setNotice({ kind: "info", text: `saved calibration ${result.id8}; push it with: ${result.push}` });
     } catch (err) {
       setNotice({ kind: "error", text: `calibration not saved: ${(err as Error).message}` });
