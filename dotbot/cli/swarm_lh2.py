@@ -912,6 +912,7 @@ def _show(ctx, calibration, site_name, next_robots):
         resolve_calibration_path,
     )
     from dotbot.calibration.multi_station import (
+        appendable_rounds,
         error_map_from_calibration,
         multi_station_report,
         next_round,
@@ -939,6 +940,12 @@ def _show(ctx, calibration, site_name, next_robots):
     for line in multi_station_report(loaded):
         click.echo(line)
     if next_robots:
+        try:
+            appendable_rounds(loaded)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"--next-round plans a round for collect --spin --append: {exc}"
+            ) from exc
         error_map = error_map_from_calibration(loaded)
         if error_map is None:
             raise click.ClickException(

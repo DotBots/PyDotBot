@@ -664,3 +664,15 @@ def test_show_next_round_says_where_to_spin(monkeypatch, lab):
     assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
     assert shown.output.count("mm, seen by station ") == 3
 
+
+def test_show_next_round_refuses_a_calibration_a_round_cannot_join(lab, tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "corner.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    shown = CliRunner().invoke(
+        swarm_lh2.cmd, ["show", str(path), "--next-round", "2"], obj={"config": lab}
+    )
+    assert shown.exit_code != 0
+    assert "--next-round plans a round for collect --spin --append" in shown.output
+    assert "not a free-mode spin calibration" in shown.output
