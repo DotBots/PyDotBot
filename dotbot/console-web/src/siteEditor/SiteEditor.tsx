@@ -70,6 +70,7 @@ export function SiteEditor() {
   const [notice, setNotice] = useState<Notice>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [stopped, setStopped] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -113,7 +114,7 @@ export function SiteEditor() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target) || e.ctrlKey || e.metaKey) return;
+      if (saving || typing(e.target) || e.ctrlKey || e.metaKey) return;
       if (e.key === "v" || e.key === "V") setTool("select");
       else if (e.key === "a" || e.key === "A") setTool("area");
       else if (e.key === "Escape") setSelected(null);
@@ -134,6 +135,7 @@ export function SiteEditor() {
   const doSave = async () => {
     if (!site || !loaded) return;
     setDialog(null);
+    setSaving(true);
     try {
       const body = await saveSite(loaded.revision, site);
       setLoaded(body);
@@ -150,6 +152,8 @@ export function SiteEditor() {
       } else {
         setNotice({ kind: "error", text: `not saved: ${(err as Error).message}` });
       }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -171,7 +175,11 @@ export function SiteEditor() {
 
   const onDone = async () => {
     if (dirty && !window.confirm("Stop the editor without saving your changes?")) return;
-    await stopEditor();
+    try {
+      await stopEditor();
+    } catch {
+      // The server is already gone, which is what Done asks for
+    }
     setStopped(true);
   };
 
@@ -185,6 +193,8 @@ export function SiteEditor() {
     fontFamily: "var(--font-ui)",
     fontSize: 13,
     overflow: "hidden",
+    // Edits made while a save is in flight would be replaced by its reply
+    pointerEvents: saving ? "none" : undefined,
   };
 
   if (stopped) {
