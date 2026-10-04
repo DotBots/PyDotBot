@@ -966,16 +966,11 @@ async def root():
 
 class SiteEditorMount:
     """The site editor's JSON routes over the controller's site pack, for the
-    console's panel: built on first use, and only for a site read from a pack.
-
-    The editor's app answers only requests addressed to 127.0.0.1 or
-    localhost, so a console opened from another machine cannot write files on
-    this one.
-    """
+    console's panel: built on first use, and only for a site read from a pack."""
 
     def __init__(self):
         self._app = None
-        self._pack = None
+        self._key = None
 
     async def __call__(self, scope, receive, send):
         import asyncio
@@ -997,7 +992,7 @@ class SiteEditorMount:
             )
             await response(scope, receive, send)
             return
-        if self._app is None or self._pack != pack:
+        if self._app is None or self._key != (id(controller), pack):
             state = EditorState(site.name, pack, [calibration_root() / site.name])
             # A save runs on a worker thread; the reload belongs on the loop
             loop = asyncio.get_running_loop()
@@ -1006,7 +1001,7 @@ class SiteEditorMount:
                 page_dir=None,
                 on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
             )
-            self._pack = pack
+            self._key = (id(controller), pack)
         await self._app(scope, receive, send)
 
 
