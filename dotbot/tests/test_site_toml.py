@@ -407,3 +407,54 @@ def test_a_new_array_of_tables_starts_after_a_blank_line():
     result = patched_text(INLINE, model)
     assert "500 }\n\n[[walls]]" in result
     assert "\n\n[[obstacles]]" in result
+
+
+THREE_WALLS = """\
+anchor = "a"
+
+# a: the door wall
+[[walls]]
+points = [[0, 0], [1, 0]]
+
+# b: the window wall
+[[walls]]
+points = [[0, 1], [1, 1]]
+
+# c: the back wall
+[[walls]]
+points = [[0, 2], [1, 2]]
+
+# The broker.
+[connection]
+conn = "mqtt://h:1883"
+"""
+
+
+@pytest.mark.parametrize("dropped", [0, 1, 2])
+def test_deleting_a_wall_keeps_the_comments_heading_the_others(dropped):
+    model = _loaded(THREE_WALLS)
+    del model["walls"][dropped]
+    result = patched_text(THREE_WALLS, model)
+    kept = [c for k, c in enumerate("abc") if k != dropped]
+    headings = [line for line in result.splitlines() if line.startswith("# ")]
+    assert [h[2] for h in headings[:2]] == kept
+    assert headings[-1] == "# The broker."
+    assert result.splitlines()[result.splitlines().index("[connection]") - 2] == ""
+
+
+def test_a_wall_appended_to_an_array_is_set_apart_by_a_blank_line():
+    model = _loaded(THREE_WALLS)
+    model["walls"].append({"points": [[5, 5], [6, 6]], "was": None})
+    result = patched_text(THREE_WALLS, model)
+    assert (
+        "points = [[0, 2], [1, 2]]\n\n[[walls]]\npoints = [[5, 5], [6, 6]]\n\n# The"
+        in (result)
+    )
+
+
+def test_walls_written_inline_are_refused_not_wiped():
+    text = 'walls = [{ name = "hand", points = [[0, 0], [1, 1]] }]\n'
+    with pytest.raises(SiteTomlError, match="edit it by hand"):
+        site_model(tomlkit.parse(text))
+    with pytest.raises(SiteTomlError):
+        patched_text(text, {"walls": [{"points": [[2, 2], [3, 3]], "was": None}]})
